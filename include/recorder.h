@@ -4,27 +4,38 @@
  */
 
 #pragma once
-#include <ctypes>
+#include <cstdint>
 #include "config.h"
 
 extern "C" {
 
-    typedef struct {
+    struct pvalue_t {
         void* address;
-        size_t length;
-    } pvalue_t;
+        int32_t length;
+    };
+
+
+    // Fwd decl
+    struct Database;
+
 
     /** Library public interface.
      */
-    typedef struct {
-        void (*flush) ();
-        void (*add_sample) (int32_t param_id, int32_t unix_timestamp, pvalue_t value);
-    } Database;
+    struct Database {
+        // Function signatures
+        typedef void (*add_sample_sig) (Database*, int32_t, int32_t, pvalue_t);
+        typedef void (*flush_sig) (Database*);
+        // Functions
+        add_sample_sig add_sample;
+        flush_sig flush;
+    };
+
 
     /** Open existing database.
      *  Function copies config and doesn't stroe any pointers to it.
      */
     Database* open_database(const Config& config);
+
 
     /** Close database.
      */

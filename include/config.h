@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 extern "C" {
 
@@ -7,8 +8,8 @@ extern "C" {
 struct Config
 {
     char* path_to_file;
-    size_t page_size;
-    bool debug_mode;
+    int32_t page_size;
+    int32_t debug_mode;
 };
 
 }
