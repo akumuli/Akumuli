@@ -1,4 +1,4 @@
-add_library(recorder SHARED 
+add_library(spatium SHARED 
     ../include/buffer_manager.h
     ../include/config.h
     ../include/page.h
@@ -7,3 +7,5 @@ add_library(recorder SHARED
     page.cpp
     recorder.cpp
 )
+
+target_link_libraries(spatium ${Log4Cxx_LIBRARIES})

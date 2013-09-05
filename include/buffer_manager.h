@@ -1,4 +1,19 @@
+/**
+ * PRIVATE HEADER
+ *
+ * Buffer management API.
+ *
+ * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ */
+
+
 #pragma once
+#include <cstddef>
 
 namespace IO
 {
@@ -15,9 +30,9 @@ struct IOBuffer
 struct IBufferManager
 {
     //! Create new buffer
-    IOBuffer make();
+    virtual IOBuffer make() = 0;
     //! Return buffer back
-    void recycle(IOBuffer buffer);
+    virtual void recycle(IOBuffer buffer) = 0;
 };
 
 
@@ -26,8 +41,8 @@ struct IBufferManager
 struct BufferManagerFactory
 {
     enum BufferType {
-        MMF,  //< Memory mapped file
-        Memory //< Memory allocation
+        Persistent,  //< Memory mapped file
+        Transient //< Memory allocation
     };
 
     /** Create new buffer manager of some type.
