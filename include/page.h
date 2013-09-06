@@ -20,8 +20,14 @@ namespace Spatium {
 namespace Index {
 
 
-//! Entry address
-typedef uint16_t EntryOffset;
+struct EntryOffset {
+    uint16_t offset;
+
+    EntryOffset();
+    EntryOffset(uint16_t offset);
+    EntryOffset(const EntryOffset& other);
+    EntryOffset& operator = (const EntryOffset& other);
+};
 
 
 /** Timestamp. Can be treated as
@@ -89,9 +95,6 @@ private:
 
     //! Get pointer to the begining of the page
     char* data() noexcept;
-
-    //! Find entry by index
-    const Entry* find_entry(int index) const noexcept;
 public:
     //! C-tor
     PageHeader(PageType type, uint16_t count, uint16_t length);
@@ -132,6 +135,26 @@ public:
      * if buffer is to small, entry[index].length on success.
      */
     int copy_entry(int index, Entry* receiver) const noexcept;
+
+    /**
+     * Get pointer to entry.
+     * @param index entry index
+     * @returns null if index out of range or pointer to entry
+     */
+    const Entry* get_entry(int index) const noexcept;
+
+    /**
+     * Get pointer to entry without copying
+     * @param index entry index
+     * @returns pointer to entry or NULL
+     */
+    const Entry* find_entry(int index) const noexcept;
+
+    /**
+     * Sort page content
+     */
+    void sort() noexcept;
+    // TODO: add partial sort
 };
 
 }}  // namespaces

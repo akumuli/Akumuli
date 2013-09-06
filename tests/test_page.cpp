@@ -86,3 +86,51 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     BOOST_CHECK_EQUAL(entry->param_id, 3333);
 }
 
+BOOST_AUTO_TEST_CASE(TestPaging7)
+{
+    char page_ptr[4096]; 
+    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    char buffer[64];
+    TimeStamp inst = {1111L};
+    auto entry = new (buffer) Entry(3333, inst, 64);
+    for (int i = 0; i < 10; i++) {
+        entry->value[i] = i + 1;
+    }
+    auto result = page->add_entry(*entry);
+    BOOST_CHECK_EQUAL(result, PageHeader::AddStatus::Success);
+
+    auto centry = page->find_entry(0);
+    BOOST_CHECK_EQUAL(centry->length, 64);
+    BOOST_CHECK_EQUAL(centry->param_id, 3333);
+}
+
+BOOST_AUTO_TEST_CASE(TestPaging8)
+{
+    char page_ptr[4096]; 
+    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    char buffer[64];
+    TimeStamp inst = {1111L};
+
+    auto entry1 = new (buffer) Entry(1, inst, 64);
+    page->add_entry(*entry1);
+
+    auto entry2 = new (buffer) Entry(2, inst, 64);
+    page->add_entry(*entry2);
+
+    auto entry0 = new (buffer) Entry(0, inst, 64);
+    page->add_entry(*entry0);
+
+    page->sort();
+
+    auto res0 = page->find_entry(0);
+    BOOST_CHECK_EQUAL(res0->param_id, 0);
+
+    auto res1 = page->find_entry(1);
+    BOOST_CHECK_EQUAL(res1->param_id, 1);
+
+    auto res2 = page->find_entry(2);
+    BOOST_CHECK_EQUAL(res2->param_id, 2);
+}
+
+
+

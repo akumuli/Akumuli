@@ -9,16 +9,37 @@
  */
 
 #include <cstring>
+#include <algorithm>
 #include "page.h"
 
 
 namespace Spatium {
 namespace Index {
+
+EntryOffset::EntryOffset() 
+    : offset(0)
+{
+}
+
+EntryOffset::EntryOffset(uint16_t offset) 
+    : offset(offset)
+{
+}
+
+EntryOffset::EntryOffset(const EntryOffset& other)
+    : offset(other.offset)
+{
+}
+
+EntryOffset& EntryOffset::operator = (const EntryOffset& other) {
+    offset = other.offset;
+    return *this;
+}
+
 Entry::Entry(uint32_t length)
     : length(length)
 {
 }
-
 
 Entry::Entry(uint32_t param_id, TimeStamp timestamp, uint32_t length)
     : param_id(param_id)
@@ -50,7 +71,7 @@ int PageHeader::get_free_space() const noexcept {
     auto begin = reinterpret_cast<const char*>(page_index + count);
     const char* end = 0;
     if (count) {
-        end = cdata() + page_index[count - 1];
+        end = cdata() + page_index[count - 1].offset;
     }
     else {
         end = cdata() + length;
@@ -68,21 +89,21 @@ PageHeader::AddStatus PageHeader::add_entry(Entry const& entry) noexcept {
     }
     char* free_slot = 0;
     if (count) {
-        free_slot = data() + page_index[count - 1];
+        free_slot = data() + page_index[count - 1].offset;
     }
     else {
         free_slot = data() + length;
     }
     free_slot -= entry.length;
     memcpy((void*)free_slot, (void*)&entry, entry.length);
-    page_index[count] = free_slot - cdata();
+    page_index[count].offset = free_slot - cdata();
     count++;
     return AddStatus::Success;
 }
 
 const Entry* PageHeader::find_entry(int index) const noexcept {
     if (index >= 0 && index < count) {
-        auto offset = page_index[index];
+        auto offset = page_index[index].offset;
         auto ptr = cdata() + offset;
         auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
         return entry_ptr;
@@ -108,6 +129,16 @@ int PageHeader::copy_entry(int index, Entry* receiver) const noexcept {
         return entry_ptr->length;
     }
     return 0;
+}
+
+void PageHeader::sort() noexcept {
+    auto begin = page_index;
+    auto end = page_index + count;
+    std::sort(begin, end, [&](EntryOffset a, EntryOffset b) {
+        auto ea = reinterpret_cast<const Entry*>(cdata() + a.offset);
+        auto eb = reinterpret_cast<const Entry*>(cdata() + b.offset);
+        return ea->param_id < eb->param_id;
+    });
 }
 
 }}  // namepsaces
