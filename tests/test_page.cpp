@@ -59,3 +59,30 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
     BOOST_CHECK_EQUAL(len, 222);
 }
 
+BOOST_AUTO_TEST_CASE(TestPaging6)
+{
+    char page_ptr[4096]; 
+    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    char buffer[64];
+    TimeStamp inst = {1111L};
+    auto entry = new (buffer) Entry(3333, inst, 64);
+    for (int i = 0; i < 10; i++) {
+        entry->value[i] = i + 1;
+    }
+
+    auto result = page->add_entry(*entry);
+    BOOST_CHECK_EQUAL(result, PageHeader::AddStatus::Success);
+
+    entry->param_id = 0;
+    for (int i = 0; i < 10; i++) {
+        entry->value[i] = i + 1;
+    }
+    TimeStamp inst2 = {1111L};
+    entry->time = inst2;
+
+    int len = page->copy_entry(0, entry);
+    BOOST_CHECK_EQUAL(len, 64);
+    BOOST_CHECK_EQUAL(entry->length, 64);
+    BOOST_CHECK_EQUAL(entry->param_id, 3333);
+}
+

@@ -105,6 +105,7 @@ int PageHeader::copy_entry(int index, Entry* receiver) const noexcept {
             return -1*entry_ptr->length;
         }
         memcpy((void*)receiver, (void*)entry_ptr, entry_ptr->length);
+        return entry_ptr->length;
     }
     return 0;
 }
