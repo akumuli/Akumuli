@@ -16,15 +16,13 @@
 #include <cstdint>
 
 
-namespace Spatium {
-namespace Index {
-
+namespace Akumuli {
 
 struct EntryOffset {
-    uint16_t offset;
+    uint32_t offset;
 
     EntryOffset();
-    EntryOffset(uint16_t offset);
+    EntryOffset(uint32_t offset);
     EntryOffset(const EntryOffset& other);
     EntryOffset& operator = (const EntryOffset& other);
 };
@@ -84,20 +82,30 @@ enum PageType {
 struct PageHeader {
 private:
     // metadata
-    PageType type;    //< page type
-    uint16_t count;   //< number of elements stored
-    uint16_t length;  //< page size
+    PageType type;     //< page type
+    uint32_t count;    //< number of elements stored
+    uint32_t length;   //< page size
+    PageHeader *_prev;  //< intrusive list pointer
+    PageHeader *_next;  //< intrusive list pointer
     EntryOffset 
-      page_index[0];  //< page index
+       page_index[0];  //< page index
 
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;
 
     //! Get pointer to the begining of the page
     char* data() noexcept;
+
 public:
+    // Intrusive list implementation
+    // -----------------------------
+    void insert(PageHeader* page) noexcept;
+    PageHeader* next() const noexcept;
+    PageHeader* prev() const noexcept;
+    // -----------------------------
+
     //! C-tor
-    PageHeader(PageType type, uint16_t count, uint16_t length);
+    PageHeader(PageType type, uint32_t count, uint32_t length);
 
     //! Return number of entries stored in page
     int get_entries_count() const noexcept;
@@ -106,7 +114,7 @@ public:
     int get_free_space() const noexcept;
 
     //! Add operation status
-    enum AddStatus : uint16_t  {
+    enum AddStatus {
         Success,
         Overflow,
         BadEntry
@@ -137,13 +145,6 @@ public:
     int copy_entry(int index, Entry* receiver) const noexcept;
 
     /**
-     * Get pointer to entry.
-     * @param index entry index
-     * @returns null if index out of range or pointer to entry
-     */
-    const Entry* get_entry(int index) const noexcept;
-
-    /**
      * Get pointer to entry without copying
      * @param index entry index
      * @returns pointer to entry or NULL
@@ -157,4 +158,4 @@ public:
     // TODO: add partial sort
 };
 
-}}  // namespaces
+}  // namespaces

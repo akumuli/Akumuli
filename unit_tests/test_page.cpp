@@ -5,7 +5,7 @@
 
 #include "page.h"
 
-using namespace Spatium::Index;
+using namespace Akumuli;
 
 BOOST_AUTO_TEST_CASE(TestPaging1)
 {
@@ -132,5 +132,14 @@ BOOST_AUTO_TEST_CASE(TestPaging8)
     BOOST_CHECK_EQUAL(res2->param_id, 2);
 }
 
+
+BOOST_AUTO_TEST_CASE(TestPaging_intlist1)
+{
+    auto page1 = new PageHeader(PageType::Leaf, 0, sizeof(PageHeader));
+    auto page2 = new PageHeader(PageType::Leaf, 0, sizeof(PageHeader));
+    page1->insert(page2);
+    BOOST_CHECK_EQUAL(page1->next(), page2);
+    BOOST_CHECK_EQUAL(page2->prev(), page1);
+}
 
 

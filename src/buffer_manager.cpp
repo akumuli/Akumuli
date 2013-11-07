@@ -12,27 +12,47 @@
 #include "buffer_manager.h"
 #include <stdexcept>
 
-namespace IO {
+namespace Akumuli {
+
+const int FREE_PAGES_AT_START = 10;
+
 
 struct TransientBufferManager : IBufferManager
 {
-    size_t _page_size;
+    size_t _page_size;       //< page size
 
     TransientBufferManager(size_t page_size) 
-        : _page_size(page_size) {
+        : _page_size(page_size) 
+    {
     }
 
-    virtual IOBuffer make() {
-        return {
-            malloc(_page_size), 
-            _page_size
-        };
+    PageHeader* _make_new(PageType type) const {
+        auto page_data = malloc(_page_size); 
+        auto page_header = new (page_data) PageHeader(type, 0, _page_size);
+        return page_header;
     }
 
-    virtual void recycle(IOBuffer buffer) {
-        free(buffer.address);
+    void _free_for_real(PageHeader* page) const noexcept {
+        page->~PageHeader();
+        free((void*)page);
+    }
+
+    // Public interface
+
+    virtual PageHeader* make(PageType type) {
+        return _make_new(type);
+    }
+
+    virtual void recycle(PageHeader* page) {
+        _free_for_real(page);
     }
 };
+
+
+//struct PersistentBufferManager : IBuferManager
+//{
+//}
+
 
 IBufferManager* BufferManagerFactory::create_new(BufferManagerFactory::BufferType type, 
                                                  size_t page_size, 

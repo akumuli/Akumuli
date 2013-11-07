@@ -18,14 +18,14 @@
 
 extern "C" {
 
-    struct spa_MemRange {
+    struct aku_MemRange {
         void* address;
         int32_t length;
     };
 
 
     //! Database instance.
-    struct spa_Database { };
+    struct aku_Database { };
 
 
     /**
@@ -36,22 +36,22 @@ extern "C" {
      * @param timestamp entry timestamp (unix-time)
      * @param data data
      */
-    void spa_add_sample(spa_Database* db, int32_t param_id, int32_t timestamp, spa_MemRange data);
+    void aku_add_sample(aku_Database* db, int32_t param_id, int32_t timestamp, aku_MemRange data);
 
 
     /**
      * Flush data to disk.
      * @param db database.
      */
-    void spa_flush_database(spa_Database* db);
+    void aku_flush_database(aku_Database* db);
 
 
     /** Open existing database.
      */
-    spa_Database* spa_open_database(spa_Config config);
+    aku_Database* aku_open_database(aku_Config config);
 
 
     /** Close database.
      */
-    void spa_close_database(spa_Database* db);
+    void aku_close_database(aku_Database* db);
 }

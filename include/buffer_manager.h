@@ -14,15 +14,9 @@
 
 #pragma once
 #include <cstddef>
+#include "page.h"
 
-namespace IO
-{
-
-struct IOBuffer
-{
-    void* address;
-    size_t length;
-};
+namespace Akumuli {
 
 
 /** Interface to buffer manager
@@ -30,9 +24,9 @@ struct IOBuffer
 struct IBufferManager
 {
     //! Create new buffer
-    virtual IOBuffer make() = 0;
+    virtual PageHeader* make(PageType type) = 0;
     //! Return buffer back
-    virtual void recycle(IOBuffer buffer) = 0;
+    virtual void recycle(PageHeader* buffer) = 0;
 };
 
 

@@ -25,4 +25,5 @@ include_directories(./include)
 
 add_subdirectory(src)
 enable_testing()
-add_subdirectory(tests)
+add_subdirectory(unit_tests)
+add_subdirectory(tests/fill_test)

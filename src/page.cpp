@@ -9,19 +9,20 @@
  */
 
 #include <cstring>
+#include <cassert>
 #include <algorithm>
+#include "timsort.hpp"
 #include "page.h"
 
 
-namespace Spatium {
-namespace Index {
+namespace Akumuli {
 
 EntryOffset::EntryOffset() 
     : offset(0)
 {
 }
 
-EntryOffset::EntryOffset(uint16_t offset) 
+EntryOffset::EntryOffset(uint32_t offset)
     : offset(offset)
 {
 }
@@ -38,12 +39,14 @@ EntryOffset& EntryOffset::operator = (const EntryOffset& other) {
 
 Entry::Entry(uint32_t length)
     : length(length)
+    , time {}
+    , param_id {}
 {
 }
 
 Entry::Entry(uint32_t param_id, TimeStamp timestamp, uint32_t length)
     : param_id(param_id)
-    , time(time)
+    , time(timestamp)
     , length(length)
 {
 }
@@ -56,7 +59,7 @@ char* PageHeader::data() noexcept {
     return reinterpret_cast<char*>(this);
 }
 
-PageHeader::PageHeader(PageType type, uint16_t count, uint16_t length)
+PageHeader::PageHeader(PageType type, uint32_t count, uint32_t length)
     : type(type)
     , count(count)
     , length(length)
@@ -131,14 +134,55 @@ int PageHeader::copy_entry(int index, Entry* receiver) const noexcept {
     return 0;
 }
 
+template<class RandomIt, class Cmp>
+void ins_sort(RandomIt start, RandomIt end, Cmp cmp) {
+    for (RandomIt k = start; k < end; ++k) {
+        RandomIt l = k;
+        RandomIt l_prev = l - 1;
+        while (l_prev >= start && cmp(*l_prev, *l)) {
+            std::iter_swap(l, l_prev);
+            l--;
+            l_prev--;
+        }
+    }
+}
+
 void PageHeader::sort() noexcept {
     auto begin = page_index;
     auto end = page_index + count;
-    std::sort(begin, end, [&](EntryOffset a, EntryOffset b) {
+    gfx::timsort(begin, end, [&](EntryOffset a, EntryOffset b) {
         auto ea = reinterpret_cast<const Entry*>(cdata() + a.offset);
         auto eb = reinterpret_cast<const Entry*>(cdata() + b.offset);
-        return ea->param_id < eb->param_id;
+        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);
+        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.precise, eb->param_id);
+        return ta < tb;
     });
 }
 
-}}  // namepsaces
+void PageHeader::insert(PageHeader* new_page) noexcept {
+    assert(new_page);
+    auto next_page = this->_next;
+    if (next_page) {
+        // Insert
+        new_page->_next = next_page;
+        new_page->_prev = this;
+        _next = new_page;
+        next_page->_prev = new_page;
+    }
+    else {
+        // Append
+        new_page->_prev = this;
+        this->_next = new_page;
+    }
+}
+
+PageHeader* PageHeader::next() const noexcept {
+    return _next;
+}
+
+PageHeader* PageHeader::prev() const noexcept {
+    return _prev;
+}
+
+
+}  // namepsace

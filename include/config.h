@@ -19,7 +19,7 @@ extern "C" {
 
 /** Library configuration.
  */
-struct spa_Config
+struct aku_Config
 {
     char* path_to_file;
     int32_t page_size;
