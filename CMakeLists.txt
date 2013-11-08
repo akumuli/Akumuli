@@ -1,7 +1,7 @@
-project(Spatium)
+project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
 
-include(cmake/FindLog4Cxx.cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 set(Boost_USE_STATIC_LIBS OFF) 
 set(Boost_USE_MULTITHREADED ON)  
@@ -13,9 +13,12 @@ find_package(Boost "1.49.0"
     REQUIRED
 )
 
+find_package(APR REQUIRED)
+
+set("LIBS", ${APR_LIBRARY})
+
 include_directories(${Boost_INCLUDE_DIRS}) 
-
-
+include_directories(${APR_INCLUDE_DIR})
 
 if(CMAKE_COMPILER_IS_GNUCXX)
     add_definitions(-std=gnu++0x)

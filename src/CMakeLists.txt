@@ -1,11 +1,11 @@
-add_library(spatium SHARED 
-    ../include/buffer_manager.h
+add_library(akumuli SHARED
+    ../include/page_manager.h
     ../include/config.h
     ../include/page.h
-    ../include/recorder.h
-    buffer_manager.cpp 
+    ../include/akumuli.h
+    page_manager.cpp
     page.cpp
-    recorder.cpp
+    akumuli.cpp
 )
 
-target_link_libraries(spatium ${Log4Cxx_LIBRARIES})
+target_link_libraries(akumuli ${Log4Cxx_LIBRARIES})

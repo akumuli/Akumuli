@@ -9,8 +9,9 @@
  */
 
 
-#include "buffer_manager.h"
+#include "page_manager.h"
 #include <stdexcept>
+#include <apr.h>
 
 namespace Akumuli {
 
