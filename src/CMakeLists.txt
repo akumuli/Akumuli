@@ -3,9 +3,9 @@ add_library(akumuli SHARED
     ../include/config.h
     ../include/page.h
     ../include/akumuli.h
+    ../include/util.h
     page_manager.cpp
     page.cpp
     akumuli.cpp
+    util.cpp
 )
-
-target_link_libraries(akumuli ${Log4Cxx_LIBRARIES})

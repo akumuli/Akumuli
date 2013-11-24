@@ -13,9 +13,9 @@ find_package(Boost "1.49.0"
     REQUIRED
 )
 
-find_package(APR REQUIRED)
+find_package(Log4Cxx REQUIRED)
 
-set("LIBS", ${APR_LIBRARY})
+find_package(APR REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS}) 
 include_directories(${APR_INCLUDE_DIR})
