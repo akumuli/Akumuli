@@ -23,10 +23,12 @@ namespace Akumuli {
  */
 struct IPageManager
 {
-    //! Create new buffer
-    virtual PageHeader* make(PageType type) = 0;
-    //! Return buffer back
-    virtual void recycle(PageHeader* buffer) = 0;
+    //! allocate space in the file
+    virtual int allocate_space(PageType type, size_t size) = 0;
+    //! get page by index
+    virtual PageHeader* get_page(int page_index) = 0;
+    //! commit changes
+    virtual void commit() = 0;
 };
 
 

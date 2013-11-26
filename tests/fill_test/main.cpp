@@ -3,6 +3,7 @@
 #include "page.h"
 #include <random>
 #include <boost/timer.hpp>
+#include <apr_mmap.h>
 
 using namespace Akumuli;
 

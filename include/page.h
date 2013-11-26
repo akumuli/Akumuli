@@ -19,7 +19,7 @@
 namespace Akumuli {
 
 struct EntryOffset {
-    uint32_t offset;
+    uint64_t offset;
 
     EntryOffset();
     EntryOffset(uint32_t offset);
