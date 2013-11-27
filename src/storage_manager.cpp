@@ -6,7 +6,10 @@
 
 namespace Akumuli {
 
-apr_status_t StorageManager::create_database(const char* file_name, size_t size) {
+const size_t AKU_METADATA_PAGE_SIZE = 1024*1024;
+const size_t AKU_MIN_FILE_SIZE = 64*1024*1024;
+
+apr_status_t StorageManager::create_storage(const char* file_name, size_t size) {
     AprStatusChecker status;
     apr_pool_t* mem_pool = NULL;
     apr_file_t* file = NULL;
@@ -32,6 +35,27 @@ apr_status_t StorageManager::create_database(const char* file_name, size_t size)
         break;
     }
     return status.status;
+}
+
+apr_status_t StorageManager::init_storage(const char* file_name) {
+    try {
+    MemoryMappedFile mfile(file_name);
+    size_t file_size = mfile.get_size();
+    if (file_size < MIN_FILE_SIZE) {
+        return APR_EGENERAL;
+    }
+    // Create meta page
+    auto meta_ptr = mfile.get_pointer();
+    auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE);
+    // TODO: add creation date
+    // Create index page
+    auto index_ptr = (void*)((char*)meta_ptr + AKU_METADATA_PAGE_SIZE);
+    auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, file_size - AKU_METADATA_PAGE_SIZE);
+    return mfile.flush();
+    }
+    catch(AprException const& err) {
+        return err.status;
+    }
 }
 
 log4cxx::LoggerPtr StorageManager::s_logger_ = log4cxx::LogManager::getLogger("Akumuli.StorageManager");

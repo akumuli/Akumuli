@@ -6,12 +6,12 @@ namespace Akumuli
 
 AprException::AprException(apr_status_t status, const char* message)
     : std::runtime_error(message)
-    , status_(status)
+    , status(status)
 {
 }
 
 std::ostream& operator << (std::ostream& str, AprException const& e) {
-    str << "Error: " << e.what() << ", status: " << e.status_ << ".";
+    str << "Error: " << e.what() << ", status: " << e.status << ".";
     return str;
 }
 
@@ -85,6 +85,10 @@ void* MemoryMappedFile::get_pointer() const noexcept {
 
 size_t MemoryMappedFile::get_size() const noexcept {
     return mmap_->size;
+}
+
+apr_status_t MemoryMappedFile::flush() noexcept {
+    return apr_file_flush(fp_);
 }
 
 log4cxx::LoggerPtr MemoryMappedFile::s_logger_ = log4cxx::LogManager::getLogger("Akumuli.MemoryMappedFile");

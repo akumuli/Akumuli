@@ -25,7 +25,7 @@ namespace Akumuli
     /** APR error wrapper */
     struct AprException : public std::runtime_error
     {
-        apr_status_t status_;
+        apr_status_t status;
         AprException(apr_status_t status, const char* message);
     };
 
@@ -58,6 +58,7 @@ namespace Akumuli
         ~MemoryMappedFile();
         void* get_pointer() const noexcept;
         size_t get_size() const noexcept;
+        apr_status_t flush() noexcept;
     private:
         void free_resources(int cnt);
     };

@@ -23,7 +23,8 @@ namespace Akumuli {
 
 struct StorageManager {
     //! Create new database file with predefined size
-    static apr_status_t create_database(const char* file_name, size_t size);
+    static apr_status_t create_storage(const char* file_name, size_t size);
+    static apr_status_t init_storage(const char* file_name);
     static log4cxx::LoggerPtr s_logger_;
 };
 
