@@ -22,6 +22,9 @@
 
 namespace Akumuli
 {
+    /** Unsafe method marker */
+    struct UnsafeTag {};
+
     /** APR error wrapper */
     struct AprException : public std::runtime_error
     {

@@ -14,6 +14,8 @@
 
 #pragma once
 #include <cstdint>
+#include "akumuli.h"
+#include "util.h"
 
 
 namespace Akumuli {
@@ -33,11 +35,63 @@ struct EntryOffset {
  *  consequtive 32-bit values.
  */
 union TimeStamp {
+    /** number of microseconds since 00:00:00 january 1, 1970 UTC */
     uint64_t precise;
+    // Maybe I should remove this?
     struct t {
         uint32_t object;
         uint32_t server;
     };
+
+    /** UTC timestamp of the current instant */
+    static TimeStamp utc_now() noexcept;
+};
+
+/** String memory layout
+  */
+struct String {
+    int32_t size;
+    char string[1];
+
+    String() {}
+
+    /** This is unsafe constructor.
+      * It assumes that String allocated with `struct hack`
+      * in buffer of precalculated size.
+      * This method will write more that size(*this) bytes.
+      */
+    String(UnsafeTag, const char* str);
+
+    /** Returns number of bytes needed to
+      * store string in this representation.
+      */
+    static int32_t space_needed(const char* str);
+
+    /** Write string to destination
+      * using this string representation.
+      * Returns 0 on success, -size if dest is not large enough.
+      */
+    static int32_t write(void* dest, size_t dest_cap, const char* str);
+};
+
+/** Metadata record layout */
+struct MetadataRecord {
+    enum TypeTag : int32_t {
+        DATE_TIME,
+        STRING,
+        INTEGER
+    };
+    TypeTag tag;
+    union {
+        TimeStamp time;
+        String string;
+        uint64_t integer;
+    };
+    static size_t space_needed(const char* str) noexcept;
+    // Initialization
+    MetadataRecord(TimeStamp time);
+    MetadataRecord(uint64_t value);
+    MetadataRecord(UnsafeTag, const char* str);
 };
 
 
@@ -60,6 +114,12 @@ struct Entry {
 
     //! Extended c-tor
     Entry(uint32_t param_id, TimeStamp time, uint32_t length);
+
+    //! Calculate size needed to store data
+    static uint32_t get_size(uint32_t load_size) noexcept;
+
+    //! Return pointer to storage
+    aku_MemRange get_storage() const noexcept;
 };
 
 

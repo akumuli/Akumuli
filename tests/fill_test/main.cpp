@@ -1,57 +1,71 @@
 #include <iostream>
 #include <cassert>
-#include "page.h"
 #include <random>
+
 #include <boost/timer.hpp>
 #include <apr_mmap.h>
 
-using namespace Akumuli;
+#include "akumuli.h"
+#include "page.h"
+#include "storage_manager.h"
 
-int main()
+using namespace Akumuli;
+using namespace std;
+
+const size_t DB_SIZE = 8589934592;
+
+enum Target {
+    NOTHING,
+    CREATE,
+    WRITE
+};
+
+int main(int cnt, const char** args)
 {
-    size_t page_size = 1024*1024*1024;;
-    void* underlying_storage = malloc(page_size);
-    PageHeader* page = new(underlying_storage) PageHeader(PageType::Leaf, 0, page_size);
-    boost::timer fill_timer;
-    unsigned max_index = 1024*1024*1024;
-    for (unsigned i = 0; i < max_index; i++)
-    {
-        char buf[1000];
-        //int rnd = rand() % 444;
-        TimeStamp tm;
-        tm.precise = i/10000;// + rnd;
-        auto entry = new (buf) Entry(max_index - i , tm, sizeof(Entry));
-        entry->value[0] = i;
-        auto status = page->add_entry(*entry);
-        if (status == PageHeader::AddStatus::Overflow)
-        {
-            double es = fill_timer.elapsed();
-            std::cout << "break at " << i << " and " << es << std::endl;
-            max_index = i;
-            break;
+    Target target = NOTHING;
+    if (cnt == 2) {
+        string param = args[1];
+        if (param == "--create") {
+            target = CREATE;
+        }
+        else if (param == "--write") {
+            target = WRITE;
         }
     }
-    fill_timer.restart();
-    page->sort();
-    double es = fill_timer.elapsed();
-    std::cout << "done in " << es << std::endl;
-    // Check!
-    for (unsigned i = 0; i < max_index; i++)
-    {
-        char buf[1000];
-        TimeStamp tm;
-        auto entry = new (buf) Entry(i, tm, sizeof(Entry));
-        page->copy_entry(i, entry);
-        bool correct =
-            (entry->length == sizeof(Entry)) &&
-            //(entry->param_id == max_index - i) &&
-            (entry->time.precise == i/10000) &&
-            //(entry->value[0] == i);
-            true;
-        if (!correct) {
-            std::cout << "invalid value at " << i << std::endl;
-            //break;
+    if (target == NOTHING) {
+        std::cout << "Nothing to do" << std::endl;
+        return 0;
+    }
+    if (target == CREATE) {
+        // TODO: create interface for storage manager in akumuli.h
+        auto result = StorageManager::create_storage("./test.db", DB_SIZE);
+        if (result != APR_SUCCESS) {
+            std::cout << "Error in create_storage" << std::endl;
+            return 1;
         }
+        result = StorageManager::init_storage("./test.db");
+        if (result != APR_SUCCESS) {
+            std::cout << "Error in init_storage" << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+    if (target == WRITE) {
+        // TODO: open database
+        char* path = "./test.db";
+        aku_Config config;
+        config.debug_mode = 0;
+        config.page_size = 0;
+        config.path_to_file = path;
+        auto db = aku_open_database(config);
+        // TODO: write some data
+        for(unsigned long i = 0; i < 1000000; i++) {
+            aku_MemRange memr;
+            memr.address = (void*)&i;
+            memr.length = sizeof(i);
+            aku_add_sample(db, i % 1000, i >> 4, memr);
+        }
+        aku_close_database(db);
     }
     return 0;
 }

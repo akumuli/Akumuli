@@ -1,3 +1,4 @@
+#include <cassert>
 #include "storage_manager.h"
 #include "page.h"
 #include "util.h"
@@ -17,7 +18,7 @@ apr_status_t StorageManager::create_storage(const char* file_name, size_t size) 
     try {
         status = apr_pool_create(&mem_pool, NULL);
         // Create new file
-        status = apr_file_open(&file, file_name, APR_CREATE, APR_OS_DEFAULT, mem_pool);
+        status = apr_file_open(&file, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, mem_pool);
         // Truncate file
         status = apr_file_trunc(file, size);
         // Done
@@ -39,19 +40,36 @@ apr_status_t StorageManager::create_storage(const char* file_name, size_t size) 
 
 apr_status_t StorageManager::init_storage(const char* file_name) {
     try {
-    MemoryMappedFile mfile(file_name);
-    size_t file_size = mfile.get_size();
-    if (file_size < MIN_FILE_SIZE) {
-        return APR_EGENERAL;
-    }
-    // Create meta page
-    auto meta_ptr = mfile.get_pointer();
-    auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE);
-    // TODO: add creation date
-    // Create index page
-    auto index_ptr = (void*)((char*)meta_ptr + AKU_METADATA_PAGE_SIZE);
-    auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, file_size - AKU_METADATA_PAGE_SIZE);
-    return mfile.flush();
+        MemoryMappedFile mfile(file_name);
+        size_t file_size = mfile.get_size();
+        if (file_size < MIN_FILE_SIZE) {
+            return APR_EGENERAL;
+        }
+
+        // Create meta page
+        auto meta_ptr = mfile.get_pointer();
+        auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE);
+
+        // Add creation date
+        const int BUF_SIZE = 128;
+        char buffer[BUF_SIZE];
+        auto entry_size = Entry::get_size(sizeof(MetadataRecord));
+        assert(BUF_SIZE >= entry_size);
+        auto now = TimeStamp::utc_now();
+        auto entry = new ((void*)buffer) Entry(0, now, entry_size);
+        auto mem = entry->get_storage();
+        auto mrec = new (mem.address) MetadataRecord(now);
+        meta_page->add_entry(*entry);
+
+        // Add index page offset
+        mrec->tag = MetadataRecord::TypeTag::INTEGER;
+        mrec->integer = AKU_METADATA_PAGE_SIZE;
+        meta_page->add_entry(*entry);
+
+        // Create index page
+        auto index_ptr = (void*)((char*)meta_ptr + AKU_METADATA_PAGE_SIZE);
+        auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, file_size - AKU_METADATA_PAGE_SIZE);
+        return mfile.flush();
     }
     catch(AprException const& err) {
         return err.status;

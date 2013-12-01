@@ -20,7 +20,7 @@ extern "C" {
 
     struct aku_MemRange {
         void* address;
-        int32_t length;
+        uint32_t length;
     };
 
 

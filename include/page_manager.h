@@ -18,7 +18,6 @@
 
 namespace Akumuli {
 
-
 /** Interface to page manager
  */
 struct IPageManager

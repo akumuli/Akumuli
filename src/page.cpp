@@ -11,11 +11,63 @@
 #include <cstring>
 #include <cassert>
 #include <algorithm>
+#include <apr_time.h>
 #include "timsort.hpp"
 #include "page.h"
 
 
 namespace Akumuli {
+
+//---------------Timestamp
+
+TimeStamp TimeStamp::utc_now() noexcept {
+    uint64_t t = apr_time_now();
+    return { t };
+}
+
+//------------------------
+
+String::String(UnsafeTag, const char* str)
+{
+    size = space_needed(str);
+    // Things can go wrong here
+    strcpy(string, str);
+}
+
+int32_t String::space_needed(const char* str) {
+    return strlen(str) + sizeof(int32_t) + 1;
+}
+
+int32_t String::write(void* dest, size_t dest_cap, const char* str) {
+    int32_t len = String::space_needed(str);
+    if (len < dest_cap) {
+        return -len;
+    }
+    auto str_ptr = reinterpret_cast<String*>(dest);
+    str_ptr->size = len;
+    strcpy(str_ptr->string, str);
+}
+
+size_t MetadataRecord::space_needed(const char* str) noexcept {
+    return String::space_needed(str) + sizeof(TypeTag);
+}
+
+MetadataRecord::MetadataRecord(TimeStamp time)
+    : tag(TypeTag::DATE_TIME)
+    , time(time)
+{
+}
+
+MetadataRecord::MetadataRecord(uint64_t value)
+    : tag(TypeTag::INTEGER)
+    , integer(value)
+{
+}
+
+MetadataRecord::MetadataRecord(UnsafeTag, const char* str)
+    : tag(TypeTag::STRING)
+{
+}
 
 EntryOffset::EntryOffset() 
     : offset(0)
@@ -49,6 +101,14 @@ Entry::Entry(uint32_t param_id, TimeStamp timestamp, uint32_t length)
     , time(timestamp)
     , length(length)
 {
+}
+
+uint32_t Entry::get_size(uint32_t load_size) noexcept {
+    return sizeof(Entry) - sizeof(uint32_t) + load_size;
+}
+
+aku_MemRange Entry::get_storage() const noexcept {
+    return { (void*)value, length };
 }
 
 const char* PageHeader::cdata() const noexcept {
