@@ -74,7 +74,7 @@ EntryOffset::EntryOffset()
 {
 }
 
-EntryOffset::EntryOffset(uint32_t offset)
+EntryOffset::EntryOffset(uint64_t offset)
     : offset(offset)
 {
 }
