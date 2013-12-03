@@ -24,7 +24,7 @@ struct EntryOffset {
     uint64_t offset;
 
     EntryOffset();
-    EntryOffset(uint32_t offset);
+    EntryOffset(uint64_t offset);
     EntryOffset(const EntryOffset& other);
     EntryOffset& operator = (const EntryOffset& other);
 };
