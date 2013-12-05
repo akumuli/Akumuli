@@ -7,7 +7,7 @@
 
 #include "akumuli.h"
 #include "page.h"
-#include "storage_manager.h"
+#include "storage.h"
 
 using namespace Akumuli;
 using namespace std;
@@ -38,12 +38,12 @@ int main(int cnt, const char** args)
     }
     if (target == CREATE) {
         // TODO: create interface for storage manager in akumuli.h
-        auto result = StorageManager::create_storage("./test.db", DB_SIZE);
+        auto result = Storage::create_storage("./test.db", DB_SIZE);
         if (result != APR_SUCCESS) {
             std::cout << "Error in create_storage" << std::endl;
             return 1;
         }
-        result = StorageManager::init_storage("./test.db");
+        result = Storage::init_storage("./test.db");
         if (result != APR_SUCCESS) {
             std::cout << "Error in init_storage" << std::endl;
             return 1;

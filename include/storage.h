@@ -44,6 +44,15 @@ struct Storage
     //! write data
     void write(Entry2 const& entry);
 
+    // File management
+
+    //! Create empty file
+    static apr_status_t create_storage(const char* file_name, int num_pages);
+
+    //! Create akumuli database from file (file must be created using `create_storage` method)
+    static apr_status_t init_storage(const char* file_name);
+
+private:
     static log4cxx::LoggerPtr s_logger_;
 };
 
