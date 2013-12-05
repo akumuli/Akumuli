@@ -10,14 +10,14 @@ using namespace Akumuli;
 BOOST_AUTO_TEST_CASE(TestPaging1)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     BOOST_CHECK_EQUAL(0, page->get_entries_count());
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging2)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     auto free_space_before = page->get_free_space();
     char buffer[128];
     auto entry = new (buffer) Entry(128);
@@ -30,7 +30,7 @@ BOOST_AUTO_TEST_CASE(TestPaging2)
 BOOST_AUTO_TEST_CASE(TestPaging3)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[4096];
     auto entry = new (buffer) Entry(4096);
     auto result = page->add_entry(*entry);
@@ -40,7 +40,7 @@ BOOST_AUTO_TEST_CASE(TestPaging3)
 BOOST_AUTO_TEST_CASE(TestPaging4)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[128];
     auto entry = new (buffer) Entry(1);
     auto result = page->add_entry(*entry);
@@ -50,7 +50,7 @@ BOOST_AUTO_TEST_CASE(TestPaging4)
 BOOST_AUTO_TEST_CASE(TestPaging5)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[222];
     auto entry = new (buffer) Entry(222);
     auto result = page->add_entry(*entry);
@@ -62,7 +62,7 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
 BOOST_AUTO_TEST_CASE(TestPaging6)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[64];
     TimeStamp inst = {1111L};
     auto entry = new (buffer) Entry(3333, inst, 64);
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
 BOOST_AUTO_TEST_CASE(TestPaging7)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[64];
     TimeStamp inst = {1111L};
     auto entry = new (buffer) Entry(3333, inst, 64);
@@ -107,7 +107,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
 BOOST_AUTO_TEST_CASE(TestPaging8)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Leaf, 0, 4096);
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096);
     char buffer[64];
     TimeStamp inst = {1111L};
 
@@ -132,14 +132,5 @@ BOOST_AUTO_TEST_CASE(TestPaging8)
     BOOST_CHECK_EQUAL(res2->param_id, 2);
 }
 
-
-BOOST_AUTO_TEST_CASE(TestPaging_intlist1)
-{
-    auto page1 = new PageHeader(PageType::Leaf, 0, sizeof(PageHeader));
-    auto page2 = new PageHeader(PageType::Leaf, 0, sizeof(PageHeader));
-    page1->insert(page2);
-    BOOST_CHECK_EQUAL(page1->next(), page2);
-    BOOST_CHECK_EQUAL(page2->prev(), page1);
-}
 
 

@@ -69,26 +69,6 @@ MetadataRecord::MetadataRecord(UnsafeTag, const char* str)
 {
 }
 
-EntryOffset::EntryOffset() 
-    : offset(0)
-{
-}
-
-EntryOffset::EntryOffset(uint32_t offset)
-    : offset(offset)
-{
-}
-
-EntryOffset::EntryOffset(const EntryOffset& other)
-    : offset(other.offset)
-{
-}
-
-EntryOffset& EntryOffset::operator = (const EntryOffset& other) {
-    offset = other.offset;
-    return *this;
-}
-
 Entry::Entry(uint32_t length)
     : length(length)
     , time {}
@@ -110,6 +90,15 @@ uint32_t Entry::get_size(uint32_t load_size) noexcept {
 aku_MemRange Entry::get_storage() const noexcept {
     return { (void*)value, length };
 }
+
+
+Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
+    : param_id(param_id)
+    , time(time)
+    , range(range)
+{
+}
+
 
 const char* PageHeader::cdata() const noexcept {
     return reinterpret_cast<const char*>(this);
@@ -134,7 +123,7 @@ int PageHeader::get_free_space() const noexcept {
     auto begin = reinterpret_cast<const char*>(page_index + count);
     const char* end = 0;
     if (count) {
-        end = cdata() + page_index[count - 1].offset;
+        end = cdata() + page_index[count - 1];
     }
     else {
         end = cdata() + length;
@@ -152,21 +141,48 @@ PageHeader::AddStatus PageHeader::add_entry(Entry const& entry) noexcept {
     }
     char* free_slot = 0;
     if (count) {
-        free_slot = data() + page_index[count - 1].offset;
+        free_slot = data() + page_index[count - 1];
     }
     else {
         free_slot = data() + length;
     }
     free_slot -= entry.length;
     memcpy((void*)free_slot, (void*)&entry, entry.length);
-    page_index[count].offset = free_slot - cdata();
+    page_index[count] = free_slot - cdata();
+    count++;
+    return AddStatus::Success;
+}
+
+PageHeader::AddStatus PageHeader::add_entry(Entry2 const& entry) noexcept {
+    auto space_required = entry.range.length + sizeof(Entry2) + sizeof(EntryOffset);
+    if (space_required > get_free_space()) {
+        return AddStatus::Overflow;
+    }
+    char* free_slot = 0;
+    if (count) {
+        free_slot = data() + page_index[count - 1];
+    }
+    else {
+        free_slot = data() + length;
+    }
+    // FIXME: reorder to improve memory performance
+    // Write data
+    free_slot -= entry.range.length;
+    memcpy((void*)free_slot, entry.range.address, entry.range.length);
+    // Write length
+    free_slot -= sizeof(uint32_t);
+    *(uint32_t*)free_slot = entry.range.length;
+    // Write paramId and timestamp
+    free_slot -= sizeof(Entry2);
+    memcpy((void*)free_slot, (void*)&entry, sizeof(Entry2));
+    page_index[count] = free_slot - cdata();
     count++;
     return AddStatus::Success;
 }
 
 const Entry* PageHeader::find_entry(int index) const noexcept {
     if (index >= 0 && index < count) {
-        auto offset = page_index[index].offset;
+        auto offset = page_index[index];
         auto ptr = cdata() + offset;
         auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
         return entry_ptr;
@@ -211,38 +227,12 @@ void PageHeader::sort() noexcept {
     auto begin = page_index;
     auto end = page_index + count;
     gfx::timsort(begin, end, [&](EntryOffset a, EntryOffset b) {
-        auto ea = reinterpret_cast<const Entry*>(cdata() + a.offset);
-        auto eb = reinterpret_cast<const Entry*>(cdata() + b.offset);
+        auto ea = reinterpret_cast<const Entry*>(cdata() + a);
+        auto eb = reinterpret_cast<const Entry*>(cdata() + b);
         auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);
         auto tb = std::tuple<uint64_t, uint32_t>(eb->time.precise, eb->param_id);
         return ta < tb;
     });
 }
-
-void PageHeader::insert(PageHeader* new_page) noexcept {
-    assert(new_page);
-    auto next_page = this->_next;
-    if (next_page) {
-        // Insert
-        new_page->_next = next_page;
-        new_page->_prev = this;
-        _next = new_page;
-        next_page->_prev = new_page;
-    }
-    else {
-        // Append
-        new_page->_prev = this;
-        this->_next = new_page;
-    }
-}
-
-PageHeader* PageHeader::next() const noexcept {
-    return _next;
-}
-
-PageHeader* PageHeader::prev() const noexcept {
-    return _prev;
-}
-
 
 }  // namepsace

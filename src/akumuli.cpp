@@ -9,11 +9,15 @@
  */
 
 
-#include "akumuli.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <memory>
 
+#include "akumuli.h"
+#include "storage.h"
+
+using namespace Akumuli;
 
 /** 
  * Object that extends a Database struct.
@@ -21,28 +25,41 @@
  */
 struct DatabaseImpl : public aku_Database
 {
-    std::string _path_to_file;
-    size_t _page_size;
-    bool _debug_mode;
+    std::string path_to_file_;
+    bool debug_mode_;
+    Storage storage_;
 
     // private fields
     DatabaseImpl(const aku_Config& config)
-        : _path_to_file(config.path_to_file)
-        , _page_size(config.page_size)
-        , _debug_mode(config.debug_mode != 0)
+        : path_to_file_(config.path_to_file)
+        , debug_mode_(config.debug_mode != 0)
+        , storage_(config.path_to_file)
     {
     }
-};
 
+    void flush() {
+        storage_.commit();
+    }
+
+    void add_sample(int32_t param_id, int32_t unix_timestamp, aku_MemRange value) {
+        TimeStamp ts;
+        ts.t.object = unix_timestamp;
+        ts.t.server = 0;
+        auto entry = Entry2(param_id, ts, value);
+        storage_.write(entry);
+    }
+
+};
 
 void aku_flush_database(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    printf("%s", dbi->_path_to_file.c_str());
+    dbi->flush();
 }
 
 
 void aku_add_sample(aku_Database* db, int32_t param_id, int32_t unix_timestamp, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    dbi->add_sample(param_id, unix_timestamp, value);
 }
 
 

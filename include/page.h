@@ -20,15 +20,7 @@
 
 namespace Akumuli {
 
-struct EntryOffset {
-    uint64_t offset;
-
-    EntryOffset();
-    EntryOffset(uint32_t offset);
-    EntryOffset(const EntryOffset& other);
-    EntryOffset& operator = (const EntryOffset& other);
-};
-
+typedef uint64_t EntryOffset;
 
 /** Timestamp. Can be treated as
  *  single 64-bit value or two
@@ -38,10 +30,10 @@ union TimeStamp {
     /** number of microseconds since 00:00:00 january 1, 1970 UTC */
     uint64_t precise;
     // Maybe I should remove this?
-    struct t {
+    struct {
         uint32_t object;
         uint32_t server;
-    };
+    } t;
 
     /** UTC timestamp of the current instant */
     static TimeStamp utc_now() noexcept;
@@ -107,7 +99,7 @@ struct Entry {
     uint32_t     param_id;  //< Parameter ID
     TimeStamp        time;  //< Entry timestamp
     uint32_t       length;  //< Entry length: constant + variable sized parts
-    uint32_t     value[1];  //< Data begining
+    uint32_t     value[];   //< Data begining
 
     //! C-tor
     Entry(uint32_t length);
@@ -122,13 +114,19 @@ struct Entry {
     aku_MemRange get_storage() const noexcept;
 };
 
+struct Entry2 {
+    uint32_t     param_id;  //< Parameter ID
+    TimeStamp        time;  //< Entry timestamp
+    aku_MemRange    range;  //< Data
+
+    Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range);
+};
+
 
 //! Page types
 enum PageType {
     Metadata,  //< Page with metadata used by Spatium itself
-    Leaf,      //< Leaf page
-    Index,     //< Index page
-    Overflow   //< Overflow page
+    Index      //< Index page
 };
 
 
@@ -145,10 +143,8 @@ private:
     PageType type;     //< page type
     uint32_t count;    //< number of elements stored
     uint32_t length;   //< page size
-    PageHeader *_prev;  //< intrusive list pointer
-    PageHeader *_next;  //< intrusive list pointer
     EntryOffset 
-       page_index[0];  //< page index
+       page_index[];   //< page index
 
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;
@@ -188,6 +184,13 @@ public:
     AddStatus add_entry(Entry const& entry) noexcept;
 
     /**
+     * Add new entry to page data.
+     * @param entry entry
+     * @returns operation status
+     */
+    AddStatus add_entry(Entry2 const& entry) noexcept;
+
+    /**
      * Get length of the entry.
      * @param entry_index index of the entry.
      * @returns 0 if index is out of range, entry length otherwise.
@@ -215,6 +218,7 @@ public:
      * Sort page content
      */
     void sort() noexcept;
+
     // TODO: add partial sort
 };
 

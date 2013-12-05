@@ -1,7 +1,7 @@
 /**
  * PRIVATE HEADER
  *
- * File management API.
+ * Storage management API.
  *
  * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
  *
@@ -14,13 +14,17 @@
 
 #pragma once
 #include <cstddef>
+#include <memory>
 #include <apr_general.h>
 #include <log4cxx/logger.h>
+
+#include "storage.h"
 
 #define MIN_FILE_SIZE (1024*1024)
 
 namespace Akumuli {
 
+// TODO: merge it with 'Storage' class
 struct StorageManager {
     //! Create new database file with predefined size
     static apr_status_t create_storage(const char* file_name, size_t size);
