@@ -70,26 +70,6 @@ MetadataRecord::MetadataRecord(UnsafeTag, const char* str)
 {
 }
 
-EntryOffset::EntryOffset() 
-    : offset(0)
-{
-}
-
-EntryOffset::EntryOffset(uint32_t offset)
-    : offset(offset)
-{
-}
-
-EntryOffset::EntryOffset(const EntryOffset& other)
-    : offset(other.offset)
-{
-}
-
-EntryOffset& EntryOffset::operator = (const EntryOffset& other) {
-    offset = other.offset;
-    return *this;
-}
-
 Entry::Entry(uint32_t length)
     : length(length)
     , time {}
