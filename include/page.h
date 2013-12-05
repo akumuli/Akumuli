@@ -17,10 +17,13 @@
 #include "akumuli.h"
 #include "util.h"
 
+const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
+const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
-typedef uint64_t EntryOffset;
+typedef uint32_t EntryOffset;
+typedef uint32_t ParamId;
 
 /** Timestamp. Can be treated as
  *  single 64-bit value or two
@@ -96,7 +99,7 @@ struct MetadataRecord {
  *  Recorder by itself, this is a time of data reception.
  */
 struct Entry {
-    uint32_t     param_id;  //< Parameter ID
+    ParamId      param_id;  //< Parameter ID
     TimeStamp        time;  //< Entry timestamp
     uint32_t       length;  //< Entry length: constant + variable sized parts
     uint32_t     value[];   //< Data begining
@@ -105,7 +108,7 @@ struct Entry {
     Entry(uint32_t length);
 
     //! Extended c-tor
-    Entry(uint32_t param_id, TimeStamp time, uint32_t length);
+    Entry(ParamId param_id, TimeStamp time, uint32_t length);
 
     //! Calculate size needed to store data
     static uint32_t get_size(uint32_t load_size) noexcept;
@@ -119,7 +122,7 @@ struct Entry2 {
     TimeStamp        time;  //< Entry timestamp
     aku_MemRange    range;  //< Data
 
-    Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range);
+    Entry2(ParamId param_id, TimeStamp time, aku_MemRange range);
 };
 
 
@@ -142,7 +145,7 @@ private:
     // metadata
     PageType type;     //< page type
     uint32_t count;    //< number of elements stored
-    uint32_t length;   //< page size
+    uint64_t length;   //< page size
     EntryOffset 
        page_index[];   //< page index
 
@@ -161,7 +164,7 @@ public:
     // -----------------------------
 
     //! C-tor
-    PageHeader(PageType type, uint32_t count, uint32_t length);
+    PageHeader(PageType type, uint32_t count, uint64_t length);
 
     //! Return number of entries stored in page
     int get_entries_count() const noexcept;

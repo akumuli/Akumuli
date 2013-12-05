@@ -12,7 +12,7 @@
 using namespace Akumuli;
 using namespace std;
 
-const size_t DB_SIZE = 8589934592;
+const int DB_SIZE = 1;
 
 enum Target {
     NOTHING,

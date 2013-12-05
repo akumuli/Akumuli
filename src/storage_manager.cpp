@@ -4,16 +4,17 @@
 #include "util.h"
 #include <apr_general.h>
 #include <log4cxx/logmanager.h>
+#include <log4cxx/logger.h>
 
 namespace Akumuli {
 
 const size_t AKU_METADATA_PAGE_SIZE = 1024*1024;
-const size_t AKU_MIN_FILE_SIZE = 64*1024*1024;
 
-apr_status_t StorageManager::create_storage(const char* file_name, size_t size) {
+apr_status_t StorageManager::create_storage(const char* file_name, int num_pages) {
     AprStatusChecker status;
     apr_pool_t* mem_pool = NULL;
     apr_file_t* file = NULL;
+    int64_t size = AKU_METADATA_PAGE_SIZE + num_pages*AKU_MAX_PAGE_SIZE;
 
     try {
         status = apr_pool_create(&mem_pool, NULL);
@@ -41,12 +42,18 @@ apr_status_t StorageManager::create_storage(const char* file_name, size_t size) 
 apr_status_t StorageManager::init_storage(const char* file_name) {
     try {
         MemoryMappedFile mfile(file_name);
-        size_t file_size = mfile.get_size();
-        if (file_size < MIN_FILE_SIZE) {
+        const int64_t file_size = mfile.get_size();
+
+        // Calculate number of segments
+        const int full_pages = file_size / AKU_MAX_PAGE_SIZE;
+        const int truncated = file_size % AKU_MAX_PAGE_SIZE;
+        if (truncated != AKU_METADATA_PAGE_SIZE) {
+            LOG4CXX_ERROR(s_logger_, "Invalid file");
             return APR_EGENERAL;
         }
 
         // Create meta page
+        // TODO: make it variable length
         auto meta_ptr = mfile.get_pointer();
         auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE);
 
@@ -61,14 +68,24 @@ apr_status_t StorageManager::init_storage(const char* file_name) {
         auto mrec = new (mem.address) MetadataRecord(now);
         meta_page->add_entry(*entry);
 
-        // Add index page offset
+        // Add number of pages
         mrec->tag = MetadataRecord::TypeTag::INTEGER;
-        mrec->integer = AKU_METADATA_PAGE_SIZE;
+        mrec->integer = full_pages;
         meta_page->add_entry(*entry);
 
-        // Create index page
-        auto index_ptr = (void*)((char*)meta_ptr + AKU_METADATA_PAGE_SIZE);
-        auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, file_size - AKU_METADATA_PAGE_SIZE);
+        for (int i = 0; i < full_pages; i++)
+        {
+            int64_t page_offset = AKU_METADATA_PAGE_SIZE + AKU_MAX_PAGE_SIZE*i;
+            // Add index pages offset to metadata
+            mrec->tag = MetadataRecord::TypeTag::INTEGER;
+            mrec->integer = page_offset;
+            meta_page->add_entry(*entry);
+
+            // Create index page
+            auto index_ptr = (void*)((char*)meta_ptr + page_offset);
+            auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE);
+        }
+
         return mfile.flush();
     }
     catch(AprException const& err) {

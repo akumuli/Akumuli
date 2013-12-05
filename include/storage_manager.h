@@ -20,14 +20,13 @@
 
 #include "storage.h"
 
-#define MIN_FILE_SIZE (1024*1024)
 
 namespace Akumuli {
 
 // TODO: merge it with 'Storage' class
 struct StorageManager {
     //! Create new database file with predefined size
-    static apr_status_t create_storage(const char* file_name, size_t size);
+    static apr_status_t create_storage(const char* file_name, int num_pages);
     static apr_status_t init_storage(const char* file_name);
     static log4cxx::LoggerPtr s_logger_;
 };

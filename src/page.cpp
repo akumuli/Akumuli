@@ -46,6 +46,7 @@ int32_t String::write(void* dest, size_t dest_cap, const char* str) {
     auto str_ptr = reinterpret_cast<String*>(dest);
     str_ptr->size = len;
     strcpy(str_ptr->string, str);
+    return 0;
 }
 
 size_t MetadataRecord::space_needed(const char* str) noexcept {
@@ -67,6 +68,26 @@ MetadataRecord::MetadataRecord(uint64_t value)
 MetadataRecord::MetadataRecord(UnsafeTag, const char* str)
     : tag(TypeTag::STRING)
 {
+}
+
+EntryOffset::EntryOffset() 
+    : offset(0)
+{
+}
+
+EntryOffset::EntryOffset(uint32_t offset)
+    : offset(offset)
+{
+}
+
+EntryOffset::EntryOffset(const EntryOffset& other)
+    : offset(other.offset)
+{
+}
+
+EntryOffset& EntryOffset::operator = (const EntryOffset& other) {
+    offset = other.offset;
+    return *this;
 }
 
 Entry::Entry(uint32_t length)
@@ -108,7 +129,7 @@ char* PageHeader::data() noexcept {
     return reinterpret_cast<char*>(this);
 }
 
-PageHeader::PageHeader(PageType type, uint32_t count, uint32_t length)
+PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length)
     : type(type)
     , count(count)
     , length(length)
