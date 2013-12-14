@@ -143,11 +143,11 @@ enum PageType {
 struct PageHeader {
 private:
     // metadata
-    PageType type;     //< page type
-    uint32_t count;    //< number of elements stored
-    uint64_t length;   //< page size
-    EntryOffset 
-       page_index[];   //< page index
+    PageType type;              //< page type
+    uint32_t count;             //< number of elements stored
+    uint32_t last_offset;       //< index of the last added record
+    uint64_t length;            //< page size
+    EntryOffset page_index[];   //< page index
 
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;

@@ -27,17 +27,61 @@ extern "C" {
     //! Database instance.
     struct aku_Database { };
 
-
     /**
      * Add sample to database.
      * Database must be opend.
      * @param db database instance
      * @param param_id parameter id
-     * @param timestamp entry timestamp (unix-time)
+     * @param timestamp entry timestamp (64-bit timestamp)
      * @param data data
      */
-    void aku_add_sample(aku_Database* db, int32_t param_id, int32_t timestamp, aku_MemRange data);
+    void aku_add_sample
+                        ( aku_Database*     db
+                        , uint32_t          param_id
+                        , int64_t           timestamp
+                        , aku_MemRange      data
+                        );
 
+    /**
+     * Find current value of the parameter.
+     * Database must be opend.
+     * @param db database instance
+     * @param param_id parameter id
+     * @param instant time of interest (0 for current time)
+     * @param out_data output data
+     * @brief out_data format - interleaved
+     * length, timestamp and parameter values aligned by byte.
+     * @returns 0 on success -min_length if out_data is not larage enough
+     */
+    /*
+    int32_t aku_find_current
+                        ( aku_Database*     db
+                        , uint32_t          param_id
+                        , int64_t           instant,
+                        , aku_MemRange      out_data
+                        );
+    */
+    /**
+     * Find all values in time range.
+     * Database must be opend.
+     * @param db database instance.
+     * @param param_id parameter id
+     * @param begin begining of the range (0 for -inf)
+     * @param end end of the range (0 for inf)
+     * @param out_data output data
+     * @brief out_data format - interleaved
+     * length, timestamp and parameter values aligned by byte.
+     * @returns num results on success -min_length if out_data is not larage enough
+    */
+    /*
+    int32_t aku_find_samples
+                        ( aku_Database*     db
+                        , uint32_t          param_id
+                        , int64_t           begin,
+                        , int64_t           end,
+                        , aku_MemRange      out_data
+                        );
+    */
 
     /**
      * Flush data to disk.

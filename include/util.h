@@ -25,7 +25,11 @@ namespace Akumuli
     /** Unsafe method marker */
     struct UnsafeTag {};
 
-    /** APR error wrapper */
+    /** APR error wrapper.
+     *  Code must deal with APR error codes and only if
+     *  it can't handle some error - it must throw AprException
+     *  to panic!
+     */
     struct AprException : public std::runtime_error
     {
         apr_status_t status;
@@ -34,17 +38,6 @@ namespace Akumuli
 
     std::ostream& operator << (std::ostream& str, AprException const& except);
 
-
-    /** APR status tracker.
-      * Automatically throws exception if bad status asigned.
-      */
-    struct AprStatusChecker
-    {
-        int count;  //< successful operations count
-        apr_status_t status;  //< status of the last checked operation
-        AprStatusChecker();
-        AprStatusChecker operator = (apr_status_t st);  //< check operation by assigning to struct instance
-    };
 
     /** Memory mapped file
       * maps all file on construction

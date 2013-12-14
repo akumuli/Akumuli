@@ -20,13 +20,21 @@
 
 namespace Akumuli {
 
+//! Metadata physical page size in bytes
 const size_t AKU_METADATA_PAGE_SIZE = 1024*1024;
+
+//! Fixed indexes in metadata page
+enum MetadataIndexes {
+    CREATION_DATE = 0,
+    NUM_PAGES = 1,
+    FIRST_INDEX = 2
+};
 
 Storage::Storage(const char* file_name)
     : mmap_(file_name)
 {
     metadata_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    const Entry* entry = metadata_->find_entry(1);
+    const Entry* entry = metadata_->find_entry(FIRST_INDEX);
     aku_MemRange data = entry->get_storage();
     MetadataRecord* mdatarec = reinterpret_cast<MetadataRecord*>(data.address);
     if (mdatarec->tag != MetadataRecord::INTEGER) {
@@ -57,22 +65,35 @@ void Storage::write(Entry2 const& entry) {
 }
 
 apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
-    AprStatusChecker status;
+    apr_status_t status;
+    int success_count = 0;
     apr_pool_t* mem_pool = NULL;
     apr_file_t* file = NULL;
     int64_t size = AKU_METADATA_PAGE_SIZE + num_pages*AKU_MAX_PAGE_SIZE;
 
-    try {
-        status = apr_pool_create(&mem_pool, NULL);
+    status = apr_pool_create(&mem_pool, NULL);
+    if (status == APR_SUCCESS) {
+        success_count++;
+
         // Create new file
         status = apr_file_open(&file, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, mem_pool);
-        // Truncate file
-        status = apr_file_trunc(file, size);
-        // Done
-    } catch(AprException const& error) {
-        LOG4CXX_ERROR(s_logger_, "Can't create database, error " << error << " on step " << status.count);
+        if (status == APR_SUCCESS) {
+            success_count++;
+
+            // Truncate file
+            status = apr_file_trunc(file, size);
+            if (status == APR_SUCCESS)
+                success_count++;
+        }
     }
-    switch(status.count) {
+
+    if (status != APR_SUCCESS) {
+        char error_message[0x100];
+        apr_strerror(status, error_message, 0x100);
+        LOG4CXX_ERROR(s_logger_,  "Can't create storage, error " << error_message << " on step " << success_count);
+    }
+
+    switch(success_count) {
     case 3:
     case 2:
         status = apr_file_close(file);
@@ -82,7 +103,7 @@ apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
         // even apr pool is not created
         break;
     }
-    return status.status;
+    return status;
 }
 
 apr_status_t Storage::init_storage(const char* file_name) {

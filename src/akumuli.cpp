@@ -41,14 +41,12 @@ struct DatabaseImpl : public aku_Database
         storage_.commit();
     }
 
-    void add_sample(int32_t param_id, int32_t unix_timestamp, aku_MemRange value) {
+    void add_sample(uint32_t param_id, int64_t long_timestamp, aku_MemRange value) {
         TimeStamp ts;
-        ts.t.object = unix_timestamp;
-        ts.t.server = 0;
+        ts.precise = long_timestamp;
         auto entry = Entry2(param_id, ts, value);
         storage_.write(entry);
     }
-
 };
 
 void aku_flush_database(aku_Database* db) {
@@ -56,10 +54,9 @@ void aku_flush_database(aku_Database* db) {
     dbi->flush();
 }
 
-
-void aku_add_sample(aku_Database* db, int32_t param_id, int32_t unix_timestamp, aku_MemRange value) {
+void aku_add_sample(aku_Database* db, uint32_t param_id, int64_t long_timestamp, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    dbi->add_sample(param_id, unix_timestamp, value);
+    dbi->add_sample(param_id, long_timestamp, value);
 }
 
 

@@ -112,6 +112,7 @@ char* PageHeader::data() noexcept {
 PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length)
     : type(type)
     , count(count)
+    , last_offset(length)
     , length(length)
 {
 }
@@ -123,12 +124,7 @@ int PageHeader::get_entries_count() const noexcept {
 int PageHeader::get_free_space() const noexcept {
     auto begin = reinterpret_cast<const char*>(page_index + count);
     const char* end = 0;
-    if (count) {
-        end = cdata() + page_index[count - 1];
-    }
-    else {
-        end = cdata() + length;
-    }
+    end = cdata() + last_offset;
     return end - begin;
 }
 
@@ -140,16 +136,11 @@ PageHeader::AddStatus PageHeader::add_entry(Entry const& entry) noexcept {
     if (space_required > get_free_space()) {
         return AddStatus::Overflow;
     }
-    char* free_slot = 0;
-    if (count) {
-        free_slot = data() + page_index[count - 1];
-    }
-    else {
-        free_slot = data() + length;
-    }
+    char* free_slot = data() + last_offset;
     free_slot -= entry.length;
     memcpy((void*)free_slot, (void*)&entry, entry.length);
-    page_index[count] = free_slot - cdata();
+    last_offset = free_slot - cdata();
+    page_index[count] = last_offset;
     count++;
     return AddStatus::Success;
 }
@@ -160,12 +151,7 @@ PageHeader::AddStatus PageHeader::add_entry(Entry2 const& entry) noexcept {
         return AddStatus::Overflow;
     }
     char* free_slot = 0;
-    if (count) {
-        free_slot = data() + page_index[count - 1];
-    }
-    else {
-        free_slot = data() + length;
-    }
+    free_slot = data() + last_offset;
     // FIXME: reorder to improve memory performance
     // Write data
     free_slot -= entry.range.length;
@@ -176,7 +162,8 @@ PageHeader::AddStatus PageHeader::add_entry(Entry2 const& entry) noexcept {
     // Write paramId and timestamp
     free_slot -= sizeof(Entry2);
     memcpy((void*)free_slot, (void*)&entry, sizeof(Entry2));
-    page_index[count] = free_slot - cdata();
+    last_offset = free_slot - cdata();
+    page_index[count] = last_offset;
     count++;
     return AddStatus::Success;
 }
