@@ -242,7 +242,7 @@ struct PageHeader {
      *  Binary search for entry
      *  @returns true if value found, false otherwise
      */
-    bool binary_search(ParamId param, TimeStamp time_lowerbound, EntryOffset* offset) const noexcept;
+    bool search(ParamId param, TimeStamp time_lowerbound, EntryOffset* offset) const noexcept;
 
     // TODO: implement interpolated search
 };

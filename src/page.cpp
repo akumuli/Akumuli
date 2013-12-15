@@ -285,25 +285,61 @@ void PageHeader::sort() noexcept {
     });
 }
 
-bool PageHeader::binary_search
+bool PageHeader::search
     ( ParamId param
     , TimeStamp time_lowerbound
     , EntryOffset* out_offset
     ) const noexcept
 {
-    auto begin = page_index;
-    auto end = page_index + count;
-    auto it_res = std::lower_bound(begin, end, std::make_tuple(time_lowerbound.precise, param),
-        [&](EntryOffset a, std::tuple<uint64_t, uint32_t> b) {
-            auto ea = reinterpret_cast<const Entry*>(cdata() + a);
-            auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);
-            return ta < b;
-    });
-    if (it_res != end) {
-        *out_offset = *it_res;
-        return true;
+    // NOTE: this is binary search implementation
+    // it perform binary search using timestamp and that scans
+    // back to the begining of the page to find correct param_id.
+    // It supposed to be replaced with interpolation search in future versions.
+    uint32_t begin = 0u;
+    uint32_t end = count;
+    auto key = time_lowerbound.precise;
+    uint32_t found_index = 0;
+    bool is_found = false;
+    while (end >= begin) {
+        auto probe_index = begin + ((end - begin) / 2);
+        auto probe_offset = page_index[probe_index];
+        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+        auto probe = probe_entry->time.precise;
+        if (probe == key) {
+            // found
+            begin = probe_index;
+            break;
+        }
+        // determine which subarray to search
+        else if (probe < key) {
+            // change min index to search upper subarray
+            begin = probe_index + 1;
+        } else {
+            // change max index to search lower subarray
+            end = probe_index - 1;
+        }
     }
-    return false;
+
+    // Trace back
+    auto probe_index = begin;
+    while (true) {
+        auto probe_offset = page_index[probe_index];
+        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+        auto probe = probe_entry->param_id;
+        if (probe == param) {
+            is_found = true;
+            found_index = probe_index;
+            break;
+        }
+        if (probe_index == 0)
+            break;
+        probe_index--;
+    }
+
+    if (is_found)
+        *out_offset = found_index;
+
+    return is_found;
 }
 
 }  // namepsace
