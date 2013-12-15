@@ -12,6 +12,8 @@
 #include "storage.h"
 #include "util.h"
 #include <stdexcept>
+#include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <apr_general.h>
 #include <apr_mmap.h>
@@ -30,25 +32,63 @@ enum MetadataIndexes {
     FIRST_INDEX = 2
 };
 
+//! Returns specific metadata record from metadata page
+static MetadataRecord* get_record(PageHeader* metadata, int index, MetadataRecord::TypeTag required_tag) {
+    const Entry* entry = metadata->find_entry(index);
+    aku_MemRange data = entry->get_storage();
+    MetadataRecord* mdatarec = reinterpret_cast<MetadataRecord*>(data.address);
+    if (mdatarec->tag != required_tag) {
+        throw std::runtime_error("Storage is damaged");
+    }
+    return mdatarec;
+}
+
 Storage::Storage(const char* file_name)
     : mmap_(file_name)
 {
     metadata_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    const Entry* entry = metadata_->find_entry(FIRST_INDEX);
-    aku_MemRange data = entry->get_storage();
-    MetadataRecord* mdatarec = reinterpret_cast<MetadataRecord*>(data.address);
-    if (mdatarec->tag != MetadataRecord::INTEGER) {
-        LOG4CXX_ERROR(s_logger_, "Error, metadata[1] must contain index offset, raising 'Storage is damaged' error!");
-        throw std::runtime_error("Storage is damaged");
+
+    // Read creation date from metadata page
+    auto mdatarec = get_record(metadata_, CREATION_DATE, MetadataRecord::DATE_TIME);
+    creation_time_ = mdatarec->time.precise;
+
+    // Read number of pages
+    mdatarec = get_record(metadata_, NUM_PAGES, MetadataRecord::INTEGER);
+    auto num_pages = static_cast<int>(mdatarec->integer);
+
+    /* Read all pages offsets */
+    for (int i = 0; i < num_pages; i++) {
+        mdatarec = get_record(metadata_, FIRST_INDEX + i, MetadataRecord::INTEGER);
+        auto offset = mdatarec->integer;
+        auto index_page = reinterpret_cast<PageHeader*>((char*)mmap_.get_pointer() + offset);
+        page_cache_.push_back(index_page);
     }
-    auto offset = mdatarec->integer;
-    index_ = reinterpret_cast<PageHeader*>((char*)mmap_.get_pointer() + offset);
+
+    // Search for active page
+    active_page_ = page_cache_[0];
+    uint32_t last_overwrite_count = active_page_->overwrites_count;
+    for(PageHeader* page: page_cache_) {
+        if (page->overwrites_count == (last_overwrite_count - 1)) {
+            active_page_ = page;
+            break;
+        }
+    }
+    auto active_it = std::find(page_cache_.begin(), page_cache_.end(), active_page_);
+    active_page_index_ = active_it - page_cache_.begin();
 }
 
 //! get page by index
 PageHeader* Storage::get_index_page(int page_index) {
-    return index_;
+    return page_cache_[page_index];
 }
+
+// Reading
+
+void Storage::find_entry(ParamId param, TimeStamp timestamp) {
+    int64_t raw_time = timestamp.precise;
+}
+
+// Writing
 
 //! commit changes
 void Storage::commit() {
@@ -56,12 +96,36 @@ void Storage::commit() {
 }
 
 //! write data
-void Storage::write(Entry const& entry) {
-    index_->add_entry(entry);
+int Storage::write(Entry const& entry) {
+    // FIXME: this code intentionaly single threaded
+    while(true) {
+        int status = active_page_->add_entry(entry);
+        switch (status) {
+        case AKU_WRITE_STATUS_OVERFLOW:
+            // select next page in round robin order
+            active_page_index_++;
+            active_page_ = page_cache_[active_page_index_];
+            break;
+        default:
+            return status;
+        };
+    }
 }
 
-void Storage::write(Entry2 const& entry) {
-    index_->add_entry(entry);
+int Storage::write(Entry2 const& entry) {
+    // FIXME: this code intentionaly left single threaded
+    while(true) {
+        int status = active_page_->add_entry(entry);
+        switch (status) {
+        case AKU_WRITE_STATUS_OVERFLOW:
+            // select next page in round robin order
+            active_page_index_++;
+            active_page_ = page_cache_[active_page_index_];
+            break;
+        default:
+            return status;
+        };
+    }
 }
 
 apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
@@ -122,7 +186,7 @@ apr_status_t Storage::init_storage(const char* file_name) {
         // Create meta page
         // TODO: make it variable length
         auto meta_ptr = mfile.get_pointer();
-        auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE);
+        auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE, 0u);
 
         // Add creation date
         const int BUF_SIZE = 128;
@@ -150,7 +214,12 @@ apr_status_t Storage::init_storage(const char* file_name) {
 
             // Create index page
             auto index_ptr = (void*)((char*)meta_ptr + page_offset);
-            auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE);
+            auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE, (uint32_t)i);
+
+            // Activate the first page
+            if (i == 0) {
+                index_page->clear();
+            }
         }
 
         return mfile.flush();

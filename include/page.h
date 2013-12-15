@@ -31,7 +31,7 @@ typedef uint32_t ParamId;
  */
 union TimeStamp {
     /** number of microseconds since 00:00:00 january 1, 1970 UTC */
-    uint64_t precise;
+    int64_t precise;
     // Maybe I should remove this?
     struct {
         uint32_t object;
@@ -40,6 +40,12 @@ union TimeStamp {
 
     /** UTC timestamp of the current instant */
     static TimeStamp utc_now() noexcept;
+
+    bool operator  < (TimeStamp other) const noexcept;
+    bool operator  > (TimeStamp other) const noexcept;
+    bool operator == (TimeStamp other) const noexcept;
+    bool operator <= (TimeStamp other) const noexcept;
+    bool operator >= (TimeStamp other) const noexcept;
 };
 
 /** String memory layout
@@ -133,6 +139,19 @@ enum PageType {
 };
 
 
+/** Page bounding box.
+ *  All data is two dimentional: param-timestamp.
+ */
+struct PageBoundingBox {
+    ParamId min_id;
+    ParamId max_id;
+    TimeStamp min_timestamp;
+    TimeStamp max_timestamp;
+
+    PageBoundingBox();
+};
+
+
 /**
  * In-memory page representation.
  * PageHeader represents begining of the page.
@@ -141,12 +160,15 @@ enum PageType {
  * This class must be nonvirtual.
  */
 struct PageHeader {
-private:
     // metadata
     PageType type;              //< page type
     uint32_t count;             //< number of elements stored
     uint32_t last_offset;       //< index of the last added record
     uint64_t length;            //< page size
+    uint32_t overwrites_count;  //< how many times page was overwriten
+    uint32_t page_id;           //< page index in storage
+    // NOTE: maybe it is possible to get this data from page_index?
+    PageBoundingBox bbox;       //< page data limits
     EntryOffset page_index[];   //< page index
 
     //! Get const pointer to the begining of the page
@@ -155,16 +177,13 @@ private:
     //! Get pointer to the begining of the page
     char* data() noexcept;
 
-public:
-    // Intrusive list implementation
-    // -----------------------------
-    void insert(PageHeader* page) noexcept;
-    PageHeader* next() const noexcept;
-    PageHeader* prev() const noexcept;
-    // -----------------------------
+    void update_bounding_box(ParamId param, TimeStamp time) noexcept;
 
     //! C-tor
-    PageHeader(PageType type, uint32_t count, uint64_t length);
+    PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id);
+
+    //! Clear all page conent (overwrite count += 1)
+    void clear() noexcept;
 
     //! Return number of entries stored in page
     int get_entries_count() const noexcept;
@@ -172,26 +191,21 @@ public:
     //! Returns amount of free space in bytes
     int get_free_space() const noexcept;
 
-    //! Add operation status
-    enum AddStatus {
-        Success,
-        Overflow,
-        BadEntry
-    };
+    bool inside_bbox(ParamId param, TimeStamp time) const noexcept;
 
     /**
      * Add new entry to page data.
      * @param entry entry
      * @returns operation status
      */
-    AddStatus add_entry(Entry const& entry) noexcept;
+    int add_entry(Entry const& entry) noexcept;
 
     /**
      * Add new entry to page data.
      * @param entry entry
      * @returns operation status
      */
-    AddStatus add_entry(Entry2 const& entry) noexcept;
+    int add_entry(Entry2 const& entry) noexcept;
 
     /**
      * Get length of the entry.
@@ -223,6 +237,14 @@ public:
     void sort() noexcept;
 
     // TODO: add partial sort
+
+    /**
+     *  Binary search for entry
+     *  @returns true if value found, false otherwise
+     */
+    bool binary_search(ParamId param, TimeStamp time_lowerbound, EntryOffset* offset) const noexcept;
+
+    // TODO: implement interpolated search
 };
 
 }  // namespaces

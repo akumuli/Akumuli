@@ -14,11 +14,27 @@
 
 #pragma once
 #include <cstddef>
+#include <vector>
+#include <queue>
+#include <list>
+#include <map>
+#include <atomic>
+
 #include <log4cxx/logger.h>
 #include "page.h"
 #include "util.h"
+#include "akumuli_def.h"
 
 namespace Akumuli {
+
+namespace details {
+
+struct ParamCache {
+    std::list<EntryOffset> list;
+    int64_t last_item_timestamp;
+};
+
+}
 
 /** Interface to page manager
  */
@@ -26,23 +42,36 @@ struct Storage
 {
     MemoryMappedFile mmap_;
     PageHeader* metadata_;
-    PageHeader* index_;
+    PageHeader* active_page_;  // previously known as index_
+    int active_page_index_;
+    std::vector<PageHeader*> page_cache_;
+
+    std::map<ParamId, details::ParamCache> in_memory_cache_;
+
+    // Cached metadata
+    apr_time_t creation_time_;
+    //
 
     Storage(const char* file_name);
-
-    // TODO: add metadata mngmt
 
     //! get page by index
     PageHeader* get_index_page(int page_index);
 
+    // Writing
+
     //! commit changes
     void commit();
 
-    //! write data
-    void write(Entry const& entry);
+    /** Write data.
+      */
+    int write(Entry const& entry);
 
     //! write data
-    void write(Entry2 const& entry);
+    int write(Entry2 const& entry);
+
+    // Reading
+
+    void find_entry(ParamId param, TimeStamp time);
 
     // File management
 

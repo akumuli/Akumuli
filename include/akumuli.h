@@ -43,7 +43,7 @@ extern "C" {
                         );
 
     /**
-     * Find current value of the parameter.
+     * Find value of the parameter.
      * Database must be opend.
      * @param db database instance
      * @param param_id parameter id
@@ -53,14 +53,12 @@ extern "C" {
      * length, timestamp and parameter values aligned by byte.
      * @returns 0 on success -min_length if out_data is not larage enough
      */
-    /*
-    int32_t aku_find_current
+    int32_t aku_find_sample
                         ( aku_Database*     db
                         , uint32_t          param_id
-                        , int64_t           instant,
+                        , int64_t           instant
                         , aku_MemRange      out_data
                         );
-    */
     /**
      * Find all values in time range.
      * Database must be opend.

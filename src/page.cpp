@@ -14,6 +14,7 @@
 #include <apr_time.h>
 #include "timsort.hpp"
 #include "page.h"
+#include "akumuli_def.h"
 
 
 namespace Akumuli {
@@ -21,8 +22,28 @@ namespace Akumuli {
 //---------------Timestamp
 
 TimeStamp TimeStamp::utc_now() noexcept {
-    uint64_t t = apr_time_now();
+    int64_t t = apr_time_now();
     return { t };
+}
+
+bool TimeStamp::operator  < (TimeStamp other) const noexcept {
+    return precise < other.precise;
+}
+
+bool TimeStamp::operator  > (TimeStamp other) const noexcept {
+    return precise > other.precise;
+}
+
+bool TimeStamp::operator == (TimeStamp other) const noexcept {
+    return precise == other.precise;
+}
+
+bool TimeStamp::operator <= (TimeStamp other) const noexcept {
+    return precise <= other.precise;
+}
+
+bool TimeStamp::operator >= (TimeStamp other) const noexcept {
+    return precise >= other.precise;
 }
 
 //------------------------
@@ -101,6 +122,15 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 }
 
 
+PageBoundingBox::PageBoundingBox()
+    : max_id(0)
+    , min_id(std::numeric_limits<uint32_t>::max())
+{
+    max_timestamp.precise = 0;
+    min_timestamp.precise = std::numeric_limits<uint64_t>::max();
+}
+
+
 const char* PageHeader::cdata() const noexcept {
     return reinterpret_cast<const char*>(this);
 }
@@ -109,11 +139,14 @@ char* PageHeader::data() noexcept {
     return reinterpret_cast<char*>(this);
 }
 
-PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length)
+PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id)
     : type(type)
     , count(count)
     , last_offset(length)
     , length(length)
+    , overwrites_count(0)
+    , page_id(page_id)
+    , bbox()
 {
 }
 
@@ -128,13 +161,40 @@ int PageHeader::get_free_space() const noexcept {
     return end - begin;
 }
 
-PageHeader::AddStatus PageHeader::add_entry(Entry const& entry) noexcept {
+void PageHeader::update_bounding_box(ParamId param, TimeStamp time) noexcept {
+    if (param > bbox.max_id) {
+        bbox.max_id = param;
+    } else if (param < bbox.min_id) {
+        bbox.min_id = param;
+    }
+    if (time > bbox.max_timestamp) {
+        bbox.max_timestamp = time;
+    } else if (time < bbox.min_timestamp) {
+        bbox.min_timestamp = time;
+    }
+}
+
+bool PageHeader::inside_bbox(ParamId param, TimeStamp time) const noexcept {
+    return time  <= bbox.max_timestamp
+        && time  >= bbox.min_timestamp
+        && param <= bbox.max_id
+        && param >= bbox.min_id;
+}
+
+void PageHeader::clear() noexcept {
+    count = 0;
+    overwrites_count++;
+    last_offset = length;
+    bbox = PageBoundingBox();
+}
+
+int PageHeader::add_entry(Entry const& entry) noexcept {
     auto space_required = entry.length + sizeof(EntryOffset);
     if (entry.length < sizeof(Entry)) {
-        return AddStatus::BadEntry;
+        return AKU_WRITE_STATUS_BAD_DATA;
     }
     if (space_required > get_free_space()) {
-        return AddStatus::Overflow;
+        return AKU_WRITE_STATUS_OVERFLOW;
     }
     char* free_slot = data() + last_offset;
     free_slot -= entry.length;
@@ -142,13 +202,14 @@ PageHeader::AddStatus PageHeader::add_entry(Entry const& entry) noexcept {
     last_offset = free_slot - cdata();
     page_index[count] = last_offset;
     count++;
-    return AddStatus::Success;
+    update_bounding_box(entry.param_id, entry.time);
+    return AKU_WRITE_STATUS_SUCCESS;
 }
 
-PageHeader::AddStatus PageHeader::add_entry(Entry2 const& entry) noexcept {
+int PageHeader::add_entry(Entry2 const& entry) noexcept {
     auto space_required = entry.range.length + sizeof(Entry2) + sizeof(EntryOffset);
     if (space_required > get_free_space()) {
-        return AddStatus::Overflow;
+        return AKU_WRITE_STATUS_OVERFLOW;
     }
     char* free_slot = 0;
     free_slot = data() + last_offset;
@@ -165,7 +226,8 @@ PageHeader::AddStatus PageHeader::add_entry(Entry2 const& entry) noexcept {
     last_offset = free_slot - cdata();
     page_index[count] = last_offset;
     count++;
-    return AddStatus::Success;
+    update_bounding_box(entry.param_id, entry.time);
+    return AKU_WRITE_STATUS_SUCCESS;
 }
 
 const Entry* PageHeader::find_entry(int index) const noexcept {
@@ -221,6 +283,27 @@ void PageHeader::sort() noexcept {
         auto tb = std::tuple<uint64_t, uint32_t>(eb->time.precise, eb->param_id);
         return ta < tb;
     });
+}
+
+bool PageHeader::binary_search
+    ( ParamId param
+    , TimeStamp time_lowerbound
+    , EntryOffset* out_offset
+    ) const noexcept
+{
+    auto begin = page_index;
+    auto end = page_index + count;
+    auto it_res = std::lower_bound(begin, end, std::make_tuple(time_lowerbound.precise, param),
+        [&](EntryOffset a, std::tuple<uint64_t, uint32_t> b) {
+            auto ea = reinterpret_cast<const Entry*>(cdata() + a);
+            auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);
+            return ta < b;
+    });
+    if (it_res != end) {
+        *out_offset = *it_res;
+        return true;
+    }
+    return false;
 }
 
 }  // namepsace
