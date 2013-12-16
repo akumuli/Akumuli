@@ -15,6 +15,7 @@
 #pragma once
 #include <cstdint>
 #include "config.h"
+#include "akumuli_def.h"
 
 extern "C" {
 

@@ -342,4 +342,68 @@ bool PageHeader::search
     return is_found;
 }
 
+void PageHeader::search(SingleParameterTraversal *traversal) const noexcept
+{
+    // NOTE: this implementation based on binary search
+    // it perform binary search using timestamp and that scans
+    // back to the begining of the page to find correct param_id.
+    // It supposed to be replaced with interpolation search in future versions.
+    ParamId param = traversal->param;
+    uint32_t begin = 0u;
+    uint32_t end = count;
+    auto key = traversal->upperbound.precise;
+    uint32_t found_index = 0;
+    bool is_found = false;
+    switch(traversal->state) {
+    case AKU_CURSOR_START:
+        traversal->state = AKU_CURSOR_SEARCH;
+    case AKU_CURSOR_SEARCH:
+        while (end >= begin) {
+            auto probe_index = begin + ((end - begin) / 2);
+            auto probe_offset = page_index[probe_index];
+            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe = probe_entry->time.precise;
+            if (probe == key) {
+                // found
+                begin = probe_index;
+                break;
+            }
+            // determine which subarray to search
+            else if (probe < key) {
+                // change min index to search upper subarray
+                begin = probe_index + 1;
+            } else {
+                // change max index to search lower subarray
+                end = probe_index - 1;
+            }
+        }
+        traversal->probe_index = begin;
+        traversal->start_index = begin;
+        traversal->state = AKU_CURSOR_SCAN_BACKWARD;
+    case AKU_CURSOR_SCAN_BACKWARD:
+        // Trace back
+        while (true) {
+            auto probe_offset = page_index[traversal->probe_index];
+            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe = probe_entry->param_id;
+            if (probe == param) {
+                if (traversal->results_num < traversal->results_cap) {
+                    traversal->results[traversal->results_num] = traversal->probe_index;
+                    traversal->results_num += 1;
+                }
+                if (traversal->results_num == traversal->results_cap) {
+                    return;
+                }
+            }
+            if (traversal->lowerbound > probe_entry->time ||
+                traversal->probe_index == 0) {
+                traversal->state = AKU_CURSOR_COMPLETE;
+                traversal->done = true;
+                return;
+            }
+            traversal->probe_index--;
+        }
+    }
+}
+
 }  // namepsace

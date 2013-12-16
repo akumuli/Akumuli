@@ -152,6 +152,29 @@ struct PageBoundingBox {
 };
 
 
+/** Page cursor
+ *  used by different search methods.
+ */
+struct PageCursor {
+    // user data
+    int*            results;        //< resulting indexes array
+    size_t          results_cap;    //< capacity of the array
+    size_t          results_num;    //< number of results in array
+    bool            done;           //< is done reading (last data writen to results array)
+    // library data
+    int             start_index;    //< starting index of the traversal
+    int             probe_index;    //< current index of the traversal
+    int             state;          //< FSM state
+};
+
+struct SingleParameterTraversal : PageCursor {
+    // search query
+    ParamId         param;          //< parameter id
+    TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
+    TimeStamp       upperbound;     //< end of the time interval (0 for inf)
+};
+
+
 /**
  * In-memory page representation.
  * PageHeader represents begining of the page.
@@ -237,14 +260,22 @@ struct PageHeader {
     void sort() noexcept;
 
     // TODO: add partial sort
+    // TODO: implement interpolated search
 
     /**
      *  Binary search for entry
      *  @returns true if value found, false otherwise
      */
-    bool search(ParamId param, TimeStamp time_lowerbound, EntryOffset* offset) const noexcept;
+    bool search( ParamId            param,
+                 TimeStamp     lowerbound,
+                 EntryOffset*      offset) const noexcept;
 
-    // TODO: implement interpolated search
+    /**
+     *  Binary search for entry
+     *  @returns true on success
+     */
+    void search(SingleParameterTraversal* traversal) const noexcept;
+
 };
 
 }  // namespaces
