@@ -46,6 +46,10 @@ bool TimeStamp::operator >= (TimeStamp other) const noexcept {
     return precise >= other.precise;
 }
 
+const TimeStamp TimeStamp::MAX_TIMESTAMP = {std::numeric_limits<int64_t>::max()};
+
+const TimeStamp TimeStamp::MIN_TIMESTAMP = {0L};
+
 //------------------------
 
 String::String(UnsafeTag, const char* str)
@@ -120,6 +124,44 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
     , range(range)
 {
 }
+
+
+
+// Cursors
+// -------
+
+
+PageCursor::PageCursor(int* buffer, size_t buffer_size) noexcept
+    : results(buffer)
+    , results_cap(buffer_size)
+    , results_num(0)
+    , done(false)
+    , start_index(0)
+    , probe_index(0)
+    , state(AKU_CURSOR_START)
+{
+}
+
+
+SingleParameterCursor::SingleParameterCursor
+    ( ParamId      pid
+    , TimeStamp    low
+    , TimeStamp    upp
+    , int*         buffer
+    , size_t       buffer_size )  noexcept
+
+    : PageCursor(buffer, buffer_size)
+    , param(pid)
+    , lowerbound(low)
+    , upperbound(upp)
+{
+}
+
+
+
+
+// Page
+// ----
 
 
 PageBoundingBox::PageBoundingBox()
@@ -230,7 +272,7 @@ int PageHeader::add_entry(Entry2 const& entry) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-const Entry* PageHeader::find_entry(int index) const noexcept {
+const Entry* PageHeader::read_entry(int index) const noexcept {
     if (index >= 0 && index < count) {
         auto offset = page_index[index];
         auto ptr = cdata() + offset;
@@ -241,7 +283,7 @@ const Entry* PageHeader::find_entry(int index) const noexcept {
 }
 
 int PageHeader::get_entry_length(int entry_index) const noexcept {
-    auto entry_ptr = find_entry(entry_index);
+    auto entry_ptr = read_entry(entry_index);
     if (entry_ptr) {
         return entry_ptr->length;
     }
@@ -249,7 +291,7 @@ int PageHeader::get_entry_length(int entry_index) const noexcept {
 }
 
 int PageHeader::copy_entry(int index, Entry* receiver) const noexcept {
-    auto entry_ptr = find_entry(index);
+    auto entry_ptr = read_entry(index);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
             return -1*entry_ptr->length;
@@ -342,30 +384,28 @@ bool PageHeader::search
     return is_found;
 }
 
-void PageHeader::search(SingleParameterTraversal *traversal) const noexcept
+void PageHeader::search(SingleParameterCursor *cursor) const noexcept
 {
     // NOTE: this implementation based on binary search
     // it perform binary search using timestamp and that scans
     // back to the begining of the page to find correct param_id.
     // It supposed to be replaced with interpolation search in future versions.
-    ParamId param = traversal->param;
+    ParamId param = cursor->param;
     uint32_t begin = 0u;
-    uint32_t end = count;
-    auto key = traversal->upperbound.precise;
-    uint32_t found_index = 0;
-    bool is_found = false;
-    switch(traversal->state) {
+    uint32_t end = count - 1;
+    auto key = cursor->upperbound.precise;
+    uint32_t probe_index = 0;
+    switch(cursor->state) {
     case AKU_CURSOR_START:
-        traversal->state = AKU_CURSOR_SEARCH;
+        cursor->state = AKU_CURSOR_SEARCH;
     case AKU_CURSOR_SEARCH:
         while (end >= begin) {
-            auto probe_index = begin + ((end - begin) / 2);
+            probe_index = begin + ((end - begin) / 2);
             auto probe_offset = page_index[probe_index];
             auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
             auto probe = probe_entry->time.precise;
             if (probe == key) {
                 // found
-                begin = probe_index;
                 break;
             }
             // determine which subarray to search
@@ -377,31 +417,31 @@ void PageHeader::search(SingleParameterTraversal *traversal) const noexcept
                 end = probe_index - 1;
             }
         }
-        traversal->probe_index = begin;
-        traversal->start_index = begin;
-        traversal->state = AKU_CURSOR_SCAN_BACKWARD;
+        cursor->probe_index = probe_index;
+        cursor->start_index = probe_index;
+        cursor->state = AKU_CURSOR_SCAN_BACKWARD;
     case AKU_CURSOR_SCAN_BACKWARD:
         // Trace back
         while (true) {
-            auto probe_offset = page_index[traversal->probe_index];
+            auto probe_offset = page_index[cursor->probe_index];
             auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
             auto probe = probe_entry->param_id;
             if (probe == param) {
-                if (traversal->results_num < traversal->results_cap) {
-                    traversal->results[traversal->results_num] = traversal->probe_index;
-                    traversal->results_num += 1;
+                if (cursor->results_num < cursor->results_cap) {
+                    cursor->results[cursor->results_num] = cursor->probe_index;
+                    cursor->results_num += 1;
                 }
-                if (traversal->results_num == traversal->results_cap) {
+                if (cursor->results_num == cursor->results_cap) {
                     return;
                 }
             }
-            if (traversal->lowerbound > probe_entry->time ||
-                traversal->probe_index == 0) {
-                traversal->state = AKU_CURSOR_COMPLETE;
-                traversal->done = true;
+            if (cursor->lowerbound >= probe_entry->time ||
+                cursor->probe_index == 0) {
+                cursor->state = AKU_CURSOR_COMPLETE;
+                cursor->done = true;
                 return;
             }
-            traversal->probe_index--;
+            cursor->probe_index--;
         }
     }
 }

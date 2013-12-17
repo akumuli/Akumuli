@@ -34,7 +34,7 @@ enum MetadataIndexes {
 
 //! Returns specific metadata record from metadata page
 static MetadataRecord* get_record(PageHeader* metadata, int index, MetadataRecord::TypeTag required_tag) {
-    const Entry* entry = metadata->find_entry(index);
+    const Entry* entry = metadata->read_entry(index);
     aku_MemRange data = entry->get_storage();
     MetadataRecord* mdatarec = reinterpret_cast<MetadataRecord*>(data.address);
     if (mdatarec->tag != required_tag) {

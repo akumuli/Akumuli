@@ -46,6 +46,12 @@ union TimeStamp {
     bool operator == (TimeStamp other) const noexcept;
     bool operator <= (TimeStamp other) const noexcept;
     bool operator >= (TimeStamp other) const noexcept;
+
+    //! Maximum possible timestamp
+    static const TimeStamp MAX_TIMESTAMP;
+
+    //! Minimum possible timestamp
+    static const TimeStamp MIN_TIMESTAMP;
 };
 
 /** String memory layout
@@ -165,13 +171,34 @@ struct PageCursor {
     int             start_index;    //< starting index of the traversal
     int             probe_index;    //< current index of the traversal
     int             state;          //< FSM state
+
+    /** Page cursor c-tor.
+     *  @param buffer receiving buffer
+     *  @param buffer_size capacity of the receiving buffer
+     */
+    PageCursor(int* buffer, size_t buffer_size) noexcept;
 };
 
-struct SingleParameterTraversal : PageCursor {
+
+/** Cursor for single parameter time-range query */
+struct SingleParameterCursor : PageCursor {
     // search query
     ParamId         param;          //< parameter id
     TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
     TimeStamp       upperbound;     //< end of the time interval (0 for inf)
+
+    /** Cursor c-tor
+     *  @param pid parameter id
+     *  @param low time lowerbound (0 for -inf)
+     *  @param upp time upperbound (MAX_TIMESTAMP for inf)
+     *  @param buffer receiving buffer
+     *  @param buffer_size capacity of the receiving buffer
+     */
+    SingleParameterCursor( ParamId      pid
+                         , TimeStamp    low
+                         , TimeStamp    upp
+                         , int*         buffer
+                         , size_t       buffer_size ) noexcept;
 };
 
 
@@ -252,7 +279,7 @@ struct PageHeader {
      * @param index entry index
      * @returns pointer to entry or NULL
      */
-    const Entry* find_entry(int index) const noexcept;
+    const Entry* read_entry(int index) const noexcept;
 
     /**
      * Sort page content
@@ -274,7 +301,7 @@ struct PageHeader {
      *  Binary search for entry
      *  @returns true on success
      */
-    void search(SingleParameterTraversal* traversal) const noexcept;
+    void search(SingleParameterCursor* traversal) const noexcept;
 
 };
 
