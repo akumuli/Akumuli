@@ -215,18 +215,18 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
 
     {
         int indexes[1000];
-        SingleParameterCursor cursor(1, {1000L}, {1050L}, indexes, 1000);
+        SingleParameterCursor cursor(1, {1000L}, {1067L}, indexes, 1000);
 
         page->search(&cursor);
 
         BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-        BOOST_CHECK_EQUAL(cursor.results_num, 51);
+        BOOST_CHECK_EQUAL(cursor.results_num, 68);
 
         for(int i = 0; i < cursor.results_num; i++) {
             const Entry* entry = page->read_entry(indexes[i]);
-            BOOST_CHECK_EQUAL(entry->value[0], 50 - i);
+            BOOST_CHECK_EQUAL(entry->value[0], 67 - i);
             BOOST_CHECK(entry->time.precise >= 1000L);
-            BOOST_CHECK(entry->time.precise <= 1050L);
+            BOOST_CHECK(entry->time.precise <= 1067L);
         }
     }
 

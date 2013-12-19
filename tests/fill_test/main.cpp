@@ -72,12 +72,17 @@ int main(int cnt, const char** args)
         config.page_size = 0;
         config.path_to_file = path;
         auto db = aku_open_database(config);
-        for(unsigned long i = 0; i < 10; i++) {
-            apr_time_t now = apr_time_now();
+        boost::timer timer;
+        for(int64_t i = 0; i < 100000000; i++) {
+            apr_time_t now = i*2L;
             aku_MemRange memr;
             memr.address = (void*)&i;
             memr.length = sizeof(i);
             aku_add_sample(db, 1, now, memr);
+            if (i % 1000000 == 0) {
+                std::cout << i << " " << timer.elapsed() << "s" << std::endl;
+                timer.restart();
+            }
         }
         aku_close_database(db);
     }

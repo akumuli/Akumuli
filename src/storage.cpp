@@ -104,7 +104,8 @@ int Storage::write(Entry const& entry) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
             active_page_index_++;
-            active_page_ = page_cache_[active_page_index_];
+            active_page_ = page_cache_[active_page_index_ % page_cache_.size()];
+            active_page_->clear();
             break;
         default:
             return status;
@@ -120,7 +121,8 @@ int Storage::write(Entry2 const& entry) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
             active_page_index_++;
-            active_page_ = page_cache_[active_page_index_];
+            active_page_ = page_cache_[active_page_index_ % page_cache_.size()];
+            active_page_->clear();
             break;
         default:
             return status;

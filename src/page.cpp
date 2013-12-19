@@ -168,8 +168,8 @@ PageBoundingBox::PageBoundingBox()
     : max_id(0)
     , min_id(std::numeric_limits<uint32_t>::max())
 {
-    max_timestamp.precise = 0;
-    min_timestamp.precise = std::numeric_limits<uint64_t>::max();
+    max_timestamp = TimeStamp::MIN_TIMESTAMP;
+    min_timestamp = TimeStamp::MAX_TIMESTAMP;
 }
 
 
@@ -206,12 +206,14 @@ int PageHeader::get_free_space() const noexcept {
 void PageHeader::update_bounding_box(ParamId param, TimeStamp time) noexcept {
     if (param > bbox.max_id) {
         bbox.max_id = param;
-    } else if (param < bbox.min_id) {
+    }
+    if (param < bbox.min_id) {
         bbox.min_id = param;
     }
     if (time > bbox.max_timestamp) {
         bbox.max_timestamp = time;
-    } else if (time < bbox.min_timestamp) {
+    }
+    if (time < bbox.min_timestamp) {
         bbox.min_timestamp = time;
     }
 }
@@ -386,10 +388,6 @@ bool PageHeader::search
 
 void PageHeader::search(SingleParameterCursor *cursor) const noexcept
 {
-    // NOTE: this implementation based on binary search
-    // it perform binary search using timestamp and that scans
-    // back to the begining of the page to find correct param_id.
-    // It supposed to be replaced with interpolation search in future versions.
     ParamId param = cursor->param;
     uint32_t begin = 0u;
     uint32_t end = count - 1;
@@ -399,6 +397,24 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
     case AKU_CURSOR_START:
         cursor->state = AKU_CURSOR_SEARCH;
     case AKU_CURSOR_SEARCH:
+        if (key <= bbox.max_timestamp.precise && key >= bbox.min_timestamp.precise) {
+            // Perform interpolation search first
+            auto step = double(bbox.max_timestamp.precise - bbox.min_timestamp.precise) / count;
+            probe_index = static_cast<uint32_t>((key - bbox.min_timestamp.precise) / step);
+            assert(probe_index >= begin);
+            assert(probe_index <= end);
+            auto probe_offset = page_index[probe_index];
+            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe = probe_entry->time.precise;
+            if (probe == key) {
+                begin = probe_index;
+                end = probe_index - 1;
+            } else if (probe < key) {
+                begin = probe_index + 1;
+            } else {
+                end = probe_index - 1;
+            }
+        }
         while (end >= begin) {
             probe_index = begin + ((end - begin) / 2);
             auto probe_offset = page_index[probe_index];
