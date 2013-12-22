@@ -52,6 +52,7 @@ struct DatabaseImpl : public aku_Database
         TimeStamp ts;
         ts.precise = instant;
         storage_.find_entry(param_id, ts);
+        // FIXME
     }
 };
 

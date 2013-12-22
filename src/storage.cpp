@@ -14,7 +14,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <atomic>
-#include <strstream>
+#include <sstream>
 #include <cassert>
 #include <apr_general.h>
 #include <apr_mmap.h>
@@ -27,65 +27,32 @@ namespace Akumuli {
 
 static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Storage");
 
-//! Metadata physical page size in bytes
-const size_t AKU_METADATA_PAGE_SIZE = 1024*1024;
+//----------------------------------Volume----------------------------------------------
 
-//! Fixed indexes in metadata page
-enum MetadataIndexes {
-    CREATION_DATE = 0,
-    NUM_PAGES = 1,
-    FIRST_INDEX = 2
-};
-
-//! Returns specific metadata record from metadata page
-static MetadataRecord* get_record(PageHeader* metadata, int index, MetadataRecord::TypeTag required_tag) {
-    const Entry* entry = metadata->read_entry(index);
-    aku_MemRange data = entry->get_storage();
-    MetadataRecord* mdatarec = reinterpret_cast<MetadataRecord*>(data.address);
-    if (mdatarec->tag != required_tag) {
-        throw std::runtime_error("Storage is damaged");
-    }
-    return mdatarec;
-}
-
-Storage::Storage(const char* file_name)
+Volume::Volume(const char* file_name)
     : mmap_(file_name)
 {
-    metadata_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-
-    // Read creation date from metadata page
-    auto mdatarec = get_record(metadata_, CREATION_DATE, MetadataRecord::DATE_TIME);
-    creation_time_ = mdatarec->time.precise;
-
-    // Read number of pages
-    mdatarec = get_record(metadata_, NUM_PAGES, MetadataRecord::INTEGER);
-    auto num_pages = static_cast<int>(mdatarec->integer);
-
-    /* Read all pages offsets */
-    for (int i = 0; i < num_pages; i++) {
-        mdatarec = get_record(metadata_, FIRST_INDEX + i, MetadataRecord::INTEGER);
-        auto offset = mdatarec->integer;
-        auto index_page = reinterpret_cast<PageHeader*>((char*)mmap_.get_pointer() + offset);
-        page_cache_.push_back(index_page);
-    }
-
-    // Search for active page
-    active_page_ = page_cache_[0];
-    uint32_t last_overwrite_count = active_page_->overwrites_count;
-    for(PageHeader* page: page_cache_) {
-        if (page->overwrites_count == (last_overwrite_count - 1)) {
-            active_page_ = page;
-            break;
-        }
-    }
-    auto active_it = std::find(page_cache_.begin(), page_cache_.end(), active_page_);
-    active_page_index_ = active_it - page_cache_.begin();
+    mmap_.throw_if_bad();  // panic if can't mmap volume
+    page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
 }
 
-//! get page by index
-PageHeader* Storage::get_index_page(int page_index) {
-    return page_cache_[page_index];
+PageHeader* Volume::get_page() const noexcept {
+    return page_;
 }
+
+//----------------------------------Storage---------------------------------------------
+
+Storage::Storage(const char* file_name)
+{
+    // 1. Read json file
+    boost::property_tree::ptree ptree;
+    // NOTE: there is a known bug in boost 1.49 - https://svn.boost.org/trac/boost/ticket/6785
+    // FIX: sed -i -e 's/std::make_pair(c.name, Str(b, e))/std::make_pair(c.name, Ptree(Str(b, e)))/' json_parser_read.hpp
+    boost::property_tree::json_parser::read_json(file_name, ptree);
+
+    // 2. Read volumes
+}
+
 
 // Reading
 
@@ -97,7 +64,7 @@ void Storage::find_entry(ParamId param, TimeStamp timestamp) {
 
 //! commit changes
 void Storage::commit() {
-    mmap_.flush();
+    // TODO: volume->flush()
 }
 
 //! write data
@@ -108,8 +75,10 @@ int Storage::write(Entry const& entry) {
         switch (status) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
-            active_page_index_++;
-            active_page_ = page_cache_[active_page_index_ % page_cache_.size()];
+            active_volume_index_++;
+            active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+            active_page_ = active_volume_->get_page();
+            // TODO: reallocate space on disc for this volume
             active_page_->clear();
             break;
         default:
@@ -125,8 +94,10 @@ int Storage::write(Entry2 const& entry) {
         switch (status) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
-            active_page_index_++;
-            active_page_ = page_cache_[active_page_index_ % page_cache_.size()];
+            active_volume_index_++;
+            active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+            active_page_ = active_volume_->get_page();
+            // TODO: reallocate space on disc for this volume
             active_page_->clear();
             break;
         default:
@@ -176,6 +147,7 @@ static apr_status_t create_file(const char* file_name, uint64_t size) {
         // even apr pool is not created
         break;
     }
+    return status;
 }
 
 
@@ -211,7 +183,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index)
 /** Create page files, return list of statuses.
   */
 static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets) {
-    std::vector<apr_status_t> results(APR_SUCCESS, targets.size());
+    std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
         apr_status_t res = create_page_file(targets[ix].c_str(), ix);
         results[ix] = res;
@@ -262,13 +234,15 @@ static apr_status_t create_metadata_page( const char* file_name
 {
     try {
         boost::property_tree::ptree root;
-        auto now = TimeStamp::utc_now();
-        root.add_child("creation_time", now);
-        root.add_child("num_pages", page_file_names.size());
+        auto now = apr_time_now();
+        char date_time[0x100];
+        apr_rfc822_date(date_time, now);
+        root.add("creation_time", date_time);
+        root.add("num_pages", page_file_names.size());
         for(size_t i = 0; i < page_file_names.size(); i++) {
             boost::property_tree::ptree page_desc;
-            page_desc.push_back(std::make_pair("index", i));
-            page_desc.push_back(std::make_pair("name", page_file_names[i]));
+            page_desc.add("index", i);
+            page_desc.add("name", page_file_names[i]);
             root.add_child("pages", page_desc);
         }
         boost::property_tree::json_parser::write_json(file_name, root);
@@ -282,26 +256,60 @@ static apr_status_t create_metadata_page( const char* file_name
 }
 
 
-apr_status_t Storage::init_storage(const char* file_name, int num_pages) {
+apr_status_t Storage::new_storage( const char* 	file_name
+                                 , const char* 	metadata_path
+                                 , const char* 	volumes_path
+                                 , int          num_pages
+                                 )
+{
+    apr_pool_t* mempool;
+    apr_status_t status = apr_pool_create(&mempool, NULL);
+    if (status != APR_SUCCESS)
+        return status;
+
     // calculate list of page-file names
     std::vector<std::string> page_names;
     for (int ix = 0; ix < num_pages; ix++) {
-        std::strstream stream;
-        stream << file_name << "_" << ix << ".page";
-        page_names.push_back(stream.str());
+        std::stringstream stream;
+        stream << file_name << "_" << ix << ".volume";
+        char* path = nullptr;
+        std::string volume_file_name = stream.str();
+        status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+        if (status != APR_SUCCESS) {
+            auto error_message = apr_error_message(status);
+            LOG4CXX_ERROR(s_logger_, "Invalid volumes path: " << error_message);
+            apr_pool_destroy(mempool);
+            throw AprException(status, error_message.c_str());
+        }
+        page_names.push_back(path);
     }
 
+    apr_pool_clear(mempool);
+
     std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names);
-    for(auto status: page_creation_statuses) {
-        if (status != APR_SUCCESS) {
+    for(auto creation_status: page_creation_statuses) {
+        if (creation_status != APR_SUCCESS) {
             LOG4CXX_ERROR(s_logger_, "Not all pages successfullly created. Cleaning up.");
-            return delete_files(page_names, page_creation_statuses);
+            apr_pool_destroy(mempool);
+            delete_files(page_names, page_creation_statuses);
+            return creation_status;
         }
     }
 
-    std::strstream stream;
-    stream << file_name << ".aku";
-    return create_metadata_page(file_name, page_names);
+    std::stringstream stream;
+    stream << file_name << ".akumuli";
+    char* path = nullptr;
+    std::string metadata_file_name = stream.str();
+    status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+    if (status != APR_SUCCESS) {
+        auto error_message = apr_error_message(status);
+        LOG4CXX_ERROR(s_logger_, "Invalid metadata path: " << error_message);
+        apr_pool_destroy(mempool);
+        throw AprException(status, error_message.c_str());
+    }
+    status = create_metadata_page(path, page_names);
+    apr_pool_destroy(mempool);
+    return status;
 }
 
 }

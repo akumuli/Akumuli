@@ -43,14 +43,9 @@ int main(int cnt, const char** args)
     }
     if (target == CREATE) {
         // TODO: create interface for storage manager in akumuli.h
-        auto result = Storage::create_storage("./test.db", DB_SIZE);
+        apr_status_t result = Storage::new_storage("test", "./", "./", 2);
         if (result != APR_SUCCESS) {
-            std::cout << "Error in create_storage" << std::endl;
-            return 1;
-        }
-        result = Storage::init_storage("./test.db");
-        if (result != APR_SUCCESS) {
-            std::cout << "Error in init_storage" << std::endl;
+            std::cout << "Error in new_storage" << std::endl;
             return 1;
         }
         return 0;

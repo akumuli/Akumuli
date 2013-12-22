@@ -19,6 +19,7 @@
 #include <list>
 #include <map>
 #include <atomic>
+#include <memory>
 
 #include "page.h"
 #include "util.h"
@@ -26,35 +27,50 @@
 
 namespace Akumuli {
 
-namespace details {
-
 struct ParamCache {
     std::list<EntryOffset> list;
     int64_t last_item_timestamp;
 };
 
-}
+// TODO:
+class TimeIndex {
+    std::map<ParamId, std::unique_ptr<ParamCache>> cache_;
+public:
+
+};
+
+
+/** Storage volume.
+  * Coresponds to one of the storage pages. Includes page
+  * data and main memory data.
+  */
+struct Volume {
+    MemoryMappedFile mmap_;
+    PageHeader* page_;
+    TimeIndex main_memory_index_;
+
+    Volume(const char* file_name);
+
+    PageHeader* get_page() const noexcept;
+};
 
 /** Interface to page manager
  */
 struct Storage
 {
-    MemoryMappedFile mmap_;
-    PageHeader* metadata_;
-    PageHeader* active_page_;  // previously known as index_
-    int active_page_index_;
-    std::vector<PageHeader*> page_cache_;
-
-    std::map<ParamId, details::ParamCache> in_memory_cache_;
+    Volume* active_volume_;
+    PageHeader* active_page_;
+    int active_volume_index_;
+    std::vector<Volume*> volumes_;
 
     // Cached metadata
     apr_time_t creation_time_;
     //
 
+    /** Storage c-tor.
+      * @param file_name path to metadata file
+      */
     Storage(const char* file_name);
-
-    //! get page by index
-    PageHeader* get_index_page(int page_index);
 
     // Writing
 
@@ -71,6 +87,15 @@ struct Storage
     // Reading
 
     void find_entry(ParamId param, TimeStamp time);
+
+    // Static interface
+
+    /** Create new storage and initialize it.
+      * @param storage_name storage name
+      * @param metadata_path path to metadata dir
+      * @param volumes_path path to volumes dir
+      */
+    static apr_status_t new_storage(const char* file_name, const char* metadata_path, const char* volumes_path, int num_pages);
 };
 
 }

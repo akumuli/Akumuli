@@ -22,8 +22,8 @@
 
 namespace Akumuli
 {
-    /** Unsafe method marker */
-    struct UnsafeTag {};
+    /** APR error converter */
+    std::string apr_error_message(apr_status_t status) noexcept;
 
     /** APR error wrapper.
      *  Code must deal with APR error codes and only if

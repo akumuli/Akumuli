@@ -4,6 +4,12 @@
 namespace Akumuli
 {
 
+std::string apr_error_message(apr_status_t status) noexcept {
+    char error_message[0x100];
+    apr_strerror(status, error_message, 0x100);
+    return std::string(error_message);
+}
+
 AprException::AprException(apr_status_t status, const char* message)
     : std::runtime_error(message)
     , status(status)
@@ -82,8 +88,8 @@ void MemoryMappedFile::free_resources(int cnt)
 }
 
 MemoryMappedFile::~MemoryMappedFile() {
-    // there is no exception in construction
-    free_resources(4);
+    if (!is_bad())
+        free_resources(4);
 }
 
 void* MemoryMappedFile::get_pointer() const noexcept {
