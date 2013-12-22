@@ -29,14 +29,9 @@ typedef uint32_t ParamId;
  *  single 64-bit value or two
  *  consequtive 32-bit values.
  */
-union TimeStamp {
+struct TimeStamp {
     /** number of microseconds since 00:00:00 january 1, 1970 UTC */
     int64_t precise;
-    // Maybe I should remove this?
-    struct {
-        uint32_t object;
-        uint32_t server;
-    } t;
 
     /** UTC timestamp of the current instant */
     static TimeStamp utc_now() noexcept;
@@ -52,53 +47,6 @@ union TimeStamp {
 
     //! Minimum possible timestamp
     static const TimeStamp MIN_TIMESTAMP;
-};
-
-/** String memory layout
-  */
-struct String {
-    int32_t size;
-    char string[1];
-
-    String() {}
-
-    /** This is unsafe constructor.
-      * It assumes that String allocated with `struct hack`
-      * in buffer of precalculated size.
-      * This method will write more that size(*this) bytes.
-      */
-    String(UnsafeTag, const char* str);
-
-    /** Returns number of bytes needed to
-      * store string in this representation.
-      */
-    static int32_t space_needed(const char* str);
-
-    /** Write string to destination
-      * using this string representation.
-      * Returns 0 on success, -size if dest is not large enough.
-      */
-    static int32_t write(void* dest, size_t dest_cap, const char* str);
-};
-
-/** Metadata record layout */
-struct MetadataRecord {
-    enum TypeTag : int32_t {
-        DATE_TIME,
-        STRING,
-        INTEGER
-    };
-    TypeTag tag;
-    union {
-        TimeStamp time;
-        String string;
-        uint64_t integer;
-    };
-    static size_t space_needed(const char* str) noexcept;
-    // Initialization
-    MetadataRecord(TimeStamp time);
-    MetadataRecord(uint64_t value);
-    MetadataRecord(UnsafeTag, const char* str);
 };
 
 
