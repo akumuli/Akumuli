@@ -20,7 +20,6 @@
 #include <map>
 #include <atomic>
 
-#include <log4cxx/logger.h>
 #include "page.h"
 #include "util.h"
 #include "akumuli_def.h"
@@ -72,17 +71,6 @@ struct Storage
     // Reading
 
     void find_entry(ParamId param, TimeStamp time);
-
-    // File management
-
-    //! Create empty file
-    static apr_status_t create_storage(const char* file_name, int num_pages);
-
-    //! Create akumuli database from file (file must be created using `create_storage` method)
-    static apr_status_t init_storage(const char* file_name);
-
-private:
-    static log4cxx::LoggerPtr s_logger_;
 };
 
 }

@@ -49,12 +49,17 @@ namespace Akumuli
         apr_file_t *fp_;
         apr_finfo_t finfo_;
         static log4cxx::LoggerPtr s_logger_;
+        apr_status_t status_;
     public:
-        MemoryMappedFile(const char* file_name);
+        MemoryMappedFile(const char* file_name) noexcept;
         ~MemoryMappedFile();
         void* get_pointer() const noexcept;
         size_t get_size() const noexcept;
         apr_status_t flush() noexcept;
+        bool is_bad() const noexcept;
+        std::string error_message() const noexcept;
+        void throw_if_bad();
+        apr_status_t status_code() const noexcept;
     private:
         void free_resources(int cnt);
     };

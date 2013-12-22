@@ -16,28 +16,46 @@ std::ostream& operator << (std::ostream& str, AprException const& e) {
 }
 
 MemoryMappedFile::MemoryMappedFile(const char* file_name) {
-    apr_status_t status;
     int success_count = 0;
 
-    status = apr_pool_create(&mem_pool_, NULL);
-    if (status == APR_SUCCESS) {
+    status_ = apr_pool_create(&mem_pool_, NULL);
+    if (status_ == APR_SUCCESS) {
         success_count++;
-        status = apr_file_open(&fp_, file_name, APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
-        if (status == APR_SUCCESS) {
+        status_ = apr_file_open(&fp_, file_name, APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
+        if (status_ == APR_SUCCESS) {
             success_count++;
-            status = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
-            if (status == APR_SUCCESS) {
+            status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
+            if (status_ == APR_SUCCESS) {
                 success_count++;
-                status = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, APR_MMAP_WRITE|APR_MMAP_READ, mem_pool_);
-                if (status == APR_SUCCESS)
+                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, APR_MMAP_WRITE|APR_MMAP_READ, mem_pool_);
+                if (status_ == APR_SUCCESS)
                     success_count++; }}}
 
-    if (status != APR_SUCCESS) {
+    if (status_ != APR_SUCCESS) {
         free_resources(success_count);
+        LOG4CXX_ERROR(s_logger_, "Can't mmap file, error " << error_message() << " on step " << success_count);
+    }
+}
+
+bool MemoryMappedFile::is_bad() const noexcept {
+    return status_ != APR_SUCCESS;
+}
+
+std::string MemoryMappedFile::error_message() const noexcept {
+    char error_message[0x100];
+    apr_strerror(status_, error_message, 0x100);
+    return std::string(error_message);
+}
+
+apr_status_t MemoryMappedFile::status_code() const noexcept {
+    return status_;
+}
+
+void MemoryMappedFile::throw_if_bad() {
+    if (status_ != APR_SUCCESS) {
         char error_message[0x100];
-        apr_strerror(status, error_message, 0x100);
-        LOG4CXX_ERROR(s_logger_, "Can't mmap file, error " << error_message << " on step " << success_count);
-        throw AprException(status, error_message);
+        apr_strerror(status_, error_message, 0x100);
+        throw AprException(status_, error_message);
     }
 }
 

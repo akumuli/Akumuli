@@ -14,13 +14,18 @@
 #include <stdexcept>
 #include <algorithm>
 #include <atomic>
+#include <strstream>
 #include <cassert>
 #include <apr_general.h>
 #include <apr_mmap.h>
 #include <log4cxx/logger.h>
 #include <log4cxx/logmanager.h>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 namespace Akumuli {
+
+static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Storage");
 
 //! Metadata physical page size in bytes
 const size_t AKU_METADATA_PAGE_SIZE = 1024*1024;
@@ -130,12 +135,14 @@ int Storage::write(Entry2 const& entry) {
     }
 }
 
-apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
+
+/** This function creates file with specified size
+  */
+static apr_status_t create_file(const char* file_name, uint64_t size) {
     apr_status_t status;
     int success_count = 0;
     apr_pool_t* mem_pool = NULL;
     apr_file_t* file = NULL;
-    int64_t size = AKU_METADATA_PAGE_SIZE + num_pages*AKU_MAX_PAGE_SIZE;
 
     status = apr_pool_create(&mem_pool, NULL);
     if (status == APR_SUCCESS) {
@@ -156,7 +163,7 @@ apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
     if (status != APR_SUCCESS) {
         char error_message[0x100];
         apr_strerror(status, error_message, 0x100);
-        LOG4CXX_ERROR(s_logger_,  "Can't create storage, error " << error_message << " on step " << success_count);
+        LOG4CXX_ERROR(s_logger_,  "Can't create file, error " << error_message << " on step " << success_count);
     }
 
     switch(success_count) {
@@ -169,68 +176,132 @@ apr_status_t Storage::create_storage(const char* file_name, int num_pages) {
         // even apr pool is not created
         break;
     }
+}
+
+
+/** This function creates one of the page files with specified
+  * name and index.
+  */
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index) {
+    apr_status_t status;
+    int64_t size = AKU_MAX_PAGE_SIZE;
+
+    status = create_file(file_name, size);
+    if (status != APR_SUCCESS) {
+        LOG4CXX_ERROR(s_logger_, "Can't create page file " << file_name);
+        return status;
+    }
+
+    MemoryMappedFile mfile(file_name);
+    if (mfile.is_bad())
+        return mfile.status_code();
+
+    // Create index page
+    auto index_ptr = mfile.get_pointer();
+    auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE, page_index);
+
+    // FIXME: revisit - is it actually needed?
+    // Activate the first page
+    if (page_index == 0) {
+        index_page->clear();
+    }
     return status;
 }
 
-apr_status_t Storage::init_storage(const char* file_name) {
-    try {
-        MemoryMappedFile mfile(file_name);
-        const int64_t file_size = mfile.get_size();
-
-        // Calculate number of segments
-        const int full_pages = file_size / AKU_MAX_PAGE_SIZE;
-        const int truncated = file_size % AKU_MAX_PAGE_SIZE;
-        if (truncated != AKU_METADATA_PAGE_SIZE) {
-            LOG4CXX_ERROR(s_logger_, "Invalid file");
-            return APR_EGENERAL;
-        }
-
-        // Create meta page
-        // TODO: make it variable length
-        auto meta_ptr = mfile.get_pointer();
-        auto meta_page = new (meta_ptr) PageHeader(PageType::Metadata, 0, AKU_METADATA_PAGE_SIZE, 0u);
-
-        // Add creation date
-        const int BUF_SIZE = 128;
-        char buffer[BUF_SIZE];
-        auto entry_size = Entry::get_size(sizeof(MetadataRecord));
-        assert(BUF_SIZE >= entry_size);
-        auto now = TimeStamp::utc_now();
-        auto entry = new ((void*)buffer) Entry(0, now, entry_size);
-        auto mem = entry->get_storage();
-        auto mrec = new (mem.address) MetadataRecord(now);
-        meta_page->add_entry(*entry);
-
-        // Add number of pages
-        mrec->tag = MetadataRecord::TypeTag::INTEGER;
-        mrec->integer = full_pages;
-        meta_page->add_entry(*entry);
-
-        for (int i = 0; i < full_pages; i++)
-        {
-            int64_t page_offset = AKU_METADATA_PAGE_SIZE + AKU_MAX_PAGE_SIZE*i;
-            // Add index pages offset to metadata
-            mrec->tag = MetadataRecord::TypeTag::INTEGER;
-            mrec->integer = page_offset;
-            meta_page->add_entry(*entry);
-
-            // Create index page
-            auto index_ptr = (void*)((char*)meta_ptr + page_offset);
-            auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE, (uint32_t)i);
-
-            // Activate the first page
-            if (i == 0) {
-                index_page->clear();
-            }
-        }
-
-        return mfile.flush();
+/** Create page files, return list of statuses.
+  */
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets) {
+    std::vector<apr_status_t> results(APR_SUCCESS, targets.size());
+    for (size_t ix = 0; ix < targets.size(); ix++) {
+        apr_status_t res = create_page_file(targets[ix].c_str(), ix);
+        results[ix] = res;
     }
-    catch(AprException const& err) {
-        return err.status;
-    }
+    return results;
 }
 
-log4cxx::LoggerPtr Storage::s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Storage");
+static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses) {
+    if (targets.size() != statuses.size()) {
+        throw std::logic_error("Sizes of targets and statuses doesn't match");
+    }
+    apr_pool_t* mem_pool = NULL;
+    int op_count = 0;
+    apr_status_t status = apr_pool_create(&mem_pool, NULL);
+    std::vector<apr_status_t> results;
+    if (status == APR_SUCCESS) {
+        op_count++;
+        for(auto ix = 0; ix < targets.size(); ix++) {
+            const std::string& target = targets[ix];
+            if (statuses[ix] == APR_SUCCESS) {
+                LOG4CXX_INFO(s_logger_, "Removing " << target);
+                status = apr_file_remove(target.c_str(), mem_pool);
+                results.push_back(status);
+                if (status != APR_SUCCESS) {
+                    char error_message[1024];
+                    apr_strerror(status, error_message, 1024);
+                    LOG4CXX_ERROR(s_logger_, "Error [" << error_message << "] while deleting a file " << target);
+                }
+            }
+            else {
+                LOG4CXX_INFO(s_logger_, "Target " << target << " doesn't need to be removed");
+            }
+        }
+    }
+    if (op_count) {
+        apr_pool_destroy(mem_pool);
+    }
+    return results;
+}
+
+
+/** This function creates metadata file - root of the storage system.
+  * This page contains creation date and time, number of pages,
+  * all the page file names and they order.
+  */
+static apr_status_t create_metadata_page( const char* file_name
+                                        , std::vector<std::string> const& page_file_names)
+{
+    try {
+        boost::property_tree::ptree root;
+        auto now = TimeStamp::utc_now();
+        root.add_child("creation_time", now);
+        root.add_child("num_pages", page_file_names.size());
+        for(size_t i = 0; i < page_file_names.size(); i++) {
+            boost::property_tree::ptree page_desc;
+            page_desc.push_back(std::make_pair("index", i));
+            page_desc.push_back(std::make_pair("name", page_file_names[i]));
+            root.add_child("pages", page_desc);
+        }
+        boost::property_tree::json_parser::write_json(file_name, root);
+    }
+    catch(const std::exception& err) {
+        LOG4CXX_ERROR(s_logger_, "Can't generate JSON file " << file_name <<
+                                 ", the error is: " << err.what());
+        return APR_EGENERAL;
+    }
+    return APR_SUCCESS;
+}
+
+
+apr_status_t Storage::init_storage(const char* file_name, int num_pages) {
+    // calculate list of page-file names
+    std::vector<std::string> page_names;
+    for (int ix = 0; ix < num_pages; ix++) {
+        std::strstream stream;
+        stream << file_name << "_" << ix << ".page";
+        page_names.push_back(stream.str());
+    }
+
+    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names);
+    for(auto status: page_creation_statuses) {
+        if (status != APR_SUCCESS) {
+            LOG4CXX_ERROR(s_logger_, "Not all pages successfullly created. Cleaning up.");
+            return delete_files(page_names, page_creation_statuses);
+        }
+    }
+
+    std::strstream stream;
+    stream << file_name << ".aku";
+    return create_metadata_page(file_name, page_names);
+}
 
 }
