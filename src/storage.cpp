@@ -40,6 +40,10 @@ PageHeader* Volume::get_page() const noexcept {
     return page_;
 }
 
+int Volume::reallocate_disc_space() noexcept {
+    return mmap_.remap_file_destructive();
+}
+
 //----------------------------------Storage---------------------------------------------
 
 Storage::Storage(const char* file_name)
@@ -51,6 +55,29 @@ Storage::Storage(const char* file_name)
     boost::property_tree::json_parser::read_json(file_name, ptree);
 
     // 2. Read volumes
+    std::string num_pages_str = ptree.get("num_volumes", "0");
+    int num_volumes = atoi(num_pages_str.c_str());
+    if (num_volumes == 0) {
+        // Panic!
+        throw std::runtime_error("Invalid storage");
+    }
+
+    std::vector<std::string> volume_names(num_volumes);
+    for(auto child_node: ptree.get_child("volumes")) {
+        auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
+        auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
+        if (volume_index && volume_path) {
+            volume_names.at(*volume_index) = *volume_path;
+        }
+        else {
+            throw std::runtime_error("Invalid storage, volume link missed");
+        }
+    }
+
+    for(auto path: volume_names) {
+        Volume* vol = new Volume(path.c_str());
+        volumes_.push_back(vol);
+    }
 }
 
 
@@ -77,8 +104,9 @@ int Storage::write(Entry const& entry) {
             // select next page in round robin order
             active_volume_index_++;
             active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+            // TODO: save and restore activations counter
+            active_volume_->reallocate_disc_space();
             active_page_ = active_volume_->get_page();
-            // TODO: reallocate space on disc for this volume
             active_page_->clear();
             break;
         default:
@@ -96,8 +124,9 @@ int Storage::write(Entry2 const& entry) {
             // select next page in round robin order
             active_volume_index_++;
             active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+            // TODO: save and restore activations counter
+            active_volume_->reallocate_disc_space();
             active_page_ = active_volume_->get_page();
-            // TODO: reallocate space on disc for this volume
             active_page_->clear();
             break;
         default:
@@ -238,13 +267,15 @@ static apr_status_t create_metadata_page( const char* file_name
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
         root.add("creation_time", date_time);
-        root.add("num_pages", page_file_names.size());
+        root.add("num_volumes", page_file_names.size());
+        boost::property_tree::ptree volumes_list;
         for(size_t i = 0; i < page_file_names.size(); i++) {
             boost::property_tree::ptree page_desc;
             page_desc.add("index", i);
-            page_desc.add("name", page_file_names[i]);
-            root.add_child("pages", page_desc);
+            page_desc.add("path", page_file_names[i]);
+            volumes_list.push_back(std::make_pair("", page_desc));
         }
+        root.add_child("volumes", volumes_list);
         boost::property_tree::json_parser::write_json(file_name, root);
     }
     catch(const std::exception& err) {

@@ -51,7 +51,7 @@ int main(int cnt, const char** args)
         return 0;
     }
     if (target == READ) {
-        char* path = "./test.db";
+        char* path = "test";
         aku_Config config;
         config.debug_mode = 0;
         config.page_size = 0;
@@ -61,7 +61,7 @@ int main(int cnt, const char** args)
         aku_close_database(db);
     }
     if (target == WRITE) {
-        char* path = "./test.db";
+        char* path = "test.akumuli";
         aku_Config config;
         config.debug_mode = 0;
         config.page_size = 0;

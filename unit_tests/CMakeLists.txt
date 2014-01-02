@@ -1,4 +1,7 @@
-add_executable(ut_main test_page.cpp)
+add_executable(ut_main
+    test_page.cpp
+    test_mmap.cpp
+)
 message("log4cxx libs: ${LOG4CXX_LIBRARIES}")
 target_link_libraries(
     ut_main

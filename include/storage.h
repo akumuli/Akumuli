@@ -52,6 +52,8 @@ struct Volume {
     Volume(const char* file_name);
 
     PageHeader* get_page() const noexcept;
+
+    int reallocate_disc_space() noexcept;
 };
 
 /** Interface to page manager

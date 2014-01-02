@@ -48,8 +48,9 @@ namespace Akumuli
         apr_mmap_t *mmap_;
         apr_file_t *fp_;
         apr_finfo_t finfo_;
-        static log4cxx::LoggerPtr s_logger_;
         apr_status_t status_;
+        std::string path_;
+        static log4cxx::LoggerPtr s_logger_;
     public:
         MemoryMappedFile(const char* file_name) noexcept;
         ~MemoryMappedFile();
@@ -60,7 +61,12 @@ namespace Akumuli
         std::string error_message() const noexcept;
         void throw_if_bad();
         apr_status_t status_code() const noexcept;
+        //! Remap file in a destructive way (all file content is lost)
+        apr_status_t remap_file_destructive() noexcept;
     private:
+        //! Map file into virtual address space
+        apr_status_t map_file() noexcept;
+        //! Free OS resources associated with object
         void free_resources(int cnt);
     };
 }

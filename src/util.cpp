@@ -21,13 +21,18 @@ std::ostream& operator << (std::ostream& str, AprException const& e) {
     return str;
 }
 
-MemoryMappedFile::MemoryMappedFile(const char* file_name) {
-    int success_count = 0;
+MemoryMappedFile::MemoryMappedFile(const char* file_name)
+    : path_(file_name)
+{
+    map_file();
+}
 
+apr_status_t MemoryMappedFile::map_file() noexcept {
+    int success_count = 0;
     status_ = apr_pool_create(&mem_pool_, NULL);
     if (status_ == APR_SUCCESS) {
         success_count++;
-        status_ = apr_file_open(&fp_, file_name, APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
+        status_ = apr_file_open(&fp_, path_.c_str(), APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
         if (status_ == APR_SUCCESS) {
             success_count++;
             status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
@@ -41,6 +46,45 @@ MemoryMappedFile::MemoryMappedFile(const char* file_name) {
         free_resources(success_count);
         LOG4CXX_ERROR(s_logger_, "Can't mmap file, error " << error_message() << " on step " << success_count);
     }
+    return status_;
+}
+
+apr_status_t MemoryMappedFile::remap_file_destructive() noexcept {
+    apr_off_t file_size = finfo_.size;
+    free_resources(4);
+    apr_pool_t* pool;
+    apr_file_t* file_ptr;
+    apr_status_t status;
+    int success_counter = 0;
+    status = apr_pool_create(&pool, NULL);
+    if (status == APR_SUCCESS) {
+        success_counter++;
+        status = apr_file_open(&file_ptr, path_.c_str(), APR_WRITE, APR_OS_DEFAULT, pool);
+        if (status == APR_SUCCESS) {
+            success_counter++;
+            status = apr_file_trunc(file_ptr, 0);
+            if (status == APR_SUCCESS) {
+                success_counter++;
+                status = apr_file_trunc(file_ptr, file_size);
+                if (status == APR_SUCCESS) {
+                    success_counter++;
+                }
+            }
+        }
+    }
+    switch(success_counter) {
+        case 4:
+        case 3:
+        case 2:
+            apr_file_close(file_ptr);
+        case 1:
+            apr_pool_destroy(pool);
+    };
+    if (status != APR_SUCCESS) {
+        LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status) << " on step " << success_counter);
+        throw std::runtime_error("Can't remap file");
+    }
+    return map_file();
 }
 
 bool MemoryMappedFile::is_bad() const noexcept {
