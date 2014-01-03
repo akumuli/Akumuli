@@ -21,7 +21,7 @@ std::ostream& operator << (std::ostream& str, AprException const& e) {
     return str;
 }
 
-MemoryMappedFile::MemoryMappedFile(const char* file_name)
+MemoryMappedFile::MemoryMappedFile(const char* file_name) noexcept
     : path_(file_name)
 {
     map_file();
@@ -49,7 +49,7 @@ apr_status_t MemoryMappedFile::map_file() noexcept {
     return status_;
 }
 
-apr_status_t MemoryMappedFile::remap_file_destructive() noexcept {
+void MemoryMappedFile::remap_file_destructive() {
     apr_off_t file_size = finfo_.size;
     free_resources(4);
     apr_pool_t* pool;
@@ -84,7 +84,11 @@ apr_status_t MemoryMappedFile::remap_file_destructive() noexcept {
         LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status) << " on step " << success_counter);
         throw std::runtime_error("Can't remap file");
     }
-    return map_file();
+    status = map_file();
+    if (status != APR_SUCCESS) {
+        LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status));
+        throw std::runtime_error("Can't remap file");
+    }
 }
 
 bool MemoryMappedFile::is_bad() const noexcept {

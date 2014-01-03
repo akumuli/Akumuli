@@ -62,7 +62,7 @@ namespace Akumuli
         void throw_if_bad();
         apr_status_t status_code() const noexcept;
         //! Remap file in a destructive way (all file content is lost)
-        apr_status_t remap_file_destructive() noexcept;
+        void remap_file_destructive();
     private:
         //! Map file into virtual address space
         apr_status_t map_file() noexcept;

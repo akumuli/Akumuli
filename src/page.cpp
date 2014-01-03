@@ -141,7 +141,7 @@ char* PageHeader::data() noexcept {
 PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id)
     : type(type)
     , count(count)
-    , last_offset(length)
+    , last_offset(length - 1)
     , length(length)
     , overwrites_count(0)
     , page_id(page_id)
@@ -185,7 +185,7 @@ bool PageHeader::inside_bbox(ParamId param, TimeStamp time) const noexcept {
 void PageHeader::clear() noexcept {
     count = 0;
     overwrites_count++;
-    last_offset = length;
+    last_offset = length - 1;
     bbox = PageBoundingBox();
 }
 

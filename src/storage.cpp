@@ -40,14 +40,25 @@ PageHeader* Volume::get_page() const noexcept {
     return page_;
 }
 
-int Volume::reallocate_disc_space() noexcept {
-    return mmap_.remap_file_destructive();
+PageHeader* Volume::reallocate_disc_space() {
+    uint32_t page_id = page_->page_id;
+    uint32_t overwrites_count = page_->overwrites_count;
+    PageType page_type = page_->type;
+    mmap_.remap_file_destructive();
+    page_ = new (mmap_.get_pointer()) PageHeader(page_type, 0, mmap_.get_size(), page_id);
+    page_->overwrites_count = overwrites_count;
+    return page_;
 }
 
 //----------------------------------Storage---------------------------------------------
 
 Storage::Storage(const char* file_name)
 {
+    /* Exception, thrown from this c-tor means that something really bad
+     * happend and we it's impossible to open this storage, for example -
+     * because metadata file is corrupted, or volume is missed on disc.
+     */
+
     // 1. Read json file
     boost::property_tree::ptree ptree;
     // NOTE: there is a known bug in boost 1.49 - https://svn.boost.org/trac/boost/ticket/6785
@@ -55,10 +66,8 @@ Storage::Storage(const char* file_name)
     boost::property_tree::json_parser::read_json(file_name, ptree);
 
     // 2. Read volumes
-    std::string num_pages_str = ptree.get("num_volumes", "0");
-    int num_volumes = atoi(num_pages_str.c_str());
+    int num_volumes = ptree.get_child("num_volumes").get_value(0);
     if (num_volumes == 0) {
-        // Panic!
         throw std::runtime_error("Invalid storage");
     }
 
@@ -70,14 +79,35 @@ Storage::Storage(const char* file_name)
             volume_names.at(*volume_index) = *volume_path;
         }
         else {
-            throw std::runtime_error("Invalid storage, volume link missed");
+            throw std::runtime_error("Invalid storage, bad volume link");
         }
     }
 
+    // check result
+    for(std::string const& path: volume_names) {
+        if (path.empty())
+            throw std::runtime_error("Invalid storage, one of the volumes is missing");
+    }
+
+    // create volumes list
     for(auto path: volume_names) {
         Volume* vol = new Volume(path.c_str());
         volumes_.push_back(vol);
     }
+
+    // volume with maximal overwrites_count and minimal index must be active
+    int max_index = -1;
+    int64_t max_overwrites = -1;
+    for(int i = 0; i < num_volumes; i++) {
+        PageHeader* page = volumes_.at(i)->get_page();
+        if (static_cast<int64_t>(page->overwrites_count) >= max_overwrites) {
+            max_overwrites = static_cast<int64_t>(page->overwrites_count);
+            max_index = i;
+        }
+    }
+
+    active_volume_ = volumes_.at(max_index);
+    active_page_ = active_volume_->get_page();
 }
 
 
@@ -104,9 +134,7 @@ int Storage::write(Entry const& entry) {
             // select next page in round robin order
             active_volume_index_++;
             active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-            // TODO: save and restore activations counter
-            active_volume_->reallocate_disc_space();
-            active_page_ = active_volume_->get_page();
+            active_page_ = active_volume_->reallocate_disc_space();
             active_page_->clear();
             break;
         default:
@@ -124,9 +152,7 @@ int Storage::write(Entry2 const& entry) {
             // select next page in round robin order
             active_volume_index_++;
             active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-            // TODO: save and restore activations counter
-            active_volume_->reallocate_disc_space();
-            active_page_ = active_volume_->get_page();
+            active_page_ = active_volume_->reallocate_disc_space();
             active_page_->clear();
             break;
         default:

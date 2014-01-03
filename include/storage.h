@@ -49,11 +49,14 @@ struct Volume {
     PageHeader* page_;
     TimeIndex main_memory_index_;
 
-    Volume(const char* file_name);
+    //! Create new volume stored in file
+    Volume(const char* file_path);
 
+    //! Get pointer to page
     PageHeader* get_page() const noexcept;
 
-    int reallocate_disc_space() noexcept;
+    //! Reallocate disc space and return pointer to newly mapped page
+    PageHeader *reallocate_disc_space();
 };
 
 /** Interface to page manager
