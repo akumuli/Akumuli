@@ -95,7 +95,7 @@ Storage::Storage(const char* file_name)
         volumes_.push_back(vol);
     }
 
-    // volume with maximal overwrites_count and minimal index must be active
+    // volume with max overwrites_count and max index must be active
     int max_index = -1;
     int64_t max_overwrites = -1;
     for(int i = 0; i < num_volumes; i++) {
@@ -106,6 +106,7 @@ Storage::Storage(const char* file_name)
         }
     }
 
+    active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();
 }
