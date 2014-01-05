@@ -335,10 +335,12 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                 auto probe = probe_entry->time.precise;
                 if (probe == key) {
                     begin = probe_index;
-                    end = probe_index - 1u;
+                    end = probe_index;
                 } else if (probe < key) {
+                    // FIXME: possible overflow
                     begin = probe_index + 1u;
                 } else {
+                    // FIXME: underflow if we hit array lower bound
                     end = probe_index - 1u;
                 }
             }
@@ -347,23 +349,24 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                 auto probe_offset = page_index[probe_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
                 auto probe = probe_entry->time.precise;
-                if (probe == key) {
-                    // found
+
+                if (probe == key) {             // found
                     break;
                 }
-                // determine which subarray to search
                 else if (probe < key) {
-                    // change min index to search upper subarray
-                    begin = probe_index + 1u;
+                    begin = probe_index + 1u;   // change min index to search upper subarray
+                    if (begin == count)         // we hit the upper bound of the array
+                        break;
                 } else {
-                    // change max index to search lower subarray
-                    end = probe_index - 1u;
+                    end = probe_index - 1u;     // change max index to search lower subarray
+                    if (end == ~0)              // we hit the lower bound of the array
+                        break;
                 }
             }
             cursor->probe_index = probe_index;
             cursor->start_index = probe_index;
             cursor->state = is_backward ? AKU_CURSOR_SCAN_BACKWARD
-                                        : AKU_CURSOR_DIR_FORWARD;
+                                        : AKU_CURSOR_SCAN_FORWARD;
             break;
         case AKU_CURSOR_SCAN_BACKWARD:
             while (true) {
