@@ -4,6 +4,7 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <vector>
+#include <iostream>
 
 #include "akumuli_def.h"
 #include "page.h"
@@ -415,3 +416,71 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 
 
 // TODO: test multi-part search calls
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_large)
+{
+    const int               buf_len = 1024*1024*8;
+    std::vector<char>       buffer(buf_len);
+    std::vector<int64_t>    timestamps;
+    std::vector<int>        paramids;
+    char                    entry_buffer[64];
+    int64_t                 time_stamp = 0L;
+    PageHeader*             page = nullptr;
+
+    page = new (&buffer[0]) PageHeader(PageType::Index, 0, buf_len, 0);
+
+    for(int i = 0; true; i++)
+    {
+        int rand_num = rand();
+        TimeStamp inst = {time_stamp};
+        ParamId id = 1 + (rand_num & 1);
+        auto entry = new (entry_buffer) Entry(id, inst, Entry::get_size(sizeof(uint32_t)));
+        entry->value[0] = i;
+        if(page->add_entry(*entry) == AKU_WRITE_STATUS_OVERFLOW) {
+            break;
+        }
+        timestamps.push_back(time_stamp);  // i-th timestamp
+        paramids.push_back(id);
+        // timestamp grows always
+        time_stamp += 1 + rand_num % 100;
+    }
+
+    page->sort();
+
+    for (int round = 0; round < 10; round++) {
+        // select start timestamp
+        int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.precise);
+        int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.precise);
+        ParamId id2search = 1 + (rand() & 1);
+        assert(start_time > 0 && start_time < page->bbox.max_timestamp.precise);
+        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.precise);
+        assert(stop_time > start_time);
+        uint32_t indexes[100];
+        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, AKU_CURSOR_DIR_FORWARD, indexes, 100);
+        std::vector<uint32_t> matches;
+        while(cursor.state != AKU_CURSOR_COMPLETE) {
+            page->search(&cursor);
+            for(int i = 0; i < cursor.results_num; i++) {
+                auto index = indexes[i];
+                matches.push_back(index);
+                const Entry* entry = page->read_entry(index);
+                BOOST_REQUIRE(entry->time.precise == timestamps[index]);
+                BOOST_REQUIRE(entry->param_id == paramids[index]);
+                BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
+            }
+        }
+        // Check
+        size_t match_index = 0u;
+        for(size_t i = 0u; i < timestamps.size(); i++) {
+            auto curr_id = paramids[i];
+            auto curr_ts = timestamps[i];
+            if (curr_id == id2search) {
+                if (curr_ts >= start_time && curr_ts <= stop_time) {
+                    auto expected_index = matches[match_index];
+                    BOOST_REQUIRE_EQUAL(i, expected_index);
+                    match_index++;
+                }
+            }
+        }
+        BOOST_REQUIRE_EQUAL(match_index, matches.size());
+    }
+}

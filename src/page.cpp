@@ -319,6 +319,9 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
     if (!validate_cursor(cursor))
         return;
 
+    // Reuse buffer
+    cursor->results_num = 0;
+
     bool is_backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
     ParamId param = cursor->param;
     uint32_t max_index = count - 1u;
@@ -454,25 +457,26 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
             }
         case AKU_CURSOR_SCAN_FORWARD:
             while (true) {
-                auto probe_offset = page_index[cursor->probe_index];
+                auto current_index = cursor->probe_index++;
+                auto probe_offset = page_index[current_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
                 auto probe = probe_entry->param_id;
-                if (probe == param) {
+                bool probe_in_time_range = cursor->lowerbound <= probe_entry->time &&
+                                           cursor->upperbound >= probe_entry->time;
+                if (probe == param && probe_in_time_range) {
                     if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = cursor->probe_index;
+                        cursor->results[cursor->results_num] = current_index;
                         cursor->results_num += 1u;
                     }
                     if (cursor->results_num == cursor->results_cap) {
                         return;
                     }
                 }
-                if (cursor->upperbound <= probe_entry->time ||
-                    cursor->probe_index == max_index) {
+                if (probe_entry->time > cursor->upperbound || current_index == max_index) {
                     cursor->state = AKU_CURSOR_COMPLETE;
                     cursor->done = 1u;
                     return;
                 }
-                cursor->probe_index++;
             }
         }
     }
