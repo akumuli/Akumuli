@@ -134,70 +134,6 @@ BOOST_AUTO_TEST_CASE(TestPaging8)
     BOOST_CHECK_EQUAL(res2->param_id, 2);
 }
 
-BOOST_AUTO_TEST_CASE(Test_BinarySearch_search_by_one)
-{
-    char page_ptr[0x10000];
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 0x10000, 0);
-    char buffer[64];
-
-    for(int i = 0; i < 100; i++) {
-        TimeStamp inst = {1000L + i};
-        auto entry = new (buffer) Entry(i, inst, 64);
-        BOOST_CHECK(page->add_entry(*entry) != AKU_WRITE_STATUS_OVERFLOW);
-    }
-
-    page->sort();
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L + 42};
-        bool found = page->search(42, exact_time_match, &result_offset);
-        BOOST_CHECK(found);
-        auto result = page->read_entry(result_offset);
-        BOOST_CHECK_EQUAL(result->param_id, 42);
-    }
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L + 42};
-        bool found = page->search(142, exact_time_match, &result_offset);
-        BOOST_CHECK(found == false);
-    }
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L};
-        bool found = page->search(0, exact_time_match, &result_offset);
-        BOOST_CHECK(found);
-        auto result = page->read_entry(result_offset);
-        BOOST_CHECK_EQUAL(result->param_id, 0);
-    }
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L + 99};
-        bool found = page->search(99, exact_time_match, &result_offset);
-        BOOST_CHECK(found);
-        auto result = page->read_entry(result_offset);
-        BOOST_CHECK_EQUAL(result->param_id, 99);
-    }
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L + 58};
-        bool found = page->search(42, exact_time_match, &result_offset);
-        BOOST_CHECK(found);
-        auto result = page->read_entry(result_offset);
-        BOOST_CHECK_EQUAL(result->param_id, 42);
-    }
-
-    {
-        EntryOffset result_offset;
-        TimeStamp exact_time_match = {1000L + 33};
-        bool found = page->search(42, exact_time_match, &result_offset);
-        BOOST_CHECK(found == false);
-    }
-}
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
 {
@@ -215,8 +151,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
     page->sort();
 
     {
-        int indexes[1000];
-        SingleParameterCursor cursor(1, {1000L}, {1067L}, indexes, 1000);
+        uint32_t indexes[1000];
+        SingleParameterCursor cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
         page->search(&cursor);
 
@@ -232,8 +168,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
     }
 
     {
-        int indexes[1000];
-        SingleParameterCursor cursor(1, {1010L}, {1050L}, indexes, 1000);
+        uint32_t indexes[1000];
+        SingleParameterCursor cursor(1, {1010L}, {1050L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
         page->search(&cursor);
 
@@ -249,8 +185,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
     }
 
     {
-        int indexes[1000];
-        SingleParameterCursor cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, indexes, 1000);
+        uint32_t indexes[1000];
+        SingleParameterCursor cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
         page->search(&cursor);
 
@@ -266,8 +202,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
     }
 
     {
-        int indexes[1000];
-        SingleParameterCursor cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, indexes, 1000);
+        uint32_t indexes[1000];
+        SingleParameterCursor cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
         page->search(&cursor);
 
@@ -278,8 +214,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range)
     }
 
     {
-        int indexes[1000];
-        SingleParameterCursor cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, indexes, 1000);
+        uint32_t indexes[1000];
+        SingleParameterCursor cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
         page->search(&cursor);
 

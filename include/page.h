@@ -111,42 +111,46 @@ struct PageBoundingBox {
  */
 struct PageCursor {
     // user data
-    int*            results;        //< resulting indexes array
-    size_t          results_cap;    //< capacity of the array
-    size_t          results_num;    //< number of results in array
-    bool            done;           //< is done reading (last data writen to results array)
+    uint32_t*       results;        //< resulting indexes array
+    uint64_t        results_cap;    //< capacity of the array
+    uint64_t        results_num;    //< number of results in array
+    uint32_t        done;           //< is done reading (last data writen to results array)
     // library data
-    int             start_index;    //< starting index of the traversal
-    int             probe_index;    //< current index of the traversal
-    int             state;          //< FSM state
+    uint32_t        start_index;    //< starting index of the traversal
+    uint32_t        probe_index;    //< current index of the traversal
+    uint32_t        state;          //< FSM state
+    uint32_t        error_code;     //< Search error code
 
     /** Page cursor c-tor.
      *  @param buffer receiving buffer
      *  @param buffer_size capacity of the receiving buffer
      */
-    PageCursor(int* buffer, size_t buffer_size) noexcept;
+    PageCursor(uint32_t* buffer, uint64_t buffer_size) noexcept;
 };
 
 
 /** Cursor for single parameter time-range query */
 struct SingleParameterCursor : PageCursor {
     // search query
-    ParamId         param;          //< parameter id
     TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
     TimeStamp       upperbound;     //< end of the time interval (0 for inf)
+    ParamId         param;          //< parameter id
+    uint32_t        direction;      //< scan direction
 
     /** Cursor c-tor
      *  @param pid parameter id
      *  @param low time lowerbound (0 for -inf)
      *  @param upp time upperbound (MAX_TIMESTAMP for inf)
+     *  @param scan_dir scan direction
      *  @param buffer receiving buffer
      *  @param buffer_size capacity of the receiving buffer
      */
     SingleParameterCursor( ParamId      pid
                          , TimeStamp    low
                          , TimeStamp    upp
-                         , int*         buffer
-                         , size_t       buffer_size ) noexcept;
+                         , uint32_t     scan_dir
+                         , uint32_t*    buffer
+                         , uint64_t     buffer_size ) noexcept;
 };
 
 
@@ -236,14 +240,6 @@ struct PageHeader {
 
     // TODO: add partial sort
     // TODO: implement interpolated search
-
-    /**
-     *  Binary search for entry
-     *  @returns true if value found, false otherwise
-     */
-    bool search( ParamId            param,
-                 TimeStamp     lowerbound,
-                 EntryOffset*      offset) const noexcept;
 
     /**
      *  Binary search for entry
