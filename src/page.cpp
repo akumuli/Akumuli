@@ -307,6 +307,15 @@ static bool validate_cursor(SingleParameterCursor *cursor) noexcept {
 
 void PageHeader::search(SingleParameterCursor *cursor) const noexcept
 {
+    /* Search algorithm outline:
+     * - interpolated search for timestamp
+     *   - if 5 or more iterations or
+     *     search interval is small
+     *     BREAK;
+     * - binary search for timestamp
+     * - scan
+     */
+
     if (!validate_cursor(cursor))
         return;
 
@@ -325,23 +334,74 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
             cursor->state = AKU_CURSOR_SEARCH;
         case AKU_CURSOR_SEARCH:
             if (key <= bbox.max_timestamp.precise && key >= bbox.min_timestamp.precise) {
-                // Perform interpolation search first
-                auto step = double(bbox.max_timestamp.precise - bbox.min_timestamp.precise) / count;
-                probe_index = static_cast<uint32_t>((key - bbox.min_timestamp.precise) / step);
-                assert(probe_index >= begin);
-                assert(probe_index <= end);
-                auto probe_offset = page_index[probe_index];
-                auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                auto probe = probe_entry->time.precise;
-                if (probe == key) {
-                    begin = probe_index;
-                    end = probe_index;
-                } else if (probe < key) {
-                    // FIXME: possible overflow
-                    begin = probe_index + 1u;
-                } else {
-                    // FIXME: underflow if we hit array lower bound
-                    end = probe_index - 1u;
+
+                int64_t search_lower_bound = bbox.min_timestamp.precise;
+                int64_t search_upper_bound = bbox.max_timestamp.precise;
+
+                int interpolation_search_quota = 5;
+
+                while(interpolation_search_quota--)  {
+                    // On small distances - fallback to binary search
+                    if (end - begin < AKU_INTERPOLATION_SEARCH_CUTOFF)
+                        break;
+
+                    probe_index = ((key - search_lower_bound) * count) /
+                                  (search_upper_bound - search_lower_bound);
+
+                    if (probe_index > begin && probe_index < end) {
+
+                        auto probe_offset = page_index[probe_index];
+                        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+                        auto probe = probe_entry->time.precise;
+
+                        if (probe == key) {
+                            cursor->probe_index = probe_index;
+                            cursor->start_index = probe_index;
+                            cursor->state = is_backward ? AKU_CURSOR_SCAN_BACKWARD
+                                                        : AKU_CURSOR_SCAN_FORWARD;
+                            break;
+                        } else if (probe < key) {
+                            begin = probe_index + 1u;
+                            probe_offset = page_index[begin];
+                            probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+                            search_lower_bound = probe_entry->time.precise;
+                        } else {
+                            end   = probe_index - 1u;
+                            probe_offset = page_index[end];
+                            probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+                            search_upper_bound = probe_entry->time.precise;
+                        }
+                    }
+                    else {
+                        break;
+                        // Continue with binary search
+                    }
+                }
+            } else {
+                // shortcut for corner cases
+                if (key > bbox.max_timestamp.precise) {
+                    if (is_backward) {
+                        cursor->probe_index = end;
+                        cursor->start_index = end;
+                        cursor->state = AKU_CURSOR_SCAN_BACKWARD;
+                        break;
+                    } else {
+                        // return empty result
+                        cursor->state = AKU_CURSOR_COMPLETE;
+                        return;
+                    }
+                }
+                else if (key < bbox.min_timestamp.precise) {
+                    if (!is_backward) {
+                        cursor->probe_index = begin;
+                        cursor->start_index = begin;
+                        cursor->state = AKU_CURSOR_SCAN_FORWARD;
+                        break;
+                    } else {
+                        // return empty result
+                        cursor->state = AKU_CURSOR_COMPLETE;
+                        return;
+                    }
                 }
             }
             while (end >= begin) {
@@ -373,7 +433,9 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                 auto probe_offset = page_index[cursor->probe_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
                 auto probe = probe_entry->param_id;
-                if (probe == param) {
+                bool probe_in_time_range = cursor->lowerbound <= probe_entry->time &&
+                                           cursor->upperbound >= probe_entry->time;
+                if (probe == param && probe_in_time_range) {
                     if (cursor->results_num < cursor->results_cap) {
                         cursor->results[cursor->results_num] = cursor->probe_index;
                         cursor->results_num += 1u;
@@ -382,7 +444,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                         return;
                     }
                 }
-                if (cursor->lowerbound >= probe_entry->time ||
+                if (!probe_in_time_range ||
                     cursor->probe_index == 0u) {
                     cursor->state = AKU_CURSOR_COMPLETE;
                     cursor->done = 1u;

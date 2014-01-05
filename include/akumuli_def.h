@@ -34,4 +34,8 @@
 #define AKU_CURSOR_DIR_FORWARD    0
 #define AKU_CURSOR_DIR_BACKWARD   1
 
+
+// Different tune parameters
+#define AKU_INTERPOLATION_SEARCH_CUTOFF 0x100
+
 #endif

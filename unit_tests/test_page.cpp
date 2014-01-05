@@ -233,9 +233,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
     page->search(&cursor);
 
     BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-    BOOST_CHECK_EQUAL(cursor.results_num, 1);
-    const Entry* entry = page->read_entry(indexes[0]);
-    BOOST_CHECK_EQUAL(entry->value[0], 99);
+    BOOST_CHECK_EQUAL(cursor.results_num, 0);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
@@ -332,9 +330,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
     page->search(&cursor);
 
     BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-    BOOST_CHECK_EQUAL(cursor.results_num, 1);
-    const Entry* entry = page->read_entry(indexes[0]);
-    BOOST_CHECK_EQUAL(entry->value[0], 99);
+    BOOST_CHECK_EQUAL(cursor.results_num, 0);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
@@ -351,4 +347,71 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
     BOOST_CHECK_EQUAL(cursor.results_num, 0);
 }
 
-// TODO: add tests for more irregullar data distribution and randomized tests
+static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len, int num_values, int time_skew) {
+    auto page = new (page_ptr) PageHeader(PageType::Index, 0, page_len, 0);
+    char buffer[64];
+
+    for(int i = 0; i < num_values; i++) {
+        TimeStamp inst = {1000L + i*time_skew};
+        auto entry = new (buffer) Entry(1, inst, Entry::get_size(4));
+        entry->value[0] = i;
+        BOOST_CHECK(page->add_entry(*entry) != AKU_WRITE_STATUS_OVERFLOW);
+    }
+
+    page->sort();
+
+    return page;
+}
+
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
+{
+    char page_ptr[0x10000];
+    auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
+
+    uint32_t indexes[1000];
+    SingleParameterCursor cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+
+    page->search(&cursor);
+
+    BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_CHECK_EQUAL(cursor.results_num, 500);
+    std::vector<int64_t> timestamps;
+
+    for(int i = 0; i < cursor.results_num; i++) {
+        const Entry* entry = page->read_entry(indexes[i]);
+        BOOST_CHECK(entry->time.precise >= 1010L);
+        BOOST_CHECK(entry->time.precise <= 2008L);
+        timestamps.push_back(entry->time.precise);
+    }
+
+    // Check forward time direction
+    BOOST_CHECK(timestamps.front() < timestamps.back());
+}
+
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
+{
+    char page_ptr[0x10000];
+    auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
+
+    uint32_t indexes[1000];
+    SingleParameterCursor cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+
+    page->search(&cursor);
+
+    BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_CHECK_EQUAL(cursor.results_num, 500);
+    std::vector<int64_t> timestamps;
+
+    for(int i = 0; i < cursor.results_num; i++) {
+        const Entry* entry = page->read_entry(indexes[i]);
+        BOOST_CHECK(entry->time.precise >= 1010L);
+        BOOST_CHECK(entry->time.precise <= 2008L);
+        timestamps.push_back(entry->time.precise);
+    }
+
+    // Check forward time direction
+    BOOST_CHECK(timestamps.front() > timestamps.back());
+}
+
+
+// TODO: test multi-part search calls
