@@ -416,7 +416,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 
 
 // TODO: test multi-part search calls
-BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_large)
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 {
     const int               buf_len = 1024*1024*8;
     std::vector<char>       buffer(buf_len);
@@ -448,6 +448,11 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_large)
 
     for (int round = 0; round < 10; round++) {
         // select start timestamp
+        int directions[] = {
+            AKU_CURSOR_DIR_FORWARD,
+            AKU_CURSOR_DIR_BACKWARD
+        };
+        int dir = directions[rand() & 1];
         int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.precise);
         int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.precise);
         ParamId id2search = 1 + (rand() & 1);
@@ -455,7 +460,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_large)
         assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.precise);
         assert(stop_time > start_time);
         uint32_t indexes[100];
-        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, AKU_CURSOR_DIR_FORWARD, indexes, 100);
+        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, dir, indexes, 100);
         std::vector<uint32_t> matches;
         while(cursor.state != AKU_CURSOR_COMPLETE) {
             page->search(&cursor);
@@ -470,14 +475,28 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_large)
         }
         // Check
         size_t match_index = 0u;
-        for(size_t i = 0u; i < timestamps.size(); i++) {
-            auto curr_id = paramids[i];
-            auto curr_ts = timestamps[i];
-            if (curr_id == id2search) {
-                if (curr_ts >= start_time && curr_ts <= stop_time) {
-                    auto expected_index = matches[match_index];
-                    BOOST_REQUIRE_EQUAL(i, expected_index);
-                    match_index++;
+        if (dir == AKU_CURSOR_DIR_FORWARD) {
+            for(size_t i = 0u; i < timestamps.size(); i++) {
+                auto curr_id = paramids[i];
+                auto curr_ts = timestamps[i];
+                if (curr_id == id2search) {
+                    if (curr_ts >= start_time && curr_ts <= stop_time) {
+                        auto expected_index = matches[match_index];
+                        BOOST_REQUIRE_EQUAL(i, expected_index);
+                        match_index++;
+                    }
+                }
+            }
+        } else {
+            for(int i = (int)timestamps.size() - 1; i >= 0; i--) {
+                auto curr_id = paramids[i];
+                auto curr_ts = timestamps[i];
+                if (curr_id == id2search) {
+                    if (curr_ts >= start_time && curr_ts <= stop_time) {
+                        auto expected_index = matches[match_index];
+                        BOOST_REQUIRE_EQUAL(i, expected_index);
+                        match_index++;
+                    }
                 }
             }
         }

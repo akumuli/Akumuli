@@ -433,27 +433,26 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
             break;
         case AKU_CURSOR_SCAN_BACKWARD:
             while (true) {
-                auto probe_offset = page_index[cursor->probe_index];
+                auto current_index = cursor->probe_index--;
+                auto probe_offset = page_index[current_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
                 auto probe = probe_entry->param_id;
                 bool probe_in_time_range = cursor->lowerbound <= probe_entry->time &&
                                            cursor->upperbound >= probe_entry->time;
                 if (probe == param && probe_in_time_range) {
                     if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = cursor->probe_index;
+                        cursor->results[cursor->results_num] = current_index;
                         cursor->results_num += 1u;
                     }
                     if (cursor->results_num == cursor->results_cap) {
                         return;
                     }
                 }
-                if (!probe_in_time_range ||
-                    cursor->probe_index == 0u) {
+                if (probe_entry->time < cursor->lowerbound || current_index == 0u) {
                     cursor->state = AKU_CURSOR_COMPLETE;
                     cursor->done = 1u;
                     return;
                 }
-                cursor->probe_index--;
             }
         case AKU_CURSOR_SCAN_FORWARD:
             while (true) {
