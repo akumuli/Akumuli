@@ -348,7 +348,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                     if (end - begin < AKU_INTERPOLATION_SEARCH_CUTOFF)
                         break;
 
-                    probe_index = ((key - search_lower_bound) * count) /
+                    probe_index = ((key - search_lower_bound) * (end - begin)) /
                                   (search_upper_bound - search_lower_bound);
 
                     if (probe_index > begin && probe_index < end) {
