@@ -192,6 +192,13 @@ int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return seq_[index].add(ts, param, offset);
 }
 
+void Bucket::search(SingleParameterCursor* cursor) const noexcept {
+    // Current current simplistic cursor implementation
+    // should be redone using stackfull coroutines to properly implement this
+    // piece of code
+    throw std::runtime_error("Not implemented");
+}
+
 // Cache --------------------------------------
 
 Cache::Cache(TimeDuration ttl, size_t max_size)
@@ -200,17 +207,17 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     , baseline_()
 {
     // Cache prepopulation
+    // Buckets allocated using std::deque<Bucket> for greater locality
     for (int i = 0; i < AKU_CACHE_POPULATION; i++) {
         cache_.emplace_back(max_size_);
-        Sequence& g = cache_.back();
-        free_list_.push_back(g);
+        auto& s = cache_.back();
+        free_list_.push_back(s);
     }
 
     allocate_from_free_list(AKU_LIMITS_MAX_CACHES);
 
-    // We need two calculate shift width. So, we got ttl in some units
-    // of measure, units of measure that akumuli doesn't know about.
-    // We choose first power of two that is less than ttl:
+    // We need to calculate shift width. So, we got ttl in some units
+    // of measure (units of measure that akumuli doesn't know about).
     shift_ = log2(ttl.value);
     if ((1 << shift_) < AKU_LIMITS_MIN_TTL) {
         throw std::runtime_error("TTL is too small");
@@ -233,57 +240,59 @@ Sequence const* index2ptr(TCont const& cont, int64_t index) noexcept {
     return &gen;
 }
 
-// [gen_] -(swaps)-> [swap_]
-void Cache::swapn(int swaps) noexcept {
-    auto end = gen_.end();
-    auto begin = gen_.end();
+/** Mark last n live buckets
+  * @param TCont container of buckets
+  */
+template<class TCont>
+void mark_last(TCont& container, int n) noexcept {
+    auto end = container.end();
+    auto begin = container.end();
     std::advance(begin, -1*swaps);
     for(auto i = begin; i != end; i++) {
         i->state++;
     }
 }
 
-// [free_list_] -(ngens)-> [gen_]
-void Cache::allocate_from_free_list(int ngens) noexcept {
+void Cache::allocate_from_free_list(int nnew, int64_t last_baseline)noexcept {
     // TODO: add backpressure to producer to limit memory usage!
     auto n = free_list_.size();
-    if (n < ngens) {
-        // create new generations
-        auto nnew = ngens - n;
+    if (n < nnew) {
+        // create new buckets
+        auto nnew = nnew - n;
         for (int i = 0; i < nnew; i++) {
-            cache_.emplace_back(max_size_);
-            auto& g = cache_.back();
-            free_list_.push_back(g);
+            cache_.emplace_back(bucket_size_, max_size_);  // TODO: init baseline in c-tor
+            auto& b = cache_.back();
+            free_list_.push_back(b);
         }
     }
     auto begin = free_list_.begin();
     auto end = free_list_.begin();
-    std::advance(end, ngens);
-    free_list_.splice(gen_.begin(), gen_, begin, end);
+    std::advance(end, nnew);
+    free_list_.splice(cache_.begin(), cache_, begin, end);
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept {
     // TODO: set upper limit to ttl_ value to prevent overflow
-    auto rts = (ts.value >> shift_);
-    auto index = baseline_.value - rts;
+    auto bucket_index = (ts.value >> shift_);
+    auto index = baseline_ - bucket_index;
 
     // NOTE: If it is less than zero - we need to shift cache.
     // Otherwise we can select existing generation but this can result in late write
     // or overflow.
 
-    Sequence* gen = nullptr;
+    Bucket* target = nullptr;
     if (index >= 0) {
         if (index == 0) {
-            // shortcut for must frequent case
-            gen = &gen_.front();
+            // shortcut for the most frequent case
+            target = &cache_.front();
         }
         else {
             std::lock_guard<std::mutex> lock((lists_mutex_));
-            for(auto& it: gen_) {
-                if (it.state == 0 && it.index == index) {
-                    gen = &it;
-                    break;
-                }
+            target = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
+                return bucket.state == 0 && bucket.index == bucket_index;
+            });
+            if (target == nullptr) {
+                return AKU_EOVERFLOW;
             }
         }
     }
@@ -291,30 +300,37 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
         // Future write! This must be ammortized across many writes.
         // If this procedure performs often - than we choose too small TTL
         auto count = 0 - index;
-        baseline_.value = rts;
+        baseline_ = bucket_index;
         index = 0;
 
         if (count >= AKU_LIMITS_MAX_CACHES) {
             // Move all items to swap
-            size_t nswaps = gen_.size();
-            swapn(nswaps);
-            *nswapped += nswaps;
-            allocate_from_free_list(AKU_LIMITS_MAX_CACHES);
+            size_t recycle_cnt = AKU_LIMITS_MAX_CACHES;
+            mark_last(cache_, recycle_cnt);
+            *nswapped += recycle_cnt;
+            allocate_from_free_list(recycle_cnt, baseline_);
         }
         else {
             // Calculate, how many gen-s must be swapped
             auto freeslots = AKU_LIMITS_MAX_CACHES - count;
-            if (freeslots < gen_.size()) {
-                size_t swapscnt = gen_.size() - freeslots;
-                swapn(swapscnt);
-                *nswapped += swapscnt;
+            size_t curr_cache_size = cache_.size();
+            if (freeslots < curr_cache_size) {
+                size_t recycle_cnt = curr_cache_size - freeslots;
+                mark_last(cache_, recycle_cnt);
+                *nswapped += recycle_cnt;
             }
-            allocate_from_free_list(count);
+            allocate_from_free_list(count, baseline_);
         }
-        gen = index2ptr(gen_, index);
+        std::lock_guard<std::mutex> lock((lists_mutex_));
+        target = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
+            return bucket.state == 0 && bucket.index == bucket_index;
+        });
+        if (target == nullptr) {
+            return AKU_EGENERAL;
+        }
     }
     // add to bucket
-    return gen->add(ts, pid, offset);
+    return target->add(ts, pid, offset);
 }
 
 int Cache::add_entry(const Entry& entry, EntryOffset offset, size_t* nswapped) noexcept {

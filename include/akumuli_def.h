@@ -12,6 +12,9 @@
 //! Prepopulation count for cache
 #define AKU_CACHE_POPULATION     32
 
+//! Number of sequences per CPU in a bucket
+#define AKU_CACHE_CONCURRENCY     1
+
 // General error codes
 
 //! Success
