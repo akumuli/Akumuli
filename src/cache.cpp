@@ -18,15 +18,18 @@ namespace Akumuli {
 
 Sequence::Sequence(size_t max_size) noexcept
     : capacity_(max_size)
-    , lock_(0)
 {
 }
 
 Sequence::Sequence(Sequence const& other)
     : capacity_(other.capacity_)
     , data_(other.data_)
-    , lock_(0)
 {
+}
+
+Sequence& Sequence::operator = (Sequence const& other) {
+    capacity_ = other.capacity_;
+    data_ = other.data_;
 }
 
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
@@ -172,18 +175,31 @@ Sequence::MapType::const_iterator Sequence::end() const {
 
 // Bucket -------------------------------------
 
-Bucket::Bucket(int n, size_t max_size)
+Bucket::Bucket(int n, size_t max_size, int64_t baseline)
     : rrindex_(0)
+    , state(0)
+    , baseline(baseline)
 {
     for (int i = 0; i < n; i++) {
-        seq.emplace_back(max_size);
+        seq_.emplace_back(max_size);
     }
 }
 
 Bucket::Bucket(Bucket const& other)
     : seq_(other.seq_)
+    , baseline(other.baseline)
     , rrindex_(0)
 {
+    state.store(other.state);
+}
+
+Bucket& Bucket::operator = (Bucket const& other) {
+    if (&other == this)
+        return *this;
+    seq_ = other.seq_;
+    baseline = other.baseline;
+    state.store(other.state);
+    return *this;
 }
 
 int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
@@ -209,12 +225,12 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     // Cache prepopulation
     // Buckets allocated using std::deque<Bucket> for greater locality
     for (int i = 0; i < AKU_CACHE_POPULATION; i++) {
-        cache_.emplace_back(max_size_);
-        auto& s = cache_.back();
+        buckets_.emplace_back(bucket_size_, max_size_, baseline_ + i);
+        auto& s = buckets_.back();
         free_list_.push_back(s);
     }
 
-    allocate_from_free_list(AKU_LIMITS_MAX_CACHES);
+    allocate_from_free_list(AKU_LIMITS_MAX_CACHES, baseline_);
 
     // We need to calculate shift width. So, we got ttl in some units
     // of measure (units of measure that akumuli doesn't know about).
@@ -247,21 +263,21 @@ template<class TCont>
 void mark_last(TCont& container, int n) noexcept {
     auto end = container.end();
     auto begin = container.end();
-    std::advance(begin, -1*swaps);
+    std::advance(begin, -1*n);
     for(auto i = begin; i != end; i++) {
         i->state++;
     }
 }
 
-void Cache::allocate_from_free_list(int nnew, int64_t last_baseline)noexcept {
+void Cache::allocate_from_free_list(int nnew, int64_t baseline)noexcept {
     // TODO: add backpressure to producer to limit memory usage!
     auto n = free_list_.size();
     if (n < nnew) {
         // create new buckets
-        auto nnew = nnew - n;
-        for (int i = 0; i < nnew; i++) {
-            cache_.emplace_back(bucket_size_, max_size_);  // TODO: init baseline in c-tor
-            auto& b = cache_.back();
+        auto cnt = nnew - n;
+        for (int i = 0; i < cnt; i++) {
+            buckets_.emplace_back(bucket_size_, max_size_, baseline + i);  // TODO: init baseline in c-tor
+            auto& b = buckets_.back();
             free_list_.push_back(b);
         }
     }
@@ -287,13 +303,14 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
             target = &cache_.front();
         }
         else {
-            std::lock_guard<std::mutex> lock((lists_mutex_));
-            target = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
-                return bucket.state == 0 && bucket.index == bucket_index;
+            std::lock_guard<std::mutex> lock(lists_mutex_);
+            auto it = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
+                return bucket.state == 0 && bucket.baseline == bucket_index;
             });
-            if (target == nullptr) {
+            if (it == cache_.end()) {
                 return AKU_EOVERFLOW;
             }
+            target = &*it;
         }
     }
     else {
@@ -308,26 +325,27 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
             size_t recycle_cnt = AKU_LIMITS_MAX_CACHES;
             mark_last(cache_, recycle_cnt);
             *nswapped += recycle_cnt;
-            allocate_from_free_list(recycle_cnt, baseline_);
+            allocate_from_free_list(recycle_cnt, baseline_ - recycle_cnt);
         }
         else {
             // Calculate, how many gen-s must be swapped
             auto freeslots = AKU_LIMITS_MAX_CACHES - count;
-            size_t curr_cache_size = cache_.size();
+            size_t curr_cache_size = cache_.size();  // FIXME: must count only buckets with zero state
             if (freeslots < curr_cache_size) {
                 size_t recycle_cnt = curr_cache_size - freeslots;
                 mark_last(cache_, recycle_cnt);
                 *nswapped += recycle_cnt;
             }
-            allocate_from_free_list(count, baseline_);
+            allocate_from_free_list(count, baseline_ - count);
         }
-        std::lock_guard<std::mutex> lock((lists_mutex_));
-        target = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
-            return bucket.state == 0 && bucket.index == bucket_index;
+        std::lock_guard<std::mutex> lock(lists_mutex_);
+        auto it = std::find_if(cache_.begin(), cache_.end(), [=](Bucket const& bucket) {
+            return bucket.state == 0 && bucket.baseline == bucket_index;
         });
-        if (target == nullptr) {
+        if (it == cache_.end()) {
             return AKU_EGENERAL;
         }
+        target = &*it;
     }
     // add to bucket
     return target->add(ts, pid, offset);
@@ -342,7 +360,9 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 }
 
 void Cache::clear() noexcept {
-    gen_.splice(free_list_.begin(), free_list_, gen_.begin(), gen_.end());
+    std::lock_guard<std::mutex> lock((lists_mutex_));
+    // TODO: clean individual buckets
+    cache_.splice(free_list_.begin(), free_list_, cache_.begin(), cache_.end());
 }
 
 int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept {
@@ -370,7 +390,7 @@ void Cache::search(SingleParameterCursor* cursor) const noexcept {
         auto tskey = cursor->upperbound.value;
         auto idkey = cursor->param;
         auto key = tskey >> shift_;
-        auto index = baseline_.value - key;
+        auto index = baseline_ - key;
         // PROBLEM: index can change between calls
         if (index < 0) {
             // future read

@@ -55,13 +55,15 @@ struct Sequence
 
     size_t                  capacity_;      //< Max seq size
     MapType                 data_;          //< Dictionary
-    std::mutex              lock_;          //< Write lock
+    mutable std::mutex      lock_;          //< Write lock
 
     //! Normal c-tor
     Sequence(size_t max_size) noexcept;
 
     //! Copy c-tor
     Sequence(Sequence const& other);
+
+    Sequence& operator = (Sequence const& other);
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if sequence is full. Note that write is successful anyway.
@@ -85,19 +87,20 @@ struct Sequence
 struct Bucket : details::BucketListBaseHook {
 
     std::vector<Sequence>   seq_;
-    std::atomic<int>        rrindex_ = 0;     //< round robin index (maybe I can use TSC register instead of this)
-    TimeStamp               baseline ={0L};   //< max timestamp for the bucket
-    std::atomic<int>        state    = 0;     //< state of the bucket (active, cached)
-    uint64_t                index    = 0;     //< unique bucket index
+    std::atomic<int>        rrindex_;  //< round robin index (maybe I can use TSC register instead of this)
+    int64_t                 baseline;  //< max timestamp for the bucket
+    std::atomic<int>        state;     //< state of the bucket (active, cached)
 
     /** C-tor
       * @param n number of sequences
       * @param max_size max size of the sequence
       */
-    Bucket(int n, size_t max_size);
+    Bucket(int n, size_t max_size, int64_t baseline);
 
     //! Copy c-tor
     Bucket(Bucket const& other);
+
+    Bucket& operator = (Bucket const& other);
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if bucket sequence is full. Note that write is successful anyway.
@@ -132,10 +135,10 @@ class Cache {
     int                     bucket_size_;   //< Bucket size
     int                     shift_;         //< Shift width
     int64_t                 baseline_;      //< Cache baseline
-    std::deque<Bucket>      cache_;         //< List of all buckets
+    std::deque<Bucket>      buckets_;       //< List of all buckets
     BucketListType          free_list_;     //< List of available buckets
     BucketListType          cache_;         //< Active cache
-    std::mutex              lists_mutex_;   //< Mutex that guards both lists, baseline and deque
+    mutable std::mutex      lists_mutex_;   //< Mutex that guards both lists, baseline and deque
 
     /* NOTE:
      * Buckets must be isoated (doesn't interleave with each other).
