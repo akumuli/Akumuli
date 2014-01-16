@@ -12,7 +12,7 @@
 #include <cassert>
 #include <algorithm>
 #include <apr_time.h>
-#include "timsort.hpp"
+#include "sort.h"
 #include "page.h"
 #include "akumuli_def.h"
 
@@ -205,6 +205,7 @@ int PageHeader::add_entry(Entry const& entry) noexcept {
     last_offset = free_slot - cdata();
     page_index[count] = last_offset;
     count++;
+    // FIXME: split param_id update
     update_bounding_box(entry.param_id, entry.time);
     return AKU_WRITE_STATUS_SUCCESS;
 }
@@ -279,7 +280,12 @@ void ins_sort(RandomIt start, RandomIt end, Cmp cmp) {
 void PageHeader::sort() noexcept {
     auto begin = page_index;
     auto end = page_index + count;
-    gfx::timsort(begin, end, [&](EntryOffset a, EntryOffset b) {
+    /* NOTE: We can use insertion sort because data that akumuli can process
+     * must be partially ordered because we doesn't allow late writes (if timestamp
+     * of the new sample is less than some value).
+     */
+    // TODO: use more robust algorithm
+    Akumuli::insertion_sort(begin, end, [&](EntryOffset a, EntryOffset b) {
         auto ea = reinterpret_cast<const Entry*>(cdata() + a);
         auto eb = reinterpret_cast<const Entry*>(cdata() + b);
         auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);

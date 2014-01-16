@@ -4,6 +4,7 @@ add_library(akumuli SHARED
     ../include/page.h
     ../include/akumuli.h
     ../include/util.h
+    ../include/sort.h
     storage.cpp
     page.cpp
     akumuli.cpp
