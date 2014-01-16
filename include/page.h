@@ -238,8 +238,10 @@ struct PageHeader {
      */
     void sort() noexcept;
 
-    // TODO: add partial sort
-    // TODO: implement interpolated search
+    /**
+     * Sort page content partially
+     */
+    void partial_sort() noexcept;
 
     /**
      *  Binary search for entry
