@@ -115,7 +115,7 @@ Storage::Storage(const char* file_name)
 // Reading
 
 void Storage::find_entry(ParamId param, TimeStamp timestamp) {
-    int64_t raw_time = timestamp.precise;
+    int64_t raw_time = timestamp.value;
 }
 
 // Writing

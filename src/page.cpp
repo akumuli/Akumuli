@@ -27,23 +27,27 @@ TimeStamp TimeStamp::utc_now() noexcept {
 }
 
 bool TimeStamp::operator  < (TimeStamp other) const noexcept {
-    return precise < other.precise;
+    return value < other.value;
 }
 
 bool TimeStamp::operator  > (TimeStamp other) const noexcept {
-    return precise > other.precise;
+    return value > other.value;
 }
 
 bool TimeStamp::operator == (TimeStamp other) const noexcept {
-    return precise == other.precise;
+    return value == other.value;
 }
 
 bool TimeStamp::operator <= (TimeStamp other) const noexcept {
-    return precise <= other.precise;
+    return value <= other.value;
 }
 
 bool TimeStamp::operator >= (TimeStamp other) const noexcept {
-    return precise >= other.precise;
+    return value >= other.value;
+}
+
+TimeDuration TimeStamp::operator - (TimeStamp other) const noexcept {
+    return { value - other.value };
 }
 
 const TimeStamp TimeStamp::MAX_TIMESTAMP = {std::numeric_limits<int64_t>::max()};
@@ -288,8 +292,8 @@ void PageHeader::sort() noexcept {
     Akumuli::insertion_sort(begin, end, [&](EntryOffset a, EntryOffset b) {
         auto ea = reinterpret_cast<const Entry*>(cdata() + a);
         auto eb = reinterpret_cast<const Entry*>(cdata() + b);
-        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.precise, ea->param_id);
-        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.precise, eb->param_id);
+        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.value, ea->param_id);
+        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.value, eb->param_id);
         return ta < tb;
     });
 }
@@ -333,8 +337,8 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
     uint32_t max_index = count - 1u;
     uint32_t begin = 0u;
     uint32_t end = max_index;
-    int64_t key = is_backward ? cursor->upperbound.precise
-                              : cursor->lowerbound.precise;
+    int64_t key = is_backward ? cursor->upperbound.value
+                              : cursor->lowerbound.value;
     uint32_t probe_index = 0u;
 
     while(1) {
@@ -342,10 +346,10 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
         case AKU_CURSOR_START:
             cursor->state = AKU_CURSOR_SEARCH;
         case AKU_CURSOR_SEARCH:
-            if (key <= bbox.max_timestamp.precise && key >= bbox.min_timestamp.precise) {
+            if (key <= bbox.max_timestamp.value && key >= bbox.min_timestamp.value) {
 
-                int64_t search_lower_bound = bbox.min_timestamp.precise;
-                int64_t search_upper_bound = bbox.max_timestamp.precise;
+                int64_t search_lower_bound = bbox.min_timestamp.value;
+                int64_t search_upper_bound = bbox.max_timestamp.value;
 
                 int interpolation_search_quota = 5;
 
@@ -361,7 +365,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
 
                         auto probe_offset = page_index[probe_index];
                         auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                        auto probe = probe_entry->time.precise;
+                        auto probe = probe_entry->time.value;
 
                         if (probe == key) {
                             cursor->probe_index = probe_index;
@@ -373,12 +377,12 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                             begin = probe_index + 1u;
                             probe_offset = page_index[begin];
                             probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                            search_lower_bound = probe_entry->time.precise;
+                            search_lower_bound = probe_entry->time.value;
                         } else {
                             end   = probe_index - 1u;
                             probe_offset = page_index[end];
                             probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                            search_upper_bound = probe_entry->time.precise;
+                            search_upper_bound = probe_entry->time.value;
                         }
                     }
                     else {
@@ -388,7 +392,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                 }
             } else {
                 // shortcut for corner cases
-                if (key > bbox.max_timestamp.precise) {
+                if (key > bbox.max_timestamp.value) {
                     if (is_backward) {
                         cursor->probe_index = end;
                         cursor->start_index = end;
@@ -400,7 +404,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                         return;
                     }
                 }
-                else if (key < bbox.min_timestamp.precise) {
+                else if (key < bbox.min_timestamp.value) {
                     if (!is_backward) {
                         cursor->probe_index = begin;
                         cursor->start_index = begin;
@@ -417,7 +421,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                 probe_index = begin + ((end - begin) / 2u);
                 auto probe_offset = page_index[probe_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                auto probe = probe_entry->time.precise;
+                auto probe = probe_entry->time.value;
 
                 if (probe == key) {             // found
                     break;

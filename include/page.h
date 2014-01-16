@@ -25,22 +25,36 @@ namespace Akumuli {
 typedef uint32_t EntryOffset;
 typedef uint32_t ParamId;
 
+
+/** Time duration.
+ *  Difference between two timestamps.
+ */
+struct TimeDuration {
+    int64_t value;
+};
+
+
 /** Timestamp. Can be treated as
  *  single 64-bit value or two
  *  consequtive 32-bit values.
  */
 struct TimeStamp {
-    /** number of microseconds since 00:00:00 january 1, 1970 UTC */
-    int64_t precise;
+    /** Number of microseconds since 00:00:00 january 1, 1970 UTC.
+     *  Some kind of monotone sequence id can be used instead of
+     *  real timestamps. Akumuli doesn't uses any kind of calendar
+     *  or timezone conversion.
+     */
+    int64_t value;
 
     /** UTC timestamp of the current instant */
     static TimeStamp utc_now() noexcept;
 
-    bool operator  < (TimeStamp other) const noexcept;
-    bool operator  > (TimeStamp other) const noexcept;
-    bool operator == (TimeStamp other) const noexcept;
-    bool operator <= (TimeStamp other) const noexcept;
-    bool operator >= (TimeStamp other) const noexcept;
+    bool         operator  < (TimeStamp other) const noexcept;
+    bool         operator  > (TimeStamp other) const noexcept;
+    bool         operator == (TimeStamp other) const noexcept;
+    bool         operator <= (TimeStamp other) const noexcept;
+    bool         operator >= (TimeStamp other) const noexcept;
+    TimeDuration operator  - (TimeStamp other) const noexcept;
 
     //! Maximum possible timestamp
     static const TimeStamp MAX_TIMESTAMP;

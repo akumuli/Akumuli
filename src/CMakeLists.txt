@@ -5,8 +5,10 @@ add_library(akumuli SHARED
     ../include/akumuli.h
     ../include/util.h
     ../include/sort.h
+    ../include/cache.h
     storage.cpp
     page.cpp
     akumuli.cpp
     util.cpp
+    cache.cpp
 )

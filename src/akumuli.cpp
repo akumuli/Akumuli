@@ -43,14 +43,14 @@ struct DatabaseImpl : public aku_Database
 
     void add_sample(uint32_t param_id, int64_t long_timestamp, aku_MemRange value) {
         TimeStamp ts;
-        ts.precise = long_timestamp;
+        ts.value = long_timestamp;
         auto entry = Entry2(param_id, ts, value);
         storage_.write(entry);
     }
 
     int32_t find_sample(uint32_t param_id, int64_t instant, aku_MemRange out_data) {
         TimeStamp ts;
-        ts.precise = instant;
+        ts.value = instant;
         storage_.find_entry(param_id, ts);
         // FIXME
     }

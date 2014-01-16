@@ -170,8 +170,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], 67 - i);
-        BOOST_CHECK(entry->time.precise >= 1000L);
-        BOOST_CHECK(entry->time.precise <= 1067L);
+        BOOST_CHECK(entry->time.value >= 1000L);
+        BOOST_CHECK(entry->time.value <= 1067L);
     }
 }
 
@@ -193,9 +193,9 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_1)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], 50 - i);
-        BOOST_CHECK(entry->time.precise >= 1010L);
-        BOOST_CHECK(entry->time.precise <= 1050L);
-        timestamps.push_back(entry->time.precise);
+        BOOST_CHECK(entry->time.value >= 1010L);
+        BOOST_CHECK(entry->time.value <= 1050L);
+        timestamps.push_back(entry->time.value);
     }
 
     // Check forward time direction
@@ -218,8 +218,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], 99 - i);
-        BOOST_CHECK(entry->time.precise >= 1000L);
-        BOOST_CHECK(entry->time.precise <= 1100L);
+        BOOST_CHECK(entry->time.value >= 1000L);
+        BOOST_CHECK(entry->time.value <= 1100L);
     }
 }
 
@@ -268,8 +268,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_0)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], i);
-        BOOST_CHECK(entry->time.precise >= 1000L);
-        BOOST_CHECK(entry->time.precise <= 1067L);
+        BOOST_CHECK(entry->time.value >= 1000L);
+        BOOST_CHECK(entry->time.value <= 1067L);
     }
 }
 
@@ -290,9 +290,9 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_1)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], 10 + i);
-        BOOST_CHECK(entry->time.precise >= 1010L);
-        BOOST_CHECK(entry->time.precise <= 1050L);
-        timestamps.push_back(entry->time.precise);
+        BOOST_CHECK(entry->time.value >= 1010L);
+        BOOST_CHECK(entry->time.value <= 1050L);
+        timestamps.push_back(entry->time.value);
     }
 
     // Check forward time direction
@@ -315,8 +315,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
         BOOST_CHECK_EQUAL(entry->value[0], i);
-        BOOST_CHECK(entry->time.precise >= 1000L);
-        BOOST_CHECK(entry->time.precise <= 1100L);
+        BOOST_CHECK(entry->time.value >= 1000L);
+        BOOST_CHECK(entry->time.value <= 1100L);
     }
 }
 
@@ -380,9 +380,9 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
 
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
-        BOOST_CHECK(entry->time.precise >= 1010L);
-        BOOST_CHECK(entry->time.precise <= 2008L);
-        timestamps.push_back(entry->time.precise);
+        BOOST_CHECK(entry->time.value >= 1010L);
+        BOOST_CHECK(entry->time.value <= 2008L);
+        timestamps.push_back(entry->time.value);
     }
 
     // Check forward time direction
@@ -405,9 +405,9 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 
     for(int i = 0; i < cursor.results_num; i++) {
         const Entry* entry = page->read_entry(indexes[i]);
-        BOOST_CHECK(entry->time.precise >= 1010L);
-        BOOST_CHECK(entry->time.precise <= 2008L);
-        timestamps.push_back(entry->time.precise);
+        BOOST_CHECK(entry->time.value >= 1010L);
+        BOOST_CHECK(entry->time.value <= 2008L);
+        timestamps.push_back(entry->time.value);
     }
 
     // Check forward time direction
@@ -453,11 +453,11 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
             AKU_CURSOR_DIR_BACKWARD
         };
         int dir = directions[rand() & 1];
-        int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.precise);
-        int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.precise);
+        int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.value);
+        int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.value);
         ParamId id2search = 1 + (rand() & 1);
-        assert(start_time > 0 && start_time < page->bbox.max_timestamp.precise);
-        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.precise);
+        assert(start_time > 0 && start_time < page->bbox.max_timestamp.value);
+        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
         assert(stop_time > start_time);
         uint32_t indexes[100];
         SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, dir, indexes, 100);
@@ -468,7 +468,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
                 auto index = indexes[i];
                 matches.push_back(index);
                 const Entry* entry = page->read_entry(index);
-                BOOST_REQUIRE(entry->time.precise == timestamps[index]);
+                BOOST_REQUIRE(entry->time.value == timestamps[index]);
                 BOOST_REQUIRE(entry->param_id == paramids[index]);
                 BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
             }
