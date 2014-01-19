@@ -10,6 +10,7 @@ set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost "1.49.0" 
     COMPONENTS
     unit_test_framework
+    system
     REQUIRED
 )
 
@@ -30,3 +31,4 @@ add_subdirectory(src)
 enable_testing()
 add_subdirectory(unit_tests)
 add_subdirectory(tests/fill_test)
+add_subdirectory(tool)

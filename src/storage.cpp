@@ -18,6 +18,7 @@
 #include <cassert>
 #include <apr_general.h>
 #include <apr_mmap.h>
+#include <apr_xml.h>
 #include <log4cxx/logger.h>
 #include <log4cxx/logmanager.h>
 #include <boost/property_tree/ptree.hpp>
@@ -58,6 +59,11 @@ Storage::Storage(const char* file_name)
      * happend and we it's impossible to open this storage, for example -
      * because metadata file is corrupted, or volume is missed on disc.
      */
+
+    // NOTE: incremental backup target will be stored in metadata file
+
+    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
+    //       is FUBAR and uses boost::spirit.
 
     // 1. Read json file
     boost::property_tree::ptree ptree;
@@ -288,6 +294,8 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
 static apr_status_t create_metadata_page( const char* file_name
                                         , std::vector<std::string> const& page_file_names)
 {
+    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
+    //       is FUBAR and uses boost::spirit.
     try {
         boost::property_tree::ptree root;
         auto now = apr_time_now();

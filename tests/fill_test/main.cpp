@@ -1,8 +1,19 @@
 #include <iostream>
 #include <cassert>
 #include <random>
+#include <tuple>
+#include <map>
+#include <vector>
+#include <algorithm>
+#include <unordered_map>
+#include <memory>
+
+#include <boost/unordered_map.hpp>
+#include <stx/btree.h>
 
 #include <boost/timer.hpp>
+#include <boost/pool/pool.hpp>
+#include <boost/pool/pool_alloc.hpp>
 #include <apr_mmap.h>
 #include <apr_general.h>
 
@@ -19,7 +30,8 @@ enum Target {
     NOTHING,
     CREATE,
     WRITE,
-    READ
+    READ,
+    MEM
 };
 
 int main(int cnt, const char** args)
@@ -35,6 +47,9 @@ int main(int cnt, const char** args)
         } else
         if (param == "--read") {
             target = READ;
+        } else
+        if (param == "--mem") {
+            target = MEM;
         }
     }
     if (target == NOTHING) {
@@ -49,6 +64,51 @@ int main(int cnt, const char** args)
             return 1;
         }
         return 0;
+    }
+    if (target == MEM) {
+
+        typedef std::tuple<TimeStamp, ParamId> KeyType;
+
+        struct KeyHasher {
+            size_t operator () (KeyType const& kt) const noexcept {
+                return (size_t) std::get<0>(kt).value;
+            }
+        };
+
+        typedef stx::btree<KeyType, EntryOffset
+        //typedef boost::unordered::unordered_multimap<
+        ////typedef std::multimap<
+        //        KeyType,
+        //        EntryOffset,
+        //        //std::less<KeyType>,
+        //        KeyHasher,
+        //        std::equal_to<KeyType>,
+        //        boost::fast_pool_allocator<std::pair<const KeyType, EntryOffset> >
+                >
+            Generation;
+
+        std::vector< std::unique_ptr<Generation> > gen7s;
+        const int num_gen7s = 4;
+        const int gen7_size_max = 10000;
+        for(int i = 0; i < num_gen7s; i++) {
+            gen7s.push_back(std::unique_ptr<Generation>(new Generation()));
+        }
+        boost::timer timer;
+        for(int64_t i = 0; i < 100000000; i++) {
+            TimeStamp ts;
+            ts.value = i*2L;
+            ParamId id = 1;
+
+            gen7s[0]->insert(std::make_pair(std::make_tuple(ts, id), 1024));
+            if (gen7s[0]->size() > gen7_size_max) {
+                gen7s[0]->clear();
+            }
+
+            if (i % 1000000 == 0) {
+                std::cout << i << " " << timer.elapsed() << "s" << std::endl;
+                timer.restart();
+            }
+        }
     }
     if (target == READ) {
         char* path = "test";
