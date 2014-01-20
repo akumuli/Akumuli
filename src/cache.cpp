@@ -39,9 +39,19 @@ bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
 }
 
 void Generation::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
+    auto key = std::make_tuple(ts, param);
+    data_->insert(std::make_pair(key, offset));
 }
 
-std::vector<EntryOffset> Generation::get(TimeStamp ts, ParamId pid) noexcept {
+std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept {
+    auto key = std::make_tuple(ts, pid);
+    auto iter_pair = data_->equal_range(key);
+    size_t result_ix = 0;
+    for (; iter_pair.first != iter_pair.second && result_ix < results_len; iter_pair.first++) {
+        if (result_ix >= skip)
+            results[result_ix++] = iter_pair.first->second;
+    }
+    return std::make_pair(result_ix, iter_pair.first != iter_pair.second);
 }
 
 

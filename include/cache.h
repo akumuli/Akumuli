@@ -45,8 +45,15 @@ struct Generation {
     //! Add item to cache
     void add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept;
 
-    //! Search
-    std::vector<EntryOffset> get(TimeStamp ts, ParamId pid) noexcept;
+    /** Search for elements.
+     *  @param ts time stamp
+     *  @param pid parameter id
+     *  @param results destination array
+     *  @param results_len size of the destination array
+     *  @param skip number of elements to skip
+     *  @return number of returned elements x is there any elements remaining
+     */
+    std::pair<size_t, bool> find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept;
 
     /** Get the oldest timestamp of the generation.
      *  If generation is empty - return false, true otherwise.
