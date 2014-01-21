@@ -9,7 +9,7 @@
 #include <memory>
 
 #include <boost/unordered_map.hpp>
-#include <stx/btree.h>
+#include <cpp-btree/btree_map.h>
 
 #include <boost/timer.hpp>
 #include <boost/pool/pool.hpp>
@@ -75,7 +75,7 @@ int main(int cnt, const char** args)
             }
         };
 
-        typedef stx::btree<KeyType, EntryOffset
+        typedef btree::btree_multimap<KeyType, EntryOffset
         //typedef boost::unordered::unordered_multimap<
         ////typedef std::multimap<
         //        KeyType,

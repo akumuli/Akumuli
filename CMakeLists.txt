@@ -26,6 +26,7 @@ add_definitions(-std=gnu++0x)
 #endif()
 
 include_directories(./include)
+include_directories(./third_party)
 
 add_subdirectory(src)
 enable_testing()

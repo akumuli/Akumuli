@@ -47,9 +47,13 @@ std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset*
     auto key = std::make_tuple(ts, pid);
     auto iter_pair = data_->equal_range(key);
     size_t result_ix = 0;
-    for (; iter_pair.first != iter_pair.second && result_ix < results_len; iter_pair.first++) {
-        if (result_ix >= skip)
+    for (;iter_pair.first != iter_pair.second; iter_pair.first++) {
+        if (skip) {
+            skip--;
+        } else {
+            if (result_ix == results_len) break;
             results[result_ix++] = iter_pair.first->second;
+        }
     }
     return std::make_pair(result_ix, iter_pair.first != iter_pair.second);
 }
