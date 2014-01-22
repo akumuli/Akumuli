@@ -15,7 +15,7 @@
 #pragma once
 #include "page.h"
 
-#include <stx/btree_multimap.h>
+#include <cpp-btree/btree_map.h>
 
 #include <tuple>
 #include <vector>
@@ -23,21 +23,26 @@
 
 namespace Akumuli {
 
-struct Generation {
+class Generation {
+    Generation(Generation const& other);
+public:
     //! TTL
     TimeDuration ttl_;
 
-    //! Container type
-    typedef stx::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
+    //! Max generation size
+    size_t max_size_;
 
-    //! Index
-    std::unique_ptr<MapType> data_;
+    //! Container type
+    typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
+
+    //! Dictionary
+    MapType data_;
+
+    //! Starting index
+    uint32_t starting_index_;
 
     //! Normal c-tor
-    Generation(TimeDuration ttl) noexcept;
-
-    //! Copy c-tor
-    Generation(Generation const& other) noexcept;
+    Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept;
 
     //! Move c-tor
     Generation(Generation && other) noexcept;

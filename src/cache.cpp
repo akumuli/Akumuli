@@ -16,36 +16,37 @@ namespace Akumuli {
 
 // Generation ---------------------------------
 
-Generation::Generation(TimeDuration ttl) noexcept
+Generation::Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept
     : ttl_(ttl)
+    , max_size_(max_size)
+    , starting_index_(starting_index)
 {
-    data_.reset(new MapType());
-}
-
-Generation::Generation(Generation const& other) noexcept
-    : ttl_(other.ttl_)
-{
-    data_.reset(new MapType(*other.data_));
 }
 
 Generation::Generation(Generation && other) noexcept
     : ttl_(other.ttl_)
-    , data_(std::move(other.data_))
+    , max_size_(other.max_size_)
+    , starting_index_(other.starting_index_)
 {
+    other.data_.swap(data_);
 }
 
 bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
-    return false;
+    if (data_.empty())
+        return false;
+    auto iter = data_.begin();
+    *ts = std::get<0>(iter->first);
+    return true;
 }
 
 void Generation::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     auto key = std::make_tuple(ts, param);
-    data_->insert(std::make_pair(key, offset));
+    data_.insert(std::make_pair(key, offset));
 }
 
 std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept {
     auto key = std::make_tuple(ts, pid);
-    auto iter_pair = data_->equal_range(key);
+    auto iter_pair = data_.equal_range(key);
     size_t result_ix = 0;
     for (;iter_pair.first != iter_pair.second; iter_pair.first++) {
         if (skip) {

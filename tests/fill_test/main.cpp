@@ -76,14 +76,8 @@ int main(int cnt, const char** args)
         };
 
         typedef btree::btree_multimap<KeyType, EntryOffset
-        //typedef boost::unordered::unordered_multimap<
-        ////typedef std::multimap<
-        //        KeyType,
-        //        EntryOffset,
-        //        //std::less<KeyType>,
-        //        KeyHasher,
-        //        std::equal_to<KeyType>,
-        //        boost::fast_pool_allocator<std::pair<const KeyType, EntryOffset> >
+                , std::less<KeyType>
+                , std::allocator<std::pair<const KeyType, EntryOffset> >
                 >
             Generation;
 
