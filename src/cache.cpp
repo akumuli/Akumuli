@@ -18,14 +18,14 @@ namespace Akumuli {
 
 Generation::Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept
     : ttl_(ttl)
-    , max_size_(max_size)
+    , capacity_(max_size)
     , starting_index_(starting_index)
 {
 }
 
 Generation::Generation(Generation && other) noexcept
     : ttl_(other.ttl_)
-    , max_size_(other.max_size_)
+    , capacity_(other.capacity_)
     , starting_index_(other.starting_index_)
 {
     other.data_.swap(data_);
@@ -39,9 +39,17 @@ bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
     return true;
 }
 
-void Generation::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
+int Generation::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     auto key = std::make_tuple(ts, param);
     data_.insert(std::make_pair(key, offset));
+    TimeStamp oldest;
+    get_oldest_timestamp(&oldest);
+    TimeDuration diff = ts - oldest;
+    if (diff.value > ttl_.value || capacity_ == 0) {
+        return AKU_WRITE_STATUS_OVERFLOW;
+    }
+    capacity_--;
+    return AKU_WRITE_STATUS_SUCCESS;
 }
 
 std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept {

@@ -30,7 +30,7 @@ public:
     TimeDuration ttl_;
 
     //! Max generation size
-    size_t max_size_;
+    size_t capacity_;
 
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
@@ -47,8 +47,10 @@ public:
     //! Move c-tor
     Generation(Generation && other) noexcept;
 
-    //! Add item to cache
-    void add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept;
+    /**  Add item to cache.
+      *  @return AKU_WRITE_STATUS_OVERFLOW if generation is full. Note that write is successful anyway.
+      */
+    int add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept;
 
     /** Search for elements.
      *  @param ts time stamp

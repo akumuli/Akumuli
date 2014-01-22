@@ -43,6 +43,35 @@ BOOST_AUTO_TEST_CASE(Test_generation_insert)
     }
 }
 
+BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_size)
+{
+    TimeDuration td = { 1000L };
+    Generation gen(td, 4, 0);
+
+    TimeStamp ts = { (int64_t)0 };
+    BOOST_REQUIRE(gen.add(ts, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts, (ParamId)2, (EntryOffset)2) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts, (ParamId)3, (EntryOffset)3) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts, (ParamId)4, (EntryOffset)4) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts, (ParamId)5, (EntryOffset)5) == AKU_WRITE_STATUS_OVERFLOW);
+    BOOST_REQUIRE(gen.add(ts, (ParamId)6, (EntryOffset)6) == AKU_WRITE_STATUS_OVERFLOW);
+}
+
+BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_time)
+{
+    TimeDuration td = { 8L };
+    Generation gen(td, 1000, 0);
+
+    TimeStamp ts0 = { (int64_t)0 };
+    TimeStamp ts1 = { (int64_t)1 };
+    TimeStamp ts3 = { (int64_t)3 };
+    TimeStamp ts9 = { (int64_t)9 };
+    BOOST_REQUIRE(gen.add(ts0, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts1, (ParamId)2, (EntryOffset)2) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts3, (ParamId)3, (EntryOffset)3) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(gen.add(ts9, (ParamId)4, (EntryOffset)4) == AKU_WRITE_STATUS_OVERFLOW);
+}
+
 BOOST_AUTO_TEST_CASE(Test_generation_find)
 {
     TimeDuration td = { 1000L };
