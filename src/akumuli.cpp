@@ -25,15 +25,11 @@ using namespace Akumuli;
  */
 struct DatabaseImpl : public aku_Database
 {
-    std::string path_to_file_;
-    bool debug_mode_;
     Storage storage_;
 
     // private fields
     DatabaseImpl(const aku_Config& config)
-        : path_to_file_(config.path_to_file)
-        , debug_mode_(config.debug_mode != 0)
-        , storage_(config.path_to_file)
+        : storage_(config)
     {
     }
 

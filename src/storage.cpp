@@ -30,11 +30,14 @@ static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.St
 
 //----------------------------------Volume----------------------------------------------
 
-Volume::Volume(const char* file_name)
+Volume::Volume(const char* file_name, TimeDuration ttl, size_t max_cache_size)
     : mmap_(file_name)
+    , ttl_(ttl)
+    , max_cache_size_(max_cache_size)
 {
     mmap_.throw_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
+    cache_.reset(new Cache(ttl_, page_, max_cache_size_));
 }
 
 PageHeader* Volume::get_page() const noexcept {
@@ -51,14 +54,21 @@ PageHeader* Volume::reallocate_disc_space() {
     return page_;
 }
 
+void Volume::close() noexcept {
+    // TODO: not implemented
+    throw std::runtime_error("Not implemented");
+}
+
 //----------------------------------Storage---------------------------------------------
 
-Storage::Storage(const char* file_name)
+Storage::Storage(aku_Config const& conf)
 {
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
      * because metadata file is corrupted, or volume is missed on disc.
      */
+
+    ttl_.value = conf.max_late_write;
 
     // NOTE: incremental backup target will be stored in metadata file
 
@@ -69,7 +79,7 @@ Storage::Storage(const char* file_name)
     boost::property_tree::ptree ptree;
     // NOTE: there is a known bug in boost 1.49 - https://svn.boost.org/trac/boost/ticket/6785
     // FIX: sed -i -e 's/std::make_pair(c.name, Str(b, e))/std::make_pair(c.name, Ptree(Str(b, e)))/' json_parser_read.hpp
-    boost::property_tree::json_parser::read_json(file_name, ptree);
+    boost::property_tree::json_parser::read_json(conf.path_to_file, ptree);
 
     // 2. Read volumes
     int num_volumes = ptree.get_child("num_volumes").get_value(0);
@@ -97,7 +107,8 @@ Storage::Storage(const char* file_name)
 
     // create volumes list
     for(auto path: volume_names) {
-        Volume* vol = new Volume(path.c_str());
+        // TODO: convert conf.max_cache_size from bytes
+        Volume* vol = new Volume(path.c_str(), ttl_, conf.max_cache_size);
         volumes_.push_back(vol);
     }
 

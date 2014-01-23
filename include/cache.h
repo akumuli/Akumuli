@@ -24,7 +24,6 @@
 namespace Akumuli {
 
 class Generation {
-    Generation(Generation const& other);
 public:
     //! TTL
     TimeDuration ttl_;
@@ -43,6 +42,9 @@ public:
 
     //! Normal c-tor
     Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept;
+
+    //! Copy c-tor
+    Generation(Generation const& other);
 
     //! Move c-tor
     Generation(Generation && other) noexcept;
@@ -66,20 +68,28 @@ public:
      *  If generation is empty - return false, true otherwise.
      */
     bool get_oldest_timestamp(TimeStamp* ts) const noexcept;
+
+    //! Get number of items
+    size_t size() const noexcept;
 };
 
 
 class Cache {
     PageHeader* page_;
     TimeDuration ttl_;
+    size_t max_size_;
+    uint32_t offset_;
     // Index structures
     std::vector<Generation> gen_;
 public:
-    Cache(TimeDuration ttl, PageHeader* page);
+    Cache(TimeDuration ttl, PageHeader* page, size_t max_size);
 
     void add_entry(const Entry& entry, EntryOffset offset) noexcept;
 
     void add_entry(const Entry2& entry, EntryOffset offset) noexcept;
+
+    //! Close cache for write
+    void close() noexcept;
 };
 
 }

@@ -1,6 +1,10 @@
 #ifndef AKUMULI_DEF_H
 #define AKUMULI_DEF_H
 
+// Config
+#define AKU_DEBUG_MODE_ON 1
+#define AKU_DEBUG_MODE_OFF 0
+
 // Write status
 
 //! Succesfull write

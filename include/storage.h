@@ -23,21 +23,10 @@
 
 #include "page.h"
 #include "util.h"
+#include "cache.h"
 #include "akumuli_def.h"
 
 namespace Akumuli {
-
-struct ParamCache {
-    std::list<EntryOffset> list;
-    int64_t last_item_timestamp;
-};
-
-// TODO:
-class TimeIndex {
-    std::map<ParamId, std::unique_ptr<ParamCache>> cache_;
-public:
-
-};
 
 
 /** Storage volume.
@@ -47,16 +36,21 @@ public:
 struct Volume {
     MemoryMappedFile mmap_;
     PageHeader* page_;
-    TimeIndex main_memory_index_;
+    TimeDuration ttl_;
+    size_t max_cache_size_;
+    std::unique_ptr<Cache> cache_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path);
+    Volume(const char* file_path, TimeDuration ttl, size_t max_cache_size);
 
     //! Get pointer to page
     PageHeader* get_page() const noexcept;
 
     //! Reallocate disc space and return pointer to newly mapped page
     PageHeader *reallocate_disc_space();
+
+    //! Flush all data and close volume for write until reallocation
+    void close() noexcept;
 };
 
 /** Interface to page manager
@@ -66,6 +60,7 @@ struct Storage
     Volume* active_volume_;
     PageHeader* active_page_;
     int active_volume_index_;
+    TimeDuration ttl_;
     std::vector<Volume*> volumes_;
 
     // Cached metadata
@@ -75,7 +70,7 @@ struct Storage
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
-    Storage(const char* file_name);
+    Storage(aku_Config const& conf);
 
     // Writing
 

@@ -21,9 +21,17 @@ extern "C" {
  */
 struct aku_Config
 {
+    //! Path to akumuli metadata file
     char* path_to_file;
-    int32_t page_size;
+
+    //! Debug mode trigger
     int32_t debug_mode;
+
+    //! Maximum depth of the late write
+    int64_t max_late_write;
+
+    //! Maximum cache size in bytes
+    int64_t max_cache_size;
 };
 
 }

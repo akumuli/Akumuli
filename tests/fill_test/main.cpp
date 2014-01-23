@@ -108,7 +108,6 @@ int main(int cnt, const char** args)
         char* path = "test";
         aku_Config config;
         config.debug_mode = 0;
-        config.page_size = 0;
         config.path_to_file = path;
         auto db = aku_open_database(config);
         // TODO:...
@@ -118,8 +117,8 @@ int main(int cnt, const char** args)
         char* path = "test.akumuli";
         aku_Config config;
         config.debug_mode = 0;
-        config.page_size = 0;
         config.path_to_file = path;
+        //TODO: set proper ttl
         auto db = aku_open_database(config);
         boost::timer timer;
         for(int64_t i = 0; i < 100000000; i++) {

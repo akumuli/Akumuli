@@ -23,6 +23,14 @@ Generation::Generation(TimeDuration ttl, size_t max_size, uint32_t starting_inde
 {
 }
 
+Generation::Generation(Generation const& other)
+    : ttl_(other.ttl_)
+    , capacity_(other.capacity_)
+    , starting_index_(other.starting_index_)
+    , data_(other.data_)
+{
+}
+
 Generation::Generation(Generation && other) noexcept
     : ttl_(other.ttl_)
     , capacity_(other.capacity_)
@@ -67,21 +75,35 @@ std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset*
     return std::make_pair(result_ix, iter_pair.first != iter_pair.second);
 }
 
+size_t Generation::size() const noexcept {
+    return data_.size();
+}
+
 
 
 // Cache --------------------------------------
 
-Cache::Cache(TimeDuration ttl, PageHeader* page)
+Cache::Cache(TimeDuration ttl, PageHeader* page, size_t max_size)
     : ttl_(ttl)
     , page_(page)
+    , max_size_(max_size)
 {
-    //for(int i = 0; i < AKU_NUM_GENERATIONS; i++)
-    //    gen_.push_back(Generation(ttl_));
+    // Cache starting offset
+    offset_ = page_->count;
+
+    // First created generation will hold elements with indexes
+    // from offset_ to offset_ + gen.size()
+    gen_.push_back(Generation(ttl_, max_size_, offset_));
 }
 
 void Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
     //gen_[0].add(entry.time, entry.param_id, offset);
 }
 
-
+void Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {
 }
+
+void Cache::close() noexcept {
+}
+
+}  // namespace Akumuli
