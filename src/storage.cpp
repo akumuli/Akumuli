@@ -145,8 +145,9 @@ void Storage::commit() {
 //! write data
 int Storage::write(Entry const& entry) {
     // FIXME: this code intentionaly single threaded
+    int status = AKU_WRITE_STATUS_BAD_DATA;
     while(true) {
-        int status = active_page_->add_entry(entry);
+        status = active_page_->add_entry(entry);
         switch (status) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
@@ -155,16 +156,20 @@ int Storage::write(Entry const& entry) {
             active_page_ = active_volume_->reallocate_disc_space();
             active_page_->clear();
             break;
-        default:
+        case AKU_WRITE_STATUS_SUCCESS:
+            active_volume_->cache_->add_entry(entry, active_page_->last_offset);
             return status;
         };
     }
+    LOG4CXX_ERROR(s_logger_, "Write error: " << status);
+    return status;
 }
 
 int Storage::write(Entry2 const& entry) {
     // FIXME: this code intentionaly left single threaded
+    int status = AKU_WRITE_STATUS_BAD_DATA;
     while(true) {
-        int status = active_page_->add_entry(entry);
+        status = active_page_->add_entry(entry);
         switch (status) {
         case AKU_WRITE_STATUS_OVERFLOW:
             // select next page in round robin order
@@ -173,10 +178,13 @@ int Storage::write(Entry2 const& entry) {
             active_page_ = active_volume_->reallocate_disc_space();
             active_page_->clear();
             break;
-        default:
+        case AKU_WRITE_STATUS_SUCCESS:
+            active_volume_->cache_->add_entry(entry, active_page_->last_offset);
             return status;
         };
     }
+    LOG4CXX_ERROR(s_logger_, "Write error: " << status);
+    return status;
 }
 
 

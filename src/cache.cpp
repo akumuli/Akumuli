@@ -31,12 +31,17 @@ Generation::Generation(Generation const& other)
 {
 }
 
-Generation::Generation(Generation && other) noexcept
-    : ttl_(other.ttl_)
-    , capacity_(other.capacity_)
-    , starting_index_(other.starting_index_)
-{
-    other.data_.swap(data_);
+void Generation::swap(Generation& other) {
+    auto tmp_ttl = ttl_;
+    auto tmp_cap = capacity_;
+    auto tmp_six = starting_index_;
+    data_.swap(other.data_);
+    ttl_ = other.ttl_;
+    capacity_ = other.capacity_;
+    starting_index_ = other.starting_index_;
+    other.ttl_ = tmp_ttl;
+    other.capacity_ = tmp_cap;
+    other.starting_index_ = tmp_six;
 }
 
 bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
@@ -79,6 +84,9 @@ size_t Generation::size() const noexcept {
     return data_.size();
 }
 
+size_t Generation::offset() const noexcept {
+    return this->starting_index_;
+}
 
 
 // Cache --------------------------------------
@@ -97,7 +105,21 @@ Cache::Cache(TimeDuration ttl, PageHeader* page, size_t max_size)
 }
 
 void Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
-    //gen_[0].add(entry.time, entry.param_id, offset);
+    int status = gen_[0].add(entry.time, entry.param_id, offset);
+    switch(status) {
+    case AKU_WRITE_STATUS_OVERFLOW: {
+            // Rotate
+            gen_.emplace_back(ttl_, max_size_, gen_[0].offset() + gen_[0].size());
+            auto curr = gen_.rbegin();
+            auto prev = gen_.rbegin();
+            std::advance(curr, 1);
+            while(curr != gen_.rend()) {
+                curr->swap(*prev);
+            }
+        }
+    case AKU_WRITE_STATUS_SUCCESS:
+        break;
+    };
 }
 
 void Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {

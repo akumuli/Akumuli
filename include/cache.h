@@ -46,9 +46,7 @@ public:
     //! Copy c-tor
     Generation(Generation const& other);
 
-    //! Move c-tor
-    Generation(Generation && other) noexcept;
-
+    void swap(Generation& other);
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if generation is full. Note that write is successful anyway.
       */
@@ -71,6 +69,8 @@ public:
 
     //! Get number of items
     size_t size() const noexcept;
+
+    size_t offset() const noexcept;
 };
 
 
@@ -87,6 +87,8 @@ public:
     void add_entry(const Entry& entry, EntryOffset offset) noexcept;
 
     void add_entry(const Entry2& entry, EntryOffset offset) noexcept;
+
+    // TODO: implement cache eviction strategy
 
     //! Close cache for write
     void close() noexcept;
