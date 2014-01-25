@@ -71,6 +71,10 @@ public:
     size_t size() const noexcept;
 
     size_t offset() const noexcept;
+
+    MapType::const_iterator begin() const;
+
+    MapType::const_iterator end() const;
 };
 
 
@@ -81,14 +85,29 @@ class Cache {
     uint32_t offset_;
     // Index structures
     std::vector<Generation> gen_;
+
+    int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept;
 public:
     Cache(TimeDuration ttl, PageHeader* page, size_t max_size);
 
-    void add_entry(const Entry& entry, EntryOffset offset) noexcept;
+    /** Add entry to cache.
+     *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
+     */
+    int add_entry(const Entry& entry, EntryOffset offset) noexcept;
 
-    void add_entry(const Entry2& entry, EntryOffset offset) noexcept;
+    /** Add entry to cache.
+     *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
+     */
+    int add_entry(const Entry2& entry, EntryOffset offset) noexcept;
 
-    // TODO: implement cache eviction strategy
+    /** Remove oldest elements from cache and return them to caller.
+     *  @param offsets ret-value, array of offsets ordered by timestamp and paramId
+     *  @param size offsets size
+     *  @param start_index start index inside the page
+     *  @param noffsets number of returned elements
+     *  @return operation status AKU_SUCCESS on success - error code otherwise (AKU_ENO_MEM or AKU_ENO_DATA)
+     */
+    int remove_old(EntryOffset* offsets, size_t size, uint32_t* start_index, uint32_t* noffsets) noexcept;
 
     //! Close cache for write
     void close() noexcept;

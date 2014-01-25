@@ -88,6 +88,13 @@ size_t Generation::offset() const noexcept {
     return this->starting_index_;
 }
 
+Generation::MapType::const_iterator Generation::begin() const {
+    return data_.begin();
+}
+
+Generation::MapType::const_iterator Generation::end() const {
+    return data_.end();
+}
 
 // Cache --------------------------------------
 
@@ -104,8 +111,8 @@ Cache::Cache(TimeDuration ttl, PageHeader* page, size_t max_size)
     gen_.push_back(Generation(ttl_, max_size_, offset_));
 }
 
-void Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
-    int status = gen_[0].add(entry.time, entry.param_id, offset);
+int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
+    int status = gen_[0].add(ts, pid, offset);
     switch(status) {
     case AKU_WRITE_STATUS_OVERFLOW: {
             // Rotate
@@ -120,12 +127,40 @@ void Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
     case AKU_WRITE_STATUS_SUCCESS:
         break;
     };
+    return status;
 }
 
-void Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {
+int Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
+    return add_entry_(entry.time, entry.param_id, offset);
+}
+
+int Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {
+    return add_entry_(entry.time, entry.param_id, offset);
 }
 
 void Cache::close() noexcept {
+}
+
+int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* start_index, uint32_t* noffsets) noexcept {
+    auto ngen = gen_.size();
+    if (ngen > 2) {
+        return AKU_ENO_DATA;
+    }
+    Generation& last = gen_.back();
+    auto lastsize = last.size();
+    if (lastsize > size) {
+        return AKU_ENO_MEM;
+    }
+    *start_index = last.offset();
+    *noffsets = lastsize;
+
+    int ix = 0;
+    for(auto it = last.begin(); it != last.end(); ++it) {
+        offsets[ix++] = it->second;
+    }
+
+    return AKU_EGENERAL;
+
 }
 
 }  // namespace Akumuli
