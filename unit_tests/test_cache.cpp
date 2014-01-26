@@ -14,7 +14,7 @@ using namespace Akumuli;
 BOOST_AUTO_TEST_CASE(Test_generation_move)
 {
     TimeDuration td = { 1000L };
-    Generation gen1(td, 100, 0);
+    Generation gen1(td, 100);
     TimeStamp ts = { 111L };
     gen1.add(ts, 0, 0);
     BOOST_REQUIRE(!gen1.data_.empty());
@@ -26,7 +26,7 @@ BOOST_AUTO_TEST_CASE(Test_generation_move)
 BOOST_AUTO_TEST_CASE(Test_generation_insert)
 {
     TimeDuration td = { 1000L };
-    Generation gen(td, 1000, 0);
+    Generation gen(td, 1000);
 
     for (int i = 0; i < 100; i++) {
         TimeStamp ts = { (int64_t)i };
@@ -46,7 +46,7 @@ BOOST_AUTO_TEST_CASE(Test_generation_insert)
 BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_size)
 {
     TimeDuration td = { 1000L };
-    Generation gen(td, 4, 0);
+    Generation gen(td, 4);
 
     TimeStamp ts = { (int64_t)0 };
     BOOST_REQUIRE(gen.add(ts, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_size)
 BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_time)
 {
     TimeDuration td = { 8L };
-    Generation gen(td, 1000, 0);
+    Generation gen(td, 1000);
 
     TimeStamp ts0 = { (int64_t)0 };
     TimeStamp ts1 = { (int64_t)1 };
@@ -75,7 +75,7 @@ BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_time)
 BOOST_AUTO_TEST_CASE(Test_generation_find)
 {
     TimeDuration td = { 1000L };
-    Generation gen(td, 1000, 0);
+    Generation gen(td, 1000);
 
     TimeStamp ts = { 0L };
     ParamId id = 1;
@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(Test_generation_find)
 
 BOOST_AUTO_TEST_CASE(Test_generation_oldest) {
     TimeDuration td = { 1000L };
-    Generation gen(td, 1000, 0);
+    Generation gen(td, 1000);
 
     TimeStamp oldest;
     auto res = gen.get_oldest_timestamp(&oldest);
@@ -108,4 +108,10 @@ BOOST_AUTO_TEST_CASE(Test_generation_oldest) {
     res = gen.get_oldest_timestamp(&oldest);
     BOOST_REQUIRE(res == true);
     BOOST_REQUIRE(oldest.value == 1L);
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_cache_add) {
+    //Cache cache;
+    //cache.
 }

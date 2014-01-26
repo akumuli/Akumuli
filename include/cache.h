@@ -23,30 +23,23 @@
 
 namespace Akumuli {
 
-class Generation {
-public:
-    //! TTL
-    TimeDuration ttl_;
-
-    //! Max generation size
-    size_t capacity_;
-
+struct Generation {
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
 
-    //! Dictionary
-    MapType data_;
-
-    //! Starting index
-    uint32_t starting_index_;
+    TimeDuration ttl_;          //< TTL
+    size_t       capacity_;     //< Max generation size
+    TimeStamp    most_recent_;  //< Most recent timestamp
+    MapType      data_;         //< Dictionary
 
     //! Normal c-tor
-    Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept;
+    Generation(TimeDuration ttl, size_t max_size) noexcept;
 
     //! Copy c-tor
     Generation(Generation const& other);
 
     void swap(Generation& other);
+
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if generation is full. Note that write is successful anyway.
       */
@@ -67,10 +60,16 @@ public:
      */
     bool get_oldest_timestamp(TimeStamp* ts) const noexcept;
 
+    /** Get the most recent timestamp if it present.
+      * If generation is empty - return false.
+      */
+    bool get_most_recent_timestamp(TimeStamp* ts) const noexcept;
+
     //! Get number of items
     size_t size() const noexcept;
 
-    size_t offset() const noexcept;
+    //! Close generation for write
+    void close();
 
     MapType::const_iterator begin() const;
 
@@ -78,17 +77,27 @@ public:
 };
 
 
+/** Cache for the time-series data.
+  * @note This is a first _sketch_ implementation. It's not as good as it can be
+  *       but it is good enough for the first try.
+  * Time series data is stored b-tree. If tree is full or out of date (there is limit
+  * on tree size and elements age) - new tree is created and the old one can be writen
+  * back to the page. The individual trees is implemented by the "Generation" class.
+  * "Cache" class is actually a list of generations and public interface.
+  */
 class Cache {
-    PageHeader* page_;
-    TimeDuration ttl_;
-    size_t max_size_;
-    uint32_t offset_;
-    // Index structures
-    std::vector<Generation> gen_;
+    TimeDuration            ttl_;           //< TTL
+    size_t                  max_size_;      //< Max size of the generation
+    std::vector<Generation> gen_;           //< List of generations
 
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept;
 public:
-    Cache(TimeDuration ttl, PageHeader* page, size_t max_size);
+    /** C-tor
+      * @param ttl max late write timeout
+      * @param max_size max number of elements to hold
+      */
+    Cache( TimeDuration     ttl
+         , size_t           max_size);
 
     /** Add entry to cache.
      *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
@@ -103,14 +112,21 @@ public:
     /** Remove oldest elements from cache and return them to caller.
      *  @param offsets ret-value, array of offsets ordered by timestamp and paramId
      *  @param size offsets size
-     *  @param start_index start index inside the page
      *  @param noffsets number of returned elements
      *  @return operation status AKU_SUCCESS on success - error code otherwise (AKU_ENO_MEM or AKU_ENO_DATA)
      */
-    int remove_old(EntryOffset* offsets, size_t size, uint32_t* start_index, uint32_t* noffsets) noexcept;
+    int remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept;
 
-    //! Close cache for write
-    void close() noexcept;
+    //! Remove all data
+    void clear() noexcept;
+
+    /** Checks whether time stamp is to late.
+      * @param ts time stamp to check
+      * @return true if time stamp is late
+      * @note late write depth can be dynamically adjusted if cache uses too much
+      * memory - late write depth shrinks.
+      */
+    bool is_too_late(TimeStamp ts) noexcept;
 };
 
 }

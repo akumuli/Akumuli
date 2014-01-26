@@ -16,32 +16,31 @@ namespace Akumuli {
 
 // Generation ---------------------------------
 
-Generation::Generation(TimeDuration ttl, size_t max_size, uint32_t starting_index) noexcept
+Generation::Generation(TimeDuration ttl, size_t max_size) noexcept
     : ttl_(ttl)
     , capacity_(max_size)
-    , starting_index_(starting_index)
+    , most_recent_(TimeStamp::MIN_TIMESTAMP)
 {
 }
 
 Generation::Generation(Generation const& other)
     : ttl_(other.ttl_)
     , capacity_(other.capacity_)
-    , starting_index_(other.starting_index_)
     , data_(other.data_)
+    , most_recent_(other.most_recent_)
 {
 }
 
 void Generation::swap(Generation& other) {
+    // NOTE: most_recent_ doesn't swapped intentionaly
+    // I want to propagate it while moving generations back
     auto tmp_ttl = ttl_;
     auto tmp_cap = capacity_;
-    auto tmp_six = starting_index_;
     data_.swap(other.data_);
     ttl_ = other.ttl_;
     capacity_ = other.capacity_;
-    starting_index_ = other.starting_index_;
     other.ttl_ = tmp_ttl;
     other.capacity_ = tmp_cap;
-    other.starting_index_ = tmp_six;
 }
 
 bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
@@ -49,6 +48,13 @@ bool Generation::get_oldest_timestamp(TimeStamp* ts) const noexcept {
         return false;
     auto iter = data_.begin();
     *ts = std::get<0>(iter->first);
+    return true;
+}
+
+bool Generation::get_most_recent_timestamp(TimeStamp* ts) const noexcept {
+    if (most_recent_ == TimeStamp::MIN_TIMESTAMP)
+        return false;
+    *ts = most_recent_;
     return true;
 }
 
@@ -84,10 +90,6 @@ size_t Generation::size() const noexcept {
     return data_.size();
 }
 
-size_t Generation::offset() const noexcept {
-    return this->starting_index_;
-}
-
 Generation::MapType::const_iterator Generation::begin() const {
     return data_.begin();
 }
@@ -96,19 +98,25 @@ Generation::MapType::const_iterator Generation::end() const {
     return data_.end();
 }
 
+void Generation::close() {
+    auto ptr = data_.begin();
+    auto ix = data_.size() - 1;
+    if (ix < 0) {
+        throw std::logic_error("Can't close empty generation.");
+    }
+    std::advance(ptr, ix);
+    most_recent_ = std::get<0>(ptr->first);
+}
+
 // Cache --------------------------------------
 
-Cache::Cache(TimeDuration ttl, PageHeader* page, size_t max_size)
+Cache::Cache(TimeDuration ttl, size_t max_size)
     : ttl_(ttl)
-    , page_(page)
     , max_size_(max_size)
 {
-    // Cache starting offset
-    offset_ = page_->count;
-
     // First created generation will hold elements with indexes
     // from offset_ to offset_ + gen.size()
-    gen_.push_back(Generation(ttl_, max_size_, offset_));
+    gen_.push_back(Generation(ttl_, max_size_));
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
@@ -116,7 +124,7 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
     switch(status) {
     case AKU_WRITE_STATUS_OVERFLOW: {
             // Rotate
-            gen_.emplace_back(ttl_, max_size_, gen_[0].offset() + gen_[0].size());
+            gen_.emplace_back(ttl_, max_size_);
             auto curr = gen_.rbegin();
             auto prev = gen_.rbegin();
             std::advance(curr, 1);
@@ -138,10 +146,12 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {
     return add_entry_(entry.time, entry.param_id, offset);
 }
 
-void Cache::close() noexcept {
+void Cache::clear() noexcept {
+    gen_.clear();
+    gen_.push_back(Generation(ttl_, max_size_));
 }
 
-int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* start_index, uint32_t* noffsets) noexcept {
+int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept {
     auto ngen = gen_.size();
     if (ngen > 2) {
         return AKU_ENO_DATA;
@@ -151,16 +161,25 @@ int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* start_index, 
     if (lastsize > size) {
         return AKU_ENO_MEM;
     }
-    *start_index = last.offset();
     *noffsets = lastsize;
 
     int ix = 0;
     for(auto it = last.begin(); it != last.end(); ++it) {
         offsets[ix++] = it->second;
     }
-
     return AKU_EGENERAL;
+}
 
+bool Cache::is_too_late(TimeStamp ts) noexcept {
+    Generation& gen = gen_[0];
+    TimeStamp div;
+    bool has_most_recent = gen.get_most_recent_timestamp(&div);
+    if (has_most_recent) {
+        // most frequent path
+        return ts < div;
+    }
+    // least frequent path
+    return false;
 }
 
 }  // namespace Akumuli

@@ -37,7 +37,7 @@ Volume::Volume(const char* file_name, TimeDuration ttl, size_t max_cache_size)
 {
     mmap_.throw_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Cache(ttl_, page_, max_cache_size_));
+    cache_.reset(new Cache(ttl_, max_cache_size_));
 }
 
 PageHeader* Volume::get_page() const noexcept {
