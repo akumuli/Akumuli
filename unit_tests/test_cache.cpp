@@ -11,18 +11,6 @@
 
 using namespace Akumuli;
 
-BOOST_AUTO_TEST_CASE(Test_generation_move)
-{
-    TimeDuration td = { 1000L };
-    Generation gen1(td, 100);
-    TimeStamp ts = { 111L };
-    gen1.add(ts, 0, 0);
-    BOOST_REQUIRE(!gen1.data_.empty());
-    Generation gen2(std::move(gen1));
-    BOOST_REQUIRE(!gen2.data_.empty());
-    BOOST_REQUIRE(gen1.data_.empty());
-}
-
 BOOST_AUTO_TEST_CASE(Test_generation_insert)
 {
     TimeDuration td = { 1000L };
@@ -110,8 +98,60 @@ BOOST_AUTO_TEST_CASE(Test_generation_oldest) {
     BOOST_REQUIRE(oldest.value == 1L);
 }
 
+BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
+    Cache cache({1000L}, 3);
+    char entry_buffer[0x100];
+    TimeStamp ts = {1L};
+    Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
+    int status = AKU_SUCCESS;
+    status = cache.add_entry(*entry, 0);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {2L};
+    status = cache.add_entry(*entry, 1);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {3L};
+    status = cache.add_entry(*entry, 2);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {4L};
+    status = cache.add_entry(*entry, 3);
+    BOOST_CHECK(status == AKU_EOVERFLOW);
+    entry->time = {5L};
+    status = cache.add_entry(*entry, 4);
+    BOOST_CHECK(status == AKU_SUCCESS);
+}
 
-BOOST_AUTO_TEST_CASE(Test_cache_add) {
-    //Cache cache;
-    //cache.
+BOOST_AUTO_TEST_CASE(Test_cache_dump_by_time) {
+    Cache cache({10L}, 1000);
+    char entry_buffer[0x100];
+    TimeStamp ts = {1000L};
+    Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
+    int status = AKU_SUCCESS;
+    status = cache.add_entry(*entry, 0);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {1002L};
+    status = cache.add_entry(*entry, 1);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {1012L};
+    status = cache.add_entry(*entry, 2);
+    BOOST_CHECK(status == AKU_EOVERFLOW);
+}
+
+BOOST_AUTO_TEST_CASE(Test_cache_late_write_refusion) {
+    Cache cache({10L}, 1000);
+    char entry_buffer[0x100];
+    TimeStamp ts = {1000L};
+    Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
+    int status = AKU_SUCCESS;
+    status = cache.add_entry(*entry, 0);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {1002L};
+    status = cache.add_entry(*entry, 1);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {1042L};
+    status = cache.add_entry(*entry, 2);
+    BOOST_CHECK(status == AKU_EOVERFLOW);
+
+    BOOST_CHECK(cache.is_too_late({42L}) == true);
+    BOOST_CHECK(cache.is_too_late({1043L}) == false);
+    BOOST_CHECK(cache.is_too_late({2000L}) == false);
 }

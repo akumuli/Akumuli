@@ -120,16 +120,20 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
-    int status = gen_[0].add(ts, pid, offset);
+    auto& gen0 = gen_[0];
+    int status = gen0.add(ts, pid, offset);
     switch(status) {
     case AKU_WRITE_STATUS_OVERFLOW: {
             // Rotate
+            gen0.close();
             gen_.emplace_back(ttl_, max_size_);
             auto curr = gen_.rbegin();
             auto prev = gen_.rbegin();
             std::advance(curr, 1);
             while(curr != gen_.rend()) {
                 curr->swap(*prev);
+                prev = curr;
+                std::advance(curr, 1);
             }
         }
     case AKU_WRITE_STATUS_SUCCESS:
