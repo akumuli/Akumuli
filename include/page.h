@@ -125,21 +125,23 @@ struct PageBoundingBox {
  */
 struct PageCursor {
     // user data
-    uint32_t*       results;        //< resulting indexes array
+    EntryOffset*    results;        //< resulting offsets array
     uint64_t        results_cap;    //< capacity of the array
     uint64_t        results_num;    //< number of results in array
     uint32_t        done;           //< is done reading (last data writen to results array)
-    // library data
+    // page search data
     uint32_t        start_index;    //< starting index of the traversal
     uint32_t        probe_index;    //< current index of the traversal
     uint32_t        state;          //< FSM state
     uint32_t        error_code;     //< Search error code
+    // cache search data
+    uint32_t        generation;     //< Searched generation
 
     /** Page cursor c-tor.
      *  @param buffer receiving buffer
      *  @param buffer_size capacity of the receiving buffer
      */
-    PageCursor(uint32_t* buffer, uint64_t buffer_size) noexcept;
+    PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept;
 };
 
 
@@ -163,7 +165,7 @@ struct SingleParameterCursor : PageCursor {
                          , TimeStamp    low
                          , TimeStamp    upp
                          , uint32_t     scan_dir
-                         , uint32_t*    buffer
+                         , EntryOffset* buffer
                          , uint64_t     buffer_size ) noexcept;
 };
 
@@ -231,21 +233,38 @@ struct PageHeader {
     int get_entry_length(int entry_index) const noexcept;
 
     /**
-     * Copy entry from page to receiving buffer.
+     * Copy entry from page to receiving buffer using index.
      * @param receiver receiving buffer
      * receiver.length must contain correct buffer length
      * buffer length can be larger than sizeof(Entry)
      * @returns 0 if index out of range, -1*entry[index].length
      * if buffer is to small, entry[index].length on success.
      */
-    int copy_entry(int index, Entry* receiver) const noexcept;
+    int copy_entry_at(int index, Entry* receiver) const noexcept;
 
     /**
-     * Get pointer to entry without copying
+     * Copy entry from page to receiving buffer using offset.
+     * @param receiver receiving buffer
+     * receiver.length must contain correct buffer length
+     * buffer length can be larger than sizeof(Entry)
+     * @returns 0 if index out of range, -1*entry[index].length
+     * if buffer is to small, entry[index].length on success.
+     */
+    int copy_entry(EntryOffset offset, Entry* receiver) const noexcept;
+
+    /**
+     * Get pointer to entry without copying using index
      * @param index entry index
      * @returns pointer to entry or NULL
      */
-    const Entry* read_entry(int index) const noexcept;
+    const Entry* read_entry_at(int index) const noexcept;
+
+    /**
+     * Get pointer to entry without copying using offset
+     * @param index entry index
+     * @returns pointer to entry or NULL
+     */
+    const Entry* read_entry(EntryOffset offset) const noexcept;
 
     /**
      * Sort page content
@@ -253,7 +272,7 @@ struct PageHeader {
     void sort() noexcept;
 
     /**
-     * Sort page content partially
+     * TODO: remove
      */
     void partial_sort() noexcept;
 

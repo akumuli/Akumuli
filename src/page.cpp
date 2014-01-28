@@ -92,7 +92,7 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 // -------
 
 
-PageCursor::PageCursor(uint32_t* buffer, uint64_t buffer_size) noexcept
+PageCursor::PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept
     : results(buffer)
     , results_cap(buffer_size)
     , results_num(0u)
@@ -100,6 +100,7 @@ PageCursor::PageCursor(uint32_t* buffer, uint64_t buffer_size) noexcept
     , start_index(0u)
     , probe_index(0u)
     , state(AKU_CURSOR_START)
+    , generation(0u)
 {
 }
 
@@ -109,7 +110,7 @@ SingleParameterCursor::SingleParameterCursor
     , TimeStamp    low
     , TimeStamp    upp
     , uint32_t     scan_dir
-    , uint32_t*    buffer
+    , EntryOffset* buffer
     , uint64_t     buffer_size )  noexcept
 
     : PageCursor(buffer, buffer_size)
@@ -238,14 +239,18 @@ int PageHeader::add_entry(Entry2 const& entry) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-const Entry* PageHeader::read_entry(int index) const noexcept {
+const Entry* PageHeader::read_entry_at(int index) const noexcept {
     if (index >= 0 && index < count) {
         auto offset = page_index[index];
-        auto ptr = cdata() + offset;
-        auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
-        return entry_ptr;
+        return read_entry(offset);
     }
     return 0;
+}
+
+const Entry* PageHeader::read_entry(EntryOffset offset) const noexcept {
+    auto ptr = cdata() + offset;
+    auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
+    return entry_ptr;
 }
 
 int PageHeader::get_entry_length(int entry_index) const noexcept {
@@ -256,8 +261,20 @@ int PageHeader::get_entry_length(int entry_index) const noexcept {
     return 0;
 }
 
-int PageHeader::copy_entry(int index, Entry* receiver) const noexcept {
-    auto entry_ptr = read_entry(index);
+int PageHeader::copy_entry_at(int index, Entry* receiver) const noexcept {
+    auto entry_ptr = read_entry_at(index);
+    if (entry_ptr) {
+        if (entry_ptr->length > receiver->length) {
+            return -1*entry_ptr->length;
+        }
+        memcpy((void*)receiver, (void*)entry_ptr, entry_ptr->length);
+        return entry_ptr->length;
+    }
+    return 0;
+}
+
+int PageHeader::copy_entry(EntryOffset offset, Entry* receiver) const noexcept {
+    auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
             return -1*entry_ptr->length;
@@ -451,7 +468,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                                            cursor->upperbound >= probe_entry->time;
                 if (probe == param && probe_in_time_range) {
                     if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = current_index;
+                        cursor->results[cursor->results_num] = probe_offset;
                         cursor->results_num += 1u;
                     }
                     if (cursor->results_num == cursor->results_cap) {
@@ -474,7 +491,7 @@ void PageHeader::search(SingleParameterCursor *cursor) const noexcept
                                            cursor->upperbound >= probe_entry->time;
                 if (probe == param && probe_in_time_range) {
                     if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = current_index;
+                        cursor->results[cursor->results_num] = probe_offset;
                         cursor->results_num += 1u;
                     }
                     if (cursor->results_num == cursor->results_cap) {

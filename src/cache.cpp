@@ -186,4 +186,19 @@ bool Cache::is_too_late(TimeStamp ts) noexcept {
     return false;
 }
 
+void Cache::search(SingleParameterCursor* cursor) const noexcept {
+    while(true) {
+        switch(cursor->state) {
+        case AKU_CURSOR_START:
+            // Init search
+            cursor->generation = 0;
+            cursor->state = AKU_CURSOR_SEARCH;
+        case AKU_CURSOR_SEARCH:
+            // Search in single generation
+
+            break;
+        };
+    }
+}
+
 }  // namespace Akumuli

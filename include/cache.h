@@ -117,6 +117,12 @@ public:
      */
     int remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept;
 
+    // TODO: split remove_old f-n into two parts, one that removes old data from cache and one that reads data
+
+    /** Search fun-n that is similar to Page::search
+      */
+    void search(SingleParameterCursor* cursor) const noexcept;
+
     //! Remove all data
     void clear() noexcept;
 

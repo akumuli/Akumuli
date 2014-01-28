@@ -155,3 +155,39 @@ BOOST_AUTO_TEST_CASE(Test_cache_late_write_refusion) {
     BOOST_CHECK(cache.is_too_late({1043L}) == false);
     BOOST_CHECK(cache.is_too_late({2000L}) == false);
 }
+
+static int init_search_range_test(Cache* cache, int num_values) {
+    char buffer[64];
+    int num_overflows = 0;
+    for(int i = 0; i < num_values; i++) {
+        TimeStamp inst = {1000L + i};
+        auto entry = new (buffer) Entry(1, inst, 64);
+        entry->value[0] = i;
+        int stat = cache->add_entry(*entry, i);
+        BOOST_CHECK(stat == AKU_WRITE_STATUS_OVERFLOW || stat == AKU_WRITE_STATUS_SUCCESS);
+        if (stat == AKU_WRITE_STATUS_OVERFLOW) {
+            num_overflows++;
+        }
+    }
+    return num_overflows;
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
+{
+    char page_ptr[0x10000];
+    Cache cache({1000000L}, 100000);
+    init_search_range_test(&cache, 100);
+
+    uint32_t indexes[1000];
+    SingleParameterCursor cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+
+    cache.search(&cursor);
+
+    BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_CHECK_EQUAL(cursor.results_num, 68);
+
+    for(int i = 0; i < cursor.results_num; i++) {
+        BOOST_CHECK_EQUAL(indexes[i], i);
+    }
+}
