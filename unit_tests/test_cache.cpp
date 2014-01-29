@@ -172,7 +172,6 @@ static int init_search_range_test(Cache* cache, int num_values) {
     return num_overflows;
 }
 
-
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 {
     char page_ptr[0x10000];

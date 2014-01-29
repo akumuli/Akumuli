@@ -31,6 +31,11 @@ typedef uint32_t ParamId;
  */
 struct TimeDuration {
     int64_t value;
+
+    static inline TimeDuration make(int64_t t) noexcept {
+        TimeDuration td = {t};
+        return td;
+    }
 };
 
 
@@ -61,6 +66,11 @@ struct TimeStamp {
 
     //! Minimum possible timestamp
     static const TimeStamp MIN_TIMESTAMP;
+
+    static inline TimeStamp make(int64_t t) noexcept {
+        TimeStamp ts = {t};
+        return ts;
+    }
 };
 
 
