@@ -55,6 +55,10 @@ struct Generation {
      */
     std::pair<size_t, bool> find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept;
 
+    /** Search for range of elements.
+      */
+    void search(SingleParameterCursor* cursor) const noexcept;
+
     /** Get the oldest timestamp of the generation.
      *  If generation is empty - return false, true otherwise.
      */

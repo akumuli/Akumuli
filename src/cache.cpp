@@ -75,7 +75,7 @@ std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset*
     auto key = std::make_tuple(ts, pid);
     auto iter_pair = data_.equal_range(key);
     size_t result_ix = 0;
-    for (;iter_pair.first != iter_pair.second; iter_pair.first++) {
+    for (;iter_pair.first != iter_pair.second; ++iter_pair.first) {
         if (skip) {
             skip--;
         } else {
@@ -84,6 +84,48 @@ std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset*
         }
     }
     return std::make_pair(result_ix, iter_pair.first != iter_pair.second);
+}
+
+void Generation::search(SingleParameterCursor* cursor) const noexcept {
+    cursor->results_num = 0;                        // NOTE: search always performed, for better performance
+    auto tskey = cursor->upperbound;                //       caller must use large enough buffer, to be able
+    auto idkey = (ParamId)~0;                       //       to process all the data with a single call!
+    auto key = std::make_tuple(tskey, idkey);       //       cursor->state is ignored, only output indexes is used
+    auto citer = data_.upper_bound(key);
+
+    /// SKIP ///
+    for (uint32_t i = 0; i < cursor->skip; i++) {
+        if (citer == data_.begin()) {
+            cursor->state = AKU_CURSOR_COMPLETE;
+            return;
+        }
+        citer--;
+    }
+
+    /// SCAN ///
+    auto last_key = std::make_tuple(cursor->lowerbound, 0);
+
+    while(true) {
+        auto& curr_key = citer->first;
+        if (curr_key < last_key) {
+            cursor->state = AKU_CURSOR_COMPLETE;
+            return;
+        }
+        if (std::get<1>(curr_key) == cursor->param) {
+            cursor->results[cursor->results_num] = citer->second;
+            cursor->results_num++;
+            if (cursor->results_num == cursor->results_cap) {
+                // yield data to caller
+            cursor->state = AKU_CURSOR_SCAN_BACKWARD;
+                return;
+            }
+        }
+        if (citer == data_.begin()) {
+            cursor->state = AKU_CURSOR_COMPLETE;
+            return;
+        }
+        citer--;
+    }
 }
 
 size_t Generation::size() const noexcept {
@@ -193,9 +235,11 @@ void Cache::search(SingleParameterCursor* cursor) const noexcept {
             // Init search
             cursor->generation = 0;
             cursor->state = AKU_CURSOR_SEARCH;
-        case AKU_CURSOR_SEARCH:
-            // Search in single generation
-
+        case AKU_CURSOR_SEARCH: {
+                // Search in single generation
+                Generation const& gen = gen_[cursor->generation];
+                gen.search(cursor);
+            }
             break;
         };
     }

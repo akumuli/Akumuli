@@ -146,6 +146,8 @@ struct PageCursor {
     uint32_t        error_code;     //< Search error code
     // cache search data
     uint32_t        generation;     //< Searched generation
+    // generation data
+    uint32_t        skip;           //< Num of elements to skip
 
     /** Page cursor c-tor.
      *  @param buffer receiving buffer
