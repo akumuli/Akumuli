@@ -1,5 +1,5 @@
 #include <iostream>
-#include <array>
+#include <vector>
 #include <algorithm>
 
 #include "rdtsc.h"
@@ -13,11 +13,15 @@
   */
 template<class Derived, int NIter>
 class BenchmarkRunner {
-    std::array<unsigned long long, NIter> results_;
-    unsigned long long median_, min_, max_;
+    std::vector<unsigned long long> results_;
+    unsigned long long median_, min_;
 protected:
     std::string name_;
 public:
+
+    BenchmarkRunner()
+        : results_(NIter, 0)
+    {}
 
     void execute() {
         CPUCounter cnt;
@@ -32,15 +36,14 @@ public:
         std::sort(results_.begin(), results_.end());
         median_ = results_[NIter / 2];
         min_ = results_[0];
-        max_ = results_[NIter - 1];
 
-        std::cout << name_ << " min=" << min_ << " median=" << median_ << " max=" << max_ << std::endl;
+        std::cout << name_ << " min=" << min_ << " median=" << median_ << std::endl;
     }
 };
 
 using namespace Akumuli;
 
-struct GenFindTest : BenchmarkRunner<GenFindTest, 1000> {
+struct GenFindTest : BenchmarkRunner<GenFindTest, 100000> {
     Generation gen_;
 
     GenFindTest()
@@ -49,15 +52,13 @@ struct GenFindTest : BenchmarkRunner<GenFindTest, 1000> {
         name_ = "Generation(find)";
 
         for (int i = 0; i < 100; i++) {
-            gen_.add(TimeStamp::make(i*10L), i % 5, i);
+            gen_.add(TimeStamp::make(10L), 5, i);
         }
     }
 
     void run() {
-        EntryOffset off[10];
-        gen_.find(TimeStamp::make(500L), 0, off, 10, 0);
-        gen_.find(TimeStamp::make(100L), 0, off, 10, 0);
-        gen_.find(TimeStamp::make(900L), 0, off, 10, 0);
+        EntryOffset off[50];
+        gen_.find(TimeStamp::make(10L), 5, off, 10, 50);
     }
 };
 
