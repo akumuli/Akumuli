@@ -101,6 +101,7 @@ PageCursor::PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept
     , probe_index(0u)
     , state(AKU_CURSOR_START)
     , generation(0u)
+    , skip(0u)
 {
 }
 
@@ -253,8 +254,16 @@ const Entry* PageHeader::read_entry(EntryOffset offset) const noexcept {
     return entry_ptr;
 }
 
-int PageHeader::get_entry_length(int entry_index) const noexcept {
-    auto entry_ptr = read_entry(entry_index);
+int PageHeader::get_entry_length_at(int entry_index) const noexcept {
+    auto entry_ptr = read_entry_at(entry_index);
+    if (entry_ptr) {
+        return entry_ptr->length;
+    }
+    return 0;
+}
+
+int PageHeader::get_entry_length(EntryOffset offset) const noexcept {
+    auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         return entry_ptr->length;
     }

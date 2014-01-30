@@ -94,6 +94,17 @@ class Cache {
     size_t                  max_size_;      //< Max size of the generation
     std::vector<Generation> gen_;           //< List of generations
 
+    /* NOTE:
+     * Generation must be isoated (doesn't interleave with each other).
+     *
+     * [Gen0)[Gen1)[Gen2) -> write to indirection vector
+     *
+     * Every generation must hold one half open time interval [tbegin, tend).
+     * Client process can pop out generations from the end of the queue. This
+     * requirement needed to implement search and pop-out procedures more efficiently,
+     * without merging.
+     */
+
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept;
 public:
     /** C-tor

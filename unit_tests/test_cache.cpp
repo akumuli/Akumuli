@@ -136,6 +136,34 @@ BOOST_AUTO_TEST_CASE(Test_cache_dump_by_time) {
     BOOST_CHECK(status == AKU_EOVERFLOW);
 }
 
+BOOST_AUTO_TEST_CASE(Test_cache_search_forward) {
+
+    TimeDuration td = {10000L};
+    Generation gen(td, 10000);
+
+    for (int i = 0; i < 1000; ++i) {
+        TimeStamp ts = {1000L + i};
+        gen.add(ts, 1, (EntryOffset)i);
+    }
+
+    EntryOffset indexes[10];
+    SingleParameterCursor cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
+
+    std::vector<EntryOffset> results;
+    while(cursor.state != AKU_CURSOR_COMPLETE) {
+        gen.search(&cursor);
+        for (int i = 0; i < cursor.results_num; i++) {
+            results.push_back(indexes[i]);
+        }
+    }
+
+    BOOST_CHECK_EQUAL(results.size(), 100);
+
+    for(int i = 0; i < 100; i++) {
+        BOOST_REQUIRE_EQUAL(indexes[i], 400 + i);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(Test_cache_late_write_refusion) {
     Cache cache({10L}, 1000);
     char entry_buffer[0x100];

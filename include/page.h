@@ -242,7 +242,14 @@ struct PageHeader {
      * @param entry_index index of the entry.
      * @returns 0 if index is out of range, entry length otherwise.
      */
-    int get_entry_length(int entry_index) const noexcept;
+    int get_entry_length_at(int entry_index) const noexcept;
+
+    /**
+     * Get length of the entry.
+     * @param offset offset of the entry.
+     * @returns 0 if index is out of range, entry length otherwise.
+     */
+    int get_entry_length(EntryOffset offset) const noexcept;
 
     /**
      * Copy entry from page to receiving buffer using index.

@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
     auto entry = new (buffer) Entry(222);
     auto result = page->add_entry(*entry);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
-    auto len = page->get_entry_length(0);
+    auto len = page->get_entry_length_at(0);
     BOOST_CHECK_EQUAL(len, 222);
 }
 
@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     TimeStamp inst2 = {1111L};
     entry->time = inst2;
 
-    int len = page->copy_entry(0, entry);
+    int len = page->copy_entry_at(0, entry);
     BOOST_CHECK_EQUAL(len, 64);
     BOOST_CHECK_EQUAL(entry->length, 64);
     BOOST_CHECK_EQUAL(entry->param_id, 3333);
@@ -103,7 +103,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
     auto result = page->add_entry(*entry);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
 
-    auto centry = page->read_entry(0);
+    auto centry = page->read_entry_at(0);
     BOOST_CHECK_EQUAL(centry->length, 64);
     BOOST_CHECK_EQUAL(centry->param_id, 3333);
 }
@@ -126,13 +126,13 @@ BOOST_AUTO_TEST_CASE(TestPaging8)
 
     page->sort();
 
-    auto res0 = page->read_entry(0);
+    auto res0 = page->read_entry_at(0);
     BOOST_CHECK_EQUAL(res0->param_id, 0);
 
-    auto res1 = page->read_entry(1);
+    auto res1 = page->read_entry_at(1);
     BOOST_CHECK_EQUAL(res1->param_id, 1);
 
-    auto res2 = page->read_entry(2);
+    auto res2 = page->read_entry_at(2);
     BOOST_CHECK_EQUAL(res2->param_id, 2);
 }
 
@@ -459,16 +459,17 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         assert(start_time > 0 && start_time < page->bbox.max_timestamp.value);
         assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
         assert(stop_time > start_time);
-        uint32_t indexes[100];
-        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, dir, indexes, 100);
+        EntryOffset offsets[100];
+        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, dir, offsets, 100);
         std::vector<uint32_t> matches;
         while(cursor.state != AKU_CURSOR_COMPLETE) {
             page->search(&cursor);
             for(int i = 0; i < cursor.results_num; i++) {
-                auto index = indexes[i];
+                auto offset = offsets[i];
+                const Entry* entry = page->read_entry(offset);
+                auto index = entry->value[0];
                 matches.push_back(index);
-                const Entry* entry = page->read_entry(index);
-                BOOST_REQUIRE(entry->time.value == timestamps[index]);
+                BOOST_REQUIRE_EQUAL(entry->time.value, timestamps[index]);
                 BOOST_REQUIRE(entry->param_id == paramids[index]);
                 BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
             }

@@ -92,6 +92,7 @@ void Generation::search(SingleParameterCursor* cursor) const noexcept {
     auto idkey = (ParamId)~0;                       //       to process all the data with a single call!
     auto key = std::make_tuple(tskey, idkey);       //       cursor->state is ignored, only output indexes is used
     auto citer = data_.upper_bound(key);
+    auto skip = cursor->skip;
 
     /// SKIP ///
     for (uint32_t i = 0; i < cursor->skip; i++) {
@@ -107,16 +108,17 @@ void Generation::search(SingleParameterCursor* cursor) const noexcept {
 
     while(true) {
         auto& curr_key = citer->first;
-        if (curr_key < last_key) {
+        if (std::get<0>(curr_key) < std::get<0>(last_key)) {
             cursor->state = AKU_CURSOR_COMPLETE;
             return;
         }
-        if (std::get<1>(curr_key) == cursor->param) {
+        if (std::get<1>(curr_key) == cursor->param && std::get<0>(curr_key) <= tskey) {
             cursor->results[cursor->results_num] = citer->second;
             cursor->results_num++;
             if (cursor->results_num == cursor->results_cap) {
                 // yield data to caller
-            cursor->state = AKU_CURSOR_SCAN_BACKWARD;
+                cursor->state = AKU_CURSOR_SCAN_BACKWARD;
+                cursor->skip = skip + cursor->results_num;
                 return;
             }
         }
