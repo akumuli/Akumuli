@@ -87,47 +87,108 @@ std::pair<size_t, bool> Generation::find(TimeStamp ts, ParamId pid, EntryOffset*
 }
 
 void Generation::search(SingleParameterCursor* cursor) const noexcept {
-    cursor->results_num = 0;                        // NOTE: search always performed, for better performance
-    auto tskey = cursor->upperbound;                //       caller must use large enough buffer, to be able
-    auto idkey = (ParamId)~0;                       //       to process all the data with a single call!
-    auto key = std::make_tuple(tskey, idkey);       //       cursor->state is ignored, only output indexes is used
-    auto citer = data_.upper_bound(key);
-    auto skip = cursor->skip;
 
-    /// SKIP ///
-    for (uint32_t i = 0; i < cursor->skip; i++) {
-        if (citer == data_.begin()) {
-            cursor->state = AKU_CURSOR_COMPLETE;
-            return;
-        }
-        citer--;
+    // NOTE: search always performed, for better performance
+    //       caller must use large enough buffer, to be able
+    //       to process all the data with a single call!
+    //       cursor->state is ignored, only output indexes is used
+
+    bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
+    bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
+
+    if (cursor->upperbound < cursor->lowerbound || !(forward ^ backward)) {
+        // Invalid direction or timestamps
+        cursor->state = AKU_CURSOR_COMPLETE;
+        cursor->error_code = AKU_EBAD_ARG;
+        return;
     }
 
-    /// SCAN ///
-    auto last_key = std::make_tuple(cursor->lowerbound, 0);
+    cursor->results_num = 0;
 
-    while(true) {
-        skip++;
-        auto& curr_key = citer->first;
-        if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
-            cursor->state = AKU_CURSOR_COMPLETE;
-            return;
-        }
-        if (std::get<1>(curr_key) == cursor->param && std::get<0>(curr_key) <= tskey) {
-            cursor->results[cursor->results_num] = citer->second;
-            cursor->results_num++;
-            if (cursor->results_num == cursor->results_cap) {
-                // yield data to caller
-                cursor->state = AKU_CURSOR_SCAN_BACKWARD;
-                cursor->skip = skip;
+    if (backward)
+    {
+        auto tskey = cursor->upperbound;
+        auto idkey = (ParamId)~0;
+        auto key = std::make_tuple(tskey, idkey);
+        auto citer = data_.upper_bound(key);
+        auto skip = cursor->skip;
+
+        /// SKIP ///
+        for (uint32_t i = 0; i < cursor->skip; i++) {
+            if (citer == data_.begin()) {
+                cursor->state = AKU_CURSOR_COMPLETE;
                 return;
             }
+            citer--;
         }
-        if (citer == data_.begin()) {
-            cursor->state = AKU_CURSOR_COMPLETE;
-            return;
+
+        /// SCAN ///
+        auto last_key = std::make_tuple(cursor->lowerbound, 0);
+
+        while(true) {
+            skip++;
+            auto& curr_key = citer->first;
+            if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
+                cursor->state = AKU_CURSOR_COMPLETE;
+                return;
+            }
+            if (std::get<1>(curr_key) == cursor->param && std::get<0>(curr_key) <= tskey) {
+                cursor->results[cursor->results_num] = citer->second;
+                cursor->results_num++;
+                if (cursor->results_num == cursor->results_cap) {
+                    // yield data to caller
+                    cursor->state = AKU_CURSOR_SCAN_BACKWARD;
+                    cursor->skip = skip;
+                    return;
+                }
+            }
+            if (citer == data_.begin()) {
+                cursor->state = AKU_CURSOR_COMPLETE;
+                return;
+            }
+            citer--;
         }
-        citer--;
+    }
+    else
+    {
+        auto tskey = cursor->lowerbound;
+        auto idkey = (ParamId)0;
+        auto key = std::make_tuple(tskey, idkey);
+        auto citer = data_.lower_bound(key);
+        auto skip = cursor->skip;
+
+        /// SKIP ///
+        for (uint32_t i = 0; i < cursor->skip; i++) {
+            if (citer == data_.end()) {
+                cursor->state = AKU_CURSOR_COMPLETE;
+                return;
+            }
+            citer++;
+        }
+
+        /// SCAN ///
+        auto last_key = std::make_tuple(cursor->upperbound, ~0);
+
+        while(citer != data_.end()) {
+            auto& curr_key = citer->first;
+            if (std::get<0>(curr_key) >= std::get<0>(last_key)) {
+                cursor->state = AKU_CURSOR_COMPLETE;
+                return;
+            }
+            skip++;
+            if (std::get<1>(curr_key) == cursor->param) {
+                cursor->results[cursor->results_num] = citer->second;
+                cursor->results_num++;
+                if (cursor->results_num == cursor->results_cap) {
+                    // yield data to caller
+                    cursor->state = AKU_CURSOR_SCAN_FORWARD;
+                    cursor->skip = skip;
+                    return;
+                }
+            }
+            citer++;
+        }
+        cursor->state = AKU_CURSOR_COMPLETE;
     }
 }
 
