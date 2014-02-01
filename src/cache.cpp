@@ -107,8 +107,9 @@ void Generation::search(SingleParameterCursor* cursor) const noexcept {
     auto last_key = std::make_tuple(cursor->lowerbound, 0);
 
     while(true) {
+        skip++;
         auto& curr_key = citer->first;
-        if (std::get<0>(curr_key) < std::get<0>(last_key)) {
+        if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
             cursor->state = AKU_CURSOR_COMPLETE;
             return;
         }
@@ -118,7 +119,7 @@ void Generation::search(SingleParameterCursor* cursor) const noexcept {
             if (cursor->results_num == cursor->results_cap) {
                 // yield data to caller
                 cursor->state = AKU_CURSOR_SCAN_BACKWARD;
-                cursor->skip = skip + cursor->results_num;
+                cursor->skip = skip;
                 return;
             }
         }
@@ -231,6 +232,7 @@ bool Cache::is_too_late(TimeStamp ts) noexcept {
 }
 
 void Cache::search(SingleParameterCursor* cursor) const noexcept {
+    throw std::runtime_error("Not implemented");
     while(true) {
         switch(cursor->state) {
         case AKU_CURSOR_START:

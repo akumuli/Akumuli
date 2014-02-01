@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_search_forward) {
     BOOST_CHECK_EQUAL(results.size(), 100);
 
     for(int i = 0; i < 100; i++) {
-        BOOST_REQUIRE_EQUAL(indexes[i], 400 + i);
+        BOOST_REQUIRE_EQUAL(results[i], 500 + i);
     }
 }
 
