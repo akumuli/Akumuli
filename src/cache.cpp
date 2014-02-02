@@ -10,7 +10,9 @@
 
 #define AKU_NUM_GENERATIONS 5
 
+#include "akumuli_def.h"
 #include "cache.h"
+#include "util.h"
 
 namespace Akumuli {
 
@@ -223,29 +225,79 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     // First created generation will hold elements with indexes
     // from offset_ to offset_ + gen.size()
     gen_.push_back(Generation(ttl_, max_size_));
+
+    // We need two calculate shift width. So, we got ttl in some units
+    // of measure, units of measure that akumuli doesn't know about.
+    // We choose first power of two that is less than ttl:
+    shift_ = log2(ttl.value);
+    if ((1 << shift_) < AKU_LIMITS_MIN_TTL) {
+        throw std::runtime_error("TTL is too small");
+    }
+}
+
+void Cache::swapn(int swaps) noexcept {
+    for(auto it = gen_.rbegin(); it != gen_.rend(); ++it) {
+        swap_.emplace_back(ttl_, max_size_);
+        it->swap(swap_.back());
+        if (--swaps == 0) break;
+    }
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
-    auto& gen0 = gen_[0];
-    int status = gen0.add(ts, pid, offset);
-    switch(status) {
-    case AKU_WRITE_STATUS_OVERFLOW: {
-            // Rotate
-            gen0.close();
-            gen_.emplace_back(ttl_, max_size_);
-            auto curr = gen_.rbegin();
-            auto prev = gen_.rbegin();
-            std::advance(curr, 1);
-            while(curr != gen_.rend()) {
-                curr->swap(*prev);
-                prev = curr;
-                std::advance(curr, 1);
+    auto rts = (ts.value >> shift_);
+    auto index = baseline_.value - rts;
+
+    // NOTE: If it is less than zero - we need to shift cache.
+    // Otherwise we can select existing generation but this can result in late write
+    // or overflow.
+
+    Generation* gen = nullptr;
+    if (index >= 0) {
+        if (index < gen_.size()) {
+            gen = &gen_[index];
+        }
+    }
+    else {
+        // Future write! This must be ammortized across many writes.
+        // If this procedure performs often - than we choose too small TTL
+        auto count = 0 - index;
+        baseline_.value = rts;
+        index = 0;
+
+        if (count >= AKU_LIMITS_MAX_CACHES) {
+            // Move all items to swap
+            swapn(gen_.size());
+            gen_.clear();
+            for (int i = 0; i < AKU_LIMITS_MAX_CACHES; i++) {
+                gen_.emplace_back(ttl_, max_size_);
             }
         }
-    case AKU_WRITE_STATUS_SUCCESS:
-        break;
-    };
-    return status;
+        else {
+            // Calculate, how many gen-s must be swapped
+            auto freeslots = AKU_LIMITS_MAX_CACHES - count;
+            if (freeslots < gen_.size()) {
+                int swapscnt = gen_.size() - freeslots;
+                swapn(swapscnt);
+            }
+            for (int i = 0; i < count; i++) {
+                // This is quadratic algo. but
+                // gen_.size() is limited by the
+                // small number.
+                gen_.emplace_back(ttl_, max_size_);
+                auto curr = gen_.rbegin();
+                auto prev = gen_.rbegin();
+                std::advance(curr, 1);
+                while(curr != gen_.rend()) {
+                    curr->swap(*prev);
+                    prev = curr;
+                    std::advance(curr, 1);
+                }
+            }
+        }
+        gen = &gen_[index];
+    }
+    // add to bucket
+    return gen->add(ts, pid, offset);
 }
 
 int Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {

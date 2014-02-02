@@ -69,4 +69,7 @@ namespace Akumuli
         //! Free OS resources associated with object
         void free_resources(int cnt);
     };
+
+    //! Fast integer logarithm
+    int64_t log2(int64_t value) noexcept;
 }

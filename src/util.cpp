@@ -1,5 +1,6 @@
 #include "util.h"
 #include <log4cxx/logmanager.h>
+#include <stdio.h>
 
 namespace Akumuli
 {
@@ -154,5 +155,10 @@ apr_status_t MemoryMappedFile::flush() noexcept {
 
 log4cxx::LoggerPtr MemoryMappedFile::s_logger_ = log4cxx::LogManager::getLogger("Akumuli.MemoryMappedFile");
 
+
+int64_t log2(int64_t value) noexcept {
+    // TODO: visual studio version needed
+    return __builtin_clzll(value);
+}
 
 }

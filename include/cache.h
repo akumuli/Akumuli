@@ -92,7 +92,10 @@ struct Generation {
 class Cache {
     TimeDuration            ttl_;           //< TTL
     size_t                  max_size_;      //< Max size of the generation
-    std::vector<Generation> gen_;           //< List of generations
+    std::vector<Generation> gen_;           //< List of active generations
+    std::vector<Generation> swap_;          //< List of past generations
+    int                     shift_;         //< Shift width
+    TimeStamp            baseline_;         //< Cache baseline
 
     /* NOTE:
      * Generation must be isoated (doesn't interleave with each other).
@@ -106,6 +109,8 @@ class Cache {
      */
 
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept;
+
+    void swapn(int swaps) noexcept;
 public:
     /** C-tor
       * @param ttl max late write timeout

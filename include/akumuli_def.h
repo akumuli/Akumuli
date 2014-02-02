@@ -1,6 +1,16 @@
 #ifndef AKUMULI_DEF_H
 #define AKUMULI_DEF_H
 
+
+// Limits
+
+//! Minimal possible TTL
+#define AKU_LIMITS_MIN_TTL       16
+
+//! Max number of live generations in cache
+#define AKU_LIMITS_MAX_CACHES     8
+
+
 // General error codes
 
 //! Success
