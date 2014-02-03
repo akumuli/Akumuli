@@ -108,7 +108,7 @@ class Cache {
      * without merging.
      */
 
-    int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept;
+    int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept;
 
     void swapn(int swaps) noexcept;
 public:
@@ -122,12 +122,12 @@ public:
     /** Add entry to cache.
      *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
      */
-    int add_entry(const Entry& entry, EntryOffset offset) noexcept;
+    int add_entry(const Entry& entry, EntryOffset offset, size_t* nswapped) noexcept;
 
     /** Add entry to cache.
      *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
      */
-    int add_entry(const Entry2& entry, EntryOffset offset) noexcept;
+    int add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) noexcept;
 
     /** Remove oldest elements from cache and return them to caller.
      *  @param offsets ret-value, array of offsets ordered by timestamp and paramId
@@ -145,14 +145,6 @@ public:
 
     //! Remove all data
     void clear() noexcept;
-
-    /** Checks whether time stamp is to late.
-      * @param ts time stamp to check
-      * @return true if time stamp is late
-      * @note late write depth can be dynamically adjusted if cache uses too much
-      * memory - late write depth shrinks.
-      */
-    bool is_too_late(TimeStamp ts) noexcept;
 };
 
 }

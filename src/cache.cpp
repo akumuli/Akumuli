@@ -246,7 +246,8 @@ void Cache::swapn(int swaps) noexcept {
     }
 }
 
-int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
+int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept {
+    // TODO: set upper limit to ttl_ value to prevent overflow
     auto rts = (ts.value >> shift_);
     auto index = baseline_.value - rts;
 
@@ -273,7 +274,9 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
 
         if (count >= AKU_LIMITS_MAX_CACHES) {
             // Move all items to swap
-            swapn(gen_.size());
+            size_t nswaps = gen_.size();
+            swapn(nswaps);
+            *nswapped += nswaps;
             gen_.clear();
             for (int i = 0; i < AKU_LIMITS_MAX_CACHES; i++) {
                 gen_.emplace_back(ttl_, max_size_);
@@ -283,8 +286,9 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
             // Calculate, how many gen-s must be swapped
             auto freeslots = AKU_LIMITS_MAX_CACHES - count;
             if (freeslots < gen_.size()) {
-                int swapscnt = gen_.size() - freeslots;
+                size_t swapscnt = gen_.size() - freeslots;
                 swapn(swapscnt);
+                *nswapped += swapscnt;
             }
             for (int i = 0; i < count; i++) {
                 // This is quadratic algo. but
@@ -307,17 +311,18 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
     return gen->add(ts, pid, offset);
 }
 
-int Cache::add_entry(const Entry& entry, EntryOffset offset) noexcept {
-    return add_entry_(entry.time, entry.param_id, offset);
+int Cache::add_entry(const Entry& entry, EntryOffset offset, size_t* nswapped) noexcept {
+    return add_entry_(entry.time, entry.param_id, offset, nswapped);
 }
 
-int Cache::add_entry(const Entry2& entry, EntryOffset offset) noexcept {
-    return add_entry_(entry.time, entry.param_id, offset);
+int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) noexcept {
+    return add_entry_(entry.time, entry.param_id, offset, nswapped);
 }
 
 void Cache::clear() noexcept {
     gen_.clear();
-    gen_.push_back(Generation(ttl_, max_size_));
+    for (int i = 0; i < AKU_LIMITS_MAX_CACHES; i++)
+        gen_.emplace_back(ttl_, max_size_);
 }
 
 int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept {
@@ -337,18 +342,6 @@ int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noe
         offsets[ix++] = it->second;
     }
     return AKU_EGENERAL;
-}
-
-bool Cache::is_too_late(TimeStamp ts) noexcept {
-    Generation& gen = gen_[0];
-    TimeStamp div;
-    bool has_most_recent = gen.get_most_recent_timestamp(&div);
-    if (has_most_recent) {
-        // most frequent path
-        return ts < div;
-    }
-    // least frequent path
-    return false;
 }
 
 void Cache::search(SingleParameterCursor* cursor) const noexcept {

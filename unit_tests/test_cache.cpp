@@ -107,19 +107,26 @@ BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
     TimeStamp ts = {100001L};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
     int status = AKU_SUCCESS;
-    status = cache.add_entry(*entry, 0);
+    size_t swapped = 0u;
+    status = cache.add_entry(*entry, 0, &swapped);
     BOOST_CHECK(status == AKU_SUCCESS);
+    BOOST_CHECK(swapped == AKU_LIMITS_MAX_CACHES);  // old empty generations must be swapped
+    swapped = 0;
     entry->time = {100002L};
-    status = cache.add_entry(*entry, 1);
+    status = cache.add_entry(*entry, 1, &swapped);
+    BOOST_CHECK(swapped == 0u);
     BOOST_CHECK(status == AKU_SUCCESS);
     entry->time = {100003L};
-    status = cache.add_entry(*entry, 2);
+    status = cache.add_entry(*entry, 2, &swapped);
+    BOOST_CHECK(swapped == 0u);
     BOOST_CHECK(status == AKU_SUCCESS);
     entry->time = {100004L};
-    status = cache.add_entry(*entry, 3);
+    status = cache.add_entry(*entry, 3, &swapped);
+    BOOST_CHECK(swapped == 0u);
     BOOST_CHECK(status == AKU_EOVERFLOW);
     entry->time = {100500L};
-    status = cache.add_entry(*entry, 4);
+    status = cache.add_entry(*entry, 4, &swapped);  // future write
+    BOOST_CHECK(swapped == 1u);
     BOOST_CHECK(status == AKU_SUCCESS);
 }
 
@@ -130,13 +137,18 @@ BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
     TimeStamp ts = {time};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
     int status = AKU_SUCCESS;
-    status = cache.add_entry(*entry, 0);
+    size_t swaps = 0;
+    status = cache.add_entry(*entry, 0, &swaps);
     BOOST_CHECK(status == AKU_SUCCESS);
+    BOOST_CHECK(swaps == AKU_LIMITS_MAX_CACHES);
+    swaps = 0;
     entry->time = {time + 2L};
-    status = cache.add_entry(*entry, 1);
+    status = cache.add_entry(*entry, 1, &swaps);
+    BOOST_CHECK(swaps == 0u);
     BOOST_CHECK(status == AKU_SUCCESS);
     entry->time = {time - 10000L};
-    status = cache.add_entry(*entry, 2);
+    status = cache.add_entry(*entry, 2, &swaps);  // late write
+    BOOST_CHECK(swaps == 0u);
     BOOST_CHECK(status == AKU_EOVERFLOW);
 }
 
@@ -203,7 +215,8 @@ static int init_search_range_test(Cache* cache, int num_values) {
         TimeStamp inst = {1000L + i};
         auto entry = new (buffer) Entry(1, inst, 64);
         entry->value[0] = i;
-        int stat = cache->add_entry(*entry, i);
+        size_t nswaps = 0;
+        int stat = cache->add_entry(*entry, i, &nswaps);
         BOOST_CHECK(stat == AKU_WRITE_STATUS_OVERFLOW || stat == AKU_WRITE_STATUS_SUCCESS);
         if (stat == AKU_WRITE_STATUS_OVERFLOW) {
             num_overflows++;

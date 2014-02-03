@@ -1,4 +1,4 @@
-/** 
+/**
  * PRIVATE HEADER
  *
  * Descriptions of internal data structures used to store data in memory mappaed files.
