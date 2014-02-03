@@ -158,7 +158,7 @@ log4cxx::LoggerPtr MemoryMappedFile::s_logger_ = log4cxx::LogManager::getLogger(
 
 int64_t log2(int64_t value) noexcept {
     // TODO: visual studio version needed
-    return __builtin_clzll(value);
+    return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
 }

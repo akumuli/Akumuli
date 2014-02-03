@@ -221,10 +221,13 @@ void Generation::close() {
 Cache::Cache(TimeDuration ttl, size_t max_size)
     : ttl_(ttl)
     , max_size_(max_size)
+    , baseline_{}
 {
     // First created generation will hold elements with indexes
     // from offset_ to offset_ + gen.size()
-    gen_.push_back(Generation(ttl_, max_size_));
+    for(int i = 0; i < AKU_LIMITS_MAX_CACHES; i++) {
+        gen_.push_back(Generation(ttl_, max_size_));
+    }
 
     // We need two calculate shift width. So, we got ttl in some units
     // of measure, units of measure that akumuli doesn't know about.
@@ -255,6 +258,10 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset) noexcept {
     if (index >= 0) {
         if (index < gen_.size()) {
             gen = &gen_[index];
+        }
+        else {
+            // Late write detected
+            return AKU_WRITE_STATUS_OVERFLOW;
         }
     }
     else {

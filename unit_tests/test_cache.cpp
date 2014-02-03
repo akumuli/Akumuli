@@ -98,45 +98,49 @@ BOOST_AUTO_TEST_CASE(Test_generation_oldest) {
     BOOST_REQUIRE(oldest.value == 1L);
 }
 
+
+// --------- Cache tests -----------
+
 BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
     Cache cache({1000L}, 3);
     char entry_buffer[0x100];
-    TimeStamp ts = {1L};
+    TimeStamp ts = {100001L};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
     int status = AKU_SUCCESS;
     status = cache.add_entry(*entry, 0);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {2L};
+    entry->time = {100002L};
     status = cache.add_entry(*entry, 1);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {3L};
+    entry->time = {100003L};
     status = cache.add_entry(*entry, 2);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {4L};
+    entry->time = {100004L};
     status = cache.add_entry(*entry, 3);
     BOOST_CHECK(status == AKU_EOVERFLOW);
-    entry->time = {5L};
+    entry->time = {100500L};
     status = cache.add_entry(*entry, 4);
     BOOST_CHECK(status == AKU_SUCCESS);
 }
 
-BOOST_AUTO_TEST_CASE(Test_cache_dump_by_time) {
-    Cache cache({10L}, 1000);
+BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
+    Cache cache({1000L}, 1000);
     char entry_buffer[0x100];
-    TimeStamp ts = {1000L};
+    int64_t time = apr_time_now();
+    TimeStamp ts = {time};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
     int status = AKU_SUCCESS;
     status = cache.add_entry(*entry, 0);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {1002L};
+    entry->time = {time + 2L};
     status = cache.add_entry(*entry, 1);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {1012L};
+    entry->time = {time - 10000L};
     status = cache.add_entry(*entry, 2);
     BOOST_CHECK(status == AKU_EOVERFLOW);
 }
 
-BOOST_AUTO_TEST_CASE(Test_cache_search_backward) {
+BOOST_AUTO_TEST_CASE(Test_gen_search_backward) {
 
     TimeDuration td = {10000L};
     Generation gen(td, 10000);
@@ -164,7 +168,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_search_backward) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_cache_search_forward) {
+BOOST_AUTO_TEST_CASE(Test_gen_search_forward) {
 
     TimeDuration td = {10000L};
     Generation gen(td, 10000);
@@ -190,26 +194,6 @@ BOOST_AUTO_TEST_CASE(Test_cache_search_forward) {
     for(int i = 0; i < 100; i++) {
         BOOST_REQUIRE_EQUAL(results[i], 400 + i);
     }
-}
-
-BOOST_AUTO_TEST_CASE(Test_cache_late_write_refusion) {
-    Cache cache({10L}, 1000);
-    char entry_buffer[0x100];
-    TimeStamp ts = {1000L};
-    Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
-    int status = AKU_SUCCESS;
-    status = cache.add_entry(*entry, 0);
-    BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {1002L};
-    status = cache.add_entry(*entry, 1);
-    BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {1042L};
-    status = cache.add_entry(*entry, 2);
-    BOOST_CHECK(status == AKU_EOVERFLOW);
-
-    BOOST_CHECK(cache.is_too_late({42L}) == true);
-    BOOST_CHECK(cache.is_too_late({1043L}) == false);
-    BOOST_CHECK(cache.is_too_late({2000L}) == false);
 }
 
 static int init_search_range_test(Cache* cache, int num_values) {
