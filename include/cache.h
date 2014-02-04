@@ -24,6 +24,7 @@
 namespace Akumuli {
 
 struct Generation {
+    // TODO: add fine grained locking
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
 

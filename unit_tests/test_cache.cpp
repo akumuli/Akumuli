@@ -76,6 +76,40 @@ BOOST_AUTO_TEST_CASE(Test_gen_search_forward) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(Test_gen_search_bad_direction) {
+    Generation gen(10000);
+    EntryOffset indexes[10];
+    SingleParameterCursor cursor(1, {1400L}, {1500L}, 111, indexes, 10);
+    gen.search(&cursor);
+    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
+}
+
+BOOST_AUTO_TEST_CASE(Test_gen_search_bad_time) {
+    Generation gen(10000);
+    EntryOffset indexes[10];
+    SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
+    gen.search(&cursor);
+    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
+}
+
+BOOST_AUTO_TEST_CASE(Test_gen_search_bad_buffer) {
+    Generation gen(10000);
+    SingleParameterCursor cursor(1, {1000L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, nullptr, 10);
+    gen.search(&cursor);
+    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
+}
+
+BOOST_AUTO_TEST_CASE(Test_gen_search_bad_buffer_size) {
+    Generation gen(10000);
+    EntryOffset indexes[10];
+    SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 0);
+    gen.search(&cursor);
+    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
+}
 
 // --------- Cache tests -----------
 

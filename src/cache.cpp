@@ -56,7 +56,11 @@ void Generation::search(SingleParameterCursor* cursor) const noexcept {
     bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
 
-    if (cursor->upperbound < cursor->lowerbound || !(forward ^ backward)) {
+    if (cursor->upperbound < cursor->lowerbound
+        || !(forward ^ backward)
+        || cursor->results == nullptr
+        || cursor->results_cap == 0
+    ) {
         // Invalid direction or timestamps
         cursor->state = AKU_CURSOR_COMPLETE;
         cursor->error_code = AKU_EBAD_ARG;
@@ -294,7 +298,23 @@ int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noe
 }
 
 void Cache::search(SingleParameterCursor* cursor) const noexcept {
+
+    bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
+    bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
+
+    if (cursor->upperbound < cursor->lowerbound
+        || !(forward ^ backward)
+        || cursor->results == nullptr
+        || cursor->results_cap == 0
+    ) {
+        // Invalid direction or timestamps
+        cursor->state = AKU_CURSOR_COMPLETE;
+        cursor->error_code = AKU_EBAD_ARG;
+        return;
+    }
+
     throw std::runtime_error("Not implemented");
+
     while(true) {
         switch(cursor->state) {
         case AKU_CURSOR_START:
