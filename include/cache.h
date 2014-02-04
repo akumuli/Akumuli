@@ -27,13 +27,11 @@ struct Generation {
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
 
-    TimeDuration ttl_;          //< TTL
     size_t       capacity_;     //< Max generation size
-    TimeStamp    most_recent_;  //< Most recent timestamp
     MapType      data_;         //< Dictionary
 
     //! Normal c-tor
-    Generation(TimeDuration ttl, size_t max_size) noexcept;
+    Generation(size_t max_size) noexcept;
 
     //! Copy c-tor
     Generation(Generation const& other);
@@ -45,35 +43,12 @@ struct Generation {
       */
     int add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept;
 
-    /** Search for elements.
-     *  @param ts time stamp
-     *  @param pid parameter id
-     *  @param results destination array
-     *  @param results_len size of the destination array
-     *  @param skip number of elements to skip
-     *  @return number of returned elements x is there any elements remaining
-     */
-    std::pair<size_t, bool> find(TimeStamp ts, ParamId pid, EntryOffset* results, size_t results_len, size_t skip) noexcept;
-
     /** Search for range of elements.
       */
     void search(SingleParameterCursor* cursor) const noexcept;
 
-    /** Get the oldest timestamp of the generation.
-     *  If generation is empty - return false, true otherwise.
-     */
-    bool get_oldest_timestamp(TimeStamp* ts) const noexcept;
-
-    /** Get the most recent timestamp if it present.
-      * If generation is empty - return false.
-      */
-    bool get_most_recent_timestamp(TimeStamp* ts) const noexcept;
-
     //! Get number of items
     size_t size() const noexcept;
-
-    //! Close generation for write
-    void close();
 
     MapType::const_iterator begin() const;
 
