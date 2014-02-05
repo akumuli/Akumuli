@@ -11,59 +11,67 @@
   * @param Derived derived class
   * @param NIter number of iterations
   */
-template<class Derived, int NIter>
 class BenchmarkRunner {
     std::vector<unsigned long long> results_;
     unsigned long long median_, min_;
-protected:
-    std::string name_;
+    int niter_;
+    CPUCounter cnt_;
+    int iter_;
 public:
 
-    BenchmarkRunner()
-        : results_(NIter, 0)
+    BenchmarkRunner(int niter)
+        : results_(niter, 0)
+        , iter_(0)
+        , niter_(niter)
     {}
 
-    void execute() {
-        CPUCounter cnt;
-        for (int i = 0; i < NIter; i++) {
-            cnt.reset();
-            static_cast<Derived*>(this)->run();
-            auto res = cnt.elapsed();
-            results_[i] = res;
-        }
+    // FIXME: it's not portable
+    void resume() noexcept __attribute__((always_inline)) {
+        cnt_.resume();
+    }
+
+    void pause() noexcept __attribute__((always_inline)) {
+        cnt_.pause();
+    }
+
+    //! Next iteration - save counter
+    void advance() noexcept {
+        auto res = cnt_.elapsed();
+        results_[iter_++] = res;
+        cnt_.reset();
+    }
+
+    bool done() const noexcept {
+        return niter_ == iter_;
+    }
+
+    template <class Fn>
+    void run(const char* name, Fn fn) {
+
+        fn(*this);
 
         // process results
         std::sort(results_.begin(), results_.end());
-        median_ = results_[NIter / 2];
+        median_ = results_[niter_ / 2];
         min_ = results_[0];
 
-        std::cout << name_ << " min=" << min_ << " median=" << median_ << std::endl;
+        std::cout << name << " min=" << min_ << " median=" << median_ << std::endl;
     }
 };
 
 using namespace Akumuli;
 
-struct GenFindTest : BenchmarkRunner<GenFindTest, 100000> {
-    Generation gen_;
-
-    GenFindTest()
-        : gen_(10000000u)
-    {
-        name_ = "Generation(find)";
-
-        for (int i = 0; i < 100; i++) {
-            gen_.add(TimeStamp::make(10L), 5, i);
-        }
-    }
-
-    void run() {
-        EntryOffset off[50];
-        //gen_.find(TimeStamp::make(10L), 5, off, 10, 50);
-    }
-};
 
 int main() {
-    GenFindTest gen_find_test;
-    gen_find_test.execute();
+    BenchmarkRunner bench(1000000);
+    bench.run("Test benchmark", [] (BenchmarkRunner& b) {
+        unsigned long long x = 0;
+        while(!b.done()) {
+            b.resume();
+            x++;
+            b.pause();
+            b.advance();
+        }
+    });
     return 0;
 }
