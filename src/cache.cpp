@@ -174,13 +174,16 @@ Generation::MapType::const_iterator Generation::end() const {
 Cache::Cache(TimeDuration ttl, size_t max_size)
     : ttl_(ttl)
     , max_size_(max_size)
-    , baseline_{}
+    , baseline_()
 {
-    // First created generation will hold elements with indexes
-    // from offset_ to offset_ + gen.size()
-    for(int i = 0; i < AKU_LIMITS_MAX_CACHES; i++) {
-        gen_.push_back(Generation(max_size_));
+    // Cache prepopulation
+    for (int i = 0; i < AKU_CACHE_POPULATION; i++) {
+        cache_.emplace_back(max_size_);
+        Generation& g = cache_.back();
+        free_list_.push_back(g);
     }
+
+    allocate_from_free_list(AKU_LIMITS_MAX_CACHES);
 
     // We need two calculate shift width. So, we got ttl in some units
     // of measure, units of measure that akumuli doesn't know about.
@@ -191,12 +194,47 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     }
 }
 
+template<class TCont>
+Generation* index2ptr(TCont& cont, int64_t index) noexcept {
+    auto begin = cont.begin();
+    std::advance(begin, index);
+    auto& gen = *begin;
+    return &gen;
+}
+
+template<class TCont>
+Generation const* index2ptr(TCont const& cont, int64_t index) noexcept {
+    auto begin = cont.cbegin();
+    std::advance(begin, index);
+    auto& gen = *begin;
+    return &gen;
+}
+
+// [gen_] -(swaps)-> [swap_]
 void Cache::swapn(int swaps) noexcept {
-    for(auto it = gen_.rbegin(); it != gen_.rend(); ++it) {
-        swap_.emplace_back(max_size_);
-        it->swap(swap_.back());
-        if (--swaps == 0) break;
+    auto end = gen_.end();
+    auto begin = gen_.end();
+    std::advance(begin, -1*swaps);
+    gen_.splice(swap_.begin(), swap_, begin, end);
+}
+
+// [free_list_] -(ngens)-> [gen_]
+void Cache::allocate_from_free_list(int ngens) noexcept {
+    // TODO: add backpressure to producer to limit memory usage!
+    auto n = free_list_.size();
+    if (n < ngens) {
+        // create new generations
+        auto nnew = ngens - n;
+        for (int i = 0; i < nnew; i++) {
+            cache_.emplace_back(max_size_);
+            auto& g = cache_.back();
+            free_list_.push_back(g);
+        }
     }
+    auto begin = free_list_.begin();
+    auto end = free_list_.begin();
+    std::advance(end, ngens);
+    free_list_.splice(gen_.begin(), gen_, begin, end);
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept {
@@ -211,7 +249,13 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
     Generation* gen = nullptr;
     if (index >= 0) {
         if (index < gen_.size()) {
-            gen = &gen_[index];
+            if (index == 0) {
+                // shortcut for must frequent case
+                gen = &gen_.front();
+            }
+            else {
+                gen = index2ptr(gen_, index);
+            }
         }
         else {
             // Late write detected
@@ -230,10 +274,7 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
             size_t nswaps = gen_.size();
             swapn(nswaps);
             *nswapped += nswaps;
-            gen_.clear();
-            for (int i = 0; i < AKU_LIMITS_MAX_CACHES; i++) {
-                gen_.emplace_back(max_size_);
-            }
+            allocate_from_free_list(AKU_LIMITS_MAX_CACHES);
         }
         else {
             // Calculate, how many gen-s must be swapped
@@ -243,22 +284,9 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
                 swapn(swapscnt);
                 *nswapped += swapscnt;
             }
-            for (int i = 0; i < count; i++) {
-                // This is quadratic algo. but
-                // gen_.size() is limited by the
-                // small number.
-                gen_.emplace_back(max_size_);
-                auto curr = gen_.rbegin();
-                auto prev = gen_.rbegin();
-                std::advance(curr, 1);
-                while(curr != gen_.rend()) {
-                    curr->swap(*prev);
-                    prev = curr;
-                    std::advance(curr, 1);
-                }
-            }
+            allocate_from_free_list(count);
         }
-        gen = &gen_[index];
+        gen = index2ptr(gen_, index);
     }
     // add to bucket
     return gen->add(ts, pid, offset);
@@ -273,27 +301,11 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 }
 
 void Cache::clear() noexcept {
-    gen_.clear();
-    for (int i = 0; i < AKU_LIMITS_MAX_CACHES; i++)
-        gen_.emplace_back(max_size_);
+    gen_.splice(free_list_.begin(), free_list_, gen_.begin(), gen_.end());
+    swap_.splice(free_list_.begin(), free_list_, swap_.begin(), swap_.end());
 }
 
 int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept {
-    auto ngen = gen_.size();
-    if (ngen > 2) {
-        return AKU_ENO_DATA;
-    }
-    Generation& last = gen_.back();
-    auto lastsize = last.size();
-    if (lastsize > size) {
-        return AKU_ENO_MEM;
-    }
-    *noffsets = lastsize;
-
-    int ix = 0;
-    for(auto it = last.begin(); it != last.end(); ++it) {
-        offsets[ix++] = it->second;
-    }
     return AKU_EGENERAL;
 }
 
@@ -313,18 +325,29 @@ void Cache::search(SingleParameterCursor* cursor) const noexcept {
         return;
     }
 
-    throw std::runtime_error("Not implemented");
+    auto tskey = cursor->upperbound.value;
+    auto idkey = cursor->param;
 
     while(true) {
         switch(cursor->state) {
-        case AKU_CURSOR_START:
+        case AKU_CURSOR_START: {
             // Init search
-            cursor->generation = 0;
+            auto key = tskey >> shift_;
+            auto index = baseline_.value - key;
+            if (index < 0) {
+                // future read
+                index = 0;
+            }
+            cursor->generation = index;
             cursor->state = AKU_CURSOR_SEARCH;
+            cursor->skip = 0;
+        }
         case AKU_CURSOR_SEARCH: {
                 // Search in single generation
-                Generation const& gen = gen_[cursor->generation];
-                gen.search(cursor);
+                Generation const* gen = index2ptr(gen_, cursor->generation);
+                while(cursor->state != AKU_CURSOR_COMPLETE) {
+                    gen->search(cursor);
+                }
             }
             break;
         };

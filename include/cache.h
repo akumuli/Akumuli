@@ -19,17 +19,40 @@
 
 #include <tuple>
 #include <vector>
+#include <deque>
 #include <memory>
+#include <boost/intrusive/list.hpp>
+#include <boost/intrusive/set.hpp>
 
 namespace Akumuli {
 
-struct Generation {
+namespace details {
+
+    //! Intrusive list tag for generation class (incomplete type)
+    struct gen_list_tag_;
+
+    //! Intrusive set tag for generation class (incomplete type)
+    struct gen_set_tag_;
+
+    typedef boost::intrusive::list_base_hook<boost::intrusive::tag<gen_list_tag_> > GenerationListBaseHook;
+
+    typedef boost::intrusive::set_base_hook<boost::intrusive::tag<gen_set_tag_> > GenerationSetBaseHook;
+
+}
+
+struct Generation : details::GenerationListBaseHook
+{
     // TODO: add fine grained locking
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
 
-    size_t       capacity_;     //< Max generation size
-    MapType      data_;         //< Dictionary
+    size_t                  capacity_;     //< Max generation size
+    MapType                 data_;         //< Dictionary
+
+    // Public properties
+
+    TimeStamp               baseline;
+    int                     state;
 
     //! Normal c-tor
     Generation(size_t max_size) noexcept;
@@ -57,6 +80,14 @@ struct Generation {
 };
 
 
+// Cache list type
+typedef boost::intrusive::list< Generation
+                              , boost::intrusive::base_hook<details::GenerationListBaseHook>
+                              , boost::intrusive::constant_time_size<false>
+                              , boost::intrusive::link_mode<boost::intrusive::normal_link> >
+GenListType;
+
+
 /** Cache for the time-series data.
   * @note This is a first _sketch_ implementation. It's not as good as it can be
   *       but it is good enough for the first try.
@@ -68,10 +99,12 @@ struct Generation {
 class Cache {
     TimeDuration            ttl_;           //< TTL
     size_t                  max_size_;      //< Max size of the generation
-    std::vector<Generation> gen_;           //< List of active generations
-    std::vector<Generation> swap_;          //< List of past generations
     int                     shift_;         //< Shift width
-    TimeStamp            baseline_;         //< Cache baseline
+    TimeStamp               baseline_;      //< Cache baseline
+    std::deque<Generation>  cache_;         //< List of all generations
+    GenListType             free_list_;     //< List of available gen-s
+    GenListType             gen_;           //< Active gen-s
+    GenListType             swap_;          //< Swap
 
     /* NOTE:
      * Generation must be isoated (doesn't interleave with each other).
@@ -87,6 +120,12 @@ class Cache {
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept;
 
     void swapn(int swaps) noexcept;
+
+    /** Allocate `ngens` generations from free_list_
+      * and put them before the first element of the
+      * gen_ list.
+      */
+    void allocate_from_free_list(int ngens) noexcept;
 public:
     /** C-tor
       * @param ttl max late write timeout

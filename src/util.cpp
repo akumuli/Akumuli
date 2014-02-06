@@ -161,4 +161,6 @@ int64_t log2(int64_t value) noexcept {
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
+//----------------RWLock-------------------------
+
 }

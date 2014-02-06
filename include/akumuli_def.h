@@ -9,7 +9,8 @@
 
 //! Max number of live generations in cache
 #define AKU_LIMITS_MAX_CACHES     8
-
+//! Prepopulation count for cache
+#define AKU_CACHE_POPULATION     32
 
 // General error codes
 
