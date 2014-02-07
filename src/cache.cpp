@@ -8,8 +8,6 @@
  *
  */
 
-#define AKU_NUM_GENERATIONS 5
-
 #include "akumuli_def.h"
 #include "cache.h"
 #include "util.h"
@@ -325,28 +323,41 @@ void Cache::search(SingleParameterCursor* cursor) const noexcept {
         return;
     }
 
+    if (cursor->cache_init == 0) {
+        // Init search
+        auto key = tskey >> shift_;
+        auto index = baseline_.value - key;
+        // PROBLEM: index can change between calls
+        if (index < 0) {
+            // future read
+            index = 0;
+        }
+        cursor->cache_init = 1;
+        cursor->cache_index = 0;
+        cursor->cache_start_id = key;
+    }
+    throw std::runtime_error("Not implemented");
+
     auto tskey = cursor->upperbound.value;
     auto idkey = cursor->param;
+
 
     while(true) {
         switch(cursor->state) {
         case AKU_CURSOR_START: {
-            // Init search
-            auto key = tskey >> shift_;
-            auto index = baseline_.value - key;
-            if (index < 0) {
-                // future read
-                index = 0;
-            }
             cursor->generation = index;
             cursor->state = AKU_CURSOR_SEARCH;
             cursor->skip = 0;
         }
         case AKU_CURSOR_SEARCH: {
                 // Search in single generation
+                auto gen_index = cursor->generation;
                 Generation const* gen = index2ptr(gen_, cursor->generation);
-                while(cursor->state != AKU_CURSOR_COMPLETE) {
-                    gen->search(cursor);
+                gen->search(cursor);
+                if (cursor->state == AKU_CURSOR_COMPLETE) {
+                    cursor->generation++;
+                    cursor->state = AKU_CURSOR_SEARCH;
+                    return;
                 }
             }
             break;

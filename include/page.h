@@ -145,7 +145,9 @@ struct PageCursor {
     uint32_t        state;          //< FSM state
     uint32_t        error_code;     //< Search error code
     // cache search data
-    uint32_t        generation;     //< Searched generation
+    int64_t         cache_start_id; //< Cache generation id to start from
+    uint32_t        cache_index;    //< Searched generation
+    uint32_t        cache_init;     //< Initialization flag
     // generation data
     uint32_t        skip;           //< Num of elements to skip
 
