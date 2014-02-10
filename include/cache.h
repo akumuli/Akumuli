@@ -21,10 +21,17 @@
 #include <vector>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/set.hpp>
 
 namespace Akumuli {
+
+/*
+    Write -> Bucket -> round robin -> Sequence
+    Search -> Bucket -> map search Sequence -> merge results
+*/
+
 
 namespace details {
 
@@ -34,33 +41,32 @@ namespace details {
     //! Intrusive set tag for generation class (incomplete type)
     struct gen_set_tag_;
 
-    typedef boost::intrusive::list_base_hook<boost::intrusive::tag<gen_list_tag_> > GenerationListBaseHook;
+    typedef boost::intrusive::list_base_hook<boost::intrusive::tag<gen_list_tag_> > BucketListBaseHook;
 
-    typedef boost::intrusive::set_base_hook<boost::intrusive::tag<gen_set_tag_> > GenerationSetBaseHook;
+    typedef boost::intrusive::set_base_hook<boost::intrusive::tag<gen_set_tag_> > BucketSetBaseHook;
 
 }
 
-struct Generation : details::GenerationListBaseHook
+struct Sequence
 {
     // TODO: add fine grained locking
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
 
-    size_t                  capacity_;     //< Max generation size
-    MapType                 data_;         //< Dictionary
+    size_t                  capacity_;      //< Max generation size
+    MapType                 data_;          //< Dictionary
+    std::mutex              lock_;          //< Write lock
 
     // Public properties
-
-    TimeStamp               baseline;
-    int                     state;
+    TimeStamp               baseline = {0L};
+    int                     state = 0;
+    uint64_t                index = 0;
 
     //! Normal c-tor
-    Generation(size_t max_size) noexcept;
+    Sequence(size_t max_size) noexcept;
 
     //! Copy c-tor
-    Generation(Generation const& other);
-
-    void swap(Generation& other);
+    Sequence(Sequence const& other);
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if generation is full. Note that write is successful anyway.
@@ -80,12 +86,32 @@ struct Generation : details::GenerationListBaseHook
 };
 
 
+//! Bucket of N sequnces.
+struct Bucket : details::BucketListBaseHook {
+    std::vector<Sequence> seq_;
+    std::atomic<int> rrindex_;  //< Round robin index
+
+    Bucket(int n, size_t max_size);
+
+    Bucket(Bucket const& other);
+
+    /**  Add item to cache.
+      *  @return AKU_WRITE_STATUS_OVERFLOW if generation is full. Note that write is successful anyway.
+      */
+    int add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept;
+
+    /** Search for range of elements.
+      */
+    void search(SingleParameterCursor* cursor) const noexcept;
+};
+
+
 // Cache list type
-typedef boost::intrusive::list< Generation
-                              , boost::intrusive::base_hook<details::GenerationListBaseHook>
+typedef boost::intrusive::list< Bucket
+                              , boost::intrusive::base_hook<details::BucketListBaseHook>
                               , boost::intrusive::constant_time_size<false>
                               , boost::intrusive::link_mode<boost::intrusive::normal_link> >
-GenListType;
+BucketListType;
 
 
 /** Cache for the time-series data.
@@ -93,7 +119,7 @@ GenListType;
   *       but it is good enough for the first try.
   * Time series data is stored b-tree. If tree is full or out of date (there is limit
   * on tree size and elements age) - new tree is created and the old one can be writen
-  * back to the page. The individual trees is implemented by the "Generation" class.
+  * back to the page. The individual trees is implemented by the "Sequence" class.
   * "Cache" class is actually a list of generations and public interface.
   */
 class Cache {
@@ -101,17 +127,17 @@ class Cache {
     size_t                  max_size_;      //< Max size of the generation
     int                     shift_;         //< Shift width
     TimeStamp               baseline_;      //< Cache baseline
-    std::deque<Generation>  cache_;         //< List of all generations
+    std::deque<Bucket>      cache_;         //< List of all buckets
     GenListType             free_list_;     //< List of available gen-s
     GenListType             gen_;           //< Active gen-s
-    GenListType             swap_;          //< Swap
+    std::mutex              lists_mutex_;   //< Mutex that guards both lists, baseline and deque
 
     /* NOTE:
-     * Generation must be isoated (doesn't interleave with each other).
+     * Buckets must be isoated (doesn't interleave with each other).
      *
-     * [Gen0)[Gen1)[Gen2) -> write to indirection vector
+     * [Bucket0)[Bucket1)[Bucket2) -> writes to indirection vector
      *
-     * Every generation must hold one half open time interval [tbegin, tend).
+     * Every bucket must hold one half open time interval [tbegin, tend).
      * Client process can pop out generations from the end of the queue. This
      * requirement needed to implement search and pop-out procedures more efficiently,
      * without merging.

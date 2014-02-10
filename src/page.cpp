@@ -101,7 +101,7 @@ PageCursor::PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept
     , probe_index(0u)
     , state(AKU_CURSOR_START)
     , cache_start_id(0l)
-    , cache_gen(0u)
+    , cache_index(0u)
     , cache_init(0u)
     , skip(0u)
 {
