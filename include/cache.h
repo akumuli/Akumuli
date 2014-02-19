@@ -90,7 +90,7 @@ struct Bucket : details::BucketListBaseHook {
     std::vector<Sequence>   seq_;
     std::atomic<int>        rrindex_;  //< round robin index (maybe I can use TSC register instead of this)
     int64_t                 baseline;  //< max timestamp for the bucket
-    std::atomic<int>        state;     //< state of the bucket (active, cached)
+    std::atomic<int>        state;     //< state of the bucket (0 - active, 1 - ready)
 
     /** C-tor
       * @param n number of sequences
@@ -112,7 +112,12 @@ struct Bucket : details::BucketListBaseHook {
       */
     void search(SingleParameterCursor* cursor) const noexcept;
 
-    bool merge(BasicCursor* cur) noexcept;
+    /** Merge all offsets in one list in order.
+      * @param cur read cursor
+      * @param page this bucket owner
+      * @return AKU_EBUSY if bucket is not ready AKU_SUCCESS otherwise
+      */
+    int merge(BasicCursor* cur, PageHeader* page) const noexcept;
 };
 
 

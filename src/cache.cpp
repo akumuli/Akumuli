@@ -217,8 +217,17 @@ void Bucket::search(SingleParameterCursor* cursor) const noexcept {
     throw std::runtime_error("Not implemented");
 }
 
-bool Bucket::merge(BasicCursor *cur) const noexcept {
-    // TODO: check status
+int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
+
+    if (state.load() == 0) {
+        return AKU_EBUSY;
+    }
+
+    // fastpath for empty case
+    if (rrindex_.load() == 0) {
+        return AKU_SUCCESS;
+    }
+
     size_t n = seq_.size();
     // Lock everything in order
     std::vector<std::unique_lock> lock_guard;
@@ -227,15 +236,44 @@ bool Bucket::merge(BasicCursor *cur) const noexcept {
     }
 
     // Init
-    Sequence::MapType::const_iterator iter[n];
-    Sequence::MapType::const_iterator end[n];
+    typedef Sequence::MapType::const_iterator iter_t;
+    iter_t iter[n], end[n];
     for (size_t i = 0u; i < n; i++) {
         iter[i] = seq_[i].begin();
         end[i] = seq_[i].end();
     }
 
     // Merge
-    // TODO: page ptr needed here
+    auto less_than = [page](iter_t lhs, iter_t rhs) {
+        Entry const* const lentry = page->read_entry(*lhs),
+                     const rentry = page->read_entry(*rhs);
+        auto lkey = std::make_tuple(lentry->time, lentry->param_id),
+             rkey = std::make_tuple(rentry->time, rentry->param_id);
+        return lkey < rkey;
+    };
+
+    {
+        int next_min = 0;
+        while(true) {
+            int min = next_min;
+            int op_cnt = 0;
+            for (int i = 0; i < n; i++) {
+                if (i == min) continue;
+                if (iter[i] != end[i]) {
+                    if (less_than(iter[i], iter[min])) {
+                        min = i;
+                        next_min = min;
+                    } else {
+                        next_min = i;
+                    }
+                    op_cnt++;
+                }
+            }
+            auto offset = *iter[min];
+            cur->put(offset);
+            std::advance(iter[min], 1);
+        }
+    }
 
     // Unlock
     for(auto i = lock_guard.rbegin(); i != lock_guard.rend(); i++) {

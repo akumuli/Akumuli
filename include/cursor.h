@@ -18,6 +18,7 @@
 namespace Akumuli {
 
 struct BasicCursor {
+    //! Send offset to caller
     virtual void put(EntryOffset offset) = 0;
 };
 

@@ -30,23 +30,6 @@
 namespace Akumuli {
 
 
-/** Database cursor base class.
-  * @code
-  * auto pcursor = create_specific_cursor(...);
-  * while(!pcursor->done())
-  *     storage->search(pcursor);
-  * if(pcursor->status() != AKU_SUCCESS)
-  *     report_error(pcursor->status());
-  * @endcode
-  */
-struct Cursor {
-    ~Cursor() {}
-    virtual size_t read(EntryOffset* out_buf, size_t out_buf_len) = 0;
-    virtual bool done() const = 0;
-    virtual int status() const = 0;
-};
-
-
 /** Storage volume.
   * Coresponds to one of the storage pages. Includes page
   * data and main memory data.
