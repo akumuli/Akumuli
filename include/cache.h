@@ -14,6 +14,7 @@
 
 #pragma once
 #include "page.h"
+#include "cursor.h"
 
 #include <cpp-btree/btree_map.h>
 
@@ -110,6 +111,8 @@ struct Bucket : details::BucketListBaseHook {
     /** Search for range of elements.
       */
     void search(SingleParameterCursor* cursor) const noexcept;
+
+    bool merge(BasicCursor* cur) noexcept;
 };
 
 

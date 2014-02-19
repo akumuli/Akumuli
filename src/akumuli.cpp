@@ -45,9 +45,6 @@ struct DatabaseImpl : public aku_Database
     }
 
     int32_t find_sample(uint32_t param_id, int64_t instant, aku_MemRange out_data) {
-        TimeStamp ts;
-        ts.value = instant;
-        storage_.find_entry(param_id, ts);
         // FIXME
     }
 };

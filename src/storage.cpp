@@ -13,6 +13,7 @@
 #include "util.h"
 #include <stdexcept>
 #include <algorithm>
+#include <new>
 #include <atomic>
 #include <sstream>
 #include <cassert>
@@ -27,6 +28,7 @@
 namespace Akumuli {
 
 static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Storage");
+
 
 //----------------------------------Volume----------------------------------------------
 
@@ -131,9 +133,6 @@ Storage::Storage(aku_Config const& conf)
 
 // Reading
 
-void Storage::find_entry(ParamId param, TimeStamp timestamp) {
-    int64_t raw_time = timestamp.value;
-}
 
 // Writing
 
@@ -405,6 +404,9 @@ apr_status_t Storage::new_storage( const char* 	file_name
     status = create_metadata_page(path, page_names);
     apr_pool_destroy(mempool);
     return status;
+}
+
+void Storage::search(BasicCursor* cursor) {
 }
 
 }

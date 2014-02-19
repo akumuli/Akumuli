@@ -3,9 +3,11 @@ add_library(akumuli SHARED
     ../include/config.h
     ../include/page.h
     ../include/akumuli.h
+    ../include/akumuli_def.h
     ../include/util.h
     ../include/sort.h
     ../include/cache.h
+    ../include/cursor.h
     storage.cpp
     page.cpp
     akumuli.cpp

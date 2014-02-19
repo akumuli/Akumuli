@@ -11,25 +11,25 @@
 
 using namespace Akumuli;
 
-BOOST_AUTO_TEST_CASE(Test_generation_insert_overflow_by_size)
+BOOST_AUTO_TEST_CASE(Test_seqeration_insert_overflow_by_size)
 {
-    Generation gen(4);
+    Sequence seq(4);
 
     TimeStamp ts = { (int64_t)0 };
-    BOOST_REQUIRE(gen.add(ts, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(gen.add(ts, (ParamId)2, (EntryOffset)2) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(gen.add(ts, (ParamId)3, (EntryOffset)3) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(gen.add(ts, (ParamId)4, (EntryOffset)4) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(gen.add(ts, (ParamId)5, (EntryOffset)5) == AKU_WRITE_STATUS_OVERFLOW);
-    BOOST_REQUIRE(gen.add(ts, (ParamId)6, (EntryOffset)6) == AKU_WRITE_STATUS_OVERFLOW);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)2, (EntryOffset)2) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)3, (EntryOffset)3) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)4, (EntryOffset)4) == AKU_WRITE_STATUS_SUCCESS);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)5, (EntryOffset)5) == AKU_WRITE_STATUS_OVERFLOW);
+    BOOST_REQUIRE(seq.add(ts, (ParamId)6, (EntryOffset)6) == AKU_WRITE_STATUS_OVERFLOW);
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_backward) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
+    Sequence seq(10000);
 
     for (int i = 0; i < 1000; ++i) {
         TimeStamp ts = {1000L + i};
-        gen.add(ts, 1, (EntryOffset)i);
+        seq.add(ts, 1, (EntryOffset)i);
     }
 
     EntryOffset indexes[10];
@@ -37,7 +37,7 @@ BOOST_AUTO_TEST_CASE(Test_gen_search_backward) {
 
     std::vector<EntryOffset> results;
     while(cursor.state != AKU_CURSOR_COMPLETE) {
-        gen.search(&cursor);
+        seq.search(&cursor);
         for (int i = 0; i < cursor.results_num; i++) {
             results.push_back(indexes[i]);
         }
@@ -50,12 +50,12 @@ BOOST_AUTO_TEST_CASE(Test_gen_search_backward) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_forward) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
+    Sequence seq(10000);
 
     for (int i = 0; i < 1000; ++i) {
         TimeStamp ts = {1000L + i};
-        gen.add(ts, 1, (EntryOffset)i);
+        seq.add(ts, 1, (EntryOffset)i);
     }
 
     EntryOffset indexes[10];
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(Test_gen_search_forward) {
 
     std::vector<EntryOffset> results;
     while(cursor.state != AKU_CURSOR_COMPLETE) {
-        gen.search(&cursor);
+        seq.search(&cursor);
         for (int i = 0; i < cursor.results_num; i++) {
             results.push_back(indexes[i]);
         }
@@ -76,37 +76,37 @@ BOOST_AUTO_TEST_CASE(Test_gen_search_forward) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_bad_direction) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
+    Sequence seq(10000);
     EntryOffset indexes[10];
     SingleParameterCursor cursor(1, {1400L}, {1500L}, 111, indexes, 10);
-    gen.search(&cursor);
+    seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_bad_time) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
+    Sequence seq(10000);
     EntryOffset indexes[10];
     SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
-    gen.search(&cursor);
+    seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_bad_buffer) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer) {
+    Sequence seq(10000);
     SingleParameterCursor cursor(1, {1000L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, nullptr, 10);
-    gen.search(&cursor);
+    seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
-BOOST_AUTO_TEST_CASE(Test_gen_search_bad_buffer_size) {
-    Generation gen(10000);
+BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer_size) {
+    Sequence seq(10000);
     EntryOffset indexes[10];
     SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 0);
-    gen.search(&cursor);
+    seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
@@ -122,7 +122,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
     size_t swapped = 0u;
     status = cache.add_entry(*entry, 0, &swapped);
     BOOST_CHECK(status == AKU_SUCCESS);
-    BOOST_CHECK(swapped == AKU_LIMITS_MAX_CACHES);  // old empty generations must be swapped
+    BOOST_CHECK(swapped == AKU_LIMITS_MAX_CACHES);
     swapped = 0;
     entry->time = {100002L};
     status = cache.add_entry(*entry, 1, &swapped);

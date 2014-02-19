@@ -12,6 +12,8 @@
 #include "cache.h"
 #include "util.h"
 
+#include <boost/range/iterator_range.hpp>
+
 namespace Akumuli {
 
 // Generation ---------------------------------
@@ -213,6 +215,32 @@ void Bucket::search(SingleParameterCursor* cursor) const noexcept {
     // should be redone using stackfull coroutines to properly implement this
     // piece of code
     throw std::runtime_error("Not implemented");
+}
+
+bool Bucket::merge(BasicCursor *cur) const noexcept {
+    // TODO: check status
+    size_t n = seq_.size();
+    // Lock everything in order
+    std::vector<std::unique_lock> lock_guard;
+    for(auto const& s: seq_) {
+        lock_guard.emplace_back(s.lock_);
+    }
+
+    // Init
+    Sequence::MapType::const_iterator iter[n];
+    Sequence::MapType::const_iterator end[n];
+    for (size_t i = 0u; i < n; i++) {
+        iter[i] = seq_[i].begin();
+        end[i] = seq_[i].end();
+    }
+
+    // Merge
+    // TODO: page ptr needed here
+
+    // Unlock
+    for(auto i = lock_guard.rbegin(); i != lock_guard.rend(); i++) {
+        i->unlock();
+    }
 }
 
 // Cache --------------------------------------
