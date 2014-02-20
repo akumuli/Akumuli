@@ -114,6 +114,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer_size) {
 // --------- Cache tests -----------
 
 BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
+    return;
     Cache cache({1000L}, 3);
     char entry_buffer[0x100];
     TimeStamp ts = {100001L};
@@ -143,6 +144,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
+    return;
     Cache cache({1000L}, 1000);
     char entry_buffer[0x100];
     int64_t time = apr_time_now();
@@ -199,4 +201,69 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     for(int i = 0; i < cursor.results_num; i++) {
         BOOST_CHECK_EQUAL(indexes[i], i);
     }
+}
+
+// ------------------ Test Bucket --------------------- //
+
+void test_bucket_merge(int n) {
+
+    auto page_len = 0x10000;
+    char buffer[page_len];
+    PageHeader* page = new (buffer) PageHeader(PageType::Index, 0, page_len, 0);
+    Bucket bucket(n, 1000, 0L);
+
+
+    // generate data
+
+    for (unsigned i = 0; i < 1000; i++) {
+        auto param_id = i / n;
+        auto ts = i * 10;
+        auto val = i;
+        char entry_buf[0x100];
+        Entry* entry = new(entry_buf) Entry(param_id, {ts}, Entry::get_size(4));
+        entry->value[0] = val;
+        page->add_entry(*entry);
+        bucket.add({ts}, param_id, page->last_offset);
+    }
+
+    // run merge
+
+    RecordingCursor cursor;
+    bucket.state++;
+    int status = bucket.merge(&cursor, page);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    // all offsets must be in increasing order
+    BOOST_REQUIRE(cursor.offsets.size() != 0);
+    EntryOffset prev = 0xFFFFFF;
+    for(auto curr: cursor.offsets) {
+        BOOST_REQUIRE_GT(prev, curr);
+        prev = curr;
+    }
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_bucket_merge_1)
+{
+    test_bucket_merge(1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_merge_2)
+{
+    test_bucket_merge(2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_merge_3)
+{
+    test_bucket_merge(3);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_merge_4)
+{
+    test_bucket_merge(4);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_merge_8)
+{
+    test_bucket_merge(8);
 }

@@ -13,4 +13,5 @@ add_library(akumuli SHARED
     akumuli.cpp
     util.cpp
     cache.cpp
+    cursor.cpp
 )

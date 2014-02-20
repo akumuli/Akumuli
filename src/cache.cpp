@@ -12,8 +12,6 @@
 #include "cache.h"
 #include "util.h"
 
-#include <boost/range/iterator_range.hpp>
-
 namespace Akumuli {
 
 // Generation ---------------------------------
@@ -217,6 +215,18 @@ void Bucket::search(SingleParameterCursor* cursor) const noexcept {
     throw std::runtime_error("Not implemented");
 }
 
+typedef Sequence::MapType::const_iterator iter_t;
+
+static bool less_than(iter_t lhs, iter_t rhs, PageHeader* page) {
+    auto lentry = page->read_entry(lhs->second),
+         rentry = page->read_entry(rhs->second);
+
+    auto lkey = std::make_tuple(lentry->time, lentry->param_id),
+         rkey = std::make_tuple(rentry->time, rentry->param_id);
+
+    return lkey < rkey;
+}
+
 int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
 
     if (state.load() == 0) {
@@ -230,13 +240,12 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
 
     size_t n = seq_.size();
     // Lock everything in order
-    std::vector<std::unique_lock> lock_guard;
+    std::vector<std::unique_lock<std::mutex>> lock_guard;
     for(auto const& s: seq_) {
         lock_guard.emplace_back(s.lock_);
     }
 
     // Init
-    typedef Sequence::MapType::const_iterator iter_t;
     iter_t iter[n], end[n];
     for (size_t i = 0u; i < n; i++) {
         iter[i] = seq_[i].begin();
@@ -244,15 +253,8 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
     }
 
     // Merge
-    auto less_than = [page](iter_t lhs, iter_t rhs) {
-        Entry const* const lentry = page->read_entry(*lhs),
-                     const rentry = page->read_entry(*rhs);
-        auto lkey = std::make_tuple(lentry->time, lentry->param_id),
-             rkey = std::make_tuple(rentry->time, rentry->param_id);
-        return lkey < rkey;
-    };
 
-    {
+    if (n > 1) {
         int next_min = 0;
         while(true) {
             int min = next_min;
@@ -260,7 +262,7 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
             for (int i = 0; i < n; i++) {
                 if (i == min) continue;
                 if (iter[i] != end[i]) {
-                    if (less_than(iter[i], iter[min])) {
+                    if (less_than(iter[i], iter[min], page)) {
                         min = i;
                         next_min = min;
                     } else {
@@ -269,9 +271,17 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
                     op_cnt++;
                 }
             }
-            auto offset = *iter[min];
+            if (op_cnt == 0)
+                break;
+            auto offset = iter[min]->second;
             cur->put(offset);
             std::advance(iter[min], 1);
+        }
+    } else {
+        while(iter[0] != end[0]) {
+            auto offset = iter[0]->second;
+            cur->put(offset);
+            std::advance(iter[0], 1);
         }
     }
 
@@ -279,6 +289,8 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
     for(auto i = lock_guard.rbegin(); i != lock_guard.rend(); i++) {
         i->unlock();
     }
+
+    return AKU_SUCCESS;
 }
 
 // Cache --------------------------------------

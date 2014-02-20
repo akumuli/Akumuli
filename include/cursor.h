@@ -19,7 +19,19 @@ namespace Akumuli {
 
 struct BasicCursor {
     //! Send offset to caller
-    virtual void put(EntryOffset offset) = 0;
+    virtual void put(EntryOffset offset) noexcept = 0;
+    virtual void complete() noexcept = 0;
+};
+
+
+/** Simple cursor implementation for testing.
+  * Stores all values in std::vector.
+  */
+struct RecordingCursor : BasicCursor {
+    std::vector<EntryOffset> offsets;
+    bool completed = false;
+    virtual void put(EntryOffset offset) noexcept;
+    virtual void complete() noexcept;
 };
 
 }  // namespace
