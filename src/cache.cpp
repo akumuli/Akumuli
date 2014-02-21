@@ -239,11 +239,6 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
     }
 
     size_t n = seq_.size();
-    // Lock everything in order
-    std::vector<std::unique_lock<std::mutex>> lock_guard;
-    for(auto const& s: seq_) {
-        lock_guard.emplace_back(s.lock_);
-    }
 
     // Init
     iter_t iter[n], end[n];
@@ -263,8 +258,8 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
                 if (i == min) continue;
                 if (iter[i] != end[i]) {
                     if (less_than(iter[i], iter[min], page)) {
-                        min = i;
                         next_min = min;
+                        min = i;
                     } else {
                         next_min = i;
                     }
@@ -285,10 +280,7 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
         }
     }
 
-    // Unlock
-    for(auto i = lock_guard.rbegin(); i != lock_guard.rend(); i++) {
-        i->unlock();
-    }
+    assert(iter == end);
 
     return AKU_SUCCESS;
 }

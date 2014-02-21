@@ -205,19 +205,20 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 
 // ------------------ Test Bucket --------------------- //
 
-void test_bucket_merge(int n) {
+void test_bucket_merge(int n, int len) {
 
-    auto page_len = 0x10000;
+    auto page_len = 0x100*len*n;
     char buffer[page_len];
     PageHeader* page = new (buffer) PageHeader(PageType::Index, 0, page_len, 0);
-    Bucket bucket(n, 1000, 0L);
+    Bucket bucket(n, len*2, 0L);
 
 
     // generate data
 
-    for (unsigned i = 0; i < 1000; i++) {
-        auto param_id = i / n;
-        auto ts = i * 10;
+    for (unsigned i = 0; i < len; i++) {
+        auto rval = rand();
+        auto param_id = rval & 3;
+        auto ts = rval >> 2;
         auto val = i;
         char entry_buf[0x100];
         Entry* entry = new(entry_buf) Entry(param_id, {ts}, Entry::get_size(4));
@@ -235,9 +236,11 @@ void test_bucket_merge(int n) {
 
     // all offsets must be in increasing order
     BOOST_REQUIRE(cursor.offsets.size() != 0);
-    EntryOffset prev = 0xFFFFFF;
-    for(auto curr: cursor.offsets) {
-        BOOST_REQUIRE_GT(prev, curr);
+    int64_t prev = 0L;
+    for(auto offset: cursor.offsets) {
+        auto entry = page->read_entry(offset);
+        auto curr = entry->time.value;
+        BOOST_REQUIRE_LT(prev, curr);
         prev = curr;
     }
 }
@@ -245,25 +248,25 @@ void test_bucket_merge(int n) {
 
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_1)
 {
-    test_bucket_merge(1);
+    test_bucket_merge(1, 1000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_2)
 {
-    test_bucket_merge(2);
+    test_bucket_merge(2, 1000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_3)
 {
-    test_bucket_merge(3);
+    test_bucket_merge(3, 1000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_4)
 {
-    test_bucket_merge(4);
+    test_bucket_merge(4, 1000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_8)
 {
-    test_bucket_merge(8);
+    test_bucket_merge(8, 1000);
 }
