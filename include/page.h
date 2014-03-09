@@ -160,7 +160,7 @@ struct PageCursor {
 
 
 /** Cursor for single parameter time-range query */
-struct SingleParameterCursor : PageCursor {
+struct SingleParameterSearchQuery : PageCursor {
     // search query
     TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
     TimeStamp       upperbound;     //< end of the time interval (0 for inf)
@@ -175,7 +175,7 @@ struct SingleParameterCursor : PageCursor {
      *  @param buffer receiving buffer
      *  @param buffer_size capacity of the receiving buffer
      */
-    SingleParameterCursor( ParamId      pid
+    SingleParameterSearchQuery( ParamId      pid
                          , TimeStamp    low
                          , TimeStamp    upp
                          , uint32_t     scan_dir
@@ -301,7 +301,7 @@ struct PageHeader {
      *  Binary search for entry
      *  @returns true on success
      */
-    void search(SingleParameterCursor* traversal) const noexcept;
+    void search(SingleParameterSearchQuery* traversal) const noexcept;
 
 };
 

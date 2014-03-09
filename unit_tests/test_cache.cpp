@@ -33,7 +33,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
     }
 
     EntryOffset indexes[10];
-    SingleParameterCursor cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
+    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
 
     std::vector<EntryOffset> results;
     while(cursor.state != AKU_CURSOR_COMPLETE) {
@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
     }
 
     EntryOffset indexes[10];
-    SingleParameterCursor cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD, indexes, 10);
+    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD, indexes, 10);
 
     std::vector<EntryOffset> results;
     while(cursor.state != AKU_CURSOR_COMPLETE) {
@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
     Sequence seq(10000);
     EntryOffset indexes[10];
-    SingleParameterCursor cursor(1, {1400L}, {1500L}, 111, indexes, 10);
+    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, 111, indexes, 10);
     seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
     Sequence seq(10000);
     EntryOffset indexes[10];
-    SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
+    SingleParameterSearchQuery cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
     seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
@@ -96,7 +96,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer) {
     Sequence seq(10000);
-    SingleParameterCursor cursor(1, {1000L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, nullptr, 10);
+    SingleParameterSearchQuery cursor(1, {1000L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, nullptr, 10);
     seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
@@ -105,7 +105,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer) {
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer_size) {
     Sequence seq(10000);
     EntryOffset indexes[10];
-    SingleParameterCursor cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 0);
+    SingleParameterSearchQuery cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 0);
     seq.search(&cursor);
     BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
@@ -191,7 +191,7 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     init_search_range_test(&cache, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     cache.search(&cursor);
 
@@ -231,7 +231,8 @@ void test_bucket_merge(int n, int len) {
 
     RecordingCursor cursor;
     bucket.state++;
-    int status = bucket.merge(&cursor, page);
+    Caller c;
+    int status = bucket.merge(c, &cursor, page);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     // all offsets must be in increasing order

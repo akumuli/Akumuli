@@ -48,7 +48,7 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-void Sequence::search(SingleParameterCursor* cursor) const noexcept {
+void Sequence::search(SingleParameterSearchQuery* cursor) const noexcept {
 
     // NOTE: search always performed, for better performance
     //       caller must use large enough buffer, to be able
@@ -208,11 +208,13 @@ int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return seq_[index].add(ts, param, offset);
 }
 
-void Bucket::search(SingleParameterCursor* cursor) const noexcept {
+void Bucket::search(SingleParameterSearchQuery* params, InternalCursor* cursor) const noexcept {
     // Current current simplistic cursor implementation
     // should be redone using stackfull coroutines to properly implement this
     // piece of code
     throw std::runtime_error("Not implemented");
+
+
 }
 
 typedef Sequence::MapType::const_iterator iter_t;
@@ -227,7 +229,7 @@ static bool less_than(iter_t lhs, iter_t rhs, PageHeader* page) {
     return lkey < rkey;
 }
 
-int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
+int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const noexcept {
 
     if (state.load() == 0) {
         return AKU_EBUSY;
@@ -269,13 +271,13 @@ int Bucket::merge(BasicCursor *cur, PageHeader* page) const noexcept {
             if (op_cnt == 0)
                 break;
             auto offset = iter[min]->second;
-            cur->put(offset);
+            cur->put(caller, offset);
             std::advance(iter[min], 1);
         }
     } else {
         while(iter[0] != end[0]) {
             auto offset = iter[0]->second;
-            cur->put(offset);
+            cur->put(caller, offset);
             std::advance(iter[0], 1);
         }
     }
@@ -439,7 +441,7 @@ int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noe
     return AKU_EGENERAL;
 }
 
-void Cache::search(SingleParameterCursor* cursor) const noexcept {
+void Cache::search(SingleParameterSearchQuery* cursor) const noexcept {
 
     bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;

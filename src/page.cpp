@@ -108,7 +108,7 @@ PageCursor::PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept
 }
 
 
-SingleParameterCursor::SingleParameterCursor
+SingleParameterSearchQuery::SingleParameterSearchQuery
     ( ParamId      pid
     , TimeStamp    low
     , TimeStamp    upp
@@ -330,7 +330,7 @@ void PageHeader::sort() noexcept {
 /** Return false if cursor is ill-formed.
   * Status and error code fields will be changed accordignly.
   */
-static bool validate_cursor(SingleParameterCursor *cursor) noexcept {
+static bool validate_cursor(SingleParameterSearchQuery *cursor) noexcept {
     // Cursor validation
     if ((cursor->direction != AKU_CURSOR_DIR_BACKWARD && cursor->direction != AKU_CURSOR_DIR_FORWARD) ||
          cursor->upperbound < cursor->lowerbound)
@@ -343,7 +343,7 @@ static bool validate_cursor(SingleParameterCursor *cursor) noexcept {
 }
 
 
-void PageHeader::search(SingleParameterCursor *cursor) const noexcept
+void PageHeader::search(SingleParameterSearchQuery *cursor) const noexcept
 {
     /* Search algorithm outline:
      * - interpolated search for timestamp

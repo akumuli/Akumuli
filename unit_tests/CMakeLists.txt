@@ -11,5 +11,7 @@ target_link_libraries(
     ${LOG4CXX_LIBRARIES}
     ${APR_LIBRARY}
     ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
 )
 add_test(akumuli_tests main)

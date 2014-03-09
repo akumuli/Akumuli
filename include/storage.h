@@ -88,7 +88,7 @@ struct Storage
     // Reading
 
     //! Search storage using cursor
-    void search(BasicCursor* cursor);
+    void search(InternalCursor* cursor);
 
     // Static interface
 

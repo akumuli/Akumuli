@@ -73,7 +73,7 @@ struct Sequence
 
     /** Search for range of elements.
       */
-    void search(SingleParameterCursor* cursor) const noexcept;
+    void search(SingleParameterSearchQuery* cursor) const noexcept;
 
     //! Get number of items
     size_t size() const noexcept;
@@ -110,14 +110,14 @@ struct Bucket : details::BucketListBaseHook {
 
     /** Search for range of elements.
       */
-    void search(SingleParameterCursor* cursor) const noexcept;
+    void search(SingleParameterSearchQuery* params, InternalCursor* cursor) const noexcept;
 
     /** Merge all offsets in one list in order.
       * @param cur read cursor
       * @param page this bucket owner
       * @return AKU_EBUSY if bucket is not ready AKU_SUCCESS otherwise
       */
-    int merge(BasicCursor* cur, PageHeader* page) const noexcept;
+    int merge(Caller& caller, InternalCursor* cur, PageHeader* page) const noexcept;
 };
 
 
@@ -196,7 +196,7 @@ public:
 
     /** Search fun-n that is similar to Page::search
       */
-    void search(SingleParameterCursor* cursor) const noexcept;
+    void search(SingleParameterSearchQuery* cursor) const noexcept;
 
     //! Remove all data
     void clear() noexcept;

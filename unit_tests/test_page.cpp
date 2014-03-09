@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -182,7 +182,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_1)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1010L}, {1050L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1010L}, {1050L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -208,7 +208,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -229,7 +229,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -243,7 +243,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -258,7 +258,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_0)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -279,7 +279,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_1)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1010L}, {1050L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1010L}, {1050L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -305,7 +305,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -326,7 +326,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -340,7 +340,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -370,7 +370,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
     auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -395,7 +395,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
     auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
 
     uint32_t indexes[1000];
-    SingleParameterCursor cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery cursor(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
 
     page->search(&cursor);
 
@@ -460,7 +460,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
         assert(stop_time > start_time);
         EntryOffset offsets[100];
-        SingleParameterCursor cursor(id2search, {start_time}, {stop_time}, dir, offsets, 100);
+        SingleParameterSearchQuery cursor(id2search, {start_time}, {stop_time}, dir, offsets, 100);
         std::vector<uint32_t> matches;
         while(cursor.state != AKU_CURSOR_COMPLETE) {
             page->search(&cursor);
