@@ -19,6 +19,9 @@
 
 extern "C" {
 
+    typedef uint32_t EntryOffset;
+    typedef uint32_t ParamId;
+
     struct aku_MemRange {
         void* address;
         uint32_t length;

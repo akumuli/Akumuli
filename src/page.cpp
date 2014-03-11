@@ -92,32 +92,14 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 // -------
 
 
-PageCursor::PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept
-    : results(buffer)
-    , results_cap(buffer_size)
-    , results_num(0u)
-    , done(0u)
-    , start_index(0u)
-    , probe_index(0u)
-    , state(AKU_CURSOR_START)
-    , cache_start_id(0l)
-    , cache_index(0u)
-    , cache_init(0u)
-    , skip(0u)
-{
-}
-
-
 SingleParameterSearchQuery::SingleParameterSearchQuery
-    ( ParamId      pid
+    (ParamId      pid
     , TimeStamp    low
     , TimeStamp    upp
     , uint32_t     scan_dir
-    , EntryOffset* buffer
-    , uint64_t     buffer_size )  noexcept
+    )  noexcept
 
-    : PageCursor(buffer, buffer_size)
-    , param(pid)
+    : param(pid)
     , lowerbound(low)
     , upperbound(upp)
     , direction(scan_dir)
@@ -296,54 +278,22 @@ int PageHeader::copy_entry(EntryOffset offset, Entry* receiver) const noexcept {
     return 0;
 }
 
-template<class RandomIt, class Cmp>
-void ins_sort(RandomIt start, RandomIt end, Cmp cmp) {
-    for (RandomIt k = start; k < end; ++k) {
-        RandomIt l = k;
-        RandomIt l_prev = l - 1;
-        while (l_prev >= start && cmp(*l_prev, *l)) {
-            std::iter_swap(l, l_prev);
-            l--;
-            l_prev--;
-        }
-    }
-}
 
-void PageHeader::sort() noexcept {
-    auto begin = page_index;
-    auto end = page_index + count;
-    /* NOTE: We can use insertion sort because data that akumuli can process
-     * must be partially ordered because we doesn't allow late writes (if timestamp
-     * of the new sample is less than some value).
-     */
-    // TODO: use more robust algorithm
-    Akumuli::insertion_sort(begin, end, [&](EntryOffset a, EntryOffset b) {
-        auto ea = reinterpret_cast<const Entry*>(cdata() + a);
-        auto eb = reinterpret_cast<const Entry*>(cdata() + b);
-        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.value, ea->param_id);
-        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.value, eb->param_id);
-        return ta < tb;
-    });
-}
-
-
-/** Return false if cursor is ill-formed.
+/** Return false if query is ill-formed.
   * Status and error code fields will be changed accordignly.
   */
-static bool validate_cursor(SingleParameterSearchQuery *cursor) noexcept {
+static bool validate_query(SingleParameterSearchQuery const& query) noexcept {
     // Cursor validation
-    if ((cursor->direction != AKU_CURSOR_DIR_BACKWARD && cursor->direction != AKU_CURSOR_DIR_FORWARD) ||
-         cursor->upperbound < cursor->lowerbound)
+    if ((query.direction != AKU_CURSOR_DIR_BACKWARD && query.direction != AKU_CURSOR_DIR_FORWARD) ||
+         query.upperbound < query.lowerbound)
     {
-        cursor->state = AKU_CURSOR_ERROR;
-        cursor->error_code = AKU_SEARCH_EBAD_ARG;
         return false;
     }
     return true;
 }
 
 
-void PageHeader::search(SingleParameterSearchQuery *cursor) const noexcept
+void PageHeader::search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept
 {
     /* Search algorithm outline:
      * - interpolated search for timestamp
@@ -354,166 +304,133 @@ void PageHeader::search(SingleParameterSearchQuery *cursor) const noexcept
      * - scan
      */
 
-    if (!validate_cursor(cursor))
+    if (!validate_query(query)) {
+        cursor->set_error(caller, AKU_SEARCH_EBAD_ARG);
         return;
+    }
 
-    // Reuse buffer
-    cursor->results_num = 0;
-
-    bool is_backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
-    ParamId param = cursor->param;
+    bool is_backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
+    ParamId param = query.param;
     uint32_t max_index = count - 1u;
     uint32_t begin = 0u;
     uint32_t end = max_index;
-    int64_t key = is_backward ? cursor->upperbound.value
-                              : cursor->lowerbound.value;
+    int64_t key = is_backward ? query.upperbound.value
+                              : query.lowerbound.value;
     uint32_t probe_index = 0u;
 
-    while(1) {
-        switch(cursor->state) {
-        case AKU_CURSOR_START:
-            cursor->state = AKU_CURSOR_SEARCH;
-        case AKU_CURSOR_SEARCH:
-            if (key <= bbox.max_timestamp.value && key >= bbox.min_timestamp.value) {
+    if (key <= bbox.max_timestamp.value && key >= bbox.min_timestamp.value) {
 
-                int64_t search_lower_bound = bbox.min_timestamp.value;
-                int64_t search_upper_bound = bbox.max_timestamp.value;
+        int64_t search_lower_bound = bbox.min_timestamp.value;
+        int64_t search_upper_bound = bbox.max_timestamp.value;
 
-                int interpolation_search_quota = 5;
+        int interpolation_search_quota = 5;
 
-                while(interpolation_search_quota--)  {
-                    // On small distances - fallback to binary search
-                    if (end - begin < AKU_INTERPOLATION_SEARCH_CUTOFF)
-                        break;
+        while(interpolation_search_quota--)  {
+            // On small distances - fallback to binary search
+            if (end - begin < AKU_INTERPOLATION_SEARCH_CUTOFF)
+                break;
 
-                    probe_index = ((key - search_lower_bound) * (end - begin)) /
-                                  (search_upper_bound - search_lower_bound);
+            probe_index = ((key - search_lower_bound) * (end - begin)) /
+                          (search_upper_bound - search_lower_bound);
 
-                    if (probe_index > begin && probe_index < end) {
+            if (probe_index > begin && probe_index < end) {
 
-                        auto probe_offset = page_index[probe_index];
-                        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                        auto probe = probe_entry->time.value;
-
-                        if (probe == key) {
-                            cursor->probe_index = probe_index;
-                            cursor->start_index = probe_index;
-                            cursor->state = is_backward ? AKU_CURSOR_SCAN_BACKWARD
-                                                        : AKU_CURSOR_SCAN_FORWARD;
-                            break;
-                        } else if (probe < key) {
-                            begin = probe_index + 1u;
-                            probe_offset = page_index[begin];
-                            probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                            search_lower_bound = probe_entry->time.value;
-                        } else {
-                            end   = probe_index - 1u;
-                            probe_offset = page_index[end];
-                            probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                            search_upper_bound = probe_entry->time.value;
-                        }
-                    }
-                    else {
-                        break;
-                        // Continue with binary search
-                    }
-                }
-            } else {
-                // shortcut for corner cases
-                if (key > bbox.max_timestamp.value) {
-                    if (is_backward) {
-                        cursor->probe_index = end;
-                        cursor->start_index = end;
-                        cursor->state = AKU_CURSOR_SCAN_BACKWARD;
-                        break;
-                    } else {
-                        // return empty result
-                        cursor->state = AKU_CURSOR_COMPLETE;
-                        return;
-                    }
-                }
-                else if (key < bbox.min_timestamp.value) {
-                    if (!is_backward) {
-                        cursor->probe_index = begin;
-                        cursor->start_index = begin;
-                        cursor->state = AKU_CURSOR_SCAN_FORWARD;
-                        break;
-                    } else {
-                        // return empty result
-                        cursor->state = AKU_CURSOR_COMPLETE;
-                        return;
-                    }
-                }
-            }
-            while (end >= begin) {
-                probe_index = begin + ((end - begin) / 2u);
                 auto probe_offset = page_index[probe_index];
                 auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
                 auto probe = probe_entry->time.value;
 
-                if (probe == key) {             // found
-                    break;
-                }
-                else if (probe < key) {
-                    begin = probe_index + 1u;   // change min index to search upper subarray
-                    if (begin == count)         // we hit the upper bound of the array
-                        break;
+                if (probe < key) {
+                    begin = probe_index + 1u;
+                    probe_offset = page_index[begin];
+                    probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+                    search_lower_bound = probe_entry->time.value;
                 } else {
-                    end = probe_index - 1u;     // change max index to search lower subarray
-                    if (end == ~0)              // we hit the lower bound of the array
-                        break;
+                    end   = probe_index - 1u;
+                    probe_offset = page_index[end];
+                    probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+                    search_upper_bound = probe_entry->time.value;
                 }
             }
-            cursor->probe_index = probe_index;
-            cursor->start_index = probe_index;
-            cursor->state = is_backward ? AKU_CURSOR_SCAN_BACKWARD
-                                        : AKU_CURSOR_SCAN_FORWARD;
+            else {
+                break;
+                // Continue with binary search
+            }
+        }
+    } else {
+        // shortcut for corner cases
+        if (key > bbox.max_timestamp.value) {
+            if (is_backward) {
+                probe_index = end;
+                goto SCAN;
+            } else {
+                // return empty result
+                cursor->complete(caller);
+                return;
+            }
+        }
+        else if (key < bbox.min_timestamp.value) {
+            if (!is_backward) {
+                probe_index = begin;
+                goto SCAN;
+            } else {
+                // return empty result
+                cursor->complete(caller);
+                return;
+            }
+        }
+    }
+    while (end >= begin) {
+        probe_index = begin + ((end - begin) / 2u);
+        auto probe_offset = page_index[probe_index];
+        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+        auto probe = probe_entry->time.value;
+
+        if (probe == key) {             // found
             break;
-        case AKU_CURSOR_SCAN_BACKWARD:
-            while (true) {
-                auto current_index = cursor->probe_index--;
-                auto probe_offset = page_index[current_index];
-                auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                auto probe = probe_entry->param_id;
-                bool probe_in_time_range = cursor->lowerbound <= probe_entry->time &&
-                                           cursor->upperbound >= probe_entry->time;
-                if (probe == param && probe_in_time_range) {
-                    if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = probe_offset;
-                        cursor->results_num += 1u;
-                    }
-                    if (cursor->results_num == cursor->results_cap) {
-                        return;
-                    }
-                }
-                if (probe_entry->time < cursor->lowerbound || current_index == 0u) {
-                    cursor->state = AKU_CURSOR_COMPLETE;
-                    cursor->done = 1u;
-                    return;
-                }
+        }
+        else if (probe < key) {
+            begin = probe_index + 1u;   // change min index to search upper subarray
+            if (begin == count)         // we hit the upper bound of the array
+                break;
+        } else {
+            end = probe_index - 1u;     // change max index to search lower subarray
+            if (end == ~0)              // we hit the lower bound of the array
+                break;
+        }
+    }
+
+    // TODO: split this method
+SCAN:
+    if (is_backward) {
+        while (true) {
+            auto current_index = probe_index--;
+            auto probe_offset = page_index[current_index];
+            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe = probe_entry->param_id;
+            bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
+                                       query.upperbound >= probe_entry->time;
+            if (probe == param && probe_in_time_range) {
+                cursor->put(caller, probe_offset);
             }
-        case AKU_CURSOR_SCAN_FORWARD:
-            while (true) {
-                auto current_index = cursor->probe_index++;
-                auto probe_offset = page_index[current_index];
-                auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                auto probe = probe_entry->param_id;
-                bool probe_in_time_range = cursor->lowerbound <= probe_entry->time &&
-                                           cursor->upperbound >= probe_entry->time;
-                if (probe == param && probe_in_time_range) {
-                    if (cursor->results_num < cursor->results_cap) {
-                        cursor->results[cursor->results_num] = probe_offset;
-                        cursor->results_num += 1u;
-                    }
-                    if (cursor->results_num == cursor->results_cap) {
-                        return;
-                    }
-                }
-                if (probe_entry->time > cursor->upperbound || current_index == max_index) {
-                    cursor->state = AKU_CURSOR_COMPLETE;
-                    cursor->done = 1u;
-                    return;
-                }
+            if (probe_entry->time < query.lowerbound || current_index == 0u) {
+                cursor->complete(caller);
+                return;
+            }
+        }
+    } else {
+        while (true) {
+            auto current_index = probe_index++;
+            auto probe_offset = page_index[current_index];
+            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe = probe_entry->param_id;
+            bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
+                                       query.upperbound >= probe_entry->time;
+            if (probe == param && probe_in_time_range) {
+                cursor->put(caller, probe_offset);
+            }
+            if (probe_entry->time > query.upperbound || current_index == max_index) {
+                cursor->complete(caller);
+                return;
             }
         }
     }

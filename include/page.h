@@ -16,14 +16,12 @@
 #include <cstdint>
 #include "akumuli.h"
 #include "util.h"
+#include "cursor.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
 const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
-
-typedef uint32_t EntryOffset;
-typedef uint32_t ParamId;
 
 
 /** Time duration.
@@ -130,37 +128,8 @@ struct PageBoundingBox {
 };
 
 
-/** Page cursor
- *  used by different search methods.
- */
-struct PageCursor {
-    // user data
-    EntryOffset*    results;        //< resulting offsets array
-    uint64_t        results_cap;    //< capacity of the array
-    uint64_t        results_num;    //< number of results in array
-    uint32_t        done;           //< is done reading (last data writen to results array)
-    // page search data
-    uint32_t        start_index;    //< starting index of the traversal
-    uint32_t        probe_index;    //< current index of the traversal
-    uint32_t        state;          //< FSM state
-    uint32_t        error_code;     //< Search error code
-    // cache search data
-    int64_t         cache_start_id; //< Cache generation id to start from
-    uint32_t        cache_index;    //< Searched generation
-    uint32_t        cache_init;     //< Initialization flag
-    // generation data
-    uint32_t        skip;           //< Num of elements to skip
-
-    /** Page cursor c-tor.
-     *  @param buffer receiving buffer
-     *  @param buffer_size capacity of the receiving buffer
-     */
-    PageCursor(EntryOffset* buffer, uint64_t buffer_size) noexcept;
-};
-
-
-/** Cursor for single parameter time-range query */
-struct SingleParameterSearchQuery : PageCursor {
+/** Single parameter time-range query */
+struct SingleParameterSearchQuery {
     // search query
     TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
     TimeStamp       upperbound;     //< end of the time interval (0 for inf)
@@ -172,15 +141,11 @@ struct SingleParameterSearchQuery : PageCursor {
      *  @param low time lowerbound (0 for -inf)
      *  @param upp time upperbound (MAX_TIMESTAMP for inf)
      *  @param scan_dir scan direction
-     *  @param buffer receiving buffer
-     *  @param buffer_size capacity of the receiving buffer
      */
     SingleParameterSearchQuery( ParamId      pid
-                         , TimeStamp    low
-                         , TimeStamp    upp
-                         , uint32_t     scan_dir
-                         , EntryOffset* buffer
-                         , uint64_t     buffer_size ) noexcept;
+                              , TimeStamp    low
+                              , TimeStamp    upp
+                              , uint32_t     scan_dir) noexcept;
 };
 
 
@@ -288,20 +253,9 @@ struct PageHeader {
     const Entry* read_entry(EntryOffset offset) const noexcept;
 
     /**
-     * Sort page content
+     *  Search for entry
      */
-    void sort() noexcept;
-
-    /**
-     * TODO: remove
-     */
-    void partial_sort() noexcept;
-
-    /**
-     *  Binary search for entry
-     *  @returns true on success
-     */
-    void search(SingleParameterSearchQuery* traversal) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept;
 
 };
 
