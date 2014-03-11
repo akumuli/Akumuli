@@ -54,6 +54,11 @@ void test_cursor_error(int n_iter, int buf_size) {
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.begin(), expected.end(), actual.begin(), actual.end());
 }
 
+BOOST_AUTO_TEST_CASE(Test_cursor_0_10)
+{
+    test_cursor(0, 10);
+}
+
 BOOST_AUTO_TEST_CASE(Test_cursor_10_10)
 {
     test_cursor(10, 10);
@@ -72,6 +77,11 @@ BOOST_AUTO_TEST_CASE(Test_cursor_100_10)
 BOOST_AUTO_TEST_CASE(Test_cursor_100_7)
 {
     test_cursor(100, 7);
+}
+
+BOOST_AUTO_TEST_CASE(Test_cursor_error_0_10)
+{
+    test_cursor_error(0, 10);
 }
 
 BOOST_AUTO_TEST_CASE(Test_cursor_error_10_10)
