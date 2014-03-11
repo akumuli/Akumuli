@@ -67,12 +67,12 @@ void CoroCursor::set_error(Caller& caller, int error_code) noexcept {
     caller();
 }
 
-void CoroCursor::put(Caller& caller, int i) noexcept {
+void CoroCursor::put(Caller& caller, EntryOffset off) noexcept {
     if (write_index_ == usr_buffer_len_) {
         // yield control to client
         caller();
     }
-    usr_buffer_[write_index_++] = i;
+    usr_buffer_[write_index_++] = off;
 }
 
 void CoroCursor::complete(Caller& caller) noexcept {

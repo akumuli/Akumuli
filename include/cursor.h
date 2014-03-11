@@ -93,7 +93,7 @@ struct CoroCursor : InternalCursor, ExternalCursor {
 
     void set_error(Caller& caller, int error_code) noexcept;
 
-    void put(Caller& caller, int i) noexcept;
+    void put(Caller& caller, EntryOffset off) noexcept;
 
     void complete(Caller& caller) noexcept;
 
