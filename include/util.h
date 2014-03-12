@@ -74,16 +74,7 @@ namespace Akumuli
     //! Fast integer logarithm
     int64_t log2(int64_t value) noexcept;
 
-    class RWLock {
-        std::atomic<uint32_t> read_claim_;  //< Read lock
-        std::atomic<uint32_t> write_claim_;  //< Write lock
-    public:
-        RWLock() noexcept;
 
-        bool try_lock_read() const noexcept;
-        void unlock_read() const noexcept;
-
-        bool try_lock_write() noexcept;
-        void unlock_write() noexcept;
-    };
+    //! Get current CPU id
+    inline int aku_getcpu() noexcept;
 }

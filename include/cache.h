@@ -55,7 +55,6 @@ struct Sequence
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
     typedef std::tuple<TimeStamp, ParamId, EntryOffset> ValueType;
 
-    size_t                  capacity_;      //< Max seq size
     MapType                 data_;          //< Dictionary
     mutable std::mutex      obj_mtx_;       //< data_ mutex
     mutable std::mutex      tmp_mtx_;       //< temp_ mutex
@@ -91,7 +90,6 @@ struct Sequence
 struct Bucket : details::BucketListBaseHook {
 
     std::vector<Sequence>   seq_;
-    std::atomic<int>        rrindex_;  //< round robin index (maybe I can use TSC register instead of this)
     int64_t                 baseline;  //< max timestamp for the bucket
     std::atomic<int>        state;     //< state of the bucket (0 - active, 1 - ready)
 
@@ -113,7 +111,7 @@ struct Bucket : details::BucketListBaseHook {
 
     /** Search for range of elements.
       */
-    void search(SingleParameterSearchQuery* params, InternalCursor* cursor) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery* params) const noexcept;
 
     /** Merge all offsets in one list in order.
       * @param cur read cursor

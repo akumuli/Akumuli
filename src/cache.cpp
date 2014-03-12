@@ -8,6 +8,7 @@
  *
  */
 
+#include <thread>
 #include "akumuli_def.h"
 #include "cache.h"
 #include "util.h"
@@ -28,23 +29,18 @@ Sequence::Sequence(Sequence const& other)
 }
 
 Sequence& Sequence::operator = (Sequence const& other) {
-    capacity_ = other.capacity_;
+    capacity_ = other.capacity_.load();
     data_ = other.data_;
 }
 
 // This method must be called from the same thread
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
-    // fast rejection path
-    if (capacity_ == 0) {
-        return AKU_WRITE_STATUS_OVERFLOW;
-    }
     auto key = std::make_tuple(ts, param);
 
     std::unique_lock<std::mutex> lock(obj_mtx_, std::defer_lock)
                                , tmp_lock(tmp_mtx_, std::defer_lock);
 
     if (lock.try_lock()) {
-        // No need to double check capacity_ because it can't be modified by other threads
         if (tmp_lock.try_lock()) {
             for(auto const& tup: temp_) {
                 auto tkey = std::make_tuple(std::get<0>(tup), std::get<1>(tup));
@@ -53,11 +49,9 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
             tmp_lock.unlock();
         }
         data_.insert(std::make_pair(key, offset));
-        capacity_--;
     } else {
         tmp_lock.lock();
         temp_.emplace_back(ts, param, offset);
-        capacity_--;
     }
     return AKU_WRITE_STATUS_SUCCESS;
 }
@@ -140,6 +134,9 @@ Bucket::Bucket(int n, size_t max_size, int64_t baseline)
     , state(0)
     , baseline(baseline)
 {
+    const int NUMCPU = std::thread::hardware_concurrency();
+    assert (n == NUMCPU);
+    // TODO: remove first c-tor parameter, use hardware_concurrency always
     for (int i = 0; i < n; i++) {
         seq_.emplace_back(max_size);
     }
@@ -163,18 +160,15 @@ Bucket& Bucket::operator = (Bucket const& other) {
 }
 
 int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
-    int index = rrindex_++;
-    index = index % seq_.size();
+    int cpuix = aku_getcpu();
+    int index = cpuix % seq_.size();
     return seq_[index].add(ts, param, offset);
 }
 
-void Bucket::search(SingleParameterSearchQuery* params, InternalCursor* cursor) const noexcept {
-    // Current current simplistic cursor implementation
-    // should be redone using stackfull coroutines to properly implement this
-    // piece of code
-    throw std::runtime_error("Not implemented");
-
-
+void Bucket::search(Caller &caller, InternalCursor* cursor, SingleParameterSearchQuery* params) const noexcept {
+    for(Sequence const& seq: seq_) {
+        seq.search(caller, cursor, params);
+    }
 }
 
 typedef Sequence::MapType::const_iterator iter_t;
