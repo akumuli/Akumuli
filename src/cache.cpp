@@ -32,6 +32,7 @@ Sequence& Sequence::operator = (Sequence const& other) {
     data_ = other.data_;
 }
 
+// This method must be called from the same thread
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     // fast rejection path
     if (capacity_ == 0) {
@@ -39,125 +40,84 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     }
     auto key = std::make_tuple(ts, param);
 
-    std::lock_guard<std::mutex> lock(lock_);
-    if (capacity_ == 0) {
-        return AKU_WRITE_STATUS_OVERFLOW;
+    std::unique_lock<std::mutex> lock(obj_mtx_, std::defer_lock)
+                               , tmp_lock(tmp_mtx_, std::defer_lock);
+
+    if (lock.try_lock()) {
+        // No need to double check capacity_ because it can't be modified by other threads
+        if (tmp_lock.try_lock()) {
+            for(auto const& tup: temp_) {
+                auto tkey = std::make_tuple(std::get<0>(tup), std::get<1>(tup));
+                data_.insert(std::make_pair(tkey, std::get<2>(tup)));
+            }
+            tmp_lock.unlock();
+        }
+        data_.insert(std::make_pair(key, offset));
+        capacity_--;
+    } else {
+        tmp_lock.lock();
+        temp_.emplace_back(ts, param, offset);
+        capacity_--;
     }
-    data_.insert(std::make_pair(key, offset));
-    capacity_--;
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-void Sequence::search(SingleParameterSearchQuery* cursor) const noexcept {
+void Sequence::search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept {
 
-    // NOTE: search always performed, for better performance
-    //       caller must use large enough buffer, to be able
-    //       to process all the data with a single call!
-    //       cursor->state is ignored, only output indexes is used
+    bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
+    bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
 
-    bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
-    bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
-
-    if (cursor->upperbound < cursor->lowerbound
-        || !(forward ^ backward)
-        || cursor->results == nullptr
-        || cursor->results_cap == 0
+    if (query.upperbound < query.lowerbound  // Right timestamps and
+        || !(forward ^ backward)             // right direction constant
     ) {
-        // Invalid direction or timestamps
-        cursor->state = AKU_CURSOR_COMPLETE;
-        cursor->error_code = AKU_EBAD_ARG;
+        cursor->set_error(caller, AKU_EBAD_ARG);
         return;
     }
 
-    cursor->results_num = 0;
-
     if (backward)
     {
-        auto tskey = cursor->upperbound;
+        auto tskey = query.upperbound;
         auto idkey = (ParamId)~0;
         auto key = std::make_tuple(tskey, idkey);
         auto citer = data_.upper_bound(key);
-        auto skip = cursor->skip;
-        auto last_key = std::make_tuple(cursor->lowerbound, 0);
+        auto last_key = std::make_tuple(query.lowerbound, 0);
 
-        std::lock_guard<std::mutex> lock(lock_);
-
-        /// SKIP ///
-        for (uint32_t i = 0; i < cursor->skip; i++) {
-            if (citer == data_.begin()) {
-                cursor->state = AKU_CURSOR_COMPLETE;
-                return;
-            }
-            citer--;
-        }
-
-        /// SCAN ///
-
+        std::unique_lock<std::mutex> lock(obj_mtx_);
         while(true) {
-            skip++;
             auto& curr_key = citer->first;
             if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
-                cursor->state = AKU_CURSOR_COMPLETE;
-                return;
+                break;
             }
-            if (std::get<1>(curr_key) == cursor->param && std::get<0>(curr_key) <= tskey) {
-                cursor->results[cursor->results_num] = citer->second;
-                cursor->results_num++;
-                if (cursor->results_num == cursor->results_cap) {
-                    // yield data to caller
-                    cursor->state = AKU_CURSOR_SCAN_BACKWARD;
-                    cursor->skip = skip;
-                    return;
-                }
+            if (std::get<1>(curr_key) == query.param && std::get<0>(curr_key) <= tskey) {
+                cursor->put(caller, citer->second);
             }
             if (citer == data_.begin()) {
-                cursor->state = AKU_CURSOR_COMPLETE;
-                return;
+                break;
             }
             citer--;
         }
     }
     else
     {
-        auto tskey = cursor->lowerbound;
+        auto tskey = query.lowerbound;
         auto idkey = (ParamId)0;
         auto key = std::make_tuple(tskey, idkey);
         auto citer = data_.lower_bound(key);
-        auto skip = cursor->skip;
+        auto last_key = std::make_tuple(query.upperbound, ~0);
 
-        /// SKIP ///
-        for (uint32_t i = 0; i < cursor->skip; i++) {
-            if (citer == data_.end()) {
-                cursor->state = AKU_CURSOR_COMPLETE;
-                return;
-            }
-            citer++;
-        }
-
-        /// SCAN ///
-        auto last_key = std::make_tuple(cursor->upperbound, ~0);
-
+        std::unique_lock<std::mutex> lock(obj_mtx_);
         while(citer != data_.end()) {
             auto& curr_key = citer->first;
             if (std::get<0>(curr_key) >= std::get<0>(last_key)) {
-                cursor->state = AKU_CURSOR_COMPLETE;
-                return;
+                break;
             }
-            skip++;
-            if (std::get<1>(curr_key) == cursor->param) {
-                cursor->results[cursor->results_num] = citer->second;
-                cursor->results_num++;
-                if (cursor->results_num == cursor->results_cap) {
-                    // yield data to caller
-                    cursor->state = AKU_CURSOR_SCAN_FORWARD;
-                    cursor->skip = skip;
-                    return;
-                }
+            if (std::get<1>(curr_key) == query.param) {
+                cursor->put(caller, citer->second);
             }
             citer++;
         }
-        cursor->state = AKU_CURSOR_COMPLETE;
     }
+    cursor->complete(caller);
 }
 
 size_t Sequence::size() const noexcept {
@@ -446,32 +406,32 @@ void Cache::search(SingleParameterSearchQuery* cursor) const noexcept {
     bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
 
-    if (cursor->upperbound < cursor->lowerbound
-        || !(forward ^ backward)
-        || cursor->results == nullptr
-        || cursor->results_cap == 0
-    ) {
-        // Invalid direction or timestamps
-        cursor->state = AKU_CURSOR_COMPLETE;
-        cursor->error_code = AKU_EBAD_ARG;
-        return;
-    }
+//    if (cursor->upperbound < cursor->lowerbound
+//        || !(forward ^ backward)
+//        || cursor->results == nullptr
+//        || cursor->results_cap == 0
+//    ) {
+//        // Invalid direction or timestamps
+//        cursor->state = AKU_CURSOR_COMPLETE;
+//        cursor->error_code = AKU_EBAD_ARG;
+//        return;
+//    }
 
-    if (cursor->cache_init == 0) {
-        // Init search
-        auto tskey = cursor->upperbound.value;
-        auto idkey = cursor->param;
-        auto key = tskey >> shift_;
-        auto index = baseline_ - key;
-        // PROBLEM: index can change between calls
-        if (index < 0) {
-            // future read
-            index = 0;
-        }
-        cursor->cache_init = 1;
-        cursor->cache_index = 0;
-        cursor->cache_start_id = key;
-    }
+//    if (cursor->cache_init == 0) {
+//        // Init search
+//        auto tskey = cursor->upperbound.value;
+//        auto idkey = cursor->param;
+//        auto key = tskey >> shift_;
+//        auto index = baseline_ - key;
+//        // PROBLEM: index can change between calls
+//        if (index < 0) {
+//            // future read
+//            index = 0;
+//        }
+//        cursor->cache_init = 1;
+//        cursor->cache_index = 0;
+//        cursor->cache_start_id = key;
+//    }
     throw std::runtime_error("Not implemented");
 }
 

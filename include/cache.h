@@ -53,10 +53,13 @@ struct Sequence
     // TODO: add fine grained locking
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
+    typedef std::tuple<TimeStamp, ParamId, EntryOffset> ValueType;
 
     size_t                  capacity_;      //< Max seq size
     MapType                 data_;          //< Dictionary
-    mutable std::mutex      lock_;          //< Write lock
+    mutable std::mutex      obj_mtx_;       //< data_ mutex
+    mutable std::mutex      tmp_mtx_;       //< temp_ mutex
+    std::vector<ValueType>  temp_;          //< Temporary storage
 
     //! Normal c-tor
     Sequence(size_t max_size) noexcept;
@@ -73,7 +76,7 @@ struct Sequence
 
     /** Search for range of elements.
       */
-    void search(SingleParameterSearchQuery* cursor) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept;
 
     //! Get number of items
     size_t size() const noexcept;
