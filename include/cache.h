@@ -15,6 +15,7 @@
 #pragma once
 #include "page.h"
 #include "cursor.h"
+#include "counters.h"
 
 #include <cpp-btree/btree_map.h>
 
@@ -25,6 +26,8 @@
 #include <mutex>
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/set.hpp>
+
+#include <tbb/enumerable_thread_specific.h>
 
 namespace Akumuli {
 
@@ -50,7 +53,6 @@ namespace details {
 
 struct Sequence
 {
-    // TODO: add fine grained locking
     //! Container type
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
     typedef std::tuple<TimeStamp, ParamId, EntryOffset> ValueType;
@@ -60,13 +62,8 @@ struct Sequence
     mutable std::mutex      tmp_mtx_;       //< temp_ mutex
     std::vector<ValueType>  temp_;          //< Temporary storage
 
-    //! Normal c-tor
-    Sequence(size_t max_size) noexcept;
-
-    //! Copy c-tor
-    Sequence(Sequence const& other);
-
-    Sequence& operator = (Sequence const& other);
+    Sequence(Sequence const& other) = delete;
+    Sequence& operator = (Sequence const& other) = delete;
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if sequence is full. Note that write is successful anyway.
@@ -89,20 +86,20 @@ struct Sequence
 //! Bucket of N sequnces.
 struct Bucket : details::BucketListBaseHook {
 
-    std::vector<Sequence>   seq_;
-    int64_t                 baseline;  //< max timestamp for the bucket
-    std::atomic<int>        state;     //< state of the bucket (0 - active, 1 - ready)
+    typedef tbb::enumerable_thread_specific<Sequence> SeqList;
+    SeqList seq_;
+    LimitCounter limit_;
+    int64_t baseline;  //< max timestamp for the bucket
+    std::atomic<int> state;
 
     /** C-tor
-      * @param n number of sequences
-      * @param max_size max size of the sequence
+      * @param size_limit max size of the bucket
+      * @param baseline baseline timestamp value
       */
-    Bucket(int n, size_t max_size, int64_t baseline);
+    Bucket(int64_t size_limit, int64_t baseline);
 
-    //! Copy c-tor
-    Bucket(Bucket const& other);
-
-    Bucket& operator = (Bucket const& other);
+    Bucket(Bucket const& other) = delete;
+    Bucket& operator = (Bucket const& other) = delete;
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if bucket sequence is full. Note that write is successful anyway.
@@ -111,7 +108,7 @@ struct Bucket : details::BucketListBaseHook {
 
     /** Search for range of elements.
       */
-    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery* params) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, const SingleParameterSearchQuery &params) const noexcept;
 
     /** Merge all offsets in one list in order.
       * @param cur read cursor

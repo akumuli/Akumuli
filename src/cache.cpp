@@ -15,23 +15,6 @@
 
 namespace Akumuli {
 
-// Generation ---------------------------------
-
-Sequence::Sequence(size_t max_size) noexcept
-    : capacity_(max_size)
-{
-}
-
-Sequence::Sequence(Sequence const& other)
-    : capacity_(other.capacity_)
-    , data_(other.data_)
-{
-}
-
-Sequence& Sequence::operator = (Sequence const& other) {
-    capacity_ = other.capacity_.load();
-    data_ = other.data_;
-}
 
 // This method must be called from the same thread
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
@@ -129,45 +112,23 @@ Sequence::MapType::const_iterator Sequence::end() const {
 
 // Bucket -------------------------------------
 
-Bucket::Bucket(int n, size_t max_size, int64_t baseline)
-    : rrindex_(0)
+Bucket::Bucket(int64_t size_limit, int64_t baseline)
+    : baseline(baseline)
+    , limit_(size_limit)
     , state(0)
-    , baseline(baseline)
 {
-    const int NUMCPU = std::thread::hardware_concurrency();
-    assert (n == NUMCPU);
-    // TODO: remove first c-tor parameter, use hardware_concurrency always
-    for (int i = 0; i < n; i++) {
-        seq_.emplace_back(max_size);
-    }
-}
-
-Bucket::Bucket(Bucket const& other)
-    : seq_(other.seq_)
-    , baseline(other.baseline)
-    , rrindex_(0)
-{
-    state.store(other.state);
-}
-
-Bucket& Bucket::operator = (Bucket const& other) {
-    if (&other == this)
-        return *this;
-    seq_ = other.seq_;
-    baseline = other.baseline;
-    state.store(other.state);
-    return *this;
 }
 
 int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
-    int cpuix = aku_getcpu();
-    int index = cpuix % seq_.size();
-    return seq_[index].add(ts, param, offset);
+    if (limit_.dec()) {
+        return seq_.local().add(ts, param, offset);
+    }
+    return AKU_EOVERFLOW;
 }
 
-void Bucket::search(Caller &caller, InternalCursor* cursor, SingleParameterSearchQuery* params) const noexcept {
-    for(Sequence const& seq: seq_) {
-        seq.search(caller, cursor, params);
+void Bucket::search(Caller &caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept {
+    for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
+        i->search(caller, cursor, query);
     }
 }
 
@@ -189,22 +150,18 @@ int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const n
         return AKU_EBUSY;
     }
 
-    // fastpath for empty case
-    if (rrindex_.load() == 0) {
-        return AKU_SUCCESS;
-    }
-
     size_t n = seq_.size();
 
     // Init
     iter_t iter[n], end[n];
-    for (size_t i = 0u; i < n; i++) {
-        iter[i] = seq_[i].begin();
-        end[i] = seq_[i].end();
+    size_t cnt = 0u;
+    for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
+        iter[cnt] = i->begin();
+        end[cnt] = i->end();
+        cnt++;
     }
 
     // Merge
-
     if (n > 1) {
         int next_min = 0;
         while(true) {

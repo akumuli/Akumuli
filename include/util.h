@@ -73,8 +73,4 @@ namespace Akumuli
 
     //! Fast integer logarithm
     int64_t log2(int64_t value) noexcept;
-
-
-    //! Get current CPU id
-    inline int aku_getcpu() noexcept;
 }

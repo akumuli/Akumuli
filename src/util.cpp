@@ -161,12 +161,4 @@ int64_t log2(int64_t value) noexcept {
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
-
-// TODO: implement this function for windows
-inline int aku_getcpu() noexcept {
-    int cpuix, numaix;
-    getcpu(&cpuix, &numaix, NULL);  // error code ingnored intentionally
-    return cpuix;
-}
-
 }
