@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
     Caller caller;
     RecordingCursor cursor;
     seq.search(caller, &cursor, query);
-    BOOST_REQUIRE_EQUAL(cursor.completed, true);
+    BOOST_REQUIRE_EQUAL(cursor.completed, false);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
     Caller caller;
     RecordingCursor cursor;
     seq.search(caller, &cursor, query);
-    BOOST_REQUIRE_EQUAL(cursor.completed, true);
+    BOOST_REQUIRE_EQUAL(cursor.completed, false);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 

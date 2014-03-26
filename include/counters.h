@@ -57,6 +57,7 @@ struct LimitCounter {
         : total_limit_(max_value)
         , reserved_(0)
         , counted_(0)
+        , counter_lock_()
     {
         if(max_value < THRESHOLD) {  // Panic!
             throw std::runtime_error("Cache size limit is to small");

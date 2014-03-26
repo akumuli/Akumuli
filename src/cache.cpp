@@ -185,16 +185,12 @@ int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const n
             cur->put(caller, offset);
             std::advance(iter[min], 1);
         }
+        assert(iter == end);
     } else {
-        while(iter[0] != end[0]) {
-            auto offset = iter[0]->second;
-            cur->put(caller, offset);
-            std::advance(iter[0], 1);
+        for (const auto& pair: boost::make_iterator_range(iter[0], end[0])) {
+            cur->put(caller, pair.second);
         }
     }
-
-    assert(iter == end);
-
     return AKU_SUCCESS;
 }
 

@@ -392,7 +392,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 
     BOOST_CHECK_EQUAL(cursor.completed, true);
     BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 500u);
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), 499u);
 
     std::vector<int64_t> timestamps;
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
