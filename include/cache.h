@@ -24,32 +24,13 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <boost/intrusive/list.hpp>
-#include <boost/intrusive/set.hpp>
 
 #include <tbb/enumerable_thread_specific.h>
+#include <tbb/concurrent_hash_map.h>
+#include <tbb/concurrent_queue.h>
 
 namespace Akumuli {
 
-/*
-    Write -> Bucket -> round robin -> Sequence
-    Search -> Bucket -> map search Sequence -> merge results
-*/
-
-
-namespace details {
-
-    //! Intrusive list tag for bucket class (incomplete type)
-    struct bucket_list_tag_;
-
-    //! Intrusive set tag for bucket class (incomplete type)
-    struct bucket_set_tag_;
-
-    typedef boost::intrusive::list_base_hook<boost::intrusive::tag<bucket_list_tag_> > BucketListBaseHook;
-
-    typedef boost::intrusive::set_base_hook<boost::intrusive::tag<bucket_set_tag_> > BucketSetBaseHook;
-
-}
 
 struct Sequence
 {
@@ -84,12 +65,12 @@ struct Sequence
 
 
 //! Bucket of N sequnces.
-struct Bucket : details::BucketListBaseHook {
+struct Bucket {
 
     typedef tbb::enumerable_thread_specific<Sequence> SeqList;
     SeqList seq_;
     LimitCounter limit_;
-    int64_t baseline;  //< max timestamp for the bucket
+    const int64_t baseline;  //< max timestamp for the bucket
     std::atomic<int> state;
 
     /** C-tor
@@ -119,6 +100,7 @@ struct Bucket : details::BucketListBaseHook {
 };
 
 
+// TODO: remove
 // Cache list type
 typedef boost::intrusive::list< Bucket
                               , boost::intrusive::base_hook<details::BucketListBaseHook>
@@ -136,25 +118,25 @@ BucketListType;
   * "Cache" class is actually a list of buckets and public interface.
   */
 class Cache {
+    typedef tbb::tbb_allocator<Bucket>                  BucketAllocator;
+    typedef tbb::concurrent_hash_map<int64_t, Bucket*>  TableType;
+    typedef std::deque<Bucket*>                         BucketsList;
+    // freq used
+    int64_t                 baseline_;      //< Cache baseline
+    TableType               cache_;         //< Active cache
+    BucketsList             live_buckets_;  //< Live objects
+    mutable SpinLock        lock_;
+    // rare used
     TimeDuration            ttl_;           //< TTL
     size_t                  max_size_;      //< Max size of the sequence
-    int                     bucket_size_;   //< Bucket size
     int                     shift_;         //< Shift width
-    int64_t                 baseline_;      //< Cache baseline
-    std::deque<Bucket>      buckets_;       //< List of all buckets
-    BucketListType          free_list_;     //< List of available buckets
-    BucketListType          cache_;         //< Active cache
-    mutable std::mutex      lists_mutex_;   //< Mutex that guards both lists, baseline and deque
+    BucketAllocator         allocator_;     //< Concurrent bucket allocator
+
 
     /* NOTE:
      * Buckets must be isoated (doesn't interleave with each other).
      *
      * [Bucket0)[Bucket1)[Bucket2) -> writes to indirection vector
-     *
-     * Every bucket must hold one half open time interval [tbegin, tend).
-     * Client process can pop out buckets from the end of the queue. This
-     * requirement needed to implement search and pop-out procedures more efficiently,
-     * without merging.
      */
 
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept;

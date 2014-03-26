@@ -12,9 +12,6 @@
 //! Prepopulation count for cache
 #define AKU_CACHE_POPULATION     32
 
-//! Number of sequences per CPU in a bucket
-#define AKU_CACHE_CONCURRENCY     1
-
 // General error codes
 
 //! Success
@@ -35,6 +32,8 @@
 #define AKU_EBAD_DATA             7
 //! Error, no details available
 #define AKU_EGENERAL              8
+//! Late write error
+#define AKU_ELATE_WRITE           9
 
 
 // Search error codes
