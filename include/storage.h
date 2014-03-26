@@ -21,6 +21,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
 
 #include "page.h"
 #include "util.h"
@@ -59,12 +60,18 @@ struct Volume {
  */
 struct Storage
 {
+    // Active volume state
     Volume*                 active_volume_;
     PageHeader*             active_page_;
     std::atomic<int>        active_volume_index_;
-    TimeDuration            ttl_;
-    std::vector<Volume*>    volumes_;
-    std::mutex              mutex_;
+    TimeDuration            ttl_;                       //< Late write limit
+    std::vector<Volume*>    volumes_;                   //< List of all volumes
+    std::mutex              mutex_;                     //< Storage lock (used by worker thread)
+    // Worker thread state
+    std::queue<Volume*>     outgoing_;                  //< Write back queue
+    std::condition_variable worker_condition_;
+    std::thread             worker_;
+    bool                    stop_worker_;               //< Completion flag, set to stop worker
 
     // Cached metadata
     apr_time_t creation_time_;
@@ -77,36 +84,38 @@ struct Storage
 
     void log_error(const char* message) noexcept;
 
+    void run_worker_() noexcept;
+
     // Writing
 
     //! commit changes
     void commit();
 
+    void notify_worker_(size_t ntimes, Volume* volume) noexcept;
+
+    /** Switch volume in round robin manner
+      * @param ix current volume index
+      */
+    void advance_volume_(int ix) noexcept;
+
     template<class TEntry>
-    int _write_impl(TEntry const& entry) {
+    int _write_impl(TEntry const& entry) noexcept {
         int status = AKU_WRITE_STATUS_BAD_DATA;
         while(true) {
-            size_t nswaps = 0;
             int local_rev = active_volume_index_.load();
+            size_t nswaps = 0;
             status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
             if (status == AKU_WRITE_STATUS_SUCCESS) {
                 status = active_page_->add_entry(entry);
                 switch (status) {
                 case AKU_WRITE_STATUS_SUCCESS:
+                    if (nswaps)
+                        notify_worker_(nswaps, active_volume_);
+                    // Fast path ends
                     return status;
-                // Fast path
                 case AKU_WRITE_STATUS_OVERFLOW: {
                     // Slow path
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    if (local_rev == active_volume_index_.load()) {
-                        active_volume_->close();
-                        // select next page in round robin order
-                        active_volume_index_++;
-                        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-                        active_page_ = active_volume_->reallocate_disc_space();
-                        active_page_->clear();
-                    }
-                    // Or other thread already done all the switching
+                    advance_volume_(local_rev);
                     continue;
                 }
                 };

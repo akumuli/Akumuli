@@ -21,6 +21,32 @@ void RecordingCursor::set_error(Caller&, int error_code) noexcept {
 }
 
 
+BufferedCursor::BufferedCursor(EntryOffset* buf, size_t size) noexcept
+    : offsets_buffer(buf)
+    , buffer_size(size)
+    , count(0u)
+{
+}
+
+void BufferedCursor::put(Caller&, EntryOffset offset) noexcept {
+    if (count == buffer_size) {
+        completed = true;
+        error_code = AKU_EOVERFLOW;
+        return;
+    }
+    offsets_buffer[count++] = offset;
+}
+
+void BufferedCursor::complete(Caller&) noexcept {
+    completed = true;
+}
+
+void BufferedCursor::set_error(Caller&, int code) noexcept {
+    completed = true;
+    error_code = code;
+}
+
+
 // CoroCursor
 CoroCursor::CoroCursor()
     : usr_buffer_(nullptr)

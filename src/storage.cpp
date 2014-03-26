@@ -11,19 +11,26 @@
 
 #include "storage.h"
 #include "util.h"
+
 #include <stdexcept>
 #include <algorithm>
 #include <new>
 #include <atomic>
 #include <sstream>
 #include <cassert>
+#include <functional>
+
 #include <apr_general.h>
 #include <apr_mmap.h>
 #include <apr_xml.h>
+
 #include <log4cxx/logger.h>
 #include <log4cxx/logmanager.h>
+
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/bind.hpp>
+#include <boost/scoped_array.hpp>
 
 namespace Akumuli {
 
@@ -64,6 +71,8 @@ void Volume::close() noexcept {
 //----------------------------------Storage---------------------------------------------
 
 Storage::Storage(aku_Config const& conf)
+    : worker_(boost::bind(&Storage::run_worker_, this))
+    , stop_worker_(false)
 {
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
@@ -128,6 +137,56 @@ Storage::Storage(aku_Config const& conf)
     active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();
+}
+
+void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
+    std::unique_lock<std::mutex> lock(mutex_);
+    for(size_t i = 0; i < ntimes; i++) {
+        outgoing_.push(volume);
+    }
+    lock.unlock();
+    worker_condition_.notify_one();
+}
+
+void Storage::run_worker_() noexcept {
+    std::unique_lock<std::mutex> lock(mutex_);
+    int counter = 0;
+    while(true) {
+        worker_condition_.wait(lock, [this]() { return this->outgoing_.empty() == false;});
+
+        Volume* vol = outgoing_.front();
+        PageHeader* hdr = vol->get_page();
+        size_t max_size = vol->max_cache_size_;
+
+        boost::scoped_array<EntryOffset> buffer(new EntryOffset[max_size]);
+        size_t result_size = 0;
+        int error_code = vol->cache_->pick_latest(buffer.get(), max_size, &result_size, hdr);
+        if (error_code == AKU_SUCCESS) {
+            // TODO: rewrite entries in inderection vector
+            outgoing_.pop();
+        }
+        else {
+            // TODO: process error
+        }
+
+        if (stop_worker_) {
+            return;
+        }
+    }
+}
+
+void Storage::advance_volume_(int local_rev) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (local_rev == active_volume_index_.load()) {
+        active_volume_->close();
+        // select next page in round robin order
+        active_volume_index_++;
+        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+        active_page_ = active_volume_->reallocate_disc_space();
+        active_page_->clear();
+    }
+    // Or other thread already done all the switching
+    // just redo all the things
 }
 
 void Storage::log_error(const char* message) noexcept {

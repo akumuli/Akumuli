@@ -194,6 +194,10 @@ int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const n
     return AKU_SUCCESS;
 }
 
+size_t Bucket::precise_count() const noexcept {
+    return limit_.precise();
+}
+
 // Cache --------------------------------------
 
 Cache::Cache(TimeDuration ttl, size_t max_size)
@@ -283,7 +287,21 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 void Cache::clear() noexcept {
 }
 
-int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept {
+int Cache::pick_latest(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader* page) noexcept {
+    // fastpath - check all params
+    if (size == 0 || offsets == nullptr)
+        return AKU_EBAD_ARG;
+
+    // get one bucket at a time under lock
+    std::unique_lock<LockType> lock(lock_);
+    Bucket* bucket = live_buckets_.back();
+    *noffsets = bucket->precise_count();
+    if (*noffsets > size)
+        // Buffer is to small
+        return AKU_ENO_MEM;
+    BufferedCursor cursor(offsets, size);
+    Caller caller;
+    bucket->merge(caller, &cursor, page);
     return AKU_EGENERAL;
 }
 

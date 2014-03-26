@@ -64,6 +64,15 @@ struct LimitCounter {
         }
     }
 
+    //! Calculate precise balance (number of decrements)
+    size_t precise() const noexcept {
+        size_t total = counted_;
+        for(auto i = counters_.begin(); i != counters_.end(); i++) {
+            total += i->limit_ - i->value_;
+        }
+        return total;
+    }
+
     //! Decrement limit counter
     bool dec() noexcept {
         // fast path

@@ -97,6 +97,8 @@ struct Bucket {
       * @return AKU_EBUSY if bucket is not ready AKU_SUCCESS otherwise
       */
     int merge(Caller& caller, InternalCursor* cur, PageHeader* page) const noexcept;
+
+    size_t precise_count() const noexcept;
 };
 
 
@@ -150,12 +152,14 @@ public:
     int add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) noexcept;
 
     /** Remove oldest elements from cache and return them to caller.
+     *  Out buffer must be large enough to store all entries from one bucket.
      *  @param offsets ret-value, array of offsets ordered by timestamp and paramId
      *  @param size offsets size
      *  @param noffsets number of returned elements
+     *  @param page pointer to buckets page
      *  @return operation status AKU_SUCCESS on success - error code otherwise (AKU_ENO_MEM or AKU_ENO_DATA)
      */
-    int remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noexcept;
+    int pick_latest(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader *page) noexcept;
 
     // TODO: split remove_old f-n into two parts, one that removes old data from cache and one that reads data
 

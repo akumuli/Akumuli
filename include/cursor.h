@@ -55,6 +55,21 @@ struct RecordingCursor : InternalCursor {
 };
 
 
+//! Simple static buffer cursor
+struct BufferedCursor : InternalCursor {
+    EntryOffset* offsets_buffer;
+    size_t buffer_size;
+    size_t count;
+    bool completed = false;
+    int error_code = AKU_SUCCESS;
+    //! C-tor
+    BufferedCursor(EntryOffset* buf, size_t size) noexcept;
+    virtual void put(Caller&, EntryOffset offset) noexcept;
+    virtual void complete(Caller&) noexcept;
+    virtual void set_error(Caller&, int error_code) noexcept;
+};
+
+
 /** Data retreival interface that can be used by
  *  code that reads data from akumuli.
  */
