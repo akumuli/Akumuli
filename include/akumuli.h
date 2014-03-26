@@ -28,6 +28,9 @@ extern "C" {
     };
 
 
+    const char* aku_error_message(int error_code);
+
+
     //! Database instance.
     struct aku_Database { };
 

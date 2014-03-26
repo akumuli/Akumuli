@@ -19,6 +19,28 @@
 
 using namespace Akumuli;
 
+
+static const char* g_error_messages[] = {
+    "OK",
+    "No data",
+    "Not enough memory",
+    "Device is busy",
+    "Can't find result",
+    "Bad argument",
+    "Overflow",
+    "Invalid data",
+    "Error, no details available",
+    "Late write",
+    "Unknown error code"
+};
+
+const char* aku_error_message(int error_code) {
+    if (error_code >= 0 && error_code < 10) {
+        return g_error_messages[error_code];
+    }
+    return g_error_messages[10];
+}
+
 /** 
  * Object that extends a Database struct.
  * Can be used from "C" code.

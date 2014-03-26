@@ -130,6 +130,9 @@ Storage::Storage(aku_Config const& conf)
     active_page_ = active_volume_->get_page();
 }
 
+void Storage::log_error(const char* message) noexcept {
+    LOG4CXX_ERROR(s_logger_, "Write error: " << message);
+}
 
 // Reading
 
@@ -143,57 +146,11 @@ void Storage::commit() {
 
 //! write data
 int Storage::write(Entry const& entry) {
-    // FIXME: this code intentionaly single threaded
-    int status = AKU_WRITE_STATUS_BAD_DATA;
-    while(true) {
-        size_t nswaps = 0;
-        status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
-        // TODO: deal with `swapped` flag
-        if (status == AKU_WRITE_STATUS_SUCCESS) {
-            status = active_page_->add_entry(entry);
-            switch (status) {
-            case AKU_WRITE_STATUS_OVERFLOW:
-                // TODO: flush previous volume
-                // select next page in round robin order
-                active_volume_index_++;
-                active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-                active_page_ = active_volume_->reallocate_disc_space();
-                active_page_->clear();
-                break;
-            case AKU_WRITE_STATUS_SUCCESS:
-                return status;
-            };
-        }
-    }
-    LOG4CXX_ERROR(s_logger_, "Write error: " << status);
-    return status;
+    return _write_impl(entry);
 }
 
 int Storage::write(Entry2 const& entry) {
-    // FIXME: this code intentionaly left single threaded
-    int status = AKU_WRITE_STATUS_BAD_DATA;
-    while(true) {
-        size_t nswaps = 0u;
-        status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
-        // TODO: deal with `swapped` flag
-        if (status == AKU_WRITE_STATUS_SUCCESS) {
-            status = active_page_->add_entry(entry);
-            switch (status) {
-            case AKU_WRITE_STATUS_OVERFLOW:
-                // TODO: flush previous volume
-                // select next page in round robin order
-                active_volume_index_++;
-                active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-                active_page_ = active_volume_->reallocate_disc_space();
-                active_page_->clear();
-                break;
-            case AKU_WRITE_STATUS_SUCCESS:
-                return status;
-            };
-        }
-    }
-    LOG4CXX_ERROR(s_logger_, "Write error: " << status);
-    return status;
+    return _write_impl(entry);
 }
 
 

@@ -20,6 +20,7 @@
 #include <map>
 #include <atomic>
 #include <memory>
+#include <mutex>
 
 #include "page.h"
 #include "util.h"
@@ -58,11 +59,12 @@ struct Volume {
  */
 struct Storage
 {
-    Volume* active_volume_;
-    PageHeader* active_page_;
-    int active_volume_index_;
-    TimeDuration ttl_;
-    std::vector<Volume*> volumes_;
+    Volume*                 active_volume_;
+    PageHeader*             active_page_;
+    std::atomic<int>        active_volume_index_;
+    TimeDuration            ttl_;
+    std::vector<Volume*>    volumes_;
+    std::mutex              mutex_;
 
     // Cached metadata
     apr_time_t creation_time_;
@@ -73,16 +75,52 @@ struct Storage
       */
     Storage(aku_Config const& conf);
 
+    void log_error(const char* message) noexcept;
+
     // Writing
 
     //! commit changes
     void commit();
 
-    /** Write data.
-      */
+    template<class TEntry>
+    int _write_impl(TEntry const& entry) {
+        int status = AKU_WRITE_STATUS_BAD_DATA;
+        while(true) {
+            size_t nswaps = 0;
+            int local_rev = active_volume_index_.load();
+            status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
+            if (status == AKU_WRITE_STATUS_SUCCESS) {
+                status = active_page_->add_entry(entry);
+                switch (status) {
+                case AKU_WRITE_STATUS_SUCCESS:
+                    return status;
+                // Fast path
+                case AKU_WRITE_STATUS_OVERFLOW: {
+                    // Slow path
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (local_rev == active_volume_index_.load()) {
+                        active_volume_->close();
+                        // select next page in round robin order
+                        active_volume_index_++;
+                        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+                        active_page_ = active_volume_->reallocate_disc_space();
+                        active_page_->clear();
+                    }
+                    // Or other thread already done all the switching
+                    continue;
+                }
+                };
+            }
+            break;
+        }
+        log_error(aku_error_message(status));
+        return status;
+    }
+
+    //! Write data. (Parallel)
     int write(Entry const& entry);
 
-    //! write data
+    //! Write data. (Parallel)
     int write(Entry2 const& entry);
 
     // Reading
