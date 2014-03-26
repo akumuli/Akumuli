@@ -44,7 +44,10 @@ struct InternalCursor {
 struct RecordingCursor : InternalCursor {
     std::vector<EntryOffset> offsets;
     bool completed = false;
-    int error_code = -1;
+    enum ErrorCodes {
+        NO_ERROR = -1
+    };
+    int error_code = NO_ERROR;
 
     virtual void put(Caller&, EntryOffset offset) noexcept;
     virtual void complete(Caller&) noexcept;

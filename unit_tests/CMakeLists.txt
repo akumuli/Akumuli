@@ -14,5 +14,6 @@ target_link_libraries(
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
+    libtbb.so
 )
 add_test(akumuli_tests main)

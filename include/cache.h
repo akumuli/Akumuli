@@ -43,8 +43,8 @@ struct Sequence
     mutable std::mutex      tmp_mtx_;       //< temp_ mutex
     std::vector<ValueType>  temp_;          //< Temporary storage
 
-    Sequence(Sequence const& other) = delete;
-    Sequence& operator = (Sequence const& other) = delete;
+    //Sequence(Sequence const& other) = delete;
+    //Sequence& operator = (Sequence const& other) = delete;
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if sequence is full. Note that write is successful anyway.
@@ -100,15 +100,6 @@ struct Bucket {
 };
 
 
-// TODO: remove
-// Cache list type
-typedef boost::intrusive::list< Bucket
-                              , boost::intrusive::base_hook<details::BucketListBaseHook>
-                              , boost::intrusive::constant_time_size<false>
-                              , boost::intrusive::link_mode<boost::intrusive::normal_link> >
-BucketListType;
-
-
 /** Cache for the time-series data.
   * @note This is a first _sketch_ implementation. It's not as good as it can be
   *       but it is good enough for the first try.
@@ -121,12 +112,12 @@ class Cache {
     typedef tbb::tbb_allocator<Bucket>                  BucketAllocator;
     typedef tbb::concurrent_hash_map<int64_t, Bucket*>  TableType;
     typedef std::deque<Bucket*>                         BucketsList;
-    // freq used
+    typedef std::mutex                                  LockType;
+    // ---------
     int64_t                 baseline_;      //< Cache baseline
     TableType               cache_;         //< Active cache
     BucketsList             live_buckets_;  //< Live objects
-    mutable SpinLock        lock_;
-    // rare used
+    mutable LockType        lock_;
     TimeDuration            ttl_;           //< TTL
     size_t                  max_size_;      //< Max size of the sequence
     int                     shift_;         //< Shift width
@@ -140,12 +131,6 @@ class Cache {
      */
 
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept;
-
-    /** Allocate n Buckets from free_list_
-      * and put them before the first element of the
-      * cache_ list.
-      */
-    void allocate_from_free_list(int n, int64_t last_baseline) noexcept;
 public:
     /** C-tor
       * @param ttl max late write timeout
@@ -176,7 +161,7 @@ public:
 
     /** Search fun-n that is similar to Page::search
       */
-    void search(SingleParameterSearchQuery* cursor) const noexcept;
+    void search(Caller &caller, InternalCursor *cur, SingleParameterSearchQuery &query) const noexcept;
 
     //! Remove all data
     void clear() noexcept;

@@ -257,6 +257,7 @@ struct PageHeader {
      */
     void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept;
 
+    void sort() noexcept;
 };
 
 }  // namespaces

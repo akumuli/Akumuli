@@ -205,16 +205,6 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     , max_size_(max_size)
     , baseline_()
 {
-    // Cache prepopulation
-    // Buckets allocated using std::deque<Bucket> for greater locality
-    for (int i = 0; i < AKU_CACHE_POPULATION; i++) {
-        buckets_.emplace_back(bucket_size_, max_size_, baseline_ + i);
-        auto& s = buckets_.back();
-        free_list_.push_back(s);
-    }
-
-    allocate_from_free_list(AKU_LIMITS_MAX_CACHES, baseline_);
-
     // We need to calculate shift width. So, we got ttl in some units
     // of measure (units of measure that akumuli doesn't know about).
     shift_ = log2(ttl.value);
@@ -239,21 +229,6 @@ Sequence const* index2ptr(TCont const& cont, int64_t index) noexcept {
     return &gen;
 }
 
-
-void Cache::allocate_buckets(int nnew, int64_t baseline)noexcept {
-    // TODO: add backpressure to producer to limit memory usage!
-    auto n = free_list_.size();
-    if (n < nnew) {
-        // create new buckets
-        auto cnt = nnew - n;
-        for (int i = 0; i < cnt; i++) {
-            std::unique_ptr<Bucket> p;
-            p.reset(new Bucket(max_size, baseline + 1));
-            cache_.push_front(std::move(p));
-        }
-    }
-}
-
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept {
     // NOTE: If it is less than zero - we need to shift cache.
     // Otherwise we can select existing generation but this can result in late write
@@ -262,12 +237,12 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
 
     TableType::accessor accessor;
     if (cache_.find(accessor, absolute_index)) {
-        if (accessor->second->status == 0) {
+        if (accessor->second->state == 0) {
             return accessor->second->add(ts, pid, offset);
         }
     }
     else {
-        std::lock_guard<SpinLock> guard(lock_);
+        std::lock_guard<LockType> guard(lock_);
         auto rel_index = baseline_ - absolute_index;
         if (!cache_.find(accessor, absolute_index)) {
             if (rel_index > AKU_LIMITS_MAX_CACHES) {
@@ -278,20 +253,22 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
                 auto size = cache_.size();
                 auto min_baseline = absolute_index - AKU_LIMITS_MAX_CACHES;
                 for(auto& b: live_buckets_) {
-                    if (b.baseline < min_baseline) {
-                        auto old = b.state++;
+                    if (b->baseline < min_baseline) {
+                        auto old = b->state++;
                         nswapped += old;
                     }
                 }
             }
             // bucket is not already created by another thread
-            Bucket* new_bucket = allocator_.construct(max_size_, baseline_);
+            size_t bucket_size = sizeof(Bucket);
+            Bucket* new_bucket = allocator_.allocate(bucket_size);
+            allocator_.construct(new_bucket, (int64_t)max_size_, baseline_);
             cache_.insert(std::make_pair(absolute_index, new_bucket));
             live_buckets_.push_front(new_bucket);
             return new_bucket->add(ts, pid, offset);
         }
         else {
-            if (accessor->second->status == 0) {
+            if (accessor->second->state == 0) {
                 return accessor->second->add(ts, pid, offset);
             }
         }
@@ -314,21 +291,18 @@ int Cache::remove_old(EntryOffset* offsets, size_t size, uint32_t* noffsets) noe
     return AKU_EGENERAL;
 }
 
-void Cache::search(SingleParameterSearchQuery* cursor) const noexcept {
+void Cache::search(Caller& caller, InternalCursor *cur, SingleParameterSearchQuery& query) const noexcept {
 
-    bool forward = cursor->direction == AKU_CURSOR_DIR_FORWARD;
-    bool backward = cursor->direction == AKU_CURSOR_DIR_BACKWARD;
+    bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
+    bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
 
-//    if (cursor->upperbound < cursor->lowerbound
-//        || !(forward ^ backward)
-//        || cursor->results == nullptr
-//        || cursor->results_cap == 0
-//    ) {
-//        // Invalid direction or timestamps
-//        cursor->state = AKU_CURSOR_COMPLETE;
-//        cursor->error_code = AKU_EBAD_ARG;
-//        return;
-//    }
+    if (query.upperbound < query.lowerbound
+        || !(forward ^ backward)
+    ) {
+        // Invalid direction or timestamps
+        cur->set_error(caller, AKU_EBAD_ARG);
+        return;
+    }
 
 //    if (cursor->cache_init == 0) {
 //        // Init search

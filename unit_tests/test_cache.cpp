@@ -11,36 +11,22 @@
 
 using namespace Akumuli;
 
-BOOST_AUTO_TEST_CASE(Test_seqeration_insert_overflow_by_size)
-{
-    Sequence seq(4);
-
-    TimeStamp ts = { (int64_t)0 };
-    BOOST_REQUIRE(seq.add(ts, (ParamId)1, (EntryOffset)1) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(seq.add(ts, (ParamId)2, (EntryOffset)2) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(seq.add(ts, (ParamId)3, (EntryOffset)3) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(seq.add(ts, (ParamId)4, (EntryOffset)4) == AKU_WRITE_STATUS_SUCCESS);
-    BOOST_REQUIRE(seq.add(ts, (ParamId)5, (EntryOffset)5) == AKU_WRITE_STATUS_OVERFLOW);
-    BOOST_REQUIRE(seq.add(ts, (ParamId)6, (EntryOffset)6) == AKU_WRITE_STATUS_OVERFLOW);
-}
-
 BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
-    Sequence seq(10000);
+    Sequence seq;
 
     for (int i = 0; i < 1000; ++i) {
         TimeStamp ts = {1000L + i};
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    EntryOffset indexes[10];
-    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
+    SingleParameterSearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD);
+    Caller caller;
+    RecordingCursor cursor;
 
     std::vector<EntryOffset> results;
-    while(cursor.state != AKU_CURSOR_COMPLETE) {
-        seq.search(&cursor);
-        for (int i = 0; i < cursor.results_num; i++) {
-            results.push_back(indexes[i]);
-        }
+    seq.search(caller, &cursor, query);
+    for (size_t i = 0; i < cursor.offsets.size(); i++) {
+        results.push_back(cursor.offsets[i]);
     }
 
     BOOST_CHECK_EQUAL(results.size(), 100);
@@ -51,22 +37,21 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
-    Sequence seq(10000);
+    Sequence seq;
 
     for (int i = 0; i < 1000; ++i) {
         TimeStamp ts = {1000L + i};
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    EntryOffset indexes[10];
-    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD, indexes, 10);
+    SingleParameterSearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD);
+    Caller caller;
+    RecordingCursor cursor;
 
     std::vector<EntryOffset> results;
-    while(cursor.state != AKU_CURSOR_COMPLETE) {
-        seq.search(&cursor);
-        for (int i = 0; i < cursor.results_num; i++) {
-            results.push_back(indexes[i]);
-        }
+    seq.search(caller, &cursor, query);
+    for (size_t i = 0; i < cursor.offsets.size(); i++) {
+        results.push_back(cursor.offsets[i]);
     }
 
     BOOST_CHECK_EQUAL(results.size(), 100);
@@ -77,37 +62,22 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
-    Sequence seq(10000);
-    EntryOffset indexes[10];
-    SingleParameterSearchQuery cursor(1, {1400L}, {1500L}, 111, indexes, 10);
-    seq.search(&cursor);
-    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    Sequence seq;
+    SingleParameterSearchQuery query(1, {1400L}, {1500L}, 111);
+    Caller caller;
+    RecordingCursor cursor;
+    seq.search(caller, &cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.completed, true);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
-    Sequence seq(10000);
-    EntryOffset indexes[10];
-    SingleParameterSearchQuery cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 10);
-    seq.search(&cursor);
-    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
-}
-
-BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer) {
-    Sequence seq(10000);
-    SingleParameterSearchQuery cursor(1, {1000L}, {1500L}, AKU_CURSOR_DIR_BACKWARD, nullptr, 10);
-    seq.search(&cursor);
-    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-    BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
-}
-
-BOOST_AUTO_TEST_CASE(Test_seq_search_bad_buffer_size) {
-    Sequence seq(10000);
-    EntryOffset indexes[10];
-    SingleParameterSearchQuery cursor(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD, indexes, 0);
-    seq.search(&cursor);
-    BOOST_REQUIRE_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
+    Sequence seq;
+    SingleParameterSearchQuery query(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD);
+    Caller caller;
+    RecordingCursor cursor;
+    seq.search(caller, &cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.completed, true);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
@@ -190,16 +160,17 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     Cache cache({1000000L}, 100000);
     init_search_range_test(&cache, 100);
 
-    uint32_t indexes[1000];
-    SingleParameterSearchQuery cursor(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD, indexes, 1000);
+    SingleParameterSearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD);
+    RecordingCursor cursor;
+    Caller caller;
 
-    cache.search(&cursor);
+    cache.search(caller, &cursor, query);
 
-    BOOST_CHECK_EQUAL(cursor.state, AKU_CURSOR_COMPLETE);
-    BOOST_CHECK_EQUAL(cursor.results_num, 68);
+    BOOST_CHECK_EQUAL(cursor.completed, true);
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), 68);
 
-    for(int i = 0; i < cursor.results_num; i++) {
-        BOOST_CHECK_EQUAL(indexes[i], i);
+    for(size_t i = 0; i < cursor.offsets.size(); i++) {
+        BOOST_CHECK_EQUAL(cursor.offsets[i], i);
     }
 }
 
@@ -207,13 +178,16 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 
 void test_bucket_merge(int n, int len) {
 
+
     auto page_len = 0x100*len*n;
     char buffer[page_len];
     PageHeader* page = new (buffer) PageHeader(PageType::Index, 0, page_len, 0);
-    Bucket bucket(n, len*2, 0L);
+    Bucket bucket(len*2, 0L);
 
 
     // generate data
+
+    // TODO: use 'n' threads or emulate them
 
     for (unsigned i = 0; i < len; i++) {
         auto rval = rand();

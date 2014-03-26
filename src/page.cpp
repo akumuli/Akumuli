@@ -436,4 +436,21 @@ SCAN:
     }
 }
 
+void PageHeader::sort() noexcept {
+    auto begin = page_index;
+    auto end = page_index + count;
+    /* NOTE: We can use insertion sort because data that akumuli can process
+     * must be partially ordered because we doesn't allow late writes (if timestamp
+     * of the new sample is less than some value).
+     */
+    // TODO: use more robust algorithm
+    Akumuli::insertion_sort(begin, end, [&](EntryOffset a, EntryOffset b) {
+        auto ea = reinterpret_cast<const Entry*>(cdata() + a);
+        auto eb = reinterpret_cast<const Entry*>(cdata() + b);
+        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.value, ea->param_id);
+        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.value, eb->param_id);
+        return ta < tb;
+    });
+}
+
 }  // namepsace
