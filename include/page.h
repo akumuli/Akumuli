@@ -160,7 +160,8 @@ struct PageHeader {
     // metadata
     PageType type;              //< page type
     uint32_t count;             //< number of elements stored
-    uint32_t last_offset;       //< index of the last added record
+    uint32_t last_offset;       //< offset of the last added record
+    uint32_t sync_index;        //< index of the last synchronized record
     uint64_t length;            //< page size
     uint32_t overwrites_count;  //< how many times page was overwriten
     uint32_t page_id;           //< page index in storage
@@ -258,6 +259,12 @@ struct PageHeader {
     void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept;
 
     void sort() noexcept;
+
+    /** Update page index.
+      * @param offsets ordered offsets
+      * @param num_offsets number of values in buffer
+      */
+    void sync_indexes(EntryOffset* offsets, size_t num_offsets) noexcept;
 };
 
 }  // namespaces

@@ -287,7 +287,7 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 void Cache::clear() noexcept {
 }
 
-int Cache::pick_latest(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader* page) noexcept {
+int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader* page) noexcept {
     // fastpath - check all params
     if (size == 0 || offsets == nullptr)
         return AKU_EBAD_ARG;
@@ -301,8 +301,12 @@ int Cache::pick_latest(EntryOffset* offsets, size_t size, size_t* noffsets, Page
         return AKU_ENO_MEM;
     BufferedCursor cursor(offsets, size);
     Caller caller;
-    bucket->merge(caller, &cursor, page);
-    return AKU_EGENERAL;
+    int status = bucket->merge(caller, &cursor, page);
+    if (status == AKU_SUCCESS)
+        live_buckets_.pop_back();
+    else
+        *noffsets = 0;
+    return status;
 }
 
 void Cache::search(Caller& caller, InternalCursor *cur, SingleParameterSearchQuery& query) const noexcept {

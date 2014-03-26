@@ -160,9 +160,9 @@ void Storage::run_worker_() noexcept {
 
         boost::scoped_array<EntryOffset> buffer(new EntryOffset[max_size]);
         size_t result_size = 0;
-        int error_code = vol->cache_->pick_latest(buffer.get(), max_size, &result_size, hdr);
+        int error_code = vol->cache_->pick_last(buffer.get(), max_size, &result_size, hdr);
         if (error_code == AKU_SUCCESS) {
-            // TODO: rewrite entries in inderection vector
+            hdr->sync_indexes(buffer.get(), result_size);
             outgoing_.pop();
         }
         else {
@@ -170,6 +170,7 @@ void Storage::run_worker_() noexcept {
         }
 
         if (stop_worker_) {
+            // TODO: change this error somewhere
             return;
         }
     }

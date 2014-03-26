@@ -134,6 +134,7 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
     : type(type)
     , count(count)
     , last_offset(length - 1)
+    , sync_index(0)
     , length(length)
     , overwrites_count(0)
     , page_id(page_id)
@@ -451,6 +452,13 @@ void PageHeader::sort() noexcept {
         auto tb = std::tuple<uint64_t, uint32_t>(eb->time.value, eb->param_id);
         return ta < tb;
     });
+}
+
+void PageHeader::sync_indexes(EntryOffset* offsets, size_t num_offsets) noexcept {
+    if (sync_index + num_offsets > count)
+        num_offsets = count - sync_index;
+    std::copy_n(offsets, num_offsets, page_index + sync_index);
+    sync_index += num_offsets;
 }
 
 }  // namepsace
