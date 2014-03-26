@@ -253,13 +253,14 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
                 auto size = cache_.size();
                 auto min_baseline = absolute_index - AKU_LIMITS_MAX_CACHES;
                 for(auto& b: live_buckets_) {
-                    if (b->baseline < min_baseline) {
-                        auto old = b->state++;
-                        nswapped += old;
+                    if (b->baseline < min_baseline && b->state.load() == 0) {
+                        b->state++;
+                        *nswapped += 1;
                     }
                 }
             }
             // bucket is not already created by another thread
+            baseline_ = absolute_index;
             size_t bucket_size = sizeof(Bucket);
             Bucket* new_bucket = allocator_.allocate(bucket_size);
             allocator_.construct(new_bucket, (int64_t)max_size_, baseline_);

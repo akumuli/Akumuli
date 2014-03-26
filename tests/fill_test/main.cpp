@@ -118,6 +118,8 @@ int main(int cnt, const char** args)
         aku_Config config;
         config.debug_mode = 0;
         config.path_to_file = path;
+        config.max_cache_size = 10*1000*1000;
+        config.max_late_write = 10000;
         //TODO: set proper ttl
         auto db = aku_open_database(config);
         boost::timer timer;
