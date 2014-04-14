@@ -136,7 +136,8 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
     , last_offset(length - 1)
     , sync_index(0)
     , length(length)
-    , overwrites_count(0)
+    , open_count(0)
+    , close_count(0)
     , page_id(page_id)
     , bbox()
 {
@@ -175,11 +176,15 @@ bool PageHeader::inside_bbox(ParamId param, TimeStamp time) const noexcept {
         && param >= bbox.min_id;
 }
 
-void PageHeader::clear() noexcept {
+void PageHeader::reuse() noexcept {
     count = 0;
-    overwrites_count++;
+    open_count++;
     last_offset = length - 1;
     bbox = PageBoundingBox();
+}
+
+void PageHeader::close() noexcept {
+    close_count++;
 }
 
 int PageHeader::add_entry(Entry const& entry) noexcept {

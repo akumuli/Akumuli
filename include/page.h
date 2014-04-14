@@ -163,7 +163,8 @@ struct PageHeader {
     uint32_t last_offset;       //< offset of the last added record
     uint32_t sync_index;        //< index of the last synchronized record
     uint64_t length;            //< page size
-    uint32_t overwrites_count;  //< how many times page was overwriten
+    uint32_t open_count;        //< how many times page was open for write
+    uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
@@ -180,8 +181,11 @@ struct PageHeader {
     //! C-tor
     PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id);
 
-    //! Clear all page conent (overwrite count += 1)
-    void clear() noexcept;
+    //! Clear all page conent (open_count += 1)
+    void reuse() noexcept;
+
+    //! Close page for write (close_count += 1)
+    void close() noexcept;
 
     //! Return number of entries stored in page
     int get_entries_count() const noexcept;

@@ -29,6 +29,8 @@
 #include "cursor.h"
 #include "akumuli_def.h"
 
+#include <boost/icl/interval_map.hpp>
+
 namespace Akumuli {
 
 
@@ -51,6 +53,9 @@ struct Volume {
 
     //! Reallocate disc space and return pointer to newly mapped page
     PageHeader *reallocate_disc_space();
+
+    //! Open page for writing
+    void open() noexcept;
 
     //! Flush all data and close volume for write until reallocation
     void close() noexcept;
@@ -81,6 +86,12 @@ struct Storage
       * @param file_name path to metadata file
       */
     Storage(aku_Config const& conf);
+
+    //! Select page that was active last time
+    void select_active_page();
+
+    //! Prepopulate cache
+    void prepopulate_cache();
 
     void log_error(const char* message) noexcept;
 

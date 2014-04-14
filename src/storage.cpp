@@ -55,17 +55,24 @@ PageHeader* Volume::get_page() const noexcept {
 
 PageHeader* Volume::reallocate_disc_space() {
     uint32_t page_id = page_->page_id;
-    uint32_t overwrites_count = page_->overwrites_count;
+    uint32_t open_count = page_->open_count;
+    uint32_t close_count = page_->close_count;
     PageType page_type = page_->type;
     mmap_.remap_file_destructive();
     page_ = new (mmap_.get_pointer()) PageHeader(page_type, 0, mmap_.get_size(), page_id);
-    page_->overwrites_count = overwrites_count;
+    page_->open_count = open_count;
+    page_->close_count = close_count;
     return page_;
 }
 
+void Volume::open() noexcept {
+    page_->reuse();
+    mmap_.flush();
+}
+
 void Volume::close() noexcept {
-    // TODO: not implemented
-    throw std::runtime_error("Not implemented");
+    page_->close();
+    mmap_.flush();
 }
 
 //----------------------------------Storage---------------------------------------------
@@ -123,13 +130,17 @@ Storage::Storage(aku_Config const& conf)
         volumes_.push_back(vol);
     }
 
+    select_active_page();
+}
+
+void Storage::select_active_page() {
     // volume with max overwrites_count and max index must be active
     int max_index = -1;
     int64_t max_overwrites = -1;
-    for(int i = 0; i < num_volumes; i++) {
+    for(int i = 0; i < (int)volumes_.size(); i++) {
         PageHeader* page = volumes_.at(i)->get_page();
-        if (static_cast<int64_t>(page->overwrites_count) >= max_overwrites) {
-            max_overwrites = static_cast<int64_t>(page->overwrites_count);
+        if (static_cast<int64_t>(page->open_count) >= max_overwrites) {
+            max_overwrites = static_cast<int64_t>(page->open_count);
             max_index = i;
         }
     }
@@ -137,6 +148,15 @@ Storage::Storage(aku_Config const& conf)
     active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();
+
+    if (active_page_->close_count == active_page_->open_count) {
+        // Application was interrupted during volume
+        // switching procedure
+        advance_volume_(active_volume_index_.load());
+    }
+}
+
+void Storage::prepopulate_cache() {
 }
 
 void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
@@ -184,7 +204,7 @@ void Storage::advance_volume_(int local_rev) noexcept {
         active_volume_index_++;
         active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
         active_page_ = active_volume_->reallocate_disc_space();
-        active_page_->clear();
+        active_volume_->open();
     }
     // Or other thread already done all the switching
     // just redo all the things
@@ -282,7 +302,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index)
     // FIXME: revisit - is it actually needed?
     // Activate the first page
     if (page_index == 0) {
-        index_page->clear();
+        index_page->reuse();
     }
     return status;
 }
