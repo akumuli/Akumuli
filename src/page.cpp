@@ -143,6 +143,13 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
 {
 }
 
+std::pair<EntryOffset, int> PageHeader::index_to_offset(int index) const noexcept {
+    if (index < 0 || index > count) {
+        return std::make_pair(0u, AKU_EBAD_ARG);
+    }
+    return std::make_pair(page_index[index], AKU_SUCCESS);
+}
+
 int PageHeader::get_entries_count() const noexcept {
     return (int)this->count;
 }

@@ -71,6 +71,7 @@ struct Storage
     std::atomic<int>        active_volume_index_;
     TimeDuration            ttl_;                       //< Late write limit
     std::vector<Volume*>    volumes_;                   //< List of all volumes
+
     std::mutex              mutex_;                     //< Storage lock (used by worker thread)
     // Worker thread state
     std::queue<Volume*>     outgoing_;                  //< Write back queue
@@ -91,7 +92,7 @@ struct Storage
     void select_active_page();
 
     //! Prepopulate cache
-    void prepopulate_cache();
+    void prepopulate_cache(int64_t max_cache_size);
 
     void log_error(const char* message) noexcept;
 

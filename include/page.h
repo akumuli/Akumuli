@@ -170,6 +170,9 @@ struct PageHeader {
     PageBoundingBox bbox;       //< page data limits
     EntryOffset page_index[];   //< page index
 
+    //! Convert entry index to entry offset
+    std::pair<EntryOffset, int> index_to_offset(int index) const noexcept;
+
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;
 

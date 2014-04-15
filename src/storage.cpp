@@ -131,6 +131,8 @@ Storage::Storage(aku_Config const& conf)
     }
 
     select_active_page();
+
+    prepopulate_cache(conf.max_cache_size);
 }
 
 void Storage::select_active_page() {
@@ -156,7 +158,21 @@ void Storage::select_active_page() {
     }
 }
 
-void Storage::prepopulate_cache() {
+void Storage::prepopulate_cache(int64_t max_cache_size) {
+    // FIXME: something special must be done in case when page
+    // doesn't sync'd
+    auto count = active_page_->get_entries_count();
+    auto max_cache_cap = AKU_CACHE_POPULATION * max_cache_size;
+    auto starting_index =  count >= max_cache_cap ? count - max_cache_cap : 0;
+    for (auto ix = starting_index; ix < count; ix++) {
+        const Entry* entry = active_page_->read_entry_at(ix);
+        size_t nswaps = 0;
+        auto offset_err = active_page_->index_to_offset(ix);
+        if (offset_err.second != AKU_SUCCESS) {
+            throw std::runtime_error("Bad page");
+        }
+        active_volume_->cache_->add_entry(*entry, offset_err.first, &nswaps);
+    }
 }
 
 void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
