@@ -92,14 +92,13 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 // -------
 
 
-SingleParameterSearchQuery::SingleParameterSearchQuery
-    (ParamId      pid
+SearchQuery::SearchQuery
+    ( MatcherFn matcher
     , TimeStamp    low
     , TimeStamp    upp
     , uint32_t     scan_dir
     )  noexcept
-
-    : param(pid)
+    : param_pred(matcher)
     , lowerbound(low)
     , upperbound(upp)
     , direction(scan_dir)
@@ -295,7 +294,7 @@ int PageHeader::copy_entry(EntryOffset offset, Entry* receiver) const noexcept {
 /** Return false if query is ill-formed.
   * Status and error code fields will be changed accordignly.
   */
-static bool validate_query(SingleParameterSearchQuery const& query) noexcept {
+static bool validate_query(SearchQuery const& query) noexcept {
     // Cursor validation
     if ((query.direction != AKU_CURSOR_DIR_BACKWARD && query.direction != AKU_CURSOR_DIR_FORWARD) ||
          query.upperbound < query.lowerbound)
@@ -306,7 +305,7 @@ static bool validate_query(SingleParameterSearchQuery const& query) noexcept {
 }
 
 
-void PageHeader::search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept
+void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery const &query) const noexcept
 {
     /* Search algorithm outline:
      * - interpolated search for timestamp
@@ -323,7 +322,6 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SingleParameterS
     }
 
     bool is_backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
-    ParamId param = query.param;
     uint32_t max_index = count - 1u;
     uint32_t begin = 0u;
     uint32_t end = max_index;
@@ -422,7 +420,7 @@ SCAN:
             auto probe = probe_entry->param_id;
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
-            if (probe == param && probe_in_time_range) {
+            if (query.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
                 cursor->put(caller, probe_offset);
             }
             if (probe_entry->time < query.lowerbound || current_index == 0u) {
@@ -438,7 +436,7 @@ SCAN:
             auto probe = probe_entry->param_id;
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
-            if (probe == param && probe_in_time_range) {
+            if (query.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
                 cursor->put(caller, probe_offset);
             }
             if (probe_entry->time > query.upperbound || current_index == max_index) {

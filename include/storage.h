@@ -91,6 +91,13 @@ struct Storage
     //! Select page that was active last time
     void select_active_page();
 
+    template<class Lock>
+    void wait_queue_state_(Lock& l, bool is_empty) {
+        worker_condition_.wait(l, [this, is_empty]() {
+            return this->outgoing_.empty() == is_empty;
+        });
+    }
+
     //! Prepopulate cache
     void prepopulate_cache(int64_t max_cache_size);
 
@@ -112,29 +119,36 @@ struct Storage
 
     template<class TEntry>
     int _write_impl(TEntry const& entry) noexcept {
+        // TODO: review!
         int status = AKU_WRITE_STATUS_BAD_DATA;
         while(true) {
             int local_rev = active_volume_index_.load();
             size_t nswaps = 0;
             status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
-            if (status == AKU_WRITE_STATUS_SUCCESS) {
+            switch (status) {
+            case AKU_SUCCESS:
                 status = active_page_->add_entry(entry);
                 switch (status) {
                 case AKU_WRITE_STATUS_SUCCESS:
                     if (nswaps)
                         notify_worker_(nswaps, active_volume_);
-                    // Fast path ends
+                    // Fast path
                     return status;
-                case AKU_WRITE_STATUS_OVERFLOW: {
+                case AKU_WRITE_STATUS_OVERFLOW:
                     // Slow path
                     advance_volume_(local_rev);
                     continue;
-                }
                 };
-            }
-            break;
+            // Errors that can be very frequent
+            case AKU_EOVERFLOW:
+            case AKU_ELATE_WRITE:
+                break;
+            // Branch for rare and unexpected errors
+            default:
+                log_error(aku_error_message(status));
+                break;
+            };
         }
-        log_error(aku_error_message(status));
         return status;
     }
 

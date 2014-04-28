@@ -39,7 +39,7 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-void Sequence::search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept {
+void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const& query) const noexcept {
 
     bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
@@ -65,7 +65,7 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SingleParameterSea
             if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
                 break;
             }
-            if (std::get<1>(curr_key) == query.param && std::get<0>(curr_key) <= tskey) {
+            if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH && std::get<0>(curr_key) <= tskey) {
                 cursor->put(caller, citer->second);
             }
             if (citer == data_.begin()) {
@@ -88,7 +88,7 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SingleParameterSea
             if (std::get<0>(curr_key) >= std::get<0>(last_key)) {
                 break;
             }
-            if (std::get<1>(curr_key) == query.param) {
+            if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH) {
                 cursor->put(caller, citer->second);
             }
             citer++;
@@ -126,7 +126,7 @@ int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return AKU_EOVERFLOW;
 }
 
-void Bucket::search(Caller &caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept {
+void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& query) const noexcept {
     for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
         i->search(caller, cursor, query);
     }
@@ -310,7 +310,7 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets, PageHe
     return status;
 }
 
-void Cache::search(Caller& caller, InternalCursor *cur, SingleParameterSearchQuery& query) const noexcept {
+void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) const noexcept {
 
     bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;

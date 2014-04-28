@@ -14,8 +14,8 @@
 
 #pragma once
 #include "akumuli.h"
+#define BOOST_COROUTINES_BIDIRECT
 #include <boost/coroutine/all.hpp>
-#include <boost/bind.hpp>
 #include <memory>
 
 namespace Akumuli {

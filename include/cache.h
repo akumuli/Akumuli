@@ -53,7 +53,7 @@ struct Sequence
 
     /** Search for range of elements.
       */
-    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const& query) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SearchQuery const& query) const noexcept;
 
     //! Get number of items
     size_t size() const noexcept;
@@ -89,7 +89,7 @@ struct Bucket {
 
     /** Search for range of elements.
       */
-    void search(Caller& caller, InternalCursor* cursor, const SingleParameterSearchQuery &params) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, const SearchQuery &params) const noexcept;
 
     /** Merge all offsets in one list in order.
       * @param cur read cursor
@@ -165,7 +165,7 @@ public:
 
     /** Search fun-n that is similar to Page::search
       */
-    void search(Caller &caller, InternalCursor *cur, SingleParameterSearchQuery &query) const noexcept;
+    void search(Caller &caller, InternalCursor *cur, SearchQuery &query) const noexcept;
 
     //! Remove all data
     void clear() noexcept;

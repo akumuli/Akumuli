@@ -158,20 +158,59 @@ void Storage::select_active_page() {
     }
 }
 
+#define IS_UNSYNCED(p) ((p)->count != (p)->sync_index)
+
 void Storage::prepopulate_cache(int64_t max_cache_size) {
-    // FIXME: something special must be done in case when page
-    // doesn't sync'd
-    auto count = active_page_->get_entries_count();
-    auto max_cache_cap = AKU_CACHE_POPULATION * max_cache_size;
-    auto starting_index =  count >= max_cache_cap ? count - max_cache_cap : 0;
-    for (auto ix = starting_index; ix < count; ix++) {
-        const Entry* entry = active_page_->read_entry_at(ix);
-        size_t nswaps = 0;
-        auto offset_err = active_page_->index_to_offset(ix);
-        if (offset_err.second != AKU_SUCCESS) {
-            throw std::runtime_error("Bad page");
+    // Save invariant beforehand
+    const bool UNSYNCED = IS_UNSYNCED(active_page_);
+
+    auto count = active_page_->sync_index;
+    if (count == 0) {
+        // TODO: decide what to do here
+        return;
+    }
+
+    const Entry* top_entry = active_page_->read_entry_at(count - 1);
+
+    // Match all properties
+    SearchQuery::MatcherFn matcher = [](ParamId) {
+        return SearchQuery::MATCH;
+    };
+
+    auto hi = TimeStamp::MAX_TIMESTAMP;
+    auto lo = TimeStamp::make(top_entry->time.value - this->ttl_.value);
+
+    SearchQuery query(matcher, lo, hi, AKU_CURSOR_DIR_FORWARD);
+
+    CoroCursor cursor;
+
+    cursor.start(std::bind(&PageHeader::search, active_page_, std::placeholders::_1, &cursor, query));
+
+    // use 1Mb of cache by default
+    boost::scoped_array<EntryOffset> offsets;
+    const int BUF_SIZE = 1024*1024/sizeof(EntryOffset);
+    offsets.reset(new EntryOffset[BUF_SIZE]);
+    size_t nswaps = 0;
+    while(!cursor.is_done()) {
+        int n_read = cursor.read(offsets.get(), BUF_SIZE);
+        for (int i = 0; i < n_read; i++) {
+            auto offset = offsets[i];
+            const Entry* entry = active_page_->read_entry(offset);
+            active_volume_->cache_->add_entry(*entry, offset, &nswaps);
+            if (nswaps)
+                notify_worker_(nswaps, active_volume_);
         }
-        active_volume_->cache_->add_entry(*entry, offset_err.first, &nswaps);
+    }
+
+    // wait while queue will be empty
+    std::unique_lock<std::mutex> lock(mutex_);
+    wait_queue_state_(lock, true);
+
+    // Check invariants
+    if (UNSYNCED && IS_UNSYNCED(active_page_)) {
+        // page stayed in unsynced state
+        // TODO: add more precise information about volume and error
+        throw std::runtime_error("Error while initializing volume");
     }
 }
 
@@ -188,7 +227,7 @@ void Storage::run_worker_() noexcept {
     std::unique_lock<std::mutex> lock(mutex_);
     int counter = 0;
     while(true) {
-        worker_condition_.wait(lock, [this]() { return this->outgoing_.empty() == false;});
+        wait_queue_state_(lock, false);
 
         Volume* vol = outgoing_.front();
         PageHeader* hdr = vol->get_page();

@@ -19,7 +19,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    SingleParameterSearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD);
     Caller caller;
     RecordingCursor cursor;
 
@@ -44,7 +44,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    SingleParameterSearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD);
+    SearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD);
     Caller caller;
     RecordingCursor cursor;
 
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
     Sequence seq;
-    SingleParameterSearchQuery query(1, {1400L}, {1500L}, 111);
+    SearchQuery query(1, {1400L}, {1500L}, 111);
     Caller caller;
     RecordingCursor cursor;
     seq.search(caller, &cursor, query);
@@ -73,7 +73,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
 
 BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
     Sequence seq;
-    SingleParameterSearchQuery query(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD);
     Caller caller;
     RecordingCursor cursor;
     seq.search(caller, &cursor, query);
@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     Cache cache({1000000L}, 100000);
     init_search_range_test(&cache, 100);
 
-    SingleParameterSearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD);
     RecordingCursor cursor;
     Caller caller;
 

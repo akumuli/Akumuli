@@ -14,6 +14,7 @@
 
 #pragma once
 #include <cstdint>
+#include <functional>
 #include "akumuli.h"
 #include "util.h"
 #include "cursor.h"
@@ -128,13 +129,31 @@ struct PageBoundingBox {
 };
 
 
-/** Single parameter time-range query */
-struct SingleParameterSearchQuery {
+/** Search query */
+struct SearchQuery {
+
+    // ParamId match type
+    enum ParamMatch {
+        LT_ALL,         //< This value is less then all values of interest
+        GT_ALL,         //< This value is greather than all values of interest
+        NO_MATCH,       //< This valued doesn't match but it nither greather nither less than all values of interest
+        MATCH           //< This value matches
+    };
+
+    // Matcher function must compare paramId with values of interest and return
+    // LT_ALL if all values of interest is greather than paramId, GT_ALL if all
+    // values of interest is less than paramId, MATCH - if paramId matches one
+    // or NO_MATCH in all other cases.
+    // Matcher f-n can return only MATCH and NO_MATCH. Search algorithms doesn't
+    // need to rely on first two values of the enumeration (LT_ALL and GT_ALL).
+    // This is just a hint to the search algorithm that can speedup search.
+    typedef std::function<ParamMatch(ParamId)> MatcherFn;
+
     // search query
-    TimeStamp       lowerbound;     //< begining of the time interval (0 for -inf)
-    TimeStamp       upperbound;     //< end of the time interval (0 for inf)
-    ParamId         param;          //< parameter id
-    uint32_t        direction;      //< scan direction
+    TimeStamp lowerbound;     //< begining of the time interval (0 for -inf)
+    TimeStamp upperbound;     //< end of the time interval (0 for inf)
+    MatcherFn param_pred;     //< parmeter search predicate
+    uint32_t  direction;      //< scan direction
 
     /** Cursor c-tor
      *  @param pid parameter id
@@ -142,10 +161,10 @@ struct SingleParameterSearchQuery {
      *  @param upp time upperbound (MAX_TIMESTAMP for inf)
      *  @param scan_dir scan direction
      */
-    SingleParameterSearchQuery( ParamId      pid
-                              , TimeStamp    low
-                              , TimeStamp    upp
-                              , uint32_t     scan_dir) noexcept;
+    SearchQuery( MatcherFn matcher
+               , TimeStamp    low
+               , TimeStamp    upp
+               , uint32_t     scan_dir) noexcept;
 };
 
 
@@ -263,7 +282,7 @@ struct PageHeader {
     /**
      *  Search for entry
      */
-    void search(Caller& caller, InternalCursor* cursor, SingleParameterSearchQuery const &query) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SearchQuery const &query) const noexcept;
 
     void sort() noexcept;
 
