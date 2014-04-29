@@ -16,4 +16,4 @@ target_link_libraries(
     libboost_context.a
     libtbb.so
 )
-add_test(akumuli_tests main)
+add_test(akumuli_tests ut_main)

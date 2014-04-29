@@ -91,6 +91,25 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 // Cursors
 // -------
 
+static SearchQuery::ParamMatch single_param_matcher(ParamId a, ParamId b) {
+    if (a == b) {
+        return SearchQuery::MATCH;
+    }
+    return SearchQuery::NO_MATCH;
+}
+
+SearchQuery::SearchQuery
+    ( ParamId      param_id
+    , TimeStamp    low
+    , TimeStamp    upp
+    , uint32_t     scan_dir
+    )  noexcept
+    : param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
+    , lowerbound(low)
+    , upperbound(upp)
+    , direction(scan_dir)
+{
+}
 
 SearchQuery::SearchQuery
     ( MatcherFn matcher

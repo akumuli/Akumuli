@@ -158,11 +158,9 @@ void Storage::select_active_page() {
     }
 }
 
-#define IS_UNSYNCED(p) ((p)->count != (p)->sync_index)
-
 void Storage::prepopulate_cache(int64_t max_cache_size) {
-    // Save invariant beforehand
-    const bool UNSYNCED = IS_UNSYNCED(active_page_);
+
+    // We need to load all data between sync_index - 1 and count
 
     auto count = active_page_->sync_index;
     if (count == 0) {
@@ -200,17 +198,6 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
             if (nswaps)
                 notify_worker_(nswaps, active_volume_);
         }
-    }
-
-    // wait while queue will be empty
-    std::unique_lock<std::mutex> lock(mutex_);
-    wait_queue_state_(lock, true);
-
-    // Check invariants
-    if (UNSYNCED && IS_UNSYNCED(active_page_)) {
-        // page stayed in unsynced state
-        // TODO: add more precise information about volume and error
-        throw std::runtime_error("Error while initializing volume");
     }
 }
 

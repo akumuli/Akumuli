@@ -155,8 +155,20 @@ struct SearchQuery {
     MatcherFn param_pred;     //< parmeter search predicate
     uint32_t  direction;      //< scan direction
 
-    /** Cursor c-tor
+    /** Query c-tor for single parameter searching
      *  @param pid parameter id
+     *  @param low time lowerbound (0 for -inf)
+     *  @param upp time upperbound (MAX_TIMESTAMP for inf)
+     *  @param scan_dir scan direction
+     */
+    SearchQuery( ParamId      param_id
+               , TimeStamp    low
+               , TimeStamp    upp
+               , uint32_t     scan_dir) noexcept;
+
+
+    /** Query c-tor
+     *  @param matcher parameter matcher
      *  @param low time lowerbound (0 for -inf)
      *  @param upp time upperbound (MAX_TIMESTAMP for inf)
      *  @param scan_dir scan direction
