@@ -159,16 +159,16 @@ void Storage::select_active_page() {
 }
 
 void Storage::prepopulate_cache(int64_t max_cache_size) {
-
-    // We need to load all data between sync_index - 1 and count
-
-    auto count = active_page_->sync_index;
-    if (count == 0) {
-        // TODO: decide what to do here
+    // All entries between sync_index (included) and count must
+    // be cached.
+    auto begin = active_page_->sync_index;
+    auto end = active_page_->count;
+    if (begin == end) {
+        // TODO: Need to set baseline for cache somehow
         return;
     }
 
-    const Entry* top_entry = active_page_->read_entry_at(count - 1);
+    const Entry* top_entry = active_page_->read_entry_at(begin);
 
     // Match all properties
     SearchQuery::MatcherFn matcher = [](ParamId) {
@@ -239,6 +239,7 @@ void Storage::run_worker_() noexcept {
 }
 
 void Storage::advance_volume_(int local_rev) noexcept {
+    // TODO: transfer baseline_ value from old volume to new
     std::lock_guard<std::mutex> lock(mutex_);
     if (local_rev == active_volume_index_.load()) {
         active_volume_->close();
