@@ -127,9 +127,16 @@ int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
 }
 
 void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& query) const noexcept {
+    // NOTE: Quick and dirty implementation that copies all the local data
+    // to temporary sequence.
+    std::unique_ptr<Sequence> seq(new Sequence());
     for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
-        i->search(caller, cursor, query);
+        std::unique_lock<std::mutex> lock(i->obj_mtx_);
+        for (auto local = i->begin(); local != i->end(); local++) {
+            seq->add(std::get<0>(local->first), std::get<1>(local->first), local->second);
+        }
     }
+    seq->search(caller, cursor, query);
 }
 
 typedef Sequence::MapType::const_iterator iter_t;
