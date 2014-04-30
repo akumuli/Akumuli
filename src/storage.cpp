@@ -212,7 +212,7 @@ void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
 
 void Storage::run_worker_() noexcept {
     std::unique_lock<std::mutex> lock(mutex_);
-    int counter = 0;
+
     while(true) {
         wait_queue_state_(lock, false);
 
@@ -222,7 +222,7 @@ void Storage::run_worker_() noexcept {
 
         boost::scoped_array<EntryOffset> buffer(new EntryOffset[max_size]);
         size_t result_size = 0;
-        int error_code = vol->cache_->pick_last(buffer.get(), max_size, &result_size, hdr);
+        int error_code = vol->cache_->pick_last(buffer.get(), max_size, &result_size);
         if (error_code == AKU_SUCCESS) {
             hdr->sync_indexes(buffer.get(), result_size);
             outgoing_.pop();

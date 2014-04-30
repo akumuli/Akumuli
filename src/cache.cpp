@@ -134,17 +134,11 @@ void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& q
 
 typedef Sequence::MapType::const_iterator iter_t;
 
-static bool less_than(iter_t lhs, iter_t rhs, PageHeader* page) {
-    auto lentry = page->read_entry(lhs->second),
-         rentry = page->read_entry(rhs->second);
-
-    auto lkey = std::make_tuple(lentry->time, lentry->param_id),
-         rkey = std::make_tuple(rentry->time, rentry->param_id);
-
-    return lkey < rkey;
+static bool less_than(iter_t lhs, iter_t rhs) {
+    return  lhs->first < rhs->first;
 }
 
-int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const noexcept {
+int Bucket::merge(Caller& caller, InternalCursor *cur) const noexcept {
 
     if (state.load() == 0) {
         return AKU_EBUSY;
@@ -170,7 +164,7 @@ int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const n
             for (int i = 0; i < n; i++) {
                 if (i == min) continue;
                 if (iter[i] != end[i]) {
-                    if (less_than(iter[i], iter[min], page)) {
+                    if (less_than(iter[i], iter[min])) {
                         next_min = min;
                         min = i;
                     } else {
@@ -288,7 +282,7 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 void Cache::clear() noexcept {
 }
 
-int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader* page) noexcept {
+int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexcept {
     // fastpath - check all params
     if (size == 0 || offsets == nullptr)
         return AKU_EBAD_ARG;
@@ -302,7 +296,7 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets, PageHe
         return AKU_ENO_MEM;
     BufferedCursor cursor(offsets, size);
     Caller caller;
-    int status = bucket->merge(caller, &cursor, page);
+    int status = bucket->merge(caller, &cursor);
     if (status == AKU_SUCCESS)
         live_buckets_.pop_back();
     else
@@ -323,22 +317,24 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
         return;
     }
 
-//    if (cursor->cache_init == 0) {
-//        // Init search
-//        auto tskey = cursor->upperbound.value;
-//        auto idkey = cursor->param;
-//        auto key = tskey >> shift_;
-//        auto index = baseline_ - key;
-//        // PROBLEM: index can change between calls
-//        if (index < 0) {
-//            // future read
-//            index = 0;
-//        }
-//        cursor->cache_init = 1;
-//        cursor->cache_index = 0;
-//        cursor->cache_start_id = key;
-//    }
-    throw std::runtime_error("Not implemented");
+    if (forward) {
+        auto tsbegin = query.lowerbound.value;
+        auto keybegin = tsbegin >> shift_;
+        std::vector<int64_t> indexes;
+        {
+            std::lock_guard<LockType> guard(lock_);
+            auto index = baseline_ - keybegin;
+            for(auto i = index; i < index + AKU_CACHE_POPULATION; i++) {
+                indexes.push_back(i);
+            }
+        }
+        for (auto ix: indexes) {
+            TableType::accessor accessor;
+            if (this->cache_.find(accessor, ix)) {
+                accessor->second->search(caller, cur, query);
+            }
+        }
+    }
 }
 
 }  // namespace Akumuli

@@ -96,7 +96,7 @@ struct Bucket {
       * @param page this bucket owner
       * @return AKU_EBUSY if bucket is not ready AKU_SUCCESS otherwise
       */
-    int merge(Caller& caller, InternalCursor* cur, PageHeader* page) const noexcept;
+    int merge(Caller& caller, InternalCursor* cur) const noexcept;
 
     size_t precise_count() const noexcept;
 };
@@ -159,7 +159,7 @@ public:
      *  @param page pointer to buckets page
      *  @return operation status AKU_SUCCESS on success - error code otherwise (AKU_ENO_MEM or AKU_ENO_DATA)
      */
-    int pick_last(EntryOffset* offsets, size_t size, size_t* noffsets, PageHeader *page) noexcept;
+    int pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexcept;
 
     // TODO: split remove_old f-n into two parts, one that removes old data from cache and one that reads data
 

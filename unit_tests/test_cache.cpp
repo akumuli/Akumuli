@@ -206,7 +206,7 @@ void test_bucket_merge(int n, int len) {
     RecordingCursor cursor;
     bucket.state++;
     Caller c;
-    int status = bucket.merge(c, &cursor, page);
+    int status = bucket.merge(c, &cursor);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     // all offsets must be in increasing order
