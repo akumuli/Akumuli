@@ -3,6 +3,7 @@
 #define BOOST_TEST_DYN_LINK
 #include <iostream>
 #include <boost/test/unit_test.hpp>
+#include <boost/thread.hpp>
 
 #include "cache.h"
 
@@ -178,30 +179,38 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 
 void test_bucket_merge(int n, int len) {
 
-
     auto page_len = 0x100*len*n;
     char buffer[page_len];
     PageHeader* page = new (buffer) PageHeader(PageType::Index, 0, page_len, 0);
-    Bucket bucket(len*2, 0L);
+    Bucket bucket(1000000, 0L);
 
+    boost::barrier enter(n), insert(n + 1), exit(n + 1);
 
     // generate data
+    auto fn = [&] () {
+        enter.wait();
+        for (uint32_t i = 0; i < len; i++) {
+            auto rval = rand();
+            auto param_id = rval & 3;
+            auto ts = rval >> 2;
+            char entry_buf[0x100];
+            Entry* entry = new(entry_buf) Entry(param_id, {ts}, Entry::get_size(4));
+            entry->value[0] = i;
+            page->add_entry(*entry);
+            auto status = bucket.add({ts}, param_id, page->last_offset);
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        }
+        insert.wait();
+        exit.wait();
+    };
 
-    // TODO: use 'n' threads or emulate them
-
-    for (unsigned i = 0; i < len; i++) {
-        auto rval = rand();
-        auto param_id = rval & 3;
-        auto ts = rval >> 2;
-        auto val = i;
-        char entry_buf[0x100];
-        Entry* entry = new(entry_buf) Entry(param_id, {ts}, Entry::get_size(4));
-        entry->value[0] = val;
-        page->add_entry(*entry);
-        bucket.add({ts}, param_id, page->last_offset);
+    boost::thread_group tgroup;
+    for (int t = 0; t < n; t++) {
+        tgroup.create_thread(fn);
     }
 
     // run merge
+    insert.wait();
 
     RecordingCursor cursor;
     bucket.state++;
@@ -210,7 +219,7 @@ void test_bucket_merge(int n, int len) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     // all offsets must be in increasing order
-    BOOST_REQUIRE(cursor.offsets.size() != 0);
+    BOOST_REQUIRE_EQUAL(cursor.offsets.size(), len*n);
     int64_t prev = 0L;
     for(auto offset: cursor.offsets) {
         auto entry = page->read_entry(offset);
@@ -218,6 +227,9 @@ void test_bucket_merge(int n, int len) {
         BOOST_REQUIRE_LT(prev, curr);
         prev = curr;
     }
+
+    exit.wait();
+    tgroup.join_all();
 }
 
 
@@ -244,4 +256,78 @@ BOOST_AUTO_TEST_CASE(Test_bucket_merge_4)
 BOOST_AUTO_TEST_CASE(Test_bucket_merge_8)
 {
     test_bucket_merge(8, 1000);
+}
+
+void test_bucket_search(int n, int len) {
+
+    Bucket bucket(100000, 0L);
+
+    boost::barrier enter(n), insert(n + 1), exit(n + 1);
+    std::mutex m;
+    std::multimap<std::tuple<int64_t, ParamId>, EntryOffset> expected;
+
+    // generate data
+    auto fn = [&] () {
+        enter.wait();
+        for (unsigned i = 0; i < len; i++) {
+            auto rval = rand();
+            ParamId param_id = rval & 3;
+            int64_t ts = rval >> 2;
+            auto status = bucket.add({ts}, param_id, (EntryOffset)i);
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+            std::lock_guard<std::mutex> l(m);
+            expected.insert(
+                        std::make_pair(
+                            std::make_tuple(ts, param_id),
+                            (EntryOffset)i
+                            ));
+        }
+        insert.wait();
+        exit.wait();
+    };
+
+    std::vector<std::thread> tgroup;
+    for (int t = 0; t < n; t++) {
+        tgroup.emplace_back(fn);
+    }
+
+    insert.wait();
+
+    RecordingCursor cursor;
+    Caller caller;
+    auto pred = [](ParamId) {return SearchQuery::MATCH;};
+    SearchQuery query(pred, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
+    bucket.search(caller, &cursor, query);
+
+    exit.wait();
+
+    for(auto& t: tgroup) {
+        t.join();
+    }
+
+    BOOST_REQUIRE_EQUAL(cursor.offsets.size(), n*len);
+    BOOST_REQUIRE_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
+
+    int cnt = 0;
+    for(auto it: expected) {
+        EntryOffset value = it.second;
+        BOOST_REQUIRE_EQUAL(cursor.offsets[cnt], value);
+        cnt++;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_search_1)
+{
+    test_bucket_search(1, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_search_2)
+{
+    test_bucket_search(2, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_bucket_search_4)
+{
+    test_bucket_search(4, 1000);
 }

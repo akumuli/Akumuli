@@ -43,8 +43,10 @@ struct Sequence
     mutable std::mutex      tmp_mtx_;       //< temp_ mutex
     std::vector<ValueType>  temp_;          //< Temporary storage
 
-    //Sequence(Sequence const& other) = delete;
-    //Sequence& operator = (Sequence const& other) = delete;
+    Sequence() {}
+
+    Sequence(Sequence const& other) = delete;
+    Sequence& operator = (Sequence const& other) = delete;
 
     /**  Add item to cache.
       *  @return AKU_WRITE_STATUS_OVERFLOW if sequence is full. Note that write is successful anyway.

@@ -29,6 +29,7 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
                 auto tkey = std::make_tuple(std::get<0>(tup), std::get<1>(tup));
                 data_.insert(std::make_pair(tkey, std::get<2>(tup)));
             }
+            temp_.clear();
             tmp_lock.unlock();
         }
         data_.insert(std::make_pair(key, offset));
@@ -56,10 +57,10 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
         auto tskey = query.upperbound;
         auto idkey = (ParamId)~0;
         auto key = std::make_tuple(tskey, idkey);
-        auto citer = data_.upper_bound(key);
         auto last_key = std::make_tuple(query.lowerbound, 0);
 
         std::unique_lock<std::mutex> lock(obj_mtx_);
+        auto citer = data_.upper_bound(key);
         while(true) {
             auto& curr_key = citer->first;
             if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
@@ -79,10 +80,10 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
         auto tskey = query.lowerbound;
         auto idkey = (ParamId)0;
         auto key = std::make_tuple(tskey, idkey);
-        auto citer = data_.lower_bound(key);
         auto last_key = std::make_tuple(query.upperbound, ~0);
 
         std::unique_lock<std::mutex> lock(obj_mtx_);
+        auto citer = data_.lower_bound(key);
         while(citer != data_.end()) {
             auto& curr_key = citer->first;
             if (std::get<0>(curr_key) >= std::get<0>(last_key)) {
@@ -133,7 +134,10 @@ void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& q
     for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
         std::unique_lock<std::mutex> lock(i->obj_mtx_);
         for (auto local = i->begin(); local != i->end(); local++) {
-            seq->add(std::get<0>(local->first), std::get<1>(local->first), local->second);
+            auto ts = std::get<0>(local->first);
+            auto id = std::get<1>(local->first);
+            auto offset = local->second;
+            seq->add(ts, id, offset);
         }
     }
     seq->search(caller, cursor, query);

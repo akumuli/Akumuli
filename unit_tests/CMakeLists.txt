@@ -6,6 +6,7 @@ add_executable(ut_main
     test_cursor.cpp
 )
 message("log4cxx libs: ${LOG4CXX_LIBRARIES}")
+message("log4cxx libs: ${Boost_LIBRARIES}")
 target_link_libraries(
     ut_main
     akumuli

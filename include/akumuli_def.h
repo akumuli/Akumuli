@@ -59,15 +59,6 @@
 #define AKU_WRITE_STATUS_BAD_DATA 7
 
 
-// Search FSM state table
-
-#define AKU_CURSOR_START          0
-#define AKU_CURSOR_SEARCH         1
-#define AKU_CURSOR_SCAN_BACKWARD  2
-#define AKU_CURSOR_SCAN_FORWARD   3
-#define AKU_CURSOR_COMPLETE       4
-#define AKU_CURSOR_ERROR          5
-
 // Cursor directions
 #define AKU_CURSOR_DIR_FORWARD    0
 #define AKU_CURSOR_DIR_BACKWARD   1
