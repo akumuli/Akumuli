@@ -21,6 +21,7 @@
 
 #include <tuple>
 #include <vector>
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -35,6 +36,7 @@ namespace Akumuli {
 struct Sequence
 {
     //! Container type
+    typedef std::tuple<TimeStamp, ParamId> KeyType;
     typedef btree::btree_multimap<std::tuple<TimeStamp, ParamId>, EntryOffset> MapType;
     typedef std::tuple<TimeStamp, ParamId, EntryOffset> ValueType;
 

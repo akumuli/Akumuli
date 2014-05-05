@@ -90,7 +90,9 @@ struct LimitCounter {
         if (balance < THRESHOLD) {
             return false;
         }
-        balance /= counters_.size();
+        auto size = counters_.size();
+        if (size == 0) size++;  // Size is zero sometimes. I don't know why, this shouldn't happen.
+        balance /= size;
         if (balance > 0) {
             if (balance > MAX_RESERVE) {
                 balance = MAX_RESERVE;

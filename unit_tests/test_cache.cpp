@@ -185,9 +185,10 @@ void test_bucket_merge(int n, int len) {
     Bucket bucket(1000000, 0L);
 
     boost::barrier enter(n), insert(n + 1), exit(n + 1);
+    std::mutex m;
 
     // generate data
-    auto fn = [&] () {
+    auto fn = [&m, len, page, &bucket, &enter, &insert, &exit] () {
         enter.wait();
         for (uint32_t i = 0; i < len; i++) {
             auto rval = rand();
@@ -196,9 +197,17 @@ void test_bucket_merge(int n, int len) {
             char entry_buf[0x100];
             Entry* entry = new(entry_buf) Entry(param_id, {ts}, Entry::get_size(4));
             entry->value[0] = i;
-            page->add_entry(*entry);
-            auto status = bucket.add({ts}, param_id, page->last_offset);
-            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            std::unique_lock<std::mutex> l(m);
+            auto status = page->add_entry(*entry);
+            auto offset = page->last_offset;
+            l.unlock();
+            if(status != AKU_SUCCESS) {
+                throw std::runtime_error(aku_error_message(status));
+            }
+            status = bucket.add({ts}, param_id, offset);
+            if(status != AKU_SUCCESS) {
+                throw std::runtime_error(aku_error_message(status));
+            }
         }
         insert.wait();
         exit.wait();
@@ -216,20 +225,25 @@ void test_bucket_merge(int n, int len) {
     bucket.state++;
     Caller c;
     int status = bucket.merge(c, &cursor);
-    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-
-    // all offsets must be in increasing order
-    BOOST_REQUIRE_EQUAL(cursor.offsets.size(), len*n);
-    int64_t prev = 0L;
-    for(auto offset: cursor.offsets) {
-        auto entry = page->read_entry(offset);
-        auto curr = entry->time.value;
-        BOOST_REQUIRE_LT(prev, curr);
-        prev = curr;
-    }
+    BOOST_CHECK_EQUAL(status, AKU_SUCCESS);
 
     exit.wait();
     tgroup.join_all();
+
+    // all offsets must be in increasing order
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), len*n);
+    int64_t prev = 0L;
+    int counter = 0;
+    for(auto offset: cursor.offsets) {
+        auto entry = page->read_entry(offset);
+        auto curr = entry->time.value;
+        if (prev <= curr) {
+            prev = curr;
+        } else {
+            BOOST_FAIL("Invalid timestamp");
+        }
+        counter++;
+    }
 }
 
 
@@ -274,7 +288,9 @@ void test_bucket_search(int n, int len) {
             ParamId param_id = rval & 3;
             int64_t ts = rval >> 2;
             auto status = bucket.add({ts}, param_id, (EntryOffset)i);
-            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            if (status != AKU_SUCCESS) {
+                throw std::runtime_error(aku_error_message(status));
+            }
 
             std::lock_guard<std::mutex> l(m);
             expected.insert(

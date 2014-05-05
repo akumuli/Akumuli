@@ -145,55 +145,52 @@ void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& q
 
 typedef Sequence::MapType::const_iterator iter_t;
 
-static bool less_than(iter_t lhs, iter_t rhs) {
-    return  lhs->first < rhs->first;
-}
-
 int Bucket::merge(Caller& caller, InternalCursor *cur) const noexcept {
-
     if (state.load() == 0) {
         return AKU_EBUSY;
     }
 
     size_t n = seq_.size();
-
-    // Init
-    iter_t iter[n], end[n];
-    size_t cnt = 0u;
-    for(SeqList::iterator i = seq_.begin(); i != seq_.end(); i++) {
+    iter_t iter[n], ends[n];
+    int cnt = 0;
+    for(auto i = seq_.begin(); i != seq_.end(); i++) {
         iter[cnt] = i->begin();
-        end[cnt] = i->end();
+        ends[cnt] = i->end();
         cnt++;
     }
 
-    // Merge
-    if (n > 1) {
-        int next_min = 0;
-        while(true) {
-            int min = next_min;
-            int op_cnt = 0;
-            for (int i = 0; i < n; i++) {
-                if (i == min) continue;
-                if (iter[i] != end[i]) {
-                    if (less_than(iter[i], iter[min])) {
-                        next_min = min;
-                        min = i;
-                    } else {
-                        next_min = i;
-                    }
-                    op_cnt++;
-                }
-            }
-            if (op_cnt == 0)
-                break;
-            auto offset = iter[min]->second;
-            cur->put(caller, offset);
-            std::advance(iter[min], 1);
+    typedef std::tuple<TimeStamp, ParamId, EntryOffset, int> HeapItem;
+    typedef std::vector<HeapItem> Heap;
+    Heap heap;
+
+    for(int index = 0; index < n; index++) {
+        if (iter[index] != ends[index]) {
+            auto value = *iter[index];
+            iter[index]++;
+            auto ts = std::get<0>(value.first);
+            auto id = std::get<1>(value.first);
+            auto offset = value.second;
+            heap.push_back(std::make_tuple(ts, id, offset, index));
         }
-        assert(iter == end);
-    } else {
-        for (const auto& pair: boost::make_iterator_range(iter[0], end[0])) {
-            cur->put(caller, pair.second);
+    }
+
+    std::make_heap(heap.begin(), heap.end(), std::greater<Heap::value_type>());
+
+    while(!heap.empty()) {
+        std::pop_heap(heap.begin(), heap.end(), std::greater<Heap::value_type>());
+        auto item = heap.back();
+        auto offset = std::get<2>(item);
+        int index = std::get<3>(item);
+        cur->put(caller, offset);
+        heap.pop_back();
+        if (iter[index] != ends[index]) {
+            auto value = *iter[index];
+            iter[index]++;
+            auto ts = std::get<0>(value.first);
+            auto id = std::get<1>(value.first);
+            auto offset = value.second;
+            heap.push_back(std::make_tuple(ts, id, offset, index));
+            std::push_heap(heap.begin(), heap.end(), std::greater<Heap::value_type>());
         }
     }
     return AKU_SUCCESS;
