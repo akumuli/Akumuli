@@ -19,6 +19,7 @@
 #include <list>
 #include <map>
 #include <atomic>
+#include <thread>
 #include <memory>
 #include <mutex>
 #include <condition_variable>

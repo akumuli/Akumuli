@@ -3,7 +3,8 @@
 #define BOOST_TEST_DYN_LINK
 #include <iostream>
 #include <boost/test/unit_test.hpp>
-#include <boost/thread.hpp>
+#include <boost/thread.hpp>  // for barrier
+#include <thread>
 
 #include "cache.h"
 

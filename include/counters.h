@@ -12,18 +12,14 @@
  */
 
 #pragma once
-#include <vector>
-#include <thread>
-#include <atomic>
-#include <mutex>
-#include <boost/smart_ptr/detail/spinlock.hpp>
+#include <tbb/spin_mutex.h>
 #include <tbb/enumerable_thread_specific.h>
 
 #include "util.h"
 
 namespace Akumuli {
 
-typedef boost::detail::spinlock SpinLock;
+typedef tbb::spin_mutex SpinLock;
 
 /** Simple concurrent limit counter.
  *  Avoids contention but stil uses synchronization in fast path.
@@ -53,56 +49,13 @@ struct LimitCounter {
     int64_t                     counted_;       //! Number of decrements
 
     //! C-tor
-    LimitCounter(int64_t max_value)
-        : total_limit_(max_value)
-        , reserved_(0)
-        , counted_(0)
-        , counter_lock_()
-    {
-        if(max_value < THRESHOLD) {  // Panic!
-            throw std::runtime_error("Cache size limit is to small");
-        }
-    }
+    LimitCounter(int64_t max_value);
 
     //! Calculate precise balance (number of decrements)
-    size_t precise() const noexcept {
-        size_t total = counted_;
-        for(auto i = counters_.begin(); i != counters_.end(); i++) {
-            total += i->limit_ - i->value_;
-        }
-        return total;
-    }
+    size_t precise() const noexcept;
 
     //! Decrement limit counter
-    bool dec() noexcept {
-        // fast path
-        CounterWithPad& cnt = counters_.local();
-        if (cnt.value_ > 0) {
-            cnt.value_--;
-            return true;
-        }
-        // slow path
-        std::lock_guard<SpinLock> inner_guard(counter_lock_);
-        reserved_ -= cnt.limit_;
-        counted_ += cnt.limit_;
-        // rebalance
-        int64_t balance = (total_limit_ - (reserved_ + counted_));
-        if (balance < THRESHOLD) {
-            return false;
-        }
-        auto size = counters_.size();
-        if (size == 0) size++;  // Size is zero sometimes. I don't know why, this shouldn't happen.
-        balance /= size;
-        if (balance > 0) {
-            if (balance > MAX_RESERVE) {
-                balance = MAX_RESERVE;
-            }
-            cnt.value_ = cnt.limit_ = balance;
-            reserved_ += balance;
-            return true;
-        }
-        return false;
-    }
+    bool dec() noexcept;
 };
 
 }
