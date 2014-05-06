@@ -209,7 +209,7 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
 {
     // We need to calculate shift width. So, we got ttl in some units
     // of measure (units of measure that akumuli doesn't know about).
-    shift_ = log2(ttl.value);
+    shift_ = log2(ttl.value/AKU_LIMITS_MAX_CACHES);
     if ((1 << shift_) < AKU_LIMITS_MIN_TTL) {
         throw std::runtime_error("TTL is too small");
     }
@@ -247,6 +247,7 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
         std::lock_guard<LockType> guard(lock_);
         auto rel_index = baseline_ - absolute_index;
         if (!cache_.find(accessor, absolute_index)) {
+            // bucket is not already created by another thread
             if (rel_index > AKU_LIMITS_MAX_CACHES) {
                 return AKU_ELATE_WRITE;
             }
@@ -260,9 +261,8 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
                         *nswapped += 1;
                     }
                 }
+                baseline_ = absolute_index;
             }
-            // bucket is not already created by another thread
-            baseline_ = absolute_index;
             size_t bucket_size = sizeof(Bucket);
             Bucket* new_bucket = allocator_.allocate(bucket_size);
             allocator_.construct(new_bucket, (int64_t)max_size_, baseline_);

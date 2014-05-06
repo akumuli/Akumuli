@@ -85,57 +85,47 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
 
 // --------- Cache tests -----------
 
-BOOST_AUTO_TEST_CASE(Test_cache_dump_by_max_size) {
-    return;
-    Cache cache({1000L}, 3);
+BOOST_AUTO_TEST_CASE(Test_cache_max_size) {
+    const int N = 10000;
+    Cache cache({1000L}, N);
     char entry_buffer[0x100];
     TimeStamp ts = {100001L};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
-    int status = AKU_SUCCESS;
     size_t swapped = 0u;
-    status = cache.add_entry(*entry, 0, &swapped);
-    BOOST_CHECK(status == AKU_SUCCESS);
-    BOOST_CHECK(swapped == AKU_LIMITS_MAX_CACHES);
-    swapped = 0;
-    entry->time = {100002L};
-    status = cache.add_entry(*entry, 1, &swapped);
-    BOOST_CHECK(swapped == 0u);
-    BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {100003L};
-    status = cache.add_entry(*entry, 2, &swapped);
-    BOOST_CHECK(swapped == 0u);
-    BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {100004L};
-    status = cache.add_entry(*entry, 3, &swapped);
-    BOOST_CHECK(swapped == 0u);
-    BOOST_CHECK(status == AKU_EOVERFLOW);
-    entry->time = {100500L};
-    status = cache.add_entry(*entry, 4, &swapped);  // future write
-    BOOST_CHECK(swapped == 1u);
-    BOOST_CHECK(status == AKU_SUCCESS);
+    int status = AKU_SUCCESS, prev_status = AKU_SUCCESS;
+    for(int i = 0; i < N*2; i++) {
+        status = cache.add_entry(*entry, 0, &swapped);
+        if (status == AKU_SUCCESS && prev_status != AKU_SUCCESS) {
+            BOOST_FAIL("LimitCounter error");
+        }
+        if (status != AKU_SUCCESS && prev_status == AKU_SUCCESS) {
+            BOOST_REQUIRE_NE(i, 0);
+        }
+        prev_status = status;
+    }
+    BOOST_REQUIRE_EQUAL(status, AKU_EOVERFLOW);
 }
 
 BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
-    return;
-    Cache cache({1000L}, 1000);
+    const int64_t N = 4096L;
+    Cache cache({N}, 10000000);
     char entry_buffer[0x100];
-    int64_t time = apr_time_now();
+    int64_t time = 0x10000L;
     TimeStamp ts = {time};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
     int status = AKU_SUCCESS;
     size_t swaps = 0;
     status = cache.add_entry(*entry, 0, &swaps);
     BOOST_CHECK(status == AKU_SUCCESS);
-    BOOST_CHECK(swaps == AKU_LIMITS_MAX_CACHES);
-    swaps = 0;
-    entry->time = {time + 2L};
+    entry->time = {time + 2L};  // future write is possible
     status = cache.add_entry(*entry, 1, &swaps);
-    BOOST_CHECK(swaps == 0u);
     BOOST_CHECK(status == AKU_SUCCESS);
-    entry->time = {time - 10000L};
-    status = cache.add_entry(*entry, 2, &swaps);  // late write
-    BOOST_CHECK(swaps == 0u);
-    BOOST_CHECK(status == AKU_EOVERFLOW);
+    entry->time = {time - N};
+    status = cache.add_entry(*entry, 2, &swaps);
+    BOOST_CHECK(status == AKU_SUCCESS);
+    entry->time = {time - N - (N / AKU_LIMITS_MAX_CACHES)};
+    status = cache.add_entry(*entry, 3, &swaps);
+    BOOST_CHECK(status == AKU_ELATE_WRITE);
 }
 
 static int init_search_range_test(Cache* cache, int num_values) {
