@@ -169,6 +169,28 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     }
 }
 
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_0)
+{
+    char page_ptr[0x10000];
+    Cache cache({1000000L}, 100000);
+    init_search_range_test(&cache, 100);
+
+    SearchQuery query(1, {1050L}, {1079L}, AKU_CURSOR_DIR_FORWARD);
+    RecordingCursor cursor;
+    Caller caller;
+
+    cache.search(caller, &cursor, query);
+
+    BOOST_CHECK_EQUAL(cursor.completed, true);
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), 30);
+    BOOST_CHECK_EQUAL(cursor.offsets[0], 50);
+    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 79);
+
+    for(size_t i = 0; i < cursor.offsets.size(); i++) {
+        BOOST_CHECK_EQUAL(cursor.offsets[i], 50 + i);
+    }
+}
+
 // ------------------ Test Bucket --------------------- //
 
 void test_bucket_merge(int n, int len) {
