@@ -21,7 +21,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    SearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {1400L}, {1499L}, AKU_CURSOR_DIR_BACKWARD);
     Caller caller;
     RecordingCursor cursor;
 
@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
     BOOST_CHECK_EQUAL(results.size(), 100);
 
     for(int i = 0; i < 100; i++) {
-        BOOST_REQUIRE_EQUAL(results[i], 500 - i);
+        BOOST_REQUIRE_EQUAL(results[i], 499 - i);
     }
 }
 
@@ -46,7 +46,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
         seq.add(ts, 1, (EntryOffset)i);
     }
 
-    SearchQuery query(1, {1400L}, {1500L}, AKU_CURSOR_DIR_FORWARD);
+    SearchQuery query(1, {1400L}, {1499L}, AKU_CURSOR_DIR_FORWARD);
     Caller caller;
     RecordingCursor cursor;
 
@@ -63,27 +63,29 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_seq_search_bad_direction) {
-    Sequence seq;
+// --------- Cache tests -----------
+
+BOOST_AUTO_TEST_CASE(Test_cache_search_bad_direction) {
+    const int N = 10000;
+    Cache cache({1000L}, N);
     SearchQuery query(1, {1400L}, {1500L}, 111);
     Caller caller;
     RecordingCursor cursor;
-    seq.search(caller, &cursor, query);
+    cache.search(caller, &cursor, query);
     BOOST_REQUIRE_EQUAL(cursor.completed, false);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
 
-BOOST_AUTO_TEST_CASE(Test_seq_search_bad_time) {
-    Sequence seq;
+BOOST_AUTO_TEST_CASE(Test_cache_search_bad_time) {
+    const int N = 10000;
+    Cache cache({1000L}, N);
     SearchQuery query(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD);
     Caller caller;
     RecordingCursor cursor;
-    seq.search(caller, &cursor, query);
+    cache.search(caller, &cursor, query);
     BOOST_REQUIRE_EQUAL(cursor.completed, false);
     BOOST_REQUIRE_EQUAL(cursor.error_code, AKU_EBAD_ARG);
 }
-
-// --------- Cache tests -----------
 
 BOOST_AUTO_TEST_CASE(Test_cache_max_size) {
     const int N = 10000;
@@ -147,7 +149,6 @@ static int init_search_range_test(Cache* cache, int num_values) {
 
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 {
-    return;
     char page_ptr[0x10000];
     Cache cache({1000000L}, 100000);
     init_search_range_test(&cache, 100);
@@ -159,10 +160,12 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
     cache.search(caller, &cursor, query);
 
     BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 68);
+    BOOST_CHECK_NE(cursor.offsets.size(), 0);
+    BOOST_CHECK_EQUAL(cursor.offsets[0], 67);
+    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 0);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        BOOST_CHECK_EQUAL(cursor.offsets[i], i);
+        BOOST_CHECK_EQUAL(cursor.offsets[i], 67 - i);
     }
 }
 

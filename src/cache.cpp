@@ -45,13 +45,6 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
     bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
 
-    if (query.upperbound < query.lowerbound  // Right timestamps and
-        || !(forward ^ backward)             // right direction constant
-    ) {
-        cursor->set_error(caller, AKU_EBAD_ARG);
-        return;
-    }
-
     if (backward)
     {
         auto tskey = query.upperbound;
@@ -63,7 +56,7 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
         auto citer = data_.upper_bound(key);
         while(true) {
             auto& curr_key = citer->first;
-            if (std::get<0>(curr_key) <= std::get<0>(last_key)) {
+            if (std::get<0>(curr_key) < std::get<0>(last_key)) {
                 break;
             }
             if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH && std::get<0>(curr_key) <= tskey) {
@@ -86,7 +79,7 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
         auto citer = data_.lower_bound(key);
         while(citer != data_.end()) {
             auto& curr_key = citer->first;
-            if (std::get<0>(curr_key) >= std::get<0>(last_key)) {
+            if (std::get<0>(curr_key) > std::get<0>(last_key)) {
                 break;
             }
             if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH) {
@@ -325,22 +318,28 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
         return;
     }
 
+    std::vector<int64_t> indexes;
     if (forward) {
         auto tsbegin = query.lowerbound.value;
         auto keybegin = tsbegin >> shift_;
-        std::vector<int64_t> indexes;
-        {
-            std::lock_guard<LockType> guard(lock_);
-            auto index = baseline_ - keybegin;
-            for(auto i = index; i < index + AKU_CACHE_POPULATION; i++) {
-                indexes.push_back(i);
-            }
+        std::lock_guard<LockType> guard(lock_);
+        auto index = baseline_ - keybegin;
+        for(auto i = index; i < index + AKU_LIMITS_MAX_CACHES; i++) {
+            indexes.push_back(i);
         }
-        for (auto ix: indexes) {
-            TableType::accessor accessor;
-            if (this->cache_.find(accessor, ix)) {
-                accessor->second->search(caller, cur, query);
-            }
+    } else {
+        auto tsbegin = query.upperbound.value;
+        auto keybegin = tsbegin >> shift_;
+        std::lock_guard<LockType> guard(lock_);
+        auto index = baseline_;
+        for(auto i = index; i > index - keybegin - AKU_LIMITS_MAX_CACHES; i--) {
+            indexes.push_back(i);
+        }
+    }
+    for (auto ix: indexes) {
+        TableType::accessor accessor;
+        if (this->cache_.find(accessor, ix)) {
+            accessor->second->search(caller, cur, query);
         }
     }
 }
