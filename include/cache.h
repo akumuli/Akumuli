@@ -119,15 +119,17 @@ class Cache {
     typedef tbb::concurrent_hash_map<int64_t, Bucket*>  TableType;
     typedef std::deque<Bucket*>                         BucketsList;
     typedef std::mutex                                  LockType;
+    typedef std::pair<int64_t, int64_t>                 BaselineBounds;
     // ---------
     int64_t                 baseline_;      //< Cache baseline
     TableType               cache_;         //< Active cache
-    BucketsList             live_buckets_;  //< Live objects
+    BucketsList             ordered_buckets_;  //< Live objects
     mutable LockType        lock_;
     TimeDuration            ttl_;           //< TTL
     size_t                  max_size_;      //< Max size of the sequence
     int                     shift_;         //< Shift width
     BucketAllocator         allocator_;     //< Concurrent bucket allocator
+    BaselineBounds          minmax_;        //< Min and max baselines
 
 
     /* NOTE:
@@ -137,6 +139,9 @@ class Cache {
      */
 
     int add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept;
+
+    void update_minmax_() noexcept;
+
 public:
     /** C-tor
       * @param ttl max late write timeout

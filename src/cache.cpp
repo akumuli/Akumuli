@@ -56,15 +56,20 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
     auto it_upper = data_.upper_bound(key_upper);
     auto it_lower = data_.lower_bound(key_lower);
 
+    auto match = [&query](MapType::const_iterator i) {
+        auto& curr_key = i->first;
+        return query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH;
+    };
+
     if (it_lower == data_.end()) {
         cursor->complete(caller);
         return;
     }
 
-    auto match = [&query](MapType::const_iterator i) {
-        auto& curr_key = i->first;
-        return query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH;
-    };
+    if (it_upper == it_lower) {
+        cursor->complete(caller);
+        return;
+    }
 
     if (backward)
     {
@@ -202,6 +207,7 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     : ttl_(ttl)
     , max_size_(max_size)
     , baseline_()
+    , minmax_()
 {
     // We need to calculate shift width. So, we got ttl in some units
     // of measure (units of measure that akumuli doesn't know about).
@@ -211,20 +217,12 @@ Cache::Cache(TimeDuration ttl, size_t max_size)
     }
 }
 
-template<class TCont>
-Sequence* index2ptr(TCont& cont, int64_t index) noexcept {
-    auto begin = cont.begin();
-    std::advance(begin, index);
-    auto& gen = *begin;
-    return &gen;
-}
-
-template<class TCont>
-Sequence const* index2ptr(TCont const& cont, int64_t index) noexcept {
-    auto begin = cont.cbegin();
-    std::advance(begin, index);
-    auto& gen = *begin;
-    return &gen;
+void Cache::update_minmax_() noexcept {
+    for (Bucket* buc: ordered_buckets_) {
+        auto bl = buc->baseline;
+        if (bl < minmax_.first) minmax_.first = bl;
+        if (bl > minmax_.second) minmax_.second = bl;
+    }
 }
 
 int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nswapped) noexcept {
@@ -251,7 +249,7 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
                 // Future write! Mark all outdated buckets.
                 auto size = cache_.size();
                 auto min_baseline = absolute_index - AKU_LIMITS_MAX_CACHES;
-                for(auto& b: live_buckets_) {
+                for(auto& b: ordered_buckets_) {
                     if (b->baseline < min_baseline && b->state.load() == 0) {
                         b->state++;
                         *nswapped += 1;
@@ -263,7 +261,8 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
             Bucket* new_bucket = allocator_.allocate(bucket_size);
             allocator_.construct(new_bucket, (int64_t)max_size_, baseline_);
             cache_.insert(std::make_pair(absolute_index, new_bucket));
-            live_buckets_.push_front(new_bucket);
+            ordered_buckets_.push_front(new_bucket);
+            update_minmax_();
             return new_bucket->add(ts, pid, offset);
         }
         else {
@@ -293,7 +292,7 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexce
 
     // get one bucket at a time under lock
     std::unique_lock<LockType> lock(lock_);
-    Bucket* bucket = live_buckets_.back();
+    Bucket* bucket = ordered_buckets_.back();
     *noffsets = bucket->precise_count();
     if (*noffsets > size)
         // Buffer is to small
@@ -301,10 +300,12 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexce
     BufferedCursor cursor(offsets, size);
     Caller caller;
     int status = bucket->merge(caller, &cursor);
-    if (status == AKU_SUCCESS)
-        live_buckets_.pop_back();
-    else
+    if (status == AKU_SUCCESS) {
+        ordered_buckets_.pop_back();
+        update_minmax_();
+    } else {
         *noffsets = 0;
+    }
     return status;
 }
 
@@ -322,21 +323,21 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
     }
 
     std::vector<int64_t> indexes;
+    auto tslow= query.lowerbound.value;
+    auto keylow = tslow >> shift_;
+    auto tshi = query.upperbound.value;
+    auto keyhi = (tshi >> shift_) + AKU_LIMITS_MAX_CACHES;
+    {
+        std::lock_guard<LockType> gurad(lock_);
+        if (keylow < minmax_.first) keylow = minmax_.first;
+        if (keyhi > minmax_.second) keyhi = minmax_.second;
+    }
     if (forward) {
-        auto tsbegin = query.lowerbound.value;
-        auto keybegin = tsbegin >> shift_;
-        std::lock_guard<LockType> guard(lock_);
-        auto index = baseline_ - keybegin;
-        for(auto i = index; i < index + AKU_LIMITS_MAX_CACHES; i++) {
+        for(auto i = keylow; i <= keyhi; i++) {
             indexes.push_back(i);
         }
     } else {
-        auto tsbegin = query.upperbound.value;
-        auto keybegin = tsbegin >> shift_;
-        auto tsend = query.lowerbound.value;
-        auto keyend = (tsend >> shift_) - AKU_LIMITS_MAX_CACHES;
-        std::lock_guard<LockType> guard(lock_);
-        for(auto i = keybegin; i >= keyend; i--) {
+        for(auto i = keyhi; i >= keylow; i--) {
             indexes.push_back(i);
         }
     }

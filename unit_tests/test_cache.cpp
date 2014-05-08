@@ -147,46 +147,67 @@ static int init_search_range_test(Cache* cache, int64_t start, int num_values) {
     return num_overflows;
 }
 
-BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
+void generic_cache_test
+                 ( int64_t begin
+                 , int64_t end
+                 , int direction
+                 , size_t expected_size
+                 , EntryOffset expected_first
+                 , EntryOffset expected_last
+                 , EntryOffset expected_offset_skew
+                 )
 {
     Cache cache({100L}, 100000);
     init_search_range_test(&cache, 0L, 10000);
 
-    SearchQuery query(1, {1000L}, {5000L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {begin}, {end}, direction);
     RecordingCursor cursor;
     Caller caller;
 
     cache.search(caller, &cursor, query);
 
     BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_NE(cursor.offsets.size(), 4000);
-    BOOST_CHECK_EQUAL(cursor.offsets[0], 5000);
-    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 1000);
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), expected_size);
+    BOOST_CHECK_EQUAL(cursor.offsets[0], expected_first);
+    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], expected_last);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        BOOST_CHECK_EQUAL(cursor.offsets[i], 5000L - i);
+        if (direction == AKU_CURSOR_DIR_FORWARD) {
+            BOOST_CHECK_EQUAL(cursor.offsets[i], expected_offset_skew + i);
+        } else {
+            BOOST_CHECK_EQUAL(cursor.offsets[i], expected_offset_skew - i);
+        }
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
+{
+    generic_cache_test(1000L, 4999L, AKU_CURSOR_DIR_BACKWARD, 4000, 4999, 1000, 4999);
+}
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_1)
+{
+    generic_cache_test(8000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_BACKWARD, 2000, 9999, 8000, 9999);
+}
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_2)
+{
+    generic_cache_test(TimeStamp::MIN_TIMESTAMP.value, 999L, AKU_CURSOR_DIR_BACKWARD, 1000, 999, 0, 999);
 }
 
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_0)
 {
-    Cache cache({1000000L}, 100000);
-    init_search_range_test(&cache, 1000L, 100);
+    generic_cache_test(2000L, 7999L, AKU_CURSOR_DIR_FORWARD, 6000, 2000, 7999, 2000);
+}
 
-    SearchQuery query(1, {1050L}, {1079L}, AKU_CURSOR_DIR_FORWARD);
-    RecordingCursor cursor;
-    Caller caller;
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_1)
+{
+    generic_cache_test(TimeStamp::MIN_TIMESTAMP.value, 999L, AKU_CURSOR_DIR_FORWARD, 1000, 0, 999, 0);
+}
 
-    cache.search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 30);
-    BOOST_CHECK_EQUAL(cursor.offsets[0], 50);
-    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 79);
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        BOOST_CHECK_EQUAL(cursor.offsets[i], 50 + i);
-    }
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_2)
+{
+    generic_cache_test(9000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_FORWARD, 1000, 9000, 9999, 9000);
 }
 
 // ------------------ Test Bucket --------------------- //
