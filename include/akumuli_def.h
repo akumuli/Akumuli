@@ -5,7 +5,7 @@
 // Limits
 
 //! Minimal possible TTL
-#define AKU_LIMITS_MIN_TTL       16
+#define AKU_LIMITS_MIN_TTL        2
 
 //! Max number of live generations in cache
 #define AKU_LIMITS_MAX_CACHES     8

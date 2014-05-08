@@ -130,11 +130,11 @@ BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
     BOOST_CHECK(status == AKU_ELATE_WRITE);
 }
 
-static int init_search_range_test(Cache* cache, int num_values) {
+static int init_search_range_test(Cache* cache, int64_t start, int num_values) {
     char buffer[64];
     int num_overflows = 0;
     for(int i = 0; i < num_values; i++) {
-        TimeStamp inst = {1000L + i};
+        TimeStamp inst = {start + i};
         auto entry = new (buffer) Entry(1, inst, 64);
         entry->value[0] = i;
         size_t nswaps = 0;
@@ -149,31 +149,29 @@ static int init_search_range_test(Cache* cache, int num_values) {
 
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_0)
 {
-    char page_ptr[0x10000];
-    Cache cache({1000000L}, 100000);
-    init_search_range_test(&cache, 100);
+    Cache cache({100L}, 100000);
+    init_search_range_test(&cache, 0L, 10000);
 
-    SearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(1, {1000L}, {5000L}, AKU_CURSOR_DIR_BACKWARD);
     RecordingCursor cursor;
     Caller caller;
 
     cache.search(caller, &cursor, query);
 
     BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_NE(cursor.offsets.size(), 0);
-    BOOST_CHECK_EQUAL(cursor.offsets[0], 67);
-    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 0);
+    BOOST_CHECK_NE(cursor.offsets.size(), 4000);
+    BOOST_CHECK_EQUAL(cursor.offsets[0], 5000);
+    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], 1000);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        BOOST_CHECK_EQUAL(cursor.offsets[i], 67 - i);
+        BOOST_CHECK_EQUAL(cursor.offsets[i], 5000L - i);
     }
 }
 
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_0)
 {
-    char page_ptr[0x10000];
     Cache cache({1000000L}, 100000);
-    init_search_range_test(&cache, 100);
+    init_search_range_test(&cache, 1000L, 100);
 
     SearchQuery query(1, {1050L}, {1079L}, AKU_CURSOR_DIR_FORWARD);
     RecordingCursor cursor;

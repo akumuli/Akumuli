@@ -45,49 +45,52 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
     bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
 
+    auto id_upper = (ParamId)~0;
+    auto key_upper = std::make_tuple(query.upperbound, id_upper);
+
+    auto id_lower = (ParamId)0;
+    auto key_lower = std::make_tuple(query.lowerbound, id_lower);
+
+    std::unique_lock<std::mutex> lock(obj_mtx_);
+
+    auto it_upper = data_.upper_bound(key_upper);
+    auto it_lower = data_.lower_bound(key_lower);
+
+    if (it_lower == data_.end()) {
+        cursor->complete(caller);
+        return;
+    }
+
+    auto match = [&query](MapType::const_iterator i) {
+        auto& curr_key = i->first;
+        return query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH;
+    };
+
     if (backward)
     {
-        auto tskey = query.upperbound;
-        auto idkey = (ParamId)~0;
-        auto key = std::make_tuple(tskey, idkey);
-        auto last_key = std::make_tuple(query.lowerbound, 0);
+        it_upper--;
 
-        std::unique_lock<std::mutex> lock(obj_mtx_);
-        auto citer = data_.upper_bound(key);
-        while(true) {
-            auto& curr_key = citer->first;
-            if (std::get<0>(curr_key) < std::get<0>(last_key)) {
-                break;
+        for(; it_lower != it_upper; it_upper--) {
+            if (match(it_upper)) {
+                cursor->put(caller, it_upper->second);
             }
-            if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH && std::get<0>(curr_key) <= tskey) {
-                cursor->put(caller, citer->second);
+        }
+
+        if (it_lower != data_.end()) {
+            if (match(it_lower)) {
+                cursor->put(caller, it_lower->second);
             }
-            if (citer == data_.begin()) {
-                break;
-            }
-            citer--;
         }
     }
     else
     {
-        auto tskey = query.lowerbound;
-        auto idkey = (ParamId)0;
-        auto key = std::make_tuple(tskey, idkey);
-        auto last_key = std::make_tuple(query.upperbound, ~0);
-
-        std::unique_lock<std::mutex> lock(obj_mtx_);
-        auto citer = data_.lower_bound(key);
-        while(citer != data_.end()) {
-            auto& curr_key = citer->first;
-            if (std::get<0>(curr_key) > std::get<0>(last_key)) {
-                break;
+        for(; it_lower != it_upper; it_lower++) {
+            if (match(it_lower)) {
+                cursor->put(caller, it_lower->second);
             }
-            if (query.param_pred(std::get<1>(curr_key)) == SearchQuery::MATCH) {
-                cursor->put(caller, citer->second);
-            }
-            citer++;
         }
     }
+    // TODO: refactor
     cursor->complete(caller);
 }
 
@@ -330,9 +333,10 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
     } else {
         auto tsbegin = query.upperbound.value;
         auto keybegin = tsbegin >> shift_;
+        auto tsend = query.lowerbound.value;
+        auto keyend = (tsend >> shift_) - AKU_LIMITS_MAX_CACHES;
         std::lock_guard<LockType> guard(lock_);
-        auto index = baseline_;
-        for(auto i = index; i > index - keybegin - AKU_LIMITS_MAX_CACHES; i--) {
+        for(auto i = keybegin; i >= keyend; i--) {
             indexes.push_back(i);
         }
     }
