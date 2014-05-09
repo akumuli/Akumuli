@@ -123,219 +123,150 @@ static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_
     return page;
 }
 
+struct ExpectedSearchResults {
+    bool completed;
+    int error_code;
+    size_t ressize;
+    EntryOffset skew;
+};
 
-BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
+void generic_search_test
+    ( int param_id
+    , TimeStamp begin
+    , TimeStamp end
+    , int direction
+    , ExpectedSearchResults const& expectations
+    )
 {
     char page_ptr[0x10000];
     auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_BACKWARD);
+    SearchQuery query(param_id, begin, end, direction);
     RecordingCursor cursor;
     Caller caller;
 
     page->search(caller, &cursor, query);
 
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
+    BOOST_CHECK_EQUAL(cursor.completed, expectations.completed);
+    BOOST_CHECK_EQUAL(cursor.error_code, expectations.error_code);
+
+    if (expectations.error_code != RecordingCursor::NO_ERROR) {
+        return;
+    }
+
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
         const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], 67 - i);
-        BOOST_CHECK(entry->time.value >= 1000L);
-        BOOST_CHECK(entry->time.value <= 1067L);
+        if (direction == AKU_CURSOR_DIR_BACKWARD) {
+            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew - i);
+        } else {
+            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew + i);
+        }
+        BOOST_CHECK_GE(entry->time.value, begin.value);
+        BOOST_CHECK_LE(entry->time.value, end.value);
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
+{
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 60;
+    expectations.skew = 59;
+    generic_search_test(1, {1000L}, {1059L}, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_1)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {1010L}, {1050L}, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    std::vector<int64_t> timestamps;
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], 50 - i);
-        BOOST_CHECK(entry->time.value >= 1010L);
-        BOOST_CHECK(entry->time.value <= 1050L);
-        timestamps.push_back(entry->time.value);
-    }
-
-    // Check forward time direction
-    BOOST_CHECK(timestamps.front() > timestamps.back());
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 50;
+    expectations.skew = 59;
+    generic_search_test(1, {1010L}, {1059L}, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 100u);
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], 99 - i);
-        BOOST_CHECK(entry->time.value >= 1000L);
-        BOOST_CHECK(entry->time.value <= 1100L);
-    }
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 100;
+    expectations.skew = 99;
+    generic_search_test(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 0u);
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 0;
+    expectations.skew = 0;
+    generic_search_test(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 0u);
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 0;
+    expectations.skew = 0;
+    generic_search_test(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 // Forward direction search
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_0)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {1000L}, {1067L}, AKU_CURSOR_DIR_FORWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 68u);
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], i);
-        BOOST_CHECK(entry->time.value >= 1000L);
-        BOOST_CHECK(entry->time.value <= 1067L);
-    }
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 70;
+    expectations.skew = 0;
+    generic_search_test(1, {1000L}, {1069L}, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_1)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {1010L}, {1050L}, AKU_CURSOR_DIR_FORWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 41u);
-
-    std::vector<int64_t> timestamps;
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], 10 + i);
-        BOOST_CHECK(entry->time.value >= 1010L);
-        BOOST_CHECK(entry->time.value <= 1050L);
-        timestamps.push_back(entry->time.value);
-    }
-
-    // Check forward time direction
-    BOOST_CHECK(timestamps.front() < timestamps.back());
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 60;
+    expectations.skew = 10;
+    generic_search_test(1, {1010L}, {1069L}, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 100u);
-
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK_EQUAL(entry->value[0], i);
-        BOOST_CHECK(entry->time.value >= 1000L);
-        BOOST_CHECK(entry->time.value <= 1100L);
-    }
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 100;
+    expectations.skew = 0;
+    generic_search_test(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 0u);
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 0;
+    expectations.skew = 0;
+    generic_search_test(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
-
-    SearchQuery query(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 0u);
+    ExpectedSearchResults expectations;
+    expectations.completed = true;
+    expectations.error_code = RecordingCursor::NO_ERROR;
+    expectations.ressize = 0;
+    expectations.skew = 0;
+    generic_search_test(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len, int num_values, int time_skew) {
@@ -352,60 +283,63 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
     return page;
 }
 
-BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
+void generic_search_test_with_skew
+     ( int param_id
+     , TimeStamp begin
+     , TimeStamp end
+     , int direction
+     , ExpectedSearchResults const& expectations
+     )
 {
     char page_ptr[0x10000];
     auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
 
-    SearchQuery query(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD);
+    SearchQuery query(param_id, begin, end, direction);
     RecordingCursor cursor;
     Caller caller;
 
     page->search(caller, &cursor, query);
 
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 500u);
+    BOOST_CHECK_EQUAL(cursor.completed, expectations.completed);
+    BOOST_CHECK_EQUAL(cursor.error_code, expectations.error_code);
+
+    if (expectations.error_code != RecordingCursor::NO_ERROR)
+        return;
+
+    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
 
     std::vector<int64_t> timestamps;
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
         const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK(entry->time.value >= 1010L);
-        BOOST_CHECK(entry->time.value <= 2008L);
+        BOOST_CHECK_GE(entry->time.value, begin.value);
+        BOOST_CHECK_LE(entry->time.value, end.value);
         timestamps.push_back(entry->time.value);
     }
 
-    // Check forward time direction
-    BOOST_CHECK(timestamps.front() < timestamps.back());
+    if (direction == AKU_CURSOR_DIR_FORWARD) {
+        BOOST_CHECK(timestamps.front() < timestamps.back());
+    } else {
+        BOOST_CHECK(timestamps.front() > timestamps.back());
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
+{
+    ExpectedSearchResults e;
+    e.completed = true;
+    e.error_code = RecordingCursor::NO_ERROR;
+    e.ressize = 500;
+    generic_search_test_with_skew(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD, e);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
-
-    SearchQuery query(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD);
-    RecordingCursor cursor;
-    Caller caller;
-
-    page->search(caller, &cursor, query);
-
-    BOOST_CHECK_EQUAL(cursor.completed, true);
-    BOOST_CHECK_EQUAL(cursor.error_code, RecordingCursor::NO_ERROR);
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), 499u);
-
-    std::vector<int64_t> timestamps;
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i]);
-        BOOST_CHECK(entry->time.value >= 1010L);
-        BOOST_CHECK(entry->time.value <= 2008L);
-        timestamps.push_back(entry->time.value);
-    }
-
-    // Check forward time direction
-    BOOST_CHECK(timestamps.front() > timestamps.back());
+    ExpectedSearchResults e;
+    e.completed = true;
+    e.error_code = RecordingCursor::NO_ERROR;
+    e.ressize = 499;
+    generic_search_test_with_skew(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, e);
 }
-
 
 // TODO: test multi-part search calls
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
