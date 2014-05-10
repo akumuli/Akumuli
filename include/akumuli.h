@@ -14,6 +14,7 @@
 
 #pragma once
 #include <cstdint>
+#include <apr_errno.h>
 #include "config.h"
 #include "akumuli_def.h"
 
@@ -27,30 +28,40 @@ extern "C" {
         uint32_t length;
     };
 
-
     const char* aku_error_message(int error_code);
-
 
     //! Database instance.
     struct aku_Database { };
 
     /**
-     * Add sample to database.
+     * @brief Creates storage for new database
+     * @param file_name database file name
+     * @param metadata_path path to metadata file
+     * @param volumes_path path to volumes
+     * @param num_volumes number of volumes to create
+     * @return APR errorcode or APR_SUCCESS
+     */
+    apr_status_t create_database( const char* 	file_name
+                                , const char* 	metadata_path
+                                , const char* 	volumes_path
+                                , int32_t       num_volumes
+                                );
+    /**
+     * @brief Add sample to database.
      * Database must be opend.
      * @param db database instance
      * @param param_id parameter id
      * @param timestamp entry timestamp (64-bit timestamp)
      * @param data data
      */
-    void aku_add_sample
-                        ( aku_Database*     db
-                        , uint32_t          param_id
-                        , int64_t           timestamp
-                        , aku_MemRange      data
-                        );
+    void aku_add_sample( aku_Database*     db
+                       , uint32_t          param_id
+                       , int64_t           timestamp
+                       , aku_MemRange      data
+                       );
 
     /**
-     * Find value of the parameter.
+     * @brief Find value of the parameter.
      * Database must be opend.
      * @param db database instance
      * @param param_id parameter id
@@ -67,7 +78,7 @@ extern "C" {
                         , aku_MemRange      out_data
                         );
     /**
-     * Find all values in time range.
+     * @brief Find all values in time range.
      * Database must be opend.
      * @param db database instance.
      * @param param_id parameter id
@@ -89,7 +100,7 @@ extern "C" {
     */
 
     /**
-     * Flush data to disk.
+     * @brief Flush data to disk.
      * @param db database.
      */
     void aku_flush_database(aku_Database* db);
@@ -97,7 +108,7 @@ extern "C" {
 
     /** Open existing database.
      */
-    aku_Database* aku_open_database(aku_Config config);
+    aku_Database* aku_open_database(const char *path, aku_Config config);
 
 
     /** Close database.

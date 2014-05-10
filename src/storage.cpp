@@ -77,7 +77,7 @@ void Volume::close() noexcept {
 
 //----------------------------------Storage---------------------------------------------
 
-Storage::Storage(aku_Config const& conf)
+Storage::Storage(const char* path, aku_Config const& conf)
     : worker_(boost::bind(&Storage::run_worker_, this))
     , stop_worker_(false)
 {
@@ -97,7 +97,7 @@ Storage::Storage(aku_Config const& conf)
     boost::property_tree::ptree ptree;
     // NOTE: there is a known bug in boost 1.49 - https://svn.boost.org/trac/boost/ticket/6785
     // FIX: sed -i -e 's/std::make_pair(c.name, Str(b, e))/std::make_pair(c.name, Ptree(Str(b, e)))/' json_parser_read.hpp
-    boost::property_tree::json_parser::read_json(conf.path_to_file, ptree);
+    boost::property_tree::json_parser::read_json(path, ptree);
 
     // 2. Read volumes
     int num_volumes = ptree.get_child("num_volumes").get_value(0);
@@ -459,6 +459,15 @@ apr_status_t Storage::new_storage( const char* 	file_name
     }
 
     apr_pool_clear(mempool);
+
+    status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
+    if (status == APR_EEXIST) {
+        LOG4CXX_ERROR(s_logger_, "Metadata dir already exists");
+    }
+    status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
+    if (status == APR_EEXIST) {
+        LOG4CXX_ERROR(s_logger_, "Volumes dir already exists");
+    }
 
     std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names);
     for(auto creation_status: page_creation_statuses) {

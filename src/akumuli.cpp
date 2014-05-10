@@ -50,8 +50,8 @@ struct DatabaseImpl : public aku_Database
     Storage storage_;
 
     // private fields
-    DatabaseImpl(const aku_Config& config)
-        : storage_(config)
+    DatabaseImpl(const char* path, const aku_Config& config)
+        : storage_(path, config)
     {
     }
 
@@ -71,6 +71,15 @@ struct DatabaseImpl : public aku_Database
     }
 };
 
+apr_status_t create_database( const char* 	file_name
+                            , const char* 	metadata_path
+                            , const char* 	volumes_path
+                            , int32_t       num_volumes
+                            )
+{
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes);
+}
+
 void aku_flush_database(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->flush();
@@ -86,9 +95,9 @@ int32_t aku_find_sample(aku_Database* db, uint32_t param_id, int64_t instant, ak
     return 0;
 }
 
-aku_Database* aku_open_database(aku_Config config)
+aku_Database* aku_open_database(const char* path, aku_Config config)
 {
-    aku_Database* ptr = new DatabaseImpl(config);
+    aku_Database* ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
 }
 

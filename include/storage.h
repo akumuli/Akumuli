@@ -87,7 +87,7 @@ struct Storage
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
-    Storage(aku_Config const& conf);
+    Storage(const char *path, aku_Config const& conf);
 
     //! Select page that was active last time
     void select_active_page();
