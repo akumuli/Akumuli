@@ -203,6 +203,11 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_3)
     generic_cache_test(20000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_BACKWARD, 0, 0, 0, 0);
 }
 
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_4)
+{
+    generic_cache_test(-1000L, -1L, AKU_CURSOR_DIR_BACKWARD, 0, 0, 0, 0);
+}
+
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_0)
 {
     generic_cache_test(2000L, 7999L, AKU_CURSOR_DIR_FORWARD, 6000, 2000, 7999, 2000);
@@ -221,6 +226,11 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_2)
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_3)
 {
     generic_cache_test(20000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_FORWARD, 0, 0, 0, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_4)
+{
+    generic_cache_test(-10000L, -1L, AKU_CURSOR_DIR_FORWARD, 0, 0, 0, 0);
 }
 
 // ------------------ Test Bucket --------------------- //
