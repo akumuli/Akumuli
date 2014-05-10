@@ -62,12 +62,10 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
     };
 
     if (it_lower == data_.end()) {
-        cursor->complete(caller);
         return;
     }
 
     if (it_upper == it_lower) {
-        cursor->complete(caller);
         return;
     }
 
@@ -95,8 +93,6 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
             }
         }
     }
-    // TODO: refactor
-    cursor->complete(caller);
 }
 
 size_t Sequence::size() const noexcept {
@@ -347,6 +343,7 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
             accessor->second->search(caller, cur, query);
         }
     }
+    cur->complete(caller);
 }
 
 }  // namespace Akumuli

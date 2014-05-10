@@ -168,6 +168,9 @@ void generic_cache_test
 
     BOOST_CHECK_EQUAL(cursor.completed, true);
     BOOST_CHECK_EQUAL(cursor.offsets.size(), expected_size);
+    if (expected_size == 0) {
+        return;
+    }
     BOOST_CHECK_EQUAL(cursor.offsets[0], expected_first);
     BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], expected_last);
 
@@ -195,6 +198,11 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_2)
     generic_cache_test(TimeStamp::MIN_TIMESTAMP.value, 999L, AKU_CURSOR_DIR_BACKWARD, 1000, 999, 0, 999);
 }
 
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_backward_3)
+{
+    generic_cache_test(20000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_BACKWARD, 0, 0, 0, 0);
+}
+
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_0)
 {
     generic_cache_test(2000L, 7999L, AKU_CURSOR_DIR_FORWARD, 6000, 2000, 7999, 2000);
@@ -208,6 +216,11 @@ BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_1)
 BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_2)
 {
     generic_cache_test(9000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_FORWARD, 1000, 9000, 9999, 9000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_CacheSingleParamCursor_search_range_forward_3)
+{
+    generic_cache_test(20000L, TimeStamp::MAX_TIMESTAMP.value, AKU_CURSOR_DIR_FORWARD, 0, 0, 0, 0);
 }
 
 // ------------------ Test Bucket --------------------- //
