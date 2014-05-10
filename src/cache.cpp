@@ -290,14 +290,22 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexce
     std::unique_lock<LockType> lock(lock_);
     Bucket* bucket = ordered_buckets_.back();
     *noffsets = bucket->precise_count();
-    if (*noffsets > size)
+    if (*noffsets > size) {
         // Buffer is to small
         return AKU_ENO_MEM;
+    }
     BufferedCursor cursor(offsets, size);
     Caller caller;
     int status = bucket->merge(caller, &cursor);
     if (status == AKU_SUCCESS) {
+        size_t bucket_size = sizeof(Bucket);
         ordered_buckets_.pop_back();
+        TableType::accessor accessor;
+        if (this->cache_.find(accessor, bucket->baseline)) {
+            cache_.erase(accessor);
+        }
+        allocator_.destroy(bucket);
+        allocator_.deallocate(bucket, bucket_size);
         update_minmax_();
     } else {
         *noffsets = 0;
