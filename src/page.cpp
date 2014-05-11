@@ -172,10 +172,11 @@ int PageHeader::get_entries_count() const noexcept {
     return (int)this->count;
 }
 
-int PageHeader::get_free_space() const noexcept {
+size_t PageHeader::get_free_space() const noexcept {
     auto begin = reinterpret_cast<const char*>(page_index + count);
-    const char* end = 0;
-    end = cdata() + last_offset;
+    const char* end = cdata();
+    end += last_offset;
+    assert(end >= begin);
     return end - begin;
 }
 
@@ -232,26 +233,37 @@ int PageHeader::add_entry(Entry const& entry) noexcept {
 }
 
 int PageHeader::add_entry(Entry2 const& entry) noexcept {
-    auto space_required = entry.range.length + sizeof(Entry2) + sizeof(EntryOffset);
-    if (space_required > get_free_space()) {
+
+    static const int ENTRY_LEN = sizeof(TimeStamp) + sizeof(ParamId);
+
+    auto space_required = entry.range.length
+                        + sizeof(uint32_t)
+                        + ENTRY_LEN
+                        + sizeof(EntryOffset);
+
+    auto free_space = get_free_space();
+    if (space_required > free_space) {
         return AKU_WRITE_STATUS_OVERFLOW;
     }
-    char* free_slot = 0;
-    free_slot = data() + last_offset;
+
+    char* free_slot = free_slot = data() + last_offset;
+    char* orig_free_slot = free_slot;
     // FIXME: reorder to improve memory performance
     // Write data
     free_slot -= entry.range.length;
     memcpy((void*)free_slot, entry.range.address, entry.range.length);
+    assert(free_slot > reinterpret_cast<char*>(page_index + count));
     // Write length
     free_slot -= sizeof(uint32_t);
     *(uint32_t*)free_slot = entry.range.length;
     // Write paramId and timestamp
-    free_slot -= sizeof(Entry2);
-    memcpy((void*)free_slot, (void*)&entry, sizeof(Entry2));
+    free_slot -= ENTRY_LEN;
+    memcpy((void*)free_slot, (void*)&entry, ENTRY_LEN);
     last_offset = free_slot - cdata();
     page_index[count] = last_offset;
     count++;
     update_bounding_box(entry.param_id, entry.time);
+    assert(orig_free_slot == (free_slot + space_required - sizeof(uint32_t)));
     return AKU_WRITE_STATUS_SUCCESS;
 }
 

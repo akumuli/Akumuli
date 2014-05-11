@@ -30,10 +30,8 @@
 #include "cursor.h"
 #include "akumuli_def.h"
 
-#include <boost/icl/interval_map.hpp>
 
 namespace Akumuli {
-
 
 /** Storage volume.
   * Coresponds to one of the storage pages. Includes page
@@ -66,6 +64,9 @@ struct Volume {
  */
 struct Storage
 {
+    typedef std::mutex      LockType;
+    typedef tbb::spin_mutex PageLock;
+
     // Active volume state
     Volume*                 active_volume_;
     PageHeader*             active_page_;
@@ -73,7 +74,9 @@ struct Storage
     TimeDuration            ttl_;                       //< Late write limit
     std::vector<Volume*>    volumes_;                   //< List of all volumes
 
-    std::mutex              mutex_;                     //< Storage lock (used by worker thread)
+    LockType                mutex_;                     //< Storage lock (used by worker thread)
+    PageLock                page_mutex_;
+
     // Worker thread state
     std::queue<Volume*>     outgoing_;                  //< Write back queue
     std::condition_variable worker_condition_;
@@ -111,7 +114,7 @@ struct Storage
     //! commit changes
     void commit();
 
-    void notify_worker_(size_t ntimes, Volume* volume) noexcept;
+    void notify_worker_(std::unique_lock<LockType>& lock, size_t ntimes, Volume* volume) noexcept;
 
     /** Switch volume in round robin manner
       * @param ix current volume index
@@ -127,12 +130,19 @@ struct Storage
             size_t nswaps = 0;
             status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
             switch (status) {
-            case AKU_SUCCESS:
+            case AKU_SUCCESS: {
+                // Page write is single threaded. Mutex needed
+                // to sync worker thread with writer thread and
+                // all reader threads.
+                page_mutex_.lock();
                 status = active_page_->add_entry(entry);
+                page_mutex_.unlock();
                 switch (status) {
                 case AKU_WRITE_STATUS_SUCCESS:
-                    if (nswaps)
-                        notify_worker_(nswaps, active_volume_);
+                    if (nswaps) {
+                        std::unique_lock<LockType> guard(mutex_);
+                        notify_worker_(guard, nswaps, active_volume_);
+                    }
                     // Fast path
                     return status;
                 case AKU_WRITE_STATUS_OVERFLOW:
@@ -140,6 +150,7 @@ struct Storage
                     advance_volume_(local_rev);
                     continue;
                 };
+            }
             // Errors that can be very frequent
             case AKU_EOVERFLOW:
             case AKU_ELATE_WRITE:
@@ -153,10 +164,10 @@ struct Storage
         return status;
     }
 
-    //! Write data. (Parallel)
+    //! Write data.
     int write(Entry const& entry);
 
-    //! Write data. (Parallel)
+    //! Write data.
     int write(Entry2 const& entry);
 
     // Reading

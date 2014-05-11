@@ -195,14 +195,15 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
             auto offset = offsets[i];
             const Entry* entry = active_page_->read_entry(offset);
             active_volume_->cache_->add_entry(*entry, offset, &nswaps);
-            if (nswaps)
-                notify_worker_(nswaps, active_volume_);
+            if (nswaps) {
+                std::unique_lock<LockType> lock(mutex_);
+                notify_worker_(lock, nswaps, active_volume_);
+            }
         }
     }
 }
 
-void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
-    std::unique_lock<std::mutex> lock(mutex_);
+void Storage::notify_worker_(std::unique_lock<LockType>& lock, size_t ntimes, Volume* volume) noexcept {
     for(size_t i = 0; i < ntimes; i++) {
         outgoing_.push(volume);
     }
@@ -211,7 +212,7 @@ void Storage::notify_worker_(size_t ntimes, Volume* volume) noexcept {
 }
 
 void Storage::run_worker_() noexcept {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<LockType> lock(mutex_);
 
     while(true) {
         wait_queue_state_(lock, false);
@@ -240,7 +241,6 @@ void Storage::run_worker_() noexcept {
 
 void Storage::advance_volume_(int local_rev) noexcept {
     // TODO: transfer baseline_ value from old volume to new
-    std::lock_guard<std::mutex> lock(mutex_);
     if (local_rev == active_volume_index_.load()) {
         active_volume_->close();
         // select next page in round robin order

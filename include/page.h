@@ -225,7 +225,7 @@ struct PageHeader {
     int get_entries_count() const noexcept;
 
     //! Returns amount of free space in bytes
-    int get_free_space() const noexcept;
+    size_t get_free_space() const noexcept;
 
     bool inside_bbox(ParamId param, TimeStamp time) const noexcept;
 
