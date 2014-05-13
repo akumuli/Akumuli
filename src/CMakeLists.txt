@@ -8,6 +8,7 @@ add_library(akumuli SHARED
     ../include/sort.h
     ../include/cache.h
     ../include/cursor.h
+    ../include/internal_cursor.h
     ../include/counters.h
     storage.cpp
     page.cpp

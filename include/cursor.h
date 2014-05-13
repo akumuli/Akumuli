@@ -13,29 +13,15 @@
 
 
 #pragma once
-#include "akumuli.h"
-#define BOOST_COROUTINES_BIDIRECT
-#include <boost/coroutine/all.hpp>
+
+#include <vector>
 #include <memory>
 
+#include "akumuli.h"          // for EntryOffset
+#include "internal_cursor.h"  // for InternalCursor
+#include "page.h"             // for PageHeader, TimeStamp and ParamId
+
 namespace Akumuli {
-
-struct InternalCursor;
-
-typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
-typedef typename Coroutine::caller_type Caller;
-
-
-/** Interface used by different search procedures
- *  in akumuli. Must be used only inside library.
- */
-struct InternalCursor {
-    //! Send offset to caller
-    virtual void put(Caller&, EntryOffset offset) noexcept = 0;
-    virtual void complete(Caller&) noexcept = 0;
-    //! Set error and stop execution
-    virtual void set_error(Caller&, int error_code) noexcept = 0;
-};
 
 
 /** Simple cursor implementation for testing.
@@ -66,8 +52,7 @@ struct BufferedCursor : InternalCursor {
     BufferedCursor(EntryOffset* buf, size_t size) noexcept;
     virtual void put(Caller&, EntryOffset offset) noexcept;
     virtual void complete(Caller&) noexcept;
-    virtual void set_error(Caller&, int error_code) noexcept;
-};
+    virtual void set_error(Caller&, int error_code) noexcept; };
 
 
 /** Data retreival interface that can be used by
@@ -84,7 +69,12 @@ struct ExternalCursor {
     virtual void close() noexcept = 0;
 };
 
-struct CoroCursor : InternalCursor, ExternalCursor {
+
+//! Combined cursor interface
+struct Cursor : InternalCursor, ExternalCursor {};
+
+
+struct CoroCursor : Cursor {
     boost::shared_ptr<Coroutine> coroutine_;
     // user owned data
     EntryOffset*    usr_buffer_;        //! User owned buffer for output
@@ -120,4 +110,39 @@ struct CoroCursor : InternalCursor, ExternalCursor {
         coroutine_.reset(new Coroutine(fn));
     }
 };
+
+
+/**
+ * @brief Fan in cursor.
+ * Takes list of cursors and pages and merges
+ * results from this cursors in one ordered
+ * sequence of events.
+ */
+class FanInCursor : ExternalCursor {
+    const std::vector<ExternalCursor*>  cursors_;
+    const std::vector<PageHeader*>      pages_;
+    const int                           direction_;
+    bool                                is_done_;
+    int                                 error_;
+
+    void read_impl_(Caller& caller, InternalCursor* out_cursor) noexcept;
+public:
+    /**
+     * @brief C-tor
+     * @param cursors array of pointer to cursors
+     * @param pages array of pointers to pages
+     * @param size size of the cursors and pages arrays
+     * @param direction direction of the cursor (forward or backward)
+     */
+    FanInCursor(ExternalCursor** cursors, PageHeader** pages, int size, int direction) noexcept;
+
+    virtual int read(EntryOffset* buf, int buf_len) noexcept;
+
+    virtual bool is_done() const noexcept;
+
+    virtual bool is_error(int* out_error_code_or_null=nullptr) const noexcept;
+
+    virtual void close() noexcept;
+};
+
 }  // namespace

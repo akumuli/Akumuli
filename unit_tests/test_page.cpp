@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "akumuli_def.h"
+#include "cursor.h"
 #include "page.h"
 
 using namespace Akumuli;

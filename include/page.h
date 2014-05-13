@@ -17,7 +17,7 @@
 #include <functional>
 #include "akumuli.h"
 #include "util.h"
-#include "cursor.h"
+#include "internal_cursor.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
 const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
