@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cursor.h"
+#include "page.h"
 
 
 using namespace Akumuli;
@@ -102,4 +103,80 @@ BOOST_AUTO_TEST_CASE(Test_cursor_error_100_10)
 BOOST_AUTO_TEST_CASE(Test_cursor_error_100_7)
 {
     test_cursor_error(100, 7);
+}
+
+struct PageWrapper {
+    char* buf;
+    PageHeader* page;
+    uint32_t page_id;
+
+    PageWrapper(int page_size, uint32_t id) {
+        page_id = id;
+        buf = new char[page_size];
+        page = new (buf) PageHeader(Index, 0, page_size, (int)page_id);
+        init();
+    }
+
+    ~PageWrapper() {
+        delete buf;
+    }
+
+    void init() {
+        const auto esize = Entry::get_size(sizeof(int));
+        char ebuf[esize];
+        while(true) {
+            Entry* entry = new (ebuf) Entry(esize);
+            entry->param_id = rand() % 100;
+            entry->time.value = rand();
+            entry->value[0] = page_id;
+            auto status = page->add_entry(*entry);
+            if (status != AKU_SUCCESS) {
+                return;
+            }
+        }
+        page->sort();
+    }
+};
+
+void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
+    std::vector<PageWrapper> pages;
+    pages.reserve(n_cursors);
+    for (int i = 0; i < n_cursors; i++) {
+        pages.emplace_back(page_size, (uint32_t)i);
+    }
+
+    std::vector<PageHeader*> headers;
+    std::transform(pages.begin(), pages.end(),
+                   std::back_inserter(headers),
+                   [](PageWrapper& pw) {
+                        return pw.page;
+                   });
+
+    auto match_all = [](ParamId) { return SearchQuery::MATCH; };
+    SearchQuery q(match_all, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, dir);
+
+    std::vector<CoroCursor> cursors(n_cursors);
+    for (int i = 0; i < n_cursors; i++) {
+        PageHeader* page = pages[i].page;
+        CoroCursor* cursor = &cursors[i];
+        cursor->start(std::bind(&PageHeader::search, page, std::placeholders::_1, cursor, q));
+    }
+
+    std::vector<ExternalCursor*> ecur;
+    std::transform(cursors.begin(), cursors.end(),
+                   std::back_inserter(ecur),
+                   [](Cursor& c) { return &c; });
+
+    FanInCursor cursor(&ecur[0], &headers[0], n_cursors, (int)dir);
+    EntryOffset offsets[0x100];
+    int count = 0;
+    while(!cursor.is_done()) {
+        int n_read = cursor.read(offsets, 0x100);
+        count += n_read;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_0)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 10000);
 }

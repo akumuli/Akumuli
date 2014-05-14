@@ -119,13 +119,12 @@ struct CoroCursor : Cursor {
  * sequence of events.
  */
 class FanInCursor : ExternalCursor {
-    const std::vector<ExternalCursor*>  cursors_;
-    const std::vector<PageHeader*>      pages_;
+    const std::vector<ExternalCursor*>  in_cursors_;
+    const std::vector<PageHeader*>      in_pages_;
     const int                           direction_;
-    bool                                is_done_;
-    int                                 error_;
+    CoroCursor                          out_cursor_;
 
-    void read_impl_(Caller& caller, InternalCursor* out_cursor) noexcept;
+    void read_impl_(Caller& caller) noexcept;
 public:
     /**
      * @brief C-tor

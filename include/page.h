@@ -153,6 +153,7 @@ struct SearchQuery {
     TimeStamp lowerbound;     //< begining of the time interval (0 for -inf)
     TimeStamp upperbound;     //< end of the time interval (0 for inf)
     MatcherFn param_pred;     //< parmeter search predicate
+    // TODO: dir must be signed int
     uint32_t  direction;      //< scan direction
 
     /** Query c-tor for single parameter searching

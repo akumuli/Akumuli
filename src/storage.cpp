@@ -495,7 +495,10 @@ apr_status_t Storage::new_storage( const char* 	file_name
     return status;
 }
 
-void Storage::search(InternalCursor* cursor) {
+void Storage::search(Caller &caller, InternalCursor *cur, SearchQuery &query) const noexcept {
+    // Find pages
+    // Search cache (optional, only for active page)
+    // Search pages
 }
 
 }

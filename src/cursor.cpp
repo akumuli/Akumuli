@@ -131,21 +131,22 @@ struct HeapPred {
 };
 
 FanInCursor::FanInCursor(ExternalCursor **cursors, PageHeader** pages, int size, int direction) noexcept
-    : cursors_(cursors, cursors + size)
-    , pages_(pages, pages + size)
+    : in_cursors_(cursors, cursors + size)
+    , in_pages_(pages, pages + size)
     , direction_(direction)
-    , is_done_(false)
-    , error_(AKU_SUCCESS)
+    , out_cursor_()
 {
+    out_cursor_.start(std::bind(&FanInCursor::read_impl_, this, std::placeholders::_1));
 }
 
-void FanInCursor::read_impl_(Caller& caller, InternalCursor* out_cursor) noexcept {
+void FanInCursor::read_impl_(Caller& caller) noexcept {
     // Check preconditions
-    for (auto cursor: cursors_) {
-       if (cursor->is_error(&error_)) {
-           is_done_ = true;
-           return;
-       }
+    int error = 0;
+    for (auto cursor: in_cursors_) {
+        if (cursor->is_error(&error)) {
+            out_cursor_.set_error(caller, error);
+            return;
+        }
     }
 
     typedef std::vector<HeapItem> Heap;
@@ -154,13 +155,13 @@ void FanInCursor::read_impl_(Caller& caller, InternalCursor* out_cursor) noexcep
 
     const int BUF_LEN = 0x200;
     EntryOffset buffer[BUF_LEN];
-    for(int cur_index = 0; cur_index < cursors_.size(); cur_index++) {
-        if (!cursors_[cur_index]->is_done()) {
-            PageHeader* page = pages_[cur_index];
-            ExternalCursor* cursor = cursors_[cur_index];
+    for(int cur_index = 0; cur_index < in_cursors_.size(); cur_index++) {
+        if (!in_cursors_[cur_index]->is_done()) {
+            PageHeader* page = in_pages_[cur_index];
+            ExternalCursor* cursor = in_cursors_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
-            if (cursor->is_error(&error_)) {
-                is_done_ = true;
+            if (cursor->is_error(&error)) {
+                out_cursor_.set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
@@ -180,14 +181,14 @@ void FanInCursor::read_impl_(Caller& caller, InternalCursor* out_cursor) noexcep
         auto offset = std::get<2>(item);
         int cur_index = std::get<3>(item);
         int cur_count = std::get<4>(item);
-        out_cursor->put(caller, offset);
+        out_cursor_.put(caller, offset);
         heap.pop_back();
-        if (cur_count == 0 && !cursors_[cur_index]->is_done()) {
-            ExternalCursor* cursor = cursors_[cur_index];
-            PageHeader* page = pages_[cur_index];
+        if (cur_count == 0 && !in_cursors_[cur_index]->is_done()) {
+            ExternalCursor* cursor = in_cursors_[cur_index];
+            PageHeader* page = in_pages_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
-            if (cursor->is_error(&error_)) {
-                is_done_ = true;
+            if (cursor->is_error(&error)) {
+                out_cursor_.set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
@@ -199,28 +200,25 @@ void FanInCursor::read_impl_(Caller& caller, InternalCursor* out_cursor) noexcep
             }
         }
     }
-
-    is_done_ = true;
 }
 
 int FanInCursor::read(EntryOffset* buf, int buf_len) noexcept {
-    throw std::logic_error("Not implemented");
+    return out_cursor_.read(buf, buf_len);
 }
 
 bool FanInCursor::is_done() const noexcept {
-    return is_done_;
+    return out_cursor_.is_done();
 }
 
 bool FanInCursor::is_error(int* out_error_code_or_null) const noexcept {
-    if (out_error_code_or_null)
-       *out_error_code_or_null = error_;
-    return error_;
+    return out_cursor_.is_error(out_error_code_or_null);
 }
 
 void FanInCursor::close() noexcept {
-    for (auto cursor: cursors_) {
+    for (auto cursor: in_cursors_) {
         cursor->close();
     }
+    out_cursor_.close();
 }
 
 }

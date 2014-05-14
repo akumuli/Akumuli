@@ -74,6 +74,9 @@ int main(int cnt, const char** args)
         }
     }
     aku_close_database(db);
+
+    // Search
+
     delete_storage();
     return 0;
 }
