@@ -167,7 +167,8 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
                 EntryOffset offset = buffer[buf_ix];
                 const Entry* entry = page->read_entry(offset);
-                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, nwrites - buf_ix);
+                auto cur_count = nwrites - buf_ix;
+                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, cur_count);
                 heap.push_back(key);
             }
         }
@@ -178,12 +179,14 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
     while(!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), pred);
         auto item = heap.back();
+        auto tsvalue = std::get<0>(item).value;
+        auto paramid = std::get<1>(item);
         auto offset = std::get<2>(item);
         int cur_index = std::get<3>(item);
         int cur_count = std::get<4>(item);
         out_cursor_.put(caller, offset);
         heap.pop_back();
-        if (cur_count == 0 && !in_cursors_[cur_index]->is_done()) {
+        if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
             PageHeader* page = in_pages_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
@@ -200,6 +203,7 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
             }
         }
     }
+    out_cursor_.complete(caller);
 }
 
 int FanInCursor::read(EntryOffset* buf, int buf_len) noexcept {

@@ -170,13 +170,21 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     FanInCursor cursor(&ecur[0], &headers[0], n_cursors, (int)dir);
     EntryOffset offsets[0x100];
     int count = 0;
+    int iter = 0;
     while(!cursor.is_done()) {
+        iter++;
+        if (iter == 140) {
+            BOOST_MESSAGE("Ololo");
+        }
         int n_read = cursor.read(offsets, 0x100);
         count += n_read;
     }
+    cursor.close();
 }
+
+// TODO: check merge correctness
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_0)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 10000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 100000);
 }
