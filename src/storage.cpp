@@ -11,6 +11,7 @@
 
 #include "storage.h"
 #include "util.h"
+#include "cursor.h"
 
 #include <stdexcept>
 #include <algorithm>
@@ -46,7 +47,7 @@ Volume::Volume(const char* file_name, TimeDuration ttl, size_t max_cache_size)
 {
     mmap_.throw_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Cache(ttl_, max_cache_size_));
+    cache_.reset(new Cache(ttl_, max_cache_size_, page_));
 }
 
 PageHeader* Volume::get_page() const noexcept {
@@ -185,16 +186,16 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     cursor.start(std::bind(&PageHeader::search, active_page_, std::placeholders::_1, &cursor, query));
 
     // use 1Mb of cache by default
-    boost::scoped_array<EntryOffset> offsets;
+    boost::scoped_array<CursorResult> results;
     const int BUF_SIZE = 1024*1024/sizeof(EntryOffset);
-    offsets.reset(new EntryOffset[BUF_SIZE]);
+    results.reset(new CursorResult[BUF_SIZE]);
     size_t nswaps = 0;
     while(!cursor.is_done()) {
-        int n_read = cursor.read(offsets.get(), BUF_SIZE);
+        int n_read = cursor.read(results.get(), BUF_SIZE);
         for (int i = 0; i < n_read; i++) {
-            auto offset = offsets[i];
-            const Entry* entry = active_page_->read_entry(offset);
-            active_volume_->cache_->add_entry(*entry, offset, &nswaps);
+            auto result = results[i];
+            const Entry* entry = active_page_->read_entry(result.first);
+            active_volume_->cache_->add_entry(*entry, result.first, &nswaps);
             if (nswaps) {
                 std::unique_lock<LockType> lock(mutex_);
                 notify_worker_(lock, nswaps, active_volume_);
@@ -221,7 +222,7 @@ void Storage::run_worker_() noexcept {
         PageHeader* hdr = vol->get_page();
         size_t max_size = vol->max_cache_size_;
 
-        boost::scoped_array<EntryOffset> buffer(new EntryOffset[max_size]);
+        boost::scoped_array<CursorResult> buffer(new CursorResult[max_size]);
         size_t result_size = 0;
         int error_code = vol->cache_->pick_last(buffer.get(), max_size, &result_size);
         if (error_code == AKU_SUCCESS) {

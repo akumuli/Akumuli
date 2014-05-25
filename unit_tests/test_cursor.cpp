@@ -14,45 +14,53 @@ using namespace Akumuli;
 
 void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<EntryOffset> expected;
+    std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (EntryOffset i = 0u; i < (EntryOffset)n_iter; i++) {
-            cursor.put(caller, i);
-            expected.push_back(i);
+            cursor.put(caller, i, nullptr);
+            expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
         }
         cursor.complete(caller);
     };
-    std::vector<EntryOffset> actual;
+    std::vector<CursorResult> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        EntryOffset offsets[buf_size];
-        int n_read = cursor.read(offsets, buf_size);
-        std::copy(offsets, offsets + n_read, std::back_inserter(actual));
+        CursorResult results[buf_size];
+        int n_read = cursor.read(results, buf_size);
+        std::copy(results, results + n_read, std::back_inserter(actual));
     }
     cursor.close();
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.begin(), expected.end(), actual.begin(), actual.end());
+
+    BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+    for(size_t i = 0; i < actual.size(); i++) {
+        BOOST_REQUIRE_EQUAL(expected.at(i).first, actual.at(i).first);
+    }
 }
 
 void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<EntryOffset> expected;
+    std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (EntryOffset i = 0u; i < (EntryOffset)n_iter; i++) {
-            cursor.put(caller, i);
-            expected.push_back(i);
+            cursor.put(caller, i, nullptr);
+            expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
         }
         cursor.set_error(caller, -1);
     };
-    std::vector<EntryOffset> actual;
+    std::vector<CursorResult> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        EntryOffset offsets[buf_size];
-        int n_read = cursor.read(offsets, buf_size);
-        std::copy(offsets, offsets + n_read, std::back_inserter(actual));
+        CursorResult results[buf_size];
+        int n_read = cursor.read(results, buf_size);
+        std::copy(results, results + n_read, std::back_inserter(actual));
     }
     BOOST_CHECK(cursor.is_error());
     cursor.close();
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.begin(), expected.end(), actual.begin(), actual.end());
+
+    BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+    for(size_t i = 0; i < actual.size(); i++) {
+        BOOST_REQUIRE_EQUAL(expected.at(i).first, actual.at(i).first);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_cursor_0_10)
@@ -109,8 +117,11 @@ struct PageWrapper {
     char* buf;
     PageHeader* page;
     uint32_t page_id;
+    std::vector<EntryOffset> offsets;
+    size_t count;
 
     PageWrapper(int page_size, uint32_t id) {
+        count = 0;
         page_id = id;
         buf = new char[page_size];
         page = new (buf) PageHeader(Index, 0, page_size, (int)page_id);
@@ -133,6 +144,9 @@ struct PageWrapper {
             if (status != AKU_SUCCESS) {
                 return;
             }
+            count++;
+            auto offset = page->last_offset;
+            offsets.push_back(offset);
         }
         page->sort();
     }
@@ -144,13 +158,6 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     for (int i = 0; i < n_cursors; i++) {
         pages.emplace_back(page_size, (uint32_t)i);
     }
-
-    std::vector<PageHeader*> headers;
-    std::transform(pages.begin(), pages.end(),
-                   std::back_inserter(headers),
-                   [](PageWrapper& pw) {
-                        return pw.page;
-                   });
 
     auto match_all = [](ParamId) { return SearchQuery::MATCH; };
     SearchQuery q(match_all, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, dir);
@@ -167,19 +174,18 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
                    std::back_inserter(ecur),
                    [](Cursor& c) { return &c; });
 
-    FanInCursor cursor(&ecur[0], &headers[0], n_cursors, (int)dir);
-    EntryOffset offsets[0x100];
+    auto cursor = FanInCursor::start(&ecur[0], n_cursors, (int)dir);
+    CursorResult results[0x100];
     int count = 0;
-    int iter = 0;
-    while(!cursor.is_done()) {
-        iter++;
-        if (iter == 140) {
-            BOOST_MESSAGE("Ololo");
-        }
-        int n_read = cursor.read(offsets, 0x100);
+    std::vector<CursorResult> actual_results;
+    while(!cursor->is_done()) {
+        int n_read = cursor->read(results, 0x100);
         count += n_read;
+        for (int i = 0; i < n_read; i++) {
+            actual_results.push_back(results[i]);
+        }
     }
-    cursor.close();
+    cursor->close();
 }
 
 // TODO: check merge correctness

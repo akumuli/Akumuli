@@ -26,9 +26,9 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_backward) {
     RecordingCursor cursor;
 
     std::vector<EntryOffset> results;
-    seq.search(caller, &cursor, query);
+    seq.search(caller, &cursor, query, nullptr);
     for (size_t i = 0; i < cursor.offsets.size(); i++) {
-        results.push_back(cursor.offsets[i]);
+        results.push_back(cursor.offsets[i].first);
     }
 
     BOOST_CHECK_EQUAL(results.size(), 100);
@@ -51,9 +51,9 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
     RecordingCursor cursor;
 
     std::vector<EntryOffset> results;
-    seq.search(caller, &cursor, query);
+    seq.search(caller, &cursor, query, nullptr);
     for (size_t i = 0; i < cursor.offsets.size(); i++) {
-        results.push_back(cursor.offsets[i]);
+        results.push_back(cursor.offsets[i].first);
     }
 
     BOOST_CHECK_EQUAL(results.size(), 100);
@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE(Test_seq_search_forward) {
 
 BOOST_AUTO_TEST_CASE(Test_cache_search_bad_direction) {
     const int N = 10000;
-    Cache cache({1000L}, N);
+    Cache cache({1000L}, N, nullptr);
     SearchQuery query(1, {1400L}, {1500L}, 111);
     Caller caller;
     RecordingCursor cursor;
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_search_bad_direction) {
 
 BOOST_AUTO_TEST_CASE(Test_cache_search_bad_time) {
     const int N = 10000;
-    Cache cache({1000L}, N);
+    Cache cache({1000L}, N, nullptr);
     SearchQuery query(1, {1200L}, {1000L}, AKU_CURSOR_DIR_BACKWARD);
     Caller caller;
     RecordingCursor cursor;
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_search_bad_time) {
 
 BOOST_AUTO_TEST_CASE(Test_cache_max_size) {
     const int N = 10000;
-    Cache cache({1000L}, N);
+    Cache cache({1000L}, N, nullptr);
     char entry_buffer[0x100];
     TimeStamp ts = {100001L};
     Entry* entry = new (entry_buffer) Entry(1u, ts, Entry::get_size(4));
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_CASE(Test_cache_max_size) {
 
 BOOST_AUTO_TEST_CASE(Test_cache_late_write) {
     const int64_t N = 4096L;
-    Cache cache({N}, 10000000);
+    Cache cache({N}, 10000000, nullptr);
     char entry_buffer[0x100];
     int64_t time = 0x10000L;
     TimeStamp ts = {time};
@@ -157,7 +157,7 @@ void generic_cache_test
                  , EntryOffset expected_offset_skew
                  )
 {
-    Cache cache({100L}, 100000);
+    Cache cache({100L}, 100000, nullptr);
     init_search_range_test(&cache, 0L, 10000);
 
     SearchQuery query(1, {begin}, {end}, direction);
@@ -171,14 +171,14 @@ void generic_cache_test
     if (expected_size == 0) {
         return;
     }
-    BOOST_CHECK_EQUAL(cursor.offsets[0], expected_first);
-    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1], expected_last);
+    BOOST_CHECK_EQUAL(cursor.offsets[0].first, expected_first);
+    BOOST_CHECK_EQUAL(cursor.offsets[cursor.offsets.size()-1].first, expected_last);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
         if (direction == AKU_CURSOR_DIR_FORWARD) {
-            BOOST_CHECK_EQUAL(cursor.offsets[i], expected_offset_skew + i);
+            BOOST_CHECK_EQUAL(cursor.offsets[i].first, expected_offset_skew + i);
         } else {
-            BOOST_CHECK_EQUAL(cursor.offsets[i], expected_offset_skew - i);
+            BOOST_CHECK_EQUAL(cursor.offsets[i].first, expected_offset_skew - i);
         }
     }
 }
@@ -282,7 +282,7 @@ void test_bucket_merge(int n, int len) {
     RecordingCursor cursor;
     bucket.state++;
     Caller c;
-    int status = bucket.merge(c, &cursor);
+    int status = bucket.merge(c, &cursor, nullptr);
     BOOST_CHECK_EQUAL(status, AKU_SUCCESS);
 
     exit.wait();
@@ -292,8 +292,8 @@ void test_bucket_merge(int n, int len) {
     BOOST_CHECK_EQUAL(cursor.offsets.size(), len*n);
     int64_t prev = 0L;
     int counter = 0;
-    for(auto offset: cursor.offsets) {
-        auto entry = page->read_entry(offset);
+    for(auto res: cursor.offsets) {
+        auto entry = page->read_entry(res.first);
         auto curr = entry->time.value;
         if (prev <= curr) {
             prev = curr;
@@ -372,7 +372,7 @@ void test_bucket_search(int n, int len) {
     Caller caller;
     auto pred = [](ParamId) {return SearchQuery::MATCH;};
     SearchQuery query(pred, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
-    bucket.search(caller, &cursor, query);
+    bucket.search(caller, &cursor, query, nullptr);
 
     exit.wait();
 
@@ -386,7 +386,7 @@ void test_bucket_search(int n, int len) {
     int cnt = 0;
     for(auto it: expected) {
         EntryOffset value = it.second;
-        BOOST_REQUIRE_EQUAL(cursor.offsets[cnt], value);
+        BOOST_REQUIRE_EQUAL(cursor.offsets[cnt].first, value);
         cnt++;
     }
 }

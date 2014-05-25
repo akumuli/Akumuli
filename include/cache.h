@@ -57,7 +57,7 @@ struct Sequence
 
     /** Search for range of elements.
       */
-    void search(Caller& caller, InternalCursor* cursor, SearchQuery const& query) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, SearchQuery const& query, PageHeader* page) const noexcept;
 
     //! Get number of items
     size_t size() const noexcept;
@@ -65,6 +65,8 @@ struct Sequence
     MapType::const_iterator begin() const;
 
     MapType::const_iterator end() const;
+
+    void get_all(Caller& caller, InternalCursor* cursor, PageHeader* page) const noexcept;
 };
 
 
@@ -93,14 +95,14 @@ struct Bucket {
 
     /** Search for range of elements.
       */
-    void search(Caller& caller, InternalCursor* cursor, const SearchQuery &params) const noexcept;
+    void search(Caller& caller, InternalCursor* cursor, const SearchQuery &params, PageHeader* page) const noexcept;
 
     /** Merge all offsets in one list in order.
       * @param cur read cursor
       * @param page this bucket owner
       * @return AKU_EBUSY if bucket is not ready AKU_SUCCESS otherwise
       */
-    int merge(Caller& caller, InternalCursor* cur) const noexcept;
+    int merge(Caller& caller, InternalCursor* cur, PageHeader *page) const noexcept;
 
     size_t precise_count() const noexcept;
 };
@@ -130,6 +132,7 @@ class Cache {
     int                     shift_;         //< Shift width
     BucketAllocator         allocator_;     //< Concurrent bucket allocator
     BaselineBounds          minmax_;        //< Min and max baselines
+    PageHeader*             page_;          //< Page header for searching
 
 
     /* NOTE:
@@ -148,7 +151,8 @@ public:
       * @param max_size max number of elements to hold
       */
     Cache( TimeDuration     ttl
-         , size_t           max_size);
+         , size_t           max_size
+         , PageHeader*      page);
 
     /** Add entry to cache.
      *  @return write status. If status is AKU_WRITE_STATUS_OVERFLOW - cache eviction must be performed.
@@ -168,9 +172,7 @@ public:
      *  @param page pointer to buckets page
      *  @return operation status AKU_SUCCESS on success - error code otherwise (AKU_ENO_MEM or AKU_ENO_DATA)
      */
-    int pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexcept;
-
-    // TODO: split remove_old f-n into two parts, one that removes old data from cache and one that reads data
+    int pick_last(CursorResult* offsets, size_t size, size_t* noffsets) noexcept;
 
     /** Search fun-n that is similar to Page::search
       */

@@ -452,7 +452,7 @@ SCAN:
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
             if (query.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-                cursor->put(caller, probe_offset);
+                cursor->put(caller, probe_offset, this);
             }
             if (probe_entry->time < query.lowerbound || current_index == 0u) {
                 cursor->complete(caller);
@@ -468,7 +468,7 @@ SCAN:
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
             if (query.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
-                cursor->put(caller, probe_offset);
+                cursor->put(caller, probe_offset, this);
             }
             if (probe_entry->time > query.upperbound || current_index == max_index) {
                 cursor->complete(caller);
@@ -495,10 +495,13 @@ void PageHeader::sort() noexcept {
     });
 }
 
-void PageHeader::sync_indexes(EntryOffset* offsets, size_t num_offsets) noexcept {
+void PageHeader::sync_indexes(CursorResult* offsets, size_t num_offsets) noexcept {
     if (sync_index + num_offsets > count)
         num_offsets = count - sync_index;
-    std::copy_n(offsets, num_offsets, page_index + sync_index);
+    std::transform( offsets, offsets + num_offsets
+                  , page_index + sync_index
+                  , [](CursorResult c) { return c.first;}
+                  );
     sync_index += num_offsets;
 }
 

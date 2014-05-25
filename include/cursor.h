@@ -24,18 +24,19 @@
 namespace Akumuli {
 
 
+
 /** Simple cursor implementation for testing.
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<EntryOffset> offsets;
+    std::vector<CursorResult> offsets;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual void put(Caller&, EntryOffset offset) noexcept;
+    virtual void put(Caller&, EntryOffset offset, const PageHeader* page) noexcept;
     virtual void complete(Caller&) noexcept;
     virtual void set_error(Caller&, int error_code) noexcept;
 };
@@ -43,16 +44,17 @@ struct RecordingCursor : InternalCursor {
 
 //! Simple static buffer cursor
 struct BufferedCursor : InternalCursor {
-    EntryOffset* offsets_buffer;
+    CursorResult* offsets_buffer;
     size_t buffer_size;
     size_t count;
     bool completed = false;
     int error_code = AKU_SUCCESS;
     //! C-tor
-    BufferedCursor(EntryOffset* buf, size_t size) noexcept;
-    virtual void put(Caller&, EntryOffset offset) noexcept;
+    BufferedCursor(CursorResult *buf, size_t size) noexcept;
+    virtual void put(Caller&, EntryOffset offset, const PageHeader *page) noexcept;
     virtual void complete(Caller&) noexcept;
-    virtual void set_error(Caller&, int error_code) noexcept; };
+    virtual void set_error(Caller&, int error_code) noexcept;
+};
 
 
 /** Data retreival interface that can be used by
@@ -60,7 +62,7 @@ struct BufferedCursor : InternalCursor {
  */
 struct ExternalCursor {
     //! Read portion of the data to the buffer
-    virtual int read(EntryOffset* buf, int buf_len) noexcept = 0;
+    virtual int read(CursorResult* buf, int buf_len) noexcept = 0;
     //! Check is everything done
     virtual bool is_done() const noexcept = 0;
     //! Check is error occured and (optionally) get the error code
@@ -77,7 +79,7 @@ struct Cursor : InternalCursor, ExternalCursor {};
 struct CoroCursor : Cursor {
     boost::shared_ptr<Coroutine> coroutine_;
     // user owned data
-    EntryOffset*    usr_buffer_;        //! User owned buffer for output
+    CursorResult*   usr_buffer_;        //! User owned buffer for output
     int             usr_buffer_len_;    //! Size of the user owned buffer
     // library owned data
     int             write_index_;       //! Current write position in usr_buffer_
@@ -89,7 +91,7 @@ struct CoroCursor : Cursor {
 
     // External cursor implementation
 
-    virtual int read(EntryOffset* buf, int buf_len) noexcept;
+    virtual int read(CursorResult* buf, int buf_len) noexcept;
 
     virtual bool is_done() const noexcept;
 
@@ -101,13 +103,41 @@ struct CoroCursor : Cursor {
 
     void set_error(Caller& caller, int error_code) noexcept;
 
-    void put(Caller& caller, EntryOffset off) noexcept;
+    void put(Caller& caller, EntryOffset off, const PageHeader *page) noexcept;
 
     void complete(Caller& caller) noexcept;
 
-    template<class Fn>
-    void start(Fn const& fn) {
+    template<class Fn_1arg_caller>
+    void start(Fn_1arg_caller const& fn) {
         coroutine_.reset(new Coroutine(fn));
+    }
+
+    template<class Fn_1arg>
+    static std::unique_ptr<ExternalCursor> make(Fn_1arg const& fn) {
+         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+         cursor->start(fn);
+         return std::move(cursor);
+    }
+
+    template<class Fn_2arg, class Tobj, class T2nd>
+    static std::unique_ptr<ExternalCursor> make(Fn_2arg const& fn, Tobj* obj, T2nd arg2) {
+         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2));
+         return std::move(cursor);
+    }
+
+    template<class Fn_3arg, class Tobj, class T2nd, class T3rd>
+    static std::unique_ptr<ExternalCursor> make(Fn_3arg const& fn, Tobj* obj, T2nd arg2, T3rd arg3) {
+         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3));
+         return std::move(cursor);
+    }
+
+    template<class Fn_4arg, class Tobj, class T2nd, class T3rd, class T4th>
+    static std::unique_ptr<ExternalCursor> make(Fn_4arg const& fn, Tobj* obj, T2nd arg2, T3rd arg3, T4th arg4) {
+         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3, arg4));
+         return std::move(cursor);
     }
 };
 
@@ -118,30 +148,38 @@ struct CoroCursor : Cursor {
  * results from this cursors in one ordered
  * sequence of events.
  */
-class FanInCursor : ExternalCursor {
+class FanInCursor {
     const std::vector<ExternalCursor*>  in_cursors_;
-    const std::vector<PageHeader*>      in_pages_;
     const int                           direction_;
-    CoroCursor                          out_cursor_;
+    InternalCursor*                     out_cursor_;
 
     void read_impl_(Caller& caller) noexcept;
 public:
     /**
      * @brief C-tor
      * @param cursors array of pointer to cursors
-     * @param pages array of pointers to pages
-     * @param size size of the cursors and pages arrays
+     * @param size size of the cursors array
      * @param direction direction of the cursor (forward or backward)
      */
-    FanInCursor(ExternalCursor** cursors, PageHeader** pages, int size, int direction) noexcept;
+    FanInCursor( InternalCursor* out_cursor
+               , ExternalCursor** in_cursors
+               , int size
+               , int direction) noexcept;
 
-    virtual int read(EntryOffset* buf, int buf_len) noexcept;
-
-    virtual bool is_done() const noexcept;
-
-    virtual bool is_error(int* out_error_code_or_null=nullptr) const noexcept;
-
-    virtual void close() noexcept;
+    /** Start new coroutine cursor. (shortcut)
+     */
+    static std::unique_ptr<CoroCursor>&& start( ExternalCursor** in_cursors
+                                              , int size
+                                              , int direction) noexcept
+    {
+        CoroCursor* c = new CoroCursor();
+        std::unique_ptr<CoroCursor> cursor(c);
+        auto fn = [=](Caller& caller) {
+            FanInCursor fcur(c, in_cursors, size, direction);
+        };
+        cursor->start(fn);
+        return std::move(cursor);
+    }
 };
 
 }  // namespace

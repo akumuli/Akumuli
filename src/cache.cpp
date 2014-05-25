@@ -40,7 +40,7 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const& query) const noexcept {
+void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const& query, PageHeader *page) const noexcept {
 
     bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
@@ -75,13 +75,13 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
 
         for(; it_lower != it_upper; it_upper--) {
             if (match(it_upper)) {
-                cursor->put(caller, it_upper->second);
+                cursor->put(caller, it_upper->second, page);
             }
         }
 
         if (it_lower != data_.end()) {
             if (match(it_lower)) {
-                cursor->put(caller, it_lower->second);
+                cursor->put(caller, it_lower->second, page);
             }
         }
     }
@@ -89,7 +89,7 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
     {
         for(; it_lower != it_upper; it_lower++) {
             if (match(it_lower)) {
-                cursor->put(caller, it_lower->second);
+                cursor->put(caller, it_lower->second, page);
             }
         }
     }
@@ -97,6 +97,12 @@ void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const&
 
 size_t Sequence::size() const noexcept {
     return data_.size();
+}
+
+void Sequence::get_all(Caller& caller, InternalCursor* cursor, PageHeader* page) const noexcept {
+    for(auto i = data_.begin(); i != data_.end(); i++) {
+        cursor->put(caller, i->second, page);
+    }
 }
 
 Sequence::MapType::const_iterator Sequence::begin() const {
@@ -124,7 +130,7 @@ int Bucket::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
     return AKU_EOVERFLOW;
 }
 
-void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& query) const noexcept {
+void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& query, PageHeader *page) const noexcept {
     // NOTE: Quick and dirty implementation that copies all the local data
     // to temporary sequence.
     std::unique_ptr<Sequence> seq(new Sequence());
@@ -137,12 +143,12 @@ void Bucket::search(Caller &caller, InternalCursor* cursor, SearchQuery const& q
             seq->add(ts, id, offset);
         }
     }
-    seq->search(caller, cursor, query);
+    seq->search(caller, cursor, query, page);
 }
 
 typedef Sequence::MapType::const_iterator iter_t;
 
-int Bucket::merge(Caller& caller, InternalCursor *cur) const noexcept {
+int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const noexcept {
     if (state.load() == 0) {
         return AKU_EBUSY;
     }
@@ -178,7 +184,7 @@ int Bucket::merge(Caller& caller, InternalCursor *cur) const noexcept {
         auto item = heap.back();
         auto offset = std::get<2>(item);
         int index = std::get<3>(item);
-        cur->put(caller, offset);
+        cur->put(caller, offset, page);
         heap.pop_back();
         if (iter[index] != ends[index]) {
             auto value = *iter[index];
@@ -199,11 +205,12 @@ size_t Bucket::precise_count() const noexcept {
 
 // Cache --------------------------------------
 
-Cache::Cache(TimeDuration ttl, size_t max_size)
+Cache::Cache(TimeDuration ttl, size_t max_size, PageHeader* page)
     : ttl_(ttl)
     , max_size_(max_size)
     , baseline_()
     , minmax_()
+    , page_(page)
 {
     // We need to calculate shift width. So, we got ttl in some units
     // of measure (units of measure that akumuli doesn't know about).
@@ -281,7 +288,8 @@ int Cache::add_entry(const Entry2& entry, EntryOffset offset, size_t* nswapped) 
 void Cache::clear() noexcept {
 }
 
-int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexcept {
+// TODO: use cursor here
+int Cache::pick_last(CursorResult *offsets, size_t size, size_t* noffsets) noexcept {
     // fastpath - check all params
     if (size == 0 || offsets == nullptr)
         return AKU_EBAD_ARG;
@@ -296,7 +304,7 @@ int Cache::pick_last(EntryOffset* offsets, size_t size, size_t* noffsets) noexce
     }
     BufferedCursor cursor(offsets, size);
     Caller caller;
-    int status = bucket->merge(caller, &cursor);
+    int status = bucket->merge(caller, &cursor, page_);
     if (status == AKU_SUCCESS) {
         size_t bucket_size = sizeof(Bucket);
         ordered_buckets_.pop_back();
@@ -348,7 +356,7 @@ void Cache::search(Caller& caller, InternalCursor *cur, SearchQuery& query) cons
     for (auto ix: indexes) {
         TableType::accessor accessor;
         if (this->cache_.find(accessor, ix)) {
-            accessor->second->search(caller, cur, query);
+            accessor->second->search(caller, cur, query, page_);
         }
     }
     cur->complete(caller);

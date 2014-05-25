@@ -8,8 +8,8 @@ namespace Akumuli {
 
 static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Cursor");
 
-void RecordingCursor::put(Caller &, EntryOffset offset) noexcept {
-    offsets.push_back(offset);
+void RecordingCursor::put(Caller &, EntryOffset offset, const PageHeader *page) noexcept {
+    offsets.push_back(std::make_pair(offset, page));
 }
 
 void RecordingCursor::complete(Caller&) noexcept {
@@ -22,20 +22,20 @@ void RecordingCursor::set_error(Caller&, int error_code) noexcept {
 }
 
 
-BufferedCursor::BufferedCursor(EntryOffset* buf, size_t size) noexcept
+BufferedCursor::BufferedCursor(CursorResult* buf, size_t size) noexcept
     : offsets_buffer(buf)
     , buffer_size(size)
-    , count(0u)
+    , count(0)
 {
 }
 
-void BufferedCursor::put(Caller&, EntryOffset offset) noexcept {
+void BufferedCursor::put(Caller&, EntryOffset offset, const PageHeader* page) noexcept {
     if (count == buffer_size) {
         completed = true;
         error_code = AKU_EOVERFLOW;
         return;
     }
-    offsets_buffer[count++] = offset;
+    offsets_buffer[count++] = std::make_pair(offset, page);
 }
 
 void BufferedCursor::complete(Caller&) noexcept {
@@ -61,7 +61,7 @@ CoroCursor::CoroCursor()
 
 // External cursor implementation
 
-int CoroCursor::read(EntryOffset* buf, int buf_len) noexcept {
+int CoroCursor::read(CursorResult* buf, int buf_len) noexcept {
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
     write_index_ = 0;
@@ -94,12 +94,12 @@ void CoroCursor::set_error(Caller& caller, int error_code) noexcept {
     caller();
 }
 
-void CoroCursor::put(Caller& caller, EntryOffset off) noexcept {
+void CoroCursor::put(Caller& caller, EntryOffset off, const PageHeader* page) noexcept {
     if (write_index_ == usr_buffer_len_) {
         // yield control to client
         caller();
     }
-    usr_buffer_[write_index_++] = off;
+    usr_buffer_[write_index_++] = std::make_pair(off, page);
 }
 
 void CoroCursor::complete(Caller& caller) noexcept {
@@ -110,7 +110,7 @@ void CoroCursor::complete(Caller& caller) noexcept {
 
 // FanInCursor implementation
 
-typedef std::tuple<TimeStamp, ParamId, EntryOffset, int, int> HeapItem;
+typedef std::tuple<TimeStamp, ParamId, EntryOffset, int, int, const PageHeader*> HeapItem;
 
 struct HeapPred {
     int dir;
@@ -130,13 +130,11 @@ struct HeapPred {
     }
 };
 
-FanInCursor::FanInCursor(ExternalCursor **cursors, PageHeader** pages, int size, int direction) noexcept
+FanInCursor::FanInCursor(InternalCursor* outcursor, ExternalCursor **cursors, int size, int direction) noexcept
     : in_cursors_(cursors, cursors + size)
-    , in_pages_(pages, pages + size)
     , direction_(direction)
-    , out_cursor_()
+    , out_cursor_(outcursor)
 {
-    out_cursor_.start(std::bind(&FanInCursor::read_impl_, this, std::placeholders::_1));
 }
 
 void FanInCursor::read_impl_(Caller& caller) noexcept {
@@ -144,7 +142,7 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
     int error = 0;
     for (auto cursor: in_cursors_) {
         if (cursor->is_error(&error)) {
-            out_cursor_.set_error(caller, error);
+            out_cursor_->set_error(caller, error);
             return;
         }
     }
@@ -154,21 +152,21 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
     HeapPred pred = { direction_ };
 
     const int BUF_LEN = 0x200;
-    EntryOffset buffer[BUF_LEN];
+    CursorResult buffer[BUF_LEN];
     for(int cur_index = 0; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
-            PageHeader* page = in_pages_[cur_index];
             ExternalCursor* cursor = in_cursors_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
-                out_cursor_.set_error(caller, error);
+                out_cursor_->set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
-                EntryOffset offset = buffer[buf_ix];
+                auto offset = buffer[buf_ix].first;
+                auto page = buffer[buf_ix].second;
                 const Entry* entry = page->read_entry(offset);
                 auto cur_count = nwrites - buf_ix;
-                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, cur_count);
+                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, cur_count, page);
                 heap.push_back(key);
             }
         }
@@ -184,45 +182,27 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
         auto offset = std::get<2>(item);
         int cur_index = std::get<3>(item);
         int cur_count = std::get<4>(item);
-        out_cursor_.put(caller, offset);
+        auto cur_page = std::get<5>(item);
+        out_cursor_->put(caller, offset, cur_page);
         heap.pop_back();
         if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
-            PageHeader* page = in_pages_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
-                out_cursor_.set_error(caller, error);
+                out_cursor_->set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
-                EntryOffset offset = buffer[buf_ix];
+                auto offset = buffer[buf_ix].first;
+                auto page = buffer[buf_ix].second;
                 const Entry* entry = page->read_entry(offset);
-                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, nwrites - buf_ix);
+                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, nwrites - buf_ix, page);
                 heap.push_back(key);
                 std::push_heap(heap.begin(), heap.end(), pred);
             }
         }
     }
-    out_cursor_.complete(caller);
-}
-
-int FanInCursor::read(EntryOffset* buf, int buf_len) noexcept {
-    return out_cursor_.read(buf, buf_len);
-}
-
-bool FanInCursor::is_done() const noexcept {
-    return out_cursor_.is_done();
-}
-
-bool FanInCursor::is_error(int* out_error_code_or_null) const noexcept {
-    return out_cursor_.is_error(out_error_code_or_null);
-}
-
-void FanInCursor::close() noexcept {
-    for (auto cursor: in_cursors_) {
-        cursor->close();
-    }
-    out_cursor_.close();
+    out_cursor_->complete(caller);
 }
 
 }

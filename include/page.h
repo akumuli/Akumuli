@@ -24,6 +24,8 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
+typedef std::pair<EntryOffset, const PageHeader*> CursorResult;
+
 
 /** Time duration.
  *  Difference between two timestamps.
@@ -303,7 +305,7 @@ struct PageHeader {
       * @param offsets ordered offsets
       * @param num_offsets number of values in buffer
       */
-    void sync_indexes(EntryOffset* offsets, size_t num_offsets) noexcept;
+    void sync_indexes(CursorResult *offsets, size_t num_offsets) noexcept;
 };
 
 }  // namespaces

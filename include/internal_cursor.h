@@ -27,13 +27,15 @@ struct InternalCursor;
 typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
+struct PageHeader;
+
 
 /** Interface used by different search procedures
  *  in akumuli. Must be used only inside library.
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual void put(Caller&, EntryOffset offset) noexcept = 0;
+    virtual void put(Caller&, EntryOffset offset, const PageHeader* page) noexcept = 0;
     virtual void complete(Caller&) noexcept = 0;
     //! Set error and stop execution
     virtual void set_error(Caller&, int error_code) noexcept = 0;
