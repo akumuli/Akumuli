@@ -57,9 +57,9 @@ const TimeStamp TimeStamp::MIN_TIMESTAMP = {0L};
 //------------------------
 
 Entry::Entry(uint32_t length)
-    : length(length)
+    : param_id {}
     , time {}
-    , param_id {}
+    , length(length)
 {
 }
 
@@ -98,28 +98,24 @@ static SearchQuery::ParamMatch single_param_matcher(ParamId a, ParamId b) {
     return SearchQuery::NO_MATCH;
 }
 
-SearchQuery::SearchQuery
-    ( ParamId      param_id
-    , TimeStamp    low
-    , TimeStamp    upp
-    , uint32_t     scan_dir
-    )  noexcept
-    : param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
-    , lowerbound(low)
+SearchQuery::SearchQuery( ParamId      param_id
+                        , TimeStamp    low
+                        , TimeStamp    upp
+                        , uint32_t     scan_dir)  noexcept
+    : lowerbound(low)
     , upperbound(upp)
+    , param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
     , direction(scan_dir)
 {
 }
 
-SearchQuery::SearchQuery
-    ( MatcherFn matcher
-    , TimeStamp    low
-    , TimeStamp    upp
-    , uint32_t     scan_dir
-    )  noexcept
-    : param_pred(matcher)
-    , lowerbound(low)
+SearchQuery::SearchQuery( MatcherFn matcher
+                        , TimeStamp    low
+                        , TimeStamp    upp
+                        , uint32_t     scan_dir)  noexcept
+    : lowerbound(low)
     , upperbound(upp)
+    , param_pred(matcher)
     , direction(scan_dir)
 {
 }
@@ -161,7 +157,7 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
 {
 }
 
-std::pair<EntryOffset, int> PageHeader::index_to_offset(int index) const noexcept {
+std::pair<EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const noexcept {
     if (index < 0 || index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);
     }
@@ -246,7 +242,7 @@ int PageHeader::add_entry(Entry2 const& entry) noexcept {
         return AKU_WRITE_STATUS_OVERFLOW;
     }
 
-    char* free_slot = free_slot = data() + last_offset;
+    char* free_slot = data() + last_offset;
     char* orig_free_slot = free_slot;
     // FIXME: reorder to improve memory performance
     // Write data
@@ -267,7 +263,7 @@ int PageHeader::add_entry(Entry2 const& entry) noexcept {
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-const Entry* PageHeader::read_entry_at(int index) const noexcept {
+const Entry* PageHeader::read_entry_at(uint32_t index) const noexcept {
     if (index >= 0 && index < count) {
         auto offset = page_index[index];
         return read_entry(offset);
@@ -436,7 +432,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
                 break;
         } else {
             end = probe_index - 1u;     // change max index to search lower subarray
-            if (end == ~0)              // we hit the lower bound of the array
+            if (end == ~0u)              // we hit the lower bound of the array
                 break;
         }
     }

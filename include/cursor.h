@@ -148,10 +148,10 @@ struct CoroCursor : Cursor {
  * results from this cursors in one ordered
  * sequence of events.
  */
-class FanInCursor {
+class FanInCursorCombinator : ExternalCursor {
     const std::vector<ExternalCursor*>  in_cursors_;
     const int                           direction_;
-    InternalCursor*                     out_cursor_;
+    CoroCursor                          out_cursor_;
 
     void read_impl_(Caller& caller) noexcept;
 public:
@@ -161,25 +161,16 @@ public:
      * @param size size of the cursors array
      * @param direction direction of the cursor (forward or backward)
      */
-    FanInCursor( InternalCursor* out_cursor
-               , ExternalCursor** in_cursors
-               , int size
-               , int direction) noexcept;
+    FanInCursorCombinator(ExternalCursor** in_cursors
+                         , int size
+                         , int direction) noexcept;
 
-    /** Start new coroutine cursor. (shortcut)
-     */
-    static std::unique_ptr<CoroCursor>&& start( ExternalCursor** in_cursors
-                                              , int size
-                                              , int direction) noexcept
-    {
-        CoroCursor* c = new CoroCursor();
-        std::unique_ptr<CoroCursor> cursor(c);
-        auto fn = [=](Caller& caller) {
-            FanInCursor fcur(c, in_cursors, size, direction);
-        };
-        cursor->start(fn);
-        return std::move(cursor);
-    }
+    // ExternalCursor interface
+public:
+    virtual int read(CursorResult *buf, int buf_len) noexcept;
+    virtual bool is_done() const noexcept;
+    virtual bool is_error(int *out_error_code_or_null) const noexcept;
+    virtual void close() noexcept;
 };
 
 }  // namespace

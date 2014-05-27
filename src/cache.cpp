@@ -42,7 +42,6 @@ int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
 
 void Sequence::search(Caller& caller, InternalCursor* cursor, SearchQuery const& query, PageHeader *page) const noexcept {
 
-    bool forward = query.direction == AKU_CURSOR_DIR_FORWARD;
     bool backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
 
     auto id_upper = (ParamId)~0;
@@ -117,8 +116,8 @@ Sequence::MapType::const_iterator Sequence::end() const {
 // Bucket -------------------------------------
 
 Bucket::Bucket(int64_t size_limit, int64_t baseline)
-    : baseline(baseline)
-    , limit_(size_limit)
+    : limit_(size_limit)
+    , baseline(baseline)
     , state(0)
 {
 }
@@ -166,7 +165,7 @@ int Bucket::merge(Caller& caller, InternalCursor *cur, PageHeader* page) const n
     typedef std::vector<HeapItem> Heap;
     Heap heap;
 
-    for(int index = 0; index < n; index++) {
+    for(auto index = 0u; index < n; index++) {
         if (iter[index] != ends[index]) {
             auto value = *iter[index];
             iter[index]++;
@@ -206,9 +205,9 @@ size_t Bucket::precise_count() const noexcept {
 // Cache --------------------------------------
 
 Cache::Cache(TimeDuration ttl, size_t max_size, PageHeader* page)
-    : ttl_(ttl)
+    : baseline_()
+    , ttl_(ttl)
     , max_size_(max_size)
-    , baseline_()
     , minmax_()
     , page_(page)
 {
@@ -250,7 +249,6 @@ int Cache::add_entry_(TimeStamp ts, ParamId pid, EntryOffset offset, size_t* nsw
             }
             if (rel_index < 0) {
                 // Future write! Mark all outdated buckets.
-                auto size = cache_.size();
                 auto min_baseline = absolute_index - AKU_LIMITS_MAX_CACHES;
                 for(auto& b: ordered_buckets_) {
                     if (b->baseline < min_baseline && b->state.load() == 0) {

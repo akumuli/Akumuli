@@ -21,8 +21,8 @@ public:
 
     BenchmarkRunner(int niter)
         : results_(niter, 0)
-        , iter_(0)
         , niter_(niter)
+        , iter_(0)
     {}
 
     // FIXME: it's not portable

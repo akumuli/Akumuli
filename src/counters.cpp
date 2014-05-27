@@ -15,9 +15,9 @@ namespace Akumuli {
 
 LimitCounter::LimitCounter(int64_t max_value)
     : total_limit_(max_value)
+    , counter_lock_()
     , reserved_(0)
     , counted_(0)
-    , counter_lock_()
 {
     if(max_value < THRESHOLD) {  // Panic!
         throw std::runtime_error("Cache size limit is to small");

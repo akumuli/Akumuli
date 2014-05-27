@@ -372,7 +372,7 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
     std::vector<apr_status_t> results;
     if (status == APR_SUCCESS) {
         op_count++;
-        for(auto ix = 0; ix < targets.size(); ix++) {
+        for(auto ix = 0u; ix < targets.size(); ix++) {
             const std::string& target = targets[ix];
             if (statuses[ix] == APR_SUCCESS) {
                 LOG4CXX_INFO(s_logger_, "Removing " << target);

@@ -348,7 +348,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     const int               buf_len = 1024*1024*8;
     std::vector<char>       buffer(buf_len);
     std::vector<int64_t>    timestamps;
-    std::vector<int>        paramids;
+    std::vector<ParamId>    paramids;
     char                    entry_buffer[64];
     int64_t                 time_stamp = 0L;
     PageHeader*             page = nullptr;
@@ -386,7 +386,6 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         assert(start_time > 0 && start_time < page->bbox.max_timestamp.value);
         assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
         assert(stop_time > start_time);
-        CursorResult offsets[100];
         SearchQuery query(id2search, {start_time}, {stop_time}, dir);
         Caller caller;
         RecordingCursor cursor;

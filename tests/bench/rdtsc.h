@@ -27,8 +27,8 @@ class CPUCounter {
     //timespec begin;
 public:
     CPUCounter()
-        : elapsed_(0)
-        , begin_(0)
+        : begin_(0)
+        , elapsed_(0)
     {
     }
 

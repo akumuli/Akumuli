@@ -68,6 +68,7 @@ struct DatabaseImpl : public aku_Database
 
     int32_t find_sample(uint32_t param_id, int64_t instant, aku_MemRange out_data) {
         // FIXME
+        throw std::runtime_error("not implemented");
     }
 };
 
@@ -91,8 +92,7 @@ void aku_add_sample(aku_Database* db, uint32_t param_id, int64_t long_timestamp,
 }
 
 int32_t aku_find_sample(aku_Database* db, uint32_t param_id, int64_t instant, aku_MemRange out_data) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return 0;
+    throw std::runtime_error("not implemented");
 }
 
 aku_Database* aku_open_database(const char* path, aku_Config config)

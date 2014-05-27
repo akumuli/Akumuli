@@ -248,7 +248,7 @@ void test_bucket_merge(int n, int len) {
     // generate data
     auto fn = [&m, len, page, &bucket, &enter, &insert, &exit] () {
         enter.wait();
-        for (uint32_t i = 0; i < len; i++) {
+        for (uint32_t i = 0; i < (unsigned)len; i++) {
             auto rval = rand();
             auto param_id = rval & 3;
             auto ts = rval >> 2;
@@ -341,7 +341,7 @@ void test_bucket_search(int n, int len) {
     // generate data
     auto fn = [&] () {
         enter.wait();
-        for (unsigned i = 0; i < len; i++) {
+        for (unsigned i = 0; i < (unsigned)len; i++) {
             auto rval = rand();
             ParamId param_id = rval & 3;
             int64_t ts = rval >> 2;

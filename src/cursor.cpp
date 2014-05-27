@@ -53,8 +53,8 @@ CoroCursor::CoroCursor()
     : usr_buffer_(nullptr)
     , usr_buffer_len_(0)
     , write_index_(0)
-    , error_code_(AKU_SUCCESS)
     , error_(false)
+    , error_code_(AKU_SUCCESS)
     , complete_(false)
 {
 }
@@ -130,19 +130,25 @@ struct HeapPred {
     }
 };
 
-FanInCursor::FanInCursor(InternalCursor* outcursor, ExternalCursor **cursors, int size, int direction) noexcept
+FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size, int direction) noexcept
     : in_cursors_(cursors, cursors + size)
     , direction_(direction)
-    , out_cursor_(outcursor)
+    , out_cursor_()
 {
+    out_cursor_.start(std::bind(&FanInCursorCombinator::read_impl_, this, std::placeholders::_1));
 }
 
-void FanInCursor::read_impl_(Caller& caller) noexcept {
+void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
+#ifdef DEBUG
+    HeapItem dbg_prev_item;
+    bool dbg_first_item = true;
+    long dbg_counter = 0;
+#endif
     // Check preconditions
     int error = 0;
     for (auto cursor: in_cursors_) {
         if (cursor->is_error(&error)) {
-            out_cursor_->set_error(caller, error);
+            out_cursor_.set_error(caller, error);
             return;
         }
     }
@@ -153,12 +159,12 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
 
     const int BUF_LEN = 0x200;
     CursorResult buffer[BUF_LEN];
-    for(int cur_index = 0; cur_index < in_cursors_.size(); cur_index++) {
+    for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
-                out_cursor_->set_error(caller, error);
+                out_cursor_.set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
@@ -177,19 +183,33 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
     while(!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), pred);
         auto item = heap.back();
-        auto tsvalue = std::get<0>(item).value;
-        auto paramid = std::get<1>(item);
         auto offset = std::get<2>(item);
         int cur_index = std::get<3>(item);
         int cur_count = std::get<4>(item);
         auto cur_page = std::get<5>(item);
-        out_cursor_->put(caller, offset, cur_page);
+#ifdef DEBUG
+        auto dbg_time_stamp = std::get<0>(item);
+        auto dbg_param_id = std::get<1>(item);
+        if (!dbg_first_item) {
+            bool cmp_res = false;
+            if (direction_ == AKU_CURSOR_DIR_BACKWARD)  {
+                cmp_res = dbg_prev_item >= item;
+            } else {
+                cmp_res = dbg_prev_item <= item;
+            }
+            assert(cmp_res);
+        }
+        dbg_prev_item = item;
+        dbg_first_item = false;
+        dbg_counter++;
+#endif
+        out_cursor_.put(caller, offset, cur_page);
         heap.pop_back();
         if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
             int nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
-                out_cursor_->set_error(caller, error);
+                out_cursor_.set_error(caller, error);
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
@@ -202,7 +222,30 @@ void FanInCursor::read_impl_(Caller& caller) noexcept {
             }
         }
     }
-    out_cursor_->complete(caller);
+    out_cursor_.complete(caller);
+}
+
+int FanInCursorCombinator::read(CursorResult *buf, int buf_len) noexcept
+{
+    return out_cursor_.read(buf, buf_len);
+}
+
+bool FanInCursorCombinator::is_done() const noexcept
+{
+    return out_cursor_.is_done();
+}
+
+bool FanInCursorCombinator::is_error(int *out_error_code_or_null) const noexcept
+{
+    return out_cursor_.is_error(out_error_code_or_null);
+}
+
+void FanInCursorCombinator::close() noexcept
+{
+    for (auto cursor: in_cursors_) {
+        cursor->close();
+    }
+    return out_cursor_.close();
 }
 
 }

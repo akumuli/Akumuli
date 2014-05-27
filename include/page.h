@@ -122,10 +122,10 @@ enum PageType {
  *  All data is two dimentional: param-timestamp.
  */
 struct PageBoundingBox {
-    ParamId min_id;
     ParamId max_id;
-    TimeStamp min_timestamp;
+    ParamId min_id;
     TimeStamp max_timestamp;
+    TimeStamp min_timestamp;
 
     PageBoundingBox();
 };
@@ -205,7 +205,7 @@ struct PageHeader {
     EntryOffset page_index[];   //< page index
 
     //! Convert entry index to entry offset
-    std::pair<EntryOffset, int> index_to_offset(int index) const noexcept;
+    std::pair<EntryOffset, int> index_to_offset(uint32_t index) const noexcept;
 
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;
@@ -285,7 +285,7 @@ struct PageHeader {
      * @param index entry index
      * @returns pointer to entry or NULL
      */
-    const Entry* read_entry_at(int index) const noexcept;
+    const Entry* read_entry_at(uint32_t index) const noexcept;
 
     /**
      * Get pointer to entry without copying using offset
