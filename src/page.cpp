@@ -334,6 +334,11 @@ static bool validate_query(SearchQuery const& query) noexcept {
 
 void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery const &query) const noexcept
 {
+#ifdef DEBUG
+    // Debug variables
+    TimeStamp dbg_prev_ts;
+    long dbg_count = 0;
+#endif
     /* Search algorithm outline:
      * - interpolated search for timestamp
      *   - if 5 or more iterations or
@@ -448,6 +453,15 @@ SCAN:
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
             if (query.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+#ifdef DEBUG
+                if (dbg_count) {
+                    // check for backward direction
+                    auto is_ok = dbg_prev_ts >= probe_entry->time;
+                    assert(is_ok);
+                }
+                dbg_prev_ts = probe_entry->time;
+                dbg_count++;
+#endif
                 cursor->put(caller, probe_offset, this);
             }
             if (probe_entry->time < query.lowerbound || current_index == 0u) {
@@ -464,6 +478,15 @@ SCAN:
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
             if (query.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
+#ifdef DEBUG
+                if (dbg_count) {
+                    // check for forward direction
+                    auto is_ok = dbg_prev_ts <= probe_entry->time;
+                    assert(is_ok);
+                }
+                dbg_prev_ts = probe_entry->time;
+                dbg_count++;
+#endif
                 cursor->put(caller, probe_offset, this);
             }
             if (probe_entry->time > query.upperbound || current_index == max_index) {
