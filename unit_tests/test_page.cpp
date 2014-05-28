@@ -371,7 +371,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         time_stamp += 1 + rand_num % 100;
     }
 
-    page->sort();
+    page->_sort();
 
     for (int round = 0; round < 10; round++) {
         // select start timestamp

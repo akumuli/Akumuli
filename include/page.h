@@ -299,7 +299,8 @@ struct PageHeader {
      */
     void search(Caller& caller, InternalCursor* cursor, SearchQuery const &query) const noexcept;
 
-    void sort() noexcept;
+    // Only for testing
+    void _sort() noexcept;
 
     /** Update page index.
       * @param offsets ordered offsets

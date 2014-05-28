@@ -113,6 +113,36 @@ BOOST_AUTO_TEST_CASE(Test_cursor_error_100_7)
     test_cursor_error(100, 7);
 }
 
+struct SortPred {
+    uint32_t dir;
+    bool operator () (int64_t lhs, int64_t rhs) {
+        if (dir == AKU_CURSOR_DIR_FORWARD) {
+            return lhs < rhs;
+        } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
+            return lhs > rhs;
+        }
+        BOOST_FAIL("Bad direction");
+        return false;
+    }
+
+    template<class It>
+    void check_order(It begin, It end) {
+        int64_t prev;
+        for(auto i = begin; i != end; i++) {
+            if (i != begin) {
+                if (dir == AKU_CURSOR_DIR_FORWARD) {
+                    BOOST_REQUIRE(*i >= prev);
+                } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
+                    BOOST_REQUIRE(*i <= prev);
+                } else {
+                    BOOST_FAIL("Bad direction");
+                }
+            }
+            prev = *i;
+        }
+    }
+};
+
 struct PageWrapper {
     char* buf;
     PageHeader* page;
@@ -141,42 +171,18 @@ struct PageWrapper {
             entry->value[0] = page_id;
             auto status = page->add_entry(*entry);
             if (status != AKU_SUCCESS) {
-                return;
+                break;
             }
             count++;
         }
-        page->sort();
-    }
-};
-
-struct SortPred {
-    uint32_t dir;
-    bool operator () (int64_t lhs, int64_t rhs) {
-        if (dir == AKU_CURSOR_DIR_FORWARD) {
-            return lhs > rhs;
-        } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
-            return lhs < rhs;
+        page->_sort();
+        std::vector<int64_t> timestamps;
+        for (auto ix = 0u; ix < page->count; ix++) {
+            auto entry = page->read_entry_at(ix);
+            timestamps.push_back(entry->time.value);
         }
-        BOOST_FAIL("Bad direction");
-    }
-
-    template<class It>
-    void check_order(It begin, It end) {
-        int64_t prev;
-        for(auto i = begin; i != end; i++) {
-            if (i != begin) {
-                if (dir == AKU_CURSOR_DIR_FORWARD) {
-                    if (*i < prev)
-                        prev = 0;
-                    BOOST_REQUIRE(*i >= prev);
-                } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
-                    BOOST_REQUIRE(*i <= prev);
-                } else {
-                    BOOST_FAIL("Bad direction");
-                }
-            }
-            prev = *i;
-        }
+        SortPred pred = { AKU_CURSOR_DIR_FORWARD };
+        pred.check_order(timestamps.begin(), timestamps.end());
     }
 };
 
@@ -227,15 +233,48 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
             expected_results.push_back(entry->time.value);
         }
     }
-    SortPred s;
-    s.dir = dir;
+    SortPred s = {dir};
+    std::sort(expected_results.begin(), expected_results.end(), s);
     s.check_order(actual_results.begin(), actual_results.end());
-    //s.check_order(expected_results);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(actual_results.begin(), actual_results.end(), expected_results.begin(), expected_results.end());
 }
 
-// TODO: check merge correctness
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_f)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 1000);
+}
 
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_0_f)
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_f)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_f)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 100000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_f)
 {
     test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 100000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_b)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_b)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_b)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 100000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_b)
+{
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 100000);
 }
