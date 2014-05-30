@@ -498,8 +498,44 @@ apr_status_t Storage::new_storage( const char* 	file_name
 
 void Storage::search(Caller &caller, InternalCursor *cur, SearchQuery &query) const noexcept {
     // Find pages
-    // Search cache (optional, only for active page)
-    // Search pages
+    // at this stage of development - simply get all pages :)
+    std::vector<std::unique_ptr<ExternalCursor>> cursors;
+    for(auto vol: volumes_) {
+        // Search cache (optional, only for active page)
+        if (vol == this->active_volume_) {
+            //auto ccur = CoroCursor::make(&Cache::search, this->active_volume_->cache_.get(), query);
+            //cursors.push_back(std::move(ccur));
+        }
+        // Search pages
+        auto pcur = CoroCursor::make(&PageHeader::search, vol->page_, query);
+        cursors.push_back(std::move(pcur));
+    }
+
+    std::vector<ExternalCursor*> pcursors;
+    std::transform( cursors.begin(), cursors.end()
+                  , std::back_inserter(pcursors)
+                  , [](std::unique_ptr<ExternalCursor>& v) { return v.get(); });
+
+    assert(pcursors.size());
+    FanInCursorCombinator fan_in_cursor(&pcursors[0], pcursors.size(), query.direction);
+
+    // TODO: remove excessive copying
+    // to do this I need to pass cur to fan_in_cursor somehow
+    const int results_len = 0x1000;
+    CursorResult results[results_len];
+    while(!fan_in_cursor.is_done()) {
+        int s = fan_in_cursor.read(results, results_len);
+        int err_code = 0;
+        if (fan_in_cursor.is_error(&err_code)) {
+            cur->set_error(caller, err_code);
+            return;
+        }
+        for (int i = 0; i < s; i++) {
+            cur->put(caller, results[i].first, results[i].second);
+        }
+    }
+    fan_in_cursor.close();
+    cur->complete(caller);
 }
 
 }
