@@ -32,6 +32,124 @@
 
 namespace Akumuli {
 
+template<typename RunType>
+bool top_element_less(const RunType& x, const RunType& y)
+{
+    return x.back() < y.back();
+}
+
+template<typename RunType>
+bool top_element_more(const RunType& x, const RunType& y)
+{
+    return top_element_less(y, x);
+}
+
+struct TimeSeriesValue {
+    std::tuple<TimeStamp, ParamId> key_;
+    EntryOffset value_;
+
+    TimeSeriesValue() {}
+
+    TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset)
+        : key_(ts, id)
+        , value_(offset)
+    {
+    }
+
+    friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
+        return lhs.key_ < rhs.key_;
+    }
+};
+
+/** Time-series sequencer.
+  * @brief Akumuli can accept unordered time-series (this is the case when
+  * clocks of the different time-series sources are slightly out of sync).
+  * This component accepts all of them, filter out late writes and reorder
+  * all the remaining samples by timestamp and parameter id.
+  */
+struct Sequencer {
+    typedef std::vector<TimeSeriesValue> SortedRun;
+
+    std::vector<SortedRun>  runs_;
+    SortedRun               key_;
+    const size_t            window_size_;
+    const PageHeader* const page_;
+
+    Sequencer(PageHeader const* page, size_t window_size)
+        : window_size_(window_size)
+        , page_(page)
+    {
+        key_.push_back(TimeSeriesValue());
+    }
+
+    void check_outdated_runs() {
+
+    }
+
+    void add(TimeSeriesValue const& value) {
+        key_.pop_back();
+        key_.push_back(value);
+        auto begin = runs_.begin();
+        auto end = runs_.end();
+        if (runs_.size() > window_size_) {
+            std::advance(begin, runs_.size() - window_size_);
+        }
+        auto insert_it = std::lower_bound(begin, end, key_, top_element_more<SortedRun>);
+        if (insert_it == runs_.end()) {
+            SortedRun new_pile;
+            new_pile.push_back(value);
+            runs_.push_back(new_pile);
+            // ammortised check
+            check_outdated_runs();
+        } else {
+            insert_it->push_back(value);
+        }
+    }
+
+    template<class Iter>
+    void merge(Iter out_iter) {
+        size_t n = runs_.size();
+        typedef typename SortedRun::const_iterator iter_t;
+        iter_t iter[n], ends[n];
+        int cnt = 0;
+        for(auto i = runs_.begin(); i != runs_.end(); i++) {
+            iter[cnt] = i->begin();
+            ends[cnt] = i->end();
+            cnt++;
+        }
+
+        typedef std::tuple<TimeSeriesValue, int> HeapItem;
+        typedef std::vector<HeapItem> Heap;
+        Heap heap;
+
+        for(auto index = 0u; index < n; index++) {
+            if (iter[index] != ends[index]) {
+                auto value = *iter[index];
+                iter[index]++;
+                heap.push_back(std::make_tuple(value, index));
+            }
+        }
+
+        std::make_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+
+        while(!heap.empty()) {
+            std::pop_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+            auto item = heap.back();
+            auto value = std::get<0>(item);
+            int index = std::get<1>(item);
+            *out_iter++ = value;
+            heap.pop_back();
+            if (iter[index] != ends[index]) {
+                auto value = *iter[index];
+                iter[index]++;
+                heap.push_back(std::make_tuple(value, index));
+                std::push_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+            }
+        }
+    }
+};
+
+
 
 struct Sequence
 {
