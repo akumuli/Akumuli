@@ -70,49 +70,128 @@ struct TimeSeriesValue {
 struct Sequencer {
     typedef std::vector<TimeSeriesValue> SortedRun;
 
-    std::vector<SortedRun>  runs_;
+    std::vector<SortedRun>  runs_;           //< Active sorted runs
+    std::vector<SortedRun>  ready_;          //< Ready to merge
     SortedRun               key_;
-    const size_t            window_size_;
+    const TimeDuration      window_size_;
     const PageHeader* const page_;
+    TimeStamp               top_timestamp_;  //< Largest timestamp ever seen
+    uint32_t                checkpoint_;     //< Last checkpoint timestamp
+    std::atomic_flag         progress_flag_;
 
-    Sequencer(PageHeader const* page, size_t window_size)
+    Sequencer(PageHeader const* page, TimeDuration window_size)
         : window_size_(window_size)
         , page_(page)
     {
+        progress_flag_.clear();
+        if (window_size.value <= 0) {
+            throw std::runtime_error("window size must greather than zero");
+        }
         key_.push_back(TimeSeriesValue());
     }
 
-    void check_outdated_runs() {
-
+    //! Checkpoint id = ⌊timestamp/window_size⌋
+    uint32_t get_checkpoint_(TimeStamp ts) const noexcept {
+        // TODO: use fast integer division (libdivision or else)
+        return ts.value / window_size_.value;
     }
 
-    void add(TimeSeriesValue const& value) {
+    //! Convert checkpoint id to timestamp
+    TimeStamp get_timestamp_(uint32_t cp) const noexcept {
+        return TimeStamp::make(cp*window_size_.value);
+    }
+
+    // move sorted runs to ready_ collection
+    bool make_checkpoint_(uint32_t new_checkpoint) noexcept {
+        auto in_progress = progress_flag_.test_and_set();
+        if (in_progress) {
+            return false;
+        }
+        auto old_top = get_timestamp_(checkpoint_);
+        std::atomic_thread_fence(std::memory_order_acq_rel);
+        checkpoint_ = new_checkpoint;
+        {
+            // NOTE: page and sequencer can be out of sync in this scope
+            std::vector<SortedRun> new_runs;
+            for (auto& sorted_run: runs_) {
+                auto it = std::lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+                if (it == sorted_run.begin()) {
+                    // all timestamps are newer than old_top, do nothing
+                    new_runs.push_back(std::move(sorted_run));
+                    continue;
+                } else if (it == sorted_run.end()) {
+                    // all timestamps are older than old_top, move them
+                    ready_.push_back(std::move(sorted_run));
+                } else {
+                    // it is in between of the sorted run - split
+                    SortedRun run;
+                    std::copy(sorted_run.begin(), it, std::back_inserter(run));  // copy old
+                    ready_.push_back(std::move(run));
+                    run.clear();
+                    std::copy(it, sorted_run.end(), std::back_inserter(run));  // copy new
+                    new_runs.push_back(std::move(run));
+                }
+            }
+            std::swap(runs_, new_runs);
+        }
+        std::atomic_thread_fence(std::memory_order_acq_rel);
+        return true;
+    }
+
+    int check_timestamp_(TimeStamp ts) noexcept {
+        if (ts <= top_timestamp_) {
+            auto delta = top_timestamp_ - ts;
+            if (delta.value > window_size_.value) {
+                return AKU_SUCCESS;
+            } else {
+                return AKU_ELATE_WRITE;
+            }
+        }
+        auto point = get_checkpoint_(ts);
+        if (point > checkpoint_) {
+            // Create new checkpoint
+            if (!make_checkpoint_(point)) {
+                return AKU_EBUSY;
+                // Previous checkpoint not completed
+            }
+        }
+        top_timestamp_ = ts;
+        return AKU_SUCCESS;
+    }
+
+    int add(TimeSeriesValue const& value) {
+        int status = check_timestamp_(std::get<0>(value.key_));
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
         key_.pop_back();
         key_.push_back(value);
         auto begin = runs_.begin();
         auto end = runs_.end();
-        if (runs_.size() > window_size_) {
-            std::advance(begin, runs_.size() - window_size_);
-        }
         auto insert_it = std::lower_bound(begin, end, key_, top_element_more<SortedRun>);
         if (insert_it == runs_.end()) {
             SortedRun new_pile;
             new_pile.push_back(value);
             runs_.push_back(new_pile);
-            // ammortised check
-            check_outdated_runs();
         } else {
             insert_it->push_back(value);
         }
+        return AKU_SUCCESS;
     }
 
     template<class Iter>
     void merge(Iter out_iter) {
-        size_t n = runs_.size();
+        std::atomic_thread_fence(std::memory_order_acq_rel);
+        bool in_progress = progress_flag_.test_and_set();
+        if (!in_progress) {
+            // Error!
+            return;
+        }
+        size_t n = ready_.size();
         typedef typename SortedRun::const_iterator iter_t;
         iter_t iter[n], ends[n];
         int cnt = 0;
-        for(auto i = runs_.begin(); i != runs_.end(); i++) {
+        for(auto i = ready_.begin(); i != ready_.end(); i++) {
             iter[cnt] = i->begin();
             ends[cnt] = i->end();
             cnt++;
@@ -146,6 +225,8 @@ struct Sequencer {
                 std::push_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
             }
         }
+        std::atomic_thread_fence(std::memory_order_acq_rel);
+        progress_flag_.clear();
     }
 };
 

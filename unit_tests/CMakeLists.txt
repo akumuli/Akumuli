@@ -1,4 +1,5 @@
 add_executable(ut_main
+    test_sequencer.cpp
     test_page.cpp
     test_mmap.cpp
     test_sorting.cpp

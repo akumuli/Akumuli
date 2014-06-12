@@ -1,4 +1,5 @@
 add_library(akumuli SHARED
+    ../include/version.h
     ../include/storage.h
     ../include/config.h
     ../include/page.h
