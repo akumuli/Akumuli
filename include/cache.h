@@ -32,34 +32,17 @@
 
 namespace Akumuli {
 
-template<typename RunType>
-bool top_element_less(const RunType& x, const RunType& y)
-{
-    return x.back() < y.back();
-}
-
-template<typename RunType>
-bool top_element_more(const RunType& x, const RunType& y)
-{
-    return top_element_less(y, x);
-}
-
 struct TimeSeriesValue {
     std::tuple<TimeStamp, ParamId> key_;
-    EntryOffset value_;
+    EntryOffset value;
 
-    TimeSeriesValue() {}
+    TimeSeriesValue();
 
-    TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset)
-        : key_(ts, id)
-        , value_(offset)
-    {
-    }
+    TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset);
 
-    friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
-        return lhs.key_ < rhs.key_;
-    }
+    friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
+
 
 /** Time-series sequencer.
   * @brief Akumuli can accept unordered time-series (this is the case when
@@ -79,155 +62,25 @@ struct Sequencer {
     uint32_t                checkpoint_;     //< Last checkpoint timestamp
     std::atomic_flag         progress_flag_;
 
-    Sequencer(PageHeader const* page, TimeDuration window_size)
-        : window_size_(window_size)
-        , page_(page)
-    {
-        progress_flag_.clear();
-        if (window_size.value <= 0) {
-            throw std::runtime_error("window size must greather than zero");
-        }
-        key_.push_back(TimeSeriesValue());
-    }
+    Sequencer(PageHeader const* page, TimeDuration window_size);
 
     //! Checkpoint id = ⌊timestamp/window_size⌋
-    uint32_t get_checkpoint_(TimeStamp ts) const noexcept {
-        // TODO: use fast integer division (libdivision or else)
-        return ts.value / window_size_.value;
-    }
+    uint32_t get_checkpoint_(TimeStamp ts) const noexcept;
 
     //! Convert checkpoint id to timestamp
-    TimeStamp get_timestamp_(uint32_t cp) const noexcept {
-        return TimeStamp::make(cp*window_size_.value);
-    }
+    TimeStamp get_timestamp_(uint32_t cp) const noexcept;
 
     // move sorted runs to ready_ collection
-    bool make_checkpoint_(uint32_t new_checkpoint) noexcept {
-        auto in_progress = progress_flag_.test_and_set();
-        if (in_progress) {
-            return false;
-        }
-        auto old_top = get_timestamp_(checkpoint_);
-        std::atomic_thread_fence(std::memory_order_acq_rel);
-        checkpoint_ = new_checkpoint;
-        {
-            // NOTE: page and sequencer can be out of sync in this scope
-            std::vector<SortedRun> new_runs;
-            for (auto& sorted_run: runs_) {
-                auto it = std::lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
-                if (it == sorted_run.begin()) {
-                    // all timestamps are newer than old_top, do nothing
-                    new_runs.push_back(std::move(sorted_run));
-                    continue;
-                } else if (it == sorted_run.end()) {
-                    // all timestamps are older than old_top, move them
-                    ready_.push_back(std::move(sorted_run));
-                } else {
-                    // it is in between of the sorted run - split
-                    SortedRun run;
-                    std::copy(sorted_run.begin(), it, std::back_inserter(run));  // copy old
-                    ready_.push_back(std::move(run));
-                    run.clear();
-                    std::copy(it, sorted_run.end(), std::back_inserter(run));  // copy new
-                    new_runs.push_back(std::move(run));
-                }
-            }
-            std::swap(runs_, new_runs);
-        }
-        std::atomic_thread_fence(std::memory_order_acq_rel);
-        return true;
-    }
+    bool make_checkpoint_(uint32_t new_checkpoint) noexcept;
 
-    int check_timestamp_(TimeStamp ts) noexcept {
-        if (ts <= top_timestamp_) {
-            auto delta = top_timestamp_ - ts;
-            if (delta.value > window_size_.value) {
-                return AKU_SUCCESS;
-            } else {
-                return AKU_ELATE_WRITE;
-            }
-        }
-        auto point = get_checkpoint_(ts);
-        if (point > checkpoint_) {
-            // Create new checkpoint
-            if (!make_checkpoint_(point)) {
-                return AKU_EBUSY;
-                // Previous checkpoint not completed
-            }
-        }
-        top_timestamp_ = ts;
-        return AKU_SUCCESS;
-    }
+    /** Check timestamp and make checkpoint if timestamp is large enough.
+      * @returns error code and flag that indicates whether or not new checkpoint is created
+      */
+    std::tuple<int, bool> check_timestamp_(TimeStamp ts) noexcept;
 
-    int add(TimeSeriesValue const& value) {
-        int status = check_timestamp_(std::get<0>(value.key_));
-        if (status != AKU_SUCCESS) {
-            return status;
-        }
-        key_.pop_back();
-        key_.push_back(value);
-        auto begin = runs_.begin();
-        auto end = runs_.end();
-        auto insert_it = std::lower_bound(begin, end, key_, top_element_more<SortedRun>);
-        if (insert_it == runs_.end()) {
-            SortedRun new_pile;
-            new_pile.push_back(value);
-            runs_.push_back(new_pile);
-        } else {
-            insert_it->push_back(value);
-        }
-        return AKU_SUCCESS;
-    }
+    int add(TimeSeriesValue const& value);
 
-    template<class Iter>
-    void merge(Iter out_iter) {
-        std::atomic_thread_fence(std::memory_order_acq_rel);
-        bool in_progress = progress_flag_.test_and_set();
-        if (!in_progress) {
-            // Error!
-            return;
-        }
-        size_t n = ready_.size();
-        typedef typename SortedRun::const_iterator iter_t;
-        iter_t iter[n], ends[n];
-        int cnt = 0;
-        for(auto i = ready_.begin(); i != ready_.end(); i++) {
-            iter[cnt] = i->begin();
-            ends[cnt] = i->end();
-            cnt++;
-        }
-
-        typedef std::tuple<TimeSeriesValue, int> HeapItem;
-        typedef std::vector<HeapItem> Heap;
-        Heap heap;
-
-        for(auto index = 0u; index < n; index++) {
-            if (iter[index] != ends[index]) {
-                auto value = *iter[index];
-                iter[index]++;
-                heap.push_back(std::make_tuple(value, index));
-            }
-        }
-
-        std::make_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
-
-        while(!heap.empty()) {
-            std::pop_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
-            auto item = heap.back();
-            auto value = std::get<0>(item);
-            int index = std::get<1>(item);
-            *out_iter++ = value;
-            heap.pop_back();
-            if (iter[index] != ends[index]) {
-                auto value = *iter[index];
-                iter[index]++;
-                heap.push_back(std::make_tuple(value, index));
-                std::push_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
-            }
-        }
-        std::atomic_thread_fence(std::memory_order_acq_rel);
-        progress_flag_.clear();
-    }
+    void merge(Caller& caller, InternalCursor* out_iter);
 };
 
 
