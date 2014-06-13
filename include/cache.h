@@ -78,12 +78,17 @@ struct Sequencer {
       */
     std::tuple<int, bool> check_timestamp_(TimeStamp ts) noexcept;
 
-    int add(TimeSeriesValue const& value);
+    /** Add new sample to sequence.
+      * @brief Timestamp of the sample can be out of order.
+      * @returns error code and flag that indicates whether of not new checkpoint is createf
+      */
+    std::tuple<int, bool> add(TimeSeriesValue const& value);
 
     void merge(Caller& caller, InternalCursor* out_iter);
 };
 
 
+// Deprecated
 
 struct Sequence
 {

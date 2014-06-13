@@ -161,7 +161,7 @@ public:
      * @param size size of the cursors array
      * @param direction direction of the cursor (forward or backward)
      */
-    FanInCursorCombinator(ExternalCursor** in_cursors
+    FanInCursorCombinator( ExternalCursor** in_cursors
                          , int size
                          , int direction) noexcept;
 

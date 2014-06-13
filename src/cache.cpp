@@ -13,6 +13,8 @@
 #include "cache.h"
 #include "util.h"
 
+using namespace std;
+
 namespace Akumuli {
 
 template<typename RunType>
@@ -44,10 +46,12 @@ bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 Sequencer::Sequencer(PageHeader const* page, TimeDuration window_size)
     : window_size_(window_size)
     , page_(page)
+    , top_timestamp_()
+    , checkpoint_(0u)
 {
     progress_flag_.clear();
     if (window_size.value <= 0) {
-        throw std::runtime_error("window size must greather than zero");
+        throw runtime_error("window size must greather than zero");
     }
     key_.push_back(TimeSeriesValue());
 }
@@ -70,50 +74,50 @@ bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
         return false;
     }
     auto old_top = get_timestamp_(checkpoint_);
-    std::atomic_thread_fence(std::memory_order_acq_rel);
+    atomic_thread_fence(memory_order_acq_rel);
     checkpoint_ = new_checkpoint;
     {
         // NOTE: page and sequencer can be out of sync in this scope
         if (!ready_.empty()) {
-            throw std::runtime_error("sequencer invariant is broken");
+            throw runtime_error("sequencer invariant is broken");
         }
-        std::vector<SortedRun> new_runs;
+        vector<SortedRun> new_runs;
         for (auto& sorted_run: runs_) {
-            auto it = std::lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+            auto it = lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
             if (it == sorted_run.begin()) {
                 // all timestamps are newer than old_top, do nothing
-                new_runs.push_back(std::move(sorted_run));
+                new_runs.push_back(move(sorted_run));
                 continue;
             } else if (it == sorted_run.end()) {
                 // all timestamps are older than old_top, move them
-                ready_.push_back(std::move(sorted_run));
+                ready_.push_back(move(sorted_run));
             } else {
                 // it is in between of the sorted run - split
                 SortedRun run;
-                std::copy(sorted_run.begin(), it, std::back_inserter(run));  // copy old
-                ready_.push_back(std::move(run));
+                copy(sorted_run.begin(), it, back_inserter(run));  // copy old
+                ready_.push_back(move(run));
                 run.clear();
-                std::copy(it, sorted_run.end(), std::back_inserter(run));  // copy new
-                new_runs.push_back(std::move(run));
+                copy(it, sorted_run.end(), back_inserter(run));  // copy new
+                new_runs.push_back(move(run));
             }
         }
-        std::swap(runs_, new_runs);
+        swap(runs_, new_runs);
     }
-    std::atomic_thread_fence(std::memory_order_acq_rel);
+    atomic_thread_fence(memory_order_acq_rel);
     return true;
 }
 
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-std::tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) noexcept {
+tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) noexcept {
     int error_code = AKU_SUCCESS;
-    if (ts <= top_timestamp_) {
+    if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
-        if (delta.value < window_size_.value) {
+        if (delta.value > window_size_.value) {
             error_code = AKU_ELATE_WRITE;
         }
-        return std::make_tuple(error_code, false);
+        return make_tuple(error_code, false);
     }
     bool new_cp = false;
     auto point = get_checkpoint_(ts);
@@ -126,21 +130,21 @@ std::tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) noexcept {
         }
     }
     top_timestamp_ = ts;
-    return std::make_tuple(error_code, new_cp);
+    return make_tuple(error_code, new_cp);
 }
 
-int Sequencer::add(TimeSeriesValue const& value) {
+tuple<int, bool> Sequencer::add(TimeSeriesValue const& value) {
     int status;
     bool new_checkpoint;
-    std::tie(status, new_checkpoint) = check_timestamp_(std::get<0>(value.key_));
+    tie(status, new_checkpoint) = check_timestamp_(get<0>(value.key_));
     if (status != AKU_SUCCESS) {
-        return status;
+        return make_tuple(status, new_checkpoint);
     }
     key_.pop_back();
     key_.push_back(value);
     auto begin = runs_.begin();
     auto end = runs_.end();
-    auto insert_it = std::lower_bound(begin, end, key_, top_element_more<SortedRun>);
+    auto insert_it = lower_bound(begin, end, key_, top_element_more<SortedRun>);
     if (insert_it == runs_.end()) {
         SortedRun new_pile;
         new_pile.push_back(value);
@@ -148,11 +152,11 @@ int Sequencer::add(TimeSeriesValue const& value) {
     } else {
         insert_it->push_back(value);
     }
-    return AKU_SUCCESS;
+    return make_tuple(AKU_SUCCESS, new_checkpoint);
 }
 
 void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
-    std::atomic_thread_fence(std::memory_order_acq_rel);
+    atomic_thread_fence(memory_order_acq_rel);
     bool in_progress = progress_flag_.test_and_set();
     if (!in_progress) {
         out_iter->set_error(caller, AKU_EBUSY);
@@ -174,32 +178,32 @@ void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
         cnt++;
     }
 
-    typedef std::tuple<TimeSeriesValue, int> HeapItem;
-    typedef std::vector<HeapItem> Heap;
+    typedef tuple<TimeSeriesValue, int> HeapItem;
+    typedef vector<HeapItem> Heap;
     Heap heap;
 
     for(auto index = 0u; index < n; index++) {
         if (iter[index] != ends[index]) {
             auto value = *iter[index];
             iter[index]++;
-            heap.push_back(std::make_tuple(value, index));
+            heap.push_back(make_tuple(value, index));
         }
     }
 
-    std::make_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+    make_heap(heap.begin(), heap.end(), greater<HeapItem>());
 
     while(!heap.empty()) {
-        std::pop_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+        pop_heap(heap.begin(), heap.end(), greater<HeapItem>());
         auto item = heap.back();
-        auto point = std::get<0>(item);
-        int index = std::get<1>(item);
+        auto point = get<0>(item);
+        int index = get<1>(item);
         out_iter->put(caller, point.value, page_);
         heap.pop_back();
         if (iter[index] != ends[index]) {
             auto point = *iter[index];
             iter[index]++;
-            heap.push_back(std::make_tuple(point, index));
-            std::push_heap(heap.begin(), heap.end(), std::greater<HeapItem>());
+            heap.push_back(make_tuple(point, index));
+            push_heap(heap.begin(), heap.end(), greater<HeapItem>());
         }
     }
 
@@ -210,14 +214,14 @@ void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
     // that progress_flag_ can be cleared.
 
     ready_.clear();
-    std::atomic_thread_fence(std::memory_order_acq_rel);
+    atomic_thread_fence(memory_order_acq_rel);
     progress_flag_.clear();
     out_iter->complete(caller);
 }
 
 // This method must be called from the same thread
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {
-    auto key = std::make_tuple(ts, param);
+    auto key = make_tuple(ts, param);
 
     std::unique_lock<std::mutex> lock(obj_mtx_, std::defer_lock)
                                , tmp_lock(tmp_mtx_, std::defer_lock);
