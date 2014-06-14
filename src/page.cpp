@@ -15,9 +15,15 @@
 #include "sort.h"
 #include "page.h"
 #include "akumuli_def.h"
+#include <boost/lexical_cast.hpp>
 
 
 namespace Akumuli {
+
+std::ostream& operator << (std::ostream& st, CursorResult res) {
+    st << "CursorResult" << boost::to_string(res);
+    return st;
+}
 
 //---------------Timestamp
 

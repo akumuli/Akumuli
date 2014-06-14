@@ -26,6 +26,8 @@ namespace Akumuli {
 
 typedef std::pair<EntryOffset, const PageHeader*> CursorResult;
 
+std::ostream& operator << (std::ostream& st, CursorResult res);
+
 
 /** Time duration.
  *  Difference between two timestamps.
