@@ -49,7 +49,6 @@ Sequencer::Sequencer(PageHeader const* page, TimeDuration window_size)
     , top_timestamp_()
     , checkpoint_(0u)
 {
-    progress_flag_.clear();
     if (window_size.value <= 0) {
         throw runtime_error("window size must greather than zero");
     }
@@ -69,40 +68,35 @@ TimeStamp Sequencer::get_timestamp_(uint32_t cp) const noexcept {
 
 // move sorted runs to ready_ collection
 bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
-    auto in_progress = progress_flag_.test_and_set();
-    if (in_progress) {
+    if(!progress_flag_.try_lock()) {
         return false;
     }
     auto old_top = get_timestamp_(checkpoint_);
-    atomic_thread_fence(memory_order_acq_rel);
     checkpoint_ = new_checkpoint;
-    {
-        // NOTE: page and sequencer can be out of sync in this scope
-        if (!ready_.empty()) {
-            throw runtime_error("sequencer invariant is broken");
-        }
-        vector<SortedRun> new_runs;
-        for (auto& sorted_run: runs_) {
-            auto it = lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
-            if (it == sorted_run.begin()) {
-                // all timestamps are newer than old_top, do nothing
-                new_runs.push_back(move(sorted_run));
-                continue;
-            } else if (it == sorted_run.end()) {
-                // all timestamps are older than old_top, move them
-                ready_.push_back(move(sorted_run));
-            } else {
-                // it is in between of the sorted run - split
-                SortedRun run;
-                copy(sorted_run.begin(), it, back_inserter(run));  // copy old
-                ready_.push_back(move(run));
-                run.clear();
-                copy(it, sorted_run.end(), back_inserter(run));  // copy new
-                new_runs.push_back(move(run));
-            }
-        }
-        swap(runs_, new_runs);
+    if (!ready_.empty()) {
+        throw runtime_error("sequencer invariant is broken");
     }
+    vector<SortedRun> new_runs;
+    for (auto& sorted_run: runs_) {
+        auto it = lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+        if (it == sorted_run.begin()) {
+            // all timestamps are newer than old_top, do nothing
+            new_runs.push_back(move(sorted_run));
+            continue;
+        } else if (it == sorted_run.end()) {
+            // all timestamps are older than old_top, move them
+            ready_.push_back(move(sorted_run));
+        } else {
+            // it is in between of the sorted run - split
+            SortedRun run;
+            copy(sorted_run.begin(), it, back_inserter(run));  // copy old
+            ready_.push_back(move(run));
+            run.clear();
+            copy(it, sorted_run.end(), back_inserter(run));  // copy new
+            new_runs.push_back(move(run));
+        }
+    }
+    swap(runs_, new_runs);
     atomic_thread_fence(memory_order_acq_rel);
     return true;
 }
@@ -155,24 +149,27 @@ tuple<int, bool> Sequencer::add(TimeSeriesValue const& value) {
     return make_tuple(AKU_SUCCESS, new_checkpoint);
 }
 
-void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
+bool Sequencer::close() {
+    if (!progress_flag_.try_lock()) {
+        return false;
+    }
+    if (!ready_.empty()) {
+        throw runtime_error("sequencer invariant is broken");
+    }
+    for (auto& sorted_run: runs_) {
+        ready_.push_back(move(sorted_run));
+    }
+    runs_.clear();
     atomic_thread_fence(memory_order_acq_rel);
-    bool in_progress = progress_flag_.test_and_set();
-    if (!in_progress) {
-        out_iter->set_error(caller, AKU_EBUSY);
-        // Error!
-        return;
-    }
-    size_t n = ready_.size();
-    if (n == 0) {
-        // Things go crazy
-        out_iter->set_error(caller, AKU_ENO_DATA);
-        return;
-    }
+    return true;
+}
+
+static void kway_merge(vector<SortedRun> const& runs, Caller& caller, InternalCursor* out_iter) noexcept {
+    size_t n = runs.size();
     typedef typename SortedRun::const_iterator iter_t;
     iter_t iter[n], ends[n];
     int cnt = 0;
-    for(auto i = ready_.begin(); i != ready_.end(); i++) {
+    for(auto i = runs.begin(); i != runs.end(); i++) {
         iter[cnt] = i->begin();
         ends[cnt] = i->end();
         cnt++;
@@ -206,6 +203,23 @@ void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
             push_heap(heap.begin(), heap.end(), greater<HeapItem>());
         }
     }
+}
+
+void Sequencer::merge(Caller& caller, InternalCursor* out_iter) noexcept {
+    bool false_if_ok = progress_flag_.try_lock();
+    if (!false_if_ok) {
+        // Error! Merge called too early
+        out_iter->set_error(caller, AKU_EBUSY);
+        return;
+    }
+
+    if (ready_.size() == 0) {
+        // Things go crazy
+        out_iter->set_error(caller, AKU_ENO_DATA);
+        return;
+    }
+
+    kway_merge(ready_, caller, cur);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -215,9 +229,30 @@ void Sequencer::merge(Caller& caller, InternalCursor* out_iter) {
 
     ready_.clear();
     atomic_thread_fence(memory_order_acq_rel);
-    progress_flag_.clear();
+    progress_flag_.unlock();
     out_iter->complete(caller);
 }
+
+void Sequencer::lock_run(int ix) const noexcept {
+   bool prev = run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].test_and_set();
+   // TODO: busy wait with exp backoff
+}
+
+void Sequencer::search(Caller& caller, InternalCursor* cur, SeqrchQuery const& query) const noexcept {
+    std::lock_guard<std::mutex> guard(progress_flag_);
+    // we can get here only before checkpoint (or after merge was completed)
+    // that means that ready_ is empty
+    assert(ready_.empty());
+    std::vector<SortedRun> filtered;
+    for (const auto& run: runs_) {
+        lock_run(run);
+        filter(run, query, filtered);
+        unlock_run(run);
+    }
+    kway_merge(filtered, caller, cur);
+}
+
+// Old stuff
 
 // This method must be called from the same thread
 int Sequence::add(TimeStamp ts, ParamId param, EntryOffset  offset) noexcept {

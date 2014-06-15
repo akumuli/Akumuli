@@ -20,7 +20,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
 
     int num_checkpoints = 0;
 
-    for (int i = 0; i <= LARGE_LOOP; i++) {
+    for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         bool cp;
         tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
@@ -32,6 +32,9 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
             num_checkpoints++;
         }
     }
+
+    // one for data points that will be available after close
+    num_checkpoints++;
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
@@ -45,7 +48,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
 
     int num_checkpoints = 0;
 
-    for (int i = 0; i <= LARGE_LOOP; i++) {
+    for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         bool cp;
         tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
@@ -71,6 +74,9 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
         }
     }
 
+    // one for data points that will be available after close
+    num_checkpoints++;
+
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
 
@@ -84,7 +90,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int num_checkpoints = 0;
 
     int begin = 0;
-    for (int i = 0; i <= LARGE_LOOP; i++) {
+    for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         bool cp;
         tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, i));
@@ -107,7 +113,21 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
         }
     }
 
-    // TODO: check last elements
+    bool cp = seq.close();
+    BOOST_REQUIRE(cp);
+    RecordingCursor rec;
+    Caller caller;
+    seq.merge(caller, &rec);
+    num_checkpoints++;
+
+    // check order of the sorted run
+    vector<CursorResult> exp;
+    int end = LARGE_LOOP;
+    for (int i = begin; i != end; i++) {
+        exp.emplace_back(i, nullptr);
+    }
+    BOOST_REQUIRE_EQUAL(rec.offsets.size(), exp.size());
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(rec.offsets.begin(), rec.offsets.end(), exp.begin(), exp.end());
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
