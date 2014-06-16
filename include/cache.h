@@ -53,6 +53,11 @@ struct TimeSeriesValue {
 struct Sequencer {
     typedef std::vector<TimeSeriesValue> SortedRun;
 
+    static const int RUN_LOCK_MAX_BACKOFF = 0x100;
+    static const int RUN_LOCK_BUSY_COUNT = 0xFFF;
+    static const int RUN_LOCK_FLAGS_MASK = 0x0FF;
+    static const int RUN_LOCK_FLAGS_SIZE = 0x100;
+
     std::vector<SortedRun>       runs_;           //< Active sorted runs
     std::vector<SortedRun>       ready_;          //< Ready to merge
     SortedRun                    key_;
@@ -61,7 +66,8 @@ struct Sequencer {
     TimeStamp                    top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
     mutable std::mutex           progress_flag_;
-    std::vector<std::atomic_flag> run_lock_flags_;
+    mutable std::vector<std::atomic_flag>
+                                 run_lock_flags_;
 
     Sequencer(PageHeader const* page, TimeDuration window_size);
 
@@ -87,16 +93,20 @@ struct Sequencer {
 
     bool close();
 
-    void merge(Caller& caller, InternalCursor* out_iter) noexcept;
+    void merge(Caller& caller, InternalCursor* cur) noexcept;
 
     void filter(SortedRun& run, SearchQuery const& q, std::vector<SortedRun> results) const noexcept;
 
     void lock_run(int ix) const noexcept;
+
     void unlock_run(int ix) const noexcept;
+
+    void lock_all_runs() const noexcept;
+    void unlock_all_runs() const noexcept;
 
     // Searching
 
-    void search(Caller& caller, InternalCursor* cur, SeqrchQuery const& query) const noexcept;
+    void search(Caller& caller, InternalCursor* cur, SearchQuery const& query) const noexcept;
 };
 
 

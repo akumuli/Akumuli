@@ -71,6 +71,7 @@ bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
     if(!progress_flag_.try_lock()) {
         return false;
     }
+    lock_all_runs();  // stop all consurrent searches
     auto old_top = get_timestamp_(checkpoint_);
     checkpoint_ = new_checkpoint;
     if (!ready_.empty()) {
@@ -97,6 +98,7 @@ bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
         }
     }
     swap(runs_, new_runs);
+    unlock_all_runs();
     atomic_thread_fence(memory_order_acq_rel);
     return true;
 }
@@ -144,12 +146,16 @@ tuple<int, bool> Sequencer::add(TimeSeriesValue const& value) {
         new_pile.push_back(value);
         runs_.push_back(new_pile);
     } else {
+        int run_ix = std::distance(begin, insert_it);
+        lock_run(run_ix);
         insert_it->push_back(value);
+        unlock_run(run_ix);
     }
     return make_tuple(AKU_SUCCESS, new_checkpoint);
 }
 
 bool Sequencer::close() {
+    lock_all_runs();
     if (!progress_flag_.try_lock()) {
         return false;
     }
@@ -160,13 +166,16 @@ bool Sequencer::close() {
         ready_.push_back(move(sorted_run));
     }
     runs_.clear();
+    unlock_all_runs();
     atomic_thread_fence(memory_order_acq_rel);
     return true;
 }
 
-static void kway_merge(vector<SortedRun> const& runs, Caller& caller, InternalCursor* out_iter) noexcept {
+template <class TRun>
+void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) noexcept {
     size_t n = runs.size();
-    typedef typename SortedRun::const_iterator iter_t;
+    typedef typename TRun::const_iterator iter_t;
+    typedef typename TRun::value_type value_t;
     iter_t iter[n], ends[n];
     int cnt = 0;
     for(auto i = runs.begin(); i != runs.end(); i++) {
@@ -175,7 +184,7 @@ static void kway_merge(vector<SortedRun> const& runs, Caller& caller, InternalCu
         cnt++;
     }
 
-    typedef tuple<TimeSeriesValue, int> HeapItem;
+    typedef tuple<value_t, int> HeapItem;
     typedef vector<HeapItem> Heap;
     Heap heap;
 
@@ -194,7 +203,7 @@ static void kway_merge(vector<SortedRun> const& runs, Caller& caller, InternalCu
         auto item = heap.back();
         auto point = get<0>(item);
         int index = get<1>(item);
-        out_iter->put(caller, point.value, page_);
+        out_iter->put(caller, point.value, page);
         heap.pop_back();
         if (iter[index] != ends[index]) {
             auto point = *iter[index];
@@ -205,21 +214,21 @@ static void kway_merge(vector<SortedRun> const& runs, Caller& caller, InternalCu
     }
 }
 
-void Sequencer::merge(Caller& caller, InternalCursor* out_iter) noexcept {
+void Sequencer::merge(Caller& caller, InternalCursor* cur) noexcept {
     bool false_if_ok = progress_flag_.try_lock();
     if (!false_if_ok) {
         // Error! Merge called too early
-        out_iter->set_error(caller, AKU_EBUSY);
+        cur->set_error(caller, AKU_EBUSY);
         return;
     }
 
     if (ready_.size() == 0) {
         // Things go crazy
-        out_iter->set_error(caller, AKU_ENO_DATA);
+        cur->set_error(caller, AKU_ENO_DATA);
         return;
     }
 
-    kway_merge(ready_, caller, cur);
+    kway_merge(ready_, caller, cur, page_);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -230,26 +239,60 @@ void Sequencer::merge(Caller& caller, InternalCursor* out_iter) noexcept {
     ready_.clear();
     atomic_thread_fence(memory_order_acq_rel);
     progress_flag_.unlock();
-    out_iter->complete(caller);
+    cur->complete(caller);
 }
 
 void Sequencer::lock_run(int ix) const noexcept {
-   bool prev = run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].test_and_set();
-   // TODO: busy wait with exp backoff
+    int busy_wait_counter = RUN_LOCK_BUSY_COUNT;
+    int backoff_len = 0;
+    while(true) {
+        bool is_busy = run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].test_and_set();
+        if (!is_busy) {
+            return;
+        } else {
+            // Busy wait
+            if (busy_wait_counter) {
+                busy_wait_counter--;
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_len));
+                if (backoff_len < RUN_LOCK_MAX_BACKOFF) {
+                    backoff_len++;
+                }
+            }
+        }
+    }
 }
 
-void Sequencer::search(Caller& caller, InternalCursor* cur, SeqrchQuery const& query) const noexcept {
+void Sequencer::unlock_run(int ix) const noexcept {
+    run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].clear();
+}
+
+void Sequencer::lock_all_runs() const noexcept {
+   for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
+       lock_run(i);
+   }
+}
+
+void Sequencer::unlock_all_runs() const noexcept {
+   for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
+       lock_run(i);
+   }
+}
+
+void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const noexcept {
     std::lock_guard<std::mutex> guard(progress_flag_);
     // we can get here only before checkpoint (or after merge was completed)
     // that means that ready_ is empty
     assert(ready_.empty());
     std::vector<SortedRun> filtered;
+    int run_ix = 0;
     for (const auto& run: runs_) {
-        lock_run(run);
+        lock_run(run_ix);
         filter(run, query, filtered);
-        unlock_run(run);
+        unlock_run(run_ix);
+        run_ix++;
     }
-    kway_merge(filtered, caller, cur);
+    kway_merge(filtered, caller, cur, page_);
 }
 
 // Old stuff
