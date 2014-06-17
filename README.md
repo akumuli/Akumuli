@@ -3,6 +3,7 @@ README
 
 **Akumuli** is a time-series database. The word "akumuli" can be translated from esperanto as "accumulate".
 
+
 Rationale
 ---------
 
@@ -36,3 +37,6 @@ First milestone goals
 * Searching (cache-aware hybrid (interpolation and binary) searching)
 * B-tree located in memory cache
 * Compression for large entries
+
+
+https://groups.google.com/forum/#!forum/akumuli
