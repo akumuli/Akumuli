@@ -48,26 +48,32 @@ Sequencer::Sequencer(PageHeader const* page, TimeDuration window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
+    , run_lock_flags_(RUN_LOCK_FLAGS_SIZE)
 {
     if (window_size.value <= 0) {
         throw runtime_error("window size must greather than zero");
     }
+
     key_.push_back(TimeSeriesValue());
+
+    for(auto& flag: run_lock_flags_) {
+        flag.clear();
+    }
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
-uint32_t Sequencer::get_checkpoint_(TimeStamp ts) const noexcept {
+uint32_t Sequencer::get_checkpoint_(TimeStamp ts) const {
     // TODO: use fast integer division (libdivision or else)
     return ts.value / window_size_.value;
 }
 
 //! Convert checkpoint id to timestamp
-TimeStamp Sequencer::get_timestamp_(uint32_t cp) const noexcept {
+TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
     return TimeStamp::make(cp*window_size_.value);
 }
 
 // move sorted runs to ready_ collection
-bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
+bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
     if(!progress_flag_.try_lock()) {
         return false;
     }
@@ -106,7 +112,7 @@ bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) noexcept {
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) noexcept {
+tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) {
     int error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
@@ -172,7 +178,7 @@ bool Sequencer::close() {
 }
 
 template <class TRun>
-void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) noexcept {
+void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
     size_t n = runs.size();
     typedef typename TRun::const_iterator iter_t;
     typedef typename TRun::value_type value_t;
@@ -214,7 +220,7 @@ void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_it
     }
 }
 
-void Sequencer::merge(Caller& caller, InternalCursor* cur) noexcept {
+void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     bool false_if_ok = progress_flag_.try_lock();
     if (!false_if_ok) {
         // Error! Merge called too early
@@ -242,7 +248,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) noexcept {
     cur->complete(caller);
 }
 
-void Sequencer::lock_run(int ix) const noexcept {
+void Sequencer::lock_run(int ix) const {
     int busy_wait_counter = RUN_LOCK_BUSY_COUNT;
     int backoff_len = 0;
     while(true) {
@@ -263,23 +269,46 @@ void Sequencer::lock_run(int ix) const noexcept {
     }
 }
 
-void Sequencer::unlock_run(int ix) const noexcept {
+void Sequencer::unlock_run(int ix) const {
     run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].clear();
 }
 
-void Sequencer::lock_all_runs() const noexcept {
+void Sequencer::lock_all_runs() const {
    for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
        lock_run(i);
    }
 }
 
-void Sequencer::unlock_all_runs() const noexcept {
+void Sequencer::unlock_all_runs() const {
    for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
-       lock_run(i);
+       unlock_run(i);
    }
 }
 
-void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const noexcept {
+struct SearchPredicate {
+    SearchQuery const& query;
+    SearchPredicate(SearchQuery const& q) : query(q) {}
+
+    bool operator () (TimeSeriesValue const& value) const {
+        if (query.lowerbound < std::get<0>(value.key_) &&
+            query.upperbound > std::get<0>(value.key_))
+        {
+            if (query.param_pred(std::get<1>(value.key_)) == SearchQuery::MATCH) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const {
+    // TODO: use more effective algorithm, based on binary search
+    SortedRun result;
+    std::copy_if(run.begin(), run.end(), std::back_inserter(result), SearchPredicate(q));
+    results.push_back(std::move(result));
+}
+
+void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const {
     std::lock_guard<std::mutex> guard(progress_flag_);
     // we can get here only before checkpoint (or after merge was completed)
     // that means that ready_ is empty

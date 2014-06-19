@@ -40,6 +40,8 @@ struct TimeSeriesValue {
 
     TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset);
 
+    TimeStamp get_timestamp() const;
+
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
 
@@ -71,20 +73,6 @@ struct Sequencer {
 
     Sequencer(PageHeader const* page, TimeDuration window_size);
 
-    //! Checkpoint id = ⌊timestamp/window_size⌋
-    uint32_t get_checkpoint_(TimeStamp ts) const noexcept;
-
-    //! Convert checkpoint id to timestamp
-    TimeStamp get_timestamp_(uint32_t cp) const noexcept;
-
-    // move sorted runs to ready_ collection
-    bool make_checkpoint_(uint32_t new_checkpoint) noexcept;
-
-    /** Check timestamp and make checkpoint if timestamp is large enough.
-      * @returns error code and flag that indicates whether or not new checkpoint is created
-      */
-    std::tuple<int, bool> check_timestamp_(TimeStamp ts) noexcept;
-
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.
       * @returns error code and flag that indicates whether of not new checkpoint is createf
@@ -93,20 +81,35 @@ struct Sequencer {
 
     bool close();
 
-    void merge(Caller& caller, InternalCursor* cur) noexcept;
-
-    void filter(SortedRun& run, SearchQuery const& q, std::vector<SortedRun> results) const noexcept;
-
-    void lock_run(int ix) const noexcept;
-
-    void unlock_run(int ix) const noexcept;
-
-    void lock_all_runs() const noexcept;
-    void unlock_all_runs() const noexcept;
-
     // Searching
+    void search(Caller& caller, InternalCursor* cur, SearchQuery const& query) const;
 
-    void search(Caller& caller, InternalCursor* cur, SearchQuery const& query) const noexcept;
+    void merge(Caller& caller, InternalCursor* cur);
+
+private:
+    //! Checkpoint id = ⌊timestamp/window_size⌋
+    uint32_t get_checkpoint_(TimeStamp ts) const;
+
+    //! Convert checkpoint id to timestamp
+    TimeStamp get_timestamp_(uint32_t cp) const;
+
+    // move sorted runs to ready_ collection
+    bool make_checkpoint_(uint32_t new_checkpoint);
+
+    /** Check timestamp and make checkpoint if timestamp is large enough.
+      * @returns error code and flag that indicates whether or not new checkpoint is created
+      */
+    std::tuple<int, bool> check_timestamp_(TimeStamp ts);
+
+    void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const;
+
+    void lock_run(int ix) const;
+
+    void unlock_run(int ix) const;
+
+    void lock_all_runs() const;
+
+    void unlock_all_runs() const;
 };
 
 
