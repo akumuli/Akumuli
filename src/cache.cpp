@@ -13,6 +13,9 @@
 #include "cache.h"
 #include "util.h"
 
+#define PARAM_ID 1
+#define TIMESTMP 0
+
 using namespace std;
 
 namespace Akumuli {
@@ -73,9 +76,9 @@ TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
 }
 
 // move sorted runs to ready_ collection
-bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
-    if(!progress_flag_.try_lock()) {
-        return false;
+void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
+    if(!lock.try_lock()) {
+        return;
     }
     lock_all_runs();  // stop all consurrent searches
     auto old_top = get_timestamp_(checkpoint_);
@@ -106,41 +109,40 @@ bool Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
     swap(runs_, new_runs);
     unlock_all_runs();
     atomic_thread_fence(memory_order_acq_rel);
-    return true;
+    return;
 }
 
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-tuple<int, bool> Sequencer::check_timestamp_(TimeStamp ts) {
+int Sequencer::check_timestamp_(TimeStamp ts, Lock& lock) {
     int error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
         if (delta.value > window_size_.value) {
             error_code = AKU_ELATE_WRITE;
         }
-        return make_tuple(error_code, false);
+        return error_code;
     }
-    bool new_cp = false;
     auto point = get_checkpoint_(ts);
     if (point > checkpoint_) {
         // Create new checkpoint
-        new_cp = make_checkpoint_(point);
-        if (!new_cp) {
+        make_checkpoint_(point, lock);
+        if (!lock.owns_lock()) {
             // Previous checkpoint not completed
             error_code = AKU_EBUSY;
         }
     }
     top_timestamp_ = ts;
-    return make_tuple(error_code, new_cp);
+    return error_code;
 }
 
-tuple<int, bool> Sequencer::add(TimeSeriesValue const& value) {
+std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
     int status;
-    bool new_checkpoint;
-    tie(status, new_checkpoint) = check_timestamp_(get<0>(value.key_));
+    Lock lock(progress_flag_, defer_lock);
+    status = check_timestamp_(get<0>(value.key_), lock);
     if (status != AKU_SUCCESS) {
-        return make_tuple(status, new_checkpoint);
+        return make_tuple(status, move(lock));
     }
     key_.pop_back();
     key_.push_back(value);
@@ -152,29 +154,30 @@ tuple<int, bool> Sequencer::add(TimeSeriesValue const& value) {
         new_pile.push_back(value);
         runs_.push_back(new_pile);
     } else {
-        int run_ix = std::distance(begin, insert_it);
+        int run_ix = distance(begin, insert_it);
         lock_run(run_ix);
         insert_it->push_back(value);
         unlock_run(run_ix);
     }
-    return make_tuple(AKU_SUCCESS, new_checkpoint);
+    return make_tuple(AKU_SUCCESS, move(lock));
 }
 
-bool Sequencer::close() {
-    lock_all_runs();
-    if (!progress_flag_.try_lock()) {
-        return false;
+Sequencer::Lock Sequencer::close() {
+    Lock lock(progress_flag_, defer_lock);
+    if (!lock.try_lock()) {
+        return move(lock);
     }
     if (!ready_.empty()) {
         throw runtime_error("sequencer invariant is broken");
     }
+    lock_all_runs();
     for (auto& sorted_run: runs_) {
         ready_.push_back(move(sorted_run));
     }
-    runs_.clear();
     unlock_all_runs();
+    runs_.clear();
     atomic_thread_fence(memory_order_acq_rel);
-    return true;
+    return move(lock);
 }
 
 template <class TRun>
@@ -220,9 +223,9 @@ void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_it
     }
 }
 
-void Sequencer::merge(Caller& caller, InternalCursor* cur) {
-    bool false_if_ok = progress_flag_.try_lock();
-    if (!false_if_ok) {
+void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
+    bool owns_lock = lock.owns_lock();
+    if (!owns_lock) {
         // Error! Merge called too early
         cur->set_error(caller, AKU_EBUSY);
         return;
@@ -244,7 +247,6 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
 
     ready_.clear();
     atomic_thread_fence(memory_order_acq_rel);
-    progress_flag_.unlock();
     cur->complete(caller);
 }
 
@@ -290,10 +292,10 @@ struct SearchPredicate {
     SearchPredicate(SearchQuery const& q) : query(q) {}
 
     bool operator () (TimeSeriesValue const& value) const {
-        if (query.lowerbound < std::get<0>(value.key_) &&
-            query.upperbound > std::get<0>(value.key_))
+        if (query.lowerbound < get<TIMESTMP>(value.key_) &&
+            query.upperbound > get<TIMESTMP>(value.key_))
         {
-            if (query.param_pred(std::get<1>(value.key_)) == SearchQuery::MATCH) {
+            if (query.param_pred(get<PARAM_ID>(value.key_)) == SearchQuery::MATCH) {
                 return true;
             }
         }
@@ -304,8 +306,8 @@ struct SearchPredicate {
 void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const {
     // TODO: use more effective algorithm, based on binary search
     SortedRun result;
-    std::copy_if(run.begin(), run.end(), std::back_inserter(result), SearchPredicate(q));
-    results.push_back(std::move(result));
+    copy_if(run.begin(), run.end(), std::back_inserter(result), SearchPredicate(q));
+    results.push_back(move(result));
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const {

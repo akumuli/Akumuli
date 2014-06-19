@@ -54,6 +54,8 @@ struct TimeSeriesValue {
   */
 struct Sequencer {
     typedef std::vector<TimeSeriesValue> SortedRun;
+    typedef std::mutex                   Mutex;
+    typedef std::unique_lock<Mutex>      Lock;
 
     static const int RUN_LOCK_MAX_BACKOFF = 0x100;
     static const int RUN_LOCK_BUSY_COUNT = 0xFFF;
@@ -67,7 +69,7 @@ struct Sequencer {
     const PageHeader* const      page_;
     TimeStamp                    top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
-    mutable std::mutex           progress_flag_;
+    mutable Mutex                progress_flag_;
     mutable std::vector<std::atomic_flag>
                                  run_lock_flags_;
 
@@ -77,14 +79,14 @@ struct Sequencer {
       * @brief Timestamp of the sample can be out of order.
       * @returns error code and flag that indicates whether of not new checkpoint is createf
       */
-    std::tuple<int, bool> add(TimeSeriesValue const& value);
+    std::tuple<int, Lock> add(TimeSeriesValue const& value);
 
-    bool close();
+    void merge(Caller& caller, InternalCursor* cur, Lock&& lock);
+
+    Lock close();
 
     // Searching
     void search(Caller& caller, InternalCursor* cur, SearchQuery const& query) const;
-
-    void merge(Caller& caller, InternalCursor* cur);
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -94,12 +96,12 @@ private:
     TimeStamp get_timestamp_(uint32_t cp) const;
 
     // move sorted runs to ready_ collection
-    bool make_checkpoint_(uint32_t new_checkpoint);
+    void make_checkpoint_(uint32_t new_checkpoint, Lock& lock);
 
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created
       */
-    std::tuple<int, bool> check_timestamp_(TimeStamp ts);
+    int check_timestamp_(TimeStamp ts, Lock &lock);
 
     void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const;
 

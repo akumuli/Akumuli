@@ -22,13 +22,13 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
 
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
-        bool cp;
-        tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
+        Sequencer::Lock lock;
+        tie(status, lock) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-        if (cp) {
+        if (lock.owns_lock()) {
             RecordingCursor rec;
             Caller caller;
-            seq.merge(caller, &rec);
+            seq.merge(caller, &rec, std::move(lock));
             num_checkpoints++;
         }
     }
@@ -50,26 +50,28 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
 
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
-        bool cp;
-        tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
+        Sequencer::Lock lock;
+        tie(status, lock) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, 0u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-        if (cp) {
+        if (lock.owns_lock()) {
             // present write (ts <= last checkpoint)
             for (int j = 0; j < SMALL_LOOP; j++) {
-                tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i + j), 24u, 0u));
+                Sequencer::Lock other_lock;
+                tie(status, other_lock) = seq.add(TimeSeriesValue(TimeStamp::make(i + j), 24u, 0u));
                 BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-                BOOST_REQUIRE_EQUAL(cp, false);
+                BOOST_REQUIRE_EQUAL(other_lock.owns_lock(), false);
             }
 
             // future write (ts > last checkpoint)
-            tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i + SMALL_LOOP), 24u, 0u));
+            Sequencer::Lock other_lock;
+            tie(status, other_lock) = seq.add(TimeSeriesValue(TimeStamp::make(i + SMALL_LOOP), 24u, 0u));
             BOOST_REQUIRE_EQUAL(status, AKU_EBUSY);
-            BOOST_REQUIRE_EQUAL(cp, false);
+            BOOST_REQUIRE_EQUAL(other_lock.owns_lock(), false);
 
             // merge
             RecordingCursor rec;
             Caller caller;
-            seq.merge(caller, &rec);
+            seq.merge(caller, &rec, std::move(lock));
             num_checkpoints++;
         }
     }
@@ -92,13 +94,13 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int begin = 0;
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
-        bool cp;
-        tie(status, cp) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, i));
+        Sequencer::Lock lock;
+        tie(status, lock) = seq.add(TimeSeriesValue(TimeStamp::make(i), 42u, i));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-        if (cp) {
+        if (lock.owns_lock()) {
             RecordingCursor rec;
             Caller caller;
-            seq.merge(caller, &rec);
+            seq.merge(caller, &rec, std::move(lock));
             num_checkpoints++;
 
             // check order of the sorted run
@@ -113,11 +115,11 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
         }
     }
 
-    bool cp = seq.close();
-    BOOST_REQUIRE(cp);
+    Sequencer::Lock lock = seq.close();
+    BOOST_REQUIRE(lock.owns_lock());
     RecordingCursor rec;
     Caller caller;
-    seq.merge(caller, &rec);
+    seq.merge(caller, &rec, std::move(lock));
     num_checkpoints++;
 
     // check order of the sorted run
