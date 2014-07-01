@@ -133,3 +133,32 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
+
+BOOST_AUTO_TEST_CASE(Test_sequencer_searching) {
+    const int SZLOOP = 1000;
+    const int WINDOW = 10000;
+
+    Sequencer seq(nullptr, {WINDOW});
+    std::vector<EntryOffset> offsets;
+
+    for (int i = 0; i < SZLOOP; i++) {
+        int status;
+        Sequencer::Lock lock;
+        tie(status, lock) = seq.add(TimeSeriesValue(TimeStamp::make(42u + i), 42u, i));
+        offsets.push_back(i);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        BOOST_REQUIRE(!lock.owns_lock());  // because window is larger than number of iterations
+    }
+
+    Caller caller;
+    RecordingCursor cursor;
+    SearchQuery query(42u, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
+    seq.search(caller, &cursor, query);
+
+    // Check that everything is there
+    BOOST_REQUIRE_EQUAL(cursor.offsets.size(), offsets.size());
+    for (auto i = 0u; i < cursor.offsets.size(); i++) {
+        auto offset = cursor.offsets[i].first;
+        BOOST_REQUIRE_EQUAL(offset, offsets[i]);
+    }
+}

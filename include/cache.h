@@ -103,7 +103,7 @@ private:
       */
     int check_timestamp_(TimeStamp ts, Lock &lock);
 
-    void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const;
+    void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const;
 
     void lock_run(int ix) const;
 

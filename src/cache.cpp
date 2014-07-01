@@ -303,11 +303,11 @@ struct SearchPredicate {
     }
 };
 
-void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun> results) const {
+void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const {
     // TODO: use more effective algorithm, based on binary search
     SortedRun result;
     copy_if(run.begin(), run.end(), std::back_inserter(result), SearchPredicate(q));
-    results.push_back(move(result));
+    results->push_back(move(result));
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const {
@@ -319,7 +319,7 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &q
     int run_ix = 0;
     for (const auto& run: runs_) {
         lock_run(run_ix);
-        filter(run, query, filtered);
+        filter(run, query, &filtered);
         unlock_run(run_ix);
         run_ix++;
     }
