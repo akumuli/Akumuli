@@ -134,7 +134,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
 
-BOOST_AUTO_TEST_CASE(Test_sequencer_searching) {
+void test_sequencer_searching(int dir) {
     const int SZLOOP = 1000;
     const int WINDOW = 10000;
 
@@ -150,9 +150,16 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_searching) {
         BOOST_REQUIRE(!lock.owns_lock());  // because window is larger than number of iterations
     }
 
+    TimeStamp begin = TimeStamp::MIN_TIMESTAMP,
+              end   = TimeStamp::MAX_TIMESTAMP;
+
+    if (dir == AKU_CURSOR_DIR_BACKWARD) {
+        std::reverse(offsets.begin(), offsets.end());
+    }
+
     Caller caller;
     RecordingCursor cursor;
-    SearchQuery query(42u, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD);
+    SearchQuery query(42u, begin, end, dir);
     seq.search(caller, &cursor, query);
 
     // Check that everything is there
@@ -161,4 +168,12 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_searching) {
         auto offset = cursor.offsets[i].first;
         BOOST_REQUIRE_EQUAL(offset, offsets[i]);
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_sequencer_search_backward) {
+    test_sequencer_searching(AKU_CURSOR_DIR_BACKWARD);
+}
+
+BOOST_AUTO_TEST_CASE(Test_sequencer_search_forward) {
+    test_sequencer_searching(AKU_CURSOR_DIR_FORWARD);
 }

@@ -180,16 +180,60 @@ Sequencer::Lock Sequencer::close() {
     return move(lock);
 }
 
-template <class TRun>
+template<class TKey, int dir>
+struct MergePred;
+
+template<class TKey>
+struct MergePred<TKey, AKU_CURSOR_DIR_FORWARD> {
+    greater<TKey> greater_;
+    bool operator () (TKey const& lhs, TKey const& rhs) const {
+        return greater_(lhs, rhs);
+    }
+};
+
+template<class TKey>
+struct MergePred<TKey, AKU_CURSOR_DIR_BACKWARD> {
+    less<TKey> less_;
+    bool operator () (TKey const& lhs, TKey const& rhs) const {
+        return less_(lhs, rhs);
+    }
+};
+
+template<class TRun, int dir>
+struct RunIter;
+
+template<class TRun>
+struct RunIter<TRun, AKU_CURSOR_DIR_FORWARD> {
+    typedef typename TRun::const_iterator iterator;
+    static iterator begin(TRun const& run) {
+        return run.begin();
+    }
+    static iterator end(TRun const& run) {
+        return run.end();
+    }
+};
+
+template<class TRun>
+struct RunIter<TRun, AKU_CURSOR_DIR_BACKWARD> {
+    typedef typename TRun::const_reverse_iterator iterator;
+    static iterator begin(TRun const& run) {
+        return run.rbegin();
+    }
+    static iterator end(TRun const& run) {
+        return run.rend();
+    }
+};
+
+template <int dir, class TRun>
 void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
     size_t n = runs.size();
-    typedef typename TRun::const_iterator iter_t;
+    typedef typename RunIter<TRun, dir>::iterator iter_t;
     typedef typename TRun::value_type value_t;
     iter_t iter[n], ends[n];
     int cnt = 0;
     for(auto i = runs.begin(); i != runs.end(); i++) {
-        iter[cnt] = i->begin();
-        ends[cnt] = i->end();
+        iter[cnt] = RunIter<TRun, dir>::begin(*i);
+        ends[cnt] = RunIter<TRun, dir>::end(*i);
         cnt++;
     }
 
@@ -205,10 +249,10 @@ void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_it
         }
     }
 
-    make_heap(heap.begin(), heap.end(), greater<HeapItem>());
+    make_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
 
     while(!heap.empty()) {
-        pop_heap(heap.begin(), heap.end(), greater<HeapItem>());
+        pop_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
         auto item = heap.back();
         auto point = get<0>(item);
         int index = get<1>(item);
@@ -218,7 +262,7 @@ void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_it
             auto point = *iter[index];
             iter[index]++;
             heap.push_back(make_tuple(point, index));
-            push_heap(heap.begin(), heap.end(), greater<HeapItem>());
+            push_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
         }
     }
 }
@@ -237,7 +281,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return;
     }
 
-    kway_merge(ready_, caller, cur, page_);
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -323,7 +367,11 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &q
         unlock_run(run_ix);
         run_ix++;
     }
-    kway_merge(filtered, caller, cur, page_);
+    if (query.direction == AKU_CURSOR_DIR_FORWARD) {
+        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, caller, cur, page_);
+    } else {
+        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
+    }
 }
 
 // Old stuff
