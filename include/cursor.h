@@ -57,6 +57,21 @@ struct BufferedCursor : InternalCursor {
 };
 
 
+/** Simple page cursor that write incomming data to
+ *  page index directly.
+ */
+struct DirectPageSyncCursor : InternalCursor {
+    int error_code_;
+    bool error_is_set_;
+    bool completed_;
+    //! C-tor
+    DirectPageSyncCursor();
+    virtual void put(Caller&, EntryOffset offset, const PageHeader *page) noexcept;
+    virtual void complete(Caller&) noexcept;
+    virtual void set_error(Caller&, int error_code) noexcept;
+};
+
+
 /** Data retreival interface that can be used by
  *  code that reads data from akumuli.
  */

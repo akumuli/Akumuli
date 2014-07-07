@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(TestMmap2)
     BOOST_REQUIRE(mmap.is_bad() == true);
     bool throw_works = false;
     try {
-        mmap.throw_if_bad();
+        mmap.panic_if_bad();
     }
     catch(AprException const&) {
         throw_works = true;

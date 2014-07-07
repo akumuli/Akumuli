@@ -47,8 +47,31 @@ void BufferedCursor::set_error(Caller&, int code) noexcept {
     error_code = code;
 }
 
+// Page cursor
+
+DirectPageSyncCursor::DirectPageSyncCursor()
+    : error_code_()
+    , error_is_set_()
+    , completed_()
+{
+}
+
+void DirectPageSyncCursor::put(Caller&, EntryOffset offset, const PageHeader *page) noexcept {
+    const_cast<PageHeader*>(page)->sync_next_index(offset);
+}
+
+void DirectPageSyncCursor::complete(Caller&) noexcept {
+    completed_ = true;
+}
+
+void DirectPageSyncCursor::set_error(Caller&, int error_code) noexcept {
+    error_code_ = error_code;
+    error_is_set_ = true;
+}
+
 
 // CoroCursor
+
 CoroCursor::CoroCursor()
     : usr_buffer_(nullptr)
     , usr_buffer_len_(0)
@@ -123,8 +146,7 @@ struct HeapPred {
             // Max heap is used
             result = lhs < rhs;
         } else {
-            // Panic!
-            throw std::runtime_error("Bad direction of the fan-in cursor");
+            AKU_PANIC("bad direction of the fan-in cursor");
         }
         return result;
     }

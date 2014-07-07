@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <ostream>
 #include <atomic>
+#include <boost/throw_exception.hpp>
 
 namespace Akumuli
 {
@@ -60,7 +61,7 @@ namespace Akumuli
         apr_status_t flush() noexcept;
         bool is_bad() const noexcept;
         std::string error_message() const noexcept;
-        void throw_if_bad();
+        void panic_if_bad();
         apr_status_t status_code() const noexcept;
         //! Remap file in a destructive way (all file content is lost)
         void remap_file_destructive();
@@ -74,3 +75,6 @@ namespace Akumuli
     //! Fast integer logarithm
     int64_t log2(int64_t value) noexcept;
 }
+
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(std::runtime_error(msg));
+#define AKU_APR_PANIC(status, msg) BOOST_THROW_EXCEPTION(Akumuli::AprException(status, msg));

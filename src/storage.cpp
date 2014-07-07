@@ -40,14 +40,15 @@ static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.St
 
 //----------------------------------Volume----------------------------------------------
 
-Volume::Volume(const char* file_name, TimeDuration ttl, size_t max_cache_size)
+// TODO: remove max_cache_size
+Volume::Volume(const char* file_name, TimeDuration window, size_t max_cache_size)
     : mmap_(file_name)
-    , ttl_(ttl)
+    , window_(window)
     , max_cache_size_(max_cache_size)
 {
-    mmap_.throw_if_bad();  // panic if can't mmap volume
+    mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Cache(ttl_, max_cache_size_, page_));
+    cache_.reset(new Sequencer(page_, window_));
 }
 
 PageHeader* Volume::get_page() const noexcept {
@@ -79,8 +80,6 @@ void Volume::close() noexcept {
 //----------------------------------Storage---------------------------------------------
 
 Storage::Storage(const char* path, aku_Config const& conf)
-    : worker_(boost::bind(&Storage::run_worker_, this))
-    , stop_worker_(false)
 {
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
@@ -103,7 +102,7 @@ Storage::Storage(const char* path, aku_Config const& conf)
     // 2. Read volumes
     int num_volumes = ptree.get_child("num_volumes").get_value(0);
     if (num_volumes == 0) {
-        throw std::runtime_error("Invalid storage");
+        AKU_PANIC("invalid storage");
     }
 
     std::vector<std::string> volume_names(num_volumes);
@@ -114,14 +113,14 @@ Storage::Storage(const char* path, aku_Config const& conf)
             volume_names.at(*volume_index) = *volume_path;
         }
         else {
-            throw std::runtime_error("Invalid storage, bad volume link");
+            AKU_PANIC("invalid storage, bad volume link");
         }
     }
 
     // check result
     for(std::string const& path: volume_names) {
         if (path.empty())
-            throw std::runtime_error("Invalid storage, one of the volumes is missing");
+            AKU_PANIC("invalid storage, one of the volumes is missing");
     }
 
     // create volumes list
@@ -189,53 +188,20 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     boost::scoped_array<CursorResult> results;
     const int BUF_SIZE = 1024*1024/sizeof(EntryOffset);
     results.reset(new CursorResult[BUF_SIZE]);
-    size_t nswaps = 0;
     while(!cursor.is_done()) {
         int n_read = cursor.read(results.get(), BUF_SIZE);
         for (int i = 0; i < n_read; i++) {
             auto result = results[i];
             const Entry* entry = active_page_->read_entry(result.first);
-            active_volume_->cache_->add_entry(*entry, result.first, &nswaps);
-            if (nswaps) {
-                std::unique_lock<LockType> lock(mutex_);
-                notify_worker_(lock, nswaps, active_volume_);
+            TimeSeriesValue ts_value(entry->time, entry->param_id, result.first);
+            int add_status;
+            Sequencer::Lock merge_lock;
+            std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
+            if (merge_lock.owns_lock()) {
+                Caller caller;
+                DirectPageSyncCursor cursor;
+                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
             }
-        }
-    }
-}
-
-void Storage::notify_worker_(std::unique_lock<LockType>& lock, size_t ntimes, Volume* volume) noexcept {
-    for(size_t i = 0; i < ntimes; i++) {
-        outgoing_.push(volume);
-    }
-    lock.unlock();
-    worker_condition_.notify_one();
-}
-
-void Storage::run_worker_() noexcept {
-    std::unique_lock<LockType> lock(mutex_);
-
-    while(true) {
-        wait_queue_state_(lock, false);
-
-        Volume* vol = outgoing_.front();
-        PageHeader* hdr = vol->get_page();
-        size_t max_size = vol->max_cache_size_;
-
-        boost::scoped_array<CursorResult> buffer(new CursorResult[max_size]);
-        size_t result_size = 0;
-        int error_code = vol->cache_->pick_last(buffer.get(), max_size, &result_size);
-        if (error_code == AKU_SUCCESS) {
-            hdr->sync_indexes(buffer.get(), result_size);
-            outgoing_.pop();
-        }
-        else {
-            // TODO: process error
-        }
-
-        if (stop_worker_) {
-            // TODO: change this error somewhere
-            return;
         }
     }
 }
@@ -364,7 +330,7 @@ static std::vector<apr_status_t> create_page_files(std::vector<std::string> cons
 
 static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses) {
     if (targets.size() != statuses.size()) {
-        throw std::logic_error("Sizes of targets and statuses doesn't match");
+        AKU_PANIC("sizes of targets and statuses doesn't match");
     }
     apr_pool_t* mem_pool = NULL;
     int op_count = 0;
@@ -454,7 +420,7 @@ apr_status_t Storage::new_storage( const char* 	file_name
             auto error_message = apr_error_message(status);
             LOG4CXX_ERROR(s_logger_, "Invalid volumes path: " << error_message);
             apr_pool_destroy(mempool);
-            throw AprException(status, error_message.c_str());
+            AKU_APR_PANIC(status, error_message.c_str());
         }
         page_names.push_back(path);
     }
@@ -489,7 +455,7 @@ apr_status_t Storage::new_storage( const char* 	file_name
         auto error_message = apr_error_message(status);
         LOG4CXX_ERROR(s_logger_, "Invalid metadata path: " << error_message);
         apr_pool_destroy(mempool);
-        throw AprException(status, error_message.c_str());
+        AKU_APR_PANIC(status, error_message.c_str());
     }
     status = create_metadata_page(path, page_names);
     apr_pool_destroy(mempool);

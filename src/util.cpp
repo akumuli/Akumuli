@@ -83,12 +83,12 @@ void MemoryMappedFile::remap_file_destructive() {
     };
     if (status != APR_SUCCESS) {
         LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status) << " on step " << success_counter);
-        throw std::runtime_error("Can't remap file");
+        AKU_PANIC("can't remap file");
     }
     status = map_file();
     if (status != APR_SUCCESS) {
         LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status));
-        throw std::runtime_error("Can't remap file");
+        AKU_PANIC("can't remap file");
     }
 }
 
@@ -106,11 +106,11 @@ apr_status_t MemoryMappedFile::status_code() const noexcept {
     return status_;
 }
 
-void MemoryMappedFile::throw_if_bad() {
+void MemoryMappedFile::panic_if_bad() {
     if (status_ != APR_SUCCESS) {
         char error_message[0x100];
         apr_strerror(status_, error_message, 0x100);
-        throw AprException(status_, error_message);
+        AKU_APR_PANIC(status_, error_message);
     }
 }
 

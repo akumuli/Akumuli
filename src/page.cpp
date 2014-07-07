@@ -515,14 +515,11 @@ void PageHeader::_sort() noexcept {
     });
 }
 
-void PageHeader::sync_indexes(CursorResult* offsets, size_t num_offsets) noexcept {
-    if (sync_index + num_offsets > count)
-        num_offsets = count - sync_index;
-    std::transform( offsets, offsets + num_offsets
-                  , page_index + sync_index
-                  , [](CursorResult c) { return c.first;}
-                  );
-    sync_index += num_offsets;
+void PageHeader::sync_next_index(EntryOffset offset) noexcept {
+    if (sync_index == count) {
+        AKU_PANIC("sync_index out of range");
+    }
+    page_index[sync_index++] = offset;
 }
 
 }  // namepsace
