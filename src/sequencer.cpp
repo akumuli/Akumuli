@@ -10,7 +10,7 @@
 
 #include <thread>
 #include "akumuli_def.h"
-#include "cache.h"
+#include "sequencer.h"
 #include "util.h"
 
 #define PARAM_ID 1

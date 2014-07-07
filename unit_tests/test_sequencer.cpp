@@ -4,7 +4,7 @@
 #include <iostream>
 #include <boost/test/unit_test.hpp>
 
-#include "cache.h"
+#include "sequencer.h"
 #include "cursor.h"
 
 using namespace Akumuli;

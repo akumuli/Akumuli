@@ -15,20 +15,12 @@
 #pragma once
 #include "page.h"
 #include "cursor.h"
-#include "counters.h"
-
-#include <cpp-btree/btree_map.h>
 
 #include <tuple>
 #include <vector>
 #include <algorithm>
-#include <deque>
 #include <memory>
 #include <mutex>
-
-#include <tbb/enumerable_thread_specific.h>
-#include <tbb/concurrent_hash_map.h>
-#include <tbb/concurrent_queue.h>
 
 namespace Akumuli {
 

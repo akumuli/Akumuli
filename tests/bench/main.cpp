@@ -4,7 +4,7 @@
 
 #include "rdtsc.h"
 
-#include "cache.h"
+#include "sequencer.h"
 
 /** Benchmark runner class.
   * Base class for all tests.

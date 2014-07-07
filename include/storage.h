@@ -26,7 +26,7 @@
 
 #include "page.h"
 #include "util.h"
-#include "cache.h"
+#include "sequencer.h"
 #include "cursor.h"
 #include "akumuli_def.h"
 
@@ -65,7 +65,6 @@ struct Volume {
 struct Storage
 {
     typedef std::mutex      LockType;
-    typedef tbb::spin_mutex PageLock;
 
     // Active volume state
     Volume*                 active_volume_;
@@ -75,7 +74,6 @@ struct Storage
     std::vector<Volume*>    volumes_;                   //< List of all volumes
 
     LockType                mutex_;                     //< Storage lock (used by worker thread)
-    PageLock                page_mutex_;
 
     // Cached metadata
     apr_time_t creation_time_;

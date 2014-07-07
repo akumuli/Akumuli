@@ -7,15 +7,13 @@ add_library(akumuli SHARED
     ../include/akumuli_def.h
     ../include/util.h
     ../include/sort.h
-    ../include/cache.h
+    ../include/sequencer.h
     ../include/cursor.h
     ../include/internal_cursor.h
-    ../include/counters.h
     storage.cpp
     page.cpp
     akumuli.cpp
     util.cpp
-    cache.cpp
+    sequencer.cpp
     cursor.cpp
-    counters.cpp
 )
