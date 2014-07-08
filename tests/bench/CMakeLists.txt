@@ -7,5 +7,4 @@ target_link_libraries(bench
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
-    libtbb.so
 )

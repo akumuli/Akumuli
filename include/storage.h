@@ -26,7 +26,7 @@
 
 #include "page.h"
 #include "util.h"
-#include "cache.h"
+#include "sequencer.h"
 #include "cursor.h"
 #include "akumuli_def.h"
 
@@ -40,12 +40,12 @@ namespace Akumuli {
 struct Volume {
     MemoryMappedFile mmap_;
     PageHeader* page_;
-    TimeDuration ttl_;
+    TimeDuration window_;
     size_t max_cache_size_;
-    std::unique_ptr<Cache> cache_;
+    std::unique_ptr<Sequencer> cache_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path, TimeDuration ttl, size_t max_cache_size);
+    Volume(const char* file_path, TimeDuration window, size_t max_cache_size);
 
     //! Get pointer to page
     PageHeader* get_page() const noexcept;
@@ -65,7 +65,6 @@ struct Volume {
 struct Storage
 {
     typedef std::mutex      LockType;
-    typedef tbb::spin_mutex PageLock;
 
     // Active volume state
     Volume*                 active_volume_;
@@ -75,17 +74,9 @@ struct Storage
     std::vector<Volume*>    volumes_;                   //< List of all volumes
 
     LockType                mutex_;                     //< Storage lock (used by worker thread)
-    PageLock                page_mutex_;
-
-    // Worker thread state
-    std::queue<Volume*>     outgoing_;                  //< Write back queue
-    std::condition_variable worker_condition_;
-    std::thread             worker_;
-    bool                    stop_worker_;               //< Completion flag, set to stop worker
 
     // Cached metadata
     apr_time_t creation_time_;
-    //
 
     /** Storage c-tor.
       * @param file_name path to metadata file
@@ -95,26 +86,15 @@ struct Storage
     //! Select page that was active last time
     void select_active_page();
 
-    template<class Lock>
-    void wait_queue_state_(Lock& l, bool is_empty) {
-        worker_condition_.wait(l, [this, is_empty]() {
-            return this->outgoing_.empty() == is_empty;
-        });
-    }
-
     //! Prepopulate cache
     void prepopulate_cache(int64_t max_cache_size);
 
     void log_error(const char* message) noexcept;
 
-    void run_worker_() noexcept;
-
     // Writing
 
     //! commit changes
     void commit();
-
-    void notify_worker_(std::unique_lock<LockType>& lock, size_t ntimes, Volume* volume) noexcept;
 
     /** Switch volume in round robin manner
       * @param ix current volume index
@@ -123,36 +103,24 @@ struct Storage
 
     template<class TEntry>
     int _write_impl(TEntry const& entry) noexcept {
-        // TODO: review!
         int status = AKU_WRITE_STATUS_BAD_DATA;
         while(true) {
             int local_rev = active_volume_index_.load();
-            size_t nswaps = 0;
-            status = active_volume_->cache_->add_entry(entry, active_page_->last_offset, &nswaps);
+            TimeSeriesValue ts_value(entry.time, entry.param_id, active_page_->last_offset);
+            status = active_page_->add_entry(entry);
             switch (status) {
             case AKU_SUCCESS: {
-                // Page write is single threaded. Mutex needed
-                // to sync worker thread with writer thread and
-                // all reader threads.
-                page_mutex_.lock();
-                status = active_page_->add_entry(entry);
-                page_mutex_.unlock();
-                switch (status) {
-                case AKU_WRITE_STATUS_SUCCESS:
-                    if (nswaps) {
-                        std::unique_lock<LockType> guard(mutex_);
-                        notify_worker_(guard, nswaps, active_volume_);
-                    }
-                    // Fast path
-                    return status;
-                case AKU_WRITE_STATUS_OVERFLOW:
+                Sequencer::Lock merge_lock;
+                std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+                if (merge_lock.owns_lock()) {
                     // Slow path
-                    advance_volume_(local_rev);
-                    continue;
-                };
+                    Caller caller;
+                    DirectPageSyncCursor cursor;
+                    active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+                }
             }
-            // Errors that can be very frequent
             case AKU_EOVERFLOW:
+                advance_volume_(local_rev);
             case AKU_ELATE_WRITE:
                 break;
             // Branch for rare and unexpected errors

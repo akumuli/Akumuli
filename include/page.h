@@ -26,6 +26,8 @@ namespace Akumuli {
 
 typedef std::pair<EntryOffset, const PageHeader*> CursorResult;
 
+std::ostream& operator << (std::ostream& st, CursorResult res);
+
 
 /** Time duration.
  *  Difference between two timestamps.
@@ -306,7 +308,7 @@ struct PageHeader {
       * @param offsets ordered offsets
       * @param num_offsets number of values in buffer
       */
-    void sync_indexes(CursorResult *offsets, size_t num_offsets) noexcept;
+    void sync_next_index(EntryOffset offsets) noexcept;
 };
 
 }  // namespaces
