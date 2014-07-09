@@ -118,18 +118,18 @@ struct Storage
                     DirectPageSyncCursor cursor;
                     active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
                 }
+                return status;
             }
             case AKU_EOVERFLOW:
                 advance_volume_(local_rev);
+                break;  // retry
             case AKU_ELATE_WRITE:
-                break;
             // Branch for rare and unexpected errors
             default:
                 log_error(aku_error_message(status));
-                break;
+                return status;
             };
         }
-        return status;
     }
 
     //! Write data.

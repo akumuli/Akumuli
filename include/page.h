@@ -89,7 +89,7 @@ struct Entry {
     ParamId      param_id;  //< Parameter ID
     TimeStamp        time;  //< Entry timestamp
     uint32_t       length;  //< Entry length: constant + variable sized parts
-    uint32_t     value[];   //< Data begining
+    uint32_t      value[];  //< Data begining
 
     //! C-tor
     Entry(uint32_t length);
