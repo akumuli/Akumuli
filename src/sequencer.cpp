@@ -16,6 +16,7 @@
  */
 
 #include <thread>
+#include <boost/heap/skew_heap.hpp>
 #include "akumuli_def.h"
 #include "sequencer.h"
 #include "util.h"
@@ -246,31 +247,28 @@ void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_it
     }
 
     typedef tuple<value_t, int> HeapItem;
-    typedef vector<HeapItem> Heap;
+    typedef MergePred<HeapItem, dir> Comp;
+    typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
     Heap heap;
 
     for(auto index = 0u; index < n; index++) {
         if (iter[index] != ends[index]) {
             auto value = *iter[index];
             iter[index]++;
-            heap.push_back(make_tuple(value, index));
+            heap.push(make_tuple(value, index));
         }
     }
 
-    make_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
-
     while(!heap.empty()) {
-        pop_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
-        auto item = heap.back();
+        auto item = heap.top();
         auto point = get<0>(item);
         int index = get<1>(item);
         out_iter->put(caller, point.value, page);
-        heap.pop_back();
+        heap.pop();
         if (iter[index] != ends[index]) {
             auto point = *iter[index];
             iter[index]++;
-            heap.push_back(make_tuple(point, index));
-            push_heap(heap.begin(), heap.end(), MergePred<HeapItem, dir>());
+            heap.push(make_tuple(point, index));
         }
     }
 }
