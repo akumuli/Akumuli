@@ -104,14 +104,14 @@ Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
 // Cursors
 // -------
 
-static SearchQuery::ParamMatch single_param_matcher(ParamId a, ParamId b) {
+static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
     if (a == b) {
         return SearchQuery::MATCH;
     }
     return SearchQuery::NO_MATCH;
 }
 
-SearchQuery::SearchQuery( ParamId      param_id
+SearchQuery::SearchQuery( aku_ParamId      param_id
                         , TimeStamp    low
                         , TimeStamp    upp
                         , uint32_t     scan_dir)  noexcept
@@ -170,7 +170,7 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
 {
 }
 
-std::pair<EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const noexcept {
+std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const noexcept {
     if (index < 0 || index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);
     }
@@ -189,7 +189,7 @@ size_t PageHeader::get_free_space() const noexcept {
     return end - begin;
 }
 
-void PageHeader::update_bounding_box(ParamId param, TimeStamp time) noexcept {
+void PageHeader::update_bounding_box(aku_ParamId param, TimeStamp time) noexcept {
     if (param > bbox.max_id) {
         bbox.max_id = param;
     }
@@ -204,7 +204,7 @@ void PageHeader::update_bounding_box(ParamId param, TimeStamp time) noexcept {
     }
 }
 
-bool PageHeader::inside_bbox(ParamId param, TimeStamp time) const noexcept {
+bool PageHeader::inside_bbox(aku_ParamId param, TimeStamp time) const noexcept {
     return time  <= bbox.max_timestamp
         && time  >= bbox.min_timestamp
         && param <= bbox.max_id
@@ -223,7 +223,7 @@ void PageHeader::close() noexcept {
 }
 
 int PageHeader::add_entry(Entry const& entry) noexcept {
-    auto space_required = entry.length + sizeof(EntryOffset);
+    auto space_required = entry.length + sizeof(aku_EntryOffset);
     if (entry.length < sizeof(Entry)) {
         return AKU_WRITE_STATUS_BAD_DATA;
     }
@@ -243,12 +243,12 @@ int PageHeader::add_entry(Entry const& entry) noexcept {
 
 int PageHeader::add_entry(Entry2 const& entry) noexcept {
 
-    static const int ENTRY_LEN = sizeof(TimeStamp) + sizeof(ParamId);
+    static const int ENTRY_LEN = sizeof(TimeStamp) + sizeof(aku_ParamId);
 
     auto space_required = entry.range.length
                         + sizeof(uint32_t)
                         + ENTRY_LEN
-                        + sizeof(EntryOffset);
+                        + sizeof(aku_EntryOffset);
 
     auto free_space = get_free_space();
     if (space_required > free_space) {
@@ -284,7 +284,7 @@ const Entry* PageHeader::read_entry_at(uint32_t index) const noexcept {
     return 0;
 }
 
-const Entry* PageHeader::read_entry(EntryOffset offset) const noexcept {
+const Entry* PageHeader::read_entry(aku_EntryOffset offset) const noexcept {
     auto ptr = cdata() + offset;
     auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
     return entry_ptr;
@@ -298,7 +298,7 @@ int PageHeader::get_entry_length_at(int entry_index) const noexcept {
     return 0;
 }
 
-int PageHeader::get_entry_length(EntryOffset offset) const noexcept {
+int PageHeader::get_entry_length(aku_EntryOffset offset) const noexcept {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         return entry_ptr->length;
@@ -318,7 +318,7 @@ int PageHeader::copy_entry_at(int index, Entry* receiver) const noexcept {
     return 0;
 }
 
-int PageHeader::copy_entry(EntryOffset offset, Entry* receiver) const noexcept {
+int PageHeader::copy_entry(aku_EntryOffset offset, Entry* receiver) const noexcept {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
@@ -513,7 +513,7 @@ SCAN:
 void PageHeader::_sort() noexcept {
     auto begin = page_index;
     auto end = page_index + count;
-    std::sort(begin, end, [&](EntryOffset a, EntryOffset b) {
+    std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
         auto ea = reinterpret_cast<const Entry*>(cdata() + a);
         auto eb = reinterpret_cast<const Entry*>(cdata() + b);
         auto ta = std::tuple<uint64_t, uint32_t>(ea->time.value, ea->param_id);
@@ -522,7 +522,7 @@ void PageHeader::_sort() noexcept {
     });
 }
 
-void PageHeader::sync_next_index(EntryOffset offset) noexcept {
+void PageHeader::sync_next_index(aku_EntryOffset offset) noexcept {
     if (sync_index == count) {
         AKU_PANIC("sync_index out of range");
     }

@@ -42,7 +42,7 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset)
+TimeSeriesValue::TimeSeriesValue(TimeStamp ts, aku_ParamId id, aku_EntryOffset offset)
     : key_(ts, id)
     , value(offset)
 {

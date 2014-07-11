@@ -25,7 +25,7 @@ namespace Akumuli {
 
 static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Cursor");
 
-void RecordingCursor::put(Caller &, EntryOffset offset, const PageHeader *page) noexcept {
+void RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) noexcept {
     offsets.push_back(std::make_pair(offset, page));
 }
 
@@ -46,7 +46,7 @@ BufferedCursor::BufferedCursor(CursorResult* buf, size_t size) noexcept
 {
 }
 
-void BufferedCursor::put(Caller&, EntryOffset offset, const PageHeader* page) noexcept {
+void BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) noexcept {
     if (count == buffer_size) {
         completed = true;
         error_code = AKU_EOVERFLOW;
@@ -73,7 +73,7 @@ DirectPageSyncCursor::DirectPageSyncCursor()
 {
 }
 
-void DirectPageSyncCursor::put(Caller&, EntryOffset offset, const PageHeader *page) noexcept {
+void DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept {
     const_cast<PageHeader*>(page)->sync_next_index(offset);
 }
 
@@ -134,7 +134,7 @@ void CoroCursor::set_error(Caller& caller, int error_code) noexcept {
     caller();
 }
 
-void CoroCursor::put(Caller& caller, EntryOffset off, const PageHeader* page) noexcept {
+void CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) noexcept {
     if (write_index_ == usr_buffer_len_) {
         // yield control to client
         caller();
@@ -150,7 +150,7 @@ void CoroCursor::complete(Caller& caller) noexcept {
 
 // FanInCursor implementation
 
-typedef std::tuple<TimeStamp, ParamId, EntryOffset, int, int, const PageHeader*> HeapItem;
+typedef std::tuple<TimeStamp, aku_ParamId, aku_EntryOffset, int, int, const PageHeader*> HeapItem;
 
 struct HeapPred {
     int dir;

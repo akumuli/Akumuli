@@ -27,8 +27,10 @@
 
 extern "C" {
 
-    typedef uint32_t EntryOffset;
-    typedef uint32_t ParamId;
+    typedef uint64_t aku_TimeStamp;
+    typedef uint32_t aku_EntryOffset;
+    typedef uint32_t aku_ParamId;
+    typedef int      aku_Status;
 
     struct aku_MemRange {
         void* address;
@@ -38,10 +40,12 @@ extern "C" {
     const char* aku_error_message(int error_code);
 
     //! Database instance.
-    struct aku_Database { };
+    struct aku_Database {
+        aku_Status status;  //< Status of the open operation
+    };
 
     /**
-     * @brief Creates storage for new database
+     * @brief Creates storage for new database on the hard drive
      * @param file_name database file name
      * @param metadata_path path to metadata file
      * @param volumes_path path to volumes
@@ -53,69 +57,63 @@ extern "C" {
                                 , const char* 	volumes_path
                                 , int32_t       num_volumes
                                 );
-    /**
-     * @brief Add sample to database.
-     * Database must be opend.
-     * @param db database instance
-     * @param param_id parameter id
-     * @param timestamp entry timestamp (64-bit timestamp)
-     * @param data data
-     */
-    void aku_add_sample( aku_Database*     db
-                       , uint32_t          param_id
-                       , int64_t           timestamp
-                       , aku_MemRange      data
-                       );
 
     /**
-     * @brief Find value of the parameter.
-     * Database must be opend.
-     * @param db database instance
-     * @param param_id parameter id
-     * @param instant time of interest (0 for current time)
-     * @param out_data output data
-     * @brief out_data format - interleaved
-     * length, timestamp and parameter values aligned by byte.
-     * @returns 0 on success -min_length if out_data is not larage enough
+     * @brief Select search query.
      */
-    int32_t aku_find_sample
-                        ( aku_Database*     db
-                        , uint32_t          param_id
-                        , int64_t           instant
-                        , aku_MemRange      out_data
-                        );
+    struct aku_SelectQuery {
+        //! Begining of the search range
+        aku_TimeStamp begin;
+        //! End of the search range
+        aku_TimeStamp end;
+        //! Number of parameters to search
+        uint32_t n_params;
+        //! Array of parameters to search
+        aku_ParamId params[];
+    };
+
     /**
-     * @brief Find all values in time range.
-     * Database must be opend.
-     * @param db database instance.
-     * @param param_id parameter id
-     * @param begin begining of the range (0 for -inf)
-     * @param end end of the range (0 for inf)
-     * @param out_data output data
-     * @brief out_data format - interleaved
-     * length, timestamp and parameter values aligned by byte.
-     * @returns num results on success -min_length if out_data is not larage enough
-    */
-    /*
-    int32_t aku_find_samples
-                        ( aku_Database*     db
-                        , uint32_t          param_id
-                        , int64_t           begin,
-                        , int64_t           end,
-                        , aku_MemRange      out_data
-                        );
-    */
+     * @brief The aku_Cursor struct
+     */
+    struct aku_Cursor {
+        aku_Status status;
+    };
+
+    /**
+     * @brief Create select query
+     */
+    aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
+
+    /**
+     * @brief Destroy any object created with aku_make_*** function
+     */
+    void aku_destroy(void* any);
+
+    /**
+     * @brief Execute query
+     * @param query data structure representing search query
+     * @return cursor
+     */
+    aku_Cursor* aku_select(aku_Database* db, aku_SelectQuery* query);
+
+    /**
+     * @brief Close cursor
+     * @param pcursor pointer to cursor
+     */
+    void aku_close_cursor(aku_Cursor* pcursor);
 
     /**
      * @brief Flush data to disk.
      * @param db database.
      */
-    void aku_flush_database(aku_Database* db);
+    aku_Status aku_flush_database(aku_Database* db);
 
 
     /** Open existing database.
      */
     aku_Database* aku_open_database(const char *path, aku_Config config);
+
+    aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
 
 
     /** Close database.

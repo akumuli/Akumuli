@@ -47,6 +47,29 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[10];
 }
 
+
+struct MatchPred {
+    std::vector<aku_ParamId> params_;
+    MatchPred(aku_ParamId* begin, uint32_t n)
+        : params_(begin, begin + n)
+    {
+    }
+
+    SearchQuery::ParamMatch operator () (aku_ParamId id) const {
+        return std::binary_search(params_.begin(), params_.end(), id) ? SearchQuery::MATCH : SearchQuery::NO_MATCH;
+    }
+};
+
+
+struct CursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
+    CursorImpl(Storage& storage, SearchQuery query) {
+        status = AKU_SUCCESS;
+        cursor_ = CoroCursor::make(&Storage::search, &storage, query);
+    }
+};
+
+
 /** 
  * Object that extends a Database struct.
  * Can be used from "C" code.
@@ -61,6 +84,24 @@ struct DatabaseImpl : public aku_Database
     {
     }
 
+    CursorImpl* select(aku_SelectQuery* query) {
+        uint32_t scan_dir;
+        aku_TimeStamp begin, end;
+        if (query->begin < query->end) {
+            begin = query->begin;
+            end = query->end;
+            scan_dir = AKU_CURSOR_DIR_FORWARD;
+        } else {
+            end = query->begin;
+            begin = query->end;
+            scan_dir = AKU_CURSOR_DIR_BACKWARD;
+        }
+        MatchPred pred(query->params, query->n_params);
+        SearchQuery search_query(pred, {begin}, {end}, scan_dir);
+        auto pcur = new CursorImpl(storage_, search_query);
+        return pcur;
+    }
+
     void flush() {
         storage_.commit();
     }
@@ -72,10 +113,6 @@ struct DatabaseImpl : public aku_Database
         storage_.write(entry);
     }
 
-    int32_t find_sample(uint32_t param_id, int64_t instant, aku_MemRange out_data) {
-        // FIXME
-        throw std::runtime_error("not implemented");
-    }
 };
 
 apr_status_t create_database( const char* 	file_name
@@ -87,18 +124,14 @@ apr_status_t create_database( const char* 	file_name
     return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes);
 }
 
-void aku_flush_database(aku_Database* db) {
+aku_Status aku_flush_database(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->flush();
 }
 
-void aku_add_sample(aku_Database* db, uint32_t param_id, int64_t long_timestamp, aku_MemRange value) {
+aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->add_sample(param_id, long_timestamp, value);
-}
-
-int32_t aku_find_sample(aku_Database* db, uint32_t param_id, int64_t instant, aku_MemRange out_data) {
-    throw std::runtime_error("not implemented");
 }
 
 aku_Database* aku_open_database(const char* path, aku_Config config)
@@ -111,3 +144,25 @@ void aku_close_database(aku_Database* db)
 {
     delete db;
 }
+
+aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId *params) {
+    size_t s = sizeof(aku_SelectQuery) + n_params*sizeof(uint32_t);
+    auto p = malloc(s);
+    auto res = reinterpret_cast<aku_SelectQuery*>(p);
+    res->begin = begin;
+    res->end = end;
+    res->n_params = n_params;
+    memcpy(&res->params, params, n_params*sizeof(uint32_t));
+    std::sort(res->params, res->params + n_params);
+    return res;
+}
+
+void aku_destroy(void* any) {
+    free(any);
+}
+
+aku_Cursor* aku_select(aku_Database *db, aku_SelectQuery* query) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->select(query);
+}
+

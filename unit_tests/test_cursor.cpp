@@ -16,7 +16,7 @@ void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (EntryOffset i = 0u; i < (EntryOffset)n_iter; i++) {
+        for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             cursor.put(caller, i, nullptr);
             expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
         }
@@ -41,7 +41,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (EntryOffset i = 0u; i < (EntryOffset)n_iter; i++) {
+        for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             cursor.put(caller, i, nullptr);
             expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
         }
@@ -193,7 +193,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
         pages.emplace_back(page_size, (uint32_t)i);
     }
 
-    auto match_all = [](ParamId) { return SearchQuery::MATCH; };
+    auto match_all = [](aku_ParamId) { return SearchQuery::MATCH; };
     SearchQuery q(match_all, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, dir);
 
     std::vector<CoroCursor> cursors(n_cursors);

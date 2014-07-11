@@ -149,7 +149,7 @@ struct Storage
     // Reading
 
     //! Search storage using cursor
-    void search(Caller &caller, InternalCursor *cur, SearchQuery &query) const noexcept;
+    void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const noexcept;
 
     // Static interface
 

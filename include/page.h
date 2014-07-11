@@ -32,7 +32,7 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
-typedef std::pair<EntryOffset, const PageHeader*> CursorResult;
+typedef std::pair<aku_EntryOffset, const PageHeader*> CursorResult;
 
 std::ostream& operator << (std::ostream& st, CursorResult res);
 
@@ -94,7 +94,7 @@ struct TimeStamp {
  *  Recorder by itself, this is a time of data reception.
  */
 struct Entry {
-    ParamId      param_id;  //< Parameter ID
+    aku_ParamId      param_id;  //< Parameter ID
     TimeStamp        time;  //< Entry timestamp
     uint32_t       length;  //< Entry length: constant + variable sized parts
     uint32_t      value[];  //< Data begining
@@ -103,7 +103,7 @@ struct Entry {
     Entry(uint32_t length);
 
     //! Extended c-tor
-    Entry(ParamId param_id, TimeStamp time, uint32_t length);
+    Entry(aku_ParamId param_id, TimeStamp time, uint32_t length);
 
     //! Calculate size needed to store data
     static uint32_t get_size(uint32_t load_size) noexcept;
@@ -117,7 +117,7 @@ struct Entry2 {
     TimeStamp        time;  //< Entry timestamp
     aku_MemRange    range;  //< Data
 
-    Entry2(ParamId param_id, TimeStamp time, aku_MemRange range);
+    Entry2(aku_ParamId param_id, TimeStamp time, aku_MemRange range);
 };
 
 
@@ -132,8 +132,8 @@ enum PageType {
  *  All data is two dimentional: param-timestamp.
  */
 struct PageBoundingBox {
-    ParamId max_id;
-    ParamId min_id;
+    aku_ParamId max_id;
+    aku_ParamId min_id;
     TimeStamp max_timestamp;
     TimeStamp min_timestamp;
 
@@ -159,7 +159,7 @@ struct SearchQuery {
     // Matcher f-n can return only MATCH and NO_MATCH. Search algorithms doesn't
     // need to rely on first two values of the enumeration (LT_ALL and GT_ALL).
     // This is just a hint to the search algorithm that can speedup search.
-    typedef std::function<ParamMatch(ParamId)> MatcherFn;
+    typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
 
     // search query
     TimeStamp lowerbound;     //< begining of the time interval (0 for -inf)
@@ -174,7 +174,7 @@ struct SearchQuery {
      *  @param upp time upperbound (MAX_TIMESTAMP for inf)
      *  @param scan_dir scan direction
      */
-    SearchQuery( ParamId      param_id
+    SearchQuery( aku_ParamId      param_id
                , TimeStamp    low
                , TimeStamp    upp
                , uint32_t     scan_dir) noexcept;
@@ -212,10 +212,10 @@ struct PageHeader {
     uint32_t page_id;           //< page index in storage
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
-    EntryOffset page_index[];   //< page index
+    aku_EntryOffset page_index[];   //< page index
 
     //! Convert entry index to entry offset
-    std::pair<EntryOffset, int> index_to_offset(uint32_t index) const noexcept;
+    std::pair<aku_EntryOffset, int> index_to_offset(uint32_t index) const noexcept;
 
     //! Get const pointer to the begining of the page
     const char* cdata() const noexcept;
@@ -223,7 +223,7 @@ struct PageHeader {
     //! Get pointer to the begining of the page
     char* data() noexcept;
 
-    void update_bounding_box(ParamId param, TimeStamp time) noexcept;
+    void update_bounding_box(aku_ParamId param, TimeStamp time) noexcept;
 
     //! C-tor
     PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id);
@@ -240,7 +240,7 @@ struct PageHeader {
     //! Returns amount of free space in bytes
     size_t get_free_space() const noexcept;
 
-    bool inside_bbox(ParamId param, TimeStamp time) const noexcept;
+    bool inside_bbox(aku_ParamId param, TimeStamp time) const noexcept;
 
     /**
      * Add new entry to page data.
@@ -268,7 +268,7 @@ struct PageHeader {
      * @param offset offset of the entry.
      * @returns 0 if index is out of range, entry length otherwise.
      */
-    int get_entry_length(EntryOffset offset) const noexcept;
+    int get_entry_length(aku_EntryOffset offset) const noexcept;
 
     /**
      * Copy entry from page to receiving buffer using index.
@@ -288,7 +288,7 @@ struct PageHeader {
      * @returns 0 if index out of range, -1*entry[index].length
      * if buffer is to small, entry[index].length on success.
      */
-    int copy_entry(EntryOffset offset, Entry* receiver) const noexcept;
+    int copy_entry(aku_EntryOffset offset, Entry* receiver) const noexcept;
 
     /**
      * Get pointer to entry without copying using index
@@ -302,7 +302,7 @@ struct PageHeader {
      * @param index entry index
      * @returns pointer to entry or NULL
      */
-    const Entry* read_entry(EntryOffset offset) const noexcept;
+    const Entry* read_entry(aku_EntryOffset offset) const noexcept;
 
     /**
      *  Search for entry
@@ -316,7 +316,7 @@ struct PageHeader {
       * @param offsets ordered offsets
       * @param num_offsets number of values in buffer
       */
-    void sync_next_index(EntryOffset offsets) noexcept;
+    void sync_next_index(aku_EntryOffset offsets) noexcept;
 };
 
 }  // namespaces

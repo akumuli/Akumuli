@@ -178,7 +178,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     const Entry* top_entry = active_page_->read_entry_at(begin);
 
     // Match all properties
-    SearchQuery::MatcherFn matcher = [](ParamId) {
+    SearchQuery::MatcherFn matcher = [](aku_ParamId) {
         return SearchQuery::MATCH;
     };
 
@@ -193,7 +193,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
 
     // use 1Mb of cache by default
     boost::scoped_array<CursorResult> results;
-    const int BUF_SIZE = 1024*1024/sizeof(EntryOffset);
+    const int BUF_SIZE = 1024*1024/sizeof(aku_EntryOffset);
     results.reset(new CursorResult[BUF_SIZE]);
     while(!cursor.is_done()) {
         int n_read = cursor.read(results.get(), BUF_SIZE);
@@ -469,7 +469,7 @@ apr_status_t Storage::new_storage( const char* 	file_name
     return status;
 }
 
-void Storage::search(Caller &caller, InternalCursor *cur, SearchQuery &query) const noexcept {
+void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const noexcept {
     // Find pages
     // at this stage of development - simply get all pages :)
     std::vector<std::unique_ptr<ExternalCursor>> cursors;

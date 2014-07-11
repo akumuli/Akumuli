@@ -33,12 +33,12 @@
 namespace Akumuli {
 
 struct TimeSeriesValue {
-    std::tuple<TimeStamp, ParamId> key_;
-    EntryOffset value;
+    std::tuple<TimeStamp, aku_ParamId> key_;
+    aku_EntryOffset value;
 
     TimeSeriesValue();
 
-    TimeSeriesValue(TimeStamp ts, ParamId id, EntryOffset offset);
+    TimeSeriesValue(TimeStamp ts, aku_ParamId id, aku_EntryOffset offset);
 
     TimeStamp get_timestamp() const;
 

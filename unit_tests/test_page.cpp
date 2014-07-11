@@ -29,7 +29,7 @@ BOOST_AUTO_TEST_CASE(TestPaging2)
     auto result = page->add_entry(*entry);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
     auto free_space_after = page->get_free_space();
-    BOOST_CHECK_EQUAL(free_space_before - free_space_after, 128 + sizeof(EntryOffset));
+    BOOST_CHECK_EQUAL(free_space_before - free_space_after, 128 + sizeof(aku_EntryOffset));
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging3)
@@ -128,7 +128,7 @@ struct ExpectedSearchResults {
     bool completed;
     int error_code;
     size_t ressize;
-    EntryOffset skew;
+    aku_EntryOffset skew;
 };
 
 void generic_search_test
@@ -348,7 +348,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     const int               buf_len = 1024*1024*8;
     std::vector<char>       buffer(buf_len);
     std::vector<int64_t>    timestamps;
-    std::vector<ParamId>    paramids;
+    std::vector<aku_ParamId>    paramids;
     char                    entry_buffer[64];
     int64_t                 time_stamp = 0L;
     PageHeader*             page = nullptr;
@@ -359,7 +359,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     {
         int rand_num = rand();
         TimeStamp inst = {time_stamp};
-        ParamId id = 1 + (rand_num & 1);
+        aku_ParamId id = 1 + (rand_num & 1);
         auto entry = new (entry_buffer) Entry(id, inst, Entry::get_size(sizeof(uint32_t)));
         entry->value[0] = i;
         if(page->add_entry(*entry) == AKU_WRITE_STATUS_OVERFLOW) {
@@ -382,7 +382,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         int dir = directions[rand() & 1];
         int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.value);
         int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.value);
-        ParamId id2search = 1 + (rand() & 1);
+        aku_ParamId id2search = 1 + (rand() & 1);
         assert(start_time > 0 && start_time < page->bbox.max_timestamp.value);
         assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
         assert(stop_time > start_time);
