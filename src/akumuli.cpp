@@ -63,9 +63,41 @@ struct MatchPred {
 
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
+    int status_;
+
     CursorImpl(Storage& storage, SearchQuery query) {
-        status = AKU_SUCCESS;
+        status_ = AKU_SUCCESS;
         cursor_ = CoroCursor::make(&Storage::search, &storage, query);
+    }
+
+    ~CursorImpl() {
+        cursor_->close();
+    }
+
+    bool is_done() const {
+        return cursor_->is_done();
+    }
+
+    bool is_error(int* out_error_code_or_null) const {
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
+    }
+
+    int read(aku_Entry const** buffer, int buffer_len) {
+        // TODO: track PageHeader::open_count here
+        std::vector<CursorResult> results;
+        results.resize(buffer_len);
+        int n_results = cursor_->read(results.data(), buffer_len);
+        for (int i = 0; i < n_results; i++) {
+            aku_EntryOffset offset = results[i].first;
+            PageHeader const* page = results[i].second;
+            const Entry* entry = page->read_entry(offset);
+            buffer[i] = reinterpret_cast<aku_Entry const*>(entry);
+        }
+        return n_results;
     }
 };
 
@@ -164,5 +196,25 @@ void aku_destroy(void* any) {
 aku_Cursor* aku_select(aku_Database *db, aku_SelectQuery* query) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->select(query);
+}
+
+void aku_close_cursor(aku_Cursor* pcursor) {
+    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
+    delete pimpl;
+}
+
+int aku_cursor_read(aku_Cursor* pcursor, const aku_Entry **buffer, int buffer_len) {
+    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
+    return pimpl->read(buffer, buffer_len);
+}
+
+bool aku_cursor_is_done(aku_Cursor* pcursor) {
+    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
+    return pimpl->is_done();
+}
+
+bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
+    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
+    return pimpl->is_error(out_error_code_or_null);
 }
 

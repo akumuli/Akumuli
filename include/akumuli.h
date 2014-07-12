@@ -37,11 +37,17 @@ extern "C" {
         uint32_t length;
     };
 
+    struct aku_Entry {
+        aku_ParamId    param_id;  //< Parameter ID
+        aku_TimeStamp  time;      //< Entry timestamp
+        uint32_t       length;    //< Entry length: constant + variable sized parts
+        uint32_t       value[];   //< Data begining
+    };
+
     const char* aku_error_message(int error_code);
 
     //! Database instance.
     struct aku_Database {
-        aku_Status status;  //< Status of the open operation
     };
 
     /**
@@ -76,7 +82,6 @@ extern "C" {
      * @brief The aku_Cursor struct
      */
     struct aku_Cursor {
-        aku_Status status;
     };
 
     /**
@@ -101,6 +106,12 @@ extern "C" {
      * @param pcursor pointer to cursor
      */
     void aku_close_cursor(aku_Cursor* pcursor);
+
+    int aku_cursor_read(aku_Cursor* pcursor, aku_Entry const** buffer, int buffer_len);
+
+    bool aku_cursor_is_done(aku_Cursor* pcursor);
+
+    bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
     /**
      * @brief Flush data to disk.
