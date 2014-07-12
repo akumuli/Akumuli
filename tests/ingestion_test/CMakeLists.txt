@@ -1,5 +1,5 @@
-add_executable(fill_test main.cpp)
-target_link_libraries(fill_test
+add_executable(ingestion_test main.cpp)
+target_link_libraries(ingestion_test
     akumuli
     ${LOG4CXX_LIBRARIES}
     ${APR_LIBRARY}

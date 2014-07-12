@@ -60,7 +60,7 @@ struct TimeStamp {
      *  real timestamps. Akumuli doesn't uses any kind of calendar
      *  or timezone conversion.
      */
-    int64_t value;
+    uint64_t value;
 
     /** UTC timestamp of the current instant */
     static TimeStamp utc_now() noexcept;
@@ -78,7 +78,7 @@ struct TimeStamp {
     //! Minimum possible timestamp
     static const TimeStamp MIN_TIMESTAMP;
 
-    static inline TimeStamp make(int64_t t) noexcept {
+    static inline TimeStamp make(uint64_t t) noexcept {
         TimeStamp ts = {t};
         return ts;
     }

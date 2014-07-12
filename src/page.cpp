@@ -35,7 +35,7 @@ std::ostream& operator << (std::ostream& st, CursorResult res) {
 //---------------Timestamp
 
 TimeStamp TimeStamp::utc_now() noexcept {
-    int64_t t = apr_time_now();
+    uint64_t t = (uint64_t)apr_time_now();
     return { t };
 }
 
@@ -63,9 +63,9 @@ TimeDuration TimeStamp::operator - (TimeStamp other) const noexcept {
     return { value - other.value };
 }
 
-const TimeStamp TimeStamp::MAX_TIMESTAMP = {std::numeric_limits<int64_t>::max()};
+const TimeStamp TimeStamp::MAX_TIMESTAMP = {std::numeric_limits<uint64_t>::max()};
 
-const TimeStamp TimeStamp::MIN_TIMESTAMP = {0L};
+const TimeStamp TimeStamp::MIN_TIMESTAMP = {std::numeric_limits<uint64_t>::min()};
 
 //------------------------
 
@@ -370,14 +370,14 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
     uint32_t max_index = count - 1u;
     uint32_t begin = 0u;
     uint32_t end = max_index;
-    int64_t key = is_backward ? query.upperbound.value
-                              : query.lowerbound.value;
+    uint64_t key = is_backward ? query.upperbound.value
+                               : query.lowerbound.value;
     uint32_t probe_index = 0u;
 
     if (key <= bbox.max_timestamp.value && key >= bbox.min_timestamp.value) {
 
-        int64_t search_lower_bound = bbox.min_timestamp.value;
-        int64_t search_upper_bound = bbox.max_timestamp.value;
+        uint64_t search_lower_bound = bbox.min_timestamp.value;
+        uint64_t search_upper_bound = bbox.max_timestamp.value;
 
         int interpolation_search_quota = 5;
 

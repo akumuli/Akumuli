@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int NUM_ITERATIONS = 10*1000*1000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -72,7 +72,29 @@ int main(int cnt, const char** args)
     aku_close_database(db);
 
     // Search
-
+    aku_ParamId params[] = {1};
+    aku_SelectQuery* query = aku_make_select_query( std::numeric_limits<aku_TimeStamp>::min()
+                                                  , std::numeric_limits<aku_TimeStamp>::max()
+                                                  , 1, params);
+    aku_Cursor* cursor = aku_select(db, query);
+    aku_TimeStamp current_time = 0;
+    while(!aku_cursor_is_done(cursor)) {
+        int err = AKU_SUCCESS;
+        if (aku_cursor_is_error(cursor, &err)) {
+            std::cout << aku_error_message(err) << std::endl;
+            return -1;
+        }
+        aku_Entry const* entries[1000];
+        int n_entries = aku_cursor_read(cursor, entries, 1000);
+        for (int i = 0; i < n_entries; i++) {
+            aku_Entry const* p = entries[i];
+            if (p->time != current_time) {
+                std::cout << "Error at " << current_time << std::endl;
+                return -2;
+            }
+            current_time++;
+        }
+    }
     delete_storage();
     return 0;
 }
