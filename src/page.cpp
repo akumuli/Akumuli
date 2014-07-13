@@ -32,77 +32,7 @@ std::ostream& operator << (std::ostream& st, CursorResult res) {
     return st;
 }
 
-//---------------Timestamp
-
-TimeStamp TimeStamp::utc_now() noexcept {
-    uint64_t t = (uint64_t)apr_time_now();
-    return { t };
-}
-
-bool TimeStamp::operator  < (TimeStamp other) const noexcept {
-    return value < other.value;
-}
-
-bool TimeStamp::operator  > (TimeStamp other) const noexcept {
-    return value > other.value;
-}
-
-bool TimeStamp::operator == (TimeStamp other) const noexcept {
-    return value == other.value;
-}
-
-bool TimeStamp::operator <= (TimeStamp other) const noexcept {
-    return value <= other.value;
-}
-
-bool TimeStamp::operator >= (TimeStamp other) const noexcept {
-    return value >= other.value;
-}
-
-TimeDuration TimeStamp::operator - (TimeStamp other) const noexcept {
-    return { value - other.value };
-}
-
-const TimeStamp TimeStamp::MAX_TIMESTAMP = {std::numeric_limits<uint64_t>::max()};
-
-const TimeStamp TimeStamp::MIN_TIMESTAMP = {std::numeric_limits<uint64_t>::min()};
-
 //------------------------
-
-Entry::Entry(uint32_t length)
-    : param_id {}
-    , time {}
-    , length(length)
-{
-}
-
-Entry::Entry(uint32_t param_id, TimeStamp timestamp, uint32_t length)
-    : param_id(param_id)
-    , time(timestamp)
-    , length(length)
-{
-}
-
-uint32_t Entry::get_size(uint32_t load_size) noexcept {
-    return sizeof(Entry) - sizeof(uint32_t) + load_size;
-}
-
-aku_MemRange Entry::get_storage() const noexcept {
-    return { (void*)value, length };
-}
-
-
-Entry2::Entry2(uint32_t param_id, TimeStamp time, aku_MemRange range)
-    : param_id(param_id)
-    , time(time)
-    , range(range)
-{
-}
-
-
-
-// Cursors
-// -------
 
 static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
     if (a == b) {
@@ -111,10 +41,10 @@ static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b
     return SearchQuery::NO_MATCH;
 }
 
-SearchQuery::SearchQuery( aku_ParamId      param_id
-                        , TimeStamp    low
-                        , TimeStamp    upp
-                        , uint32_t     scan_dir)  noexcept
+SearchQuery::SearchQuery( aku_ParamId   param_id
+                        , aku_TimeStamp low
+                        , aku_TimeStamp upp
+                        , int           scan_dir)
     : lowerbound(low)
     , upperbound(upp)
     , param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
@@ -122,10 +52,10 @@ SearchQuery::SearchQuery( aku_ParamId      param_id
 {
 }
 
-SearchQuery::SearchQuery( MatcherFn matcher
-                        , TimeStamp    low
-                        , TimeStamp    upp
-                        , uint32_t     scan_dir)  noexcept
+SearchQuery::SearchQuery(MatcherFn matcher
+                        , aku_TimeStamp low
+                        , aku_TimeStamp upp
+                        , int scan_dir)
     : lowerbound(low)
     , upperbound(upp)
     , param_pred(matcher)
@@ -133,33 +63,28 @@ SearchQuery::SearchQuery( MatcherFn matcher
 {
 }
 
-
-
-
 // Page
 // ----
-
 
 PageBoundingBox::PageBoundingBox()
     : max_id(0)
     , min_id(std::numeric_limits<uint32_t>::max())
 {
-    max_timestamp = TimeStamp::MIN_TIMESTAMP;
-    min_timestamp = TimeStamp::MAX_TIMESTAMP;
+    max_timestamp = AKU_MIN_TIMESTAMP;
+    min_timestamp = AKU_MAX_TIMESTAMP;
 }
 
 
-const char* PageHeader::cdata() const noexcept {
+const char* PageHeader::cdata() const {
     return reinterpret_cast<const char*>(this);
 }
 
-char* PageHeader::data() noexcept {
+char* PageHeader::data() {
     return reinterpret_cast<char*>(this);
 }
 
-PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t page_id)
-    : type(type)
-    , count(count)
+PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
+    : count(count)
     , last_offset(length - 1)
     , sync_index(0)
     , length(length)
@@ -170,18 +95,18 @@ PageHeader::PageHeader(PageType type, uint32_t count, uint64_t length, uint32_t 
 {
 }
 
-std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const noexcept {
+std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
     if (index < 0 || index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);
     }
     return std::make_pair(page_index[index], AKU_SUCCESS);
 }
 
-int PageHeader::get_entries_count() const noexcept {
+int PageHeader::get_entries_count() const {
     return (int)this->count;
 }
 
-size_t PageHeader::get_free_space() const noexcept {
+size_t PageHeader::get_free_space() const {
     auto begin = reinterpret_cast<const char*>(page_index + count);
     const char* end = cdata();
     end += last_offset;
@@ -189,7 +114,7 @@ size_t PageHeader::get_free_space() const noexcept {
     return end - begin;
 }
 
-void PageHeader::update_bounding_box(aku_ParamId param, TimeStamp time) noexcept {
+void PageHeader::update_bounding_box(aku_ParamId param, aku_TimeStamp time) {
     if (param > bbox.max_id) {
         bbox.max_id = param;
     }
@@ -204,79 +129,53 @@ void PageHeader::update_bounding_box(aku_ParamId param, TimeStamp time) noexcept
     }
 }
 
-bool PageHeader::inside_bbox(aku_ParamId param, TimeStamp time) const noexcept {
+bool PageHeader::inside_bbox(aku_ParamId param, aku_TimeStamp time) const {
     return time  <= bbox.max_timestamp
         && time  >= bbox.min_timestamp
         && param <= bbox.max_id
         && param >= bbox.min_id;
 }
 
-void PageHeader::reuse() noexcept {
+void PageHeader::reuse() {
     count = 0;
     open_count++;
     last_offset = length - 1;
     bbox = PageBoundingBox();
 }
 
-void PageHeader::close() noexcept {
+void PageHeader::close() {
     close_count++;
 }
 
-int PageHeader::add_entry(Entry const& entry) noexcept {
-    auto space_required = entry.length + sizeof(aku_EntryOffset);
-    if (entry.length < sizeof(Entry)) {
+int PageHeader::add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRange range) {
+
+    const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
+                              + range.length              // data size (in bytes)
+                              + sizeof(aku_EntryOffset);  // offset inside page_index
+
+    const auto ENTRY_SIZE = sizeof(aku_Entry) + range.length;
+
+    if (!range.length) {
         return AKU_WRITE_STATUS_BAD_DATA;
     }
-    if (space_required > get_free_space()) {
+    if (SPACE_REQUIRED > get_free_space()) {
         return AKU_WRITE_STATUS_OVERFLOW;
     }
     char* free_slot = data() + last_offset;
-    free_slot -= entry.length;
-    memcpy((void*)free_slot, (void*)&entry, entry.length);
+    free_slot -= ENTRY_SIZE;
+    aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
+    entry->param_id = param;
+    entry->time = timestamp;
+    entry->length = range.length;
+    memcpy((void*)entry->value, range.address, range.length);
     last_offset = free_slot - cdata();
     page_index[count] = last_offset;
     count++;
-    // FIXME: split param_id update
-    update_bounding_box(entry.param_id, entry.time);
+    update_bounding_box(param, timestamp);
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-int PageHeader::add_entry(Entry2 const& entry) noexcept {
-
-    static const int ENTRY_LEN = sizeof(TimeStamp) + sizeof(aku_ParamId);
-
-    auto space_required = entry.range.length
-                        + sizeof(uint32_t)
-                        + ENTRY_LEN
-                        + sizeof(aku_EntryOffset);
-
-    auto free_space = get_free_space();
-    if (space_required > free_space) {
-        return AKU_WRITE_STATUS_OVERFLOW;
-    }
-
-    char* free_slot = data() + last_offset;
-    char* orig_free_slot = free_slot;
-    // FIXME: reorder to improve memory performance
-    // Write data
-    free_slot -= entry.range.length;
-    memcpy((void*)free_slot, entry.range.address, entry.range.length);
-    assert(free_slot > reinterpret_cast<char*>(page_index + count));
-    // Write length
-    free_slot -= sizeof(uint32_t);
-    *(uint32_t*)free_slot = entry.range.length;
-    // Write paramId and timestamp
-    free_slot -= ENTRY_LEN;
-    memcpy((void*)free_slot, (void*)&entry, ENTRY_LEN);
-    last_offset = free_slot - cdata();
-    page_index[count] = last_offset;
-    count++;
-    update_bounding_box(entry.param_id, entry.time);
-    assert(orig_free_slot == (free_slot + space_required - sizeof(uint32_t)));
-    return AKU_WRITE_STATUS_SUCCESS;
-}
-
-const Entry* PageHeader::read_entry_at(uint32_t index) const noexcept {
+const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     if (index >= 0 && index < count) {
         auto offset = page_index[index];
         return read_entry(offset);
@@ -284,13 +183,13 @@ const Entry* PageHeader::read_entry_at(uint32_t index) const noexcept {
     return 0;
 }
 
-const Entry* PageHeader::read_entry(aku_EntryOffset offset) const noexcept {
+const aku_Entry *PageHeader::read_entry(aku_EntryOffset offset) const {
     auto ptr = cdata() + offset;
-    auto entry_ptr = reinterpret_cast<const Entry*>(ptr);
+    auto entry_ptr = reinterpret_cast<const aku_Entry*>(ptr);
     return entry_ptr;
 }
 
-int PageHeader::get_entry_length_at(int entry_index) const noexcept {
+int PageHeader::get_entry_length_at(int entry_index) const {
     auto entry_ptr = read_entry_at(entry_index);
     if (entry_ptr) {
         return entry_ptr->length;
@@ -298,7 +197,7 @@ int PageHeader::get_entry_length_at(int entry_index) const noexcept {
     return 0;
 }
 
-int PageHeader::get_entry_length(aku_EntryOffset offset) const noexcept {
+int PageHeader::get_entry_length(aku_EntryOffset offset) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         return entry_ptr->length;
@@ -306,7 +205,7 @@ int PageHeader::get_entry_length(aku_EntryOffset offset) const noexcept {
     return 0;
 }
 
-int PageHeader::copy_entry_at(int index, Entry* receiver) const noexcept {
+int PageHeader::copy_entry_at(int index, aku_Entry *receiver) const {
     auto entry_ptr = read_entry_at(index);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
@@ -318,7 +217,7 @@ int PageHeader::copy_entry_at(int index, Entry* receiver) const noexcept {
     return 0;
 }
 
-int PageHeader::copy_entry(aku_EntryOffset offset, Entry* receiver) const noexcept {
+int PageHeader::copy_entry(aku_EntryOffset offset, aku_Entry *receiver) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
@@ -334,7 +233,7 @@ int PageHeader::copy_entry(aku_EntryOffset offset, Entry* receiver) const noexce
 /** Return false if query is ill-formed.
   * Status and error code fields will be changed accordignly.
   */
-static bool validate_query(SearchQuery const& query) noexcept {
+static bool validate_query(SearchQuery const& query) {
     // Cursor validation
     if ((query.direction != AKU_CURSOR_DIR_BACKWARD && query.direction != AKU_CURSOR_DIR_FORWARD) ||
          query.upperbound < query.lowerbound)
@@ -344,12 +243,11 @@ static bool validate_query(SearchQuery const& query) noexcept {
     return true;
 }
 
-
-void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery const &query) const noexcept
+void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
 {
 #ifdef DEBUG
     // Debug variables
-    TimeStamp dbg_prev_ts;
+    aku_TimeStamp dbg_prev_ts;
     long dbg_count = 0;
 #endif
     /* Search algorithm outline:
@@ -370,14 +268,14 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
     uint32_t max_index = count - 1u;
     uint32_t begin = 0u;
     uint32_t end = max_index;
-    uint64_t key = is_backward ? query.upperbound.value
-                               : query.lowerbound.value;
+    aku_TimeStamp key = is_backward ? query.upperbound
+                                    : query.lowerbound;
     uint32_t probe_index = 0u;
 
-    if (key <= bbox.max_timestamp.value && key >= bbox.min_timestamp.value) {
+    if (key <= bbox.max_timestamp && key >= bbox.min_timestamp) {
 
-        uint64_t search_lower_bound = bbox.min_timestamp.value;
-        uint64_t search_upper_bound = bbox.max_timestamp.value;
+        aku_TimeStamp search_lower_bound = bbox.min_timestamp;
+        aku_TimeStamp search_upper_bound = bbox.max_timestamp;
 
         int interpolation_search_quota = 5;
 
@@ -392,19 +290,19 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
             if (probe_index > begin && probe_index < end) {
 
                 auto probe_offset = page_index[probe_index];
-                auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                auto probe = probe_entry->time.value;
+                auto probe_entry = read_entry(probe_offset);
+                auto probe = probe_entry->time;
 
                 if (probe < key) {
                     begin = probe_index + 1u;
                     probe_offset = page_index[begin];
-                    probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                    search_lower_bound = probe_entry->time.value;
+                    probe_entry = read_entry(probe_offset);
+                    search_lower_bound = probe_entry->time;
                 } else {
                     end   = probe_index - 1u;
                     probe_offset = page_index[end];
-                    probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-                    search_upper_bound = probe_entry->time.value;
+                    probe_entry = read_entry(probe_offset);
+                    search_upper_bound = probe_entry->time;
                 }
             }
             else {
@@ -414,7 +312,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
         }
     } else {
         // shortcut for corner cases
-        if (key > bbox.max_timestamp.value) {
+        if (key > bbox.max_timestamp) {
             if (is_backward) {
                 probe_index = end;
                 goto SCAN;
@@ -424,7 +322,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
                 return;
             }
         }
-        else if (key < bbox.min_timestamp.value) {
+        else if (key < bbox.min_timestamp) {
             if (!is_backward) {
                 probe_index = begin;
                 goto SCAN;
@@ -438,8 +336,8 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery cons
     while (end >= begin) {
         probe_index = begin + ((end - begin) / 2u);
         auto probe_offset = page_index[probe_index];
-        auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
-        auto probe = probe_entry->time.value;
+        auto probe_entry = read_entry(probe_offset);
+        auto probe = probe_entry->time;
 
         if (probe == key) {             // found
             break;
@@ -461,7 +359,7 @@ SCAN:
         while (true) {
             auto current_index = probe_index--;
             auto probe_offset = page_index[current_index];
-            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe_entry = read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
@@ -486,7 +384,7 @@ SCAN:
         while (true) {
             auto current_index = probe_index++;
             auto probe_offset = page_index[current_index];
-            auto probe_entry = reinterpret_cast<const Entry*>(cdata() + probe_offset);
+            auto probe_entry = read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
                                        query.upperbound >= probe_entry->time;
@@ -510,19 +408,19 @@ SCAN:
     }
 }
 
-void PageHeader::_sort() noexcept {
+void PageHeader::_sort() {
     auto begin = page_index;
     auto end = page_index + count;
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
-        auto ea = reinterpret_cast<const Entry*>(cdata() + a);
-        auto eb = reinterpret_cast<const Entry*>(cdata() + b);
-        auto ta = std::tuple<uint64_t, uint32_t>(ea->time.value, ea->param_id);
-        auto tb = std::tuple<uint64_t, uint32_t>(eb->time.value, eb->param_id);
+        auto ea = read_entry(a);
+        auto eb = read_entry(b);
+        auto ta = std::tuple<aku_TimeStamp, aku_ParamId>(ea->time, ea->param_id);
+        auto tb = std::tuple<aku_TimeStamp, aku_ParamId>(eb->time, eb->param_id);
         return ta < tb;
     });
 }
 
-void PageHeader::sync_next_index(aku_EntryOffset offset) noexcept {
+void PageHeader::sync_next_index(aku_EntryOffset offset) {
     if (sync_index == count) {
         AKU_PANIC("sync_index out of range");
     }

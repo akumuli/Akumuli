@@ -150,7 +150,7 @@ void CoroCursor::complete(Caller& caller) noexcept {
 
 // FanInCursor implementation
 
-typedef std::tuple<TimeStamp, aku_ParamId, aku_EntryOffset, int, int, const PageHeader*> HeapItem;
+typedef std::tuple<aku_TimeStamp, aku_ParamId, aku_EntryOffset, int, int, const PageHeader*> HeapItem;
 
 struct HeapPred {
     int dir;
@@ -209,7 +209,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
                 auto offset = buffer[buf_ix].first;
                 auto page = buffer[buf_ix].second;
-                const Entry* entry = page->read_entry(offset);
+                const aku_Entry* entry = page->read_entry(offset);
                 auto cur_count = nwrites - buf_ix;
                 auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, cur_count, page);
                 heap.push_back(key);
@@ -254,7 +254,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
                 auto offset = buffer[buf_ix].first;
                 auto page = buffer[buf_ix].second;
-                const Entry* entry = page->read_entry(offset);
+                const aku_Entry* entry = page->read_entry(offset);
                 auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, nwrites - buf_ix, page);
                 heap.push_back(key);
                 std::push_heap(heap.begin(), heap.end(), pred);

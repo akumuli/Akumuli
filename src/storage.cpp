@@ -48,7 +48,7 @@ static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.St
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
-Volume::Volume(const char* file_name, TimeDuration window, size_t max_cache_size)
+Volume::Volume(const char* file_name, aku_Duration window, size_t max_cache_size)
     : mmap_(file_name)
     , window_(window)
     , max_cache_size_(max_cache_size)
@@ -58,7 +58,7 @@ Volume::Volume(const char* file_name, TimeDuration window, size_t max_cache_size
     cache_.reset(new Sequencer(page_, window_));
 }
 
-PageHeader* Volume::get_page() const noexcept {
+PageHeader* Volume::get_page() const {
     return page_;
 }
 
@@ -66,20 +66,19 @@ PageHeader* Volume::reallocate_disc_space() {
     uint32_t page_id = page_->page_id;
     uint32_t open_count = page_->open_count;
     uint32_t close_count = page_->close_count;
-    PageType page_type = page_->type;
     mmap_.remap_file_destructive();
-    page_ = new (mmap_.get_pointer()) PageHeader(page_type, 0, mmap_.get_size(), page_id);
+    page_ = new (mmap_.get_pointer()) PageHeader(0, mmap_.get_size(), page_id);
     page_->open_count = open_count;
     page_->close_count = close_count;
     return page_;
 }
 
-void Volume::open() noexcept {
+void Volume::open() {
     page_->reuse();
     mmap_.flush();
 }
 
-void Volume::close() noexcept {
+void Volume::close() {
     page_->close();
     mmap_.flush();
 }
@@ -93,7 +92,7 @@ Storage::Storage(const char* path, aku_Config const& conf)
      * because metadata file is corrupted, or volume is missed on disc.
      */
 
-    ttl_.value = conf.max_late_write;
+    ttl_= conf.max_late_write;
 
     // NOTE: incremental backup target will be stored in metadata file
 
@@ -175,15 +174,15 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         return;
     }
 
-    const Entry* top_entry = active_page_->read_entry_at(begin);
+    const aku_Entry* top_entry = active_page_->read_entry_at(begin);
 
     // Match all properties
     SearchQuery::MatcherFn matcher = [](aku_ParamId) {
         return SearchQuery::MATCH;
     };
 
-    auto hi = TimeStamp::MAX_TIMESTAMP;
-    auto lo = TimeStamp::make(top_entry->time.value - this->ttl_.value);
+    auto hi = AKU_MAX_TIMESTAMP;
+    auto lo = top_entry->time - ttl_;
 
     SearchQuery query(matcher, lo, hi, AKU_CURSOR_DIR_FORWARD);
 
@@ -199,7 +198,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         int n_read = cursor.read(results.get(), BUF_SIZE);
         for (int i = 0; i < n_read; i++) {
             auto result = results[i];
-            const Entry* entry = active_page_->read_entry(result.first);
+            const aku_Entry* entry = active_page_->read_entry(result.first);
             TimeSeriesValue ts_value(entry->time, entry->param_id, result.first);
             int add_status;
             Sequencer::Lock merge_lock;
@@ -213,7 +212,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     }
 }
 
-void Storage::advance_volume_(int local_rev) noexcept {
+void Storage::advance_volume_(int local_rev) {
     // TODO: transfer baseline_ value from old volume to new
     if (local_rev == active_volume_index_.load()) {
         active_volume_->close();
@@ -227,7 +226,7 @@ void Storage::advance_volume_(int local_rev) noexcept {
     // just redo all the things
 }
 
-void Storage::log_error(const char* message) noexcept {
+void Storage::log_error(const char* message) {
     LOG4CXX_ERROR(s_logger_, "Write error: " << message);
 }
 
@@ -242,13 +241,36 @@ void Storage::commit() {
 }
 
 //! write data
-int Storage::write(Entry const& entry) {
-    return _write_impl(entry);
+aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+    int status = AKU_WRITE_STATUS_BAD_DATA;
+    while(true) {
+        int local_rev = active_volume_index_.load();
+        status = active_page_->add_entry(param, ts, data);
+        switch (status) {
+        case AKU_SUCCESS: {
+            TimeSeriesValue ts_value(ts, param, active_page_->last_offset);
+            Sequencer::Lock merge_lock;
+            std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+            if (merge_lock.owns_lock()) {
+                // Slow path
+                Caller caller;
+                DirectPageSyncCursor cursor;
+                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+            }
+            return status;
+        }
+        case AKU_EOVERFLOW:
+            advance_volume_(local_rev);
+            break;  // retry
+        case AKU_ELATE_WRITE:
+        // Branch for rare and unexpected errors
+        default:
+            log_error(aku_error_message(status));
+            return status;
+        };
+    }
 }
 
-int Storage::write(Entry2 const& entry) {
-    return _write_impl(entry);
-}
 
 
 /** This function creates file with specified size
@@ -314,7 +336,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index)
 
     // Create index page
     auto index_ptr = mfile.get_pointer();
-    auto index_page = new (index_ptr) PageHeader(PageType::Index, 0, AKU_MAX_PAGE_SIZE, page_index);
+    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
 
     // FIXME: revisit - is it actually needed?
     // Activate the first page
@@ -469,7 +491,7 @@ apr_status_t Storage::new_storage( const char* 	file_name
     return status;
 }
 
-void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const noexcept {
+void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
     // Find pages
     // at this stage of development - simply get all pages :)
     std::vector<std::unique_ptr<ExternalCursor>> cursors;

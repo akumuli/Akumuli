@@ -64,10 +64,13 @@ struct MatchPred {
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
     int status_;
+    std::unique_ptr<SearchQuery> query_;
 
-    CursorImpl(Storage& storage, SearchQuery query) {
+    CursorImpl(Storage& storage, std::unique_ptr<SearchQuery> query)
+        : query_(std::move(query))
+    {
         status_ = AKU_SUCCESS;
-        cursor_ = CoroCursor::make(&Storage::search, &storage, query);
+        cursor_ = CoroCursor::make(&Storage::search, &storage, *query_);
     }
 
     ~CursorImpl() {
@@ -94,8 +97,8 @@ struct CursorImpl : aku_Cursor {
         for (int i = 0; i < n_results; i++) {
             aku_EntryOffset offset = results[i].first;
             PageHeader const* page = results[i].second;
-            const Entry* entry = page->read_entry(offset);
-            buffer[i] = reinterpret_cast<aku_Entry const*>(entry);
+            const aku_Entry* entry = page->read_entry(offset);
+            buffer[i] = entry;
         }
         return n_results;
     }
@@ -129,8 +132,9 @@ struct DatabaseImpl : public aku_Database
             scan_dir = AKU_CURSOR_DIR_BACKWARD;
         }
         MatchPred pred(query->params, query->n_params);
-        SearchQuery search_query(pred, {begin}, {end}, scan_dir);
-        auto pcur = new CursorImpl(storage_, search_query);
+        std::unique_ptr<SearchQuery> search_query;
+        search_query.reset(new SearchQuery(pred, {begin}, {end}, scan_dir));
+        auto pcur = new CursorImpl(storage_, std::move(search_query));
         return pcur;
     }
 
@@ -138,11 +142,8 @@ struct DatabaseImpl : public aku_Database
         storage_.commit();
     }
 
-    void add_sample(uint32_t param_id, int64_t long_timestamp, aku_MemRange value) {
-        TimeStamp ts;
-        ts.value = long_timestamp;
-        auto entry = Entry2(param_id, ts, value);
-        storage_.write(entry);
+    aku_Status add_sample(aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
+        return storage_.write(param_id, ts, value);
     }
 
 };
@@ -156,14 +157,14 @@ apr_status_t create_database( const char* 	file_name
     return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes);
 }
 
-aku_Status aku_flush_database(aku_Database* db) {
+void aku_flush_database(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->flush();
 }
 
-aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value) {
+aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    dbi->add_sample(param_id, long_timestamp, value);
+    return dbi->add_sample(param_id, ts, value);
 }
 
 aku_Database* aku_open_database(const char* path, aku_Config config)

@@ -42,7 +42,7 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(TimeStamp ts, aku_ParamId id, aku_EntryOffset offset)
+TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset)
     : key_(ts, id)
     , value(offset)
 {
@@ -54,17 +54,13 @@ bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, TimeDuration window_size)
+Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
     : window_size_(window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
     , run_lock_flags_(RUN_LOCK_FLAGS_SIZE)
 {
-    if (window_size.value <= 0) {
-        throw runtime_error("window size must greather than zero");
-    }
-
     key_.push_back(TimeSeriesValue());
 
     for(auto& flag: run_lock_flags_) {
@@ -73,14 +69,14 @@ Sequencer::Sequencer(PageHeader const* page, TimeDuration window_size)
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
-uint32_t Sequencer::get_checkpoint_(TimeStamp ts) const {
+uint32_t Sequencer::get_checkpoint_(aku_TimeStamp ts) const {
     // TODO: use fast integer division (libdivision or else)
-    return ts.value / window_size_.value;
+    return ts / window_size_;
 }
 
 //! Convert checkpoint id to timestamp
-TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
-    return TimeStamp::make(cp*window_size_.value);
+aku_TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
+    return cp*window_size_;
 }
 
 // move sorted runs to ready_ collection
@@ -123,11 +119,11 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-int Sequencer::check_timestamp_(TimeStamp ts, Lock& lock) {
+int Sequencer::check_timestamp_(aku_TimeStamp ts, Lock& lock) {
     int error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
-        if (delta.value > window_size_.value) {
+        if (delta > window_size_) {
             error_code = AKU_ELATE_WRITE;
         }
         return error_code;
@@ -360,7 +356,7 @@ void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<S
     results->push_back(move(result));
 }
 
-void Sequencer::search(Caller& caller, InternalCursor* cur, const SearchQuery &query) const {
+void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
     std::lock_guard<std::mutex> guard(progress_flag_);
     // we can get here only before checkpoint (or after merge was completed)
     // that means that ready_ is empty

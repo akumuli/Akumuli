@@ -30,13 +30,13 @@ extern "C" {
 struct aku_Config
 {
     //! Debug mode trigger
-    int32_t debug_mode;
+    uint32_t debug_mode;
 
     //! Maximum depth of the late write
-    int64_t max_late_write;  // TODO: move to config file
+    uint64_t max_late_write;  // TODO: move to config file
 
     //! Maximum cache size in bytes
-    int64_t max_cache_size;  // TODO: move to config file
+    uint32_t max_cache_size;  // TODO: move to config file
 };
 
 }

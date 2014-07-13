@@ -28,6 +28,7 @@
 extern "C" {
 
     typedef uint64_t aku_TimeStamp;
+    typedef uint64_t aku_Duration;
     typedef uint32_t aku_EntryOffset;
     typedef uint32_t aku_ParamId;
     typedef int      aku_Status;
@@ -38,11 +39,11 @@ extern "C" {
     };
 
     struct aku_Entry {
-        aku_ParamId    param_id;  //< Parameter ID
         aku_TimeStamp  time;      //< Entry timestamp
+        aku_ParamId    param_id;  //< Parameter ID
         uint32_t       length;    //< Entry length: constant + variable sized parts
         uint32_t       value[];   //< Data begining
-    };
+    } __attribute__((packed));
 
     const char* aku_error_message(int error_code);
 
@@ -117,7 +118,7 @@ extern "C" {
      * @brief Flush data to disk.
      * @param db database.
      */
-    aku_Status aku_flush_database(aku_Database* db);
+    void aku_flush_database(aku_Database* db);
 
 
     /** Open existing database.

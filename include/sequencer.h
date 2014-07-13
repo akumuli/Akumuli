@@ -33,14 +33,14 @@
 namespace Akumuli {
 
 struct TimeSeriesValue {
-    std::tuple<TimeStamp, aku_ParamId> key_;
+    std::tuple<aku_TimeStamp, aku_ParamId> key_;
     aku_EntryOffset value;
 
     TimeSeriesValue();
 
-    TimeSeriesValue(TimeStamp ts, aku_ParamId id, aku_EntryOffset offset);
+    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset);
 
-    TimeStamp get_timestamp() const;
+    aku_TimeStamp get_timestamp() const;
 
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
@@ -65,15 +65,15 @@ struct Sequencer {
     std::vector<SortedRun>       runs_;           //< Active sorted runs
     std::vector<SortedRun>       ready_;          //< Ready to merge
     SortedRun                    key_;
-    const TimeDuration           window_size_;
+    const aku_Duration           window_size_;
     const PageHeader* const      page_;
-    TimeStamp                    top_timestamp_;  //< Largest timestamp ever seen
+    aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
     mutable Mutex                progress_flag_;
     mutable std::vector<std::atomic_flag>
                                  run_lock_flags_;
 
-    Sequencer(PageHeader const* page, TimeDuration window_size);
+    Sequencer(PageHeader const* page, aku_Duration window_size);
 
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.
@@ -86,14 +86,14 @@ struct Sequencer {
     Lock close();
 
     // Searching
-    void search(Caller& caller, InternalCursor* cur, SearchQuery const& query) const;
+    void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
-    uint32_t get_checkpoint_(TimeStamp ts) const;
+    uint32_t get_checkpoint_(aku_TimeStamp ts) const;
 
     //! Convert checkpoint id to timestamp
-    TimeStamp get_timestamp_(uint32_t cp) const;
+    aku_TimeStamp get_timestamp_(uint32_t cp) const;
 
     // move sorted runs to ready_ collection
     void make_checkpoint_(uint32_t new_checkpoint, Lock& lock);
@@ -101,7 +101,7 @@ private:
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created
       */
-    int check_timestamp_(TimeStamp ts, Lock &lock);
+    int check_timestamp_(aku_TimeStamp ts, Lock &lock);
 
     void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const;
 

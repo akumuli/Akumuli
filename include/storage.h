@@ -48,24 +48,24 @@ namespace Akumuli {
 struct Volume {
     MemoryMappedFile mmap_;
     PageHeader* page_;
-    TimeDuration window_;
+    aku_Duration window_;
     size_t max_cache_size_;
     std::unique_ptr<Sequencer> cache_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path, TimeDuration window, size_t max_cache_size);
+    Volume(const char* file_path, aku_Duration window, size_t max_cache_size);
 
     //! Get pointer to page
-    PageHeader* get_page() const noexcept;
+    PageHeader* get_page() const;
 
     //! Reallocate disc space and return pointer to newly mapped page
     PageHeader *reallocate_disc_space();
 
     //! Open page for writing
-    void open() noexcept;
+    void open();
 
     //! Flush all data and close volume for write until reallocation
-    void close() noexcept;
+    void close();
 };
 
 /** Interface to page manager
@@ -78,7 +78,7 @@ struct Storage
     Volume*                 active_volume_;
     PageHeader*             active_page_;
     std::atomic<int>        active_volume_index_;
-    TimeDuration            ttl_;                       //< Late write limit
+    aku_Duration            ttl_;                       //< Late write limit
     std::vector<Volume*>    volumes_;                   //< List of all volumes
 
     LockType                mutex_;                     //< Storage lock (used by worker thread)
@@ -97,7 +97,7 @@ struct Storage
     //! Prepopulate cache
     void prepopulate_cache(int64_t max_cache_size);
 
-    void log_error(const char* message) noexcept;
+    void log_error(const char* message);
 
     // Writing
 
@@ -107,49 +107,15 @@ struct Storage
     /** Switch volume in round robin manner
       * @param ix current volume index
       */
-    void advance_volume_(int ix) noexcept;
-
-    template<class TEntry>
-    int _write_impl(TEntry const& entry) noexcept {
-        int status = AKU_WRITE_STATUS_BAD_DATA;
-        while(true) {
-            int local_rev = active_volume_index_.load();
-            TimeSeriesValue ts_value(entry.time, entry.param_id, active_page_->last_offset);
-            status = active_page_->add_entry(entry);
-            switch (status) {
-            case AKU_SUCCESS: {
-                Sequencer::Lock merge_lock;
-                std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-                if (merge_lock.owns_lock()) {
-                    // Slow path
-                    Caller caller;
-                    DirectPageSyncCursor cursor;
-                    active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
-                }
-                return status;
-            }
-            case AKU_EOVERFLOW:
-                advance_volume_(local_rev);
-                break;  // retry
-            case AKU_ELATE_WRITE:
-            // Branch for rare and unexpected errors
-            default:
-                log_error(aku_error_message(status));
-                return status;
-            };
-        }
-    }
+    void advance_volume_(int ix);
 
     //! Write data.
-    int write(Entry const& entry);
-
-    //! Write data.
-    int write(Entry2 const& entry);
+    aku_Status write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data);
 
     // Reading
 
     //! Search storage using cursor
-    void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const noexcept;
+    void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const;
 
     // Static interface
 

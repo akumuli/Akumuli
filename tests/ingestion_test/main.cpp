@@ -58,12 +58,11 @@ int main(int cnt, const char** args)
     auto db = aku_open_database(DB_META_FILE, config);
 
     boost::timer timer;
-    for(int64_t i = 0; i < NUM_ITERATIONS; i++) {
-        apr_time_t now = i;
+    for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
         aku_MemRange memr;
         memr.address = (void*)&i;
         memr.length = sizeof(i);
-        aku_add_sample(db, 1, now, memr);
+        aku_add_sample(db, 1, i, memr);
         if (i % 1000000 == 0) {
             std::cout << i << " " << timer.elapsed() << "s" << std::endl;
             timer.restart();
@@ -76,6 +75,7 @@ int main(int cnt, const char** args)
     aku_SelectQuery* query = aku_make_select_query( std::numeric_limits<aku_TimeStamp>::min()
                                                   , std::numeric_limits<aku_TimeStamp>::max()
                                                   , 1, params);
+    timer.restart();
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = 0;
     while(!aku_cursor_is_done(cursor)) {
@@ -89,10 +89,13 @@ int main(int cnt, const char** args)
         for (int i = 0; i < n_entries; i++) {
             aku_Entry const* p = entries[i];
             if (p->time != current_time) {
-                std::cout << "Error at " << current_time << std::endl;
+                std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << p->time  << std::endl;
                 return -2;
             }
             current_time++;
+        }
+        if (current_time % 1000000 == 0) {
+            std::cout << current_time << " " << timer.elapsed() << "s" << std::endl;
         }
     }
     delete_storage();

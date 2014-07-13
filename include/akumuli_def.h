@@ -24,6 +24,8 @@
 //! Minimal possible TTL
 #define AKU_LIMITS_MIN_TTL        2
 #define AKU_LIMITS_MAX_ID         0xFFFFFFFF
+#define AKU_MIN_TIMESTAMP         0
+#define AKU_MAX_TIMESTAMP       (~0)
 
 //! Max number of live generations in cache
 #define AKU_LIMITS_MAX_CACHES     8

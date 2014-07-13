@@ -15,50 +15,48 @@ using namespace Akumuli;
 BOOST_AUTO_TEST_CASE(TestPaging1)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
     BOOST_CHECK_EQUAL(0, page->get_entries_count());
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging2)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
     auto free_space_before = page->get_free_space();
     char buffer[128];
-    auto entry = new (buffer) Entry(128);
-    auto result = page->add_entry(*entry);
+    aku_MemRange range = {buffer, 128};
+    auto result = page->add_entry(1, 2, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
     auto free_space_after = page->get_free_space();
-    BOOST_CHECK_EQUAL(free_space_before - free_space_after, 128 + sizeof(aku_EntryOffset));
+    BOOST_CHECK_EQUAL(free_space_before - free_space_after, sizeof(aku_Entry) + 128 + sizeof(aku_EntryOffset));
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging3)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
-    char buffer[4096];
-    auto entry = new (buffer) Entry(4096);
-    auto result = page->add_entry(*entry);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    aku_MemRange range = {nullptr, 4096};
+    auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_OVERFLOW);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging4)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
-    char buffer[128];
-    auto entry = new (buffer) Entry(1);
-    auto result = page->add_entry(*entry);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    aku_MemRange range = {nullptr, 0};
+    auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_BAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging5)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
     char buffer[222];
-    auto entry = new (buffer) Entry(222);
-    auto result = page->add_entry(*entry);
+    aku_MemRange range = {buffer, 222};
+    auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
     auto len = page->get_entry_length_at(0);
     BOOST_CHECK_EQUAL(len, 222);
@@ -67,58 +65,48 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
 BOOST_AUTO_TEST_CASE(TestPaging6)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
-    char buffer[64];
-    TimeStamp inst = {1111L};
-    auto entry = new (buffer) Entry(3333, inst, 64);
-    for (int i = 0; i < 10; i++) {
-        entry->value[i] = i + 1;
-    }
-
-    auto result = page->add_entry(*entry);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
+    aku_TimeStamp inst = 1111L;
+    aku_MemRange range = {(void*)buffer, sizeof(uint32_t)*sizeof(buffer)};
+    auto result = page->add_entry(3333, inst, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
 
-    entry->param_id = 0;
-    for (int i = 0; i < 10; i++) {
-        entry->value[i] = i + 1;
-    }
-    TimeStamp inst2 = {1111L};
-    entry->time = inst2;
-
+    aku_TimeStamp inst2 = 1111L;
+    char out_buffer[0x1000];
+    aku_Entry* entry = reinterpret_cast<aku_Entry*>(out_buffer);
     int len = page->copy_entry_at(0, entry);
-    BOOST_CHECK_EQUAL(len, 64);
-    BOOST_CHECK_EQUAL(entry->length, 64);
+    BOOST_CHECK_EQUAL(len, sizeof(aku_Entry) + range.length);
+    BOOST_CHECK_EQUAL(entry->length, range.length);
     BOOST_CHECK_EQUAL(entry->param_id, 3333);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging7)
 {
     char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, 4096, 0);
-    char buffer[64];
-    TimeStamp inst = {1111L};
-    auto entry = new (buffer) Entry(3333, inst, 64);
-    for (int i = 0; i < 10; i++) {
-        entry->value[i] = i + 1;
-    }
-    auto result = page->add_entry(*entry);
+    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    uint32_t buffer[] = {1, 2, 3, 4};
+    aku_TimeStamp inst = 1111L;
+    aku_MemRange range = {(void*)buffer, sizeof(buffer)*sizeof(uint32_t)};
+    auto result = page->add_entry(3333, inst, range);
+
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
 
     auto centry = page->read_entry_at(0);
-    BOOST_CHECK_EQUAL(centry->length, 64);
+    BOOST_CHECK_EQUAL(centry->length, range.length);
     BOOST_CHECK_EQUAL(centry->param_id, 3333);
 }
 
 
 static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_values) {
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, page_len, 0);
-    char buffer[64];
+    auto page = new (page_ptr) PageHeader(0, page_len, 0);
 
-    for(int i = 0; i < num_values; i++) {
-        TimeStamp inst = {1000L + i};
-        auto entry = new (buffer) Entry(1, inst, 64);
-        entry->value[0] = i;
-        BOOST_CHECK(page->add_entry(*entry) != AKU_WRITE_STATUS_OVERFLOW);
+    for(uint32_t i = 0u; i < num_values; i++) {
+        aku_TimeStamp inst = 1000L + i;
+        uint32_t box[1] = {i};
+        aku_MemRange range = {(void*)box, sizeof(uint32_t)};
+        aku_ParamId id = 1;
+        BOOST_CHECK(page->add_entry(id, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
 
     return page;
