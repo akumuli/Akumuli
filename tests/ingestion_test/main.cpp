@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 10*1000*1000;
+const int NUM_ITERATIONS = 100*1000*1000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -96,6 +96,7 @@ int main(int cnt, const char** args)
         }
         if (current_time % 1000000 == 0) {
             std::cout << current_time << " " << timer.elapsed() << "s" << std::endl;
+            timer.restart();
         }
     }
     delete_storage();

@@ -208,10 +208,11 @@ int PageHeader::get_entry_length(aku_EntryOffset offset) const {
 int PageHeader::copy_entry_at(int index, aku_Entry *receiver) const {
     auto entry_ptr = read_entry_at(index);
     if (entry_ptr) {
+        size_t size = entry_ptr->length + sizeof(aku_Entry);
         if (entry_ptr->length > receiver->length) {
             return -1*entry_ptr->length;
         }
-        memcpy((void*)receiver, (void*)entry_ptr, entry_ptr->length);
+        memcpy((void*)receiver, (void*)entry_ptr, size);
         return entry_ptr->length;
     }
     return 0;
@@ -261,6 +262,11 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 
     if (!validate_query(query)) {
         cursor->set_error(caller, AKU_SEARCH_EBAD_ARG);
+        return;
+    }
+
+    if (!count) {
+        cursor->complete(caller);
         return;
     }
 

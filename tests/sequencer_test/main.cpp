@@ -34,7 +34,7 @@ int main(int cnt, const char** args)
         size_t ix_merged = 0;
         Sequencer seq(nullptr, {10000});
         for (int ix = 0u; ix < NUM_ITERATIONS; ix++) {
-            TimeSeriesValue value({(int64_t)ix}, ix & 0xFF, (aku_EntryOffset)ix);
+            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (aku_EntryOffset)ix);
             int status;
             Sequencer::Lock lock;
             tie(status, lock) = seq.add(value);
@@ -73,7 +73,7 @@ int main(int cnt, const char** args)
             if (buffer_ix == 0) {
                 buffer_ix = buffer_size;
                 for(auto ixx: buffer) {
-                    TimeSeriesValue value({(int64_t)ixx}, ixx & 0xFF, (aku_EntryOffset)ixx);
+                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (aku_EntryOffset)ixx);
                     int status;
                     Sequencer::Lock lock;
                     tie(status, lock) = seq.add(value);

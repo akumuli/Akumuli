@@ -72,11 +72,11 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     auto result = page->add_entry(3333, inst, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
 
-    aku_TimeStamp inst2 = 1111L;
     char out_buffer[0x1000];
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(out_buffer);
+    entry->length = 0x1000 - sizeof(aku_Entry);
     int len = page->copy_entry_at(0, entry);
-    BOOST_CHECK_EQUAL(len, sizeof(aku_Entry) + range.length);
+    BOOST_CHECK_EQUAL(len, range.length);
     BOOST_CHECK_EQUAL(entry->length, range.length);
     BOOST_CHECK_EQUAL(entry->param_id, 3333);
 }
@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
 static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_values) {
     auto page = new (page_ptr) PageHeader(0, page_len, 0);
 
-    for(uint32_t i = 0u; i < num_values; i++) {
+    for(uint32_t i = 0u; i < (uint32_t)num_values; i++) {
         aku_TimeStamp inst = 1000L + i;
         uint32_t box[1] = {i};
         aku_MemRange range = {(void*)box, sizeof(uint32_t)};
@@ -121,8 +121,8 @@ struct ExpectedSearchResults {
 
 void generic_search_test
     ( int param_id
-    , TimeStamp begin
-    , TimeStamp end
+    , aku_TimeStamp begin
+    , aku_TimeStamp end
     , int direction
     , ExpectedSearchResults const& expectations
     )
@@ -145,14 +145,14 @@ void generic_search_test
     BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
 
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i].first);
+        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
             BOOST_CHECK_EQUAL(entry->value[0], expectations.skew - i);
         } else {
             BOOST_CHECK_EQUAL(entry->value[0], expectations.skew + i);
         }
-        BOOST_CHECK_GE(entry->time.value, begin.value);
-        BOOST_CHECK_LE(entry->time.value, end.value);
+        BOOST_CHECK_GE(entry->time, begin);
+        BOOST_CHECK_LE(entry->time, end);
     }
 }
 
@@ -184,7 +184,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 100;
     expectations.skew = 99;
-    generic_search_test(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
+    generic_search_test(1, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
@@ -194,7 +194,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
-    generic_search_test(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
+    generic_search_test(1, {2000L}, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
@@ -204,7 +204,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
-    generic_search_test(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
+    generic_search_test(2, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_BACKWARD, expectations);
 }
 
 // Forward direction search
@@ -235,7 +235,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 100;
     expectations.skew = 0;
-    generic_search_test(1, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
+    generic_search_test(1, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
@@ -245,7 +245,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
-    generic_search_test(1, {2000L}, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
+    generic_search_test(1, {2000L}, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
@@ -255,27 +255,23 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
-    generic_search_test(2, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
+    generic_search_test(2, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, AKU_CURSOR_DIR_FORWARD, expectations);
 }
 
 static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len, int num_values, int time_skew) {
-    auto page = new (page_ptr) PageHeader(PageType::Index, 0, page_len, 0);
-    char buffer[64];
-
+    auto page = new (page_ptr) PageHeader(0, page_len, 0);
     for(int i = 0; i < num_values; i++) {
-        TimeStamp inst = {1000L + i*time_skew};
-        auto entry = new (buffer) Entry(1, inst, Entry::get_size(4));
-        entry->value[0] = i;
-        BOOST_CHECK(page->add_entry(*entry) != AKU_WRITE_STATUS_OVERFLOW);
+        aku_TimeStamp inst = 1000L + i*time_skew;
+        aku_MemRange range = {(void*)&i, sizeof(i)};
+        BOOST_CHECK(page->add_entry(1, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
-
     return page;
 }
 
 void generic_search_test_with_skew
      ( int param_id
-     , TimeStamp begin
-     , TimeStamp end
+     , aku_TimeStamp begin
+     , aku_TimeStamp end
      , int direction
      , ExpectedSearchResults const& expectations
      )
@@ -299,10 +295,10 @@ void generic_search_test_with_skew
 
     std::vector<int64_t> timestamps;
     for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const Entry* entry = page->read_entry(cursor.offsets[i].first);
-        BOOST_CHECK_GE(entry->time.value, begin.value);
-        BOOST_CHECK_LE(entry->time.value, end.value);
-        timestamps.push_back(entry->time.value);
+        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
+        BOOST_CHECK_GE(entry->time, begin);
+        BOOST_CHECK_LE(entry->time, end);
+        timestamps.push_back(entry->time);
     }
 
     if (direction == AKU_CURSOR_DIR_FORWARD) {
@@ -335,22 +331,20 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 {
     const int               buf_len = 1024*1024*8;
     std::vector<char>       buffer(buf_len);
-    std::vector<int64_t>    timestamps;
+    std::vector<uint64_t>    timestamps;
     std::vector<aku_ParamId>    paramids;
-    char                    entry_buffer[64];
     int64_t                 time_stamp = 0L;
     PageHeader*             page = nullptr;
 
-    page = new (&buffer[0]) PageHeader(PageType::Index, 0, buf_len, 0);
+    page = new (&buffer[0]) PageHeader(0, buf_len, 0);
 
     for(int i = 0; true; i++)
     {
         int rand_num = rand();
-        TimeStamp inst = {time_stamp};
+        aku_TimeStamp inst = time_stamp;
         aku_ParamId id = 1 + (rand_num & 1);
-        auto entry = new (entry_buffer) Entry(id, inst, Entry::get_size(sizeof(uint32_t)));
-        entry->value[0] = i;
-        if(page->add_entry(*entry) == AKU_WRITE_STATUS_OVERFLOW) {
+        aku_MemRange range = {(void*)&i, sizeof(i)};
+        if(page->add_entry(id, inst, range) == AKU_WRITE_STATUS_OVERFLOW) {
             break;
         }
         timestamps.push_back(time_stamp);  // i-th timestamp
@@ -368,23 +362,23 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
             AKU_CURSOR_DIR_BACKWARD
         };
         int dir = directions[rand() & 1];
-        int64_t start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp.value);
-        int64_t stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp.value);
+        aku_TimeStamp start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp);
+        aku_TimeStamp stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp);
         aku_ParamId id2search = 1 + (rand() & 1);
-        assert(start_time > 0 && start_time < page->bbox.max_timestamp.value);
-        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp.value);
+        assert(start_time > 0 && start_time < page->bbox.max_timestamp);
+        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp);
         assert(stop_time > start_time);
-        SearchQuery query(id2search, {start_time}, {stop_time}, dir);
+        SearchQuery query(id2search, start_time, stop_time, dir);
         Caller caller;
         RecordingCursor cursor;
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
         for(size_t i = 0; i < cursor.offsets.size(); i++) {
             auto offset = cursor.offsets.at(i).first;
-            const Entry* entry = page->read_entry(offset);
+            const aku_Entry* entry = page->read_entry(offset);
             auto index = entry->value[0];
             matches.push_back(index);
-            BOOST_REQUIRE_EQUAL(entry->time.value, timestamps[index]);
+            BOOST_REQUIRE_EQUAL(entry->time, timestamps[index]);
             BOOST_REQUIRE(entry->param_id == paramids[index]);
             BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
         }

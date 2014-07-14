@@ -153,7 +153,7 @@ struct PageWrapper {
         count = 0;
         page_id = id;
         buf = new char[page_size];
-        page = new (buf) PageHeader(Index, 0, page_size, (int)page_id);
+        page = new (buf) PageHeader(0, page_size, (int)page_id);
         init();
     }
 
@@ -162,14 +162,9 @@ struct PageWrapper {
     }
 
     void init() {
-        const auto esize = Entry::get_size(sizeof(int));
-        char ebuf[esize];
         while(true) {
-            Entry* entry = new (ebuf) Entry(esize);
-            entry->param_id = rand() % 100;
-            entry->time.value = rand();
-            entry->value[0] = page_id;
-            auto status = page->add_entry(*entry);
+            aku_MemRange load = {(void*)&page_id, sizeof(page_id)};
+            auto status = page->add_entry(rand() % 100, rand(), load);
             if (status != AKU_SUCCESS) {
                 break;
             }
@@ -179,7 +174,7 @@ struct PageWrapper {
         std::vector<int64_t> timestamps;
         for (auto ix = 0u; ix < page->count; ix++) {
             auto entry = page->read_entry_at(ix);
-            timestamps.push_back(entry->time.value);
+            timestamps.push_back(entry->time);
         }
         SortPred pred = { AKU_CURSOR_DIR_FORWARD };
         pred.check_order(timestamps.begin(), timestamps.end());
@@ -194,7 +189,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     }
 
     auto match_all = [](aku_ParamId) { return SearchQuery::MATCH; };
-    SearchQuery q(match_all, TimeStamp::MIN_TIMESTAMP, TimeStamp::MAX_TIMESTAMP, dir);
+    SearchQuery q(match_all, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, dir);
 
     std::vector<CoroCursor> cursors(n_cursors);
     for (int i = 0; i < n_cursors; i++) {
@@ -219,8 +214,8 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
         for (int i = 0; i < n_read; i++) {
             auto offset = results[i].first;
             auto page = results[i].second;
-            const Entry* entry = page->read_entry(offset);
-            actual_results.push_back(entry->time.value);
+            const aku_Entry* entry = page->read_entry(offset);
+            actual_results.push_back(entry->time);
         }
     }
     cursor.close();
@@ -229,8 +224,8 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     for(auto& pagewrapper: pages) {
         PageHeader* page = pagewrapper.page;
         for (auto i = 0u; i < pagewrapper.count; i++) {
-            const Entry* entry = page->read_entry_at(i);
-            expected_results.push_back(entry->time.value);
+            const aku_Entry* entry = page->read_entry_at(i);
+            expected_results.push_back(entry->time);
         }
     }
     SortPred s = {dir};
