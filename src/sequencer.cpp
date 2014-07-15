@@ -20,6 +20,8 @@
 #include "akumuli_def.h"
 #include "sequencer.h"
 #include "util.h"
+#include <boost/range.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #define PARAM_ID 1
 #define TIMESTMP 0
@@ -209,61 +211,54 @@ struct RunIter;
 
 template<class TRun>
 struct RunIter<TRun, AKU_CURSOR_DIR_FORWARD> {
-    typedef typename TRun::const_iterator iterator;
-    static iterator begin(TRun const& run) {
-        return run.begin();
-    }
-    static iterator end(TRun const& run) {
-        return run.end();
+    typedef boost::iterator_range<typename TRun::const_iterator> range_type;
+    static range_type make_range(TRun const& run) {
+        return boost::make_iterator_range(run);
     }
 };
 
 template<class TRun>
 struct RunIter<TRun, AKU_CURSOR_DIR_BACKWARD> {
-    typedef typename TRun::const_reverse_iterator iterator;
-    static iterator begin(TRun const& run) {
-        return run.rbegin();
-    }
-    static iterator end(TRun const& run) {
-        return run.rend();
+    typedef boost::iterator_range<typename TRun::const_reverse_iterator> range_type;
+    static range_type make_range(TRun const& run) {
+        return boost::make_iterator_range(run.rbegin(), run.rend());
     }
 };
 
 template <int dir, class TRun>
 void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
-    size_t n = runs.size();
-    typedef typename RunIter<TRun, dir>::iterator iter_t;
-    typedef typename TRun::value_type value_t;
-    iter_t iter[n], ends[n];
-    int cnt = 0;
+    typedef RunIter<TRun, dir> RIter;
+    typedef typename RIter::range_type range_t;
+    typedef typename TRun::value_type KeyType;
+    std::vector<range_t> ranges;
     for(auto i = runs.begin(); i != runs.end(); i++) {
-        iter[cnt] = RunIter<TRun, dir>::begin(*i);
-        ends[cnt] = RunIter<TRun, dir>::end(*i);
-        cnt++;
+        ranges.push_back(RIter::make_range(*i));
     }
 
-    typedef tuple<value_t, int> HeapItem;
+    typedef tuple<KeyType, int> HeapItem;
     typedef MergePred<HeapItem, dir> Comp;
     typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
     Heap heap;
 
-    for(auto index = 0u; index < n; index++) {
-        if (iter[index] != ends[index]) {
-            auto value = *iter[index];
-            iter[index]++;
+    int index = 0;
+    for(auto& range: ranges) {
+        if (!range.empty()) {
+            KeyType value = range.front();
+            range.advance_begin(1);
             heap.push(make_tuple(value, index));
         }
+        index++;
     }
 
     while(!heap.empty()) {
-        auto item = heap.top();
-        auto point = get<0>(item);
+        HeapItem item = heap.top();
+        KeyType point = get<0>(item);
         int index = get<1>(item);
         out_iter->put(caller, point.value, page);
         heap.pop();
-        if (iter[index] != ends[index]) {
-            auto point = *iter[index];
-            iter[index]++;
+        if (!ranges[index].empty()) {
+            KeyType point = ranges[index].front();
+            ranges[index].advance_begin(1);
             heap.push(make_tuple(point, index));
         }
     }
