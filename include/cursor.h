@@ -92,6 +92,8 @@ struct ExternalCursor {
     virtual bool is_error(int* out_error_code_or_null=nullptr) const noexcept = 0;
     //! Finalizer
     virtual void close() noexcept = 0;
+
+    virtual ~ExternalCursor() {}
 };
 
 

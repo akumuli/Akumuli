@@ -22,7 +22,8 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int NUM_ITERATIONS = 10*1000*1000;
+const int CHUNK_SIZE = 10*1000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -30,6 +31,39 @@ const char* DB_META_FILE = "./test/test.akumuli";
 
 void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
+}
+
+void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end) {
+    boost::timer timer;
+    aku_ParamId params[] = {1};
+    aku_SelectQuery* query = aku_make_select_query( begin
+                                                  , end
+                                                  , 1, params);
+    timer.restart();
+    aku_Cursor* cursor = aku_select(db, query);
+    aku_TimeStamp current_time = begin;
+    while(!aku_cursor_is_done(cursor)) {
+        int err = AKU_SUCCESS;
+        if (aku_cursor_is_error(cursor, &err)) {
+            std::cout << aku_error_message(err) << std::endl;
+            return;
+        }
+        aku_Entry const* entries[1000];
+        int n_entries = aku_cursor_read(cursor, entries, 1000);
+        for (int i = 0; i < n_entries; i++) {
+            aku_Entry const* p = entries[i];
+            if (p->time != current_time) {
+                std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << p->time  << std::endl;
+                return;
+            }
+            current_time++;
+        }
+        if (current_time % 1000000 == 0) {
+            std::cout << current_time << " " << timer.elapsed() << "s" << std::endl;
+            timer.restart();
+        }
+    }
+    aku_close_cursor(cursor);
 }
 
 int main(int cnt, const char** args)
@@ -68,37 +102,25 @@ int main(int cnt, const char** args)
             timer.restart();
         }
     }
-    aku_close_database(db);
 
     // Search
-    aku_ParamId params[] = {1};
-    aku_SelectQuery* query = aku_make_select_query( std::numeric_limits<aku_TimeStamp>::min()
-                                                  , std::numeric_limits<aku_TimeStamp>::max()
-                                                  , 1, params);
-    timer.restart();
-    aku_Cursor* cursor = aku_select(db, query);
-    aku_TimeStamp current_time = 0;
-    while(!aku_cursor_is_done(cursor)) {
-        int err = AKU_SUCCESS;
-        if (aku_cursor_is_error(cursor, &err)) {
-            std::cout << aku_error_message(err) << std::endl;
-            return -1;
-        }
-        aku_Entry const* entries[1000];
-        int n_entries = aku_cursor_read(cursor, entries, 1000);
-        for (int i = 0; i < n_entries; i++) {
-            aku_Entry const* p = entries[i];
-            if (p->time != current_time) {
-                std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << p->time  << std::endl;
-                return -2;
-            }
-            current_time++;
-        }
-        if (current_time % 1000000 == 0) {
-            std::cout << current_time << " " << timer.elapsed() << "s" << std::endl;
-            timer.restart();
-        }
+    query_database( db
+                  , std::numeric_limits<aku_TimeStamp>::min()
+                  , std::numeric_limits<aku_TimeStamp>::max());
+
+    // Random access
+    std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
+    for (aku_TimeStamp i = 0u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
+        ranges.push_back(std::make_pair((i - 1)*CHUNK_SIZE, i*CHUNK_SIZE));
     }
+
+    std::random_shuffle(ranges.begin(), ranges.end());
+
+    for(auto range: ranges) {
+        query_database(db, range.first, range.second);
+    }
+
+    aku_close_database(db);
     delete_storage();
     return 0;
 }
