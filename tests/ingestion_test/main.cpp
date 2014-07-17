@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 10*1000*1000;
+const int NUM_ITERATIONS = 100*1000*1000;
 const int CHUNK_SIZE = 10*1000;
 
 const char* DB_NAME = "test";
@@ -33,13 +33,11 @@ void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
 }
 
-void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end) {
-    boost::timer timer;
+void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer) {
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
                                                   , 1, params);
-    timer.restart();
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = begin;
     while(!aku_cursor_is_done(cursor)) {
@@ -57,10 +55,11 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end) {
                 return;
             }
             current_time++;
-        }
-        if (current_time % 1000000 == 0) {
-            std::cout << current_time << " " << timer.elapsed() << "s" << std::endl;
-            timer.restart();
+            counter++;
+            if (counter % 1000000 == 0) {
+                std::cout << counter << " " << timer.elapsed() << "s" << std::endl;
+                timer.restart();
+            }
         }
     }
     aku_close_cursor(cursor);
@@ -104,20 +103,28 @@ int main(int cnt, const char** args)
     }
 
     // Search
+    std::cout << "Sequential access" << std::endl;
+    uint64_t counter = 0;
+    timer.restart();
     query_database( db
                   , std::numeric_limits<aku_TimeStamp>::min()
-                  , std::numeric_limits<aku_TimeStamp>::max());
+                  , std::numeric_limits<aku_TimeStamp>::max()
+                  , counter
+                  , timer );
 
     // Random access
+    std::cout << "Random access" << std::endl;
     std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
-    for (aku_TimeStamp i = 0u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
+    for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
         ranges.push_back(std::make_pair((i - 1)*CHUNK_SIZE, i*CHUNK_SIZE));
     }
 
     std::random_shuffle(ranges.begin(), ranges.end());
 
+    counter = 0;
+    timer.restart();
     for(auto range: ranges) {
-        query_database(db, range.first, range.second);
+        query_database(db, range.first, range.second, counter, timer);
     }
 
     aku_close_database(db);
