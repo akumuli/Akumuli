@@ -86,7 +86,7 @@ char* PageHeader::data() {
 PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     : count(count)
     , last_offset(length - 1)
-    , sync_index(0)
+    , sync_count(0)
     , length(length)
     , open_count(0)
     , close_count(0)
@@ -271,7 +271,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
     }
 
     bool is_backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
-    uint32_t max_index = count - 1u;
+    uint32_t max_index = sync_count - 1;
     uint32_t begin = 0u;
     uint32_t end = max_index;
     aku_TimeStamp key = is_backward ? query.upperbound
@@ -350,7 +350,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
         }
         else if (probe < key) {
             begin = probe_index + 1u;   // change min index to search upper subarray
-            if (begin == count)         // we hit the upper bound of the array
+            if (begin > sync_count)         // we hit the upper bound of the array
                 break;
         } else {
             end = probe_index - 1u;     // change max index to search lower subarray
@@ -415,7 +415,7 @@ SCAN:
 }
 
 void PageHeader::_sort() {
-    auto begin = page_index;
+    auto begin = page_index + sync_count;
     auto end = page_index + count;
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
         auto ea = read_entry(a);
@@ -424,13 +424,14 @@ void PageHeader::_sort() {
         auto tb = std::tuple<aku_TimeStamp, aku_ParamId>(eb->time, eb->param_id);
         return ta < tb;
     });
+    sync_count = count;
 }
 
 void PageHeader::sync_next_index(aku_EntryOffset offset) {
-    if (sync_index == count) {
+    if (sync_count >= count) {
         AKU_PANIC("sync_index out of range");
     }
-    page_index[sync_index++] = offset;
+    page_index[sync_count++] = offset;
 }
 
 }  // namepsace

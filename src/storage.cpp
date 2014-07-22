@@ -167,7 +167,7 @@ void Storage::select_active_page() {
 void Storage::prepopulate_cache(int64_t max_cache_size) {
     // All entries between sync_index (included) and count must
     // be cached.
-    auto begin = active_page_->sync_index;
+    auto begin = active_page_->sync_count;
     auto end = active_page_->count;
     if (begin == end) {
         // TODO: Need to set baseline for cache somehow
@@ -498,8 +498,8 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
     for(auto vol: volumes_) {
         // Search cache (optional, only for active page)
         if (vol == this->active_volume_) {
-            //auto ccur = CoroCursor::make(&Cache::search, this->active_volume_->cache_.get(), query);
-            //cursors.push_back(std::move(ccur));
+            auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
+            cursors.push_back(std::move(ccur));
         }
         // Search pages
         auto pcur = CoroCursor::make(&PageHeader::search, vol->page_, query);

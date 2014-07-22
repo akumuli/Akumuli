@@ -109,6 +109,8 @@ static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_
         BOOST_CHECK(page->add_entry(id, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
 
+    page->_sort();
+
     return page;
 }
 
@@ -265,6 +267,7 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
         aku_MemRange range = {(void*)&i, sizeof(i)};
         BOOST_CHECK(page->add_entry(1, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
+    page->_sort();
     return page;
 }
 
