@@ -369,5 +369,6 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
     } else {
         kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
     }
+    cur->complete(caller);
 }
 }  // namespace Akumuli

@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 100*1000*1000 + 1;
+const int NUM_ITERATIONS = 10*1000*1000 + 1;
 const int CHUNK_SIZE = 10*1000;
 
 const char* DB_NAME = "test";
