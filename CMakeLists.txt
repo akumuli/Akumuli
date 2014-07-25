@@ -12,6 +12,8 @@ find_package(Boost 1.53.0
     system
     thread
     filesystem
+    coroutine
+    context
     REQUIRED
 )
 
