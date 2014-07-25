@@ -38,5 +38,28 @@ First milestone goals
 * B-tree located in memory cache
 * Compression for large entries
 
+How to build
+------------
+
+### Ubuntu
+
+#### Prerequisites
+
+* Boost:
+
+  `sudo apt-get install libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev`
+
+* Gperfttools:
+
+  `sudo apt-get install libgoogle-perftools-dev`
+
+* Cmake:
+
+  `sudo apt-get install cmake`
+
+#### Building
+
+1. `cmake .`
+1. `make -j`
 
 https://groups.google.com/forum/#!forum/akumuli
