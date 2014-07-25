@@ -29,6 +29,7 @@
 #include <ostream>
 #include <atomic>
 #include <boost/throw_exception.hpp>
+#include "akumuli.h"
 
 namespace Akumuli
 {
@@ -82,6 +83,34 @@ namespace Akumuli
 
     //! Fast integer logarithm
     int64_t log2(int64_t value) noexcept;
+
+    /** Wrapper for mincore syscall.
+     * If everything is OK works as simple wrapper
+     * (memory needed for mincore syscall managed by wrapper itself).
+     * If non-fatal error occured - acts as in case when all memory is
+     * in core (optimistically).
+     */
+    class MemInCore {
+        std::vector<unsigned char> data_;
+        size_t page_size_;
+        void* base_addr_;
+        size_t len_bytes_;
+
+        void zero_mem();
+    public:
+
+        /** C-tor.
+         * @param start_addr start address of the monitored memory region
+         * @param len_bytes length (in bytes) of the monitored region
+         */
+        MemInCore(void* start_addr, size_t len_bytes);
+
+        //! Query data from OS
+        aku_Status refresh();
+
+        //! Check if memory address is in core
+        bool in_core(void*);
+    };
 }
 
 #define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(std::runtime_error(msg));
