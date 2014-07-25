@@ -1,2 +1,8 @@
 *.swp
 tags
+
+# CMake-generated stuff
+Makefile
+CMakeFiles/
+CMakeCache.txt
+*.cmake
