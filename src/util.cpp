@@ -18,6 +18,7 @@
 #include "util.h"
 #include <log4cxx/logmanager.h>
 #include <stdio.h>
+#include <cassert>
 #include <sys/mman.h>
 #include "akumuli_def.h"
 
@@ -180,18 +181,26 @@ int64_t log2(int64_t value) noexcept {
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
+inline static const void* align_to_page(const void* ptr, size_t page_size) {
+    return reinterpret_cast<const void*>(
+        reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
+}
 
-MemInCore::MemInCore(void* start_addr, size_t len_bytes)
+static const unsigned char MINCORE_MASK = 1;
+
+PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
     : page_size_(sysconf(_SC_PAGESIZE))
-    , base_addr_(start_addr)
+    , base_addr_(align_to_page(start_addr, page_size_))
     , len_bytes_(len_bytes)
 {
+    assert(len_bytes <= 4UL*1024UL*1024UL*1024UL);
     auto len = (len_bytes_ + page_size_ - 1) / page_size_;
     data_.resize(len);
 }
 
-aku_Status MemInCore::refresh() {
-    int error = mincore(base_addr_, len_bytes_, data_.data());
+aku_Status PageInfo::refresh(const void *addr) {
+    base_addr_ = align_to_page(addr, page_size_);
+    int error = mincore(const_cast<void*>(base_addr_), len_bytes_, data_.data());
     aku_Status status = AKU_SUCCESS;
     switch(error) {
     case EFAULT:
@@ -205,28 +214,49 @@ aku_Status MemInCore::refresh() {
         break;
     }
     if (status != AKU_SUCCESS) {
-        zero_mem();
+        fill_mem();
     }
     return status;
 }
 
-bool MemInCore::in_core(void* addr) {
-    const unsigned char MASK = 1;
-    auto req = reinterpret_cast<unsigned char*>(addr);
-    auto base = reinterpret_cast<unsigned char*>(base_addr_);
+bool PageInfo::in_core(const void* addr) {
+    auto req = reinterpret_cast<const unsigned char*>(addr);
+    auto base = reinterpret_cast<const unsigned char*>(base_addr_);
     if (req < base) {
         return false;
     }
     auto len = req - base;
     size_t ix = len / page_size_;
     if (ix < data_.size()) {
-        return data_[ix] & MASK;
+        return data_[ix] & MINCORE_MASK;
     }
     return false;
 }
 
-void MemInCore::zero_mem() {
-    std::fill(data_.begin(), data_.end(), 0);
+void PageInfo::fill_mem() {
+    std::fill(data_.begin(), data_.end(), MINCORE_MASK);
+}
+
+std::tuple<bool, aku_Status> page_in_core(const void* addr) {
+    auto page_size = sysconf(_SC_PAGESIZE);
+    auto base_addr = align_to_page(addr, page_size);
+    unsigned char val;
+    int error = mincore(const_cast<void*>(base_addr), 1, &val);
+    aku_Status status = AKU_SUCCESS;
+    switch(error) {
+    case EFAULT:
+        AKU_PANIC("mincore returns EFAULT - vec points to an invalid address");
+    case EAGAIN:
+        status = AKU_EBUSY;
+        val = MINCORE_MASK;
+        break;
+    case EINVAL:
+    case ENOMEM:
+        status = AKU_EBAD_ARG;
+        val = MINCORE_MASK;
+        break;
+    }
+    return std::make_tuple(val&MINCORE_MASK, status);
 }
 
 }

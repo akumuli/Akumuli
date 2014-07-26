@@ -84,32 +84,34 @@ namespace Akumuli
     //! Fast integer logarithm
     int64_t log2(int64_t value) noexcept;
 
+    std::tuple<bool, aku_Status> page_in_core(const void* addr);
+
     /** Wrapper for mincore syscall.
      * If everything is OK works as simple wrapper
      * (memory needed for mincore syscall managed by wrapper itself).
      * If non-fatal error occured - acts as in case when all memory is
      * in core (optimistically).
      */
-    class MemInCore {
+    class PageInfo {
         std::vector<unsigned char> data_;
         size_t page_size_;
-        void* base_addr_;
+        const void* base_addr_;
         size_t len_bytes_;
 
-        void zero_mem();
+        void fill_mem();
     public:
 
         /** C-tor.
          * @param start_addr start address of the monitored memory region
          * @param len_bytes length (in bytes) of the monitored region
          */
-        MemInCore(void* start_addr, size_t len_bytes);
+        PageInfo(const void* addr, size_t len_bytes);
 
         //! Query data from OS
-        aku_Status refresh();
+        aku_Status refresh(const void* addr);
 
         //! Check if memory address is in core
-        bool in_core(void*);
+        bool in_core(const void* addr);
     };
 }
 
