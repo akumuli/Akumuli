@@ -281,20 +281,16 @@ struct SearchAlgorithm {
         range_.end = MAX_INDEX_;
     }
 
-    bool interpolation() {
-        if (!validate_query(query_)) {
-            cursor_->set_error(caller_, AKU_SEARCH_EBAD_ARG);
-            return true;
-        }
-
+    bool fast_path() {
         if (!page_->count) {
             cursor_->complete(caller_);
             return true;
         }
 
-        // Interpolation search
-
-        uint32_t probe_index = 0u;
+        if (!validate_query(query_)) {
+            cursor_->set_error(caller_, AKU_SEARCH_EBAD_ARG);
+            return true;
+        }
 
         if (key_ > page_->bbox.max_timestamp || key_ < page_->bbox.min_timestamp) {
             // Shortcut for corner cases
@@ -318,121 +314,41 @@ struct SearchAlgorithm {
                     return true;
                 }
             }
-        } else {
-            aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
-            aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
-
-            int interpolation_search_quota = 5;
-
-            while(interpolation_search_quota--)  {
-                // On small distances - fallback to binary search
-                if (range_.is_small(page_))
-                    break;
-
-                probe_index = ((key_ - search_lower_bound) * (range_.end - range_.begin)) /
-                              (search_upper_bound - search_lower_bound);
-
-                if (probe_index > range_.begin && probe_index < range_.end) {
-
-                    auto probe_offset = page_->page_index[probe_index];
-                    auto probe_entry = page_->read_entry(probe_offset);
-                    auto probe = probe_entry->time;
-
-                    if (probe < key_) {
-                        // undershoot
-                        range_.begin = probe_index + 1u;
-                        probe_offset = page_->page_index[range_.begin];
-                        probe_entry = page_->read_entry(probe_offset);
-                        search_lower_bound = probe_entry->time;
-                    } else if (probe > key_) {
-                        // overshoot
-                        range_.end = probe_index - 1u;
-                        probe_offset = page_->page_index[range_.end];
-                        probe_entry = page_->read_entry(probe_offset);
-                        search_upper_bound = probe_entry->time;
-                    }
-                }
-                else {
-                    break;
-                    // Continue with binary search
-                }
-            }
         }
-
         return false;
     }
 
-    bool binary_search() {
-        if (range_.begin == range_.end) {
-            return false;
-        }
-    }
-};
-
-void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
-{
-#ifdef DEBUG
-    // Debug variables
-    aku_TimeStamp dbg_prev_ts;
-    long dbg_count = 0;
-#endif
-    /* Search algorithm outline:
-     * - interpolated search for timestamp
-     *   - if 5 or more iterations or
-     *     search interval is small
-     *     BREAK;
-     * - binary search for timestamp
-     * - scan
-     */
-
-    if (!validate_query(query)) {
-        cursor->set_error(caller, AKU_SEARCH_EBAD_ARG);
-        return;
-    }
-
-    if (!count) {
-        cursor->complete(caller);
-        return;
-    }
-
-    bool is_backward = query.direction == AKU_CURSOR_DIR_BACKWARD;
-    uint32_t max_index = sync_count - 1;
-    uint32_t begin = 0u;
-    uint32_t end = max_index;
-    aku_TimeStamp key = is_backward ? query.upperbound
-                                    : query.lowerbound;
-    uint32_t probe_index = 0u;
-
-    if (key <= bbox.max_timestamp && key >= bbox.min_timestamp) {
-
-        aku_TimeStamp search_lower_bound = bbox.min_timestamp;
-        aku_TimeStamp search_upper_bound = bbox.max_timestamp;
-
+    void interpolation() {
+        aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
+        aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
+        uint32_t probe_index = 0u;
         int interpolation_search_quota = 5;
 
         while(interpolation_search_quota--)  {
             // On small distances - fallback to binary search
-            if (end - begin < AKU_INTERPOLATION_SEARCH_CUTOFF)
+            if (range_.is_small(page_))
                 break;
 
-            probe_index = ((key - search_lower_bound) * (end - begin)) /
+            probe_index = ((key_ - search_lower_bound) * (range_.end - range_.begin)) /
                           (search_upper_bound - search_lower_bound);
 
-            if (probe_index > begin && probe_index < end) {
+            if (probe_index > range_.begin && probe_index < range_.end) {
 
-                auto probe_offset = page_index[probe_index];
-                auto probe_entry = read_entry(probe_offset);
+                auto probe_offset = page_->page_index[probe_index];
+                auto probe_entry = page_->read_entry(probe_offset);
                 auto probe = probe_entry->time;
 
-                if (probe < key) {
-                    begin = probe_index + 1u;
-                    probe_offset = page_index[begin];
-                    probe_entry = read_entry(probe_offset);
+                if (probe < key_) {
+                    // undershoot
+                    range_.begin = probe_index + 1u;
+                    probe_offset = page_->page_index[range_.begin];
+                    probe_entry = page_->read_entry(probe_offset);
                     search_lower_bound = probe_entry->time;
-                } else {
-                    end   = probe_index - 1u;
-                    probe_offset = page_index[end];
-                    probe_entry = read_entry(probe_offset);
+                } else if (probe > key_) {
+                    // overshoot
+                    range_.end = probe_index - 1u;
+                    probe_offset = page_->page_index[range_.end];
+                    probe_entry = page_->read_entry(probe_offset);
                     search_upper_bound = probe_entry->time;
                 }
             }
@@ -441,101 +357,109 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
                 // Continue with binary search
             }
         }
-    } else {
-        // shortcut for corner cases
-        if (key > bbox.max_timestamp) {
-            if (is_backward) {
-                probe_index = end;
-                goto SCAN;
-            } else {
-                // return empty result
-                cursor->complete(caller);
-                return;
-            }
-        }
-        else if (key < bbox.min_timestamp) {
-            if (!is_backward) {
-                probe_index = begin;
-                goto SCAN;
-            } else {
-                // return empty result
-                cursor->complete(caller);
-                return;
-            }
-        }
     }
-    while (end >= begin) {
-        probe_index = begin + ((end - begin) / 2u);
-        auto probe_offset = page_index[probe_index];
-        auto probe_entry = read_entry(probe_offset);
-        auto probe = probe_entry->time;
 
-        if (probe == key) {             // found
-            break;
+    void binary_search() {
+        if (range_.begin == range_.end) {
+            return;
         }
-        else if (probe < key) {
-            begin = probe_index + 1u;   // change min index to search upper subarray
-            if (begin > sync_count)         // we hit the upper bound of the array
+        uint32_t probe_index = 0u;
+        while (range_.end >= range_.begin) {
+            probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
+            auto probe_offset = page_->page_index[probe_index];
+            auto probe_entry = page_->read_entry(probe_offset);
+            auto probe = probe_entry->time;
+
+            if (probe == key_) {                         // found
                 break;
+            } else if (probe < key_) {
+                range_.begin = probe_index + 1u;         // change min index to search upper subarray
+                if (range_.begin > page_->sync_count) {  // we hit the upper bound of the array
+                    break;
+                }
+            } else {
+                range_.end = probe_index - 1u;           // change max index to search lower subarray
+                if (range_.end == ~0u) {                 // we hit the lower bound of the array
+                    break;
+                }
+            }
+        }
+        range_.begin = probe_index;
+        range_.end = probe_index;
+    }
+
+    void scan() {
+        if (range_.begin != range_.end) {
+            cursor_->set_error(caller_, AKU_EGENERAL);
+            return;
+        }
+#ifdef DEBUG
+        // Debug variables
+        aku_TimeStamp dbg_prev_ts;
+        long dbg_count = 0;
+#endif
+        auto probe_index = range_.begin;
+        if (IS_BACKWARD_) {
+            while (true) {
+                auto current_index = probe_index--;
+                auto probe_offset = page_->page_index[current_index];
+                auto probe_entry = page_->read_entry(probe_offset);
+                auto probe = probe_entry->param_id;
+                bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                           query_.upperbound >= probe_entry->time;
+                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+#ifdef DEBUG
+                    if (dbg_count) {
+                        // check for backward direction
+                        auto is_ok = dbg_prev_ts >= probe_entry->time;
+                        assert(is_ok);
+                    }
+                    dbg_prev_ts = probe_entry->time;
+                    dbg_count++;
+#endif
+                    cursor_->put(caller_, probe_offset, page_);
+                }
+                if (probe_entry->time < query_.lowerbound || current_index == 0u) {
+                    cursor_->complete(caller_);
+                    return;
+                }
+            }
         } else {
-            end = probe_index - 1u;     // change max index to search lower subarray
-            if (end == ~0u)              // we hit the lower bound of the array
-                break;
+            while (true) {
+                auto current_index = probe_index++;
+                auto probe_offset = page_->page_index[current_index];
+                auto probe_entry = page_->read_entry(probe_offset);
+                auto probe = probe_entry->param_id;
+                bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                           query_.upperbound >= probe_entry->time;
+                if (query_.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
+#ifdef DEBUG
+                    if (dbg_count) {
+                        // check for forward direction
+                        auto is_ok = dbg_prev_ts <= probe_entry->time;
+                        assert(is_ok);
+                    }
+                    dbg_prev_ts = probe_entry->time;
+                    dbg_count++;
+#endif
+                    cursor_->put(caller_, probe_offset, page_);
+                }
+                if (probe_entry->time > query_.upperbound || current_index == MAX_INDEX_) {
+                    cursor_->complete(caller_);
+                    return;
+                }
+            }
         }
     }
+};
 
-    // TODO: split this method
-SCAN:
-    if (is_backward) {
-        while (true) {
-            auto current_index = probe_index--;
-            auto probe_offset = page_index[current_index];
-            auto probe_entry = read_entry(probe_offset);
-            auto probe = probe_entry->param_id;
-            bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
-                                       query.upperbound >= probe_entry->time;
-            if (query.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-#ifdef DEBUG
-                if (dbg_count) {
-                    // check for backward direction
-                    auto is_ok = dbg_prev_ts >= probe_entry->time;
-                    assert(is_ok);
-                }
-                dbg_prev_ts = probe_entry->time;
-                dbg_count++;
-#endif
-                cursor->put(caller, probe_offset, this);
-            }
-            if (probe_entry->time < query.lowerbound || current_index == 0u) {
-                cursor->complete(caller);
-                return;
-            }
-        }
-    } else {
-        while (true) {
-            auto current_index = probe_index++;
-            auto probe_offset = page_index[current_index];
-            auto probe_entry = read_entry(probe_offset);
-            auto probe = probe_entry->param_id;
-            bool probe_in_time_range = query.lowerbound <= probe_entry->time &&
-                                       query.upperbound >= probe_entry->time;
-            if (query.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
-#ifdef DEBUG
-                if (dbg_count) {
-                    // check for forward direction
-                    auto is_ok = dbg_prev_ts <= probe_entry->time;
-                    assert(is_ok);
-                }
-                dbg_prev_ts = probe_entry->time;
-                dbg_count++;
-#endif
-                cursor->put(caller, probe_offset, this);
-            }
-            if (probe_entry->time > query.upperbound || current_index == max_index) {
-                cursor->complete(caller);
-                return;
-            }
-        }
+void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
+{
+    SearchAlgorithm search_alg(this, caller, cursor, query);
+    if (search_alg.fast_path() == false) {
+        search_alg.interpolation();
+        search_alg.binary_search();
+        search_alg.scan();
     }
 }
 
