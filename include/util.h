@@ -86,6 +86,10 @@ namespace Akumuli
 
     std::tuple<bool, aku_Status> page_in_core(const void* addr);
 
+    size_t get_page_size();
+
+    const void* align_to_page(const void* ptr, size_t get_page_size);
+
     /** Wrapper for mincore syscall.
      * If everything is OK works as simple wrapper
      * (memory needed for mincore syscall managed by wrapper itself).

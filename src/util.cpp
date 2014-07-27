@@ -181,7 +181,7 @@ int64_t log2(int64_t value) noexcept {
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
-inline static const void* align_to_page(const void* ptr, size_t page_size) {
+const void* align_to_page(const void* ptr, size_t page_size) {
     return reinterpret_cast<const void*>(
         reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
 }
@@ -235,6 +235,11 @@ bool PageInfo::in_core(const void* addr) {
 
 void PageInfo::fill_mem() {
     std::fill(data_.begin(), data_.end(), MINCORE_MASK);
+}
+
+size_t get_page_size() {
+    auto page_size = sysconf(_SC_PAGESIZE);
+    return page_size;
 }
 
 std::tuple<bool, aku_Status> page_in_core(const void* addr) {

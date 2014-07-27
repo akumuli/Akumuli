@@ -244,6 +244,131 @@ static bool validate_query(SearchQuery const& query) {
     return true;
 }
 
+struct SearchRange {
+    uint32_t begin;
+    uint32_t end;
+
+    bool is_small(PageHeader const* page) {
+        auto ps = get_page_size();
+        auto b = align_to_page(reinterpret_cast<void const*>(page->read_entry_at(begin)), ps);
+        auto e = align_to_page(reinterpret_cast<void const*>(page->read_entry_at(end)), ps);
+        return b == e;
+    }
+};
+
+struct SearchAlgorithm {
+    PageHeader const* page_;
+    Caller& caller_;
+    InternalCursor* cursor_;
+    SearchQuery query_;
+
+    const uint32_t MAX_INDEX_;
+    const bool IS_BACKWARD_;
+    const aku_TimeStamp key_;
+
+    SearchRange range_;
+
+    SearchAlgorithm(PageHeader const* page, Caller& caller, InternalCursor* cursor, SearchQuery query)
+        : page_(page)
+        , caller_(caller)
+        , cursor_(cursor)
+        , query_(query)
+        , MAX_INDEX_(page->sync_count - 1)
+        , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
+        , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
+    {
+        range_.begin = 0u;
+        range_.end = MAX_INDEX_;
+    }
+
+    bool interpolation() {
+        if (!validate_query(query_)) {
+            cursor_->set_error(caller_, AKU_SEARCH_EBAD_ARG);
+            return true;
+        }
+
+        if (!page_->count) {
+            cursor_->complete(caller_);
+            return true;
+        }
+
+        // Interpolation search
+
+        uint32_t probe_index = 0u;
+
+        if (key_ > page_->bbox.max_timestamp || key_ < page_->bbox.min_timestamp) {
+            // Shortcut for corner cases
+            if (key_ > page_->bbox.max_timestamp) {
+                if (IS_BACKWARD_) {
+                    range_.begin = range_.end;
+                    return false;
+                } else {
+                    // return empty result
+                    cursor_->complete(caller_);
+                    return true;
+                }
+            }
+            else if (key_ < page_->bbox.min_timestamp) {
+                if (!IS_BACKWARD_) {
+                    range_.end = range_.begin;
+                    return false;
+                } else {
+                    // return empty result
+                    cursor_->complete(caller_);
+                    return true;
+                }
+            }
+        } else {
+            aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
+            aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
+
+            int interpolation_search_quota = 5;
+
+            while(interpolation_search_quota--)  {
+                // On small distances - fallback to binary search
+                if (range_.is_small(page_))
+                    break;
+
+                probe_index = ((key_ - search_lower_bound) * (range_.end - range_.begin)) /
+                              (search_upper_bound - search_lower_bound);
+
+                if (probe_index > range_.begin && probe_index < range_.end) {
+
+                    auto probe_offset = page_->page_index[probe_index];
+                    auto probe_entry = page_->read_entry(probe_offset);
+                    auto probe = probe_entry->time;
+
+                    if (probe < key_) {
+                        // undershoot
+                        range_.begin = probe_index + 1u;
+                        probe_offset = page_->page_index[range_.begin];
+                        probe_entry = page_->read_entry(probe_offset);
+                        search_lower_bound = probe_entry->time;
+                    } else if (probe > key_) {
+                        // overshoot
+                        range_.end = probe_index - 1u;
+                        probe_offset = page_->page_index[range_.end];
+                        probe_entry = page_->read_entry(probe_offset);
+                        search_upper_bound = probe_entry->time;
+                    }
+                }
+                else {
+                    break;
+                    // Continue with binary search
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool binary_search() {
+        if (range_.begin == range_.end) {
+            return false;
+        }
+    }
+};
+
 void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
 {
 #ifdef DEBUG
