@@ -325,7 +325,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
     ExpectedSearchResults e;
     e.completed = true;
     e.error_code = RecordingCursor::NO_ERROR;
-    e.ressize = 499;
+    e.ressize = 500;
     generic_search_test_with_skew(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, e);
 }
 
