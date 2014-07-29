@@ -539,10 +539,10 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
               n_entries = 0;
 
     for (Volume const* vol: volumes_) {
-        auto size = vol->page_->length;
-        auto free_space = vol->page_->get_free_space();
-        used_space += size - free_space;
-        free_space += free_space;
+        auto all = vol->page_->length;
+        auto free = vol->page_->get_free_space();
+        used_space += all - free;
+        free_space += free;
         n_entries += vol->page_->count;
     }
     rcv_stats->n_volumes = volumes_.size();
