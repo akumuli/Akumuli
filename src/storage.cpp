@@ -533,4 +533,22 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
     cur->complete(caller);
 }
 
+void Storage::get_stats(aku_StorageStats* rcv_stats) {
+    uint64_t used_space = 0,
+             free_space = 0,
+              n_entries = 0;
+
+    for (Volume const* vol: volumes_) {
+        auto size = vol->page_->length;
+        auto free_space = vol->page_->get_free_space();
+        used_space += size - free_space;
+        free_space += free_space;
+        n_entries += vol->page_->count;
+    }
+    rcv_stats->n_volumes = volumes_.size();
+    rcv_stats->free_space = free_space;
+    rcv_stats->used_space = used_space;
+    rcv_stats->n_entries = n_entries;
+}
+
 }

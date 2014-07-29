@@ -125,6 +125,9 @@ struct Storage
       * @param volumes_path path to volumes dir
       */
     static apr_status_t new_storage(const char* file_name, const char* metadata_path, const char* volumes_path, int num_pages);
+
+    // Stats
+    void get_stats(aku_StorageStats* rcv_stats);
 };
 
 }

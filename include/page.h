@@ -216,6 +216,8 @@ struct PageHeader {
       * @param num_offsets number of values in buffer
       */
     void sync_next_index(aku_EntryOffset offsets);
+
+    static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 };
 
 }  // namespaces

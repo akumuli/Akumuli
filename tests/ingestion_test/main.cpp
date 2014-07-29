@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 10*1000*1000 + 1;
+const int NUM_ITERATIONS = 100*1000*1000;
 const int CHUNK_SIZE = 10*1000;
 
 const char* DB_NAME = "test";
@@ -65,6 +65,30 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
     aku_close_cursor(cursor);
 }
 
+void print_storage_stats(aku_StorageStats& ss) {
+    std::cout << ss.n_entries << " elenents in" << std::endl
+              << ss.n_volumes << " volumes with" << std::endl
+              << ss.used_space << " bytes used and" << std::endl
+              << ss.free_space << " bytes free" << std::endl;
+}
+
+void print_search_stats(aku_SearchStats& ss) {
+    std::cout << "Interpolation search" << std::endl;
+    std::cout << ss.istats.n_matches << " matches" << std::endl
+              << ss.istats.n_times << " times" << std::endl
+              << ss.istats.n_steps << " steps" << std::endl
+              << ss.istats.n_overshoots << " overshoots" << std::endl
+              << ss.istats.n_undershoots << " undershoots" << std::endl;
+
+    std::cout << "Binary search" << std::endl;
+    std::cout << ss.bstats.n_steps << " steps" << std::endl
+              << ss.bstats.n_times << " times" << std::endl;
+
+    std::cout << "Scan" << std::endl;
+    std::cout << ss.scan.bwd_bytes << " bytes read in backward direction" << std::endl
+              << ss.scan.fwd_bytes << " bytes read in forward direction" << std::endl;
+}
+
 int main(int cnt, const char** args)
 {
     /* Delete old
@@ -102,6 +126,10 @@ int main(int cnt, const char** args)
         }
     }
 
+    aku_StorageStats storage_stats;
+    aku_global_storage_stats(db, &storage_stats);
+    print_storage_stats(storage_stats);
+
     // Search
     std::cout << "Sequential access" << std::endl;
     uint64_t counter = 0;
@@ -111,6 +139,10 @@ int main(int cnt, const char** args)
                   , std::numeric_limits<aku_TimeStamp>::max()
                   , counter
                   , timer );
+
+    aku_SearchStats search_stats;
+    aku_global_search_stats(&search_stats, true);
+    print_search_stats(search_stats);
 
     // Random access
     std::cout << "Random access" << std::endl;
@@ -126,6 +158,8 @@ int main(int cnt, const char** args)
     for(auto range: ranges) {
         query_database(db, range.first, range.second, counter, timer);
     }
+    aku_global_search_stats(&search_stats, true);
+    print_search_stats(search_stats);
 
     aku_close_database(db);
     delete_storage();

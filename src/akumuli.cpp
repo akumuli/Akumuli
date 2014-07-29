@@ -146,6 +146,10 @@ struct DatabaseImpl : public aku_Database
         return storage_.write(param_id, ts, value);
     }
 
+    // Stats
+    void get_storage_stats(aku_StorageStats* recv_stats) {
+        storage_.get_stats(recv_stats);
+    }
 };
 
 apr_status_t create_database( const char* 	file_name
@@ -219,3 +223,15 @@ bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
     return pimpl->is_error(out_error_code_or_null);
 }
 
+//--------------------------------
+//         Statistics
+//--------------------------------
+
+void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset) {
+    PageHeader::get_search_stats(rcv_stats, reset);
+}
+
+void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    dbi->get_storage_stats(rcv_stats);
+}

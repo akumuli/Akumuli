@@ -131,4 +131,37 @@ extern "C" {
     /** Close database.
      */
     void aku_close_database(aku_Database* db);
+
+    /*
+     * Statistics
+     */
+
+    struct aku_SearchStats {
+        struct InterpolationStats {
+            uint64_t n_times;     //< How many times interpolation search was performed
+            uint64_t n_steps;     //< How many interpolation search steps was performed
+            uint64_t n_overshoots;  //< Number of overruns
+            uint64_t n_undershoots; //< Number of underruns
+            uint64_t n_matches;   //< Number of matches by interpolation search only
+        } istats;
+        struct BinarySearch {
+            uint64_t n_times;     //< How many times binary search was performed
+            uint64_t n_steps;     //< How many binary search steps was performed
+        } bstats;
+        struct Scan {
+            uint64_t fwd_bytes;   //< Number of scanned bytes in forward direction
+            uint64_t bwd_bytes;   //< Number of scanned bytes in backward direction
+        } scan;
+    };
+
+    void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset=false);
+
+    struct aku_StorageStats {
+        uint64_t n_entries;       //< Total number of entries
+        uint64_t n_volumes;       //< Total number of volumes
+        uint64_t free_space;      //< Free space total
+        uint64_t used_space;      //< Space in use
+    };
+
+    void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
 }

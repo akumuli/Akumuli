@@ -18,11 +18,11 @@
 #include <cstring>
 #include <cassert>
 #include <algorithm>
+#include <mutex>
 #include <apr_time.h>
 #include "sort.h"
 #include "page.h"
 #include "akumuli_def.h"
-#include <boost/lexical_cast.hpp>
 
 
 namespace Akumuli {
@@ -244,6 +244,20 @@ static bool validate_query(SearchQuery const& query) {
     return true;
 }
 
+struct SearchStats {
+    aku_SearchStats stats;
+    std::mutex mutex;
+
+    SearchStats() {
+        memset(&stats, 0, sizeof(stats));
+    }
+};
+
+static SearchStats& get_global_search_stats() {
+    static SearchStats stats;
+    return stats;
+}
+
 struct SearchRange {
     uint32_t begin;
     uint32_t end;
@@ -323,8 +337,13 @@ struct SearchAlgorithm {
         aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
         uint32_t probe_index = 0u;
         int interpolation_search_quota = 5;
+        int steps_count = 0;
 
-        while(interpolation_search_quota--)  {
+        uint64_t overshoot = 0u;
+        uint64_t undershoot = 0u;
+        uint64_t exact_match = 0u;
+
+        while(steps_count++ < interpolation_search_quota)  {
             // On small distances - fallback to binary search
             if (range_.is_small(page_))
                 break;
@@ -339,17 +358,20 @@ struct SearchAlgorithm {
                 auto probe = probe_entry->time;
 
                 if (probe < key_) {
-                    // undershoot
+                    undershoot++;
                     range_.begin = probe_index + 1u;
                     probe_offset = page_->page_index[range_.begin];
                     probe_entry = page_->read_entry(probe_offset);
                     search_lower_bound = probe_entry->time;
                 } else if (probe > key_) {
-                    // overshoot
+                    overshoot++;
                     range_.end = probe_index - 1u;
                     probe_offset = page_->page_index[range_.end];
                     probe_entry = page_->read_entry(probe_offset);
                     search_upper_bound = probe_entry->time;
+                } else {
+                    // probe == key_
+                    exact_match = 1;
                 }
             }
             else {
@@ -357,14 +379,23 @@ struct SearchAlgorithm {
                 // Continue with binary search
             }
         }
+        auto& stats = get_global_search_stats();
+        std::lock_guard<std::mutex> lock(stats.mutex);
+        stats.stats.istats.n_matches += exact_match;
+        stats.stats.istats.n_overshoots += overshoot;
+        stats.stats.istats.n_undershoots += undershoot;
+        stats.stats.istats.n_times += 1;
+        stats.stats.istats.n_steps += steps_count;
     }
 
     void binary_search() {
+        uint64_t steps = 0ul;
         if (range_.begin == range_.end) {
             return;
         }
         uint32_t probe_index = 0u;
         while (range_.end >= range_.begin) {
+            steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
             auto probe_offset = page_->page_index[probe_index];
             auto probe_entry = page_->read_entry(probe_offset);
@@ -386,6 +417,12 @@ struct SearchAlgorithm {
         }
         range_.begin = probe_index;
         range_.end = probe_index;
+
+        auto& stats = get_global_search_stats();
+        std::lock_guard<std::mutex> guard(stats.mutex);
+        auto& bst = stats.stats.bstats;
+        bst.n_times += 1;
+        bst.n_steps += steps;
     }
 
     void scan() {
@@ -393,12 +430,15 @@ struct SearchAlgorithm {
             cursor_->set_error(caller_, AKU_EGENERAL);
             return;
         }
+        uint64_t start_offset = 0ul,
+                 stop_offset = 0ul;
 #ifdef DEBUG
         // Debug variables
         aku_TimeStamp dbg_prev_ts;
         long dbg_count = 0;
 #endif
         auto probe_index = range_.begin;
+        start_offset = page_->page_index[probe_index];
         if (IS_BACKWARD_) {
             while (true) {
                 auto current_index = probe_index--;
@@ -420,8 +460,9 @@ struct SearchAlgorithm {
                     cursor_->put(caller_, probe_offset, page_);
                 }
                 if (probe_entry->time < query_.lowerbound || current_index == 0u) {
+                    stop_offset = probe_offset;
                     cursor_->complete(caller_);
-                    return;
+                    break;
                 }
             }
         } else {
@@ -445,10 +486,25 @@ struct SearchAlgorithm {
                     cursor_->put(caller_, probe_offset, page_);
                 }
                 if (probe_entry->time > query_.upperbound || current_index == MAX_INDEX_) {
+                    stop_offset = probe_offset;
                     cursor_->complete(caller_);
-                    return;
+                    break;
                 }
             }
+        }
+        auto& stats = get_global_search_stats();
+        std::lock_guard<std::mutex> guard(stats.mutex);
+        auto& scan_stats = stats.stats.scan;
+        uint64_t sum;
+        if (stop_offset < start_offset) {
+            sum = start_offset - stop_offset;
+        } else {
+            sum = stop_offset - start_offset;
+        }
+        if (IS_BACKWARD_) {
+            scan_stats.bwd_bytes += sum;
+        } else {
+            scan_stats.fwd_bytes += sum;
         }
     }
 };
@@ -481,6 +537,19 @@ void PageHeader::sync_next_index(aku_EntryOffset offset) {
         AKU_PANIC("sync_index out of range");
     }
     page_index[sync_count++] = offset;
+}
+
+void PageHeader::get_search_stats(aku_SearchStats* stats, bool reset) {
+    auto& gstats = get_global_search_stats();
+    std::lock_guard<std::mutex> guard(gstats.mutex);
+
+    memcpy( reinterpret_cast<void*>(stats)
+          , reinterpret_cast<void*>(&gstats.stats)
+          , sizeof(aku_SearchStats));
+
+    if (reset) {
+        memset(reinterpret_cast<void*>(&gstats.stats), 0, sizeof(aku_SearchStats));
+    }
 }
 
 }  // namepsace
