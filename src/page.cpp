@@ -373,8 +373,8 @@ struct SearchAlgorithm {
                 numerator = key_ - search_lower_bound;
             }
 
-            probe_index = (numerator * (range_.end - range_.begin)) /
-                          (search_upper_bound - search_lower_bound);
+            probe_index = range_.begin + ((numerator * (range_.end - range_.begin)) /
+                                          (search_upper_bound - search_lower_bound));
 
             if (probe_index > range_.begin && probe_index < range_.end) {
 
