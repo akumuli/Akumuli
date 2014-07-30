@@ -78,7 +78,8 @@ void print_search_stats(aku_SearchStats& ss) {
               << ss.istats.n_times << " times" << std::endl
               << ss.istats.n_steps << " steps" << std::endl
               << ss.istats.n_overshoots << " overshoots" << std::endl
-              << ss.istats.n_undershoots << " undershoots" << std::endl;
+              << ss.istats.n_undershoots << " undershoots" << std::endl
+              << ss.istats.n_reduced_to_one_page << "  reduced to page" << std::endl;
 
     std::cout << "Binary search" << std::endl;
     std::cout << ss.bstats.n_steps << " steps" << std::endl

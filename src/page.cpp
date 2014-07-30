@@ -282,6 +282,13 @@ struct SearchAlgorithm {
 
     SearchRange range_;
 
+    //! Interpolation search state
+    enum I10nState {
+        NONE,
+        UNDERSHOOT,
+        OVERSHOOT
+    };
+
     SearchAlgorithm(PageHeader const* page, Caller& caller, InternalCursor* cursor, SearchQuery query)
         : page_(page)
         , caller_(caller)
@@ -338,17 +345,35 @@ struct SearchAlgorithm {
         uint32_t probe_index = 0u;
         int interpolation_search_quota = 5;
         int steps_count = 0;
+        int small_range_finish = 0;
 
         uint64_t overshoot = 0u;
         uint64_t undershoot = 0u;
         uint64_t exact_match = 0u;
+        aku_TimeStamp prev_step_err = 0u;
+        I10nState state = NONE;
 
         while(steps_count++ < interpolation_search_quota)  {
             // On small distances - fallback to binary search
-            if (range_.is_small(page_))
+            if (range_.is_small(page_)) {
+                small_range_finish = 1;
                 break;
+            }
 
-            probe_index = ((key_ - search_lower_bound) * (range_.end - range_.begin)) /
+            uint64_t numerator = 0u;
+
+            switch(state) {
+            case UNDERSHOOT:
+                numerator = key_ - search_lower_bound + prev_step_err/2;
+                break;
+            case OVERSHOOT:
+                numerator = key_ - search_lower_bound - prev_step_err/2;
+                break;
+            default:
+                numerator = key_ - search_lower_bound;
+            }
+
+            probe_index = (numerator * (range_.end - range_.begin)) /
                           (search_upper_bound - search_lower_bound);
 
             if (probe_index > range_.begin && probe_index < range_.end) {
@@ -359,12 +384,16 @@ struct SearchAlgorithm {
 
                 if (probe < key_) {
                     undershoot++;
+                    state = UNDERSHOOT;
+                    prev_step_err = key_ - probe;
                     range_.begin = probe_index + 1u;
                     probe_offset = page_->page_index[range_.begin];
                     probe_entry = page_->read_entry(probe_offset);
                     search_lower_bound = probe_entry->time;
                 } else if (probe > key_) {
                     overshoot++;
+                    state = OVERSHOOT;
+                    prev_step_err = probe - key_;
                     range_.end = probe_index - 1u;
                     probe_offset = page_->page_index[range_.end];
                     probe_entry = page_->read_entry(probe_offset);
@@ -386,6 +415,7 @@ struct SearchAlgorithm {
         stats.stats.istats.n_undershoots += undershoot;
         stats.stats.istats.n_times += 1;
         stats.stats.istats.n_steps += steps_count;
+        stats.stats.istats.n_reduced_to_one_page += small_range_finish;
     }
 
     void binary_search() {

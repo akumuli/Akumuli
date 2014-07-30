@@ -138,19 +138,20 @@ extern "C" {
 
     struct aku_SearchStats {
         struct InterpolationStats {
-            uint64_t n_times;     //< How many times interpolation search was performed
-            uint64_t n_steps;     //< How many interpolation search steps was performed
-            uint64_t n_overshoots;  //< Number of overruns
-            uint64_t n_undershoots; //< Number of underruns
-            uint64_t n_matches;   //< Number of matches by interpolation search only
+            uint64_t n_times;               //< How many times interpolation search was performed
+            uint64_t n_steps;               //< How many interpolation search steps was performed
+            uint64_t n_overshoots;          //< Number of overruns
+            uint64_t n_undershoots;         //< Number of underruns
+            uint64_t n_matches;             //< Number of matches by interpolation search only
+            uint64_t n_reduced_to_one_page;
         } istats;
         struct BinarySearch {
-            uint64_t n_times;     //< How many times binary search was performed
-            uint64_t n_steps;     //< How many binary search steps was performed
+            uint64_t n_times;               //< How many times binary search was performed
+            uint64_t n_steps;               //< How many binary search steps was performed
         } bstats;
         struct Scan {
-            uint64_t fwd_bytes;   //< Number of scanned bytes in forward direction
-            uint64_t bwd_bytes;   //< Number of scanned bytes in backward direction
+            uint64_t fwd_bytes;             //< Number of scanned bytes in forward direction
+            uint64_t bwd_bytes;             //< Number of scanned bytes in backward direction
         } scan;
     };
 
