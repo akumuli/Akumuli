@@ -24,6 +24,8 @@
 #include "page.h"
 #include "akumuli_def.h"
 
+#include <random>
+
 
 namespace Akumuli {
 
@@ -343,7 +345,7 @@ struct SearchAlgorithm {
         aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
         aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
         uint32_t probe_index = 0u;
-        int interpolation_search_quota = 5;
+        int interpolation_search_quota = 8;  // TODO: move to configuration
         int steps_count = 0;
         int small_range_finish = 0;
 
@@ -364,10 +366,10 @@ struct SearchAlgorithm {
 
             switch(state) {
             case UNDERSHOOT:
-                numerator = key_ - search_lower_bound + prev_step_err/2;
+                numerator = key_ - search_lower_bound + (prev_step_err >> (std::rand() & 0x7));
                 break;
             case OVERSHOOT:
-                numerator = key_ - search_lower_bound - prev_step_err/2;
+                numerator = key_ - search_lower_bound - (prev_step_err >> (std::rand() & 0x7));
                 break;
             default:
                 numerator = key_ - search_lower_bound;
@@ -401,6 +403,9 @@ struct SearchAlgorithm {
                 } else {
                     // probe == key_
                     exact_match = 1;
+                    range_.begin = probe_index;
+                    range_.end = probe_index;
+                    break;
                 }
             }
             else {
