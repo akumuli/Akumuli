@@ -16,14 +16,10 @@
  */
 
 #include "cursor.h"
-#include <log4cxx/logger.h>
-#include <log4cxx/logmanager.h>
 #include <algorithm>
 
 
 namespace Akumuli {
-
-static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Cursor");
 
 void RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) noexcept {
     offsets.push_back(std::make_pair(offset, page));

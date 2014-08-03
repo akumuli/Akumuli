@@ -1,7 +1,6 @@
 add_executable(ingestion_test main.cpp)
 target_link_libraries(ingestion_test
     akumuli
-    ${LOG4CXX_LIBRARIES}
     ${APR_LIBRARY}
     ${Boost_LIBRARIES}
     libboost_coroutine.a

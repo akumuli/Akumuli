@@ -16,7 +16,6 @@
  */
 
 #include "util.h"
-#include <log4cxx/logmanager.h>
 #include <stdio.h>
 #include <cassert>
 #include <sys/mman.h>
@@ -42,8 +41,10 @@ std::ostream& operator << (std::ostream& str, AprException const& e) {
     return str;
 }
 
-MemoryMappedFile::MemoryMappedFile(const char* file_name) noexcept
+MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_printf_t logger) noexcept
     : path_(file_name)
+    , tag_(tag)
+    , logger_(logger)
 {
     map_file();
 }
@@ -65,7 +66,7 @@ apr_status_t MemoryMappedFile::map_file() noexcept {
 
     if (status_ != APR_SUCCESS) {
         free_resources(success_count);
-        LOG4CXX_ERROR(s_logger_, "Can't mmap file, error " << error_message() << " on step " << success_count);
+        (*logger_)(tag_, "Can't mmap file, error %s on step %d", error_message().c_str(), success_count);
     }
     return status_;
 }
@@ -102,12 +103,12 @@ void MemoryMappedFile::remap_file_destructive() {
             apr_pool_destroy(pool);
     };
     if (status != APR_SUCCESS) {
-        LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status) << " on step " << success_counter);
+        (*logger_)(tag_, "Can't remap file, error %s on step %d", apr_error_message(status).c_str(), success_counter);
         AKU_PANIC("can't remap file");
     }
     status = map_file();
     if (status != APR_SUCCESS) {
-        LOG4CXX_ERROR(s_logger_, "Can't remap file, error " << apr_error_message(status));
+        (*logger_)(tag_, "Can't remap file, error %s", apr_error_message(status).c_str());
         AKU_PANIC("can't remap file");
     }
 }
@@ -172,9 +173,6 @@ size_t MemoryMappedFile::get_size() const noexcept {
 apr_status_t MemoryMappedFile::flush() noexcept {
     return apr_file_flush(fp_);
 }
-
-log4cxx::LoggerPtr MemoryMappedFile::s_logger_ = log4cxx::LogManager::getLogger("Akumuli.MemoryMappedFile");
-
 
 int64_t log2(int64_t value) noexcept {
     // TODO: visual studio version needed

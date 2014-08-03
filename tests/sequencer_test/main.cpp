@@ -27,6 +27,7 @@ const int NUM_ITERATIONS = 100*1000*1000;
 
 int main(int cnt, const char** args)
 {
+    aku_initialize();
     {
         std::cout << "Sequencer perf-test, ordered timestamps" << std::endl;
         // Patience sort perf-test

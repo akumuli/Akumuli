@@ -53,7 +53,7 @@ struct Volume {
     std::unique_ptr<Sequencer> cache_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path, aku_Duration window, size_t max_cache_size);
+    Volume(const char* file_path, aku_Duration window, size_t max_cache_size, int tag, aku_printf_t logger);
 
     //! Get pointer to page
     PageHeader* get_page() const;
@@ -83,8 +83,9 @@ struct Storage
 
     LockType                mutex_;                     //< Storage lock (used by worker thread)
 
-    // Cached metadata
-    apr_time_t creation_time_;
+    apr_time_t              creation_time_;  //< Cached metadata
+    int                     tag_;  //< Tag to distinct different storage instances
+    aku_printf_t            logger_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file
@@ -124,7 +125,7 @@ struct Storage
       * @param metadata_path path to metadata dir
       * @param volumes_path path to volumes dir
       */
-    static apr_status_t new_storage(const char* file_name, const char* metadata_path, const char* volumes_path, int num_pages);
+    static apr_status_t new_storage(const char* file_name, const char* metadata_path, const char* volumes_path, int num_pages, aku_printf_t logger);
 
     // Stats
     void get_stats(aku_StorageStats* rcv_stats);

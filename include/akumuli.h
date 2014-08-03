@@ -27,6 +27,8 @@
 
 extern "C" {
 
+    void aku_initialize();
+
     typedef uint64_t aku_TimeStamp;
     typedef uint64_t aku_Duration;
     typedef uint32_t aku_EntryOffset;
@@ -47,6 +49,8 @@ extern "C" {
 
     const char* aku_error_message(int error_code);
 
+    void aku_console_logger(int tag, const char* format, ...);
+
     //! Database instance.
     struct aku_Database {
     };
@@ -59,11 +63,12 @@ extern "C" {
      * @param num_volumes number of volumes to create
      * @return APR errorcode or APR_SUCCESS
      */
-    apr_status_t create_database( const char* 	file_name
-                                , const char* 	metadata_path
-                                , const char* 	volumes_path
-                                , int32_t       num_volumes
-                                );
+    apr_status_t aku_create_database( const char*  file_name
+                                    , const char*  metadata_path
+                                    , const char*  volumes_path
+                                    , int32_t      num_volumes
+                                    , aku_printf_t logger
+                                    );
 
     /**
      * @brief Select search query.

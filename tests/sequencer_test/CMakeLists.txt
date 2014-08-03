@@ -1,7 +1,6 @@
 add_executable(sequencer_test main.cpp)
 target_link_libraries(sequencer_test
     akumuli
-    ${LOG4CXX_LIBRARIES}
     ${APR_LIBRARY}
     ${Boost_LIBRARIES}
     libboost_coroutine.a

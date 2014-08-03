@@ -25,6 +25,9 @@
 
 extern "C" {
 
+//! Logging function type
+typedef void (*aku_printf_t) (int tag, const char * format, ...);
+
 /** Library configuration.
  */
 struct aku_Config
@@ -37,6 +40,9 @@ struct aku_Config
 
     //! Maximum cache size in bytes
     uint32_t max_cache_size;  // TODO: move to config file
+
+    //! Pointer to logging function
+    aku_printf_t logger;
 };
 
 }

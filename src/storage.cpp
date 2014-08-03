@@ -20,6 +20,8 @@
 #include "util.h"
 #include "cursor.h"
 
+#include <cstdlib>
+#include <cstdarg>
 #include <stdexcept>
 #include <algorithm>
 #include <new>
@@ -32,9 +34,6 @@
 #include <apr_mmap.h>
 #include <apr_xml.h>
 
-#include <log4cxx/logger.h>
-#include <log4cxx/logmanager.h>
-
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
@@ -42,14 +41,11 @@
 
 namespace Akumuli {
 
-static log4cxx::LoggerPtr s_logger_ = log4cxx::LogManager::getLogger("Akumuli.Storage");
-
-
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
-Volume::Volume(const char* file_name, aku_Duration window, size_t max_cache_size)
-    : mmap_(file_name)
+Volume::Volume(const char* file_name, aku_Duration window, size_t max_cache_size, int tag, aku_printf_t logger)
+    : mmap_(file_name, tag, logger)
     , window_(window)
     , max_cache_size_(max_cache_size)
 {
@@ -85,8 +81,17 @@ void Volume::close() {
 
 //----------------------------------Storage---------------------------------------------
 
+static std::atomic<int> storage_cnt = {1};
+
 Storage::Storage(const char* path, aku_Config const& conf)
+    : tag_(storage_cnt++)
 {
+    aku_printf_t logger = conf.logger;
+    if (logger == nullptr) {
+        logger = &aku_console_logger;
+    }
+    logger_ = logger;
+
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
      * because metadata file is corrupted, or volume is missed on disc.
@@ -132,7 +137,7 @@ Storage::Storage(const char* path, aku_Config const& conf)
     // create volumes list
     for(auto path: volume_names) {
         // TODO: convert conf.max_cache_size from bytes
-        Volume* vol = new Volume(path.c_str(), ttl_, conf.max_cache_size);
+        Volume* vol = new Volume(path.c_str(), ttl_, conf.max_cache_size, tag_, logger_);
         volumes_.push_back(vol);
     }
 
@@ -227,269 +232,10 @@ void Storage::advance_volume_(int local_rev) {
 }
 
 void Storage::log_error(const char* message) {
-    LOG4CXX_ERROR(s_logger_, "Write error: " << message);
+    (*logger_)(tag_, "Write error: %s", message);
 }
 
 // Reading
-
-
-// Writing
-
-//! commit changes
-void Storage::commit() {
-    // TODO: volume->flush()
-}
-
-//! write data
-aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
-    int status = AKU_WRITE_STATUS_BAD_DATA;
-    while(true) {
-        int local_rev = active_volume_index_.load();
-        status = active_page_->add_entry(param, ts, data);
-        switch (status) {
-        case AKU_SUCCESS: {
-            TimeSeriesValue ts_value(ts, param, active_page_->last_offset);
-            Sequencer::Lock merge_lock;
-            std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-            if (merge_lock.owns_lock()) {
-                // Slow path
-                Caller caller;
-                DirectPageSyncCursor cursor;
-                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
-            }
-            return status;
-        }
-        case AKU_EOVERFLOW:
-            advance_volume_(local_rev);
-            break;  // retry
-        case AKU_ELATE_WRITE:
-        // Branch for rare and unexpected errors
-        default:
-            log_error(aku_error_message(status));
-            return status;
-        };
-    }
-}
-
-
-
-/** This function creates file with specified size
-  */
-static apr_status_t create_file(const char* file_name, uint64_t size) {
-    apr_status_t status;
-    int success_count = 0;
-    apr_pool_t* mem_pool = NULL;
-    apr_file_t* file = NULL;
-
-    status = apr_pool_create(&mem_pool, NULL);
-    if (status == APR_SUCCESS) {
-        success_count++;
-
-        // Create new file
-        status = apr_file_open(&file, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, mem_pool);
-        if (status == APR_SUCCESS) {
-            success_count++;
-
-            // Truncate file
-            status = apr_file_trunc(file, size);
-            if (status == APR_SUCCESS)
-                success_count++;
-        }
-    }
-
-    if (status != APR_SUCCESS) {
-        char error_message[0x100];
-        apr_strerror(status, error_message, 0x100);
-        LOG4CXX_ERROR(s_logger_,  "Can't create file, error " << error_message << " on step " << success_count);
-    }
-
-    switch(success_count) {
-    case 3:
-    case 2:
-        status = apr_file_close(file);
-    case 1:
-        apr_pool_destroy(mem_pool);
-    case 0:
-        // even apr pool is not created
-        break;
-    }
-    return status;
-}
-
-
-/** This function creates one of the page files with specified
-  * name and index.
-  */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index) {
-    apr_status_t status;
-    int64_t size = AKU_MAX_PAGE_SIZE;
-
-    status = create_file(file_name, size);
-    if (status != APR_SUCCESS) {
-        LOG4CXX_ERROR(s_logger_, "Can't create page file " << file_name);
-        return status;
-    }
-
-    MemoryMappedFile mfile(file_name);
-    if (mfile.is_bad())
-        return mfile.status_code();
-
-    // Create index page
-    auto index_ptr = mfile.get_pointer();
-    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
-
-    // FIXME: revisit - is it actually needed?
-    // Activate the first page
-    if (page_index == 0) {
-        index_page->reuse();
-    }
-    return status;
-}
-
-/** Create page files, return list of statuses.
-  */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets) {
-    std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
-    for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), ix);
-        results[ix] = res;
-    }
-    return results;
-}
-
-static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses) {
-    if (targets.size() != statuses.size()) {
-        AKU_PANIC("sizes of targets and statuses doesn't match");
-    }
-    apr_pool_t* mem_pool = NULL;
-    int op_count = 0;
-    apr_status_t status = apr_pool_create(&mem_pool, NULL);
-    std::vector<apr_status_t> results;
-    if (status == APR_SUCCESS) {
-        op_count++;
-        for(auto ix = 0u; ix < targets.size(); ix++) {
-            const std::string& target = targets[ix];
-            if (statuses[ix] == APR_SUCCESS) {
-                LOG4CXX_INFO(s_logger_, "Removing " << target);
-                status = apr_file_remove(target.c_str(), mem_pool);
-                results.push_back(status);
-                if (status != APR_SUCCESS) {
-                    char error_message[1024];
-                    apr_strerror(status, error_message, 1024);
-                    LOG4CXX_ERROR(s_logger_, "Error [" << error_message << "] while deleting a file " << target);
-                }
-            }
-            else {
-                LOG4CXX_INFO(s_logger_, "Target " << target << " doesn't need to be removed");
-            }
-        }
-    }
-    if (op_count) {
-        apr_pool_destroy(mem_pool);
-    }
-    return results;
-}
-
-
-/** This function creates metadata file - root of the storage system.
-  * This page contains creation date and time, number of pages,
-  * all the page file names and they order.
-  */
-static apr_status_t create_metadata_page( const char* file_name
-                                        , std::vector<std::string> const& page_file_names)
-{
-    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
-    //       is FUBAR and uses boost::spirit.
-    try {
-        boost::property_tree::ptree root;
-        auto now = apr_time_now();
-        char date_time[0x100];
-        apr_rfc822_date(date_time, now);
-        root.add("creation_time", date_time);
-        root.add("num_volumes", page_file_names.size());
-        boost::property_tree::ptree volumes_list;
-        for(size_t i = 0; i < page_file_names.size(); i++) {
-            boost::property_tree::ptree page_desc;
-            page_desc.add("index", i);
-            page_desc.add("path", page_file_names[i]);
-            volumes_list.push_back(std::make_pair("", page_desc));
-        }
-        root.add_child("volumes", volumes_list);
-        boost::property_tree::json_parser::write_json(file_name, root);
-    }
-    catch(const std::exception& err) {
-        LOG4CXX_ERROR(s_logger_, "Can't generate JSON file " << file_name <<
-                                 ", the error is: " << err.what());
-        return APR_EGENERAL;
-    }
-    return APR_SUCCESS;
-}
-
-
-apr_status_t Storage::new_storage( const char* 	file_name
-                                 , const char* 	metadata_path
-                                 , const char* 	volumes_path
-                                 , int          num_pages
-                                 )
-{
-    apr_pool_t* mempool;
-    apr_status_t status = apr_pool_create(&mempool, NULL);
-    if (status != APR_SUCCESS)
-        return status;
-
-    // calculate list of page-file names
-    std::vector<std::string> page_names;
-    for (int ix = 0; ix < num_pages; ix++) {
-        std::stringstream stream;
-        stream << file_name << "_" << ix << ".volume";
-        char* path = nullptr;
-        std::string volume_file_name = stream.str();
-        status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
-        if (status != APR_SUCCESS) {
-            auto error_message = apr_error_message(status);
-            LOG4CXX_ERROR(s_logger_, "Invalid volumes path: " << error_message);
-            apr_pool_destroy(mempool);
-            AKU_APR_PANIC(status, error_message.c_str());
-        }
-        page_names.push_back(path);
-    }
-
-    apr_pool_clear(mempool);
-
-    status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
-    if (status == APR_EEXIST) {
-        LOG4CXX_ERROR(s_logger_, "Metadata dir already exists");
-    }
-    status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
-    if (status == APR_EEXIST) {
-        LOG4CXX_ERROR(s_logger_, "Volumes dir already exists");
-    }
-
-    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names);
-    for(auto creation_status: page_creation_statuses) {
-        if (creation_status != APR_SUCCESS) {
-            LOG4CXX_ERROR(s_logger_, "Not all pages successfullly created. Cleaning up.");
-            apr_pool_destroy(mempool);
-            delete_files(page_names, page_creation_statuses);
-            return creation_status;
-        }
-    }
-
-    std::stringstream stream;
-    stream << file_name << ".akumuli";
-    char* path = nullptr;
-    std::string metadata_file_name = stream.str();
-    status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
-    if (status != APR_SUCCESS) {
-        auto error_message = apr_error_message(status);
-        LOG4CXX_ERROR(s_logger_, "Invalid metadata path: " << error_message);
-        apr_pool_destroy(mempool);
-        AKU_APR_PANIC(status, error_message.c_str());
-    }
-    status = create_metadata_page(path, page_names);
-    apr_pool_destroy(mempool);
-    return status;
-}
 
 void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
     // Find pages
@@ -549,6 +295,265 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
     rcv_stats->free_space = free_space;
     rcv_stats->used_space = used_space;
     rcv_stats->n_entries = n_entries;
+}
+
+// Writing
+
+//! commit changes
+void Storage::commit() {
+    // TODO: volume->flush()
+}
+
+//! write data
+aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+    int status = AKU_WRITE_STATUS_BAD_DATA;
+    while(true) {
+        int local_rev = active_volume_index_.load();
+        status = active_page_->add_entry(param, ts, data);
+        switch (status) {
+        case AKU_SUCCESS: {
+            TimeSeriesValue ts_value(ts, param, active_page_->last_offset);
+            Sequencer::Lock merge_lock;
+            std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+            if (merge_lock.owns_lock()) {
+                // Slow path
+                Caller caller;
+                DirectPageSyncCursor cursor;
+                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+            }
+            return status;
+        }
+        case AKU_EOVERFLOW:
+            advance_volume_(local_rev);
+            break;  // retry
+        case AKU_ELATE_WRITE:
+        // Branch for rare and unexpected errors
+        default:
+            log_error(aku_error_message(status));
+            return status;
+        };
+    }
+}
+
+
+
+/** This function creates file with specified size
+  */
+static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf_t logger) {
+    apr_status_t status;
+    int success_count = 0;
+    apr_pool_t* mem_pool = NULL;
+    apr_file_t* file = NULL;
+
+    status = apr_pool_create(&mem_pool, NULL);
+    if (status == APR_SUCCESS) {
+        success_count++;
+
+        // Create new file
+        status = apr_file_open(&file, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, mem_pool);
+        if (status == APR_SUCCESS) {
+            success_count++;
+
+            // Truncate file
+            status = apr_file_trunc(file, size);
+            if (status == APR_SUCCESS)
+                success_count++;
+        }
+    }
+
+    if (status != APR_SUCCESS) {
+        char error_message[0x100];
+        apr_strerror(status, error_message, 0x100);
+        (*logger)(0, "Can't create file, error %s on step %d", error_message, success_count);
+    }
+
+    switch(success_count) {
+    case 3:
+    case 2:
+        status = apr_file_close(file);
+    case 1:
+        apr_pool_destroy(mem_pool);
+    case 0:
+        // even apr pool is not created
+        break;
+    }
+    return status;
+}
+
+
+/** This function creates one of the page files with specified
+  * name and index.
+  */
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_printf_t logger) {
+    apr_status_t status;
+    int64_t size = AKU_MAX_PAGE_SIZE;
+
+    status = create_file(file_name, size, logger);
+    if (status != APR_SUCCESS) {
+        (*logger)(0, "Can't create page file %s", file_name);
+        return status;
+    }
+
+    MemoryMappedFile mfile(file_name, 0, logger);
+    if (mfile.is_bad())
+        return mfile.status_code();
+
+    // Create index page
+    auto index_ptr = mfile.get_pointer();
+    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
+
+    // FIXME: revisit - is it actually needed?
+    // Activate the first page
+    if (page_index == 0) {
+        index_page->reuse();
+    }
+    return status;
+}
+
+/** Create page files, return list of statuses.
+  */
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_printf_t logger) {
+    std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
+    for (size_t ix = 0; ix < targets.size(); ix++) {
+        apr_status_t res = create_page_file(targets[ix].c_str(), ix, logger);
+        results[ix] = res;
+    }
+    return results;
+}
+
+static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses, aku_printf_t logger) {
+    if (targets.size() != statuses.size()) {
+        AKU_PANIC("sizes of targets and statuses doesn't match");
+    }
+    apr_pool_t* mem_pool = NULL;
+    int op_count = 0;
+    apr_status_t status = apr_pool_create(&mem_pool, NULL);
+    std::vector<apr_status_t> results;
+    if (status == APR_SUCCESS) {
+        op_count++;
+        for(auto ix = 0u; ix < targets.size(); ix++) {
+            const std::string& target = targets[ix];
+            if (statuses[ix] == APR_SUCCESS) {
+                (*logger)(0, "Removing %s", target.c_str());
+                status = apr_file_remove(target.c_str(), mem_pool);
+                results.push_back(status);
+                if (status != APR_SUCCESS) {
+                    char error_message[1024];
+                    apr_strerror(status, error_message, 1024);
+                    (*logger)(0, "Error [%s] while deleting a file %s", error_message, target.c_str());
+                }
+            }
+            else {
+                (*logger)(0, "Target %s doesn't need to be removed", target.c_str());
+            }
+        }
+    }
+    if (op_count) {
+        apr_pool_destroy(mem_pool);
+    }
+    return results;
+}
+
+
+/** This function creates metadata file - root of the storage system.
+  * This page contains creation date and time, number of pages,
+  * all the page file names and they order.
+  */
+static apr_status_t create_metadata_page( const char* file_name
+                                        , std::vector<std::string> const& page_file_names
+                                        , aku_printf_t logger)
+{
+    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
+    //       is FUBAR and uses boost::spirit.
+    try {
+        boost::property_tree::ptree root;
+        auto now = apr_time_now();
+        char date_time[0x100];
+        apr_rfc822_date(date_time, now);
+        root.add("creation_time", date_time);
+        root.add("num_volumes", page_file_names.size());
+        boost::property_tree::ptree volumes_list;
+        for(size_t i = 0; i < page_file_names.size(); i++) {
+            boost::property_tree::ptree page_desc;
+            page_desc.add("index", i);
+            page_desc.add("path", page_file_names[i]);
+            volumes_list.push_back(std::make_pair("", page_desc));
+        }
+        root.add_child("volumes", volumes_list);
+        boost::property_tree::json_parser::write_json(file_name, root);
+    }
+    catch(const std::exception& err) {
+        (*logger)(0, "Can't generate JSON file %s, the error is: %s", file_name, err.what());
+        return APR_EGENERAL;
+    }
+    return APR_SUCCESS;
+}
+
+
+apr_status_t Storage::new_storage( const char* 	file_name
+                                 , const char* 	metadata_path
+                                 , const char* 	volumes_path
+                                 , int          num_pages
+                                 , aku_printf_t logger
+                                 )
+{
+    apr_pool_t* mempool;
+    apr_status_t status = apr_pool_create(&mempool, NULL);
+    if (status != APR_SUCCESS)
+        return status;
+
+    // calculate list of page-file names
+    std::vector<std::string> page_names;
+    for (int ix = 0; ix < num_pages; ix++) {
+        std::stringstream stream;
+        stream << file_name << "_" << ix << ".volume";
+        char* path = nullptr;
+        std::string volume_file_name = stream.str();
+        status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+        if (status != APR_SUCCESS) {
+            auto error_message = apr_error_message(status);
+            (*logger)(0, "Invalid volumes path: %s", error_message.c_str());
+            apr_pool_destroy(mempool);
+            AKU_APR_PANIC(status, error_message.c_str());
+        }
+        page_names.push_back(path);
+    }
+
+    apr_pool_clear(mempool);
+
+    status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
+    if (status == APR_EEXIST) {
+        (*logger)(0, "Metadata dir already exists");
+    }
+    status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
+    if (status == APR_EEXIST) {
+        (*logger)(0, "Volumes dir already exists");
+    }
+
+    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger);
+    for(auto creation_status: page_creation_statuses) {
+        if (creation_status != APR_SUCCESS) {
+            (*logger)(0, "Not all pages successfullly created. Cleaning up.");
+            apr_pool_destroy(mempool);
+            delete_files(page_names, page_creation_statuses, logger);
+            return creation_status;
+        }
+    }
+
+    std::stringstream stream;
+    stream << file_name << ".akumuli";
+    char* path = nullptr;
+    std::string metadata_file_name = stream.str();
+    status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+    if (status != APR_SUCCESS) {
+        auto error_message = apr_error_message(status);
+        (*logger)(0, "Invalid metadata path: %s", error_message.c_str());
+        apr_pool_destroy(mempool);
+        AKU_APR_PANIC(status, error_message.c_str());
+    }
+    status = create_metadata_page(path, page_names, logger);
+    apr_pool_destroy(mempool);
+    return status;
 }
 
 }

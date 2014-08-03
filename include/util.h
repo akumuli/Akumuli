@@ -24,10 +24,11 @@
 
 #include <apr_general.h>
 #include <apr_mmap.h>
-#include <log4cxx/logger.h>
 #include <stdexcept>
 #include <ostream>
 #include <atomic>
+#include <vector>
+#include <tuple>
 #include <boost/throw_exception.hpp>
 #include "akumuli.h"
 
@@ -61,9 +62,10 @@ namespace Akumuli
         apr_finfo_t finfo_;
         apr_status_t status_;
         std::string path_;
-        static log4cxx::LoggerPtr s_logger_;
+        int tag_;
+        aku_printf_t logger_;
     public:
-        MemoryMappedFile(const char* file_name) noexcept;
+        MemoryMappedFile(const char* file_name, int tag, aku_printf_t logger) noexcept;
         ~MemoryMappedFile();
         void* get_pointer() const noexcept;
         size_t get_size() const noexcept;

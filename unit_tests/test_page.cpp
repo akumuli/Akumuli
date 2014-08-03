@@ -1,4 +1,5 @@
 #include <iostream>
+#include <random>
 
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
@@ -11,6 +12,14 @@
 #include "page.h"
 
 using namespace Akumuli;
+
+struct AkumuliInitializer {
+    AkumuliInitializer() {
+        aku_initialize();
+    }
+};
+
+AkumuliInitializer initializer;
 
 BOOST_AUTO_TEST_CASE(TestPaging1)
 {
@@ -365,12 +374,13 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
             AKU_CURSOR_DIR_BACKWARD
         };
         int dir = directions[rand() & 1];
-        aku_TimeStamp start_time = (int64_t)(0.001*(rand() % 200)*page->bbox.max_timestamp);
-        aku_TimeStamp stop_time  = (int64_t)((0.001*(rand() % 200) + 0.6)*page->bbox.max_timestamp);
+        double rnd_double = 0.001*((rand() + 1) % 200);
+        aku_TimeStamp start_time = (uint64_t)(rnd_double*page->bbox.max_timestamp);
+        aku_TimeStamp stop_time  = (uint64_t)((rnd_double + 0.6)*page->bbox.max_timestamp);
         aku_ParamId id2search = 1 + (rand() & 1);
-        assert(start_time > 0 && start_time < page->bbox.max_timestamp);
-        assert(stop_time > 0 && stop_time < page->bbox.max_timestamp);
-        assert(stop_time > start_time);
+        BOOST_REQUIRE(start_time > 0 && start_time < page->bbox.max_timestamp);
+        BOOST_REQUIRE(stop_time > 0 && stop_time < page->bbox.max_timestamp);
+        BOOST_REQUIRE(stop_time > start_time);
         SearchQuery query(id2search, start_time, stop_time, dir);
         Caller caller;
         RecordingCursor cursor;

@@ -17,8 +17,6 @@ find_package(Boost 1.53.0
     REQUIRED
 )
 
-find_package(Log4Cxx REQUIRED)
-
 find_package(APR REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS}) 

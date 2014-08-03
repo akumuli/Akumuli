@@ -25,6 +25,9 @@
 
 using namespace Akumuli;
 
+void aku_initialize() {
+    apr_initialize();
+}
 
 static const char* g_error_messages[] = {
     "OK",
@@ -47,6 +50,15 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[10];
 }
 
+void aku_console_logger(int tag, const char* format, ...) {
+    return;
+    /*
+    va_list argptr;
+    va_start(argptr, format);
+    vfprintf(stderr, format, argptr);
+    va_end(argptr);
+    */
+}
 
 struct MatchPred {
     std::vector<aku_ParamId> params_;
@@ -152,13 +164,16 @@ struct DatabaseImpl : public aku_Database
     }
 };
 
-apr_status_t create_database( const char* 	file_name
-                            , const char* 	metadata_path
-                            , const char* 	volumes_path
-                            , int32_t       num_volumes
-                            )
+apr_status_t aku_create_database(const char*    file_name
+                                , const char*   metadata_path
+                                , const char*   volumes_path
+                                , int32_t       num_volumes
+                                , aku_printf_t  logger)
 {
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes);
+    if (logger == nullptr) {
+        logger = &aku_console_logger;
+    }
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger);
 }
 
 void aku_flush_database(aku_Database* db) {
