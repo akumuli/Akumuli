@@ -349,6 +349,9 @@ struct SearchAlgorithm {
         int interpolation_search_quota = 6;  // TODO: move to configuration
         int steps_count = 0;
         int small_range_finish = 0;
+        int page_scan_steps_num = 0;
+        int page_scan_errors = 0;
+        int page_scan_success = 0;
 
         uint64_t overshoot = 0u;
         uint64_t undershoot = 0u;
@@ -383,6 +386,39 @@ struct SearchAlgorithm {
 
                 auto probe_offset = page_->page_index[probe_index];
                 auto probe_entry = page_->read_entry(probe_offset);
+
+                aku_Status status = AKU_SUCCESS;
+                bool cached = false;
+                int page_scan_quota = 10;
+                const int page_scan_step = 100;
+                while(!cached || page_scan_quota--) {
+                    page_scan_steps_num++;
+                    std::tie(cached, status) = page_in_core((void*)probe_entry);
+                    if (status != AKU_SUCCESS) {
+                        page_scan_errors++;
+                        break;
+                    }
+                    if (!cached) {
+                        if (state == UNDERSHOOT) {
+                            if (probe_index + page_scan_step < page_->sync_count) {
+                                probe_index += page_scan_step;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            if (probe_index > page_scan_step) {
+                                probe_index -= page_scan_step;
+                            } else {
+                                break;
+                            }
+                        }
+                        probe_offset = page_->page_index[probe_index];
+                        probe_entry = page_->read_entry(probe_offset);
+                    } else {
+                        page_scan_success++;
+                    }
+                }
+
                 auto probe = probe_entry->time;
 
                 if (probe < key_) {
@@ -422,6 +458,9 @@ struct SearchAlgorithm {
         stats.stats.istats.n_times += 1;
         stats.stats.istats.n_steps += steps_count;
         stats.stats.istats.n_reduced_to_one_page += small_range_finish;
+        stats.stats.istats.n_page_in_core_checks += page_scan_steps_num;
+        stats.stats.istats.n_page_in_core_errors += page_scan_errors;
+        stats.stats.istats.n_pages_in_core_found += page_scan_success;
     }
 
     void binary_search() {

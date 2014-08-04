@@ -149,6 +149,9 @@ extern "C" {
             uint64_t n_undershoots;         //< Number of underruns
             uint64_t n_matches;             //< Number of matches by interpolation search only
             uint64_t n_reduced_to_one_page;
+            uint64_t n_page_in_core_checks; //< Number of page in core checks
+            uint64_t n_page_in_core_errors; //< Number of page in core check errors
+            uint64_t n_pages_in_core_found; //< Number of page in core found
         } istats;
         struct BinarySearch {
             uint64_t n_times;               //< How many times binary search was performed
