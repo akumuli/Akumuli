@@ -51,13 +51,10 @@ const char* aku_error_message(int error_code) {
 }
 
 void aku_console_logger(int tag, const char* format, ...) {
-    return;
-    /*
     va_list argptr;
     va_start(argptr, format);
     vfprintf(stderr, format, argptr);
     va_end(argptr);
-    */
 }
 
 struct MatchPred {

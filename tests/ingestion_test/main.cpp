@@ -23,7 +23,7 @@ using namespace std;
 
 const int DB_SIZE = 4;
 const int NUM_ITERATIONS = 100*1000*1000;
-const int CHUNK_SIZE = 10*1000;
+const int CHUNK_SIZE = 1000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -136,15 +136,15 @@ int main(int cnt, const char** args)
     std::cout << "Sequential access" << std::endl;
     uint64_t counter = 0;
     timer.restart();
-    query_database( db
-                  , std::numeric_limits<aku_TimeStamp>::min()
-                  , std::numeric_limits<aku_TimeStamp>::max()
-                  , counter
-                  , timer );
+    //query_database( db
+    //              , std::numeric_limits<aku_TimeStamp>::min()
+    //              , std::numeric_limits<aku_TimeStamp>::max()
+    //              , counter
+    //              , timer );
 
     aku_SearchStats search_stats;
-    aku_global_search_stats(&search_stats, true);
-    print_search_stats(search_stats);
+    //aku_global_search_stats(&search_stats, true);
+    //print_search_stats(search_stats);
 
     // Random access
     std::cout << "Random access" << std::endl;

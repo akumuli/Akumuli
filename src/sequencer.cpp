@@ -333,8 +333,8 @@ struct SearchPredicate {
     SearchPredicate(SearchQuery const& q) : query(q) {}
 
     bool operator () (TimeSeriesValue const& value) const {
-        if (query.lowerbound < get<TIMESTMP>(value.key_) &&
-            query.upperbound > get<TIMESTMP>(value.key_))
+        if (query.lowerbound <= get<TIMESTMP>(value.key_) &&
+            query.upperbound >= get<TIMESTMP>(value.key_))
         {
             if (query.param_pred(get<PARAM_ID>(value.key_)) == SearchQuery::MATCH) {
                 return true;
@@ -346,8 +346,15 @@ struct SearchPredicate {
 
 void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const {
     // TODO: use more effective algorithm, based on binary search
+    SearchPredicate search_pred(q);
+    if (run.empty() ||
+        get<TIMESTMP>(run.front().key_) < q.lowerbound ||
+        q.upperbound > get<TIMESTMP>(run.back().key_))
+    {
+        return;
+    }
     SortedRun result;
-    copy_if(run.begin(), run.end(), std::back_inserter(result), SearchPredicate(q));
+    copy_if(run.begin(), run.end(), std::back_inserter(result), search_pred);
     results->push_back(move(result));
 }
 

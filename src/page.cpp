@@ -25,6 +25,7 @@
 #include "akumuli_def.h"
 
 #include <random>
+#include <iostream>
 
 
 namespace Akumuli {
@@ -345,7 +346,7 @@ struct SearchAlgorithm {
         aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
         aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
         uint32_t probe_index = 0u;
-        int interpolation_search_quota = 8;  // TODO: move to configuration
+        int interpolation_search_quota = 6;  // TODO: move to configuration
         int steps_count = 0;
         int small_range_finish = 0;
 
@@ -366,10 +367,10 @@ struct SearchAlgorithm {
 
             switch(state) {
             case UNDERSHOOT:
-                numerator = key_ - search_lower_bound + (prev_step_err >> (std::rand() & 0x7));
+                numerator = key_ - search_lower_bound + (prev_step_err >> steps_count);
                 break;
             case OVERSHOOT:
-                numerator = key_ - search_lower_bound - (prev_step_err >> (std::rand() & 0x7));
+                numerator = key_ - search_lower_bound - (prev_step_err >> steps_count);
                 break;
             default:
                 numerator = key_ - search_lower_bound;
@@ -388,7 +389,7 @@ struct SearchAlgorithm {
                     undershoot++;
                     state = UNDERSHOOT;
                     prev_step_err = key_ - probe;
-                    range_.begin = probe_index + 1u;
+                    range_.begin = probe_index;
                     probe_offset = page_->page_index[range_.begin];
                     probe_entry = page_->read_entry(probe_offset);
                     search_lower_bound = probe_entry->time;
@@ -396,7 +397,7 @@ struct SearchAlgorithm {
                     overshoot++;
                     state = OVERSHOOT;
                     prev_step_err = probe - key_;
-                    range_.end = probe_index - 1u;
+                    range_.end = probe_index;
                     probe_offset = page_->page_index[range_.end];
                     probe_entry = page_->read_entry(probe_offset);
                     search_upper_bound = probe_entry->time;
