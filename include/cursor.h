@@ -101,6 +101,17 @@ struct ExternalCursor {
 struct Cursor : InternalCursor, ExternalCursor {};
 
 
+struct CoroCursorStackAllocator {
+    void allocate(boost::coroutines::stack_context& ctx, size_t size) const
+    {
+        ctx.size = size;
+        ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
+    }
+    void deallocate(boost::coroutines::stack_context& ctx) const {
+        free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
+    }
+};
+
 struct CoroCursor : Cursor {
     boost::shared_ptr<Coroutine> coroutine_;
     // user owned data
@@ -134,7 +145,7 @@ struct CoroCursor : Cursor {
 
     template<class Fn_1arg_caller>
     void start(Fn_1arg_caller const& fn) {
-        coroutine_.reset(new Coroutine(fn));
+        coroutine_.reset(new Coroutine(fn, boost::coroutines::attributes(0x100000), CoroCursorStackAllocator()));
     }
 
     template<class Fn_1arg>

@@ -5,5 +5,4 @@ target_link_libraries(ingestion_test
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
-    profiler
 )

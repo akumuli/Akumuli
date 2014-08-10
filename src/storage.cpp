@@ -244,8 +244,8 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
     for(auto vol: volumes_) {
         // Search cache (optional, only for active page)
         if (vol == this->active_volume_) {
-            auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
-            cursors.push_back(std::move(ccur));
+            //auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
+            //cursors.push_back(std::move(ccur));
         }
         // Search pages
         auto pcur = CoroCursor::make(&PageHeader::search, vol->page_, query);

@@ -23,7 +23,7 @@ using namespace std;
 
 const int DB_SIZE = 4;
 const int NUM_ITERATIONS = 100*1000*1000;
-const int CHUNK_SIZE = 1000;
+const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -33,7 +33,7 @@ void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
 }
 
-void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer) {
+void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
@@ -56,7 +56,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
             }
             current_time++;
             counter++;
-            if (counter % 1000000 == 0) {
+            if (counter % mod == 0) {
                 std::cout << counter << " " << timer.elapsed() << "s" << std::endl;
                 timer.restart();
             }
@@ -138,23 +138,36 @@ int main(int cnt, const char** args)
 
     // Search
     std::cout << "Sequential access" << std::endl;
-    uint64_t counter = 0;
-    timer.restart();
-    //query_database( db
-    //              , std::numeric_limits<aku_TimeStamp>::min()
-    //              , std::numeric_limits<aku_TimeStamp>::max()
-    //              , counter
-    //              , timer );
-
     aku_SearchStats search_stats;
-    //aku_global_search_stats(&search_stats, true);
-    //print_search_stats(search_stats);
+    uint64_t counter = 0;
+    /*
+    timer.restart();
+    query_database( db
+                  , std::numeric_limits<aku_TimeStamp>::min()
+                  , std::numeric_limits<aku_TimeStamp>::max()
+                  , counter
+                  , timer
+                  , 1000000);
+
+    aku_global_search_stats(&search_stats, true);
+    print_search_stats(search_stats);
+    */
 
     // Random access
     std::cout << "Random access" << std::endl;
     std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
     for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
-        ranges.push_back(std::make_pair((i - 1)*CHUNK_SIZE, i*CHUNK_SIZE));
+        std::vector<aku_TimeStamp> range;
+        aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
+        std::generate_n(std::back_inserter(range), CHUNK_SIZE, [&j]() {return j++;});
+        std::random_shuffle(range.begin(), range.end());
+        int count = 10;
+        for (auto k: range) {
+            ranges.push_back(std::make_pair(k, k+1));
+            if (!count--) {
+                break;
+            }
+        }
     }
 
     std::random_shuffle(ranges.begin(), ranges.end());
@@ -162,7 +175,7 @@ int main(int cnt, const char** args)
     counter = 0;
     timer.restart();
     for(auto range: ranges) {
-        query_database(db, range.first, range.second, counter, timer);
+        query_database(db, range.first, range.second, counter, timer, 1000);
     }
     aku_global_search_stats(&search_stats, true);
     print_search_stats(search_stats);
