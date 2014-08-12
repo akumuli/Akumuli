@@ -152,6 +152,7 @@ extern "C" {
             uint64_t n_page_in_core_checks; //< Number of page in core checks
             uint64_t n_page_in_core_errors; //< Number of page in core check errors
             uint64_t n_pages_in_core_found; //< Number of page in core found
+            uint64_t n_pages_in_core_miss;  //< Number of page misses
         } istats;
         struct BinarySearch {
             uint64_t n_times;               //< How many times binary search was performed

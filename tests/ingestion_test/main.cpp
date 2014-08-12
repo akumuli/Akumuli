@@ -21,8 +21,8 @@
 using namespace Akumuli;
 using namespace std;
 
-const int DB_SIZE = 4;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int DB_SIZE = 8;
+const int NUM_ITERATIONS = 1000*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -83,7 +83,8 @@ void print_search_stats(aku_SearchStats& ss) {
 
               << ss.istats.n_page_in_core_checks << "  page_in_core checks" << std::endl
               << ss.istats.n_page_in_core_errors << "  page_in_core errors" << std::endl
-              << ss.istats.n_pages_in_core_found  << "  page_in_core success" << std::endl;
+              << ss.istats.n_pages_in_core_found  << "  page_in_core success" << std::endl
+              << ss.istats.n_pages_in_core_miss  << "  page_in_core miss" << std::endl;
 
     std::cout << "Binary search" << std::endl;
     std::cout << ss.bstats.n_steps << " steps" << std::endl
@@ -94,93 +95,148 @@ void print_search_stats(aku_SearchStats& ss) {
               << ss.scan.fwd_bytes << " bytes read in forward direction" << std::endl;
 }
 
+enum Mode {
+    NONE,
+    CREATE,
+    DELETE,
+    READ
+};
+
+Mode read_cmd(int cnt, const char** args) {
+    if (cnt < 2) {
+        return NONE;
+    }
+    if (std::string(args[1]) == "create") {
+        return CREATE;
+    }
+    if (std::string(args[1]) == "read") {
+        return READ;
+    }
+    if (std::string(args[1]) == "delete") {
+        return DELETE;
+    }
+    std::cout << "Invalid command line" << std::endl;
+    std::terminate();
+}
+
 int main(int cnt, const char** args)
 {
-    /* Delete old
-     * Create database
-     * Fill
-     * Close
-     * Read and check
-     */
+    Mode mode = read_cmd(cnt, args);
+
     aku_initialize();
 
-    // Cleanup
-    delete_storage();
+    if (mode == DELETE) {
+        delete_storage();
+        std::cout << "storage deleted" << std::endl;
+        return 0;
+    }
 
-    // Create database
-    apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr);
-    if (result != APR_SUCCESS) {
-        std::cout << "Error in new_storage" << std::endl;
-        return (int)result;
+    if (mode != READ) {
+        // Cleanup
+        delete_storage();
+
+        // Create database
+        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr);
+        if (result != APR_SUCCESS) {
+            std::cout << "Error in new_storage" << std::endl;
+            return (int)result;
+        }
     }
 
     aku_Config config;
     config.debug_mode = 0;
-    config.max_cache_size = 10*1000*1000;
     config.max_late_write = 10000;
     auto db = aku_open_database(DB_META_FILE, config);
-
     boost::timer timer;
-    for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-        aku_MemRange memr;
-        memr.address = (void*)&i;
-        memr.length = sizeof(i);
-        aku_add_sample(db, 1, i, memr);
-        if (i % 1000000 == 0) {
-            std::cout << i << " " << timer.elapsed() << "s" << std::endl;
-            timer.restart();
-        }
-    }
 
-    aku_StorageStats storage_stats;
-    aku_global_storage_stats(db, &storage_stats);
-    print_storage_stats(storage_stats);
-
-    // Search
-    std::cout << "Sequential access" << std::endl;
-    aku_SearchStats search_stats;
-    uint64_t counter = 0;
-    /*
-    timer.restart();
-    query_database( db
-                  , std::numeric_limits<aku_TimeStamp>::min()
-                  , std::numeric_limits<aku_TimeStamp>::max()
-                  , counter
-                  , timer
-                  , 1000000);
-
-    aku_global_search_stats(&search_stats, true);
-    print_search_stats(search_stats);
-    */
-
-    // Random access
-    std::cout << "Random access" << std::endl;
-    std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
-    for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
-        std::vector<aku_TimeStamp> range;
-        aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
-        std::generate_n(std::back_inserter(range), CHUNK_SIZE, [&j]() {return j++;});
-        std::random_shuffle(range.begin(), range.end());
-        int count = 10;
-        for (auto k: range) {
-            ranges.push_back(std::make_pair(k, k+1));
-            if (!count--) {
-                break;
+    if (mode != READ) {
+        // Fill in data
+        for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
+            aku_MemRange memr;
+            memr.address = (void*)&i;
+            memr.length = sizeof(i);
+            aku_add_sample(db, 1, i, memr);
+            if (i % 1000000 == 0) {
+                std::cout << i << " " << timer.elapsed() << "s" << std::endl;
+                timer.restart();
             }
         }
     }
 
-    std::random_shuffle(ranges.begin(), ranges.end());
+    if (mode != CREATE) {
+        aku_StorageStats storage_stats;
+        aku_global_storage_stats(db, &storage_stats);
+        print_storage_stats(storage_stats);
 
-    counter = 0;
-    timer.restart();
-    for(auto range: ranges) {
-        query_database(db, range.first, range.second, counter, timer, 1000);
+        // Search
+        std::cout << "Sequential access" << std::endl;
+        aku_SearchStats search_stats;
+        uint64_t counter = 0;
+        /*
+        timer.restart();
+        query_database( db
+                      , std::numeric_limits<aku_TimeStamp>::min()
+                      , std::numeric_limits<aku_TimeStamp>::max()
+                      , counter
+                      , timer
+                      , 1000000);
+
+        aku_global_search_stats(&search_stats, true);
+        print_search_stats(search_stats);
+        */
+
+        // Random access
+        std::cout << "Random access" << std::endl;
+        std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
+        for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
+            std::vector<aku_TimeStamp> range;
+            aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
+            //aku_TimeStamp j = CHUNK_SIZE*10;  // Fixed position
+            std::generate_n(std::back_inserter(range), CHUNK_SIZE, [&j]() {return j++;});
+            std::random_shuffle(range.begin(), range.end());
+            int count = 5;
+            for (auto k: range) {
+                ranges.push_back(std::make_pair(k, k+1));
+                if (!count--) {
+                    break;
+                }
+            }
+        }
+
+        std::random_shuffle(ranges.begin(), ranges.end());
+
+        counter = 0;
+        timer.restart();
+        for(auto range: ranges) {
+            query_database(db, range.first, range.second, counter, timer, 10000);
+        }
+        aku_global_search_stats(&search_stats, true);
+        print_search_stats(search_stats);
+
     }
-    aku_global_search_stats(&search_stats, true);
-    print_search_stats(search_stats);
-
     aku_close_database(db);
-    delete_storage();
+
+    if (mode == NONE) {
+        delete_storage();
+    }
     return 0;
 }
+
+//Interpolation search
+//468424 matches
+//5065462 times
+//10852014 steps
+//2662778 overshoots
+//3123774 undershoots
+//4163446  reduced to page
+//275403515  page_in_core checks
+//0  page_in_core errors
+//40619654  page_in_core success
+//234783861  page_in_core miss
+//Binary search
+//6205020 steps
+//731570 times
+//Scan
+//0 bytes read in backward direction
+//57594048 bytes read in forward direction
+

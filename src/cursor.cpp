@@ -85,6 +85,16 @@ void DirectPageSyncCursor::set_error(Caller&, int error_code) noexcept {
 
 // CoroCursor
 
+void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const
+{
+    ctx.size = size;
+    ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
+}
+
+void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx) const {
+    free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
+}
+
 CoroCursor::CoroCursor()
     : usr_buffer_(nullptr)
     , usr_buffer_len_(0)

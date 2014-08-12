@@ -352,6 +352,7 @@ struct SearchAlgorithm {
         int page_scan_steps_num = 0;
         int page_scan_errors = 0;
         int page_scan_success = 0;
+        int page_miss = 0;
 
         uint64_t overshoot = 0u;
         uint64_t undershoot = 0u;
@@ -389,8 +390,8 @@ struct SearchAlgorithm {
 
                 aku_Status status = AKU_SUCCESS;
                 bool cached = false;
-                int page_scan_quota = 10;
-                const int page_scan_step = 100;
+                int page_scan_quota = 5;
+                const int page_scan_step = 10;
                 while(!cached || page_scan_quota--) {
                     page_scan_steps_num++;
                     std::tie(cached, status) = page_in_core((void*)probe_entry);
@@ -399,14 +400,17 @@ struct SearchAlgorithm {
                         break;
                     }
                     if (!cached) {
+                        page_miss++;
                         if (state == UNDERSHOOT) {
-                            if (probe_index + page_scan_step < page_->sync_count) {
+                            // TODO: check for overflow
+                            if (probe_index + page_scan_step < range_.end) {
                                 probe_index += page_scan_step;
                             } else {
                                 break;
                             }
                         } else {
-                            if (probe_index > page_scan_step) {
+                            // TODO: check for overflow
+                            if (probe_index - page_scan_step < range_.begin) {
                                 probe_index -= page_scan_step;
                             } else {
                                 break;
@@ -461,6 +465,7 @@ struct SearchAlgorithm {
         stats.stats.istats.n_page_in_core_checks += page_scan_steps_num;
         stats.stats.istats.n_page_in_core_errors += page_scan_errors;
         stats.stats.istats.n_pages_in_core_found += page_scan_success;
+        stats.stats.istats.n_pages_in_core_miss += page_miss;
     }
 
     void binary_search() {

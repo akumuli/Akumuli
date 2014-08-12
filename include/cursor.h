@@ -102,14 +102,8 @@ struct Cursor : InternalCursor, ExternalCursor {};
 
 
 struct CoroCursorStackAllocator {
-    void allocate(boost::coroutines::stack_context& ctx, size_t size) const
-    {
-        ctx.size = size;
-        ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
-    }
-    void deallocate(boost::coroutines::stack_context& ctx) const {
-        free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
-    }
+    void allocate(boost::coroutines::stack_context& ctx, size_t size) const;
+    void deallocate(boost::coroutines::stack_context& ctx) const;
 };
 
 struct CoroCursor : Cursor {
@@ -145,7 +139,11 @@ struct CoroCursor : Cursor {
 
     template<class Fn_1arg_caller>
     void start(Fn_1arg_caller const& fn) {
-        coroutine_.reset(new Coroutine(fn, boost::coroutines::attributes(0x100000), CoroCursorStackAllocator()));
+        coroutine_.reset(
+                    new Coroutine(
+                        fn,
+                        boost::coroutines::attributes(AKU_STACK_SIZE),
+                        CoroCursorStackAllocator()));
     }
 
     template<class Fn_1arg>
