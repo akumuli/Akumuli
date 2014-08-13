@@ -29,6 +29,7 @@
 #include <atomic>
 #include <vector>
 #include <tuple>
+#include <random>
 #include <boost/throw_exception.hpp>
 #include "akumuli.h"
 
@@ -118,6 +119,13 @@ namespace Akumuli
 
         //! Check if memory address is in core
         bool in_core(const void* addr);
+    };
+
+    class Rand {
+        std::ranlux48_base rand_;
+    public:
+        Rand();
+        uint32_t operator () ();
     };
 }
 

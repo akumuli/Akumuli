@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <mutex>
 #include <apr_time.h>
-#include "sort.h"
+#include "timsort.hpp"
 #include "page.h"
 #include "akumuli_def.h"
 
@@ -345,6 +345,18 @@ struct SearchAlgorithm {
         return false;
     }
 
+    void histogram() {
+        auto const& h = page_->histogram;
+        auto pred = [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
+            return a.timestamp < b.timestamp;
+        };
+        PageHistogramEntry hkey = { key_, 0 };
+        auto upper = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
+        auto lower = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
+        range_.begin = lower->index;
+        range_.end = upper->index;
+    }
+
     void interpolation() {
         aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
         aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
@@ -596,6 +608,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 {
     SearchAlgorithm search_alg(this, caller, cursor, query);
     if (search_alg.fast_path() == false) {
+        search_alg.histogram();
         search_alg.interpolation();
         search_alg.binary_search();
         search_alg.scan();
@@ -638,7 +651,7 @@ void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool
             }
         }
     } else {
-        std::sort(histogram.entries, histogram.entries + histogram.size,
+        gfx::timsort(histogram.entries, histogram.entries + histogram.size,
                   [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
                         return a.timestamp < b.timestamp;
                   }

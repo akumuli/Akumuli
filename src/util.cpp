@@ -262,4 +262,14 @@ std::tuple<bool, aku_Status> page_in_core(const void* addr) {
     return std::make_tuple(val&MINCORE_MASK, status);
 }
 
+Rand::Rand()
+    : rand_()  // TODO: add seed
+{
 }
+
+uint32_t Rand::operator () () {
+    return (uint32_t)rand_();
+}
+
+}
+

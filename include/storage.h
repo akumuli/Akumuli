@@ -86,6 +86,7 @@ struct Storage
     apr_time_t              creation_time_;  //< Cached metadata
     int                     tag_;  //< Tag to distinct different storage instances
     aku_printf_t            logger_;
+    Rand                    rand_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file

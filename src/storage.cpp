@@ -210,7 +210,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
             std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
             if (merge_lock.owns_lock()) {
                 Caller caller;
-                DirectPageSyncCursor cursor;
+                DirectPageSyncCursor cursor(rand_);
                 active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
             }
         }
@@ -318,7 +318,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
             if (merge_lock.owns_lock()) {
                 // Slow path
                 Caller caller;
-                DirectPageSyncCursor cursor;
+                DirectPageSyncCursor cursor(rand_);
                 active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
             }
             return status;
