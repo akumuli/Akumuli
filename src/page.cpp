@@ -87,7 +87,8 @@ char* PageHeader::data() {
 }
 
 PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
-    : count(count)
+    : version(0)
+    , count(count)
     , last_offset(length - 1)
     , sync_count(0)
     , length(length)
@@ -96,6 +97,8 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     , page_id(page_id)
     , bbox()
 {
+    // zero out histogram
+    memset(&histogram, 0, sizeof(histogram));
 }
 
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
@@ -612,11 +615,35 @@ void PageHeader::_sort() {
     sync_count = count;
 }
 
-void PageHeader::sync_next_index(aku_EntryOffset offset) {
-    if (sync_count >= count) {
-        AKU_PANIC("sync_index out of range");
+void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool sort_histogram) {
+    if (!sort_histogram) {
+        if (sync_count >= count) {
+            AKU_PANIC("sync_index out of range");
+        }
+        auto index = sync_count;
+        page_index[sync_count++] = offset;
+
+        if (histogram.size < AKU_HISTOGRAM_SIZE) {
+            // first AKU_HISTOGRAM_SIZE samples
+            auto& h = histogram.entries[histogram.size++];
+            h.index = index;
+            h.timestamp = read_entry(offset)->time;
+        } else {
+            // reservoir sampling
+            auto rindex = rand_val % sync_count;
+            if (rindex < histogram.size) {
+                auto& h = histogram.entries[rindex];
+                h.index = index;
+                h.timestamp = read_entry(offset)->time;
+            }
+        }
+    } else {
+        std::sort(histogram.entries, histogram.entries + histogram.size,
+                  [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
+                        return a.timestamp < b.timestamp;
+                  }
+        );
     }
-    page_index[sync_count++] = offset;
 }
 
 void PageHeader::get_search_stats(aku_SearchStats* stats, bool reset) {
