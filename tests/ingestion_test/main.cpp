@@ -222,21 +222,3 @@ int main(int cnt, const char** args)
     return 0;
 }
 
-//Interpolation search
-//468424 matches
-//5065462 times
-//10852014 steps
-//2662778 overshoots
-//3123774 undershoots
-//4163446  reduced to page
-//275403515  page_in_core checks
-//0  page_in_core errors
-//40619654  page_in_core success
-//234783861  page_in_core miss
-//Binary search
-//6205020 steps
-//731570 times
-//Scan
-//0 bytes read in backward direction
-//57594048 bytes read in forward direction
-

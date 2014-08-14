@@ -352,7 +352,7 @@ struct SearchAlgorithm {
         };
         PageHistogramEntry hkey = { key_, 0 };
         auto upper = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
-        auto lower = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
+        auto lower = std::lower_bound(h.entries, h.entries + h.size, hkey, pred);
         range_.begin = lower->index;
         range_.end = upper->index;
     }

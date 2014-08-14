@@ -174,46 +174,24 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     // be cached.
     auto begin = active_page_->sync_count;
     auto end = active_page_->count;
-    if (begin == end) {
-        // TODO: Need to set baseline for cache somehow
-        return;
-    }
-
-    const aku_Entry* top_entry = active_page_->read_entry_at(begin);
-
-    // Match all properties
-    SearchQuery::MatcherFn matcher = [](aku_ParamId) {
-        return SearchQuery::MATCH;
-    };
-
-    auto hi = AKU_MAX_TIMESTAMP;
-    auto lo = top_entry->time - ttl_;
-
-    SearchQuery query(matcher, lo, hi, AKU_CURSOR_DIR_FORWARD);
-
-    CoroCursor cursor;
-
-    cursor.start(std::bind(&PageHeader::search, active_page_, std::placeholders::_1, &cursor, query));
 
     // use 1Mb of cache by default
-    boost::scoped_array<CursorResult> results;
-    const int BUF_SIZE = 1024*1024/sizeof(aku_EntryOffset);
-    results.reset(new CursorResult[BUF_SIZE]);
-    while(!cursor.is_done()) {
-        int n_read = cursor.read(results.get(), BUF_SIZE);
-        for (int i = 0; i < n_read; i++) {
-            auto result = results[i];
-            const aku_Entry* entry = active_page_->read_entry(result.first);
-            TimeSeriesValue ts_value(entry->time, entry->param_id, result.first);
-            int add_status;
-            Sequencer::Lock merge_lock;
-            std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
-            if (merge_lock.owns_lock()) {
-                Caller caller;
-                DirectPageSyncCursor cursor(rand_);
-                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
-            }
+    while(begin < end) {
+        const aku_Entry* entry = active_page_->read_entry_at(begin);
+        auto off_err = active_page_->index_to_offset(begin);
+        if (off_err.second != AKU_SUCCESS) {
+            continue;
         }
+        TimeSeriesValue ts_value(entry->time, entry->param_id, off_err.first);
+        int add_status;
+        Sequencer::Lock merge_lock;
+        std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
+        if (merge_lock.owns_lock()) {
+            Caller caller;
+            DirectPageSyncCursor cursor(rand_);
+            active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+        }
+        begin++;
     }
 }
 
