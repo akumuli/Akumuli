@@ -353,6 +353,12 @@ struct SearchAlgorithm {
         PageHistogramEntry hkey = { key_, 0 };
         auto upper = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
         auto lower = std::lower_bound(h.entries, h.entries + h.size, hkey, pred);
+        if (lower == h.entries) {
+            return;
+        }
+        if (lower->timestamp > hkey.timestamp) {
+            lower--;
+        }
         range_.begin = lower->index;
         range_.end = upper->index;
     }
@@ -398,6 +404,10 @@ struct SearchAlgorithm {
             probe_index = range_.begin + ((numerator * (range_.end - range_.begin)) /
                                           (search_upper_bound - search_lower_bound));
 
+            if (probe_index > page_->sync_count) {
+                cursor_->set_error(caller_, AKU_EOVERFLOW);
+                return;
+            }
             if (probe_index > range_.begin && probe_index < range_.end) {
 
                 auto probe_offset = page_->page_index[probe_index];
