@@ -347,7 +347,6 @@ struct SearchAlgorithm {
 
     void histogram() {
         auto const& h = page_->histogram;
-        prefetch_mem(h.entries, sizeof(h.entries));
         auto pred = [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
             return a.timestamp < b.timestamp;
         };

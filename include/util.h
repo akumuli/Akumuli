@@ -121,6 +121,9 @@ namespace Akumuli
 
         //! Check if memory address is in core
         bool in_core(const void* addr);
+
+        //! Check if underlying memory is swapped to disk
+        bool swapped();
     };
 
     class Rand {

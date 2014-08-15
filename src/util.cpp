@@ -202,6 +202,14 @@ void prefetch_mem(const void* ptr, size_t mem_size) {
     default:
         break;
     };
+    auto begin = static_cast<const char*>(aptr);
+    auto end = begin + mem_size;
+    auto step = get_page_size();
+    volatile char acc = 0;
+    while(begin < end) {
+        acc += *begin;
+        begin += step;
+    }
 }
 
 static const unsigned char MINCORE_MASK = 1;
@@ -214,6 +222,14 @@ PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
     assert(len_bytes <= 4UL*1024UL*1024UL*1024UL);
     auto len = (len_bytes_ + page_size_ - 1) / page_size_;
     data_.resize(len);
+}
+
+bool PageInfo::swapped() {
+    fill_mem();
+    refresh(base_addr_);
+    auto res = std::accumulate(data_.begin(), data_.end(), MINCORE_MASK,
+                               [](unsigned char a, unsigned char b) { return a & b;});
+    return !static_cast<bool>(res & MINCORE_MASK);
 }
 
 aku_Status PageInfo::refresh(const void *addr) {
