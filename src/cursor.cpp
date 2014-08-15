@@ -62,19 +62,28 @@ void BufferedCursor::set_error(Caller&, int code) noexcept {
 
 // Page cursor
 
-DirectPageSyncCursor::DirectPageSyncCursor()
+DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)
     : error_code_()
     , error_is_set_()
     , completed_()
+    , last_page_(nullptr)
+    , rand_(rand)
 {
 }
 
 void DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept {
-    const_cast<PageHeader*>(page)->sync_next_index(offset);
+    if (last_page_ != nullptr && last_page_ != page) {
+        const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
+    }
+    const_cast<PageHeader*>(page)->sync_next_index(offset, rand_(), false);
+    last_page_ = page;
 }
 
 void DirectPageSyncCursor::complete(Caller&) noexcept {
     completed_ = true;
+    if (last_page_ != nullptr) {
+        const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
+    }
 }
 
 void DirectPageSyncCursor::set_error(Caller&, int error_code) noexcept {

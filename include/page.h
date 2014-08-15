@@ -48,6 +48,17 @@ struct PageBoundingBox {
     PageBoundingBox();
 };
 
+struct PageHistogramEntry {
+    aku_TimeStamp timestamp;
+    uint32_t index;
+};
+
+/** Page histogram for approximation search */
+struct PageHistogram {
+    int size;
+    PageHistogramEntry entries[AKU_HISTOGRAM_SIZE];
+};
+
 
 /** Search query */
 struct SearchQuery {
@@ -109,6 +120,7 @@ struct SearchQuery {
  */
 struct PageHeader {
     // metadata
+    const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
     uint32_t last_offset;       //< offset of the last added record
     uint32_t sync_count;        //< index of the last synchronized record
@@ -118,6 +130,7 @@ struct PageHeader {
     uint32_t page_id;           //< page index in storage
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
+    PageHistogram histogram;    //< histogram
     aku_EntryOffset page_index[];   //< page index
 
     //! Convert entry index to entry offset
@@ -215,7 +228,7 @@ struct PageHeader {
       * @param offsets ordered offsets
       * @param num_offsets number of values in buffer
       */
-    void sync_next_index(aku_EntryOffset offsets);
+    void sync_next_index(aku_EntryOffset offsets, uint32_t rand_val, bool sort_histogram);
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 };

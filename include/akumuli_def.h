@@ -27,6 +27,7 @@
 #define AKU_MIN_TIMESTAMP         0
 #define AKU_MAX_TIMESTAMP       (~0)
 #define AKU_STACK_SIZE            0x100000
+#define AKU_HISTOGRAM_SIZE        0x10000
 
 //! Max number of live generations in cache
 #define AKU_LIMITS_MAX_CACHES     8

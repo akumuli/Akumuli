@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 1000*1000*1000;
+const int NUM_ITERATIONS = 100*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -186,7 +186,7 @@ int main(int cnt, const char** args)
         */
 
         // Random access
-        std::cout << "Random access" << std::endl;
+        std::cout << "Prepare test data" << std::endl;
         std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
         for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
             std::vector<aku_TimeStamp> range;
@@ -205,6 +205,7 @@ int main(int cnt, const char** args)
 
         std::random_shuffle(ranges.begin(), ranges.end());
 
+        std::cout << "Random access" << std::endl;
         counter = 0;
         timer.restart();
         for(auto range: ranges) {
@@ -221,22 +222,4 @@ int main(int cnt, const char** args)
     }
     return 0;
 }
-
-//Interpolation search
-//468424 matches
-//5065462 times
-//10852014 steps
-//2662778 overshoots
-//3123774 undershoots
-//4163446  reduced to page
-//275403515  page_in_core checks
-//0  page_in_core errors
-//40619654  page_in_core success
-//234783861  page_in_core miss
-//Binary search
-//6205020 steps
-//731570 times
-//Scan
-//0 bytes read in backward direction
-//57594048 bytes read in forward direction
 

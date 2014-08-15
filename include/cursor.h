@@ -72,8 +72,10 @@ struct DirectPageSyncCursor : InternalCursor {
     int error_code_;
     bool error_is_set_;
     bool completed_;
+    PageHeader const* last_page_;
+    Rand& rand_;
     //! C-tor
-    DirectPageSyncCursor();
+    DirectPageSyncCursor(Rand& rand);
     virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept;
     virtual void complete(Caller&) noexcept;
     virtual void set_error(Caller&, int error_code) noexcept;

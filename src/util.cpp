@@ -184,6 +184,34 @@ const void* align_to_page(const void* ptr, size_t page_size) {
         reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
 }
 
+void prefetch_mem(const void* ptr, size_t mem_size) {
+    auto aptr = align_to_page(ptr, get_page_size());
+    int err = madvise(const_cast<void*>(aptr), mem_size, MADV_WILLNEED);
+    switch(err) {
+    case EBADF:
+        AKU_PANIC("(madvise) the map exists, but the area maps something that isn't a file");
+        break;
+    case EINVAL:
+        // Severe error - panic!
+        AKU_PANIC("(madvise) the value is negative | addr is not page-aligned | advice is not a valid value |...");
+        break;
+
+    case EAGAIN: //  A kernel resource was temporarily unavailable.
+    case EIO:    // Paging  in  this  area  would  exceed  the process's maximum resident set size.
+    case ENOMEM: // Not enough memory: paging in failed.
+    default:
+        break;
+    };
+    auto begin = static_cast<const char*>(aptr);
+    auto end = begin + mem_size;
+    auto step = get_page_size();
+    volatile char acc = 0;
+    while(begin < end) {
+        acc += *begin;
+        begin += step;
+    }
+}
+
 static const unsigned char MINCORE_MASK = 1;
 
 PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
@@ -194,6 +222,14 @@ PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
     assert(len_bytes <= 4UL*1024UL*1024UL*1024UL);
     auto len = (len_bytes_ + page_size_ - 1) / page_size_;
     data_.resize(len);
+}
+
+bool PageInfo::swapped() {
+    fill_mem();
+    refresh(base_addr_);
+    auto res = std::accumulate(data_.begin(), data_.end(), MINCORE_MASK,
+                               [](unsigned char a, unsigned char b) { return a & b;});
+    return !static_cast<bool>(res & MINCORE_MASK);
 }
 
 aku_Status PageInfo::refresh(const void *addr) {
@@ -262,4 +298,14 @@ std::tuple<bool, aku_Status> page_in_core(const void* addr) {
     return std::make_tuple(val&MINCORE_MASK, status);
 }
 
+Rand::Rand()
+    : rand_()  // TODO: add seed
+{
 }
+
+uint32_t Rand::operator () () {
+    return (uint32_t)rand_();
+}
+
+}
+

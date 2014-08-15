@@ -29,6 +29,7 @@
 #include <atomic>
 #include <vector>
 #include <tuple>
+#include <random>
 #include <boost/throw_exception.hpp>
 #include "akumuli.h"
 
@@ -92,6 +93,8 @@ namespace Akumuli
 
     const void* align_to_page(const void* ptr, size_t get_page_size);
 
+    void prefetch_mem(const void* ptr, size_t mem_size);
+
     /** Wrapper for mincore syscall.
      * If everything is OK works as simple wrapper
      * (memory needed for mincore syscall managed by wrapper itself).
@@ -118,6 +121,16 @@ namespace Akumuli
 
         //! Check if memory address is in core
         bool in_core(const void* addr);
+
+        //! Check if underlying memory is swapped to disk
+        bool swapped();
+    };
+
+    class Rand {
+        std::ranlux48_base rand_;
+    public:
+        Rand();
+        uint32_t operator () ();
     };
 }
 
