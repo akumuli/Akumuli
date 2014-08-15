@@ -184,6 +184,26 @@ const void* align_to_page(const void* ptr, size_t page_size) {
         reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
 }
 
+void prefetch_mem(const void* ptr, size_t mem_size) {
+    auto aptr = align_to_page(ptr, get_page_size());
+    int err = madvise(const_cast<void*>(aptr), mem_size, MADV_WILLNEED);
+    switch(err) {
+    case EBADF:
+        AKU_PANIC("(madvise) the map exists, but the area maps something that isn't a file");
+        break;
+    case EINVAL:
+        // Severe error - panic!
+        AKU_PANIC("(madvise) the value is negative | addr is not page-aligned | advice is not a valid value |...");
+        break;
+
+    case EAGAIN: //  A kernel resource was temporarily unavailable.
+    case EIO:    // Paging  in  this  area  would  exceed  the process's maximum resident set size.
+    case ENOMEM: // Not enough memory: paging in failed.
+    default:
+        break;
+    };
+}
+
 static const unsigned char MINCORE_MASK = 1;
 
 PageInfo::PageInfo(const void* start_addr, size_t len_bytes)

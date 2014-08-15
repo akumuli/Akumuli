@@ -156,6 +156,12 @@ void Storage::select_active_page() {
             max_overwrites = static_cast<int64_t>(page->open_count);
             max_index = i;
         }
+
+        aku_TimeStamp x = 0;
+        for (size_t i = 0; i < AKU_HISTOGRAM_SIZE; i++) {
+            x += page->histogram.entries[i].timestamp;
+        }
+        logger_(-1, "hash -> %d", (int)x);
     }
 
     active_volume_index_ = max_index;

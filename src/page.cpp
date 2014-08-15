@@ -347,25 +347,29 @@ struct SearchAlgorithm {
 
     void histogram() {
         auto const& h = page_->histogram;
+        prefetch_mem(h.entries, sizeof(h.entries));
         auto pred = [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
             return a.timestamp < b.timestamp;
         };
         PageHistogramEntry hkey = { key_, 0 };
-        auto upper = std::upper_bound(h.entries, h.entries + h.size, hkey, pred);
-        auto lower = std::lower_bound(h.entries, h.entries + h.size, hkey, pred);
-        if (lower == h.entries) {
-            return;
+        auto begin = h.entries;
+        auto end = begin + h.size;
+        auto upper = std::upper_bound(begin, end, hkey, pred);
+        auto lower = std::lower_bound(begin, end, hkey, pred);
+        if (lower != end) {
+            if (lower != begin && lower->timestamp > hkey.timestamp) {
+                lower--;
+            }
+            range_.begin = lower->index;
         }
-        if (lower->timestamp > hkey.timestamp) {
-            lower--;
+        if (upper != end) {
+            range_.end = upper->index;
         }
-        range_.begin = lower->index;
-        range_.end = upper->index;
     }
 
     void interpolation() {
-        aku_TimeStamp search_lower_bound = page_->bbox.min_timestamp;
-        aku_TimeStamp search_upper_bound = page_->bbox.max_timestamp;
+        aku_TimeStamp search_lower_bound = page_->read_entry_at(range_.begin)->time;
+        aku_TimeStamp search_upper_bound = page_->read_entry_at(range_.end)->time;
         uint32_t probe_index = 0u;
         int interpolation_search_quota = 6;  // TODO: move to configuration
         int steps_count = 0;
@@ -404,50 +408,11 @@ struct SearchAlgorithm {
             probe_index = range_.begin + ((numerator * (range_.end - range_.begin)) /
                                           (search_upper_bound - search_lower_bound));
 
-            if (probe_index > page_->sync_count) {
-                cursor_->set_error(caller_, AKU_EOVERFLOW);
-                return;
-            }
             if (probe_index > range_.begin && probe_index < range_.end) {
 
                 auto probe_offset = page_->page_index[probe_index];
                 auto probe_entry = page_->read_entry(probe_offset);
-
-                aku_Status status = AKU_SUCCESS;
-                bool cached = false;
-                int page_scan_quota = 5;
-                const int page_scan_step = 10;
-                while(!cached || page_scan_quota--) {
-                    page_scan_steps_num++;
-                    std::tie(cached, status) = page_in_core((void*)probe_entry);
-                    if (status != AKU_SUCCESS) {
-                        page_scan_errors++;
-                        break;
-                    }
-                    if (!cached) {
-                        page_miss++;
-                        if (state == UNDERSHOOT) {
-                            // TODO: check for overflow
-                            if (probe_index + page_scan_step < range_.end) {
-                                probe_index += page_scan_step;
-                            } else {
-                                break;
-                            }
-                        } else {
-                            // TODO: check for overflow
-                            if (probe_index - page_scan_step < range_.begin) {
-                                probe_index -= page_scan_step;
-                            } else {
-                                break;
-                            }
-                        }
-                        probe_offset = page_->page_index[probe_index];
-                        probe_entry = page_->read_entry(probe_offset);
-                    } else {
-                        page_scan_success++;
-                    }
-                }
-
+                // TODO: count page faults
                 auto probe = probe_entry->time;
 
                 if (probe < key_) {
