@@ -23,7 +23,7 @@ include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${APR_INCLUDE_DIR})
 
 #if(CMAKE_COMPILER_IS_GNUCXX)
-add_definitions(-std=gnu++0x)
+add_definitions(-std=gnu++0x -fvisibility=hidden)
 #endif()
 
 include_directories(./include)
