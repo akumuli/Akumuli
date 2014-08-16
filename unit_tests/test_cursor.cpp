@@ -236,40 +236,40 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_f)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 1000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 1000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_f)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 1000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 1000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_f)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 100000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 1, 100000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_f)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 100000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_FORWARD, 10, 100000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_b)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 1000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 1000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_b)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 1000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 1000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_b)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 100000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 1, 100000 + sizeof(PageHeader));
 }
 
 BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_b)
 {
-    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 100000);
+    test_fan_in_cursor(AKU_CURSOR_DIR_BACKWARD, 10, 100000 + sizeof(PageHeader));
 }

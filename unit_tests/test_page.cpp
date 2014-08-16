@@ -23,15 +23,17 @@ AkumuliInitializer initializer;
 
 BOOST_AUTO_TEST_CASE(TestPaging1)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     BOOST_CHECK_EQUAL(0, page->get_entries_count());
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging2)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     auto free_space_before = page->get_free_space();
     char buffer[128];
     aku_MemRange range = {buffer, 128};
@@ -43,17 +45,19 @@ BOOST_AUTO_TEST_CASE(TestPaging2)
 
 BOOST_AUTO_TEST_CASE(TestPaging3)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
-    aku_MemRange range = {nullptr, 4096};
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    aku_MemRange range = {nullptr, page_mem.size()};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_OVERFLOW);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging4)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     aku_MemRange range = {nullptr, 0};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_BAD_DATA);
@@ -61,8 +65,9 @@ BOOST_AUTO_TEST_CASE(TestPaging4)
 
 BOOST_AUTO_TEST_CASE(TestPaging5)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     char buffer[222];
     aku_MemRange range = {buffer, 222};
     auto result = page->add_entry(0, 1, range);
@@ -73,8 +78,9 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
 
 BOOST_AUTO_TEST_CASE(TestPaging6)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
     aku_TimeStamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(uint32_t)*sizeof(buffer)};
@@ -92,8 +98,9 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
 
 BOOST_AUTO_TEST_CASE(TestPaging7)
 {
-    char page_ptr[4096]; 
-    auto page = new (page_ptr) PageHeader(0, 4096, 0);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 4096);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {1, 2, 3, 4};
     aku_TimeStamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)*sizeof(uint32_t)};
@@ -138,8 +145,9 @@ void generic_search_test
     , ExpectedSearchResults const& expectations
     )
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test(page_ptr, 0x10000, 100);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 0x10000);
+    auto page = init_search_range_test(page_mem.data(), page_mem.size(), 100);
     SearchQuery query(param_id, begin, end, direction);
     RecordingCursor cursor;
     Caller caller;
@@ -288,8 +296,9 @@ void generic_search_test_with_skew
      , ExpectedSearchResults const& expectations
      )
 {
-    char page_ptr[0x10000];
-    auto page = init_search_range_test_with_skew(page_ptr, 0x10000, 1000, 2);
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 0x10000);
+    auto page = init_search_range_test_with_skew(page_mem.data(), page_mem.size(), 1000, 2);
 
     SearchQuery query(param_id, begin, end, direction);
     RecordingCursor cursor;
