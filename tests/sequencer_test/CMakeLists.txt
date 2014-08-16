@@ -1,6 +1,14 @@
-add_executable(sequencer_test main.cpp)
+add_executable(
+    sequencer_test
+        main.cpp
+        ../../src/storage.cpp
+        ../../src/page.cpp
+        ../../src/akumuli.cpp
+        ../../src/util.cpp
+        ../../src/sequencer.cpp
+        ../../src/cursor.cpp
+)
 target_link_libraries(sequencer_test
-    akumuli
     ${APR_LIBRARY}
     ${Boost_LIBRARIES}
     libboost_coroutine.a

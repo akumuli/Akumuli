@@ -25,9 +25,15 @@
 #include "config.h"
 #include "akumuli_def.h"
 
+#ifdef __unix__
+#define AKU_EXPORT __attribute__((visibility("default")))
+#else
+#define AKU_EXPORT __declspec(dllexport)
+#endif
+
 extern "C" {
 
-    void aku_initialize();
+    AKU_EXPORT void aku_initialize();
 
     typedef uint64_t aku_TimeStamp;
     typedef uint64_t aku_Duration;
@@ -47,9 +53,9 @@ extern "C" {
         uint32_t       value[];   //< Data begining
     } __attribute__((packed));
 
-    const char* aku_error_message(int error_code);
+    AKU_EXPORT const char* aku_error_message(int error_code);
 
-    void aku_console_logger(int tag, const char* format, ...);
+    AKU_EXPORT void aku_console_logger(int tag, const char* format, ...);
 
     //! Database instance.
     struct aku_Database {
@@ -63,7 +69,7 @@ extern "C" {
      * @param num_volumes number of volumes to create
      * @return APR errorcode or APR_SUCCESS
      */
-    apr_status_t aku_create_database( const char*  file_name
+    AKU_EXPORT apr_status_t aku_create_database( const char*  file_name
                                     , const char*  metadata_path
                                     , const char*  volumes_path
                                     , int32_t      num_volumes
@@ -93,49 +99,49 @@ extern "C" {
     /**
      * @brief Create select query
      */
-    aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
+    AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
 
     /**
      * @brief Destroy any object created with aku_make_*** function
      */
-    void aku_destroy(void* any);
+    AKU_EXPORT void aku_destroy(void* any);
 
     /**
      * @brief Execute query
      * @param query data structure representing search query
      * @return cursor
      */
-    aku_Cursor* aku_select(aku_Database* db, aku_SelectQuery* query);
+    AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, aku_SelectQuery* query);
 
     /**
      * @brief Close cursor
      * @param pcursor pointer to cursor
      */
-    void aku_close_cursor(aku_Cursor* pcursor);
+    AKU_EXPORT void aku_close_cursor(aku_Cursor* pcursor);
 
-    int aku_cursor_read(aku_Cursor* pcursor, aku_Entry const** buffer, int buffer_len);
+    AKU_EXPORT int aku_cursor_read(aku_Cursor* pcursor, aku_Entry const** buffer, int buffer_len);
 
-    bool aku_cursor_is_done(aku_Cursor* pcursor);
+    AKU_EXPORT bool aku_cursor_is_done(aku_Cursor* pcursor);
 
-    bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+    AKU_EXPORT bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
     /**
      * @brief Flush data to disk.
      * @param db database.
      */
-    void aku_flush_database(aku_Database* db);
+    AKU_EXPORT void aku_flush_database(aku_Database* db);
 
 
     /** Open existing database.
      */
-    aku_Database* aku_open_database(const char *path, aku_Config config);
+    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_Config config);
 
-    aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
+    AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
 
 
     /** Close database.
      */
-    void aku_close_database(aku_Database* db);
+    AKU_EXPORT void aku_close_database(aku_Database* db);
 
     /*
      * Statistics
@@ -164,7 +170,7 @@ extern "C" {
         } scan;
     };
 
-    void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset=false);
+    AKU_EXPORT void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset=false);
 
     struct aku_StorageStats {
         uint64_t n_entries;       //< Total number of entries
@@ -173,5 +179,5 @@ extern "C" {
         uint64_t used_space;      //< Space in use
     };
 
-    void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
+    AKU_EXPORT void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
 }

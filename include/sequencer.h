@@ -88,6 +88,8 @@ struct Sequencer {
     // Searching
     void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
 
+    aku_TimeStamp get_window() const;
+
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
     uint32_t get_checkpoint_(aku_TimeStamp ts) const;

@@ -328,6 +328,10 @@ void Sequencer::unlock_all_runs() const {
    }
 }
 
+aku_TimeStamp Sequencer::get_window() const {
+    return top_timestamp_ - window_size_;
+}
+
 struct SearchPredicate {
     SearchQuery const& query;
     SearchPredicate(SearchQuery const& q) : query(q) {}
@@ -345,16 +349,16 @@ struct SearchPredicate {
 };
 
 void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const {
-    // TODO: use more effective algorithm, based on binary search
-    SearchPredicate search_pred(q);
-    if (run.empty() ||
-        get<TIMESTMP>(run.front().key_) < q.lowerbound ||
-        q.upperbound > get<TIMESTMP>(run.back().key_))
-    {
+    if (run.empty()) {
         return;
     }
+    SearchPredicate search_pred(q);
     SortedRun result;
-    copy_if(run.begin(), run.end(), std::back_inserter(result), search_pred);
+    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u);
+    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u);
+    auto begin = std::lower_bound(run.begin(), run.end(), lkey);
+    auto end = std::upper_bound(run.begin(), run.end(), rkey);
+    copy_if(begin, end, std::back_inserter(result), search_pred);
     results->push_back(move(result));
 }
 
