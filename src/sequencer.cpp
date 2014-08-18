@@ -278,17 +278,22 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return;
     }
 
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
+    try {
 
-    // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
-    // we've got only one place to store ready to sync data, if such data is present
-    // progress_flag_ must be set (it indicates that merge/sync procedure is in progress)
-    // after that we must clear ready_ collection and free some space for new data, after
-    // that progress_flag_ can be cleared.
+        kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
 
-    ready_.clear();
-    atomic_thread_fence(memory_order_acq_rel);
-    cur->complete(caller);
+        // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
+        // we've got only one place to store ready to sync data, if such data is present
+        // progress_flag_ must be set (it indicates that merge/sync procedure is in progress)
+        // after that we must clear ready_ collection and free some space for new data, after
+        // that progress_flag_ can be cleared.
+
+        ready_.clear();
+        atomic_thread_fence(memory_order_acq_rel);
+        cur->complete(caller);
+    } catch (CoroutineInterrupted const&) {
+        return;
+    }
 }
 
 void Sequencer::lock_run(int ix) const {
@@ -375,11 +380,15 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
         unlock_run(run_ix);
         run_ix++;
     }
-    if (query.direction == AKU_CURSOR_DIR_FORWARD) {
-        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, caller, cur, page_);
-    } else {
-        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
+    try {
+        if (query.direction == AKU_CURSOR_DIR_FORWARD) {
+            kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, caller, cur, page_);
+        } else {
+            kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
+        }
+        cur->complete(caller);
+    } catch (CoroutineInterrupted const&) {
+        return;
     }
-    cur->complete(caller);
 }
 }  // namespace Akumuli

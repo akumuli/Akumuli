@@ -32,7 +32,6 @@
 namespace Akumuli {
 
 
-
 /** Simple cursor implementation for testing.
   * Stores all values in std::vector.
   */
@@ -44,9 +43,9 @@ struct RecordingCursor : InternalCursor {
     };
     int error_code = NO_ERROR;
 
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader* page) noexcept;
-    virtual void complete(Caller&) noexcept;
-    virtual void set_error(Caller&, int error_code) noexcept;
+    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader* page);
+    virtual void complete(Caller&);
+    virtual void set_error(Caller&, int error_code);
 };
 
 
@@ -58,10 +57,10 @@ struct BufferedCursor : InternalCursor {
     bool completed = false;
     int error_code = AKU_SUCCESS;
     //! C-tor
-    BufferedCursor(CursorResult *buf, size_t size) noexcept;
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept;
-    virtual void complete(Caller&) noexcept;
-    virtual void set_error(Caller&, int error_code) noexcept;
+    BufferedCursor(CursorResult *buf, size_t size);
+    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual void complete(Caller&);
+    virtual void set_error(Caller&, int error_code);
 };
 
 
@@ -76,9 +75,9 @@ struct DirectPageSyncCursor : InternalCursor {
     Rand& rand_;
     //! C-tor
     DirectPageSyncCursor(Rand& rand);
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept;
-    virtual void complete(Caller&) noexcept;
-    virtual void set_error(Caller&, int error_code) noexcept;
+    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual void complete(Caller&);
+    virtual void set_error(Caller&, int error_code);
 };
 
 
@@ -87,13 +86,13 @@ struct DirectPageSyncCursor : InternalCursor {
  */
 struct ExternalCursor {
     //! Read portion of the data to the buffer
-    virtual int read(CursorResult* buf, int buf_len) noexcept = 0;
+    virtual int read(CursorResult* buf, int buf_len) = 0;
     //! Check is everything done
-    virtual bool is_done() const noexcept = 0;
+    virtual bool is_done() const = 0;
     //! Check is error occured and (optionally) get the error code
-    virtual bool is_error(int* out_error_code_or_null=nullptr) const noexcept = 0;
+    virtual bool is_error(int* out_error_code_or_null=nullptr) const = 0;
     //! Finalizer
-    virtual void close() noexcept = 0;
+    virtual void close() = 0;
 
     virtual ~ExternalCursor() {}
 };
@@ -118,26 +117,27 @@ struct CoroCursor : Cursor {
     bool            error_;             //! Error flag
     int             error_code_;        //! Error code
     bool            complete_;          //! Is complete
+    bool            interrupt_;
 
     CoroCursor() ;
 
     // External cursor implementation
 
-    virtual int read(CursorResult* buf, int buf_len) noexcept;
+    virtual int read(CursorResult* buf, int buf_len);
 
-    virtual bool is_done() const noexcept;
+    virtual bool is_done() const;
 
-    virtual bool is_error(int* out_error_code_or_null=nullptr) const noexcept;
+    virtual bool is_error(int* out_error_code_or_null=nullptr) const;
 
-    virtual void close() noexcept;
+    virtual void close();
 
     // Internal cursor implementation
 
-    void set_error(Caller& caller, int error_code) noexcept;
+    void set_error(Caller& caller, int error_code);
 
-    void put(Caller& caller, aku_EntryOffset off, const PageHeader *page) noexcept;
+    void put(Caller& caller, aku_EntryOffset off, const PageHeader *page);
 
-    void complete(Caller& caller) noexcept;
+    void complete(Caller& caller);
 
     template<class Fn_1arg_caller>
     void start(Fn_1arg_caller const& fn) {
@@ -189,7 +189,7 @@ class FanInCursorCombinator : ExternalCursor {
     const int                           direction_;
     CoroCursor                          out_cursor_;
 
-    void read_impl_(Caller& caller) noexcept;
+    void read_impl_(Caller& caller);
 public:
     /**
      * @brief C-tor
@@ -199,14 +199,14 @@ public:
      */
     FanInCursorCombinator( ExternalCursor** in_cursors
                          , int size
-                         , int direction) noexcept;
+                         , int direction);
 
     // ExternalCursor interface
 public:
-    virtual int read(CursorResult *buf, int buf_len) noexcept;
-    virtual bool is_done() const noexcept;
-    virtual bool is_error(int *out_error_code_or_null) const noexcept;
-    virtual void close() noexcept;
+    virtual int read(CursorResult *buf, int buf_len);
+    virtual bool is_done() const;
+    virtual bool is_error(int *out_error_code_or_null) const;
+    virtual void close();
 };
 
 }  // namespace

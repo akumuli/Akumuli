@@ -300,7 +300,7 @@ struct SearchAlgorithm {
         , caller_(caller)
         , cursor_(cursor)
         , query_(query)
-        , MAX_INDEX_(page->sync_count - 1)
+        , MAX_INDEX_(page->sync_count)
         , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
     {
@@ -580,12 +580,15 @@ struct SearchAlgorithm {
 
 void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
 {
+    try {
     SearchAlgorithm search_alg(this, caller, cursor, query);
     if (search_alg.fast_path() == false) {
         search_alg.histogram();
         search_alg.interpolation();
         search_alg.binary_search();
         search_alg.scan();
+    }
+    } catch (CoroutineInterrupted const&) {
     }
 }
 
