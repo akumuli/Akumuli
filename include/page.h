@@ -55,7 +55,7 @@ struct PageHistogramEntry {
 
 /** Page histogram for approximation search */
 struct PageHistogram {
-    int size;
+    uint32_t size;
     PageHistogramEntry entries[AKU_HISTOGRAM_SIZE];
 };
 

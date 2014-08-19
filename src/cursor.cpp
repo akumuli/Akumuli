@@ -22,8 +22,9 @@
 namespace Akumuli {
 
 
-void RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) {
+bool RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) {
     offsets.push_back(std::make_pair(offset, page));
+    return true;
 }
 
 void RecordingCursor::complete(Caller&) {
@@ -43,13 +44,14 @@ BufferedCursor::BufferedCursor(CursorResult* buf, size_t size)
 {
 }
 
-void BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) {
+bool BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) {
     if (count == buffer_size) {
         completed = true;
         error_code = AKU_EOVERFLOW;
-        return;
+        return false;
     }
     offsets_buffer[count++] = std::make_pair(offset, page);
+    return true;
 }
 
 void BufferedCursor::complete(Caller&) {
@@ -72,12 +74,13 @@ DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)
 {
 }
 
-void DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) {
+bool DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) {
     if (last_page_ != nullptr && last_page_ != page) {
         const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
     }
     const_cast<PageHeader*>(page)->sync_next_index(offset, rand_(), false);
     last_page_ = page;
+    return true;
 }
 
 void DirectPageSyncCursor::complete(Caller&) {
@@ -112,7 +115,7 @@ CoroCursor::CoroCursor()
     , error_(false)
     , error_code_(AKU_SUCCESS)
     , complete_(false)
-    , interrupt_(true)
+    , closed_(false)
 {
 }
 
@@ -138,8 +141,8 @@ bool CoroCursor::is_error(int* out_error_code_or_null) const
 }
 
 void CoroCursor::close() {
-    if (!interrupt_) {
-        interrupt_ = true;
+    if (!closed_) {
+        closed_ = true;
         coroutine_->operator()(this);
         coroutine_.reset();
     }
@@ -154,15 +157,16 @@ void CoroCursor::set_error(Caller& caller, int error_code) {
     caller();
 }
 
-void CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) {
+bool CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) {
+    if (closed_) {
+        return false;
+    }
     if (write_index_ == usr_buffer_len_) {
         // yield control to client
         caller();
     }
-    if (interrupt_) {
-        throw CoroutineInterrupted();
-    }
     usr_buffer_[write_index_++] = std::make_pair(off, page);
+    return true;
 }
 
 void CoroCursor::complete(Caller& caller) {
@@ -252,6 +256,8 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
         auto dbg_time_stamp = std::get<0>(item);
         auto dbg_param_id = std::get<1>(item);
+        AKU_UNUSED(dbg_time_stamp);
+        AKU_UNUSED(dbg_param_id);
         if (!dbg_first_item) {
             bool cmp_res = false;
             if (direction_ == AKU_CURSOR_DIR_BACKWARD)  {

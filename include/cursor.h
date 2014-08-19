@@ -43,7 +43,7 @@ struct RecordingCursor : InternalCursor {
     };
     int error_code = NO_ERROR;
 
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader* page);
+    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader* page);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -58,7 +58,7 @@ struct BufferedCursor : InternalCursor {
     int error_code = AKU_SUCCESS;
     //! C-tor
     BufferedCursor(CursorResult *buf, size_t size);
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader *page);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -75,7 +75,7 @@ struct DirectPageSyncCursor : InternalCursor {
     Rand& rand_;
     //! C-tor
     DirectPageSyncCursor(Rand& rand);
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader *page);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -117,7 +117,7 @@ struct CoroCursor : Cursor {
     bool            error_;             //! Error flag
     int             error_code_;        //! Error code
     bool            complete_;          //! Is complete
-    bool            interrupt_;
+    bool            closed_;
 
     CoroCursor() ;
 
@@ -135,7 +135,7 @@ struct CoroCursor : Cursor {
 
     void set_error(Caller& caller, int error_code);
 
-    void put(Caller& caller, aku_EntryOffset off, const PageHeader *page);
+    bool put(Caller& caller, aku_EntryOffset off, const PageHeader *page);
 
     void complete(Caller& caller);
 

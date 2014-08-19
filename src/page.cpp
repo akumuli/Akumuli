@@ -526,11 +526,12 @@ struct SearchAlgorithm {
                     dbg_prev_ts = probe_entry->time;
                     dbg_count++;
 #endif
-                    cursor_->put(caller_, probe_offset, page_);
+                    if (!cursor_->put(caller_, probe_offset, page_)) {
+                        break;
+                    }
                 }
                 if (probe_entry->time < query_.lowerbound || current_index == 0u) {
                     stop_offset = probe_offset;
-                    cursor_->complete(caller_);
                     break;
                 }
             }
@@ -552,11 +553,12 @@ struct SearchAlgorithm {
                     dbg_prev_ts = probe_entry->time;
                     dbg_count++;
 #endif
-                    cursor_->put(caller_, probe_offset, page_);
+                    if (!cursor_->put(caller_, probe_offset, page_)) {
+                        break;
+                    }
                 }
                 if (probe_entry->time > query_.upperbound || current_index == MAX_INDEX_) {
                     stop_offset = probe_offset;
-                    cursor_->complete(caller_);
                     break;
                 }
             }
@@ -575,20 +577,18 @@ struct SearchAlgorithm {
         } else {
             scan_stats.fwd_bytes += sum;
         }
+        cursor_->complete(caller_);
     }
 };
 
 void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
 {
-    try {
     SearchAlgorithm search_alg(this, caller, cursor, query);
     if (search_alg.fast_path() == false) {
         search_alg.histogram();
         search_alg.interpolation();
         search_alg.binary_search();
         search_alg.scan();
-    }
-    } catch (CoroutineInterrupted const&) {
     }
 }
 
@@ -620,7 +620,7 @@ void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool
             h.timestamp = read_entry(offset)->time;
         } else {
             // reservoir sampling
-            auto rindex = rand_val % sync_count;
+            auto rindex = static_cast<uint32_t>(rand_val % sync_count);
             if (rindex < histogram.size) {
                 auto& h = histogram.entries[rindex];
                 h.index = index;

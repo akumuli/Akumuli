@@ -136,3 +136,5 @@ namespace Akumuli
 
 #define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(std::runtime_error(msg));
 #define AKU_APR_PANIC(status, msg) BOOST_THROW_EXCEPTION(Akumuli::AprException(status, msg));
+
+#define AKU_UNUSED(x) (void)(x)
