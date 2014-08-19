@@ -542,6 +542,9 @@ struct SearchAlgorithm {
             } else {
                 while (true) {
                     auto current_index = probe_index++;
+                    if (current_index == MAX_INDEX_) {
+                        break;
+                    }
                     auto probe_offset = page_->page_index[current_index];
                     auto probe_entry = page_->read_entry(probe_offset);
                     auto probe = probe_entry->param_id;
@@ -560,9 +563,9 @@ struct SearchAlgorithm {
                         if (!cursor_->put(caller_, probe_offset, page_)) {
                             break;
                         }
-                    }
-                    if (probe_entry->time > query_.upperbound || current_index == MAX_INDEX_) {
                         stop_offset = probe_offset;
+                    }
+                    if (probe_entry->time > query_.upperbound) {
                         break;
                     }
                 }
