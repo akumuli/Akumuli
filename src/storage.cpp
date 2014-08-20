@@ -225,8 +225,8 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
         if (vol == this->active_volume_) {
             auto window = active_volume_->cache_->get_window();
             if (query.lowerbound > window || query.upperbound > window) {
-                // auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
-                // cursors.push_back(std::move(ccur));
+                auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
+                cursors.push_back(std::move(ccur));
             }
         }
         // Search pages

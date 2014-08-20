@@ -304,8 +304,13 @@ struct SearchAlgorithm {
         , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
     {
-        range_.begin = 0u;
-        range_.end = MAX_INDEX_ - 1;
+        if (MAX_INDEX_) {
+            range_.begin = 0u;
+            range_.end = MAX_INDEX_ - 1;
+        } else {
+            range_.begin = 0u;
+            range_.end = 0u;
+        }
     }
 
     bool fast_path() {
