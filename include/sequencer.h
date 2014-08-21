@@ -70,8 +70,8 @@ struct Sequencer {
     aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
     mutable Mutex                progress_flag_;
-    mutable std::vector<std::atomic_flag>
-                                 run_lock_flags_;
+    mutable Mutex                runs_resize_lock_;
+    mutable std::vector<RWLock>  run_locks_;
 
     Sequencer(PageHeader const* page, aku_Duration window_size);
 
@@ -106,13 +106,5 @@ private:
     int check_timestamp_(aku_TimeStamp ts, Lock &lock);
 
     void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const;
-
-    void lock_run(int ix) const;
-
-    void unlock_run(int ix) const;
-
-    void lock_all_runs() const;
-
-    void unlock_all_runs() const;
 };
 }

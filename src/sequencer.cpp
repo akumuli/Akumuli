@@ -61,13 +61,9 @@ Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
-    , run_lock_flags_(RUN_LOCK_FLAGS_SIZE)
+    , run_locks_(RUN_LOCK_FLAGS_SIZE)
 {
     key_.push_back(TimeSeriesValue());
-
-    for(auto& flag: run_lock_flags_) {
-        flag.clear();
-    }
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -86,7 +82,6 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
     if(!lock.try_lock()) {
         return;
     }
-    lock_all_runs();  // stop all consurrent searches
     auto old_top = get_timestamp_(checkpoint_);
     checkpoint_ = new_checkpoint;
     if (!ready_.empty()) {
@@ -112,10 +107,8 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
             new_runs.push_back(move(run));
         }
     }
+    Lock guard(runs_resize_lock_);
     swap(runs_, new_runs);
-    unlock_all_runs();
-    atomic_thread_fence(memory_order_acq_rel);
-    return;
 }
 
 /** Check timestamp and make checkpoint if timestamp is large enough.
@@ -151,22 +144,50 @@ std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
     if (status != AKU_SUCCESS) {
         return make_tuple(status, move(lock));
     }
+
     key_.pop_back();
     key_.push_back(value);
+
+    Lock guard(runs_resize_lock_);
     auto begin = runs_.begin();
     auto end = runs_.end();
     auto insert_it = lower_bound(begin, end, key_, top_element_more<SortedRun>);
-    if (insert_it == runs_.end()) {
+    int run_ix = distance(begin, insert_it);
+    bool new_run_needed = insert_it == runs_.end();
+    guard.unlock();
+
+    if (!new_run_needed) {
+        auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
+        auto& rwlock = run_locks_.at(ix);
+        if (rwlock.try_wrlock()) {
+            insert_it->push_back(value);
+            rwlock.unlock();
+        } else {
+            new_run_needed = true;
+        }
+    }
+    if (new_run_needed) {
+        guard.lock();
         SortedRun new_pile;
         new_pile.push_back(value);
         runs_.push_back(new_pile);
-    } else {
-        int run_ix = distance(begin, insert_it);
-        lock_run(run_ix);
-        insert_it->push_back(value);
-        unlock_run(run_ix);
+        guard.unlock();
     }
     return make_tuple(AKU_SUCCESS, move(lock));
+}
+
+template<class Cont>
+void wrlock_all(Cont& cont) {
+    for (auto& rwlock: cont) {
+        rwlock.wrlock();
+    }
+}
+
+template<class Cont>
+void unlock_all(Cont& cont) {
+    for (auto& rwlock: cont) {
+        rwlock.unlock();
+    }
 }
 
 Sequencer::Lock Sequencer::close() {
@@ -177,13 +198,17 @@ Sequencer::Lock Sequencer::close() {
     if (!ready_.empty()) {
         throw runtime_error("sequencer invariant is broken");
     }
-    lock_all_runs();
+
+    wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {
         ready_.push_back(move(sorted_run));
     }
-    unlock_all_runs();
+    unlock_all(run_locks_);
+
+    runs_resize_lock_.lock();
     runs_.clear();
-    atomic_thread_fence(memory_order_acq_rel);
+    runs_resize_lock_.unlock();
+
     return move(lock);
 }
 
@@ -290,45 +315,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     // that progress_flag_ can be cleared.
 
     ready_.clear();
-    atomic_thread_fence(memory_order_acq_rel);
     cur->complete(caller);
-}
-
-void Sequencer::lock_run(int ix) const {
-    int busy_wait_counter = RUN_LOCK_BUSY_COUNT;
-    int backoff_len = 0;
-    while(true) {
-        bool is_busy = run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].test_and_set();
-        if (!is_busy) {
-            return;
-        } else {
-            // Busy wait
-            if (busy_wait_counter) {
-                busy_wait_counter--;
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_len));
-                if (backoff_len < RUN_LOCK_MAX_BACKOFF) {
-                    backoff_len++;
-                }
-            }
-        }
-    }
-}
-
-void Sequencer::unlock_run(int ix) const {
-    run_lock_flags_[RUN_LOCK_FLAGS_MASK & ix].clear();
-}
-
-void Sequencer::lock_all_runs() const {
-   for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
-       lock_run(i);
-   }
-}
-
-void Sequencer::unlock_all_runs() const {
-   for (int i = 0; i < RUN_LOCK_FLAGS_SIZE; i++) {
-       unlock_run(i);
-   }
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -371,11 +358,20 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
     // that means that ready_ is empty
     assert(ready_.empty());
     std::vector<SortedRun> filtered;
+    std::vector<SortedRun const*> pruns;
+    Lock runs_guard(runs_resize_lock_);
+    std::transform(runs_.begin(), runs_.end(),
+                   std::back_inserter(pruns),
+                   [](SortedRun const& r) {return &r;}
+    );
+    runs_guard.unlock();
     int run_ix = 0;
-    for (const auto& run: runs_) {
-        lock_run(run_ix);
-        filter(run, query, &filtered);
-        unlock_run(run_ix);
+    for (auto run: pruns) {
+        auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
+        auto& rwlock = run_locks_.at(ix);
+        rwlock.rdlock();
+        filter(*run, query, &filtered);
+        rwlock.unlock();
         run_ix++;
     }
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {
