@@ -33,7 +33,7 @@ namespace Akumuli {
 template<typename RunType>
 bool top_element_less(const RunType& x, const RunType& y)
 {
-    return x.back() < y.back();
+    return x->back() < y->back();
 }
 
 template<typename RunType>
@@ -63,7 +63,8 @@ Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
     , checkpoint_(0u)
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
 {
-    key_.push_back(TimeSeriesValue());
+    key_.reset(new SortedRun());
+    key_->push_back(TimeSeriesValue());
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -87,23 +88,23 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
     if (!ready_.empty()) {
         throw runtime_error("sequencer invariant is broken");
     }
-    vector<SortedRun> new_runs;
+    vector<PSortedRun> new_runs;
     for (auto& sorted_run: runs_) {
-        auto it = lower_bound(sorted_run.begin(), sorted_run.end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
-        if (it == sorted_run.begin()) {
+        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+        if (it == sorted_run->begin()) {
             // all timestamps are newer than old_top, do nothing
             new_runs.push_back(move(sorted_run));
             continue;
-        } else if (it == sorted_run.end()) {
+        } else if (it == sorted_run->end()) {
             // all timestamps are older than old_top, move them
             ready_.push_back(move(sorted_run));
         } else {
             // it is in between of the sorted run - split
-            SortedRun run;
-            copy(sorted_run.begin(), it, back_inserter(run));  // copy old
+            PSortedRun run(new SortedRun());
+            copy(sorted_run->begin(), it, back_inserter(*run));  // copy old
             ready_.push_back(move(run));
-            run.clear();
-            copy(it, sorted_run.end(), back_inserter(run));  // copy new
+            run.reset(new SortedRun());
+            copy(it, sorted_run->end(), back_inserter(*run));  // copy new
             new_runs.push_back(move(run));
         }
     }
@@ -145,32 +146,32 @@ std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
         return make_tuple(status, move(lock));
     }
 
-    key_.pop_back();
-    key_.push_back(value);
+    key_->pop_back();
+    key_->push_back(value);
 
     Lock guard(runs_resize_lock_);
     auto begin = runs_.begin();
     auto end = runs_.end();
-    auto insert_it = lower_bound(begin, end, key_, top_element_more<SortedRun>);
+    auto insert_it = lower_bound(begin, end, key_, top_element_more<PSortedRun>);
     int run_ix = distance(begin, insert_it);
     bool new_run_needed = insert_it == runs_.end();
+    SortedRun* run = nullptr;
+    if (!new_run_needed) {
+        run = insert_it->get();
+    }
     guard.unlock();
 
     if (!new_run_needed) {
         auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
         auto& rwlock = run_locks_.at(ix);
-        if (rwlock.try_wrlock()) {
-            insert_it->push_back(value);
-            rwlock.unlock();
-        } else {
-            new_run_needed = true;
-        }
-    }
-    if (new_run_needed) {
+        rwlock.wrlock();
+        run->push_back(value);
+        rwlock.unlock();
+    } else {
         guard.lock();
-        SortedRun new_pile;
-        new_pile.push_back(value);
-        runs_.push_back(new_pile);
+        PSortedRun new_pile(new SortedRun());
+        new_pile->push_back(value);
+        runs_.push_back(move(new_pile));
         guard.unlock();
     }
     return make_tuple(AKU_SUCCESS, move(lock));
@@ -235,26 +236,28 @@ template<class TRun, int dir>
 struct RunIter;
 
 template<class TRun>
-struct RunIter<TRun, AKU_CURSOR_DIR_FORWARD> {
+struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_FORWARD> {
     typedef boost::iterator_range<typename TRun::const_iterator> range_type;
-    static range_type make_range(TRun const& run) {
-        return boost::make_iterator_range(run);
+    typedef typename TRun::value_type value_type;
+    static range_type make_range(std::unique_ptr<TRun> const& run) {
+        return boost::make_iterator_range(run->begin(), run->end());
     }
 };
 
 template<class TRun>
-struct RunIter<TRun, AKU_CURSOR_DIR_BACKWARD> {
+struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
     typedef boost::iterator_range<typename TRun::const_reverse_iterator> range_type;
-    static range_type make_range(TRun const& run) {
-        return boost::make_iterator_range(run.rbegin(), run.rend());
+    typedef typename TRun::value_type value_type;
+    static range_type make_range(std::unique_ptr<TRun> const& run) {
+        return boost::make_iterator_range(run->rbegin(), run->rend());
     }
 };
 
-template <int dir, class TRun>
-void kway_merge(vector<TRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
-    typedef RunIter<TRun, dir> RIter;
+template <int dir>
+void kway_merge(vector<Sequencer::PSortedRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
+    typedef RunIter<Sequencer::PSortedRun, dir> RIter;
     typedef typename RIter::range_type range_t;
-    typedef typename TRun::value_type KeyType;
+    typedef typename RIter::value_type KeyType;
     std::vector<range_t> ranges;
     for(auto i = runs.begin(); i != runs.end(); i++) {
         ranges.push_back(RIter::make_range(*i));
@@ -306,7 +309,9 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return;
     }
 
+    wrlock_all(run_locks_);
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
+    unlock_all(run_locks_);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -338,39 +343,35 @@ struct SearchPredicate {
     }
 };
 
-void Sequencer::filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const {
-    if (run.empty()) {
+void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<PSortedRun>* results) const {
+    if (run->empty()) {
         return;
     }
     SearchPredicate search_pred(q);
-    SortedRun result;
+    PSortedRun result(new SortedRun);
     auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u);
     auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u);
-    auto begin = std::lower_bound(run.begin(), run.end(), lkey);
-    auto end = std::upper_bound(run.begin(), run.end(), rkey);
-    copy_if(begin, end, std::back_inserter(result), search_pred);
+    auto begin = std::lower_bound(run->begin(), run->end(), lkey);
+    auto end = std::upper_bound(run->begin(), run->end(), rkey);
+    copy_if(begin, end, std::back_inserter(*result), search_pred);
     results->push_back(move(result));
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
-    std::lock_guard<std::mutex> guard(progress_flag_);
-    // we can get here only before checkpoint (or after merge was completed)
-    // that means that ready_ is empty
-    assert(ready_.empty());
-    std::vector<SortedRun> filtered;
+    std::vector<PSortedRun> filtered;
     std::vector<SortedRun const*> pruns;
     Lock runs_guard(runs_resize_lock_);
     std::transform(runs_.begin(), runs_.end(),
                    std::back_inserter(pruns),
-                   [](SortedRun const& r) {return &r;}
+                   [](PSortedRun const& r) {return r.get();}
     );
     runs_guard.unlock();
     int run_ix = 0;
-    for (auto run: pruns) {
+    for (auto const& run: pruns) {
         auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
         auto& rwlock = run_locks_.at(ix);
         rwlock.rdlock();
-        filter(*run, query, &filtered);
+        filter(run, query, &filtered);
         rwlock.unlock();
         run_ix++;
     }
