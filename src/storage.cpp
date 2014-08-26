@@ -197,14 +197,33 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
 }
 
 void Storage::advance_volume_(int local_rev) {
-    // TODO: transfer baseline_ value from old volume to new
     if (local_rev == active_volume_index_.load()) {
+	log_message("advance volume, current:");
+  	log_message("....page ID", active_volume_->page_->page_id);
+  	log_message("....close count", active_volume_->page_->close_count);
+  	log_message("....open count", active_volume_->page_->open_count);
+
+        // TODO: disable all readers of this page and cache (I need some
+        // collection of active readers that maps cursors (or cancellation tokens)
+        // to pages.
+        Sequencer::Lock close_lock;
+	close_lock = active_volume_->cache_->close();
+	if (close_lock.owns_lock()) {
+            Caller caller;
+            DirectPageSyncCursor cursor(rand_);
+            active_volume_->cache_->merge(caller, &cursor, std::move(close_lock));
+	}
         active_volume_->close();
+	log_message("page complete");
         // select next page in round robin order
         active_volume_index_++;
         active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
         active_page_ = active_volume_->reallocate_disc_space();
         active_volume_->open();
+	log_message("next volume opened");
+  	log_message("....page ID", active_volume_->page_->page_id);
+  	log_message("....close count", active_volume_->page_->close_count);
+  	log_message("....open count", active_volume_->page_->open_count);
     }
     // Or other thread already done all the switching
     // just redo all the things
@@ -212,6 +231,14 @@ void Storage::advance_volume_(int local_rev) {
 
 void Storage::log_error(const char* message) {
     (*logger_)(tag_, "Write error: %s", message);
+}
+
+void Storage::log_message(const char* message) {
+    (*logger_)(tag_, message);
+}
+
+void Storage::log_message(const char* message, uint64_t value) {
+    (*logger_)(tag_, "%s, %d", message);
 }
 
 // Reading
