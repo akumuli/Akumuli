@@ -314,7 +314,7 @@ struct SearchAlgorithm {
     }
 
     bool fast_path() {
-        if (!page_->count) {
+        if (!MAX_INDEX_) {
             cursor_->complete(caller_);
             return true;
         }
@@ -378,7 +378,7 @@ struct SearchAlgorithm {
         aku_TimeStamp search_lower_bound = page_->read_entry_at(range_.begin)->time;
         aku_TimeStamp search_upper_bound = page_->read_entry_at(range_.end - 1)->time;
         uint32_t probe_index = 0u;
-        int interpolation_search_quota = 6;  // TODO: move to configuration
+        int interpolation_search_quota = 4;  // TODO: move to configuration
         int steps_count = 0;
         int small_range_finish = 0;
         int page_scan_steps_num = 0;
@@ -474,6 +474,11 @@ struct SearchAlgorithm {
         while (range_.end >= range_.begin) {
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
+	    if (probe_index >= MAX_INDEX_) {
+	        cursor_->set_error(caller_, AKU_EOVERFLOW);
+	        range_.begin = range_.end = MAX_INDEX_;
+	        return;
+            }
             auto probe_offset = page_->page_index[probe_index];
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->time;
@@ -482,7 +487,7 @@ struct SearchAlgorithm {
                 break;
             } else if (probe < key_) {
                 range_.begin = probe_index + 1u;         // change min index to search upper subarray
-                if (range_.begin > page_->sync_count) {  // we hit the upper bound of the array
+                if (range_.begin >= MAX_INDEX_) {        // we hit the upper bound of the array
                     break;
                 }
             } else {
@@ -507,7 +512,11 @@ struct SearchAlgorithm {
             cursor_->set_error(caller_, AKU_EGENERAL);
             return;
         }
-        if (range_.begin < page_->sync_count) {
+	if (range_.begin >= MAX_INDEX_) {
+	    cursor_->set_error(caller_, AKU_EOVERFLOW);
+	    return;
+	}
+        if (range_.begin < MAX_INDEX_) {
             uint64_t start_offset = 0ul,
                      stop_offset = 0ul;
 #ifdef DEBUG
@@ -547,7 +556,7 @@ struct SearchAlgorithm {
             } else {
                 while (true) {
                     auto current_index = probe_index++;
-                    if (current_index == MAX_INDEX_) {
+                    if (current_index >= MAX_INDEX_) {
                         break;
                     }
                     auto probe_offset = page_->page_index[current_index];
@@ -608,6 +617,8 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 }
 
 void PageHeader::_sort() {
+    // This method is only for testing purposes.
+    // Page invariants can break here.
     auto begin = page_index + sync_count;
     auto end = page_index + count;
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
@@ -621,12 +632,13 @@ void PageHeader::_sort() {
 }
 
 void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool sort_histogram) {
+    // sync_count updated only here! 
     if (!sort_histogram) {
         if (sync_count >= count) {
             AKU_PANIC("sync_index out of range");
         }
-        auto index = sync_count;
-        page_index[sync_count++] = offset;
+        auto index = sync_count++;
+        page_index[index] = offset;
 
         if (histogram.size < AKU_HISTOGRAM_SIZE) {
             // first AKU_HISTOGRAM_SIZE samples

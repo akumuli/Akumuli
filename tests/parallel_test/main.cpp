@@ -34,7 +34,7 @@ void delete_storage() {
 }
 
 void print_storage_stats(aku_StorageStats& ss) {
-    std::cout << ss.n_entries << " elenents in" << std::endl
+    std::cout << ss.n_entries << " elements in" << std::endl
               << ss.n_volumes << " volumes with" << std::endl
               << ss.used_space << " bytes used and" << std::endl
               << ss.free_space << " bytes free" << std::endl;
