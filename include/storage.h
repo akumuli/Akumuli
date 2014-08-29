@@ -101,6 +101,10 @@ struct Storage
 
     void log_error(const char* message);
 
+    void log_message(const char* message);
+
+    void log_message(const char* message, uint64_t value);
+
     // Writing
 
     //! commit changes

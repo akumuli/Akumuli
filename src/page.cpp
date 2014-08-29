@@ -300,16 +300,21 @@ struct SearchAlgorithm {
         , caller_(caller)
         , cursor_(cursor)
         , query_(query)
-        , MAX_INDEX_(page->sync_count - 1)
+        , MAX_INDEX_(page->sync_count)
         , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
     {
-        range_.begin = 0u;
-        range_.end = MAX_INDEX_;
+        if (MAX_INDEX_) {
+            range_.begin = 0u;
+            range_.end = MAX_INDEX_ - 1;
+        } else {
+            range_.begin = 0u;
+            range_.end = 0u;
+        }
     }
 
     bool fast_path() {
-        if (!page_->count) {
+        if (!MAX_INDEX_) {
             cursor_->complete(caller_);
             return true;
         }
@@ -367,10 +372,13 @@ struct SearchAlgorithm {
     }
 
     void interpolation() {
+        if (range_.begin == range_.end) {
+            return;
+        }
         aku_TimeStamp search_lower_bound = page_->read_entry_at(range_.begin)->time;
-        aku_TimeStamp search_upper_bound = page_->read_entry_at(range_.end)->time;
+        aku_TimeStamp search_upper_bound = page_->read_entry_at(range_.end - 1)->time;
         uint32_t probe_index = 0u;
-        int interpolation_search_quota = 6;  // TODO: move to configuration
+        int interpolation_search_quota = 4;  // TODO: move to configuration
         int steps_count = 0;
         int small_range_finish = 0;
         int page_scan_steps_num = 0;
@@ -466,6 +474,11 @@ struct SearchAlgorithm {
         while (range_.end >= range_.begin) {
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
+	    if (probe_index >= MAX_INDEX_) {
+	        cursor_->set_error(caller_, AKU_EOVERFLOW);
+	        range_.begin = range_.end = MAX_INDEX_;
+	        return;
+            }
             auto probe_offset = page_->page_index[probe_index];
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->time;
@@ -474,7 +487,7 @@ struct SearchAlgorithm {
                 break;
             } else if (probe < key_) {
                 range_.begin = probe_index + 1u;         // change min index to search upper subarray
-                if (range_.begin > page_->sync_count) {  // we hit the upper bound of the array
+                if (range_.begin >= MAX_INDEX_) {        // we hit the upper bound of the array
                     break;
                 }
             } else {
@@ -499,82 +512,96 @@ struct SearchAlgorithm {
             cursor_->set_error(caller_, AKU_EGENERAL);
             return;
         }
-        uint64_t start_offset = 0ul,
-                 stop_offset = 0ul;
+	if (range_.begin >= MAX_INDEX_) {
+	    cursor_->set_error(caller_, AKU_EOVERFLOW);
+	    return;
+	}
+        if (range_.begin < MAX_INDEX_) {
+            uint64_t start_offset = 0ul,
+                     stop_offset = 0ul;
 #ifdef DEBUG
-        // Debug variables
-        aku_TimeStamp dbg_prev_ts;
-        long dbg_count = 0;
+            // Debug variables
+            aku_TimeStamp dbg_prev_ts;
+            long dbg_count = 0;
 #endif
-        auto probe_index = range_.begin;
-        start_offset = page_->page_index[probe_index];
-        if (IS_BACKWARD_) {
-            while (true) {
-                auto current_index = probe_index--;
-                auto probe_offset = page_->page_index[current_index];
-                auto probe_entry = page_->read_entry(probe_offset);
-                auto probe = probe_entry->param_id;
-                bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                           query_.upperbound >= probe_entry->time;
-                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+            auto probe_index = range_.begin;
+            start_offset = page_->page_index[probe_index];
+            if (IS_BACKWARD_) {
+                while (true) {
+                    auto current_index = probe_index--;
+                    auto probe_offset = page_->page_index[current_index];
+                    auto probe_entry = page_->read_entry(probe_offset);
+                    auto probe = probe_entry->param_id;
+                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                               query_.upperbound >= probe_entry->time;
+                    if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
 #ifdef DEBUG
-                    if (dbg_count) {
-                        // check for backward direction
-                        auto is_ok = dbg_prev_ts >= probe_entry->time;
-                        assert(is_ok);
+                        if (dbg_count) {
+                            // check for backward direction
+                            auto is_ok = dbg_prev_ts >= probe_entry->time;
+                            assert(is_ok);
+                        }
+                        dbg_prev_ts = probe_entry->time;
+                        dbg_count++;
+#endif
+                        if (!cursor_->put(caller_, probe_offset, page_)) {
+                            break;
+                        }
                     }
-                    dbg_prev_ts = probe_entry->time;
-                    dbg_count++;
-#endif
-                    cursor_->put(caller_, probe_offset, page_);
+                    if (probe_entry->time < query_.lowerbound || current_index == 0u) {
+                        stop_offset = probe_offset;
+                        break;
+                    }
                 }
-                if (probe_entry->time < query_.lowerbound || current_index == 0u) {
-                    stop_offset = probe_offset;
-                    cursor_->complete(caller_);
-                    break;
+            } else {
+                while (true) {
+                    auto current_index = probe_index++;
+                    if (current_index >= MAX_INDEX_) {
+                        break;
+                    }
+                    auto probe_offset = page_->page_index[current_index];
+                    auto probe_entry = page_->read_entry(probe_offset);
+                    auto probe = probe_entry->param_id;
+                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                               query_.upperbound >= probe_entry->time;
+                    if (query_.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
+#ifdef DEBUG
+                        if (dbg_count) {
+                            // check for forward direction
+                            auto is_ok = dbg_prev_ts <= probe_entry->time;
+                            assert(is_ok);
+                        }
+                        dbg_prev_ts = probe_entry->time;
+                        dbg_count++;
+#endif
+                        if (!cursor_->put(caller_, probe_offset, page_)) {
+                            break;
+                        }
+                        stop_offset = probe_offset;
+                    }
+                    if (probe_entry->time > query_.upperbound) {
+                        break;
+                    }
                 }
             }
-        } else {
-            while (true) {
-                auto current_index = probe_index++;
-                auto probe_offset = page_->page_index[current_index];
-                auto probe_entry = page_->read_entry(probe_offset);
-                auto probe = probe_entry->param_id;
-                bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                           query_.upperbound >= probe_entry->time;
-                if (query_.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
-#ifdef DEBUG
-                    if (dbg_count) {
-                        // check for forward direction
-                        auto is_ok = dbg_prev_ts <= probe_entry->time;
-                        assert(is_ok);
-                    }
-                    dbg_prev_ts = probe_entry->time;
-                    dbg_count++;
-#endif
-                    cursor_->put(caller_, probe_offset, page_);
+            auto& stats = get_global_search_stats();
+            {
+                std::lock_guard<std::mutex> guard(stats.mutex);
+                auto& scan_stats = stats.stats.scan;
+                uint64_t sum;
+                if (stop_offset < start_offset) {
+                    sum = start_offset - stop_offset;
+                } else {
+                    sum = stop_offset - start_offset;
                 }
-                if (probe_entry->time > query_.upperbound || current_index == MAX_INDEX_) {
-                    stop_offset = probe_offset;
-                    cursor_->complete(caller_);
-                    break;
+                if (IS_BACKWARD_) {
+                    scan_stats.bwd_bytes += sum;
+                } else {
+                    scan_stats.fwd_bytes += sum;
                 }
             }
         }
-        auto& stats = get_global_search_stats();
-        std::lock_guard<std::mutex> guard(stats.mutex);
-        auto& scan_stats = stats.stats.scan;
-        uint64_t sum;
-        if (stop_offset < start_offset) {
-            sum = start_offset - stop_offset;
-        } else {
-            sum = stop_offset - start_offset;
-        }
-        if (IS_BACKWARD_) {
-            scan_stats.bwd_bytes += sum;
-        } else {
-            scan_stats.fwd_bytes += sum;
-        }
+        cursor_->complete(caller_);
     }
 };
 
@@ -590,6 +617,8 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 }
 
 void PageHeader::_sort() {
+    // This method is only for testing purposes.
+    // Page invariants can break here.
     auto begin = page_index + sync_count;
     auto end = page_index + count;
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
@@ -603,12 +632,13 @@ void PageHeader::_sort() {
 }
 
 void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool sort_histogram) {
+    // sync_count updated only here! 
     if (!sort_histogram) {
         if (sync_count >= count) {
             AKU_PANIC("sync_index out of range");
         }
-        auto index = sync_count;
-        page_index[sync_count++] = offset;
+        auto index = sync_count++;
+        page_index[index] = offset;
 
         if (histogram.size < AKU_HISTOGRAM_SIZE) {
             // first AKU_HISTOGRAM_SIZE samples
@@ -617,7 +647,7 @@ void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool
             h.timestamp = read_entry(offset)->time;
         } else {
             // reservoir sampling
-            auto rindex = rand_val % sync_count;
+            auto rindex = static_cast<uint32_t>(rand_val % sync_count);
             if (rindex < histogram.size) {
                 auto& h = histogram.entries[rindex];
                 h.index = index;

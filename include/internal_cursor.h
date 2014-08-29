@@ -43,10 +43,10 @@ struct PageHeader;
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual void put(Caller&, aku_EntryOffset offset, const PageHeader* page) noexcept = 0;
-    virtual void complete(Caller&) noexcept = 0;
+    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader* page) = 0;
+    virtual void complete(Caller&) = 0;
     //! Set error and stop execution
-    virtual void set_error(Caller&, int error_code) noexcept = 0;
+    virtual void set_error(Caller&, int error_code) = 0;
 };
 
 }

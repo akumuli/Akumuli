@@ -132,7 +132,31 @@ namespace Akumuli
         Rand();
         uint32_t operator () ();
     };
+
+    /** Reader writer lock
+     *  mutex.
+     */
+    class RWLock {
+        // TODO: specializations for different platforms
+        pthread_rwlock_t rwlock_;
+    public:
+        RWLock();
+
+        ~RWLock();
+
+        void rdlock();
+
+        bool try_rdlock();
+
+        void wrlock();
+
+        bool try_wrlock();
+
+        void unlock();
+    };
 }
 
 #define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(std::runtime_error(msg));
 #define AKU_APR_PANIC(status, msg) BOOST_THROW_EXCEPTION(Akumuli::AprException(status, msg));
+
+#define AKU_UNUSED(x) (void)(x)

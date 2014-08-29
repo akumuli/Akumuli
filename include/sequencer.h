@@ -54,6 +54,7 @@ struct TimeSeriesValue {
   */
 struct Sequencer {
     typedef std::vector<TimeSeriesValue> SortedRun;
+    typedef std::unique_ptr<SortedRun>   PSortedRun;
     typedef std::mutex                   Mutex;
     typedef std::unique_lock<Mutex>      Lock;
 
@@ -62,16 +63,16 @@ struct Sequencer {
     static const int RUN_LOCK_FLAGS_MASK = 0x0FF;
     static const int RUN_LOCK_FLAGS_SIZE = 0x100;
 
-    std::vector<SortedRun>       runs_;           //< Active sorted runs
-    std::vector<SortedRun>       ready_;          //< Ready to merge
-    SortedRun                    key_;
+    std::vector<PSortedRun>      runs_;           //< Active sorted runs
+    std::vector<PSortedRun>      ready_;          //< Ready to merge
+    PSortedRun                   key_;
     const aku_Duration           window_size_;
     const PageHeader* const      page_;
     aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
     mutable Mutex                progress_flag_;
-    mutable std::vector<std::atomic_flag>
-                                 run_lock_flags_;
+    mutable Mutex                runs_resize_lock_;
+    mutable std::vector<RWLock>  run_locks_;
 
     Sequencer(PageHeader const* page, aku_Duration window_size);
 
@@ -105,14 +106,6 @@ private:
       */
     int check_timestamp_(aku_TimeStamp ts, Lock &lock);
 
-    void filter(SortedRun const& run, SearchQuery const& q, std::vector<SortedRun>* results) const;
-
-    void lock_run(int ix) const;
-
-    void unlock_run(int ix) const;
-
-    void lock_all_runs() const;
-
-    void unlock_all_runs() const;
+    void filter(const SortedRun *run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
 };
 }

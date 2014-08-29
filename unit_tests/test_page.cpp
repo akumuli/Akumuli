@@ -48,7 +48,7 @@ BOOST_AUTO_TEST_CASE(TestPaging3)
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
-    aku_MemRange range = {nullptr, page_mem.size()};
+    aku_MemRange range = {nullptr, static_cast<uint32_t>(page_mem.size())};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_OVERFLOW);
 }

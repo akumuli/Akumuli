@@ -21,41 +21,44 @@
 
 namespace Akumuli {
 
-void RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) noexcept {
+
+bool RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) {
     offsets.push_back(std::make_pair(offset, page));
+    return true;
 }
 
-void RecordingCursor::complete(Caller&) noexcept {
+void RecordingCursor::complete(Caller&) {
     completed = true;
 }
 
 
-void RecordingCursor::set_error(Caller&, int error_code) noexcept {
+void RecordingCursor::set_error(Caller&, int error_code) {
     this->error_code = error_code;
 }
 
 
-BufferedCursor::BufferedCursor(CursorResult* buf, size_t size) noexcept
+BufferedCursor::BufferedCursor(CursorResult* buf, size_t size)
     : offsets_buffer(buf)
     , buffer_size(size)
     , count(0)
 {
 }
 
-void BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) noexcept {
+bool BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) {
     if (count == buffer_size) {
         completed = true;
         error_code = AKU_EOVERFLOW;
-        return;
+        return false;
     }
     offsets_buffer[count++] = std::make_pair(offset, page);
+    return true;
 }
 
-void BufferedCursor::complete(Caller&) noexcept {
+void BufferedCursor::complete(Caller&) {
     completed = true;
 }
 
-void BufferedCursor::set_error(Caller&, int code) noexcept {
+void BufferedCursor::set_error(Caller&, int code) {
     completed = true;
     error_code = code;
 }
@@ -71,22 +74,23 @@ DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)
 {
 }
 
-void DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) noexcept {
+bool DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) {
     if (last_page_ != nullptr && last_page_ != page) {
         const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
     }
     const_cast<PageHeader*>(page)->sync_next_index(offset, rand_(), false);
     last_page_ = page;
+    return true;
 }
 
-void DirectPageSyncCursor::complete(Caller&) noexcept {
+void DirectPageSyncCursor::complete(Caller&) {
     completed_ = true;
     if (last_page_ != nullptr) {
         const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
     }
 }
 
-void DirectPageSyncCursor::set_error(Caller&, int error_code) noexcept {
+void DirectPageSyncCursor::set_error(Caller&, int error_code) {
     error_code_ = error_code;
     error_is_set_ = true;
 }
@@ -111,12 +115,13 @@ CoroCursor::CoroCursor()
     , error_(false)
     , error_code_(AKU_SUCCESS)
     , complete_(false)
+    , closed_(false)
 {
 }
 
 // External cursor implementation
 
-int CoroCursor::read(CursorResult* buf, int buf_len) noexcept {
+int CoroCursor::read(CursorResult* buf, int buf_len) {
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
     write_index_ = 0;
@@ -124,40 +129,47 @@ int CoroCursor::read(CursorResult* buf, int buf_len) noexcept {
     return write_index_;
 }
 
-bool CoroCursor::is_done() const noexcept {
+bool CoroCursor::is_done() const {
     return complete_;
 }
 
-bool CoroCursor::is_error(int* out_error_code_or_null) const noexcept
+bool CoroCursor::is_error(int* out_error_code_or_null) const
 {
     if (out_error_code_or_null)
        *out_error_code_or_null = error_code_;
     return error_;
 }
 
-void CoroCursor::close() noexcept {
-    coroutine_->operator()(this);
-    coroutine_.reset();
+void CoroCursor::close() {
+    if (!closed_) {
+        closed_ = true;
+        coroutine_->operator()(this);
+        coroutine_.reset();
+    }
 }
 
 // Internal cursor implementation
 
-void CoroCursor::set_error(Caller& caller, int error_code) noexcept {
+void CoroCursor::set_error(Caller& caller, int error_code) {
     error_code_ = error_code;
     error_ = true;
     complete_ = true;
     caller();
 }
 
-void CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) noexcept {
+bool CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) {
+    if (closed_) {
+        return false;
+    }
     if (write_index_ == usr_buffer_len_) {
         // yield control to client
         caller();
     }
     usr_buffer_[write_index_++] = std::make_pair(off, page);
+    return true;
 }
 
-void CoroCursor::complete(Caller& caller) noexcept {
+void CoroCursor::complete(Caller& caller) {
     complete_ = true;
     caller();
 }
@@ -184,7 +196,7 @@ struct HeapPred {
     }
 };
 
-FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size, int direction) noexcept
+FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size, int direction)
     : in_cursors_(cursors, cursors + size)
     , direction_(direction)
     , out_cursor_()
@@ -192,7 +204,7 @@ FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size,
     out_cursor_.start(std::bind(&FanInCursorCombinator::read_impl_, this, std::placeholders::_1));
 }
 
-void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
+void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
     HeapItem dbg_prev_item;
     bool dbg_first_item = true;
@@ -244,6 +256,8 @@ void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
 #ifdef DEBUG
         auto dbg_time_stamp = std::get<0>(item);
         auto dbg_param_id = std::get<1>(item);
+        AKU_UNUSED(dbg_time_stamp);
+        AKU_UNUSED(dbg_param_id);
         if (!dbg_first_item) {
             bool cmp_res = false;
             if (direction_ == AKU_CURSOR_DIR_BACKWARD)  {
@@ -279,22 +293,22 @@ void FanInCursorCombinator::read_impl_(Caller& caller) noexcept {
     out_cursor_.complete(caller);
 }
 
-int FanInCursorCombinator::read(CursorResult *buf, int buf_len) noexcept
+int FanInCursorCombinator::read(CursorResult *buf, int buf_len)
 {
     return out_cursor_.read(buf, buf_len);
 }
 
-bool FanInCursorCombinator::is_done() const noexcept
+bool FanInCursorCombinator::is_done() const
 {
     return out_cursor_.is_done();
 }
 
-bool FanInCursorCombinator::is_error(int *out_error_code_or_null) const noexcept
+bool FanInCursorCombinator::is_error(int *out_error_code_or_null) const
 {
     return out_cursor_.is_error(out_error_code_or_null);
 }
 
-void FanInCursorCombinator::close() noexcept
+void FanInCursorCombinator::close()
 {
     for (auto cursor: in_cursors_) {
         cursor->close();
