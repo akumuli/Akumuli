@@ -191,7 +191,8 @@ aku_Database* aku_open_database(const char* path, aku_Config config)
 
 void aku_close_database(aku_Database* db)
 {
-    delete db;
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    delete dbi;
 }
 
 aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId *params) {

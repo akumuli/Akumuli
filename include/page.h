@@ -128,6 +128,7 @@ struct PageHeader {
     uint32_t open_count;        //< how many times page was open for write
     uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
+    uint32_t compression;       //< compression status 1 - enabled, 0 - disabled
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
     PageHistogram histogram;    //< histogram
@@ -166,7 +167,15 @@ struct PageHeader {
      * @param entry entry
      * @returns operation status
      */
-    int add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRange data);
+    int add_entry(const aku_ParamId param, const aku_TimeStamp timestamp, const aku_MemRange data);
+
+    /**
+     * Add some data to last entry. (without length)
+     * @param data data element
+     * @param free_space_required minimum amount of space inside the page
+     * @returns operation status
+     */
+    int add_chunk(const aku_MemRange data, const uint32_t free_space_required);
 
     /**
      * Get length of the entry.

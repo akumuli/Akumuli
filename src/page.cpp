@@ -95,6 +95,7 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
+    , compression(1)  // TODO: get actual value from configuration
     , bbox()
 {
     // zero out histogram
@@ -153,7 +154,10 @@ void PageHeader::close() {
     close_count++;
 }
 
-int PageHeader::add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRange range) {
+int PageHeader::add_entry( const aku_ParamId param
+                          , const aku_TimeStamp timestamp
+                          , const aku_MemRange range ) 
+{
 
     const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
                               + range.length              // data size (in bytes)
@@ -179,6 +183,20 @@ int PageHeader::add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRan
     count++;
     update_bounding_box(param, timestamp);
     return AKU_WRITE_STATUS_SUCCESS;
+}
+
+int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required) {
+    const auto
+        SPACE_REQUIRED = range.length + free_space_required,
+        SPACE_NEEDED = range.length;
+    if (get_free_space() < SPACE_REQUIRED) {
+        return AKU_EOVERFLOW;
+    }
+    char* free_slot = data() + last_offset;
+    free_slot -= SPACE_NEEDED;
+    memcpy((void*)free_slot, range.address, SPACE_NEEDED);
+    last_offset = free_slot - cdata();
+    return AKU_SUCCESS;
 }
 
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
