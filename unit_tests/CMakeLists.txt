@@ -5,12 +5,14 @@ add_executable(
         test_mmap.cpp
         test_sorting.cpp
         test_cursor.cpp
+        test_compression.cpp
         ../src/storage.cpp
         ../src/page.cpp
         ../src/akumuli.cpp
         ../src/util.cpp
         ../src/sequencer.cpp
         ../src/cursor.cpp
+        ../src/compression.cpp
 )
 target_link_libraries(
     ut_main
