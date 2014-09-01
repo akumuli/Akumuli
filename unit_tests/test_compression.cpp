@@ -21,28 +21,30 @@ BOOST_AUTO_TEST_CASE(Test_base128_1) {
         };
 
     const size_t
-        EXPECTED_SIZE = sizeof(EXPECTED)/sizeof(uint64_t);
+        EXPECTED_SIZE = sizeof(EXPECTED)/sizeof(uint64_t),
+        BUFFER_SIZE = sizeof(buffer);
     auto 
         stream_start = buffer,
-        stream_end = buffer + EXPECTED_SIZE;
+        stream_end = buffer + BUFFER_SIZE;
+
+    Base128StreamWriter writer(stream_start, stream_end);
 
     // Encode
     for (int i = 0; i < EXPECTED_SIZE; i++) {
-        Base128Int value(EXPECTED[i]);
-        stream_start = value.put(stream_start, stream_end);
+        bool result = writer.put(EXPECTED[i]);
+        BOOST_REQUIRE(result);
     }
     const size_t
-        USED_SIZE = stream_start - buffer;
+        USED_SIZE = writer.size();
     BOOST_REQUIRE_LT(USED_SIZE, sizeof(EXPECTED));
     BOOST_REQUIRE_GT(USED_SIZE, EXPECTED_SIZE);
 
     // Read it back
     uint64_t actual[EXPECTED_SIZE];
     stream_start = buffer;
+    Base128StreamReader reader(stream_start, stream_end);
     for (int i = 0; i < EXPECTED_SIZE; i++) {
-        Base128Int value;
-        stream_start = value.get(stream_start, stream_end);
-        actual[i] = static_cast<uint64_t>(value);
+        actual[i] = reader.next();
     }
     BOOST_REQUIRE_EQUAL_COLLECTIONS(EXPECTED, EXPECTED + EXPECTED_SIZE, 
                                     actual, actual + EXPECTED_SIZE);
