@@ -3,16 +3,17 @@
 namespace Akumuli {
 
     //! Base 128 encoded integer
+    template<class TVal>
     class Base128Int {
-        uint64_t value_;
+        TVal value_;
         typedef unsigned char byte_t;
         typedef byte_t* byte_ptr;
     public:
 
-        Base128Int(uint64_t val) : value_(val) {
+        Base128Int(TVal val) : value_(val) {
         }
 
-        Base128Int() : value_(0ul) {
+        Base128Int() : value_() {
         }
 
         /** Read base 128 encoded integer from the binary stream
@@ -22,8 +23,8 @@ namespace Akumuli {
         FwdIter get(FwdIter begin, FwdIter end) {
             assert(begin < end);
     
-            uint64_t acc = 0ul;
-            uint64_t cnt = 0ul;
+            auto acc = TVal();
+            auto cnt = TVal();
             FwdIter p = begin;
     
             while (true) {
@@ -47,7 +48,7 @@ namespace Akumuli {
                 return begin;
             }
     
-            uint64_t value = value_;
+            TVal value = value_;
             FwdIter p = begin;
     
             while (true) {
@@ -67,7 +68,7 @@ namespace Akumuli {
         }
 
         //! turn into integer
-        operator uint64_t() const {
+        operator TVal() const {
             return value_;
         }
     };
@@ -90,7 +91,14 @@ namespace Akumuli {
     }
 
     bool Base128StreamWriter::put(uint64_t value) {
-        Base128Int val(value);
+        Base128Int<uint64_t> val(value);
+        auto old_pos = pos_;
+        pos_ = val.put(pos_, end_);
+        return pos_ != old_pos;
+    }
+
+    bool Base128StreamWriter::put(uint32_t value) {
+        Base128Int<uint32_t> val(value);
         auto old_pos = pos_;
         pos_ = val.put(pos_, end_);
         return pos_ != old_pos;
@@ -115,10 +123,16 @@ namespace Akumuli {
     {
     }
 
-    uint64_t Base128StreamReader::next() {
-        Base128Int value;
+    void Base128StreamReader::next(uint64_t* ptr) {
+        Base128Int<uint64_t> value;
         pos_ = value.get(pos_, end_);
-        return static_cast<uint64_t>(value);
+        *ptr = static_cast<uint64_t>(value);
+    }
+
+    void Base128StreamReader::next(uint32_t* ptr) {
+        Base128Int<uint32_t> value;
+        pos_ = value.get(pos_, end_);
+        *ptr = static_cast<uint32_t>(value);
     }
 
 }

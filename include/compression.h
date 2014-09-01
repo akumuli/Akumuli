@@ -43,6 +43,11 @@ namespace Akumuli {
          */
         bool put(uint64_t value);
 
+        /** Put value into stream.
+        * @returns true on success, false if on overflow
+        */
+        bool put(uint32_t value);
+
         size_t size() const;
     };
 
@@ -55,6 +60,56 @@ namespace Akumuli {
 
         Base128StreamReader(unsigned char* begin, unsigned char* end);
 
-        uint64_t next();
+        void next(uint64_t* value);
+
+        void next(uint32_t* value);
+    };
+
+
+    template<class Stream, typename TVal>
+    struct DeltaStreamWriter {
+        Stream& stream_;
+        TVal prev_;
+
+
+        DeltaStreamWriter(Stream& stream)
+            : stream_(stream)
+            , prev_()
+        {
+        }
+
+        bool put(TVal value) {
+            auto delta = value - prev_;
+            stream_.put(delta);
+            prev_ = value;
+        }
+
+        size_t size() const {
+            return stream_.size();
+        }
+    };
+
+
+    template<class Stream, typename TVal>
+    struct DeltaStreamReader {
+        Stream const& stream_;
+        TVal prev_;
+
+        DeltaStreamReader(Stream const& stream)
+            : stream_(stream)
+        {
+        }
+
+        void next(TVal* ret) {
+            auto delta = stream_.next();
+            TVal value = prev_ + delta;
+            prev_ = value;
+            *ret = value;
+        }
+    };
+
+
+    template<class Stream, typename TVal>
+    struct RLEStreamWriter {
     };
 }
