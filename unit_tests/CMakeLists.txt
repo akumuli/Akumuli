@@ -20,5 +20,6 @@ target_link_libraries(
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
+    pthread
 )
 add_test(akumuli_tests ut_main)

@@ -48,6 +48,9 @@ namespace Akumuli {
         */
         bool put(uint32_t value);
 
+        //! Close stream
+        bool close();
+
         size_t size() const;
     };
 
@@ -71,7 +74,6 @@ namespace Akumuli {
         Stream& stream_;
         TVal prev_;
 
-
         DeltaStreamWriter(Stream& stream)
             : stream_(stream)
             , prev_()
@@ -79,29 +81,37 @@ namespace Akumuli {
         }
 
         bool put(TVal value) {
+            assert(value >= prev_);  // delta encoding must be used for sorted sequences
             auto delta = value - prev_;
-            stream_.put(delta);
+            auto result = stream_.put(delta);
             prev_ = value;
+            return result;
         }
 
         size_t size() const {
             return stream_.size();
+        }
+
+        bool close() {
+            return stream_.close();
         }
     };
 
 
     template<class Stream, typename TVal>
     struct DeltaStreamReader {
-        Stream const& stream_;
+        Stream& stream_;
         TVal prev_;
 
-        DeltaStreamReader(Stream const& stream)
+        DeltaStreamReader(Stream& stream)
             : stream_(stream)
+            , prev_()
         {
         }
 
         void next(TVal* ret) {
-            auto delta = stream_.next();
+            TVal delta;
+            stream_.next(&delta);
             TVal value = prev_ + delta;
             prev_ = value;
             *ret = value;
@@ -111,5 +121,66 @@ namespace Akumuli {
 
     template<class Stream, typename TVal>
     struct RLEStreamWriter {
+        Stream& stream_;
+        TVal prev_;
+        TVal reps_;
+
+        RLEStreamWriter(Stream& stream)
+            : stream_(stream)
+            , prev_()
+            , reps_()
+        {}
+
+        bool put(TVal value) {
+            bool result = true;
+            if (value != prev_) {
+                if (reps_) {
+                    // commit changes
+                    result = stream_.put(reps_);
+                    if (result) {
+                        result = stream_.put(prev_);
+                    }
+                }
+                prev_ = value;
+                reps_ = TVal();
+            }
+            reps_++;
+            return result;
+        }
+
+        size_t size() const {
+            return stream_.size();
+        }
+
+        bool close() {
+            bool result = true;
+            result = stream_.put(reps_);
+            if (result) {
+                result = stream_.put(prev_);
+            }
+            return result;
+        }
+    };
+
+    template<class Stream, typename TVal>
+    struct RLEStreamReader {
+        Stream& stream_;
+        TVal prev_;
+        TVal reps_;
+
+        RLEStreamReader(Stream& stream)
+            : stream_(stream)
+            , prev_()
+            , reps_()
+        {}
+
+        void next(TVal* out) {
+            if (reps_ == 0) {
+                stream_.next(&reps_);
+                stream_.next(&prev_);
+            }
+            reps_--;
+            *out = prev_;
+        }
     };
 }

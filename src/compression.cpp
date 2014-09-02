@@ -104,6 +104,10 @@ namespace Akumuli {
         return pos_ != old_pos;
     }
 
+    bool Base128StreamWriter::close() {
+        return true;
+    }
+
     size_t Base128StreamWriter::size() const {
         return pos_ - begin_;
     }
