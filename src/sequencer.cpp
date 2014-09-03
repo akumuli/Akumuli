@@ -44,9 +44,10 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset)
+TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length)
     : key_(ts, id)
     , value(offset)
+    , value_length(value_length)
 {
 }
 
@@ -90,7 +91,7 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
     }
     vector<PSortedRun> new_runs;
     for (auto& sorted_run: runs_) {
-        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
         if (it == sorted_run->begin()) {
             // all timestamps are newer than old_top, do nothing
             new_runs.push_back(move(sorted_run));
@@ -253,8 +254,9 @@ struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
     }
 };
 
-template <int dir>
-void kway_merge(vector<Sequencer::PSortedRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
+/** Merge sequences and push it to consumer */
+template <int dir, class Consumer>
+void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
     typedef RunIter<Sequencer::PSortedRun, dir> RIter;
     typedef typename RIter::range_type range_t;
     typedef typename RIter::value_type KeyType;
@@ -282,7 +284,7 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Caller& caller, Inter
         HeapItem item = heap.top();
         KeyType point = get<0>(item);
         int index = get<1>(item);
-        if (!out_iter->put(caller, point.value, page)) {
+        if (!cons(point)) {
             // Interrupted
             return;
         }
@@ -309,8 +311,13 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return;
     }
 
+    auto page = page_;
+    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+        return cur->put(caller, val.value, page);
+    };
+
     wrlock_all(run_locks_);
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     unlock_all(run_locks_);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
@@ -321,6 +328,27 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
 
     ready_.clear();
     cur->complete(caller);
+}
+
+void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
+    if (!lock.owns_lock()) {
+        // TODO: error
+        return;
+    }
+    if (ready_.size() == 0) {
+        // TODO: error
+        return;
+    }
+    std::vector<aku_TimeStamp> timestamps;
+    std::vector<uint32_t> paramids;
+    std::vector<uint32_t> offsets;
+    std::vector<uint32_t> lengths;
+    auto consumer = [&](TimeSeriesValue const& val) {
+        return true;
+    };
+    wrlock_all(run_locks_);
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
+    unlock_all(run_locks_);
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -349,8 +377,8 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
     }
     SearchPredicate search_pred(q);
     PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u);
-    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u);
+    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u, 0u);
+    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u, 0u);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     copy_if(begin, end, std::back_inserter(*result), search_pred);
@@ -375,10 +403,16 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
         rwlock.unlock();
         run_ix++;
     }
+
+    auto page = page_;
+    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+        return cur->put(caller, val.value, page);
+    };
+
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {
-        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, caller, cur, page_);
+        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
-        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
+        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
     cur->complete(caller);
 }

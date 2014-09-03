@@ -35,10 +35,11 @@ namespace Akumuli {
 struct TimeSeriesValue {
     std::tuple<aku_TimeStamp, aku_ParamId> key_;
     aku_EntryOffset value;
+    uint32_t value_length;
 
     TimeSeriesValue();
 
-    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset);
+    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length);
 
     aku_TimeStamp get_timestamp() const;
 
@@ -83,6 +84,8 @@ struct Sequencer {
     std::tuple<int, Lock> add(TimeSeriesValue const& value);
 
     void merge(Caller& caller, InternalCursor* cur, Lock&& lock);
+
+    void merge_and_compress(Lock&& lock);
 
     Lock close();
 

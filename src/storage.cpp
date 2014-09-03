@@ -183,7 +183,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         if (off_err.second != AKU_SUCCESS) {
             continue;
         }
-        TimeSeriesValue ts_value(entry->time, entry->param_id, off_err.first);
+        TimeSeriesValue ts_value(entry->time, entry->param_id, off_err.first, entry->length);
         int add_status;
         Sequencer::Lock merge_lock;
         std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
@@ -321,7 +321,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
         status = active_page_->add_entry(param, ts, data);
         switch (status) {
         case AKU_SUCCESS: {
-            TimeSeriesValue ts_value(ts, param, active_page_->last_offset);
+            TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
             Sequencer::Lock merge_lock;
             std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
             if (merge_lock.owns_lock()) {
