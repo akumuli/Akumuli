@@ -121,13 +121,15 @@ namespace Akumuli {
         }
     };
 
+    typedef std::vector<unsigned char> ByteVector;
+
     //! Base128 encoder
     template<class TVal>
     struct Base128StreamWriter {
         // underlying memory region
-        std::vector<unsigned char>& data_;
+        ByteVector& data_;
 
-        Base128StreamWriter(std::vector<unsigned char>& data) : data_(data) {}
+        Base128StreamWriter(ByteVector& data) : data_(data) {}
 
         /** Put value into stream.
          */
@@ -148,11 +150,11 @@ namespace Akumuli {
     //! Base128 decoder
     template<class TVal>
     struct Base128StreamReader {
-        std::vector<unsigned char> const& data_;
-        std::vector<unsigned char>::const_iterator pos_;
-        std::vector<unsigned char>::const_iterator end_;
+        ByteVector const& data_;
+        ByteVector::const_iterator pos_;
+        ByteVector::const_iterator end_;
 
-        Base128StreamReader(std::vector<unsigned char> const& data)
+        Base128StreamReader(ByteVector const& data)
             : data_(data)
             , pos_(data.begin())
             , end_(data.end())
@@ -169,11 +171,11 @@ namespace Akumuli {
 
     template<class Stream, typename TVal>
     struct DeltaStreamWriter {
-        Stream& stream_;
+        Stream stream_;
         TVal prev_;
 
-        DeltaStreamWriter(Stream& stream)
-            : stream_(stream)
+        DeltaStreamWriter(ByteVector& container)
+            : stream_(container)
             , prev_()
         {
         }
@@ -197,11 +199,11 @@ namespace Akumuli {
 
     template<class Stream, typename TVal>
     struct DeltaStreamReader {
-        Stream& stream_;
+        Stream stream_;
         TVal prev_;
 
-        DeltaStreamReader(Stream& stream)
-            : stream_(stream)
+        DeltaStreamReader(ByteVector& container)
+            : stream_(container)
             , prev_()
         {
         }
@@ -217,12 +219,12 @@ namespace Akumuli {
 
     template<class Stream, typename TVal>
     struct RLEStreamWriter {
-        Stream& stream_;
+        Stream stream_;
         TVal prev_;
         TVal reps_;
 
-        RLEStreamWriter(Stream& stream)
-            : stream_(stream)
+        RLEStreamWriter(ByteVector& container)
+            : stream_(container)
             , prev_()
             , reps_()
         {}
@@ -252,12 +254,12 @@ namespace Akumuli {
 
     template<class Stream, typename TVal>
     struct RLEStreamReader {
-        Stream& stream_;
+        Stream stream_;
         TVal prev_;
         TVal reps_;
 
-        RLEStreamReader(Stream& stream)
-            : stream_(stream)
+        RLEStreamReader(ByteVector const& container)
+            : stream_(container)
             , prev_()
             , reps_()
         {}

@@ -43,6 +43,8 @@ struct TimeSeriesValue {
 
     aku_TimeStamp get_timestamp() const;
 
+    aku_ParamId get_paramid() const;
+
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
 

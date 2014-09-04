@@ -15,11 +15,13 @@
  *
  */
 
-#include <thread>
-#include <boost/heap/skew_heap.hpp>
 #include "akumuli_def.h"
 #include "sequencer.h"
 #include "util.h"
+#include "compression.h"
+
+#include <thread>
+#include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
 
@@ -49,6 +51,14 @@ TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffs
     , value(offset)
     , value_length(value_length)
 {
+}
+
+aku_TimeStamp TimeSeriesValue::get_timestamp() const {
+    return std::get<TIMESTMP>(key_);
+}
+
+aku_ParamId TimeSeriesValue::get_paramid() const {
+    return std::get<PARAM_ID>(key_);
 }
 
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
@@ -319,7 +329,6 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     wrlock_all(run_locks_);
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     unlock_all(run_locks_);
-
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
     // progress_flag_ must be set (it indicates that merge/sync procedure is in progress)
@@ -330,6 +339,21 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     cur->complete(caller);
 }
 
+// Time stamps (sorted) -> Delta -> RLE -> Base128
+typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
+
+// ParamId -> Base128
+typedef Base128StreamWriter<uint32_t> Base128IdWriter;
+
+// Length -> RLE -> Base128
+typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
+typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
+
+// Offset -> Base128
+typedef Base128StreamWriter<uint32_t> Base128OffWriter;
+
 void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
     if (!lock.owns_lock()) {
         // TODO: error
@@ -339,11 +363,24 @@ void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
         // TODO: error
         return;
     }
-    std::vector<aku_TimeStamp> timestamps;
-    std::vector<uint32_t> paramids;
-    std::vector<uint32_t> offsets;
-    std::vector<uint32_t> lengths;
+
+    ByteVector timestamps;
+    ByteVector paramids;
+    ByteVector offsets;
+    ByteVector lengths;
+
+    DeltaRLETSWriter timestamp_stream(timestamps);
+    Base128IdWriter paramid_stream(paramids);
+    Base128OffWriter offset_stream(offsets);
+    RLELenWriter length_stream(lengths);
+
     auto consumer = [&](TimeSeriesValue const& val) {
+        auto ts = val.get_timestamp();
+        auto id = val.get_paramid();
+        timestamp_stream.put(ts);
+        paramid_stream.put(id);
+        offset_stream.put(val.value);
+        length_stream.put(val.value_length);
         return true;
     };
     wrlock_all(run_locks_);
