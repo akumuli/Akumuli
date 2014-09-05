@@ -29,6 +29,8 @@
 #include <iterator>
 #include <vector>
 
+#include "akumuli.h"
+
 namespace Akumuli {
 
     //! Base 128 encoded integer
@@ -145,6 +147,11 @@ namespace Akumuli {
         size_t size() const {
             return data_.size();
         }
+
+        aku_MemRange get_memrange() const {
+            // FIXME: check for overflow
+            return { data_.data(), static_cast<uint32_t>(data_.size()) };
+        }
     };
 
     //! Base128 decoder
@@ -193,6 +200,10 @@ namespace Akumuli {
 
         void close() {
             stream_.close();
+        }
+
+        aku_MemRange get_memrange() const {
+            return stream_.get_memrange();
         }
     };
 
@@ -249,6 +260,10 @@ namespace Akumuli {
         void close() {
             stream_.put(reps_);
             stream_.put(prev_);
+        }
+
+        aku_MemRange get_memrange() const {
+            return stream_.get_memrange();
         }
     };
 

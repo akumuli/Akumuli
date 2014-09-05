@@ -87,6 +87,8 @@
 
 
 // Different tune parameters
-#define AKU_INTERPOLATION_SEARCH_CUTOFF 0x100
+#define AKU_INTERPOLATION_SEARCH_CUTOFF 0x00000100
+
+#define AKU_ID_COMPRESSED               0xFFFFFFFF
 
 #endif

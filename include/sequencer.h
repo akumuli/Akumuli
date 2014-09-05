@@ -87,7 +87,7 @@ struct Sequencer {
 
     void merge(Caller& caller, InternalCursor* cur, Lock&& lock);
 
-    void merge_and_compress(Lock&& lock);
+    void merge_and_compress(Caller& caller, InternalCursor* cur, Lock&& lock, PageHeader* target);
 
     Lock close();
 

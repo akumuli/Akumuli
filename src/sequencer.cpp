@@ -329,6 +329,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     wrlock_all(run_locks_);
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     unlock_all(run_locks_);
+
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
     // progress_flag_ must be set (it indicates that merge/sync procedure is in progress)
@@ -354,7 +355,7 @@ typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 // Offset -> Base128
 typedef Base128StreamWriter<uint32_t> Base128OffWriter;
 
-void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
+void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequencer::Lock&& lock, PageHeader* target) {
     if (!lock.owns_lock()) {
         // TODO: error
         return;
@@ -374,7 +375,16 @@ void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
     Base128OffWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
+    bool first_ts_initialized = false;
+    aku_TimeStamp first_ts;
+    uint32_t n_elements = 0u;
+
     auto consumer = [&](TimeSeriesValue const& val) {
+        n_elements++;
+        if (!first_ts_initialized) {
+            first_ts = val.get_timestamp();
+            first_ts_initialized = true;
+        }
         auto ts = val.get_timestamp();
         auto id = val.get_paramid();
         timestamp_stream.put(ts);
@@ -386,6 +396,23 @@ void Sequencer::merge_and_compress(Sequencer::Lock&& lock) {
     wrlock_all(run_locks_);
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     unlock_all(run_locks_);
+
+    uint32_t size_estimate  // TODO: check overflow
+        = timestamp_stream.size()
+        + paramid_stream.size()
+        + offset_stream.size()
+        + length_stream.size();
+
+    target->add_chunk(timestamp_stream.get_memrange(), size_estimate);
+    // TODO: check status
+    size_estimate -= timestamp_stream.size();
+    target->add_chunk(paramid_stream.get_memrange(), size_estimate);
+    size_estimate -= paramid_stream.size();
+    target->add_chunk(offset_stream.get_memrange(), size_estimate);
+    size_estimate -= offset_stream.size();
+    target->add_chunk(length_stream.get_memrange(), size_estimate);
+    aku_MemRange head = { &n_elements, sizeof(n_elements) };
+    target->add_entry(AKU_ID_COMPRESSED, first_ts, head);
 }
 
 aku_TimeStamp Sequencer::get_window() const {
