@@ -85,6 +85,7 @@ static std::atomic<int> storage_cnt = {1};
 
 Storage::Storage(const char* path, aku_Config const& conf)
     : tag_(storage_cnt++)
+    , compression(true)
 {
     aku_printf_t logger = conf.logger;
     if (logger == nullptr) {
@@ -203,23 +204,23 @@ void Storage::advance_volume_(int local_rev) {
   	log_message("....close count", active_volume_->page_->close_count);
   	log_message("....open count", active_volume_->page_->open_count);
 
-        // TODO: disable all readers of this page and cache (I need some
-        // collection of active readers that maps cursors (or cancellation tokens)
-        // to pages.
-        Sequencer::Lock close_lock;
+    // TODO: disable all readers of this page and cache (I need some
+    // collection of active readers that maps cursors (or cancellation tokens)
+    // to pages.
+    Sequencer::Lock close_lock;
 	close_lock = active_volume_->cache_->close();
 	if (close_lock.owns_lock()) {
-            Caller caller;
-            DirectPageSyncCursor cursor(rand_);
-            active_volume_->cache_->merge(caller, &cursor, std::move(close_lock));
+        Caller caller;
+        DirectPageSyncCursor cursor(rand_);
+        active_volume_->cache_->merge(caller, &cursor, std::move(close_lock));
 	}
-        active_volume_->close();
+    active_volume_->close();
 	log_message("page complete");
-        // select next page in round robin order
-        active_volume_index_++;
-        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-        active_page_ = active_volume_->reallocate_disc_space();
-        active_volume_->open();
+    // select next page in round robin order
+    active_volume_index_++;
+    active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+    active_page_ = active_volume_->reallocate_disc_space();
+    active_volume_->open();
 	log_message("next volume opened");
   	log_message("....page ID", active_volume_->page_->page_id);
   	log_message("....close count", active_volume_->page_->close_count);
@@ -315,32 +316,62 @@ void Storage::commit() {
 
 //! write data
 aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
-    int status = AKU_WRITE_STATUS_BAD_DATA;
-    while(true) {
-        int local_rev = active_volume_index_.load();
-        status = active_page_->add_entry(param, ts, data);
-        switch (status) {
-        case AKU_SUCCESS: {
-            TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
-            Sequencer::Lock merge_lock;
-            std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-            if (merge_lock.owns_lock()) {
-                // Slow path
-                Caller caller;
-                DirectPageSyncCursor cursor(rand_);
-                active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
-            }
-            return status;
+    if (!this->compression) {
+        while (true) {
+            int local_rev = active_volume_index_.load();
+            int status = active_page_->add_entry(param, ts, data);
+            switch (status) {
+                case AKU_SUCCESS: {
+                    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
+                    Sequencer::Lock merge_lock;
+                    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+                    if (merge_lock.owns_lock()) {
+                        // Slow path
+                        Caller caller;
+                        DirectPageSyncCursor cursor(rand_);
+                        active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+                    }
+                    return status;
+                }
+                case AKU_EOVERFLOW:
+                    advance_volume_(local_rev);
+                    break;  // retry
+                case AKU_ELATE_WRITE:
+                    // Branch for rare and unexpected errors
+                default:
+                    log_error(aku_error_message(status));
+                    return status;
+            };
         }
-        case AKU_EOVERFLOW:
-            advance_volume_(local_rev);
-            break;  // retry
-        case AKU_ELATE_WRITE:
-        // Branch for rare and unexpected errors
-        default:
-            log_error(aku_error_message(status));
-            return status;
-        };
+    } else {
+        while (true) {
+            int local_rev = active_volume_index_.load();
+            auto space_required = active_volume_->cache_->get_space_estimate();
+            int status = active_page_->add_chunk(data, space_required);
+            switch (status) {
+                case AKU_SUCCESS: {
+                    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
+                    Sequencer::Lock merge_lock;
+                    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+                    if (merge_lock.owns_lock()) {
+                        // Slow path
+                        Caller caller;
+                        DirectPageSyncCursor cursor(rand_);
+                        active_volume_->cache_->merge_and_compress(caller, &cursor, std::move(merge_lock),
+                                                                   active_volume_->get_page());
+                    }
+                    return status;
+                }
+                case AKU_EOVERFLOW:
+                    advance_volume_(local_rev);
+                    break;  // retry
+                case AKU_ELATE_WRITE:
+                    // Branch for rare and unexpected errors
+                default:
+                    log_error(aku_error_message(status));
+                    return status;
+            };
+        }
     }
 }
 

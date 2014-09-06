@@ -128,7 +128,6 @@ struct PageHeader {
     uint32_t open_count;        //< how many times page was open for write
     uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
-    uint32_t compression;       //< compression status 1 - enabled, 0 - disabled
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
     PageHistogram histogram;    //< histogram

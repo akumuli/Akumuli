@@ -95,7 +95,6 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
-    , compression(1)  // TODO: get actual value from configuration
     , bbox()
 {
     // zero out histogram

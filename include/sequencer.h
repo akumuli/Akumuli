@@ -76,6 +76,7 @@ struct Sequencer {
     mutable Mutex                progress_flag_;
     mutable Mutex                runs_resize_lock_;
     mutable std::vector<RWLock>  run_locks_;
+    uint32_t                     space_estimate_; //< Space estimate for storing all data
 
     Sequencer(PageHeader const* page, aku_Duration window_size);
 
@@ -95,6 +96,12 @@ struct Sequencer {
     void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
 
     aku_TimeStamp get_window() const;
+
+    /** Returns number of bytes needed to store all data from the checkpoint
+     *  in compressed mode. This number can be more than actually needed but
+     *  can't be less (only overshoot is ok, undershoot is error).
+     */
+    uint32_t get_space_estimate() const;
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋

@@ -25,8 +25,12 @@
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
 
+// ParamId index inside key
 #define PARAM_ID 1
+// TimeStamp index inside key
 #define TIMESTMP 0
+// Max space required to store one data element
+#define SPACE_PER_ELEMENT 20
 
 using namespace std;
 
@@ -73,6 +77,7 @@ Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
     , top_timestamp_()
     , checkpoint_(0u)
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
+    , space_estimate_(0u)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
@@ -120,6 +125,10 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
         }
     }
     Lock guard(runs_resize_lock_);
+    space_estimate_ = 0u;
+    for (auto& sorted_run: new_runs) {
+        space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
+    }
     swap(runs_, new_runs);
 }
 
@@ -161,6 +170,7 @@ std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
     key_->push_back(value);
 
     Lock guard(runs_resize_lock_);
+    space_estimate_ += SPACE_PER_ELEMENT;
     auto begin = runs_.begin();
     auto end = runs_.end();
     auto insert_it = lower_bound(begin, end, key_, top_element_more<PSortedRun>);
@@ -326,9 +336,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return cur->put(caller, val.value, page);
     };
 
-    wrlock_all(run_locks_);
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
-    unlock_all(run_locks_);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -393,15 +401,19 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
         length_stream.put(val.value_length);
         return true;
     };
-    wrlock_all(run_locks_);
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
-    unlock_all(run_locks_);
 
-    uint32_t size_estimate  // TODO: check overflow
-        = timestamp_stream.size()
-        + paramid_stream.size()
-        + offset_stream.size()
-        + length_stream.size();
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
+    timestamp_stream.close();
+    paramid_stream.close();
+    offset_stream.close();
+    length_stream.close();
+    ready_.clear();
+
+    uint32_t size_estimate =
+        static_cast<uint32_t>( timestamp_stream.size()
+                             + paramid_stream.size()
+                             + offset_stream.size()
+                             + length_stream.size());
 
     target->add_chunk(timestamp_stream.get_memrange(), size_estimate);
     // TODO: check status
@@ -413,10 +425,19 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
     target->add_chunk(length_stream.get_memrange(), size_estimate);
     aku_MemRange head = { &n_elements, sizeof(n_elements) };
     target->add_entry(AKU_ID_COMPRESSED, first_ts, head);
+    aku_EntryOffset offset = target->last_offset;
+
+    cur->put(caller, offset, target);
+    cur->complete(caller);
 }
 
 aku_TimeStamp Sequencer::get_window() const {
     return top_timestamp_ - window_size_;
+}
+
+uint32_t Sequencer::get_space_estimate() const {
+    // ready_ must be empty here
+    return space_estimate_ + SPACE_PER_ELEMENT;
 }
 
 struct SearchPredicate {
