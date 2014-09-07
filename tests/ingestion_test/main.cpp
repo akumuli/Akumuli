@@ -21,8 +21,8 @@
 using namespace Akumuli;
 using namespace std;
 
-const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int DB_SIZE = 6;
+const int NUM_ITERATIONS = 1000*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -163,11 +163,11 @@ int main(int cnt, const char** args)
         }
     }
 
-    if (mode != CREATE) {
-        aku_StorageStats storage_stats;
-        aku_global_storage_stats(db, &storage_stats);
-        print_storage_stats(storage_stats);
+    aku_StorageStats storage_stats;
+    aku_global_storage_stats(db, &storage_stats);
+    print_storage_stats(storage_stats);
 
+    if (mode != CREATE) {
         // Search
         std::cout << "Sequential access" << std::endl;
         aku_SearchStats search_stats;
@@ -213,8 +213,8 @@ int main(int cnt, const char** args)
         }
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);
-
     }
+
     aku_close_database(db);
 
     if (mode == NONE) {
