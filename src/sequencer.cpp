@@ -365,11 +365,11 @@ typedef Base128StreamWriter<uint32_t> Base128OffWriter;
 
 void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequencer::Lock&& lock, PageHeader* target) {
     if (!lock.owns_lock()) {
-        // TODO: error
+        cur->set_error(caller, AKU_EBUSY);
         return;
     }
     if (ready_.size() == 0) {
-        // TODO: error
+        cur->set_error(caller, AKU_ENO_DATA);
         return;
     }
 
@@ -415,20 +415,45 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
                              + offset_stream.size()
                              + length_stream.size());
 
-    target->add_chunk(timestamp_stream.get_memrange(), size_estimate);
-    // TODO: check status
-    size_estimate -= timestamp_stream.size();
-    target->add_chunk(paramid_stream.get_memrange(), size_estimate);
-    size_estimate -= paramid_stream.size();
-    target->add_chunk(offset_stream.get_memrange(), size_estimate);
-    size_estimate -= offset_stream.size();
-    target->add_chunk(length_stream.get_memrange(), size_estimate);
-    aku_MemRange head = { &n_elements, sizeof(n_elements) };
-    target->add_entry(AKU_ID_COMPRESSED, first_ts, head);
-    aku_EntryOffset offset = target->last_offset;
+    aku_Status status;
+    aku_MemRange head;
+    while(true) {
 
-    cur->put(caller, offset, target);
-    cur->complete(caller);
+        // Body
+        status = target->add_chunk(timestamp_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= timestamp_stream.size();
+        status = target->add_chunk(paramid_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= paramid_stream.size();
+        status = target->add_chunk(offset_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= offset_stream.size();
+        status = target->add_chunk(length_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+
+        // Head
+        head = {&n_elements, sizeof(n_elements)};
+        status = target->add_entry(AKU_ID_COMPRESSED, first_ts, head);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+
+        // Adjuct index
+        aku_EntryOffset offset = target->last_offset;
+        cur->put(caller, offset, target);
+        cur->complete(caller);
+        return;
+    }
+    cur->set_error(caller, status);
 }
 
 aku_TimeStamp Sequencer::get_window() const {
