@@ -348,21 +348,6 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     cur->complete(caller);
 }
 
-// Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
-
-// ParamId -> Base128
-typedef Base128StreamWriter<uint32_t> Base128IdWriter;
-
-// Length -> RLE -> Base128
-typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
-typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
-
-// Offset -> Base128
-typedef Base128StreamWriter<uint32_t> Base128OffWriter;
-
 void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequencer::Lock&& lock, PageHeader* target) {
     if (!lock.owns_lock()) {
         cur->set_error(caller, AKU_EBUSY);
@@ -373,87 +358,31 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
         return;
     }
 
-    ByteVector timestamps;
-    ByteVector paramids;
-    ByteVector offsets;
-    ByteVector lengths;
-
-    DeltaRLETSWriter timestamp_stream(timestamps);
-    Base128IdWriter paramid_stream(paramids);
-    Base128OffWriter offset_stream(offsets);
-    RLELenWriter length_stream(lengths);
-
-    bool first_ts_initialized = false;
-    aku_TimeStamp first_ts;
-    uint32_t n_elements = 0u;
+    ChunkHeader chunk_header;
 
     auto consumer = [&](TimeSeriesValue const& val) {
-        n_elements++;
-        if (!first_ts_initialized) {
-            first_ts = val.get_timestamp();
-            first_ts_initialized = true;
-        }
         auto ts = val.get_timestamp();
         auto id = val.get_paramid();
-        timestamp_stream.put(ts);
-        paramid_stream.put(id);
-        offset_stream.put(val.value);
-        length_stream.put(val.value_length);
+        chunk_header.timestamps.push_back(ts);
+        chunk_header.paramids.push_back(id);
+        chunk_header.offsets.push_back(val.value);
+        chunk_header.lengths.push_back(val.value_length);
         return true;
     };
 
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
-    timestamp_stream.close();
-    paramid_stream.close();
-    offset_stream.close();
-    length_stream.close();
     ready_.clear();
 
-    uint32_t size_estimate =
-        static_cast<uint32_t>( timestamp_stream.size()
-                             + paramid_stream.size()
-                             + offset_stream.size()
-                             + length_stream.size());
-
-    aku_Status status;
-    aku_MemRange head;
-    while(true) {
-
-        // Body
-        status = target->add_chunk(timestamp_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= timestamp_stream.size();
-        status = target->add_chunk(paramid_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= paramid_stream.size();
-        status = target->add_chunk(offset_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= offset_stream.size();
-        status = target->add_chunk(length_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-
-        // Head
-        head = {&n_elements, sizeof(n_elements)};
-        status = target->add_entry(AKU_ID_COMPRESSED, first_ts, head);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-
-        // Adjuct index
-        aku_EntryOffset offset = target->last_offset;
-        cur->put(caller, offset, target);
-        cur->complete(caller);
+    auto status = target->complete_chunk(chunk_header);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(caller, status);
         return;
     }
-    cur->set_error(caller, status);
+
+    // Adjuct index
+    aku_EntryOffset offset = target->last_offset;
+    cur->put(caller, offset, target);
+    cur->complete(caller);
 }
 
 aku_TimeStamp Sequencer::get_window() const {

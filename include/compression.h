@@ -155,16 +155,14 @@ namespace Akumuli {
     };
 
     //! Base128 decoder
-    template<class TVal>
+    template<class TVal, class FwdIt>
     struct Base128StreamReader {
-        ByteVector const& data_;
-        ByteVector::const_iterator pos_;
-        ByteVector::const_iterator end_;
+        FwdIt pos_;
+        FwdIt end_;
 
-        Base128StreamReader(ByteVector const& data)
-            : data_(data)
-            , pos_(data.begin())
-            , end_(data.end())
+        Base128StreamReader(FwdIt begin, FwdIt end)
+            : pos_(begin)
+            , end_(end)
         {
         }
 
@@ -213,8 +211,9 @@ namespace Akumuli {
         Stream stream_;
         TVal prev_;
 
-        DeltaStreamReader(ByteVector& container)
-            : stream_(container)
+        template<class FwdIt>
+        DeltaStreamReader(FwdIt begin, FwdIt end)
+            : stream_(begin, end)
             , prev_()
         {
         }
@@ -273,8 +272,9 @@ namespace Akumuli {
         TVal prev_;
         TVal reps_;
 
-        RLEStreamReader(ByteVector const& container)
-            : stream_(container)
+        template<class FwdIt>
+        RLEStreamReader(FwdIt begin, FwdIt end)
+            : stream_(begin, end)
             , prev_()
             , reps_()
         {}

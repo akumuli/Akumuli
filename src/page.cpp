@@ -22,6 +22,7 @@
 #include <apr_time.h>
 #include "timsort.hpp"
 #include "page.h"
+#include "compression.h"
 #include "akumuli_def.h"
 
 #include <random>
@@ -196,6 +197,85 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     memcpy((void*)free_slot, range.address, SPACE_NEEDED);
     last_offset = free_slot - cdata();
     return AKU_SUCCESS;
+}
+
+// Time stamps (sorted) -> Delta -> RLE -> Base128
+typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
+
+// ParamId -> Base128
+typedef Base128StreamWriter<uint32_t> Base128IdWriter;
+
+// Length -> RLE -> Base128
+typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
+typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
+
+// Offset -> Base128
+typedef Base128StreamWriter<uint32_t> Base128OffWriter;
+
+int PageHeader::complete_chunk(const ChunkHeader& data) {
+    // NOTE: it is possible to avoid copying and write directly to page
+    // instead of temporary byte vectors
+    ByteVector timestamps;
+    ByteVector paramids;
+    ByteVector offsets;
+    ByteVector lengths;
+
+    DeltaRLETSWriter timestamp_stream(timestamps);
+    Base128IdWriter paramid_stream(paramids);
+    Base128OffWriter offset_stream(offsets);
+    RLELenWriter length_stream(lengths);
+
+    for (auto i = 0ul; i < data.timestamps.size(); i++) {
+        timestamp_stream.put(data.timestamps.at(i));
+        paramid_stream.put(data.paramids.at(i));
+        offset_stream.put(data.offsets.at(i));
+        length_stream.put(data.lengths.at(i));
+    }
+    timestamp_stream.close();
+    paramid_stream.close();
+    offset_stream.close();
+    length_stream.close();
+
+    uint32_t size_estimate =
+            static_cast<uint32_t>( timestamp_stream.size()
+                    + paramid_stream.size()
+                    + offset_stream.size()
+                    + length_stream.size());
+
+    aku_Status status;
+    aku_MemRange head;
+
+    while(true) {
+        // Body
+        status = add_chunk(timestamp_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= timestamp_stream.size();
+        status = add_chunk(paramid_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= paramid_stream.size();
+        status = add_chunk(offset_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= offset_stream.size();
+        status = add_chunk(length_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        // Head
+        uint32_t n_elements = data.lengths.size();
+        aku_TimeStamp first_ts = data.timestamps.front();
+        head = {&n_elements, sizeof(n_elements)};
+        status = add_entry(AKU_ID_COMPRESSED, first_ts, head);
+        break;
+    }
+    return status;
 }
 
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
@@ -581,23 +661,31 @@ struct SearchAlgorithm {
                     auto probe = probe_entry->param_id;
                     bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
                                                query_.upperbound >= probe_entry->time;
-                    if (query_.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
+                    if (probe != AKU_ID_COMPRESSED) {
+                        if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
 #ifdef DEBUG
-                        if (dbg_count) {
-                            // check for forward direction
-                            auto is_ok = dbg_prev_ts <= probe_entry->time;
-                            assert(is_ok);
-                        }
-                        dbg_prev_ts = probe_entry->time;
-                        dbg_count++;
+                            if (dbg_count) {
+                                // check for forward direction
+                                auto is_ok = dbg_prev_ts <= probe_entry->time;
+                                assert(is_ok);
+                            }
+                            dbg_prev_ts = probe_entry->time;
+                            dbg_count++;
 #endif
-                        if (!cursor_->put(caller_, probe_offset, page_)) {
+                            if (!cursor_->put(caller_, probe_offset, page_)) {
+                                break;
+                            }
+                            stop_offset = probe_offset;
+                        }
+                        if (probe_entry->time > query_.upperbound) {
                             break;
                         }
-                        stop_offset = probe_offset;
-                    }
-                    if (probe_entry->time > query_.upperbound) {
-                        break;
+                    } else {
+                        // Entry contains many tuples
+                        std::vector<aku_TimeStamp> timestamps;
+                        std::vector<aku_ParamId> paramids;
+                        std::vector<uint32_t> offsets;
+                        std::vector<uint32_t> lengths;
                     }
                 }
             }

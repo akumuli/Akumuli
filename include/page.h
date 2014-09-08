@@ -23,6 +23,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <vector>
 #include "akumuli.h"
 #include "util.h"
 #include "internal_cursor.h"
@@ -111,6 +112,14 @@ struct SearchQuery {
 };
 
 
+struct ChunkHeader {
+    std::vector<aku_TimeStamp>  timestamps;
+    std::vector<aku_ParamId>    paramids;
+    std::vector<uint32_t>       offsets;
+    std::vector<uint32_t>       lengths;
+};
+
+
 /**
  * In-memory page representation.
  * PageHeader represents begining of the page.
@@ -175,6 +184,13 @@ struct PageHeader {
      * @returns operation status
      */
     int add_chunk(const aku_MemRange data, const uint32_t free_space_required);
+
+    /**
+     * Complete chunk. Add compressed header and index.
+     * @param data chunk header data (list of sorted timestamps, param ids, offsets and lengths
+     * @returns operation status
+     */
+    int complete_chunk(const ChunkHeader& data);
 
     /**
      * Get length of the entry.
