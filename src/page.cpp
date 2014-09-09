@@ -31,6 +31,36 @@
 
 namespace Akumuli {
 
+// Time stamps (sorted) -> Delta -> RLE -> Base128
+typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
+
+// Base128 -> RLE -> Delta -> Timestamps
+typedef Base128StreamReader<uint64_t, unsigned char*> __Base128TSReader;
+typedef RLEStreamReader<__Base128TSReader> __RLETSReader;
+typedef DeltaStreamReader<__RLETSReader> DeltaRLETSReader;
+
+// ParamId -> Base128
+typedef Base128StreamWriter<uint32_t> Base128IdWriter;
+
+// Base128 -> ParamId
+typedef Base128StreamReader<uint32_t, unsigned char*> Base128IdReader;
+
+// Length -> RLE -> Base128
+typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
+typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
+
+// Base128 -> RLE -> Length
+typedef Base128StreamReader<uint32_t, unsigned char*> __Base128LenReader;
+typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
+
+// Offset -> Base128
+typedef Base128StreamWriter<uint32_t> Base128OffWriter;
+
+// Base128 -> Offset
+typedef Base128StreamReader<uint32_t, unsigned char*> Base128OffReader;
+
 std::ostream& operator << (std::ostream& st, CursorResult res) {
     st << "CursorResult" << boost::to_string(res);
     return st;
@@ -198,21 +228,6 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     last_offset = free_slot - cdata();
     return AKU_SUCCESS;
 }
-
-// Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
-
-// ParamId -> Base128
-typedef Base128StreamWriter<uint32_t> Base128IdWriter;
-
-// Length -> RLE -> Base128
-typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
-typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
-
-// Offset -> Base128
-typedef Base128StreamWriter<uint32_t> Base128OffWriter;
 
 int PageHeader::complete_chunk(const ChunkHeader& data) {
     // NOTE: it is possible to avoid copying and write directly to page
@@ -682,10 +697,42 @@ struct SearchAlgorithm {
                         }
                     } else {
                         // Entry contains many tuples
-                        std::vector<aku_TimeStamp> timestamps;
-                        std::vector<aku_ParamId> paramids;
-                        std::vector<uint32_t> offsets;
-                        std::vector<uint32_t> lengths;
+                        ChunkHeader header;
+
+                        auto pbegin = static_cast<unsigned char*>(probe_entry->value);
+                        auto pend = pbegin + probe_entry->length;
+
+                        auto probe_length = probe_entry->value[0];
+
+                        // read lengths
+                        RLELenReader len_reader(pbegin, pend);
+                        for (auto i = 0u; i < probe_length; i++) {
+                            header.lengths.push_back(len_reader.next());
+                        }
+                        pbegin = len_reader.pos();
+
+                        // read offsets
+                        Base128OffReader off_reader(pbegin, pend);
+                        for (auto i = 0u; i < probe_length; i++) {
+                            header.offsets.push_back(off_reader.next());
+                        }
+                        pbegin = off_reader.pos();
+
+                        // read paramids
+                        Base128IdReader pid_reader(pbegin, pend);
+                        for (auto i = 0u; i < probe_length; i++) {
+                            header.paramids.push_back(pid_reader.next());
+                        }
+                        pbegin = pid_reader.pos();
+
+                        // read timestamps
+                        DeltaRLETSReader tst_reader(pbegin, pend);
+                        for (auto i = 0u; i < probe_length; i++) {
+                            header.timestamps.push_back(tst_reader.next());
+                        }
+
+                        // TODO: add overload
+                        cursor_->put(caller, header, page_);
                     }
                 }
             }

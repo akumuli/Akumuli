@@ -171,6 +171,12 @@ namespace Akumuli {
             pos_ = value.get(pos_, end_);
             return static_cast<TVal>(value);
         }
+
+        typedef FwdIt Iterator;
+
+        Iterator pos() const {
+            return pos_;
+        }
     };
 
 
@@ -223,6 +229,12 @@ namespace Akumuli {
             TVal value = prev_ + delta;
             prev_ = value;
             return value;
+        }
+
+        typedef typename Stream::Iterator Iterator;
+
+        Iterator pos() const {
+            return stream_.pos();
         }
     };
 
@@ -286,6 +298,12 @@ namespace Akumuli {
             }
             reps_--;
             return prev_;
+        }
+
+        typedef typename Stream::Iterator Iterator;
+
+        Iterator pos() const {
+            return stream_.pos();
         }
     };
 }
