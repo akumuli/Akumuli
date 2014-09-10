@@ -619,139 +619,146 @@ struct SearchAlgorithm {
         bst.n_steps += steps;
     }
 
+    bool scan_compressed_entries(aku_Entry const* probe_entry)
+    {
+        ChunkHeader header;
+
+        auto pbegin = static_cast<unsigned char*>(probe_entry->value);
+        auto pend = pbegin + probe_entry->length;
+        auto probe_length = probe_entry->value[0];
+
+        // read lengths
+        RLELenReader len_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.lengths.push_back(len_reader.next());
+        }
+        pbegin = len_reader.pos();
+
+        // read offsets
+        Base128OffReader off_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.offsets.push_back(off_reader.next());
+        }
+        pbegin = off_reader.pos();
+
+        // read paramids
+        Base128IdReader pid_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.paramids.push_back(pid_reader.next());
+        }
+        pbegin = pid_reader.pos();
+
+        // read timestamps
+        DeltaRLETSReader tst_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.timestamps.push_back(tst_reader.next());
+        }
+
+        bool probe_in_time_range = true;
+
+        auto cursor = cursor_;
+        auto& caller = caller_;
+        auto page = page_;
+        auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
+            CursorResult result = {
+                header.offsets[i],
+                header.lengths[i],
+                header.timestamps[i],
+                header.paramids[i]
+            };
+            cursor_->put(caller, result, page);
+        };
+
+        if (IS_BACKWARD_) {
+            for (auto i = probe_length - 1; i >= 0; i--) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_it_time_range) {
+                    put_entry(i);
+                }
+                else {
+                    break;
+                }
+            }
+        } else {
+            for (auto i = 0ul; i != probe_length; i++) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_in_time_range) {
+                    put_entry(i);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
+#ifdef DEBUG
+        // Debug variables
+        aku_TimeStamp dbg_prev_ts;
+        long dbg_count = 0;
+#endif
+        int index_increment = IS_BACKWARD_ ? -1 : 1;
+        while (true) {
+            auto current_index = probe_index;
+            probe_index += index_increment;
+            auto probe_offset = page_->page_index[current_index];
+            auto probe_entry = page_->read_entry(probe_offset);
+            auto probe = probe_entry->param_id;
+            bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                       query_.upperbound >= probe_entry->time;
+            if (probe != AKU_ID_COMPRESSED) {
+                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+#ifdef DEBUG
+                    if (dbg_count) {
+                        // check for backward direction
+                        auto is_ok = IS_BACKWARD_ ? (dbg_prev_ts >= probe_entry->time)
+                                                  : (dbg_prev_ts <= probe_entry->time);
+                        assert(is_ok);
+                    }
+                    dbg_prev_ts = probe_entry->time;
+                    dbg_count++;
+#endif
+                    CursorResult result = {
+                        probe_offset + sizeof(aku_Entry),
+                        probe_entry->length,
+                        probe_entry->time,
+                        probe//id
+                    };
+                    if (!cursor_->put(caller_, result, page_)) {
+                        break;
+                    }
+                }
+            } else {
+                probe_it_time_range = scan_compressed_entries(probe_entry);
+            }
+            if (!probe_in_time_range || probe_index >= MAX_INDEX_) {
+                // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
+                // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
+                // at the end of the page
+                break;
+            }
+        }
+    }
+
     void scan() {
         if (range_.begin != range_.end) {
             cursor_->set_error(caller_, AKU_EGENERAL);
             return;
         }
-	if (range_.begin >= MAX_INDEX_) {
-	    cursor_->set_error(caller_, AKU_EOVERFLOW);
-	    return;
-	}
-        if (range_.begin < MAX_INDEX_) {
-            uint64_t start_offset = 0ul,
-                     stop_offset = 0ul;
-#ifdef DEBUG
-            // Debug variables
-            aku_TimeStamp dbg_prev_ts;
-            long dbg_count = 0;
-#endif
-            auto probe_index = range_.begin;
-            start_offset = page_->page_index[probe_index];
-            if (IS_BACKWARD_) {
-                while (true) {
-                    auto current_index = probe_index--;
-                    auto probe_offset = page_->page_index[current_index];
-                    auto probe_entry = page_->read_entry(probe_offset);
-                    auto probe = probe_entry->param_id;
-                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                               query_.upperbound >= probe_entry->time;
-                    if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-#ifdef DEBUG
-                        if (dbg_count) {
-                            // check for backward direction
-                            auto is_ok = dbg_prev_ts >= probe_entry->time;
-                            assert(is_ok);
-                        }
-                        dbg_prev_ts = probe_entry->time;
-                        dbg_count++;
-#endif
-                        if (!cursor_->put(caller_, probe_offset, page_)) {
-                            break;
-                        }
-                    }
-                    if (probe_entry->time < query_.lowerbound || current_index == 0u) {
-                        stop_offset = probe_offset;
-                        break;
-                    }
-                }
-            } else {
-                while (true) {
-                    auto current_index = probe_index++;
-                    if (current_index >= MAX_INDEX_) {
-                        break;
-                    }
-                    auto probe_offset = page_->page_index[current_index];
-                    auto probe_entry = page_->read_entry(probe_offset);
-                    auto probe = probe_entry->param_id;
-                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                               query_.upperbound >= probe_entry->time;
-                    if (probe != AKU_ID_COMPRESSED) {
-                        if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-#ifdef DEBUG
-                            if (dbg_count) {
-                                // check for forward direction
-                                auto is_ok = dbg_prev_ts <= probe_entry->time;
-                                assert(is_ok);
-                            }
-                            dbg_prev_ts = probe_entry->time;
-                            dbg_count++;
-#endif
-                            if (!cursor_->put(caller_, probe_offset, page_)) {
-                                break;
-                            }
-                            stop_offset = probe_offset;
-                        }
-                        if (probe_entry->time > query_.upperbound) {
-                            break;
-                        }
-                    } else {
-                        // Entry contains many tuples
-                        ChunkHeader header;
+        if (range_.begin >= MAX_INDEX_) {
+            cursor_->set_error(caller_, AKU_EOVERFLOW);
+            return;
+        }
 
-                        auto pbegin = static_cast<unsigned char*>(probe_entry->value);
-                        auto pend = pbegin + probe_entry->length;
+        auto sum = scan_impl(range_.begin);
 
-                        auto probe_length = probe_entry->value[0];
-
-                        // read lengths
-                        RLELenReader len_reader(pbegin, pend);
-                        for (auto i = 0u; i < probe_length; i++) {
-                            header.lengths.push_back(len_reader.next());
-                        }
-                        pbegin = len_reader.pos();
-
-                        // read offsets
-                        Base128OffReader off_reader(pbegin, pend);
-                        for (auto i = 0u; i < probe_length; i++) {
-                            header.offsets.push_back(off_reader.next());
-                        }
-                        pbegin = off_reader.pos();
-
-                        // read paramids
-                        Base128IdReader pid_reader(pbegin, pend);
-                        for (auto i = 0u; i < probe_length; i++) {
-                            header.paramids.push_back(pid_reader.next());
-                        }
-                        pbegin = pid_reader.pos();
-
-                        // read timestamps
-                        DeltaRLETSReader tst_reader(pbegin, pend);
-                        for (auto i = 0u; i < probe_length; i++) {
-                            header.timestamps.push_back(tst_reader.next());
-                        }
-
-                        // TODO: add overload
-                        cursor_->put(caller, header, page_);
-                    }
-                }
-            }
-            auto& stats = get_global_search_stats();
-            {
-                std::lock_guard<std::mutex> guard(stats.mutex);
-                auto& scan_stats = stats.stats.scan;
-                uint64_t sum;
-                if (stop_offset < start_offset) {
-                    sum = start_offset - stop_offset;
-                } else {
-                    sum = stop_offset - start_offset;
-                }
-                if (IS_BACKWARD_) {
-                    scan_stats.bwd_bytes += sum;
-                } else {
-                    scan_stats.fwd_bytes += sum;
-                }
-            }
+        auto& stats = get_global_search_stats();
+        {
+            std::lock_guard<std::mutex> guard(stats.mutex);
+            stats.stats.scan.fwd_bytes += std::get<0>();
+            stats.stats.scan.bwd_bytes += std::get<1>();
         }
         cursor_->complete(caller_);
     }

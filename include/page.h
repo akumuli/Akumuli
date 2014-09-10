@@ -33,7 +33,12 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
-typedef std::pair<aku_EntryOffset, const PageHeader*> CursorResult;
+struct CursorResult {
+    aku_EntryOffset offset;    //< entry data offset (without ts and id)
+    uint32_t        length;    //< entry data length
+    aku_TimeStamp   timestamp; //< entry timestamp
+    aku_ParamId     param_id;  //< entry param id
+};
 
 std::ostream& operator << (std::ostream& st, CursorResult res);
 
