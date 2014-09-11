@@ -333,7 +333,14 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        return cur->put(caller, val.value, page);
+        CursorResult result = {
+            val.value,
+            val.value_length,
+            val.get_timestamp(),
+            val.get_paramid(),
+            page
+        };
+        return cur->put(caller, result);
     };
 
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
@@ -380,9 +387,13 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
     }
 
     // Adjuct index
-    aku_EntryOffset offset = target->last_offset;
-    cur->put(caller, offset, target);
-    cur->complete(caller);
+    CursorResult result = {
+        target->last_offset,
+        0u, 0ul, 0u,                    // This   is done  for  page  synchronization,  it doesn't  need
+        target                          // full information  and can  be   applied to  group of  entries
+    };                                  // if compression enabled. Target cursor is DirectPageSyncCursor
+    cur->put(caller, result);           // wich is a special case  and doesn't touch anything in `result
+    cur->complete(caller);              // except offset and page fields.
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -445,7 +456,14 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        return cur->put(caller, val.value, page);
+        CursorResult result = {
+            val.value,
+            val.value_length,
+            val.get_timestamp(),
+            val.get_paramid(),
+            page
+        };
+        return cur->put(caller, result);
     };
 
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {

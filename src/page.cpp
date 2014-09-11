@@ -37,29 +37,29 @@ typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
 typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
 
 // Base128 -> RLE -> Delta -> Timestamps
-typedef Base128StreamReader<uint64_t, unsigned char*> __Base128TSReader;
-typedef RLEStreamReader<__Base128TSReader> __RLETSReader;
-typedef DeltaStreamReader<__RLETSReader> DeltaRLETSReader;
+typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128TSReader;
+typedef RLEStreamReader<__Base128TSReader, uint64_t> __RLETSReader;
+typedef DeltaStreamReader<__RLETSReader, uint64_t> DeltaRLETSReader;
 
 // ParamId -> Base128
 typedef Base128StreamWriter<uint32_t> Base128IdWriter;
 
 // Base128 -> ParamId
-typedef Base128StreamReader<uint32_t, unsigned char*> Base128IdReader;
+typedef Base128StreamReader<uint32_t, const unsigned char*> Base128IdReader;
 
 // Length -> RLE -> Base128
 typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
 typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 
 // Base128 -> RLE -> Length
-typedef Base128StreamReader<uint32_t, unsigned char*> __Base128LenReader;
+typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
 // Offset -> Base128
 typedef Base128StreamWriter<uint32_t> Base128OffWriter;
 
 // Base128 -> Offset
-typedef Base128StreamReader<uint32_t, unsigned char*> Base128OffReader;
+typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
 
 std::ostream& operator << (std::ostream& st, CursorResult res) {
     st << "CursorResult" << boost::to_string(res);
@@ -623,7 +623,7 @@ struct SearchAlgorithm {
     {
         ChunkHeader header;
 
-        auto pbegin = static_cast<unsigned char*>(probe_entry->value);
+        auto pbegin = (const unsigned char*)(probe_entry->value);
         auto pend = pbegin + probe_entry->length;
         auto probe_length = probe_entry->value[0];
 
@@ -664,16 +664,17 @@ struct SearchAlgorithm {
                 header.offsets[i],
                 header.lengths[i],
                 header.timestamps[i],
-                header.paramids[i]
+                header.paramids[i],
+                page
             };
-            cursor_->put(caller, result, page);
+            cursor->put(caller, result);
         };
 
         if (IS_BACKWARD_) {
             for (auto i = probe_length - 1; i >= 0; i--) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
-                if (probe_it_time_range) {
+                if (probe_in_time_range) {
                     put_entry(i);
                 }
                 else {
@@ -691,6 +692,7 @@ struct SearchAlgorithm {
                 }
             }
         }
+        return probe_in_time_range;
     }
 
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
@@ -721,17 +723,18 @@ struct SearchAlgorithm {
                     dbg_count++;
 #endif
                     CursorResult result = {
-                        probe_offset + sizeof(aku_Entry),
+                        static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry)),
                         probe_entry->length,
                         probe_entry->time,
-                        probe//id
+                        probe,//id
+                        page_
                     };
-                    if (!cursor_->put(caller_, result, page_)) {
+                    if (!cursor_->put(caller_, result)) {
                         break;
                     }
                 }
             } else {
-                probe_it_time_range = scan_compressed_entries(probe_entry);
+                probe_in_time_range = scan_compressed_entries(probe_entry);
             }
             if (!probe_in_time_range || probe_index >= MAX_INDEX_) {
                 // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
@@ -740,6 +743,7 @@ struct SearchAlgorithm {
                 break;
             }
         }
+        return std::make_tuple(0ul, 0ul);
     }
 
     void scan() {
@@ -752,13 +756,13 @@ struct SearchAlgorithm {
             return;
         }
 
-        auto sum = scan_impl(range_.begin);
+        auto sums = scan_impl(range_.begin);
 
         auto& stats = get_global_search_stats();
         {
             std::lock_guard<std::mutex> guard(stats.mutex);
-            stats.stats.scan.fwd_bytes += std::get<0>();
-            stats.stats.scan.bwd_bytes += std::get<1>();
+            stats.stats.scan.fwd_bytes += std::get<0>(sums);
+            stats.stats.scan.bwd_bytes += std::get<1>(sums);
         }
         cursor_->complete(caller_);
     }

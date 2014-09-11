@@ -33,14 +33,22 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
+
+//! PageHeader forward declaration
+struct PageHeader;
+
+
+//! Cursor result
 struct CursorResult {
-    aku_EntryOffset offset;    //< entry data offset (without ts and id)
-    uint32_t        length;    //< entry data length
-    aku_TimeStamp   timestamp; //< entry timestamp
-    aku_ParamId     param_id;  //< entry param id
+    aku_EntryOffset   offset;    //< entry data offset (without ts and id)
+    uint32_t          length;    //< entry data length
+    aku_TimeStamp     timestamp; //< entry timestamp
+    aku_ParamId       param_id;  //< entry param id
+    PageHeader const* page;      //< entry page
 };
 
 std::ostream& operator << (std::ostream& st, CursorResult res);
+
 
 /** Page bounding box.
  *  All data is two dimentional: param-timestamp.
@@ -54,10 +62,12 @@ struct PageBoundingBox {
     PageBoundingBox();
 };
 
+
 struct PageHistogramEntry {
     aku_TimeStamp timestamp;
     uint32_t index;
 };
+
 
 /** Page histogram for approximation search */
 struct PageHistogram {

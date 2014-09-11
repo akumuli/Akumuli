@@ -17,8 +17,11 @@ void test_cursor(int n_iter, int buf_size) {
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
-            cursor.put(caller, i, nullptr);
-            expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
+            CursorResult r;
+            r.offset = i;
+            r.page = nullptr;
+            cursor.put(caller, r);
+            expected.push_back(r);
         }
         cursor.complete(caller);
     };
@@ -33,7 +36,7 @@ void test_cursor(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).first, actual.at(i).first);
+        BOOST_REQUIRE_EQUAL(expected.at(i).offset, actual.at(i).offset);
     }
 }
 
@@ -42,8 +45,11 @@ void test_cursor_error(int n_iter, int buf_size) {
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
-            cursor.put(caller, i, nullptr);
-            expected.push_back(std::make_pair(i, (PageHeader*)nullptr));
+            CursorResult r;
+            r.offset = i;
+            r.page = nullptr;
+            cursor.put(caller, r);
+            expected.push_back(r);
         }
         cursor.set_error(caller, -1);
     };
@@ -59,7 +65,7 @@ void test_cursor_error(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).first, actual.at(i).first);
+        BOOST_REQUIRE_EQUAL(expected.at(i).offset, actual.at(i).offset);
     }
 }
 
@@ -212,8 +218,8 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
         int n_read = cursor.read(results, 0x100);
         count += n_read;
         for (int i = 0; i < n_read; i++) {
-            auto offset = results[i].first;
-            auto page = results[i].second;
+            auto offset = results[i].offset;
+            auto page = results[i].page;
             const aku_Entry* entry = page->read_entry(offset);
             actual_results.push_back(entry->time);
         }

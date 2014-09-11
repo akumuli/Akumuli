@@ -287,7 +287,7 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
             return;
         }
         for (int i = 0; i < s; i++) {
-            cur->put(caller, results[i].first, results[i].second);
+            cur->put(caller, results[i]);
         }
     }
     fan_in_cursor.close();

@@ -161,10 +161,10 @@ void generic_search_test
         return;
     }
 
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
+    BOOST_CHECK_EQUAL(cursor.results.size(), expectations.ressize);
 
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
+    for(size_t i = 0; i < cursor.results.size(); i++) {
+        const aku_Entry* entry = page->read_entry(cursor.results[i].offset);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
             BOOST_CHECK_EQUAL(entry->value[0], expectations.skew - i);
         } else {
@@ -312,11 +312,11 @@ void generic_search_test_with_skew
     if (expectations.error_code != RecordingCursor::NO_ERROR)
         return;
 
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
+    BOOST_CHECK_EQUAL(cursor.results.size(), expectations.ressize);
 
     std::vector<int64_t> timestamps;
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
+    for(size_t i = 0; i < cursor.results.size(); i++) {
+        const aku_Entry* entry = page->read_entry(cursor.results[i].offset);
         BOOST_CHECK_GE(entry->time, begin);
         BOOST_CHECK_LE(entry->time, end);
         timestamps.push_back(entry->time);
@@ -395,8 +395,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         RecordingCursor cursor;
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
-        for(size_t i = 0; i < cursor.offsets.size(); i++) {
-            auto offset = cursor.offsets.at(i).first;
+        for(size_t i = 0; i < cursor.results.size(); i++) {
+            auto offset = cursor.results.at(i).offset;
             const aku_Entry* entry = page->read_entry(offset);
             auto index = entry->value[0];
             matches.push_back(index);

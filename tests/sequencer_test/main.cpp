@@ -35,7 +35,7 @@ int main(int cnt, const char** args)
         size_t ix_merged = 0;
         Sequencer seq(nullptr, {10000});
         for (int ix = 0u; ix < NUM_ITERATIONS; ix++) {
-            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (aku_EntryOffset)ix);
+            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (aku_EntryOffset)ix, 8);
             int status;
             Sequencer::Lock lock;
             tie(status, lock) = seq.add(value);
@@ -45,9 +45,9 @@ int main(int cnt, const char** args)
                 Caller caller;
                 seq.merge(caller, &cursor, std::move(lock));
                 for (size_t i = 0; i < cursor.count; i++) {
-                    if (cursor.offsets_buffer[i].first != ix_merged) {
+                    if (cursor.results_buffer[i].offset != ix_merged) {
                         // report error
-                        std::cout << "Error at: " << i << " " << cursor.offsets_buffer[i] << " != " << ix_merged << std::endl;
+                        std::cout << "Error at: " << i << " " << cursor.results_buffer[i].offset << " != " << ix_merged << std::endl;
                         return -1;
                     }
                     ix_merged++;
@@ -74,7 +74,7 @@ int main(int cnt, const char** args)
             if (buffer_ix == 0) {
                 buffer_ix = buffer_size;
                 for(auto ixx: buffer) {
-                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (aku_EntryOffset)ixx);
+                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (aku_EntryOffset)ixx, 8);
                     int status;
                     Sequencer::Lock lock;
                     tie(status, lock) = seq.add(value);
@@ -84,9 +84,9 @@ int main(int cnt, const char** args)
                         Caller caller;
                         seq.merge(caller, &cursor, std::move(lock));
                         for (size_t i = 0; i < cursor.count; i++) {
-                            if (cursor.offsets_buffer[i].first != ix_merged) {
+                            if (cursor.results_buffer[i].offset != ix_merged) {
                                 // report error
-                                std::cout << "Error at: " << i << " " << cursor.offsets_buffer[i] << " != " << ix_merged << std::endl;
+                                std::cout << "Error at: " << i << " " << cursor.results_buffer[i].offset << " != " << ix_merged << std::endl;
                                 return -1;
                             }
                             ix_merged++;
