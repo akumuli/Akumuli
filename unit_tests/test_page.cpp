@@ -352,12 +352,12 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 // TODO: test multi-part search calls
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 {
-    const int               buf_len = 1024*1024*8;
-    std::vector<char>       buffer(buf_len);
-    std::vector<uint64_t>    timestamps;
+    const int                   buf_len = 1024*1024*8;
+    std::vector<char>           buffer(buf_len);
+    std::vector<uint64_t>       timestamps;
     std::vector<aku_ParamId>    paramids;
-    int64_t                 time_stamp = 0L;
-    PageHeader*             page = nullptr;
+    int64_t                     time_stamp = 0L;
+    PageHeader*                 page = nullptr;
 
     page = new (&buffer[0]) PageHeader(0, buf_len, 0);
 
@@ -437,4 +437,94 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         }
         BOOST_REQUIRE_EQUAL(match_index, matches.size());
     }
+}
+
+void generic_compression_test
+    ( aku_ParamId param_id
+    , aku_TimeStamp begin
+    , int dir
+    , int n_elements_per_chunk
+    )
+{
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 0x10000);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+
+    ChunkHeader header;
+    std::vector<ChunkHeader> expected;
+    uint32_t pos = 0u;
+    for (int i = 1; true; i++) {
+        pos++;
+        begin += std::rand() % 50;
+        header.lengths.push_back(std::rand() % 10 + 1);
+        header.offsets.push_back(pos + std::rand() % 10);
+        header.paramids.push_back(param_id);
+        header.timestamps.push_back(begin);
+        char buffer[100];
+        aku_MemRange range = {buffer, static_cast<uint32_t>(std::rand() % 99 + 1)};
+        auto status = page->add_chunk(range, header.lengths.size() * 24);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        if (i % n_elements_per_chunk == 0) {
+            status = page->complete_chunk(header);
+            if (status != AKU_SUCCESS) {
+                break;
+            }
+            // set expected
+            expected.push_back(header);
+            header = ChunkHeader();
+        }
+    }
+
+    page->_sort();
+
+    BOOST_REQUIRE_NE(expected.size(), 0ul);
+
+    for(const auto& exp_chunk: expected) {
+        auto ts_begin = exp_chunk.timestamps.front();
+        auto ts_end = exp_chunk.timestamps.back();
+        SearchQuery query(param_id, ts_begin, ts_end, dir);
+        Caller caller;
+        RecordingCursor cur;
+        page->search(caller, &cur, query);
+
+        BOOST_REQUIRE_EQUAL(cur.results.size(), exp_chunk.timestamps.size());
+
+        if (dir == AKU_CURSOR_DIR_FORWARD) {
+            auto act_it = cur.results.begin();
+            for (auto i = 0ul; i != cur.results.size(); i++) {
+                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
+                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                act_it++;
+            }
+        } else {
+            auto act_it = cur.results.rbegin();
+            for (auto i = 0ul; i != cur.results.size(); i++) {
+                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
+                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                act_it++;
+            }
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_forward_0) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_FORWARD, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_forward_1) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_FORWARD, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_backward_0) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_BACKWARD, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_backward_1) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_BACKWARD, 100);
 }
