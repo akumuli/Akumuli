@@ -307,6 +307,10 @@ const aku_Entry *PageHeader::read_entry(aku_EntryOffset offset) const {
     return entry_ptr;
 }
 
+const void* PageHeader::read_entry_data(aku_EntryOffset offset) const {
+    return cdata() + offset;
+}
+
 int PageHeader::get_entry_length_at(int entry_index) const {
     auto entry_ptr = read_entry_at(entry_index);
     if (entry_ptr) {
@@ -676,9 +680,11 @@ struct SearchAlgorithm {
                                       query_.upperbound >= header.timestamps[i];
                 if (probe_in_time_range) {
                     put_entry(i);
-                }
-                else {
-                    break;
+                } else {
+                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
                 }
             }
         } else {
@@ -688,7 +694,10 @@ struct SearchAlgorithm {
                 if (probe_in_time_range) {
                     put_entry(i);
                 } else {
-                    break;
+                    probe_in_time_range = query_.upperbound >= probe_entry->time;
+                    if (!probe_in_time_range) {
+                        break;
+                    }
                 }
             }
         }
@@ -733,6 +742,8 @@ struct SearchAlgorithm {
                         break;
                     }
                 }
+                probe_in_time_range = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                                   : query_.upperbound >= probe_entry->time;
             } else {
                 probe_in_time_range = scan_compressed_entries(probe_entry);
             }

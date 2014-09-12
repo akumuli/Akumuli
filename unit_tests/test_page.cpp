@@ -164,14 +164,16 @@ void generic_search_test
     BOOST_CHECK_EQUAL(cursor.results.size(), expectations.ressize);
 
     for(size_t i = 0; i < cursor.results.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.results[i].offset);
+        auto t = cursor.results[i].timestamp;
+        auto p = page->read_entry_data(cursor.results[i].data_offset);
+        const uint32_t* value = static_cast<const uint32_t*>(p);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
-            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew - i);
+            BOOST_CHECK_EQUAL(value[0], expectations.skew - i);
         } else {
-            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew + i);
+            BOOST_CHECK_EQUAL(value[0], expectations.skew + i);
         }
-        BOOST_CHECK_GE(entry->time, begin);
-        BOOST_CHECK_LE(entry->time, end);
+        BOOST_CHECK_GE(t, begin);
+        BOOST_CHECK_LE(t, end);
     }
 }
 
@@ -316,10 +318,10 @@ void generic_search_test_with_skew
 
     std::vector<int64_t> timestamps;
     for(size_t i = 0; i < cursor.results.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.results[i].offset);
-        BOOST_CHECK_GE(entry->time, begin);
-        BOOST_CHECK_LE(entry->time, end);
-        timestamps.push_back(entry->time);
+        auto ts = cursor.results[i].timestamp;
+        BOOST_CHECK_GE(ts, begin);
+        BOOST_CHECK_LE(ts, end);
+        timestamps.push_back(ts);
     }
 
     if (direction == AKU_CURSOR_DIR_FORWARD) {
@@ -396,13 +398,15 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
         for(size_t i = 0; i < cursor.results.size(); i++) {
-            auto offset = cursor.results.at(i).offset;
-            const aku_Entry* entry = page->read_entry(offset);
-            auto index = entry->value[0];
+            auto offset = cursor.results.at(i).data_offset;
+            const uint32_t* value = (const uint32_t*)page->read_entry_data(offset);
+            auto t = cursor.results.at(i).timestamp;
+            auto id = cursor.results.at(i).param_id;
+            auto index = value[0];
             matches.push_back(index);
-            BOOST_REQUIRE_EQUAL(entry->time, timestamps[index]);
-            BOOST_REQUIRE(entry->param_id == paramids[index]);
-            BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
+            BOOST_REQUIRE_EQUAL(t, timestamps[index]);
+            BOOST_REQUIRE(id == paramids[index]);
+            BOOST_REQUIRE(value[0] == (uint32_t)index);
         }
         // Check
         size_t match_index = 0u;

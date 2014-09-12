@@ -18,7 +18,7 @@ void test_cursor(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
-            r.offset = i;
+            r.data_offset = i;
             r.page = nullptr;
             cursor.put(caller, r);
             expected.push_back(r);
@@ -36,7 +36,7 @@ void test_cursor(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).offset, actual.at(i).offset);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data_offset, actual.at(i).data_offset);
     }
 }
 
@@ -46,7 +46,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
-            r.offset = i;
+            r.data_offset = i;
             r.page = nullptr;
             cursor.put(caller, r);
             expected.push_back(r);
@@ -65,7 +65,7 @@ void test_cursor_error(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).offset, actual.at(i).offset);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data_offset, actual.at(i).data_offset);
     }
 }
 
@@ -218,10 +218,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
         int n_read = cursor.read(results, 0x100);
         count += n_read;
         for (int i = 0; i < n_read; i++) {
-            auto offset = results[i].offset;
-            auto page = results[i].page;
-            const aku_Entry* entry = page->read_entry(offset);
-            actual_results.push_back(entry->time);
+            actual_results.push_back(results[i].timestamp);
         }
     }
     cursor.close();

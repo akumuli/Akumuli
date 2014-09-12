@@ -81,7 +81,7 @@ bool DirectPageSyncCursor::put(Caller&, CursorResult const& result) {
         mutable_page->sync_next_index(0, 0, true);
     }
     auto mutable_page = const_cast<PageHeader*>(result.page);
-    mutable_page->sync_next_index(result.offset - sizeof(aku_Entry), rand_(), false);
+    mutable_page->sync_next_index(result.data_offset - sizeof(aku_Entry), rand_(), false);
     last_page_ = result.page;
     return true;
 }
@@ -188,16 +188,15 @@ struct HeapPred {
         bool result = false;
         const CursorResult& lres = std::get<0>(lhs);
         const CursorResult& rres = std::get<0>(rhs);
-        if (lres.timestamp > rres.timestamp) {
-            result = true;
-        } else if (lres.timestamp < rres.timestamp) {
-            result = false;
-        } else {  // timestamps are equal
-            result = lres.param_id > rres.param_id;
-        }
+        const auto lkey = std::make_tuple(lres.timestamp, lres.param_id);
+        const auto rkey = std::make_tuple(rres.timestamp, rres.param_id);
         if (dir == AKU_CURSOR_DIR_BACKWARD) {
             // Min heap is used
-            result = !result;
+            result = lkey < rkey;
+        } else if (dir == AKU_CURSOR_DIR_FORWARD) {
+            result = lkey > rkey;
+        } else {
+            AKU_PANIC("bad direction of the fan-in cursor")
         }
         return result;
     }
@@ -213,7 +212,7 @@ FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size,
 
 void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
-    HeapItem dbg_prev_item;
+    CursorResult dbg_prev_item;
     bool dbg_first_item = true;
     long dbg_counter = 0;
 #endif
@@ -262,10 +261,15 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
         AKU_UNUSED(dbg_time_stamp);
         AKU_UNUSED(dbg_param_id);
         if (!dbg_first_item) {
-            bool cmp_res = pred(dbg_prev_item, item);
+            bool cmp_res = false;
+            if (direction_ == AKU_CURSOR_DIR_FORWARD) {
+                cmp_res = dbg_prev_item.timestamp <= std::get<0>(item).timestamp;
+            } else {
+                cmp_res = dbg_prev_item.timestamp >= std::get<0>(item).timestamp;
+            }
             assert(cmp_res);
         }
-        dbg_prev_item = item;
+        dbg_prev_item = std::get<0>(item);
         dbg_first_item = false;
         dbg_counter++;
 #endif

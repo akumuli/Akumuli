@@ -105,7 +105,7 @@ struct CursorImpl : aku_Cursor {
         int n_results = cursor_->read(results.data(), buffer_len);
         for (int i = 0; i < n_results; i++) {
             // FIXME: this code will broke with compressed pages
-            aku_EntryOffset offset = results[i].offset - sizeof(aku_Entry);
+            aku_EntryOffset offset = results[i].data_offset - sizeof(aku_Entry);
             PageHeader const* page = results[i].page;
             const aku_Entry* entry = page->read_entry(offset);
             buffer[i] = entry;

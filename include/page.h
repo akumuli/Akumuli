@@ -40,11 +40,11 @@ struct PageHeader;
 
 //! Cursor result
 struct CursorResult {
-    aku_EntryOffset   offset;    //< entry data offset (without ts and id)
-    uint32_t          length;    //< entry data length
-    aku_TimeStamp     timestamp; //< entry timestamp
-    aku_ParamId       param_id;  //< entry param id
-    PageHeader const* page;      //< entry page
+    aku_EntryOffset   data_offset;    //< entry data offset (without ts and id)
+    uint32_t          length;         //< entry data length
+    aku_TimeStamp     timestamp;      //< entry timestamp
+    aku_ParamId       param_id;       //< entry param id
+    PageHeader const* page;           //< entry page
 };
 
 std::ostream& operator << (std::ostream& st, CursorResult res);
@@ -250,10 +250,18 @@ struct PageHeader {
 
     /**
      * Get pointer to entry without copying using offset
-     * @param index entry index
+     * @param entry offset
      * @returns pointer to entry or NULL
      */
     const aku_Entry* read_entry(aku_EntryOffset offset) const;
+
+    /**
+     * Get pointer to entry data without copying using
+     * data offset.
+     * @param data offset
+     * @returns pointer to entry data or NULL
+     */
+    const void* read_entry_data(aku_EntryOffset offset) const;
 
     /**
      *  Search for entry
