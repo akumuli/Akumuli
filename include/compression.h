@@ -179,6 +179,48 @@ namespace Akumuli {
         }
     };
 
+    template<class Stream, class TVal>
+    struct ZigZagStreamWriter {
+        Stream stream_;
+
+        ZigZagStreamWriter(ByteVector& container)
+                : stream_(container) {
+        }
+        void put(TVal value) {
+            // TVal must be signed
+            const int shift_width = sizeof(TVal)*8 - 1;
+            auto res = (value << 1) ^ (value >> shift_width);
+            stream_.put(res);  // implicit type cast
+        }
+        size_t size() const {
+            return stream_.size();
+        }
+        void close() {
+            stream_.close();
+        }
+        aku_MemRange get_memrange() const {
+            return stream_.get_memrange();
+        }
+    };
+
+    template<class Stream, class TVal>
+    struct ZigZagStreamReader {
+        Stream stream_;
+
+        template<class FwdIt>
+        ZigZagStreamReader(FwdIt begin, FwdIt end)
+                : stream_(begin, end) {
+        }
+
+        TVal next() {
+            auto n = stream_.next();
+            return (n >> 1) ^ (-(n & 1));
+        }
+        typedef typename Stream::Iterator Iterator;
+        Iterator pos() const {
+            return stream_.pos();
+        }
+    };
 
     template<class Stream, typename TVal>
     struct DeltaStreamWriter {
@@ -191,10 +233,9 @@ namespace Akumuli {
         {
         }
 
-        void put(TVal value) {
-            assert(value >= prev_);  // delta encoding must be used for sorted sequences
-            auto delta = value - prev_;
-            stream_.put(delta);
+        template<class InVal>
+        void put(InVal value) {
+            stream_.put(static_cast<TVal>(value) - prev_);
             prev_ = value;
         }
 

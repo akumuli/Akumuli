@@ -55,11 +55,18 @@ typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
-// Offset -> Base128
-typedef Base128StreamWriter<uint32_t> Base128OffWriter;
+// Offset -> Delta -> ZigZag -> RLE -> Base128
+typedef Base128StreamWriter<int64_t> __Base128OffWriter;
+typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;
+typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;
+typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;
 
-// Base128 -> Offset
-typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
+// Base128 -> RLE -> ZigZag -> Delta -> Offset
+//typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
+typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128OffReader;
+typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
+typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
+typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
 
 std::ostream& operator << (std::ostream& st, CursorResult res) {
     st << "CursorResult" << boost::to_string(res);
@@ -239,7 +246,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 
     DeltaRLETSWriter timestamp_stream(timestamps);
     Base128IdWriter paramid_stream(paramids);
-    Base128OffWriter offset_stream(offsets);
+    DeltaRLEOffWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
     for (auto i = 0ul; i < data.timestamps.size(); i++) {
@@ -639,7 +646,7 @@ struct SearchAlgorithm {
         pbegin = len_reader.pos();
 
         // read offsets
-        Base128OffReader off_reader(pbegin, pend);
+        DeltaRLEOffReader off_reader(pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header.offsets.push_back(off_reader.next());
         }
