@@ -627,8 +627,8 @@ struct SearchAlgorithm {
     {
         ChunkHeader header;
 
-        auto pbegin = (const unsigned char*)(probe_entry->value);
-        auto pend = pbegin + probe_entry->length;
+        auto pbegin = (const unsigned char*)(probe_entry->value + 1);
+        auto pend = (const unsigned char*)(page_->cdata() + page_->length);
         auto probe_length = probe_entry->value[0];
 
         // read lengths
@@ -675,7 +675,7 @@ struct SearchAlgorithm {
         };
 
         if (IS_BACKWARD_) {
-            for (auto i = probe_length - 1; i >= 0; i--) {
+            for (int i = static_cast<int>(probe_length - 1); i >= 0; i--) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
                 if (probe_in_time_range) {

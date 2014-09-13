@@ -455,7 +455,7 @@ void generic_compression_test
     uint32_t pos = 0u;
     for (int i = 1; true; i++) {
         pos++;
-        begin += std::rand() % 50;
+        begin += 1 + std::rand() % 50;
         header.lengths.push_back(std::rand() % 10 + 1);
         header.offsets.push_back(pos + std::rand() % 10);
         header.paramids.push_back(param_id);
