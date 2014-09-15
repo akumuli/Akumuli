@@ -143,7 +143,7 @@ struct DatabaseImpl : public aku_Database
         }
         MatchPred pred(query->params, query->n_params);
         std::unique_ptr<SearchQuery> search_query;
-        search_query.reset(new SearchQuery(pred, {begin}, {end}, scan_dir));
+        search_query.reset(new SearchQuery(pred, {begin}, {end}, {begin}, {end}, scan_dir));
         auto pcur = new CursorImpl(storage_, std::move(search_query));
         return pcur;
     }

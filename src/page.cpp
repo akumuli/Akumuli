@@ -85,9 +85,13 @@ static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b
 SearchQuery::SearchQuery( aku_ParamId   param_id
                         , aku_TimeStamp low
                         , aku_TimeStamp upp
+                        , aku_TimeStamp begin
+                        , aku_TimeStamp end
                         , int           scan_dir)
     : lowerbound(low)
     , upperbound(upp)
+    , begin(begin)
+    , end(end)
     , param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
     , direction(scan_dir)
 {
@@ -96,9 +100,13 @@ SearchQuery::SearchQuery( aku_ParamId   param_id
 SearchQuery::SearchQuery(MatcherFn matcher
                         , aku_TimeStamp low
                         , aku_TimeStamp upp
+                        , aku_TimeStamp begin
+                        , aku_TimeStamp end
                         , int scan_dir)
     : lowerbound(low)
     , upperbound(upp)
+    , begin(begin)
+    , end(end)
     , param_pred(matcher)
     , direction(scan_dir)
 {
@@ -683,8 +691,8 @@ struct SearchAlgorithm {
 
         if (IS_BACKWARD_) {
             for (int i = static_cast<int>(probe_length - 1); i >= 0; i--) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
+                probe_in_time_range = query_.begin <= header.timestamps[i] &&
+                                      query_.end >= header.timestamps[i];
                 if (probe_in_time_range) {
                     put_entry(i);
                 } else {
@@ -696,8 +704,8 @@ struct SearchAlgorithm {
             }
         } else {
             for (auto i = 0ul; i != probe_length; i++) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
+                probe_in_time_range = query_.begin <= header.timestamps[i] &&
+                                      query_.end >= header.timestamps[i];
                 if (probe_in_time_range) {
                     put_entry(i);
                 } else {
@@ -724,8 +732,9 @@ struct SearchAlgorithm {
             auto probe_offset = page_->page_index[current_index];
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
-            bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                       query_.upperbound >= probe_entry->time;
+            bool proceed = false;
+            bool probe_in_time_range = query_.begin <= probe_entry->time &&
+                                       query_.end   >= probe_entry->time;
             if (probe != AKU_ID_COMPRESSED) {
                 if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
 #ifdef DEBUG
@@ -749,12 +758,12 @@ struct SearchAlgorithm {
                         break;
                     }
                 }
-                probe_in_time_range = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
-                                                   : query_.upperbound >= probe_entry->time;
+                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                       : query_.upperbound >= probe_entry->time;
             } else {
-                probe_in_time_range = scan_compressed_entries(probe_entry);
+                proceed = scan_compressed_entries(probe_entry);
             }
-            if (!probe_in_time_range || probe_index >= MAX_INDEX_) {
+            if (!proceed || probe_index >= MAX_INDEX_) {
                 // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
                 // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
                 // at the end of the page

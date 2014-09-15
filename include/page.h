@@ -97,10 +97,12 @@ struct SearchQuery {
     typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
 
     // search query
-    aku_TimeStamp lowerbound;     //< begining of the time interval (0 for -inf)
-    aku_TimeStamp upperbound;     //< end of the time interval (0 for inf)
+    aku_TimeStamp lowerbound;     //< begining of the time interval (0 for -inf) to search
+    aku_TimeStamp upperbound;     //< end of the time interval (0 for inf) to search
+    aku_TimeStamp      begin;     //< begining of the time interval (0 for -inf) to return
+    aku_TimeStamp        end;     //< end of the time interval (0 for inf) to return
     MatcherFn     param_pred;     //< parmeter search predicate
-    int            direction;      //< scan direction
+    int            direction;     //< scan direction
 
     /** Query c-tor for single parameter searching
      *  @param pid parameter id
@@ -111,6 +113,8 @@ struct SearchQuery {
     SearchQuery( aku_ParamId      param_id
                , aku_TimeStamp    low
                , aku_TimeStamp    upp
+               , aku_TimeStamp    begin
+               , aku_TimeStamp    end
                , int              scan_dir);
 
 
@@ -123,6 +127,8 @@ struct SearchQuery {
     SearchQuery( MatcherFn     matcher
                , aku_TimeStamp low
                , aku_TimeStamp upp
+               , aku_TimeStamp begin
+               , aku_TimeStamp end
                , int           scan_dir);
 };
 

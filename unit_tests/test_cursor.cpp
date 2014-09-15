@@ -195,7 +195,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     }
 
     auto match_all = [](aku_ParamId) { return SearchQuery::MATCH; };
-    SearchQuery q(match_all, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, dir);
+    SearchQuery q(match_all, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, dir);
 
     std::vector<CoroCursor> cursors(n_cursors);
     for (int i = 0; i < n_cursors; i++) {
