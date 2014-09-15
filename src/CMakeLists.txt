@@ -10,6 +10,7 @@ add_library(akumuli SHARED
     ../include/sequencer.h
     ../include/cursor.h
     ../include/internal_cursor.h
+    ../include/compression.h
     storage.cpp
     page.cpp
     akumuli.cpp

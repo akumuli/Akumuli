@@ -22,6 +22,7 @@
 #include <apr_time.h>
 #include "timsort.hpp"
 #include "page.h"
+#include "compression.h"
 #include "akumuli_def.h"
 
 #include <random>
@@ -29,6 +30,43 @@
 
 
 namespace Akumuli {
+
+// Time stamps (sorted) -> Delta -> RLE -> Base128
+typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
+
+// Base128 -> RLE -> Delta -> Timestamps
+typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128TSReader;
+typedef RLEStreamReader<__Base128TSReader, uint64_t> __RLETSReader;
+typedef DeltaStreamReader<__RLETSReader, uint64_t> DeltaRLETSReader;
+
+// ParamId -> Base128
+typedef Base128StreamWriter<uint32_t> Base128IdWriter;
+
+// Base128 -> ParamId
+typedef Base128StreamReader<uint32_t, const unsigned char*> Base128IdReader;
+
+// Length -> RLE -> Base128
+typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
+typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
+
+// Base128 -> RLE -> Length
+typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
+typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
+
+// Offset -> Delta -> ZigZag -> RLE -> Base128
+typedef Base128StreamWriter<int64_t> __Base128OffWriter;
+typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;
+typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;
+typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;
+
+// Base128 -> RLE -> ZigZag -> Delta -> Offset
+//typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
+typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128OffReader;
+typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
+typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
+typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
 
 std::ostream& operator << (std::ostream& st, CursorResult res) {
     st << "CursorResult" << boost::to_string(res);
@@ -47,9 +85,13 @@ static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b
 SearchQuery::SearchQuery( aku_ParamId   param_id
                         , aku_TimeStamp low
                         , aku_TimeStamp upp
+                        , aku_TimeStamp begin
+                        , aku_TimeStamp end
                         , int           scan_dir)
     : lowerbound(low)
     , upperbound(upp)
+    , begin(begin)
+    , end(end)
     , param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
     , direction(scan_dir)
 {
@@ -58,9 +100,13 @@ SearchQuery::SearchQuery( aku_ParamId   param_id
 SearchQuery::SearchQuery(MatcherFn matcher
                         , aku_TimeStamp low
                         , aku_TimeStamp upp
+                        , aku_TimeStamp begin
+                        , aku_TimeStamp end
                         , int scan_dir)
     : lowerbound(low)
     , upperbound(upp)
+    , begin(begin)
+    , end(end)
     , param_pred(matcher)
     , direction(scan_dir)
 {
@@ -153,7 +199,10 @@ void PageHeader::close() {
     close_count++;
 }
 
-int PageHeader::add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRange range) {
+int PageHeader::add_entry( const aku_ParamId param
+                          , const aku_TimeStamp timestamp
+                          , const aku_MemRange range ) 
+{
 
     const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
                               + range.length              // data size (in bytes)
@@ -181,6 +230,84 @@ int PageHeader::add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRan
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
+int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required) {
+    const auto
+        SPACE_REQUIRED = range.length + free_space_required,
+        SPACE_NEEDED = range.length;
+    if (get_free_space() < SPACE_REQUIRED) {
+        return AKU_EOVERFLOW;
+    }
+    char* free_slot = data() + last_offset;
+    free_slot -= SPACE_NEEDED;
+    memcpy((void*)free_slot, range.address, SPACE_NEEDED);
+    last_offset = free_slot - cdata();
+    return AKU_SUCCESS;
+}
+
+int PageHeader::complete_chunk(const ChunkHeader& data) {
+    // NOTE: it is possible to avoid copying and write directly to page
+    // instead of temporary byte vectors
+    ByteVector timestamps;
+    ByteVector paramids;
+    ByteVector offsets;
+    ByteVector lengths;
+
+    DeltaRLETSWriter timestamp_stream(timestamps);
+    Base128IdWriter paramid_stream(paramids);
+    DeltaRLEOffWriter offset_stream(offsets);
+    RLELenWriter length_stream(lengths);
+
+    for (auto i = 0ul; i < data.timestamps.size(); i++) {
+        timestamp_stream.put(data.timestamps.at(i));
+        paramid_stream.put(data.paramids.at(i));
+        offset_stream.put(data.offsets.at(i));
+        length_stream.put(data.lengths.at(i));
+    }
+    timestamp_stream.close();
+    paramid_stream.close();
+    offset_stream.close();
+    length_stream.close();
+
+    uint32_t size_estimate =
+            static_cast<uint32_t>( timestamp_stream.size()
+                    + paramid_stream.size()
+                    + offset_stream.size()
+                    + length_stream.size());
+
+    aku_Status status;
+    aku_MemRange head;
+
+    while(true) {
+        // Body
+        status = add_chunk(timestamp_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= timestamp_stream.size();
+        status = add_chunk(paramid_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= paramid_stream.size();
+        status = add_chunk(offset_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= offset_stream.size();
+        status = add_chunk(length_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        // Head
+        uint32_t n_elements = data.lengths.size();
+        aku_TimeStamp first_ts = data.timestamps.front();
+        head = {&n_elements, sizeof(n_elements)};
+        status = add_entry(AKU_ID_COMPRESSED, first_ts, head);
+        break;
+    }
+    return status;
+}
+
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     if (index >= 0 && index < count) {
         auto offset = page_index[index];
@@ -193,6 +320,10 @@ const aku_Entry *PageHeader::read_entry(aku_EntryOffset offset) const {
     auto ptr = cdata() + offset;
     auto entry_ptr = reinterpret_cast<const aku_Entry*>(ptr);
     return entry_ptr;
+}
+
+const void* PageHeader::read_entry_data(aku_EntryOffset offset) const {
+    return cdata() + offset;
 }
 
 int PageHeader::get_entry_length_at(int entry_index) const {
@@ -507,99 +638,158 @@ struct SearchAlgorithm {
         bst.n_steps += steps;
     }
 
+    bool scan_compressed_entries(aku_Entry const* probe_entry)
+    {
+        ChunkHeader header;
+
+        auto pbegin = (const unsigned char*)(probe_entry->value + 1);
+        auto pend = (const unsigned char*)(page_->cdata() + page_->length);
+        auto probe_length = probe_entry->value[0];
+
+        // read lengths
+        RLELenReader len_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.lengths.push_back(len_reader.next());
+        }
+        pbegin = len_reader.pos();
+
+        // read offsets
+        DeltaRLEOffReader off_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.offsets.push_back(off_reader.next());
+        }
+        pbegin = off_reader.pos();
+
+        // read paramids
+        Base128IdReader pid_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.paramids.push_back(pid_reader.next());
+        }
+        pbegin = pid_reader.pos();
+
+        // read timestamps
+        DeltaRLETSReader tst_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.timestamps.push_back(tst_reader.next());
+        }
+
+        bool probe_in_time_range = true;
+
+        auto cursor = cursor_;
+        auto& caller = caller_;
+        auto page = page_;
+        auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
+            CursorResult result = {
+                header.offsets[i],
+                header.lengths[i],
+                header.timestamps[i],
+                header.paramids[i],
+                page
+            };
+            cursor->put(caller, result);
+        };
+
+        if (IS_BACKWARD_) {
+            for (int i = static_cast<int>(probe_length - 1); i >= 0; i--) {
+                probe_in_time_range = query_.begin <= header.timestamps[i] &&
+                                      query_.end >= header.timestamps[i];
+                if (probe_in_time_range) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (auto i = 0ul; i != probe_length; i++) {
+                probe_in_time_range = query_.begin <= header.timestamps[i] &&
+                                      query_.end >= header.timestamps[i];
+                if (probe_in_time_range) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.upperbound >= probe_entry->time;
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        }
+        return probe_in_time_range;
+    }
+
+    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
+#ifdef DEBUG
+        // Debug variables
+        aku_TimeStamp dbg_prev_ts;
+        long dbg_count = 0;
+#endif
+        int index_increment = IS_BACKWARD_ ? -1 : 1;
+        while (true) {
+            auto current_index = probe_index;
+            probe_index += index_increment;
+            auto probe_offset = page_->page_index[current_index];
+            auto probe_entry = page_->read_entry(probe_offset);
+            auto probe = probe_entry->param_id;
+            bool proceed = false;
+            bool probe_in_time_range = query_.begin <= probe_entry->time &&
+                                       query_.end   >= probe_entry->time;
+            if (probe != AKU_ID_COMPRESSED) {
+                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+#ifdef DEBUG
+                    if (dbg_count) {
+                        // check for backward direction
+                        auto is_ok = IS_BACKWARD_ ? (dbg_prev_ts >= probe_entry->time)
+                                                  : (dbg_prev_ts <= probe_entry->time);
+                        assert(is_ok);
+                    }
+                    dbg_prev_ts = probe_entry->time;
+                    dbg_count++;
+#endif
+                    CursorResult result = {
+                        static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry)),
+                        probe_entry->length,
+                        probe_entry->time,
+                        probe,//id
+                        page_
+                    };
+                    if (!cursor_->put(caller_, result)) {
+                        break;
+                    }
+                }
+                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                       : query_.upperbound >= probe_entry->time;
+            } else {
+                proceed = scan_compressed_entries(probe_entry);
+            }
+            if (!proceed || probe_index >= MAX_INDEX_) {
+                // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
+                // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
+                // at the end of the page
+                break;
+            }
+        }
+        return std::make_tuple(0ul, 0ul);
+    }
+
     void scan() {
         if (range_.begin != range_.end) {
             cursor_->set_error(caller_, AKU_EGENERAL);
             return;
         }
-	if (range_.begin >= MAX_INDEX_) {
-	    cursor_->set_error(caller_, AKU_EOVERFLOW);
-	    return;
-	}
-        if (range_.begin < MAX_INDEX_) {
-            uint64_t start_offset = 0ul,
-                     stop_offset = 0ul;
-#ifdef DEBUG
-            // Debug variables
-            aku_TimeStamp dbg_prev_ts;
-            long dbg_count = 0;
-#endif
-            auto probe_index = range_.begin;
-            start_offset = page_->page_index[probe_index];
-            if (IS_BACKWARD_) {
-                while (true) {
-                    auto current_index = probe_index--;
-                    auto probe_offset = page_->page_index[current_index];
-                    auto probe_entry = page_->read_entry(probe_offset);
-                    auto probe = probe_entry->param_id;
-                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                               query_.upperbound >= probe_entry->time;
-                    if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-#ifdef DEBUG
-                        if (dbg_count) {
-                            // check for backward direction
-                            auto is_ok = dbg_prev_ts >= probe_entry->time;
-                            assert(is_ok);
-                        }
-                        dbg_prev_ts = probe_entry->time;
-                        dbg_count++;
-#endif
-                        if (!cursor_->put(caller_, probe_offset, page_)) {
-                            break;
-                        }
-                    }
-                    if (probe_entry->time < query_.lowerbound || current_index == 0u) {
-                        stop_offset = probe_offset;
-                        break;
-                    }
-                }
-            } else {
-                while (true) {
-                    auto current_index = probe_index++;
-                    if (current_index >= MAX_INDEX_) {
-                        break;
-                    }
-                    auto probe_offset = page_->page_index[current_index];
-                    auto probe_entry = page_->read_entry(probe_offset);
-                    auto probe = probe_entry->param_id;
-                    bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                               query_.upperbound >= probe_entry->time;
-                    if (query_.param_pred(probe) == SearchQuery::MATCH  && probe_in_time_range) {
-#ifdef DEBUG
-                        if (dbg_count) {
-                            // check for forward direction
-                            auto is_ok = dbg_prev_ts <= probe_entry->time;
-                            assert(is_ok);
-                        }
-                        dbg_prev_ts = probe_entry->time;
-                        dbg_count++;
-#endif
-                        if (!cursor_->put(caller_, probe_offset, page_)) {
-                            break;
-                        }
-                        stop_offset = probe_offset;
-                    }
-                    if (probe_entry->time > query_.upperbound) {
-                        break;
-                    }
-                }
-            }
-            auto& stats = get_global_search_stats();
-            {
-                std::lock_guard<std::mutex> guard(stats.mutex);
-                auto& scan_stats = stats.stats.scan;
-                uint64_t sum;
-                if (stop_offset < start_offset) {
-                    sum = start_offset - stop_offset;
-                } else {
-                    sum = stop_offset - start_offset;
-                }
-                if (IS_BACKWARD_) {
-                    scan_stats.bwd_bytes += sum;
-                } else {
-                    scan_stats.fwd_bytes += sum;
-                }
-            }
+        if (range_.begin >= MAX_INDEX_) {
+            cursor_->set_error(caller_, AKU_EOVERFLOW);
+            return;
+        }
+
+        auto sums = scan_impl(range_.begin);
+
+        auto& stats = get_global_search_stats();
+        {
+            std::lock_guard<std::mutex> guard(stats.mutex);
+            stats.stats.scan.fwd_bytes += std::get<0>(sums);
+            stats.stats.scan.bwd_bytes += std::get<1>(sums);
         }
         cursor_->complete(caller_);
     }

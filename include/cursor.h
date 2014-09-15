@@ -36,14 +36,14 @@ namespace Akumuli {
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<CursorResult> offsets;
+    std::vector<CursorResult> results;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader* page);
+    virtual bool put(Caller&, CursorResult const& result);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -51,14 +51,14 @@ struct RecordingCursor : InternalCursor {
 
 //! Simple static buffer cursor
 struct BufferedCursor : InternalCursor {
-    CursorResult* offsets_buffer;
+    CursorResult* results_buffer;
     size_t buffer_size;
     size_t count;
     bool completed = false;
     int error_code = AKU_SUCCESS;
     //! C-tor
     BufferedCursor(CursorResult *buf, size_t size);
-    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual bool put(Caller&, CursorResult const& result);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -75,7 +75,7 @@ struct DirectPageSyncCursor : InternalCursor {
     Rand& rand_;
     //! C-tor
     DirectPageSyncCursor(Rand& rand);
-    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader *page);
+    virtual bool put(Caller&, CursorResult const& result);
     virtual void complete(Caller&);
     virtual void set_error(Caller&, int error_code);
 };
@@ -135,7 +135,7 @@ struct CoroCursor : Cursor {
 
     void set_error(Caller& caller, int error_code);
 
-    bool put(Caller& caller, aku_EntryOffset off, const PageHeader *page);
+    bool put(Caller& caller, CursorResult const& result);
 
     void complete(Caller& caller);
 

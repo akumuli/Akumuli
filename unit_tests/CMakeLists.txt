@@ -5,6 +5,7 @@ add_executable(
         test_mmap.cpp
         test_sorting.cpp
         test_cursor.cpp
+        test_compression.cpp
         ../src/storage.cpp
         ../src/page.cpp
         ../src/akumuli.cpp
@@ -18,5 +19,6 @@ target_link_libraries(
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
+    pthread
 )
 add_test(akumuli_tests ut_main)

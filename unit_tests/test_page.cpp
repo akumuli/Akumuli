@@ -148,7 +148,7 @@ void generic_search_test
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 0x10000);
     auto page = init_search_range_test(page_mem.data(), page_mem.size(), 100);
-    SearchQuery query(param_id, begin, end, direction);
+    SearchQuery query(param_id, begin, end, begin, end, direction);
     RecordingCursor cursor;
     Caller caller;
 
@@ -161,17 +161,19 @@ void generic_search_test
         return;
     }
 
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
+    BOOST_CHECK_EQUAL(cursor.results.size(), expectations.ressize);
 
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
+    for(size_t i = 0; i < cursor.results.size(); i++) {
+        auto t = cursor.results[i].timestamp;
+        auto p = page->read_entry_data(cursor.results[i].data_offset);
+        const uint32_t* value = static_cast<const uint32_t*>(p);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
-            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew - i);
+            BOOST_CHECK_EQUAL(value[0], expectations.skew - i);
         } else {
-            BOOST_CHECK_EQUAL(entry->value[0], expectations.skew + i);
+            BOOST_CHECK_EQUAL(value[0], expectations.skew + i);
         }
-        BOOST_CHECK_GE(entry->time, begin);
-        BOOST_CHECK_LE(entry->time, end);
+        BOOST_CHECK_GE(t, begin);
+        BOOST_CHECK_LE(t, end);
     }
 }
 
@@ -300,7 +302,7 @@ void generic_search_test_with_skew
     page_mem.resize(sizeof(PageHeader) + 0x10000);
     auto page = init_search_range_test_with_skew(page_mem.data(), page_mem.size(), 1000, 2);
 
-    SearchQuery query(param_id, begin, end, direction);
+    SearchQuery query(param_id, begin, end, begin, end, direction);
     RecordingCursor cursor;
     Caller caller;
 
@@ -312,14 +314,14 @@ void generic_search_test_with_skew
     if (expectations.error_code != RecordingCursor::NO_ERROR)
         return;
 
-    BOOST_CHECK_EQUAL(cursor.offsets.size(), expectations.ressize);
+    BOOST_CHECK_EQUAL(cursor.results.size(), expectations.ressize);
 
     std::vector<int64_t> timestamps;
-    for(size_t i = 0; i < cursor.offsets.size(); i++) {
-        const aku_Entry* entry = page->read_entry(cursor.offsets[i].first);
-        BOOST_CHECK_GE(entry->time, begin);
-        BOOST_CHECK_LE(entry->time, end);
-        timestamps.push_back(entry->time);
+    for(size_t i = 0; i < cursor.results.size(); i++) {
+        auto ts = cursor.results[i].timestamp;
+        BOOST_CHECK_GE(ts, begin);
+        BOOST_CHECK_LE(ts, end);
+        timestamps.push_back(ts);
     }
 
     if (direction == AKU_CURSOR_DIR_FORWARD) {
@@ -350,12 +352,12 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 // TODO: test multi-part search calls
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 {
-    const int               buf_len = 1024*1024*8;
-    std::vector<char>       buffer(buf_len);
-    std::vector<uint64_t>    timestamps;
+    const int                   buf_len = 1024*1024*8;
+    std::vector<char>           buffer(buf_len);
+    std::vector<uint64_t>       timestamps;
     std::vector<aku_ParamId>    paramids;
-    int64_t                 time_stamp = 0L;
-    PageHeader*             page = nullptr;
+    int64_t                     time_stamp = 0L;
+    PageHeader*                 page = nullptr;
 
     page = new (&buffer[0]) PageHeader(0, buf_len, 0);
 
@@ -390,19 +392,21 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         BOOST_REQUIRE(start_time > 0 && start_time < page->bbox.max_timestamp);
         BOOST_REQUIRE(stop_time > 0 && stop_time < page->bbox.max_timestamp);
         BOOST_REQUIRE(stop_time > start_time);
-        SearchQuery query(id2search, start_time, stop_time, dir);
+        SearchQuery query(id2search, start_time, stop_time, start_time, stop_time, dir);
         Caller caller;
         RecordingCursor cursor;
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
-        for(size_t i = 0; i < cursor.offsets.size(); i++) {
-            auto offset = cursor.offsets.at(i).first;
-            const aku_Entry* entry = page->read_entry(offset);
-            auto index = entry->value[0];
+        for(size_t i = 0; i < cursor.results.size(); i++) {
+            auto offset = cursor.results.at(i).data_offset;
+            const uint32_t* value = (const uint32_t*)page->read_entry_data(offset);
+            auto t = cursor.results.at(i).timestamp;
+            auto id = cursor.results.at(i).param_id;
+            auto index = value[0];
             matches.push_back(index);
-            BOOST_REQUIRE_EQUAL(entry->time, timestamps[index]);
-            BOOST_REQUIRE(entry->param_id == paramids[index]);
-            BOOST_REQUIRE(entry->value[0] == (uint32_t)index);
+            BOOST_REQUIRE_EQUAL(t, timestamps[index]);
+            BOOST_REQUIRE(id == paramids[index]);
+            BOOST_REQUIRE(value[0] == (uint32_t)index);
         }
         // Check
         size_t match_index = 0u;
@@ -433,4 +437,117 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         }
         BOOST_REQUIRE_EQUAL(match_index, matches.size());
     }
+}
+
+void generic_compression_test
+    ( aku_ParamId param_id
+    , aku_TimeStamp begin
+    , int dir
+    , int n_elements_per_chunk
+    )
+{
+    std::vector<char> page_mem;
+    page_mem.resize(sizeof(PageHeader) + 0x10000);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+
+    ChunkHeader header;
+    std::vector<ChunkHeader> expected;
+    uint32_t pos = 0u;
+    for (int i = 1; true; i++) {
+        pos++;
+        begin += 1 + std::rand() % 50;
+        header.lengths.push_back(std::rand() % 10 + 1);
+        header.offsets.push_back(pos + std::rand() % 10);
+        header.paramids.push_back(param_id);
+        header.timestamps.push_back(begin);
+        char buffer[100];
+        aku_MemRange range = {buffer, static_cast<uint32_t>(std::rand() % 99 + 1)};
+        auto status = page->add_chunk(range, header.lengths.size() * 24);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        if (i % n_elements_per_chunk == 0) {
+            status = page->complete_chunk(header);
+            if (status != AKU_SUCCESS) {
+                break;
+            }
+            // set expected
+            expected.push_back(header);
+            header = ChunkHeader();
+        }
+    }
+
+    page->_sort();
+
+    BOOST_REQUIRE_NE(expected.size(), 0ul);
+
+    // Test sequential access
+    for(const auto& exp_chunk: expected) {
+        auto ts_begin = exp_chunk.timestamps.front();
+        auto ts_end = exp_chunk.timestamps.back();
+        SearchQuery query(param_id, ts_begin, ts_end, ts_begin, ts_end, dir);
+        Caller caller;
+        RecordingCursor cur;
+        page->search(caller, &cur, query);
+
+        BOOST_REQUIRE_EQUAL(cur.results.size(), exp_chunk.timestamps.size());
+
+        if (dir == AKU_CURSOR_DIR_FORWARD) {
+            auto act_it = cur.results.begin();
+            for (auto i = 0ul; i != cur.results.size(); i++) {
+                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
+                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                act_it++;
+            }
+        } else {
+            auto act_it = cur.results.rbegin();
+            for (auto i = 0ul; i != cur.results.size(); i++) {
+                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
+                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                act_it++;
+            }
+        }
+    }
+
+    // Test random access
+    for(const auto& exp_chunk: expected) {
+        auto ix = std::rand() % (exp_chunk.timestamps.size() - 2);
+        auto ts_lowerbound = exp_chunk.timestamps.front();
+        auto ts_upperbound = exp_chunk.timestamps.back();
+        auto ts_begin = exp_chunk.timestamps[ix];
+        auto ts_end = exp_chunk.timestamps[ix + 1];
+        SearchQuery query(param_id, ts_lowerbound, ts_upperbound, ts_begin, ts_end, dir);
+        Caller caller;
+        RecordingCursor cur;
+        page->search(caller, &cur, query);
+
+        BOOST_REQUIRE_EQUAL(cur.results.size(), 2u);
+        if (dir == AKU_CURSOR_DIR_FORWARD) {
+            BOOST_REQUIRE_EQUAL(cur.results[0].timestamp, ts_begin);
+            BOOST_REQUIRE_EQUAL(cur.results[1].timestamp, ts_end);
+        } else {
+            BOOST_REQUIRE_EQUAL(cur.results[1].timestamp, ts_begin);
+            BOOST_REQUIRE_EQUAL(cur.results[0].timestamp, ts_end);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_forward_0) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_FORWARD, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_forward_1) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_FORWARD, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_backward_0) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_BACKWARD, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_Compression_backward_1) {
+    generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_BACKWARD, 100);
 }

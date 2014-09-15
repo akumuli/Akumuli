@@ -22,8 +22,8 @@
 namespace Akumuli {
 
 
-bool RecordingCursor::put(Caller &, aku_EntryOffset offset, const PageHeader *page) {
-    offsets.push_back(std::make_pair(offset, page));
+bool RecordingCursor::put(Caller &, const CursorResult &result) {
+    results.push_back(result);
     return true;
 }
 
@@ -38,19 +38,19 @@ void RecordingCursor::set_error(Caller&, int error_code) {
 
 
 BufferedCursor::BufferedCursor(CursorResult* buf, size_t size)
-    : offsets_buffer(buf)
+    : results_buffer(buf)
     , buffer_size(size)
     , count(0)
 {
 }
 
-bool BufferedCursor::put(Caller&, aku_EntryOffset offset, const PageHeader* page) {
+bool BufferedCursor::put(Caller&, CursorResult const& result) {
     if (count == buffer_size) {
         completed = true;
         error_code = AKU_EOVERFLOW;
         return false;
     }
-    offsets_buffer[count++] = std::make_pair(offset, page);
+    results_buffer[count++] = result;
     return true;
 }
 
@@ -74,12 +74,15 @@ DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)
 {
 }
 
-bool DirectPageSyncCursor::put(Caller&, aku_EntryOffset offset, const PageHeader *page) {
-    if (last_page_ != nullptr && last_page_ != page) {
-        const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
+bool DirectPageSyncCursor::put(Caller&, CursorResult const& result) {
+    if (last_page_ != nullptr && last_page_ != result.page) {
+        // Stop synchronizing page
+        auto mutable_page = const_cast<PageHeader*>(last_page_);
+        mutable_page->sync_next_index(0, 0, true);
     }
-    const_cast<PageHeader*>(page)->sync_next_index(offset, rand_(), false);
-    last_page_ = page;
+    auto mutable_page = const_cast<PageHeader*>(result.page);
+    mutable_page->sync_next_index(result.data_offset - sizeof(aku_Entry), rand_(), false);
+    last_page_ = result.page;
     return true;
 }
 
@@ -157,7 +160,7 @@ void CoroCursor::set_error(Caller& caller, int error_code) {
     caller();
 }
 
-bool CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page) {
+bool CoroCursor::put(Caller& caller, CursorResult const& result) {
     if (closed_) {
         return false;
     }
@@ -165,7 +168,7 @@ bool CoroCursor::put(Caller& caller, aku_EntryOffset off, const PageHeader* page
         // yield control to client
         caller();
     }
-    usr_buffer_[write_index_++] = std::make_pair(off, page);
+    usr_buffer_[write_index_++] = result;
     return true;
 }
 
@@ -177,20 +180,23 @@ void CoroCursor::complete(Caller& caller) {
 
 // FanInCursor implementation
 
-typedef std::tuple<aku_TimeStamp, aku_ParamId, aku_EntryOffset, int, int, const PageHeader*> HeapItem;
+typedef std::tuple<CursorResult, int, int> HeapItem;
 
 struct HeapPred {
     int dir;
     bool operator () (HeapItem const& lhs, HeapItem const& rhs) {
         bool result = false;
-        if (dir == AKU_CURSOR_DIR_FORWARD) {
+        const CursorResult& lres = std::get<0>(lhs);
+        const CursorResult& rres = std::get<0>(rhs);
+        const auto lkey = std::make_tuple(lres.timestamp, lres.param_id);
+        const auto rkey = std::make_tuple(rres.timestamp, rres.param_id);
+        if (dir == AKU_CURSOR_DIR_BACKWARD) {
             // Min heap is used
-            result = lhs > rhs;
-        } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
-            // Max heap is used
-            result = lhs < rhs;
+            result = lkey < rkey;
+        } else if (dir == AKU_CURSOR_DIR_FORWARD) {
+            result = lkey > rkey;
         } else {
-            AKU_PANIC("bad direction of the fan-in cursor");
+            AKU_PANIC("bad direction of the fan-in cursor")
         }
         return result;
     }
@@ -206,7 +212,7 @@ FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size,
 
 void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
-    HeapItem dbg_prev_item;
+    CursorResult dbg_prev_item;
     bool dbg_first_item = true;
     long dbg_counter = 0;
 #endif
@@ -234,11 +240,8 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
-                auto offset = buffer[buf_ix].first;
-                auto page = buffer[buf_ix].second;
-                const aku_Entry* entry = page->read_entry(offset);
                 auto cur_count = nwrites - buf_ix;
-                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, cur_count, page);
+                auto key = std::make_tuple(buffer[buf_ix], cur_index, cur_count);
                 heap.push_back(key);
             }
         }
@@ -249,29 +252,28 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     while(!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), pred);
         auto item = heap.back();
-        auto offset = std::get<2>(item);
-        int cur_index = std::get<3>(item);
-        int cur_count = std::get<4>(item);
-        auto cur_page = std::get<5>(item);
+        const CursorResult& cur_result = std::get<0>(item);
+        int cur_index = std::get<1>(item);
+        int cur_count = std::get<2>(item);
 #ifdef DEBUG
-        auto dbg_time_stamp = std::get<0>(item);
-        auto dbg_param_id = std::get<1>(item);
+        auto dbg_time_stamp = cur_result.timestamp;
+        auto dbg_param_id = cur_result.param_id;
         AKU_UNUSED(dbg_time_stamp);
         AKU_UNUSED(dbg_param_id);
         if (!dbg_first_item) {
             bool cmp_res = false;
-            if (direction_ == AKU_CURSOR_DIR_BACKWARD)  {
-                cmp_res = dbg_prev_item >= item;
+            if (direction_ == AKU_CURSOR_DIR_FORWARD) {
+                cmp_res = dbg_prev_item.timestamp <= std::get<0>(item).timestamp;
             } else {
-                cmp_res = dbg_prev_item <= item;
+                cmp_res = dbg_prev_item.timestamp >= std::get<0>(item).timestamp;
             }
             assert(cmp_res);
         }
-        dbg_prev_item = item;
+        dbg_prev_item = std::get<0>(item);
         dbg_first_item = false;
         dbg_counter++;
 #endif
-        out_cursor_.put(caller, offset, cur_page);
+        out_cursor_.put(caller, cur_result);
         heap.pop_back();
         if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
@@ -281,10 +283,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
                 return;
             }
             for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
-                auto offset = buffer[buf_ix].first;
-                auto page = buffer[buf_ix].second;
-                const aku_Entry* entry = page->read_entry(offset);
-                auto key = std::make_tuple(entry->time, entry->param_id, offset, cur_index, nwrites - buf_ix, page);
+                auto key = std::make_tuple(buffer[buf_ix], cur_index, nwrites - buf_ix);
                 heap.push_back(key);
                 std::push_heap(heap.begin(), heap.end(), pred);
             }

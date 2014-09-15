@@ -35,7 +35,7 @@ struct InternalCursor;
 typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
-struct PageHeader;
+struct CursorResult;
 
 
 /** Interface used by different search procedures
@@ -43,7 +43,7 @@ struct PageHeader;
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual bool put(Caller&, aku_EntryOffset offset, const PageHeader* page) = 0;
+    virtual bool put(Caller&, CursorResult const& offset) = 0;
     virtual void complete(Caller&) = 0;
     //! Set error and stop execution
     virtual void set_error(Caller&, int error_code) = 0;

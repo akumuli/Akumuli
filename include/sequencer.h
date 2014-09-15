@@ -35,12 +35,15 @@ namespace Akumuli {
 struct TimeSeriesValue {
     std::tuple<aku_TimeStamp, aku_ParamId> key_;
     aku_EntryOffset value;
+    uint32_t value_length;
 
     TimeSeriesValue();
 
-    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset);
+    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length);
 
     aku_TimeStamp get_timestamp() const;
+
+    aku_ParamId get_paramid() const;
 
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
@@ -73,6 +76,7 @@ struct Sequencer {
     mutable Mutex                progress_flag_;
     mutable Mutex                runs_resize_lock_;
     mutable std::vector<RWLock>  run_locks_;
+    uint32_t                     space_estimate_; //< Space estimate for storing all data
 
     Sequencer(PageHeader const* page, aku_Duration window_size);
 
@@ -84,12 +88,20 @@ struct Sequencer {
 
     void merge(Caller& caller, InternalCursor* cur, Lock&& lock);
 
+    void merge_and_compress(Caller& caller, InternalCursor* cur, Lock&& lock, PageHeader* target);
+
     Lock close();
 
     // Searching
     void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
 
     aku_TimeStamp get_window() const;
+
+    /** Returns number of bytes needed to store all data from the checkpoint
+     *  in compressed mode. This number can be more than actually needed but
+     *  can't be less (only overshoot is ok, undershoot is error).
+     */
+    uint32_t get_space_estimate() const;
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋

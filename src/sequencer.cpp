@@ -15,16 +15,22 @@
  *
  */
 
-#include <thread>
-#include <boost/heap/skew_heap.hpp>
 #include "akumuli_def.h"
 #include "sequencer.h"
 #include "util.h"
+#include "compression.h"
+
+#include <thread>
+#include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
 
+// ParamId index inside key
 #define PARAM_ID 1
+// TimeStamp index inside key
 #define TIMESTMP 0
+// Max space required to store one data element
+#define SPACE_PER_ELEMENT 20
 
 using namespace std;
 
@@ -44,10 +50,19 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset)
+TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length)
     : key_(ts, id)
     , value(offset)
+    , value_length(value_length)
 {
+}
+
+aku_TimeStamp TimeSeriesValue::get_timestamp() const {
+    return std::get<TIMESTMP>(key_);
+}
+
+aku_ParamId TimeSeriesValue::get_paramid() const {
+    return std::get<PARAM_ID>(key_);
 }
 
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
@@ -62,6 +77,7 @@ Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
     , top_timestamp_()
     , checkpoint_(0u)
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
+    , space_estimate_(0u)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
@@ -90,7 +106,7 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
     }
     vector<PSortedRun> new_runs;
     for (auto& sorted_run: runs_) {
-        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
+        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
         if (it == sorted_run->begin()) {
             // all timestamps are newer than old_top, do nothing
             new_runs.push_back(move(sorted_run));
@@ -109,6 +125,10 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
         }
     }
     Lock guard(runs_resize_lock_);
+    space_estimate_ = 0u;
+    for (auto& sorted_run: new_runs) {
+        space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
+    }
     swap(runs_, new_runs);
 }
 
@@ -150,6 +170,7 @@ std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
     key_->push_back(value);
 
     Lock guard(runs_resize_lock_);
+    space_estimate_ += SPACE_PER_ELEMENT;
     auto begin = runs_.begin();
     auto end = runs_.end();
     auto insert_it = lower_bound(begin, end, key_, top_element_more<PSortedRun>);
@@ -253,8 +274,9 @@ struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
     }
 };
 
-template <int dir>
-void kway_merge(vector<Sequencer::PSortedRun> const& runs, Caller& caller, InternalCursor* out_iter, PageHeader const* page) {
+/** Merge sequences and push it to consumer */
+template <int dir, class Consumer>
+void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
     typedef RunIter<Sequencer::PSortedRun, dir> RIter;
     typedef typename RIter::range_type range_t;
     typedef typename RIter::value_type KeyType;
@@ -282,7 +304,7 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Caller& caller, Inter
         HeapItem item = heap.top();
         KeyType point = get<0>(item);
         int index = get<1>(item);
-        if (!out_iter->put(caller, point.value, page)) {
+        if (!cons(point)) {
             // Interrupted
             return;
         }
@@ -309,9 +331,19 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
         return;
     }
 
-    wrlock_all(run_locks_);
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, caller, cur, page_);
-    unlock_all(run_locks_);
+    auto page = page_;
+    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+        CursorResult result = {
+            val.value,
+            val.value_length,
+            val.get_timestamp(),
+            val.get_paramid(),
+            page
+        };
+        return cur->put(caller, result);
+    };
+
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
 
     // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
     // we've got only one place to store ready to sync data, if such data is present
@@ -323,8 +355,54 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
     cur->complete(caller);
 }
 
+void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequencer::Lock&& lock, PageHeader* target) {
+    if (!lock.owns_lock()) {
+        cur->set_error(caller, AKU_EBUSY);
+        return;
+    }
+    if (ready_.size() == 0) {
+        cur->set_error(caller, AKU_ENO_DATA);
+        return;
+    }
+
+    ChunkHeader chunk_header;
+
+    auto consumer = [&](TimeSeriesValue const& val) {
+        auto ts = val.get_timestamp();
+        auto id = val.get_paramid();
+        chunk_header.timestamps.push_back(ts);
+        chunk_header.paramids.push_back(id);
+        chunk_header.offsets.push_back(val.value);
+        chunk_header.lengths.push_back(val.value_length);
+        return true;
+    };
+
+    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
+    ready_.clear();
+
+    auto status = target->complete_chunk(chunk_header);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(caller, status);
+        return;
+    }
+
+    // Adjuct index
+    CursorResult result = {
+        target->last_offset,
+        0u, 0ul, 0u,                    // This   is done  for  page  synchronization,  it doesn't  need
+        target                          // full information  and can  be   applied to  group of  entries
+    };                                  // if compression enabled. Target cursor is DirectPageSyncCursor
+    cur->put(caller, result);           // wich is a special case  and doesn't touch anything in `result
+    cur->complete(caller);              // except offset and page fields.
+}
+
 aku_TimeStamp Sequencer::get_window() const {
     return top_timestamp_ - window_size_;
+}
+
+uint32_t Sequencer::get_space_estimate() const {
+    // ready_ must be empty here
+    return space_estimate_ + SPACE_PER_ELEMENT;
 }
 
 struct SearchPredicate {
@@ -349,8 +427,8 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
     }
     SearchPredicate search_pred(q);
     PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u);
-    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u);
+    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u, 0u);
+    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u, 0u);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     copy_if(begin, end, std::back_inserter(*result), search_pred);
@@ -375,10 +453,23 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
         rwlock.unlock();
         run_ix++;
     }
+
+    auto page = page_;
+    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+        CursorResult result = {
+            val.value,
+            val.value_length,
+            val.get_timestamp(),
+            val.get_paramid(),
+            page
+        };
+        return cur->put(caller, result);
+    };
+
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {
-        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, caller, cur, page_);
+        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
-        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, caller, cur, page_);
+        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
     cur->complete(caller);
 }

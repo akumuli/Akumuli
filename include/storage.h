@@ -79,6 +79,7 @@ struct Storage
     PageHeader*             active_page_;
     std::atomic<int>        active_volume_index_;
     aku_Duration            ttl_;                       //< Late write limit
+    bool                    compression;                //< Compression enabled
     std::vector<Volume*>    volumes_;                   //< List of all volumes
 
     LockType                mutex_;                     //< Storage lock (used by worker thread)

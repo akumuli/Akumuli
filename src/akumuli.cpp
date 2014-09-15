@@ -104,8 +104,9 @@ struct CursorImpl : aku_Cursor {
         results.resize(buffer_len);
         int n_results = cursor_->read(results.data(), buffer_len);
         for (int i = 0; i < n_results; i++) {
-            aku_EntryOffset offset = results[i].first;
-            PageHeader const* page = results[i].second;
+            // FIXME: this code will broke with compressed pages
+            aku_EntryOffset offset = results[i].data_offset - sizeof(aku_Entry);
+            PageHeader const* page = results[i].page;
             const aku_Entry* entry = page->read_entry(offset);
             buffer[i] = entry;
         }
@@ -142,7 +143,7 @@ struct DatabaseImpl : public aku_Database
         }
         MatchPred pred(query->params, query->n_params);
         std::unique_ptr<SearchQuery> search_query;
-        search_query.reset(new SearchQuery(pred, {begin}, {end}, scan_dir));
+        search_query.reset(new SearchQuery(pred, {begin}, {end}, {begin}, {end}, scan_dir));
         auto pcur = new CursorImpl(storage_, std::move(search_query));
         return pcur;
     }
@@ -191,7 +192,8 @@ aku_Database* aku_open_database(const char* path, aku_Config config)
 
 void aku_close_database(aku_Database* db)
 {
-    delete db;
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    delete dbi;
 }
 
 aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId *params) {

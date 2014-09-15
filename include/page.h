@@ -23,6 +23,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <vector>
 #include "akumuli.h"
 #include "util.h"
 #include "internal_cursor.h"
@@ -32,9 +33,22 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
-typedef std::pair<aku_EntryOffset, const PageHeader*> CursorResult;
+
+//! PageHeader forward declaration
+struct PageHeader;
+
+
+//! Cursor result
+struct CursorResult {
+    aku_EntryOffset   data_offset;    //< entry data offset (without ts and id)
+    uint32_t          length;         //< entry data length
+    aku_TimeStamp     timestamp;      //< entry timestamp
+    aku_ParamId       param_id;       //< entry param id
+    PageHeader const* page;           //< entry page
+};
 
 std::ostream& operator << (std::ostream& st, CursorResult res);
+
 
 /** Page bounding box.
  *  All data is two dimentional: param-timestamp.
@@ -48,10 +62,12 @@ struct PageBoundingBox {
     PageBoundingBox();
 };
 
+
 struct PageHistogramEntry {
     aku_TimeStamp timestamp;
     uint32_t index;
 };
+
 
 /** Page histogram for approximation search */
 struct PageHistogram {
@@ -81,10 +97,12 @@ struct SearchQuery {
     typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
 
     // search query
-    aku_TimeStamp lowerbound;     //< begining of the time interval (0 for -inf)
-    aku_TimeStamp upperbound;     //< end of the time interval (0 for inf)
+    aku_TimeStamp lowerbound;     //< begining of the time interval (0 for -inf) to search
+    aku_TimeStamp upperbound;     //< end of the time interval (0 for inf) to search
+    aku_TimeStamp      begin;     //< begining of the time interval (0 for -inf) to return
+    aku_TimeStamp        end;     //< end of the time interval (0 for inf) to return
     MatcherFn     param_pred;     //< parmeter search predicate
-    int            direction;      //< scan direction
+    int            direction;     //< scan direction
 
     /** Query c-tor for single parameter searching
      *  @param pid parameter id
@@ -95,6 +113,8 @@ struct SearchQuery {
     SearchQuery( aku_ParamId      param_id
                , aku_TimeStamp    low
                , aku_TimeStamp    upp
+               , aku_TimeStamp    begin
+               , aku_TimeStamp    end
                , int              scan_dir);
 
 
@@ -107,7 +127,17 @@ struct SearchQuery {
     SearchQuery( MatcherFn     matcher
                , aku_TimeStamp low
                , aku_TimeStamp upp
+               , aku_TimeStamp begin
+               , aku_TimeStamp end
                , int           scan_dir);
+};
+
+
+struct ChunkHeader {
+    std::vector<aku_TimeStamp>  timestamps;
+    std::vector<aku_ParamId>    paramids;
+    std::vector<uint32_t>       offsets;
+    std::vector<uint32_t>       lengths;
 };
 
 
@@ -166,7 +196,22 @@ struct PageHeader {
      * @param entry entry
      * @returns operation status
      */
-    int add_entry(aku_ParamId param, aku_TimeStamp timestamp, aku_MemRange data);
+    int add_entry(const aku_ParamId param, const aku_TimeStamp timestamp, const aku_MemRange data);
+
+    /**
+     * Add some data to last entry. (without length)
+     * @param data data element
+     * @param free_space_required minimum amount of space inside the page
+     * @returns operation status
+     */
+    int add_chunk(const aku_MemRange data, const uint32_t free_space_required);
+
+    /**
+     * Complete chunk. Add compressed header and index.
+     * @param data chunk header data (list of sorted timestamps, param ids, offsets and lengths
+     * @returns operation status
+     */
+    int complete_chunk(const ChunkHeader& data);
 
     /**
      * Get length of the entry.
@@ -211,10 +256,18 @@ struct PageHeader {
 
     /**
      * Get pointer to entry without copying using offset
-     * @param index entry index
+     * @param entry offset
      * @returns pointer to entry or NULL
      */
     const aku_Entry* read_entry(aku_EntryOffset offset) const;
+
+    /**
+     * Get pointer to entry data without copying using
+     * data offset.
+     * @param data offset
+     * @returns pointer to entry data or NULL
+     */
+    const void* read_entry_data(aku_EntryOffset offset) const;
 
     /**
      *  Search for entry
