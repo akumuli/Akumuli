@@ -516,11 +516,9 @@ void generic_compression_test
     // Test random access
     for(const auto& exp_chunk: expected) {
         auto ix = std::rand() % (exp_chunk.timestamps.size() - 2);
-        auto ts_lowerbound = exp_chunk.timestamps.front();
-        auto ts_upperbound = exp_chunk.timestamps.back();
         auto ts_begin = exp_chunk.timestamps[ix];
         auto ts_end = exp_chunk.timestamps[ix + 1];
-        SearchQuery query(param_id, ts_lowerbound, ts_upperbound, ts_begin, ts_end, dir);
+        SearchQuery query(param_id, ts_begin, ts_end, ts_begin, ts_end, dir);
         Caller caller;
         RecordingCursor cur;
         page->search(caller, &cur, query);

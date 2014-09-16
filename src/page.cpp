@@ -75,6 +75,13 @@ std::ostream& operator << (std::ostream& st, CursorResult res) {
 
 //------------------------
 
+
+struct ChunkDesc {
+    uint32_t n_elements;
+    aku_EntryOffset data_offset;
+} __attribute__((packed));
+
+
 static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
     if (a == b) {
         return SearchQuery::MATCH;
@@ -299,10 +306,13 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
             break;
         }
         // Head
-        uint32_t n_elements = data.lengths.size();
+        aku_EntryOffset start = last_offset;
+        ChunkDesc desc = { static_cast<uint32_t>(data.lengths.size()), start };
         aku_TimeStamp first_ts = data.timestamps.front();
-        head = {&n_elements, sizeof(n_elements)};
-        status = add_entry(AKU_ID_COMPRESSED, first_ts, head);
+        aku_TimeStamp last_ts = data.timestamps.back();
+        head = {&desc, sizeof(desc)};
+        status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
+        status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
         break;
     }
     return status;
@@ -642,9 +652,10 @@ struct SearchAlgorithm {
     {
         ChunkHeader header;
 
-        auto pbegin = (const unsigned char*)(probe_entry->value + 1);
+        auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
+        auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->data_offset);
         auto pend = (const unsigned char*)(page_->cdata() + page_->length);
-        auto probe_length = probe_entry->value[0];
+        auto probe_length = pdesc->n_elements;
 
         // read lengths
         RLELenReader len_reader(pbegin, pend);
@@ -693,7 +704,7 @@ struct SearchAlgorithm {
             for (int i = static_cast<int>(probe_length - 1); i >= 0; i--) {
                 probe_in_time_range = query_.begin <= header.timestamps[i] &&
                                       query_.end >= header.timestamps[i];
-                if (probe_in_time_range) {
+                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
                     put_entry(i);
                 } else {
                     probe_in_time_range = query_.lowerbound <= header.timestamps[i];
@@ -706,10 +717,10 @@ struct SearchAlgorithm {
             for (auto i = 0ul; i != probe_length; i++) {
                 probe_in_time_range = query_.begin <= header.timestamps[i] &&
                                       query_.end >= header.timestamps[i];
-                if (probe_in_time_range) {
+                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
                     put_entry(i);
                 } else {
-                    probe_in_time_range = query_.upperbound >= probe_entry->time;
+                    probe_in_time_range = query_.upperbound >= header.timestamps[i];
                     if (!probe_in_time_range) {
                         break;
                     }
@@ -735,7 +746,7 @@ struct SearchAlgorithm {
             bool proceed = false;
             bool probe_in_time_range = query_.begin <= probe_entry->time &&
                                        query_.end   >= probe_entry->time;
-            if (probe != AKU_ID_COMPRESSED) {
+            if (probe < AKU_ID_COMPRESSED) {
                 if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
 #ifdef DEBUG
                     if (dbg_count) {
@@ -761,7 +772,14 @@ struct SearchAlgorithm {
                 proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
                                        : query_.upperbound >= probe_entry->time;
             } else {
-                proceed = scan_compressed_entries(probe_entry);
+                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                    proceed = scan_compressed_entries(probe_entry);
+                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                    proceed = scan_compressed_entries(probe_entry);
+                } else {
+                    proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                           : query_.upperbound >= probe_entry->time;
+                }
             }
             if (!proceed || probe_index >= MAX_INDEX_) {
                 // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
