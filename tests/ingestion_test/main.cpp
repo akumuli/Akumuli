@@ -34,24 +34,28 @@ void delete_storage() {
 }
 
 void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+    const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
                                                   , 1, params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = begin;
+    size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             std::cout << aku_error_message(err) << std::endl;
             return;
         }
-        aku_Entry const* entries[1000];
-        int n_entries = aku_cursor_read(cursor, entries, 1000);
+        aku_TimeStamp timestamps[NUM_ELEMENTS];
+        aku_ParamId paramids[NUM_ELEMENTS];
+        aku_PData pointers[NUM_ELEMENTS];
+        uint32_t lengths[NUM_ELEMENTS];
+        int n_entries = aku_cursor_read_columns(cursor, timestamps, paramids, pointers, lengths, NUM_ELEMENTS);
         for (int i = 0; i < n_entries; i++) {
-            aku_Entry const* p = entries[i];
-            if (p->time != current_time) {
-                std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << p->time  << std::endl;
+            if (timestamps[i] != current_time) {
+                std::cout << "Error at " << cursor_ix << " expected " << current_time << " acutal " << timestamps[i]  << std::endl;
                 return;
             }
             current_time++;
@@ -60,6 +64,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
                 std::cout << counter << " " << timer.elapsed() << "s" << std::endl;
                 timer.restart();
             }
+            cursor_ix++;
         }
     }
     aku_close_cursor(cursor);

@@ -89,6 +89,11 @@
 // Different tune parameters
 #define AKU_INTERPOLATION_SEARCH_CUTOFF 0x00000100
 
-#define AKU_ID_COMPRESSED               0xFFFFFFFF
+//! If timestamp is greater or less than this value - entry stores compressed chunk
+#define AKU_ID_COMPRESSED               0xFFFFFFFE
+//! Id for forward scanning
+#define AKU_CHUNK_FWD_ID                0xFFFFFFFE
+//! Id for backward scanning
+#define AKU_CHUNK_BWD_ID                0xFFFFFFFF
 
 #endif

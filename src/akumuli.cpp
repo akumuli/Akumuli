@@ -98,17 +98,30 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read(aku_Entry const** buffer, int buffer_len) {
+    int read_columns( aku_TimeStamp   *timestamps
+                    , aku_ParamId     *params
+                    , aku_PData       *pointers
+                    , uint32_t        *lengths
+                    , size_t           arrays_size )
+    {
         // TODO: track PageHeader::open_count here
         std::vector<CursorResult> results;
-        results.resize(buffer_len);
-        int n_results = cursor_->read(results.data(), buffer_len);
+        results.resize(arrays_size);
+        int n_results = cursor_->read(results.data(), results.size());
         for (int i = 0; i < n_results; i++) {
-            // FIXME: this code will broke with compressed pages
-            aku_EntryOffset offset = results[i].data_offset - sizeof(aku_Entry);
-            PageHeader const* page = results[i].page;
-            const aku_Entry* entry = page->read_entry(offset);
-            buffer[i] = entry;
+            const CursorResult& result = results[i];
+            if (timestamps) {
+                timestamps[i] = result.timestamp;
+            }
+            if (params) {
+                params[i] = result.param_id;
+            }
+            if (pointers) {
+                pointers[i] = result.page->read_entry_data(result.data_offset);
+            }
+            if (lengths) {
+                lengths[i] = result.length;
+            }
         }
         return n_results;
     }
@@ -143,7 +156,7 @@ struct DatabaseImpl : public aku_Database
         }
         MatchPred pred(query->params, query->n_params);
         std::unique_ptr<SearchQuery> search_query;
-        search_query.reset(new SearchQuery(pred, {begin}, {end}, {begin}, {end}, scan_dir));
+        search_query.reset(new SearchQuery(pred, {begin}, {end}, scan_dir));
         auto pcur = new CursorImpl(storage_, std::move(search_query));
         return pcur;
     }
@@ -222,9 +235,16 @@ void aku_close_cursor(aku_Cursor* pcursor) {
     delete pimpl;
 }
 
-int aku_cursor_read(aku_Cursor* pcursor, const aku_Entry **buffer, int buffer_len) {
+int aku_cursor_read_columns( aku_Cursor      *pcursor
+                           , aku_TimeStamp   *timestamps
+                           , aku_ParamId     *params
+                           , aku_PData       *pointers
+                           , uint32_t        *lengths
+                           , size_t           arrays_size )
+{
+    // read columns from data store
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->read(buffer, buffer_len);
+    return pimpl->read_columns(timestamps, params, pointers, lengths, arrays_size);
 }
 
 bool aku_cursor_is_done(aku_Cursor* pcursor) {
