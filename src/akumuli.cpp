@@ -98,24 +98,9 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read(aku_Entry const** buffer, int buffer_len) {
-        // TODO: track PageHeader::open_count here
-        std::vector<CursorResult> results;
-        results.resize(buffer_len);
-        int n_results = cursor_->read(results.data(), buffer_len);
-        for (int i = 0; i < n_results; i++) {
-            // FIXME: this code will broke with compressed pages
-            aku_EntryOffset offset = results[i].data_offset - sizeof(aku_Entry);
-            PageHeader const* page = results[i].page;
-            const aku_Entry* entry = page->read_entry(offset);
-            buffer[i] = entry;
-        }
-        return n_results;
-    }
-
     int read_columns( aku_TimeStamp   *timestamps
                     , aku_ParamId     *params
-                    , aku_EntryOffset *offsets
+                    , aku_PData       *pointers
                     , uint32_t        *lengths
                     , size_t           arrays_size )
     {
@@ -125,10 +110,18 @@ struct CursorImpl : aku_Cursor {
         int n_results = cursor_->read(results.data(), results.size());
         for (int i = 0; i < n_results; i++) {
             const CursorResult& result = results[i];
-            timestamps[i] = result.timestamp;
-            params[i] = result.param_id;
-            offsets[i] = result.data_offset;
-            lengths[i] = result.length;
+            if (timestamps) {
+                timestamps[i] = result.timestamp;
+            }
+            if (params) {
+                params[i] = result.param_id;
+            }
+            if (pointers) {
+                pointers[i] = result.page->read_entry_data(result.data_offset);
+            }
+            if (lengths) {
+                lengths[i] = result.length;
+            }
         }
         return n_results;
     }
@@ -242,21 +235,16 @@ void aku_close_cursor(aku_Cursor* pcursor) {
     delete pimpl;
 }
 
-int aku_cursor_read(aku_Cursor* pcursor, const aku_Entry **buffer, int buffer_len) {
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->read(buffer, buffer_len);
-}
-
 int aku_cursor_read_columns( aku_Cursor      *pcursor
                            , aku_TimeStamp   *timestamps
                            , aku_ParamId     *params
-                           , aku_EntryOffset *offsets
+                           , aku_PData       *pointers
                            , uint32_t        *lengths
                            , size_t           arrays_size )
 {
     // read columns from data store
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->read_columns(timestamps, params, offsets, lengths, arrays_size);
+    return pimpl->read_columns(timestamps, params, pointers, lengths, arrays_size);
 }
 
 bool aku_cursor_is_done(aku_Cursor* pcursor) {

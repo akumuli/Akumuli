@@ -35,11 +35,12 @@ extern "C" {
 
     AKU_EXPORT void aku_initialize();
 
-    typedef uint64_t aku_TimeStamp;
-    typedef uint64_t aku_Duration;
-    typedef uint32_t aku_EntryOffset;
-    typedef uint32_t aku_ParamId;
-    typedef int      aku_Status;
+    typedef uint64_t    aku_TimeStamp;
+    typedef uint64_t    aku_Duration;
+    typedef uint32_t    aku_EntryOffset;
+    typedef uint32_t    aku_ParamId;
+    typedef int         aku_Status;
+    typedef const void* aku_PData;
 
     struct aku_MemRange {
         void* address;
@@ -121,13 +122,20 @@ extern "C" {
      */
     AKU_EXPORT void aku_close_cursor(aku_Cursor* pcursor);
 
-    // Depricated
-    AKU_EXPORT int aku_cursor_read(aku_Cursor* pcursor, aku_Entry const** buffer, int buffer_len);
-
+    /**
+     * @brief Read data from storage in column-wise manner.
+     * @param pcursor pointer to cursor
+     * @param timestamps output buffer for storing timestamps
+     * @param params output buffer for storing paramids
+     * @param pointers output buffer for storing pointers to data
+     * @param lengths output buffer for storing lengths of the data items
+     * @param array_size specifies size of the all output buffers (it must be the same for all buffers)
+     * @note every output parmeter can be null if we doesn't interested in it's value
+     */
     AKU_EXPORT int aku_cursor_read_columns( aku_Cursor      *pcursor
                                           , aku_TimeStamp   *timestamps
                                           , aku_ParamId     *params
-                                          , aku_EntryOffset *offsets
+                                          , aku_PData       *pointers
                                           , uint32_t        *lengths
                                           , size_t           arrays_size );
 
