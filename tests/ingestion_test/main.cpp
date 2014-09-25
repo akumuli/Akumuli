@@ -40,6 +40,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
                                                   , 1, params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = begin;
+    size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
@@ -51,7 +52,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
         for (int i = 0; i < n_entries; i++) {
             aku_Entry const* p = entries[i];
             if (p->time != current_time) {
-                std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << p->time  << std::endl;
+                std::cout << "Error at " << cursor_ix << " expected " << current_time << " acutal " << p->time  << std::endl;
                 return;
             }
             current_time++;
@@ -60,6 +61,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
                 std::cout << counter << " " << timer.elapsed() << "s" << std::endl;
                 timer.restart();
             }
+            cursor_ix++;
         }
     }
     aku_close_cursor(cursor);

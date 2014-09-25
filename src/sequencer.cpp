@@ -436,6 +436,11 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
+    // TODO: remove
+    int x = 0;
+    if (query.lowerbound == 99992630) {
+        x++;
+    }
     std::vector<PSortedRun> filtered;
     std::vector<SortedRun const*> pruns;
     Lock runs_guard(runs_resize_lock_);

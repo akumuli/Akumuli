@@ -57,6 +57,8 @@ extern "C" {
 
     AKU_EXPORT void aku_console_logger(int tag, const char* format, ...);
 
+    // TODO: add support for custom panic handling
+
     //! Database instance.
     struct aku_Database {
     };
@@ -119,7 +121,15 @@ extern "C" {
      */
     AKU_EXPORT void aku_close_cursor(aku_Cursor* pcursor);
 
+    // Depricated
     AKU_EXPORT int aku_cursor_read(aku_Cursor* pcursor, aku_Entry const** buffer, int buffer_len);
+
+    AKU_EXPORT int aku_cursor_read_columns( aku_Cursor      *pcursor
+                                          , aku_TimeStamp   *timestamps
+                                          , aku_ParamId     *params
+                                          , aku_EntryOffset *offsets
+                                          , uint32_t        *lengths
+                                          , size_t           arrays_size );
 
     AKU_EXPORT bool aku_cursor_is_done(aku_Cursor* pcursor);
 

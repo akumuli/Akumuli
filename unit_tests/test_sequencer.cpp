@@ -169,7 +169,7 @@ void test_sequencer_searching(int dir) {
 
     Caller caller;
     RecordingCursor cursor;
-    SearchQuery query(42u, begin, end, begin, end, dir);
+    SearchQuery query(42u, begin, end, dir);
     seq.search(caller, &cursor, query);
 
     // Check that everything is there
