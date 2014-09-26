@@ -83,7 +83,7 @@ void Volume::close() {
 
 static std::atomic<int> storage_cnt = {1};
 
-Storage::Storage(const char* path, aku_Config const& conf)
+Storage::Storage(const char* path, aku_FineTuneParams const& conf)
     : compression(true)
     , tag_(storage_cnt++)
 {
@@ -122,6 +122,22 @@ Storage::Storage(const char* path, aku_Config const& conf)
     for(auto child_node: ptree.get_child("volumes")) {
         auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
         auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
+
+        config_.compression_threshold =
+                child_node.second
+                    .get_child("compression_threshold")
+                    .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
+
+        config_.window_size =
+                child_node.second
+                    .get_child("window_size")
+                    .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
+
+        config_.max_cache_size =
+                child_node.second
+                    .get_child("max_cache_size")
+                    .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
+
         if (volume_index && volume_path) {
             volume_names.at(*volume_index) = *volume_path;
         }
@@ -506,6 +522,9 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
   */
 static apr_status_t create_metadata_page( const char* file_name
                                         , std::vector<std::string> const& page_file_names
+                                        , uint32_t compression_threshold
+                                        , uint64_t window_size
+                                        , uint32_t max_cache_size
                                         , aku_printf_t logger)
 {
     // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
@@ -517,6 +536,9 @@ static apr_status_t create_metadata_page( const char* file_name
         apr_rfc822_date(date_time, now);
         root.add("creation_time", date_time);
         root.add("num_volumes", page_file_names.size());
+        root.add("compression_threshold", compression_threshold);
+        root.add("window_size", window_size);
+        root.add("max_cache_size", max_cache_size);
         boost::property_tree::ptree volumes_list;
         for(size_t i = 0; i < page_file_names.size(); i++) {
             boost::property_tree::ptree page_desc;

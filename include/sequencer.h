@@ -79,7 +79,7 @@ struct Sequencer {
     uint32_t                     space_estimate_; //< Space estimate for storing all data
     const size_t                 c_threshold_;    //< Compression threshold
 
-    Sequencer(PageHeader const* page, aku_Duration window_size);
+    Sequencer(PageHeader const* page, aku_Config config);
 
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.

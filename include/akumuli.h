@@ -152,7 +152,7 @@ extern "C" {
 
     /** Open existing database.
      */
-    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_Config config);
+    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams config);
 
     AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
 

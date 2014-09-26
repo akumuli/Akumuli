@@ -75,24 +75,26 @@ struct Storage
     typedef std::mutex      LockType;
 
     // Active volume state
-    Volume*                 active_volume_;
-    PageHeader*             active_page_;
-    std::atomic<int>        active_volume_index_;
-    aku_Duration            ttl_;                       //< Late write limit
-    bool                    compression;                //< Compression enabled
-    std::vector<Volume*>    volumes_;                   //< List of all volumes
+    aku_Config                 config_;
+    aku_FineTuneParams const& params_;
+    Volume*                   active_volume_;
+    PageHeader*               active_page_;
+    std::atomic<int>          active_volume_index_;
+    aku_Duration              ttl_;                       //< Late write limit
+    bool                      compression;                //< Compression enabled
+    std::vector<Volume*>      volumes_;                   //< List of all volumes
 
-    LockType                mutex_;                     //< Storage lock (used by worker thread)
+    LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
-    apr_time_t              creation_time_;  //< Cached metadata
-    int                     tag_;  //< Tag to distinct different storage instances
-    aku_printf_t            logger_;
-    Rand                    rand_;
+    apr_time_t                creation_time_;             //< Cached metadata
+    int                       tag_;                       //< Tag to distinct different storage instances
+    aku_printf_t              logger_;
+    Rand                      rand_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
-    Storage(const char *path, aku_Config const& conf);
+    Storage(const char *path, aku_FineTuneParams const& conf);
 
     //! Select page that was active last time
     void select_active_page();

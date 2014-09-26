@@ -137,7 +137,7 @@ struct DatabaseImpl : public aku_Database
     Storage storage_;
 
     // private fields
-    DatabaseImpl(const char* path, const aku_Config& config)
+    DatabaseImpl(const char* path, const aku_FineTuneParams& config)
         : storage_(path, config)
     {
     }
@@ -197,7 +197,7 @@ aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp 
     return dbi->add_sample(param_id, ts, value);
 }
 
-aku_Database* aku_open_database(const char* path, aku_Config config)
+aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
 {
     aku_Database* ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);

@@ -71,14 +71,14 @@ bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
-    : window_size_(window_size)
+Sequencer::Sequencer(PageHeader const* page, aku_Config config)
+    : window_size_(config.window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
     , space_estimate_(0u)
-    , c_threshold_(0x1000)  // TODO: must be configurable
+    , c_threshold_(config.compression_threshold)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());

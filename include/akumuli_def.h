@@ -96,4 +96,9 @@
 //! Id for backward scanning
 #define AKU_CHUNK_BWD_ID                0xFFFFFFFF
 
+// Defaults
+#define AKU_DEFAULT_COMPRESSION_THRESHOLD 0x1000u
+#define AKU_DEFAULT_WINDOW_SIZE 10000ul
+#define AKU_DEFAULT_MAX_CACHE_SIZE 0x100000u
+
 #endif
