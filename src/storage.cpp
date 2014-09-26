@@ -44,14 +44,14 @@ namespace Akumuli {
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
-Volume::Volume(const char* file_name, aku_Duration window, size_t max_cache_size, int tag, aku_printf_t logger)
+Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_printf_t logger)
     : mmap_(file_name, tag, logger)
-    , window_(window)
-    , max_cache_size_(max_cache_size)
+    , window_(conf.window_size)
+    , max_cache_size_(conf.max_cache_size)
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Sequencer(page_, window_));
+    cache_.reset(new Sequencer(page_, conf));
 }
 
 PageHeader* Volume::get_page() const {
@@ -83,8 +83,9 @@ void Volume::close() {
 
 static std::atomic<int> storage_cnt = {1};
 
-Storage::Storage(const char* path, aku_FineTuneParams const& conf)
-    : compression(true)
+Storage::Storage(const char* path, aku_FineTuneParams const& params)
+    : params_(params)
+    , compression(true)
     , tag_(storage_cnt++)
 {
     //aku_printf_t logger = conf.logger;
@@ -99,7 +100,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& conf)
      * because metadata file is corrupted, or volume is missed on disc.
      */
 
-    ttl_= conf.max_late_write;
+    ttl_= params.max_late_write;
 
     // NOTE: incremental backup target will be stored in metadata file
 
@@ -118,25 +119,26 @@ Storage::Storage(const char* path, aku_FineTuneParams const& conf)
         AKU_PANIC("invalid storage");
     }
 
+    config_.compression_threshold =
+            ptree.get_child("compression_threshold")
+                 .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
+
+    config_.window_size =
+            ptree.get_child("window_size")
+                 .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
+
+    if (config_.window_size == 0) {
+        AKU_PANIC("invalid window_size");
+    }
+
+    config_.max_cache_size =
+            ptree.get_child("max_cache_size")
+                 .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
+
     std::vector<std::string> volume_names(num_volumes);
     for(auto child_node: ptree.get_child("volumes")) {
         auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
         auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
-
-        config_.compression_threshold =
-                child_node.second
-                    .get_child("compression_threshold")
-                    .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
-
-        config_.window_size =
-                child_node.second
-                    .get_child("window_size")
-                    .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
-
-        config_.max_cache_size =
-                child_node.second
-                    .get_child("max_cache_size")
-                    .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
 
         if (volume_index && volume_path) {
             volume_names.at(*volume_index) = *volume_path;
@@ -155,13 +157,13 @@ Storage::Storage(const char* path, aku_FineTuneParams const& conf)
     // create volumes list
     for(auto path: volume_names) {
         // TODO: convert conf.max_cache_size from bytes
-        Volume* vol = new Volume(path.c_str(), ttl_, conf.max_cache_size, tag_, logger_);
+        Volume* vol = new Volume(path.c_str(), config_, tag_, logger_);
         volumes_.push_back(vol);
     }
 
     select_active_page();
 
-    prepopulate_cache(conf.max_cache_size);
+    prepopulate_cache(params.max_cache_size);
 }
 
 void Storage::select_active_page() {
@@ -557,12 +559,14 @@ static apr_status_t create_metadata_page( const char* file_name
 }
 
 
-apr_status_t Storage::new_storage( const char* 	file_name
-                                 , const char* 	metadata_path
-                                 , const char* 	volumes_path
-                                 , int          num_pages
-                                 , aku_printf_t logger
-                                 )
+apr_status_t Storage::new_storage(const char  *file_name,
+                                  const char  *metadata_path,
+                                  const char  *volumes_path,
+                                  int          num_pages,
+                                  uint32_t     compression_threshold,
+                                  uint64_t     window_size,
+                                  uint32_t     max_cache_size,
+                                  aku_printf_t logger)
 {
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
@@ -618,7 +622,7 @@ apr_status_t Storage::new_storage( const char* 	file_name
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }
-    status = create_metadata_page(path, page_names, logger);
+    status = create_metadata_page(path, page_names, compression_threshold, window_size, max_cache_size, logger);
     apr_pool_destroy(mempool);
     return status;
 }

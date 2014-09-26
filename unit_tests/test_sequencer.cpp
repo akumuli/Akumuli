@@ -16,7 +16,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
     const int LARGE_LOOP = 1000;
     const int SMALL_LOOP = 10;
 
-    Sequencer seq(nullptr, {SMALL_LOOP});
+    Sequencer seq(nullptr, {0u, SMALL_LOOP, 0u});
 
     int num_checkpoints = 0;
 
@@ -44,7 +44,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
     const int LARGE_LOOP = 1000;
     const int SMALL_LOOP = 10;
 
-    Sequencer seq(nullptr, {SMALL_LOOP});
+    Sequencer seq(nullptr, {0u, SMALL_LOOP, 0u});
 
     int num_checkpoints = 0;
 
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     const int LARGE_LOOP = 1000;
     const int SMALL_LOOP = 10;
 
-    Sequencer seq(nullptr, {SMALL_LOOP});
+    Sequencer seq(nullptr, {0u, SMALL_LOOP, 0u});
 
     int num_checkpoints = 0;
 
@@ -148,7 +148,7 @@ void test_sequencer_searching(int dir) {
     const int SZLOOP = 1000;
     const int WINDOW = 10000;
 
-    Sequencer seq(nullptr, {WINDOW});
+    Sequencer seq(nullptr, {0u, WINDOW, 0u});
     std::vector<aku_EntryOffset> offsets;
 
     for (int i = 0; i < SZLOOP; i++) {

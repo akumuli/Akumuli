@@ -76,6 +76,10 @@ extern "C" {
                                     , const char*  metadata_path
                                     , const char*  volumes_path
                                     , int32_t      num_volumes
+                                    // optional args
+                                    , const uint32_t *compression_threshold
+                                    , const uint64_t *window_size
+                                    , const uint32_t *max_cache_size
                                     , aku_printf_t logger
                                     );
 

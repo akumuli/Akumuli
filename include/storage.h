@@ -53,7 +53,7 @@ struct Volume {
     std::unique_ptr<Sequencer> cache_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path, aku_Duration window, size_t max_cache_size, int tag, aku_printf_t logger);
+    Volume(const char* file_path, const aku_Config &conf, int tag, aku_printf_t logger);
 
     //! Get pointer to page
     PageHeader* get_page() const;
@@ -133,7 +133,14 @@ struct Storage
       * @param metadata_path path to metadata dir
       * @param volumes_path path to volumes dir
       */
-    static apr_status_t new_storage(const char* file_name, const char* metadata_path, const char* volumes_path, int num_pages, aku_printf_t logger);
+    static apr_status_t new_storage(const char     *file_name,
+                                    const char     *metadata_path,
+                                    const char     *volumes_path,
+                                    int             num_pages,
+                                    uint32_t compression_threshold,
+                                    uint64_t window_size,
+                                    uint32_t max_cache_size,
+                                    aku_printf_t    logger);
 
     // Stats
     void get_stats(aku_StorageStats* rcv_stats);
