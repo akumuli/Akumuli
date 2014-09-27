@@ -49,6 +49,10 @@ MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_printf_t 
     map_file();
 }
 
+apr_status_t MemoryMappedFile::move_file(const char* new_name) {
+    return apr_file_rename(path_.c_str(), new_name, this->mem_pool_);
+}
+
 apr_status_t MemoryMappedFile::map_file() noexcept {
     int success_count = 0;
     status_ = apr_pool_create(&mem_pool_, NULL);
