@@ -30,7 +30,6 @@
 #include <thread>
 #include <memory>
 #include <mutex>
-#include <condition_variable>
 
 #include "page.h"
 #include "util.h"
@@ -45,12 +44,18 @@ namespace Akumuli {
   * Coresponds to one of the storage pages. Includes page
   * data and main memory data.
   */
-struct Volume {
+struct Volume : std::enable_shared_from_this<Volume>
+{
     MemoryMappedFile mmap_;
     PageHeader* page_;
     aku_Duration window_;
     size_t max_cache_size_;
     std::unique_ptr<Sequencer> cache_;
+    std::string file_path_;
+    const aku_Config& config_;
+    const int tag_;
+    aku_printf_t logger_;
+    std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
 
     //! Create new volume stored in file
     Volume(const char* file_path, const aku_Config &conf, int tag, aku_printf_t logger);
@@ -58,14 +63,17 @@ struct Volume {
     //! Get pointer to page
     PageHeader* get_page() const;
 
-    //! Reallocate disc space and return pointer to newly mapped page
-    PageHeader *reallocate_disc_space();
+    //! Reallocate space safely
+    std::shared_ptr<Volume> safe_realloc();
 
     //! Open page for writing
     void open();
 
     //! Flush all data and close volume for write until reallocation
     void close();
+
+    //! Search volume page (not cache)
+    void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 };
 
 /** Interface to page manager
@@ -73,16 +81,17 @@ struct Volume {
 struct Storage
 {
     typedef std::mutex      LockType;
+    typedef std::shared_ptr<Volume> PVolume;
 
     // Active volume state
     aku_Config                 config_;
     aku_FineTuneParams const& params_;
-    Volume*                   active_volume_;
+    PVolume                   active_volume_;
     PageHeader*               active_page_;
     std::atomic<int>          active_volume_index_;
     aku_Duration              ttl_;                       //< Late write limit
     bool                      compression;                //< Compression enabled
-    std::vector<Volume*>      volumes_;                   //< List of all volumes
+    std::vector<PVolume>      volumes_;                   //< List of all volumes
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 

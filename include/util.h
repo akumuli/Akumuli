@@ -68,7 +68,7 @@ namespace Akumuli
     public:
         MemoryMappedFile(const char* file_name, int tag, aku_printf_t logger) noexcept;
         ~MemoryMappedFile();
-        apr_status_t move_file(const char* new_name);
+        void move_file(const char* new_name);
         void* get_pointer() const noexcept;
         size_t get_size() const noexcept;
         apr_status_t flush() noexcept;

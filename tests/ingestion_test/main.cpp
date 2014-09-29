@@ -68,6 +68,9 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
         }
     }
     aku_close_cursor(cursor);
+    if (cursor_ix > 1000) {
+        std::cout << "cursor_ix = " << cursor_ix << std::endl;
+    }
 }
 
 void print_storage_stats(aku_StorageStats& ss) {
@@ -177,7 +180,7 @@ int main(int cnt, const char** args)
         std::cout << "Sequential access" << std::endl;
         aku_SearchStats search_stats;
         uint64_t counter = 0;
-        /*
+
         timer.restart();
         query_database( db
                       , std::numeric_limits<aku_TimeStamp>::min()
@@ -188,7 +191,6 @@ int main(int cnt, const char** args)
 
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);
-        */
 
         // Random access
         std::cout << "Prepare test data" << std::endl;

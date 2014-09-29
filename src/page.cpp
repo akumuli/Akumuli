@@ -32,20 +32,20 @@
 namespace Akumuli {
 
 // Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<uint64_t> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, uint64_t> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, uint64_t> DeltaRLETSWriter;
+typedef Base128StreamWriter<aku_TimeStamp> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, aku_TimeStamp> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, aku_TimeStamp> DeltaRLETSWriter;
 
 // Base128 -> RLE -> Delta -> Timestamps
-typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128TSReader;
-typedef RLEStreamReader<__Base128TSReader, uint64_t> __RLETSReader;
-typedef DeltaStreamReader<__RLETSReader, uint64_t> DeltaRLETSReader;
+typedef Base128StreamReader<aku_TimeStamp, const unsigned char*> __Base128TSReader;
+typedef RLEStreamReader<__Base128TSReader, aku_TimeStamp> __RLETSReader;
+typedef DeltaStreamReader<__RLETSReader, aku_TimeStamp> DeltaRLETSReader;
 
 // ParamId -> Base128
-typedef Base128StreamWriter<uint32_t> Base128IdWriter;
+typedef Base128StreamWriter<aku_ParamId> Base128IdWriter;
 
 // Base128 -> ParamId
-typedef Base128StreamReader<uint32_t, const unsigned char*> Base128IdReader;
+typedef Base128StreamReader<aku_ParamId, const unsigned char*> Base128IdReader;
 
 // Length -> RLE -> Base128
 typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
@@ -56,10 +56,11 @@ typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
 // Offset -> Delta -> ZigZag -> RLE -> Base128
-typedef Base128StreamWriter<int64_t> __Base128OffWriter;
-typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;
-typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;
-typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;
+typedef Base128StreamWriter<int64_t> __Base128OffWriter;                    // int64_t is used instead of uint32_t
+typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;        // for a reason. Numbers is not always
+typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;      // increasing here so we can get negatives
+typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;    // after delta encoding (ZigZag coding
+                                                                            // solves this issue).
 
 // Base128 -> RLE -> ZigZag -> Delta -> Offset
 //typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
@@ -199,8 +200,8 @@ void PageHeader::close() {
 }
 
 int PageHeader::add_entry( const aku_ParamId param
-                          , const aku_TimeStamp timestamp
-                          , const aku_MemRange range ) 
+                         , const aku_TimeStamp timestamp
+                         , const aku_MemRange range )
 {
 
     const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
@@ -298,13 +299,18 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
             break;
         }
         // Head
+        Rand rand;
         aku_EntryOffset start = last_offset;
         ChunkDesc desc = { static_cast<uint32_t>(data.lengths.size()), start };
         aku_TimeStamp first_ts = data.timestamps.front();
         aku_TimeStamp last_ts = data.timestamps.back();
         head = {&desc, sizeof(desc)};
         status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
+        sync_next_index(last_offset, rand(), false);
         status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
+        sync_next_index(last_offset, rand(), false);
+        // Sort histogram
+        sync_next_index(0, 0, true);
         break;
     }
     return status;
@@ -527,7 +533,7 @@ struct SearchAlgorithm {
 
         while(steps_count++ < interpolation_search_quota)  {
             // On small distances - fallback to binary search
-            if (range_.is_small(page_)) {
+            if (range_.is_small(page_) || search_lower_bound == search_upper_bound) {
                 small_range_finish = 1;
                 break;
             }
@@ -607,10 +613,10 @@ struct SearchAlgorithm {
         while (range_.end >= range_.begin) {
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
-	    if (probe_index >= MAX_INDEX_) {
-	        cursor_->set_error(caller_, AKU_EOVERFLOW);
-	        range_.begin = range_.end = MAX_INDEX_;
-	        return;
+            if (probe_index >= MAX_INDEX_) {
+                cursor_->set_error(caller_, AKU_EOVERFLOW);
+                range_.begin = range_.end = MAX_INDEX_;
+                return;
             }
             auto probe_offset = page_->page_index[probe_index];
             auto probe_entry = page_->read_entry(probe_offset);

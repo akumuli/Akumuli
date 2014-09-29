@@ -81,7 +81,7 @@ bool DirectPageSyncCursor::put(Caller&, CursorResult const& result) {
         mutable_page->sync_next_index(0, 0, true);
     }
     auto mutable_page = const_cast<PageHeader*>(result.page);
-    mutable_page->sync_next_index(result.data_offset - sizeof(aku_Entry), rand_(), false);
+    mutable_page->sync_next_index(result.data_offset, rand_(), false);
     last_page_ = result.page;
     return true;
 }

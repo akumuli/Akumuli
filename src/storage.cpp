@@ -41,6 +41,8 @@
 
 namespace Akumuli {
 
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_printf_t logger);
+
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
@@ -48,6 +50,11 @@ Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_print
     : mmap_(file_name, tag, logger)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
+    , file_path_(file_name)
+    , config_(conf)
+    , tag_(tag)
+    , logger_(logger)
+    , is_temporary_ {0}
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
@@ -58,15 +65,33 @@ PageHeader* Volume::get_page() const {
     return page_;
 }
 
-PageHeader* Volume::reallocate_disc_space() {
+std::shared_ptr<Volume> Volume::safe_realloc() {
     uint32_t page_id = page_->page_id;
     uint32_t open_count = page_->open_count;
     uint32_t close_count = page_->close_count;
-    mmap_.remap_file_destructive();
-    page_ = new (mmap_.get_pointer()) PageHeader(0, mmap_.get_size(), page_id);
-    page_->open_count = open_count;
-    page_->close_count = close_count;
-    return page_;
+
+    std::string new_file_name = file_path_;
+                new_file_name += ".tmp";
+
+    // this volume is temporary and should live until
+    // somebody is reading its data
+    mmap_.move_file(new_file_name.c_str());
+    mmap_.panic_if_bad();
+    is_temporary_.store(true);
+
+    std::shared_ptr<Volume> newvol;
+    auto status = create_page_file(file_path_.c_str(), page_id, logger_);
+    if (status != AKU_SUCCESS) {
+        // Try to restore previous state on disk
+        mmap_.move_file(file_path_.c_str());
+        mmap_.panic_if_bad();
+        AKU_PANIC("can't create new page file (out of space?)");
+    }
+
+    newvol.reset(new Volume(file_path_.c_str(), config_, tag_, logger_));
+    newvol->page_->open_count = open_count;
+    newvol->page_->close_count = close_count;
+    return newvol;
 }
 
 void Volume::open() {
@@ -79,6 +104,10 @@ void Volume::close() {
     mmap_.flush();
 }
 
+void Volume::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const {
+    page_->search(caller, cursor, query);
+}
+
 //----------------------------------Storage---------------------------------------------
 
 static std::atomic<int> storage_cnt = {1};
@@ -88,12 +117,11 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     , compression(true)
     , tag_(storage_cnt++)
 {
-    //aku_printf_t logger = conf.logger;
-    //if (logger == nullptr) {
-    //    logger = &aku_console_logger;
-    //}
-    //logger_ = logger;
-    logger_ = &aku_console_logger;
+    aku_printf_t logger = params.logger;
+    if (logger == nullptr) {
+        logger = &aku_console_logger;
+    }
+    logger_ = logger;
 
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
@@ -157,7 +185,8 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     // create volumes list
     for(auto path: volume_names) {
         // TODO: convert conf.max_cache_size from bytes
-        Volume* vol = new Volume(path.c_str(), config_, tag_, logger_);
+        PVolume vol;
+        vol.reset(new Volume(path.c_str(), config_, tag_, logger_));
         volumes_.push_back(vol);
     }
 
@@ -223,9 +252,6 @@ void Storage::advance_volume_(int local_rev) {
         log_message("....close count", active_volume_->page_->close_count);
         log_message("....open count", active_volume_->page_->open_count);
 
-        // TODO: disable all readers of this page and cache (I need some
-        // collection of active readers that maps cursors (or cancellation tokens)
-        // to pages.
         Sequencer::Lock close_lock;
         close_lock = active_volume_->cache_->close();
         if (close_lock.owns_lock()) {
@@ -238,12 +264,15 @@ void Storage::advance_volume_(int local_rev) {
             }
         }
         active_volume_->close();
-        //log_message("page complete");
+        log_message("page complete");
+
         // select next page in round robin order
         active_volume_index_++;
+        auto last_volume = volumes_[active_volume_index_ % volumes_.size()];
+        volumes_[active_volume_index_ % volumes_.size()] = last_volume->safe_realloc();
         active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
-        active_page_ = active_volume_->reallocate_disc_space();
         active_volume_->open();
+
         //log_message("next volume opened");
         log_message("....page ID", active_volume_->page_->page_id);
         log_message("....close count", active_volume_->page_->close_count);
@@ -276,8 +305,8 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
         if (vol == this->active_volume_) {
             auto window = active_volume_->cache_->get_window();
             if (query.lowerbound > window || query.upperbound > window) {
-                auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
-                cursors.push_back(std::move(ccur));
+                //auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
+                //cursors.push_back(std::move(ccur));
             }
         }
         // Search pages
@@ -317,7 +346,7 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
              free_space = 0,
               n_entries = 0;
 
-    for (Volume const* vol: volumes_) {
+    for (PVolume const& vol: volumes_) {
         auto all = vol->page_->length;
         auto free = vol->page_->get_free_space();
         used_space += all - free;

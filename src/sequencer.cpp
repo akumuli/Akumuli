@@ -387,15 +387,6 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
         cur->set_error(caller, status);
         return;
     }
-
-    // Adjuct index
-    CursorResult result = {
-        target->last_offset,
-        0u, 0ul, 0u,                    // This   is done  for  page  synchronization,  it doesn't  need
-        target                          // full information  and can  be   applied to  group of  entries
-    };                                  // if compression enabled. Target cursor is DirectPageSyncCursor
-    cur->put(caller, result);           // wich is a special case  and doesn't touch anything in `result
-    cur->complete(caller);              // except offset and page fields.
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -438,11 +429,7 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
-    // TODO: remove
-    int x = 0;
-    if (query.lowerbound == 99992630) {
-        x++;
-    }
+    Lock guard(progress_flag_);
     std::vector<PSortedRun> filtered;
     std::vector<SortedRun const*> pruns;
     Lock runs_guard(runs_resize_lock_);
