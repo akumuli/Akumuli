@@ -22,7 +22,7 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 6;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int NUM_ITERATIONS = 10*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -55,7 +55,16 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
         int n_entries = aku_cursor_read_columns(cursor, timestamps, paramids, pointers, lengths, NUM_ELEMENTS);
         for (int i = 0; i < n_entries; i++) {
             if (timestamps[i] != current_time) {
-                std::cout << "Error at " << cursor_ix << " expected " << current_time << " acutal " << timestamps[i]  << std::endl;
+                std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
+                return;
+            }
+            if (paramids[i] != current_time + 1) {
+                std::cout << "Error at " << cursor_ix << " expected id " << (current_time+1) << " acutal id " << paramids[i]  << std::endl;
+                return;
+            }
+            uint64_t const* pvalue = (uint64_t const*)pointers[i];
+            if (*pvalue != current_time + 2) {
+                std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
                 return;
             }
             current_time++;
@@ -160,10 +169,18 @@ int main(int cnt, const char** args)
     if (mode != READ) {
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
+            uint64_t k = i + 2;
             aku_MemRange memr;
-            memr.address = (void*)&i;
-            memr.length = sizeof(i);
-            aku_add_sample(db, 1, i, memr);
+            memr.address = (void*)&k;
+            memr.length = sizeof(k);
+            aku_Status status = aku_add_sample(db, i+1, i, memr);
+            if (status == AKU_EBUSY) {
+                status = aku_add_sample(db, i+1, i, memr);
+                if (status != AKU_SUCCESS) {
+                    std::cout << "add error at " << i << std::endl;
+                    return -1;
+                }
+            }
             if (i % 1000000 == 0) {
                 std::cout << i << " " << timer.elapsed() << "s" << std::endl;
                 timer.restart();

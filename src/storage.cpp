@@ -397,6 +397,10 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
         }
     } else {
         while (true) {
+            if (ts == 10000) {
+                // TODO: remove this condition
+                param++;
+            }
             int local_rev = active_volume_index_.load();
             auto space_required = active_volume_->cache_->get_space_estimate();
             int status = active_page_->add_chunk(data, space_required);
