@@ -34,6 +34,18 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 namespace Akumuli {
 
 
+//! Storage configuration
+struct aku_Config {
+    uint32_t compression_threshold;
+
+    //! Maximum depth of the late write
+    uint64_t window_size;
+
+    //! Maximum cache size in bytes
+    uint32_t max_cache_size;
+};
+
+
 //! PageHeader forward declaration
 struct PageHeader;
 

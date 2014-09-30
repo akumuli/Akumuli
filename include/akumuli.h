@@ -76,6 +76,10 @@ extern "C" {
                                     , const char*  metadata_path
                                     , const char*  volumes_path
                                     , int32_t      num_volumes
+                                    // optional args
+                                    , const uint32_t *compression_threshold
+                                    , const uint64_t *window_size
+                                    , const uint32_t *max_cache_size
                                     , aku_printf_t logger
                                     );
 
@@ -152,7 +156,7 @@ extern "C" {
 
     /** Open existing database.
      */
-    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_Config config);
+    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams config);
 
     AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
 

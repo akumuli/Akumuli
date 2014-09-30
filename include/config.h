@@ -30,7 +30,7 @@ typedef void (*aku_printf_t) (int tag, const char * format, ...);
 
 /** Library configuration.
  */
-struct aku_Config
+struct aku_FineTuneParams
 {
     //! Debug mode trigger
     uint32_t debug_mode;

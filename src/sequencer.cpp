@@ -71,13 +71,14 @@ bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, aku_Duration window_size)
-    : window_size_(window_size)
+Sequencer::Sequencer(PageHeader const* page, aku_Config config)
+    : window_size_(config.window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
     , space_estimate_(0u)
+    , c_threshold_(config.compression_threshold)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
@@ -101,9 +102,6 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
     }
     auto old_top = get_timestamp_(checkpoint_);
     checkpoint_ = new_checkpoint;
-    if (!ready_.empty()) {
-        throw runtime_error("sequencer invariant is broken");
-    }
     vector<PSortedRun> new_runs;
     for (auto& sorted_run: runs_) {
         auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
@@ -130,6 +128,16 @@ void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
         space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
     }
     swap(runs_, new_runs);
+
+    size_t ready_size = 0u;
+    for (auto& sorted_run: ready_) {
+        ready_size += sorted_run->size();
+    }
+    if (ready_size < c_threshold_) {
+        // If ready doesn't contains enough data compression wouldn't be efficient,
+        //  we need to wait for more data to come
+        lock.unlock();
+    }
 }
 
 /** Check timestamp and make checkpoint if timestamp is large enough.
@@ -345,12 +353,6 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
 
     kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
 
-    // Sequencer invariant - if progress_flag_ is unset - ready_ flag must be empty
-    // we've got only one place to store ready to sync data, if such data is present
-    // progress_flag_ must be set (it indicates that merge/sync procedure is in progress)
-    // after that we must clear ready_ collection and free some space for new data, after
-    // that progress_flag_ can be cleared.
-
     ready_.clear();
     cur->complete(caller);
 }
@@ -385,15 +387,6 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
         cur->set_error(caller, status);
         return;
     }
-
-    // Adjuct index
-    CursorResult result = {
-        target->last_offset,
-        0u, 0ul, 0u,                    // This   is done  for  page  synchronization,  it doesn't  need
-        target                          // full information  and can  be   applied to  group of  entries
-    };                                  // if compression enabled. Target cursor is DirectPageSyncCursor
-    cur->put(caller, result);           // wich is a special case  and doesn't touch anything in `result
-    cur->complete(caller);              // except offset and page fields.
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -436,11 +429,7 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
-    // TODO: remove
-    int x = 0;
-    if (query.lowerbound == 99992630) {
-        x++;
-    }
+    Lock guard(progress_flag_);
     std::vector<PSortedRun> filtered;
     std::vector<SortedRun const*> pruns;
     Lock runs_guard(runs_resize_lock_);

@@ -18,6 +18,8 @@
 #include "util.h"
 #include <stdio.h>
 #include <cassert>
+#include <chrono>
+#include <thread>
 #include <sys/mman.h>
 #include "akumuli_def.h"
 
@@ -47,6 +49,10 @@ MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_printf_t 
     , logger_(logger)
 {
     map_file();
+}
+
+void MemoryMappedFile::move_file(const char* new_name) {
+    status_ = apr_file_rename(path_.c_str(), new_name, this->mem_pool_);
 }
 
 apr_status_t MemoryMappedFile::map_file() noexcept {
@@ -299,8 +305,11 @@ std::tuple<bool, aku_Status> page_in_core(const void* addr) {
 }
 
 Rand::Rand()
-    : rand_()  // TODO: add seed
+    : rand_()
 {
+    typename std::chrono::system_clock seed_clock;
+    auto init_seed = static_cast<unsigned>(seed_clock.now().time_since_epoch().count());
+    rand_.seed(init_seed);
 }
 
 uint32_t Rand::operator () () {

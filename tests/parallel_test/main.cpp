@@ -111,16 +111,16 @@ int main(int cnt, const char** args)
     delete_storage();
 
     // Create database
-    apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr);
+    apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr, nullptr, nullptr, nullptr);
     if (result != APR_SUCCESS) {
         std::cout << "Error in new_storage" << std::endl;
         return (int)result;
     }
 
-    aku_Config config;
-    config.debug_mode = 0;
-    config.max_late_write = 10000;
-    auto db = aku_open_database(DB_META_FILE, config);
+    aku_FineTuneParams params;
+    params.debug_mode = 0;
+    params.max_late_write = 10000;
+    auto db = aku_open_database(DB_META_FILE, params);
     boost::timer timer;
 
     auto reader_fn = [&db]() {

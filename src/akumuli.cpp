@@ -137,7 +137,7 @@ struct DatabaseImpl : public aku_Database
     Storage storage_;
 
     // private fields
-    DatabaseImpl(const char* path, const aku_Config& config)
+    DatabaseImpl(const char* path, const aku_FineTuneParams& config)
         : storage_(path, config)
     {
     }
@@ -175,16 +175,32 @@ struct DatabaseImpl : public aku_Database
     }
 };
 
-apr_status_t aku_create_database(const char*    file_name
-                                , const char*   metadata_path
-                                , const char*   volumes_path
-                                , int32_t       num_volumes
-                                , aku_printf_t  logger)
+apr_status_t aku_create_database( const char     *file_name
+                                , const char     *metadata_path
+                                , const char     *volumes_path
+                                , int32_t         num_volumes
+                                // optional args
+                                , const uint32_t *compression_threshold
+                                , const uint64_t *window_size
+                                , const uint32_t *max_cache_size
+                                , aku_printf_t    logger)
 {
     if (logger == nullptr) {
         logger = &aku_console_logger;
     }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger);
+    uint32_t ct = AKU_DEFAULT_COMPRESSION_THRESHOLD;
+    uint32_t mcs = AKU_DEFAULT_MAX_CACHE_SIZE;
+    uint64_t ws = AKU_DEFAULT_WINDOW_SIZE;
+    if (compression_threshold) {
+        ct = *compression_threshold;
+    }
+    if (window_size) {
+        ws = *window_size;
+    }
+    if (max_cache_size) {
+        mcs = *max_cache_size;
+    }
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, ct, ws, mcs, logger);
 }
 
 void aku_flush_database(aku_Database* db) {
@@ -197,7 +213,7 @@ aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp 
     return dbi->add_sample(param_id, ts, value);
 }
 
-aku_Database* aku_open_database(const char* path, aku_Config config)
+aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
 {
     aku_Database* ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
