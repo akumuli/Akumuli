@@ -55,6 +55,7 @@ void aku_console_logger(int tag, const char* format, ...) {
     va_start(argptr, format);
     vfprintf(stderr, format, argptr);
     va_end(argptr);
+    printf("\n");
 }
 
 struct MatchPred {

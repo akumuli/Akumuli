@@ -21,7 +21,7 @@
 using namespace Akumuli;
 using namespace std;
 
-const int DB_SIZE = 8;
+const int DB_SIZE = 3;
 const int NUM_ITERATIONS = 1000*1000*1000;
 const int CHUNK_SIZE = 5000;
 
@@ -151,9 +151,9 @@ int main(int cnt, const char** args)
             }
         } else if (status == AKU_EBUSY) {
             busy_count++;
-            i--;
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        } else {
+            status = aku_add_sample(db, 1, i, memr);
+        }
+        if (status != AKU_SUCCESS) {
             std::cout << "aku_add_sample error " << aku_error_message(status) << std::endl;
             break;
         }

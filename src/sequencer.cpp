@@ -225,9 +225,6 @@ Sequencer::Lock Sequencer::close() {
     if (!lock.try_lock()) {
         return move(lock);
     }
-    if (!ready_.empty()) {
-        throw runtime_error("sequencer invariant is broken");
-    }
 
     wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {
