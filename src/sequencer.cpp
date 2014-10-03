@@ -221,10 +221,7 @@ void unlock_all(Cont& cont) {
 }
 
 Sequencer::Lock Sequencer::close() {
-    Lock lock(progress_flag_, defer_lock);
-    if (!lock.try_lock()) {
-        return move(lock);
-    }
+    Lock lock(progress_flag_);
 
     wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {

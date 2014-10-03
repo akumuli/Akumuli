@@ -21,8 +21,8 @@
 using namespace Akumuli;
 using namespace std;
 
-const int DB_SIZE = 6;
-const int NUM_ITERATIONS = 10*1000*1000;
+const int DB_SIZE = 3;
+const int NUM_ITERATIONS = 1000*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -167,6 +167,7 @@ int main(int cnt, const char** args)
     boost::timer timer;
 
     if (mode != READ) {
+        uint64_t busy_count = 0;
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             uint64_t k = i + 2;
@@ -176,6 +177,7 @@ int main(int cnt, const char** args)
             aku_Status status = aku_add_sample(db, i+1, i, memr);
             if (status == AKU_EBUSY) {
                 status = aku_add_sample(db, i+1, i, memr);
+                busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
                     return -1;
@@ -186,6 +188,7 @@ int main(int cnt, const char** args)
                 timer.restart();
             }
         }
+        std::cout << "!busy count = " << busy_count << std::endl;
     }
 
     aku_StorageStats storage_stats;

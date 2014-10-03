@@ -61,6 +61,12 @@ Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_print
     cache_.reset(new Sequencer(page_, conf));
 }
 
+Volume::~Volume() {
+    if (is_temporary_.load()) {
+        mmap_.delete_file();
+    }
+}
+
 PageHeader* Volume::get_page() const {
     return page_;
 }
@@ -247,10 +253,12 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
 
 void Storage::advance_volume_(int local_rev) {
     if (local_rev == active_volume_index_.load()) {
-        log_message("advance volume, current:");
-        log_message("....page ID", active_volume_->page_->page_id);
-        log_message("....close count", active_volume_->page_->close_count);
-        log_message("....open count", active_volume_->page_->open_count);
+        //log_message("advance volume, current:");
+        //log_message("....page ID", active_volume_->page_->page_id);
+        //log_message("....close count", active_volume_->page_->close_count);
+        //log_message("....open count", active_volume_->page_->open_count);
+
+        auto old_page_id = active_page_->page_id;
 
         Sequencer::Lock close_lock;
         close_lock = active_volume_->cache_->close();
@@ -264,7 +272,7 @@ void Storage::advance_volume_(int local_rev) {
             }
         }
         active_volume_->close();
-        log_message("page complete");
+        //log_message("page complete");
 
         // select next page in round robin order
         active_volume_index_++;
@@ -272,11 +280,15 @@ void Storage::advance_volume_(int local_rev) {
         volumes_[active_volume_index_ % volumes_.size()] = last_volume->safe_realloc();
         active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
         active_volume_->open();
+        active_page_ = active_volume_->page_;
+
+        auto new_page_id = active_page_->page_id;
+        assert(new_page_id != old_page_id);
 
         //log_message("next volume opened");
-        log_message("....page ID", active_volume_->page_->page_id);
-        log_message("....close count", active_volume_->page_->close_count);
-        log_message("....open count", active_volume_->page_->open_count);
+        //log_message("....page ID", active_volume_->page_->page_id);
+        //log_message("....close count", active_volume_->page_->close_count);
+        //log_message("....open count", active_volume_->page_->open_count);
     }
     // Or other thread already done all the switching
     // just redo all the things
@@ -310,7 +322,7 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
             }
         }
         // Search pages
-        auto pcur = CoroCursor::make(&PageHeader::search, vol->page_, query);
+        auto pcur = CoroCursor::make(&Volume::search, vol, query);
         cursors.push_back(std::move(pcur));
     }
 
@@ -397,10 +409,6 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
         }
     } else {
         while (true) {
-            if (ts == 10000) {
-                // TODO: remove this condition
-                param++;
-            }
             int local_rev = active_volume_index_.load();
             auto space_required = active_volume_->cache_->get_space_estimate();
             int status = active_page_->add_chunk(data, space_required);

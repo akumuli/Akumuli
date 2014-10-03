@@ -193,6 +193,7 @@ void PageHeader::reuse() {
     open_count++;
     last_offset = length - 1;
     bbox = PageBoundingBox();
+    histogram.size = 0;
 }
 
 void PageHeader::close() {

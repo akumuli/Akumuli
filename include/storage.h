@@ -60,6 +60,8 @@ struct Volume : std::enable_shared_from_this<Volume>
     //! Create new volume stored in file
     Volume(const char* file_path, const aku_Config &conf, int tag, aku_printf_t logger);
 
+    ~Volume();
+
     //! Get pointer to page
     PageHeader* get_page() const;
 

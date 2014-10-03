@@ -156,21 +156,21 @@ struct CoroCursor : Cursor {
     }
 
     template<class Fn_2arg, class Tobj, class T2nd>
-    static std::unique_ptr<ExternalCursor> make(Fn_2arg const& fn, Tobj* obj, T2nd const& arg2) {
+    static std::unique_ptr<ExternalCursor> make(Fn_2arg const& fn, Tobj obj, T2nd const& arg2) {
          std::unique_ptr<CoroCursor> cursor(new CoroCursor());
          cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2));
          return std::move(cursor);
     }
 
     template<class Fn_3arg, class Tobj, class T2nd, class T3rd>
-    static std::unique_ptr<ExternalCursor> make(Fn_3arg const& fn, Tobj* obj, T2nd const& arg2, T3rd const& arg3) {
+    static std::unique_ptr<ExternalCursor> make(Fn_3arg const& fn, Tobj obj, T2nd const& arg2, T3rd const& arg3) {
          std::unique_ptr<CoroCursor> cursor(new CoroCursor());
          cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3));
          return std::move(cursor);
     }
 
     template<class Fn_4arg, class Tobj, class T2nd, class T3rd, class T4th>
-    static std::unique_ptr<ExternalCursor> make(Fn_4arg const& fn, Tobj* obj, T2nd const& arg2, T3rd const& arg3, T4th const& arg4) {
+    static std::unique_ptr<ExternalCursor> make(Fn_4arg const& fn, Tobj obj, T2nd const& arg2, T3rd const& arg3, T4th const& arg4) {
          std::unique_ptr<CoroCursor> cursor(new CoroCursor());
          cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3, arg4));
          return std::move(cursor);

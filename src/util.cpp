@@ -51,8 +51,18 @@ MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_printf_t 
     map_file();
 }
 
-void MemoryMappedFile::move_file(const char* new_name) {
-    status_ = apr_file_rename(path_.c_str(), new_name, this->mem_pool_);
+void MemoryMappedFile::move_file(const char* new_name) noexcept {
+    status_ = apr_file_rename(path_.c_str(), new_name, mem_pool_);
+    if (status_ == APR_SUCCESS) {
+        path_ = new_name;
+    }
+}
+
+void MemoryMappedFile::delete_file() noexcept {
+    status_ = apr_file_remove(path_.c_str(), mem_pool_);
+    if (status_ != APR_SUCCESS) {
+        (*logger_)(tag_, "Can't remove file %s, error %s", path_.c_str(), error_message().c_str());
+    }
 }
 
 apr_status_t MemoryMappedFile::map_file() noexcept {
