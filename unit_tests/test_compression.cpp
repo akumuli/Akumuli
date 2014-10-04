@@ -88,3 +88,44 @@ BOOST_AUTO_TEST_CASE(Test_delta_rle) {
     test_stream_read(delta_reader);
 }
 
+BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
+{
+    // copy from page.cpp //
+    typedef Base128StreamWriter<int64_t> __Base128OffWriter;                    // int64_t is used instead of uint32_t
+    typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;        // for a reason. Numbers is not always
+    typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;      // increasing here so we can get negatives
+    typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;    // after delta encoding (ZigZag coding
+
+    // Base128 -> RLE -> ZigZag -> Delta -> Offset
+    //typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
+    typedef Base128StreamReader<uint64_t, ByteVector::const_iterator> __Base128OffReader;
+    typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
+    typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
+    typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
+
+    // this replicates real problem //
+    std::vector<uint32_t> actual;
+    const uint32_t BASE_OFFSET = 3221191859u;
+    const uint32_t OFFSET_STEP = 8u;
+    uint32_t current = BASE_OFFSET;
+    for(int i = 0; i < 10000; i++) {
+        actual.push_back(current);
+        current -= OFFSET_STEP;
+    }
+
+    ByteVector data;
+    DeltaRLEOffWriter wstream(data);
+    for (auto off: actual) {
+        wstream.put(off);
+    }
+    wstream.close();
+
+    std::vector<uint32_t> expected;
+    DeltaRLEOffReader rstream(data.begin(), data.end());
+    for (int i = 0; i < 10000; i++) {
+        expected.push_back((uint32_t)rstream.next());
+    }
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
+}
+

@@ -21,8 +21,8 @@
 using namespace Akumuli;
 using namespace std;
 
-const int DB_SIZE = 3;
-const int NUM_ITERATIONS = 1000*1000*1000;
+const int DB_SIZE = 8;
+const int NUM_ITERATIONS = 100*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -33,7 +33,7 @@ void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
 }
 
-void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+bool query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
@@ -46,7 +46,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             std::cout << aku_error_message(err) << std::endl;
-            return;
+            return false;
         }
         aku_TimeStamp timestamps[NUM_ELEMENTS];
         aku_ParamId paramids[NUM_ELEMENTS];
@@ -56,16 +56,16 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
         for (int i = 0; i < n_entries; i++) {
             if (timestamps[i] != current_time) {
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
-                return;
+                return false;
             }
             if (paramids[i] != current_time + 1) {
                 std::cout << "Error at " << cursor_ix << " expected id " << (current_time+1) << " acutal id " << paramids[i]  << std::endl;
-                return;
+                return false;
             }
             uint64_t const* pvalue = (uint64_t const*)pointers[i];
             if (*pvalue != current_time + 2) {
                 std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
-                return;
+                return false;
             }
             current_time++;
             counter++;
@@ -80,6 +80,7 @@ void query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, ui
     if (cursor_ix > 1000) {
         std::cout << "cursor_ix = " << cursor_ix << std::endl;
     }
+    return true;
 }
 
 void print_storage_stats(aku_StorageStats& ss) {
@@ -180,7 +181,7 @@ int main(int cnt, const char** args)
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
-                    return -1;
+                    return 1;
                 }
             }
             if (i % 1000000 == 0) {
@@ -202,12 +203,15 @@ int main(int cnt, const char** args)
         uint64_t counter = 0;
 
         timer.restart();
-        query_database( db
-                      , std::numeric_limits<aku_TimeStamp>::min()
-                      , std::numeric_limits<aku_TimeStamp>::max()
-                      , counter
-                      , timer
-                      , 1000000);
+        if (!query_database( db
+                           , std::numeric_limits<aku_TimeStamp>::min()
+                           , std::numeric_limits<aku_TimeStamp>::max()
+                           , counter
+                           , timer
+                           , 1000000))
+        {
+            return 2;
+        }
 
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);
@@ -218,7 +222,6 @@ int main(int cnt, const char** args)
         for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
             std::vector<aku_TimeStamp> range;
             aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
-            //aku_TimeStamp j = CHUNK_SIZE*10;  // Fixed position
             std::generate_n(std::back_inserter(range), CHUNK_SIZE, [&j]() {return j++;});
             std::random_shuffle(range.begin(), range.end());
             int count = 5;
@@ -236,7 +239,9 @@ int main(int cnt, const char** args)
         counter = 0;
         timer.restart();
         for(auto range: ranges) {
-            query_database(db, range.first, range.second, counter, timer, 10000);
+            if (!query_database(db, range.first, range.second, counter, timer, 10000)) {
+                return 3;
+            }
         }
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);

@@ -106,7 +106,7 @@ struct CursorImpl : aku_Cursor {
     {
         // TODO: track PageHeader::open_count here
         std::vector<CursorResult> results;
-        results.resize(arrays_size);
+        results.resize(arrays_size);  // TODO: pass all pointers to storage directly
         int n_results = cursor_->read(results.data(), results.size());
         for (int i = 0; i < n_results; i++) {
             const CursorResult& result = results[i];
