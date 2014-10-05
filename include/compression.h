@@ -60,7 +60,7 @@ namespace Akumuli {
 
             while (true) {
                 auto i = static_cast<byte_t>(*p & 0x7F);
-                acc |= i << cnt;
+                acc |= TVal(i) << cnt;
                 if ((*p++ & 0x80) == 0) {
                     break;
                 }

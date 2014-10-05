@@ -97,8 +97,7 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;    // after delta encoding (ZigZag coding
 
     // Base128 -> RLE -> ZigZag -> Delta -> Offset
-    //typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
-    typedef Base128StreamReader<uint64_t, ByteVector::const_iterator> __Base128OffReader;
+    typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128OffReader;
     typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
     typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
     typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
@@ -121,7 +120,7 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     wstream.close();
 
     std::vector<uint32_t> expected;
-    DeltaRLEOffReader rstream(data.begin(), data.end());
+    DeltaRLEOffReader rstream(data.data(), data.data() + data.size());
     for (int i = 0; i < 10000; i++) {
         expected.push_back((uint32_t)rstream.next());
     }
