@@ -239,13 +239,13 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
             continue;
         }
         TimeSeriesValue ts_value(entry->time, entry->param_id, off_err.first, entry->length);
-        int add_status;
-        Sequencer::Lock merge_lock;
+        int add_status = 0;
+        int merge_lock = 0;
         std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
-        if (merge_lock.owns_lock()) {
+        if (merge_lock % 2 == 1) {
             Caller caller;
             DirectPageSyncCursor cursor(rand_);
-            active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+            active_volume_->cache_->merge(caller, &cursor);
         }
         begin++;
     }
@@ -260,15 +260,14 @@ void Storage::advance_volume_(int local_rev) {
 
         auto old_page_id = active_page_->page_id;
 
-        Sequencer::Lock close_lock;
-        close_lock = active_volume_->cache_->close();
-        if (close_lock.owns_lock()) {
+        int close_lock = active_volume_->cache_->close();
+        if (close_lock % 2 == 1) {
             Caller caller;
             DirectPageSyncCursor cursor(rand_);
             if (!compression) {
-                active_volume_->cache_->merge(caller, &cursor, std::move(close_lock));
+                active_volume_->cache_->merge(caller, &cursor);
             } else {
-                active_volume_->cache_->merge_and_compress(caller, &cursor, std::move(close_lock), active_page_);
+                active_volume_->cache_->merge_and_compress(caller, &cursor, active_page_);
             }
         }
         active_volume_->close();
@@ -317,8 +316,8 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
         if (vol == this->active_volume_) {
             auto window = active_volume_->cache_->get_window();
             if (query.lowerbound > window || query.upperbound > window) {
-                //auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
-                //cursors.push_back(std::move(ccur));
+                auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
+                cursors.push_back(std::move(ccur));
             }
         }
         // Search pages
@@ -387,13 +386,13 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
             switch (status) {
                 case AKU_SUCCESS: {
                     TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
-                    Sequencer::Lock merge_lock;
+                    int merge_lock = 0;
                     std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-                    if (merge_lock.owns_lock()) {
+                    if (merge_lock % 2 == 1) {
                         // Slow path
                         Caller caller;
                         DirectPageSyncCursor cursor(rand_);
-                        active_volume_->cache_->merge(caller, &cursor, std::move(merge_lock));
+                        active_volume_->cache_->merge(caller, &cursor);
                     }
                     return status;
                 }
@@ -415,13 +414,13 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
             switch (status) {
                 case AKU_SUCCESS: {
                     TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
-                    Sequencer::Lock merge_lock;
+                    int merge_lock = 0;
                     std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-                    if (merge_lock.owns_lock()) {
+                    if (merge_lock % 2 == 1) {
                         // Slow path
                         Caller caller;
                         DirectPageSyncCursor cursor(rand_);
-                        active_volume_->cache_->merge_and_compress(caller, &cursor, std::move(merge_lock),
+                        active_volume_->cache_->merge_and_compress(caller, &cursor,
                                                                    active_volume_->get_page());
                     }
                     return status;

@@ -22,12 +22,14 @@ using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 3;
-const int NUM_ITERATIONS = 1000*1000*1000;
+const int NUM_ITERATIONS = 100*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
 const char* DB_META_FILE = "./test/test.akumuli";
+
+uint64_t reader_n_busy = 0ul;
 
 void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
@@ -75,9 +77,14 @@ aku_TimeStamp query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStam
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
-            std::cout << aku_error_message(err) << std::endl;
             aku_close_cursor(cursor);
-            return last;
+            if (err == AKU_EBUSY) { // OK
+                reader_n_busy++;
+                return last;
+            } else {                           // Critical
+                std::cout << aku_error_message(err) << std::endl;
+                throw std::runtime_error(aku_error_message(err));
+            }
         }
         aku_TimeStamp timestamps[NUM_ELEMENTS];
         aku_ParamId paramids[NUM_ELEMENTS];
@@ -138,7 +145,7 @@ int main(int cnt, const char** args)
 
     std::thread reader_thread(reader_fn);
 
-    int busy_count = 0;
+    int writer_n_busy = 0;
     for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
         aku_MemRange memr;
         memr.address = (void*)&i;
@@ -150,7 +157,7 @@ int main(int cnt, const char** args)
                 timer.restart();
             }
         } else if (status == AKU_EBUSY) {
-            busy_count++;
+            writer_n_busy++;
             status = aku_add_sample(db, 1, i, memr);
         }
         if (status != AKU_SUCCESS) {
@@ -158,9 +165,11 @@ int main(int cnt, const char** args)
             break;
         }
     }
-    std::cout << "Busy count = " << busy_count << std::endl;
+    std::cout << "Writer busy count = " << writer_n_busy << std::endl;
 
     reader_thread.join();
+
+    std::cout << "Reader busy count = " << reader_n_busy << std::endl;
 
     aku_SearchStats search_stats;
 

@@ -76,6 +76,7 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
+    , progress_flag_ {0}
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
     , space_estimate_(0u)
     , c_threshold_(config.compression_threshold)
@@ -96,82 +97,84 @@ aku_TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
 }
 
 // move sorted runs to ready_ collection
-void Sequencer::make_checkpoint_(uint32_t new_checkpoint, Lock& lock) {
-    if(!lock.try_lock()) {
-        return;
-    }
-    auto old_top = get_timestamp_(checkpoint_);
-    checkpoint_ = new_checkpoint;
-    vector<PSortedRun> new_runs;
-    for (auto& sorted_run: runs_) {
-        auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
-        if (it == sorted_run->begin()) {
-            // all timestamps are newer than old_top, do nothing
-            new_runs.push_back(move(sorted_run));
-            continue;
-        } else if (it == sorted_run->end()) {
-            // all timestamps are older than old_top, move them
-            ready_.push_back(move(sorted_run));
-        } else {
-            // it is in between of the sorted run - split
-            PSortedRun run(new SortedRun());
-            copy(sorted_run->begin(), it, back_inserter(*run));  // copy old
-            ready_.push_back(move(run));
-            run.reset(new SortedRun());
-            copy(it, sorted_run->end(), back_inserter(*run));  // copy new
-            new_runs.push_back(move(run));
+int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
+    int flag = progress_flag_.fetch_add(1) + 1;
+    if (flag % 2 != 0) {
+        auto old_top = get_timestamp_(checkpoint_);
+        checkpoint_ = new_checkpoint;
+        vector<PSortedRun> new_runs;
+        for (auto& sorted_run: runs_) {
+            auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
+            if (it == sorted_run->begin()) {
+                // all timestamps are newer than old_top, do nothing
+                new_runs.push_back(move(sorted_run));
+                continue;
+            } else if (it == sorted_run->end()) {
+                // all timestamps are older than old_top, move them
+                ready_.push_back(move(sorted_run));
+            } else {
+                // it is in between of the sorted run - split
+                PSortedRun run(new SortedRun());
+                copy(sorted_run->begin(), it, back_inserter(*run));  // copy old
+                ready_.push_back(move(run));
+                run.reset(new SortedRun());
+                copy(it, sorted_run->end(), back_inserter(*run));  // copy new
+                new_runs.push_back(move(run));
+            }
+        }
+        Lock guard(runs_resize_lock_);
+        space_estimate_ = 0u;
+        for (auto& sorted_run: new_runs) {
+            space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
+        }
+        swap(runs_, new_runs);
+
+        size_t ready_size = 0u;
+        for (auto& sorted_run: ready_) {
+            ready_size += sorted_run->size();
+        }
+        if (ready_size < c_threshold_) {
+            // If ready doesn't contains enough data compression wouldn't be efficient,
+            //  we need to wait for more data to come
+            flag = progress_flag_.fetch_add(1) + 1;
         }
     }
-    Lock guard(runs_resize_lock_);
-    space_estimate_ = 0u;
-    for (auto& sorted_run: new_runs) {
-        space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
-    }
-    swap(runs_, new_runs);
-
-    size_t ready_size = 0u;
-    for (auto& sorted_run: ready_) {
-        ready_size += sorted_run->size();
-    }
-    if (ready_size < c_threshold_) {
-        // If ready doesn't contains enough data compression wouldn't be efficient,
-        //  we need to wait for more data to come
-        lock.unlock();
-    }
+    return flag;
 }
 
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-int Sequencer::check_timestamp_(aku_TimeStamp ts, Lock& lock) {
+std::tuple<int, int> Sequencer::check_timestamp_(aku_TimeStamp ts) {
     int error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
         if (delta > window_size_) {
             error_code = AKU_ELATE_WRITE;
         }
-        return error_code;
+        return make_tuple(error_code, 0);
     }
     auto point = get_checkpoint_(ts);
+    int flag = 0;
     if (point > checkpoint_) {
         // Create new checkpoint
-        make_checkpoint_(point, lock);
-        if (!lock.owns_lock()) {
+        flag = make_checkpoint_(point);
+        if (flag % 2 == 0) {
             // Previous checkpoint not completed
             error_code = AKU_EBUSY;
         }
     }
     top_timestamp_ = ts;
-    return error_code;
+    return make_tuple(error_code, flag);
 }
 
-std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
+std::tuple<int, int> Sequencer::add(TimeSeriesValue const& value) {
     // FIXME: max_cache_size_ is not used
-    int status;
-    Lock lock(progress_flag_, defer_lock);
-    status = check_timestamp_(get<0>(value.key_), lock);
+    int status = 0;
+    int lock = 0;
+    tie(status, lock) = check_timestamp_(get<0>(value.key_));
     if (status != AKU_SUCCESS) {
-        return make_tuple(status, move(lock));
+        return make_tuple(status, lock);
     }
 
     key_->pop_back();
@@ -203,7 +206,7 @@ std::tuple<int, Sequencer::Lock> Sequencer::add(TimeSeriesValue const& value) {
         runs_.push_back(move(new_pile));
         guard.unlock();
     }
-    return make_tuple(AKU_SUCCESS, move(lock));
+    return make_tuple(AKU_SUCCESS, lock);
 }
 
 template<class Cont>
@@ -220,9 +223,7 @@ void unlock_all(Cont& cont) {
     }
 }
 
-Sequencer::Lock Sequencer::close() {
-    Lock lock(progress_flag_);
-
+int Sequencer::close() {
     wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {
         ready_.push_back(move(sorted_run));
@@ -232,8 +233,8 @@ Sequencer::Lock Sequencer::close() {
     runs_resize_lock_.lock();
     runs_.clear();
     runs_resize_lock_.unlock();
-
-    return move(lock);
+    progress_flag_.store(1);
+    return 1;
 }
 
 template<class TKey, int dir>
@@ -319,8 +320,8 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
     }
 }
 
-void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
-    bool owns_lock = lock.owns_lock();
+void Sequencer::merge(Caller& caller, InternalCursor* cur) {
+    bool owns_lock = progress_flag_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
         // Error! Merge called too early
         cur->set_error(caller, AKU_EBUSY);
@@ -349,10 +350,13 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur, Lock&& lock) {
 
     ready_.clear();
     cur->complete(caller);
+
+    progress_flag_.fetch_add(1);  // progress_flag_ is even again
 }
 
-void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequencer::Lock&& lock, PageHeader* target) {
-    if (!lock.owns_lock()) {
+void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target) {
+    bool owns_lock = progress_flag_.load() % 2;  // progress_flag_ must be odd to start
+    if (!owns_lock) {
         cur->set_error(caller, AKU_EBUSY);
         return;
     }
@@ -381,6 +385,8 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, Sequence
         cur->set_error(caller, status);
         return;
     }
+
+    progress_flag_.fetch_add(1);  // progress_flag_ is even again
 }
 
 aku_TimeStamp Sequencer::get_window() const {
@@ -423,7 +429,11 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
 }
 
 void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
-    Lock guard(progress_flag_);
+    int flag = progress_flag_.load();
+    if (flag % 2 != 0) {
+        cur->set_error(caller, AKU_EBUSY);
+        return;
+    }
     std::vector<PSortedRun> filtered;
     std::vector<SortedRun const*> pruns;
     Lock runs_guard(runs_resize_lock_);
@@ -459,6 +469,12 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
     } else {
         kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
-    cur->complete(caller);
+
+    if (flag != progress_flag_.load()) {
+        cur->set_error(caller, AKU_EBUSY);
+        return;
+    } else {
+        cur->complete(caller);
+    }
 }
 }  // namespace Akumuli

@@ -36,14 +36,14 @@ int main(int cnt, const char** args)
         Sequencer seq(nullptr, {0, 10000, 0});
         for (int ix = 0u; ix < NUM_ITERATIONS; ix++) {
             TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (aku_EntryOffset)ix, 8);
-            int status;
-            Sequencer::Lock lock;
+            int status = 0;
+            int lock = 0;
             tie(status, lock) = seq.add(value);
-            if (lock.owns_lock()) {
+            if (lock % 2 == 1) {
                 CursorResult results[0x10000];
                 BufferedCursor cursor(results, 0x10000);
                 Caller caller;
-                seq.merge(caller, &cursor, std::move(lock));
+                seq.merge(caller, &cursor);
                 for (size_t i = 0; i < cursor.count; i++) {
                     if (cursor.results_buffer[i].data_offset != ix_merged) {
                         // report error
@@ -75,14 +75,14 @@ int main(int cnt, const char** args)
                 buffer_ix = buffer_size;
                 for(auto ixx: buffer) {
                     TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (aku_EntryOffset)ixx, 8);
-                    int status;
-                    Sequencer::Lock lock;
+                    int status = 0;
+                    int lock = 0;
                     tie(status, lock) = seq.add(value);
-                    if (lock.owns_lock()) {
+                    if (lock % 2 == 1) {
                         CursorResult results[0x10000];
                         BufferedCursor cursor(results, 0x10000);
                         Caller caller;
-                        seq.merge(caller, &cursor, std::move(lock));
+                        seq.merge(caller, &cursor);
                         for (size_t i = 0; i < cursor.count; i++) {
                             if (cursor.results_buffer[i].data_offset != ix_merged) {
                                 // report error

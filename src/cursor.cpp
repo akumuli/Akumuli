@@ -154,6 +154,7 @@ void CoroCursor::close() {
 // Internal cursor implementation
 
 void CoroCursor::set_error(Caller& caller, int error_code) {
+    closed_ = true;
     error_code_ = error_code;
     error_ = true;
     complete_ = true;
@@ -164,9 +165,12 @@ bool CoroCursor::put(Caller& caller, CursorResult const& result) {
     if (closed_) {
         return false;
     }
-    if (write_index_ == usr_buffer_len_) {
+    if (write_index_ >= usr_buffer_len_) {
         // yield control to client
         caller();
+    }
+    if (closed_) {
+        return false;
     }
     usr_buffer_[write_index_++] = result;
     return true;

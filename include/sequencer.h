@@ -73,7 +73,10 @@ struct Sequencer {
     const PageHeader* const      page_;
     aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
-    mutable Mutex                progress_flag_;
+    mutable std::atomic_int      progress_flag_;   //< Flag indicates that merge operation is in progress and
+                                                  //< search will return inaccurate results.
+                                                  //< If progress_flag_ is odd - merge is in progress if it is
+                                                  //< even - there is no merge and search will work correctly.
     mutable Mutex                runs_resize_lock_;
     mutable std::vector<RWLock>  run_locks_;
     uint32_t                     space_estimate_; //< Space estimate for storing all data
@@ -85,13 +88,13 @@ struct Sequencer {
       * @brief Timestamp of the sample can be out of order.
       * @returns error code and flag that indicates whether of not new checkpoint is createf
       */
-    std::tuple<int, Lock> add(TimeSeriesValue const& value);
+    std::tuple<int, int> add(TimeSeriesValue const& value);
 
-    void merge(Caller& caller, InternalCursor* cur, Lock&& lock);
+    void merge(Caller& caller, InternalCursor* cur);
 
-    void merge_and_compress(Caller& caller, InternalCursor* cur, Lock&& lock, PageHeader* target);
+    void merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target);
 
-    Lock close();
+    int close();
 
     // Searching
     void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
@@ -112,12 +115,12 @@ private:
     aku_TimeStamp get_timestamp_(uint32_t cp) const;
 
     // move sorted runs to ready_ collection
-    void make_checkpoint_(uint32_t new_checkpoint, Lock& lock);
+    int make_checkpoint_(uint32_t new_checkpoint);
 
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created
       */
-    int check_timestamp_(aku_TimeStamp ts, Lock &lock);
+    std::tuple<int, int> check_timestamp_(aku_TimeStamp ts);
 
     void filter(const SortedRun *run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
 };
