@@ -38,7 +38,8 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
-                                                  , 1, params);
+                                                  , 42
+                                                  , params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = begin;
     size_t cursor_ix = 0;
@@ -58,8 +59,8 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
                 return false;
             }
-            if (paramids[i] != current_time + 1) {
-                std::cout << "Error at " << cursor_ix << " expected id " << (current_time+1) << " acutal id " << paramids[i]  << std::endl;
+            if (paramids[i] != 42) {
+                std::cout << "Error at " << cursor_ix << " expected id 42 acutal id " << paramids[i]  << std::endl;
                 return false;
             }
             uint64_t const* pvalue = (uint64_t const*)pointers[i];
@@ -175,9 +176,9 @@ int main(int cnt, const char** args)
             aku_MemRange memr;
             memr.address = (void*)&k;
             memr.length = sizeof(k);
-            aku_Status status = aku_add_sample(db, i+1, i, memr);
+            aku_Status status = aku_add_sample(db, 42, i, memr);
             if (status == AKU_EBUSY) {
-                status = aku_add_sample(db, i+1, i, memr);
+                status = aku_add_sample(db, 42, i, memr);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;

@@ -70,7 +70,8 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( end
                                                   , begin
-                                                  , 1, params);
+                                                  , 42
+                                                  , params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = end;
     aku_TimeStamp last = begin;
@@ -95,9 +96,28 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
         for (int i = 0; i < n_entries; i++) {
             if (last_initialized) {
                 if (timestamps[i] != current_time) {
-                    std::cout << "Error at " << current_time << " expected " << current_time << " acutal " << timestamps[i]  << std::endl;
+                    std::cout << "Bad ts at " << current_time << " expected " << current_time << " acutal " << timestamps[i] << std::endl;
                     aku_close_cursor(cursor);
                     return last;
+                }
+                if (paramids[i] != 42) {
+                    std::cout << "Bad id at " << current_time << " expected " << 42 << " acutal " << paramids[i] << std::endl;
+                    aku_close_cursor(cursor);
+                    return last;
+
+                }
+                if (lengths[i] != 8) {
+                    std::cout << "Bad len at " << current_time << " expected 8 acutal " << lengths[i] << std::endl;
+                    aku_close_cursor(cursor);
+                    return last;
+
+                }
+                uint64_t pvalue = *(uint64_t*)pointers[i];
+                if (pvalue != (current_time << 2)) {
+                    std::cout << "Bad value at " << current_time << " expected " << (current_time << 2) << " acutal " << pvalue << std::endl;
+                    aku_close_cursor(cursor);
+                    return last;
+
                 }
             }
             if (!last_initialized) {
@@ -201,19 +221,21 @@ int main(int cnt, const char** args)
     std::thread reader_thread(reader_fn);
 
     int writer_n_busy = 0;
-    for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
+    for(uint64_t ts = 0; ts < NUM_ITERATIONS; ts++) {
         aku_MemRange memr;
-        memr.address = (void*)&i;
-        memr.length = sizeof(i);
-        aku_Status status = aku_add_sample(db, 1, i, memr);
+        auto param_id = 42u;
+        auto value = ts << 2;
+        memr.address = (void*)&value;
+        memr.length = sizeof(value);
+        aku_Status status = aku_add_sample(db, param_id, ts, memr);
         if (status == AKU_SUCCESS) {
-            if (i % 1000000 == 0) {
-                std::cout << i << "---" << timer.elapsed() << "s" << std::endl;
+            if (ts % 1000000 == 0) {
+                std::cout << ts << "---" << timer.elapsed() << "s" << std::endl;
                 timer.restart();
             }
         } else if (status == AKU_EBUSY) {
             writer_n_busy++;
-            status = aku_add_sample(db, 1, i, memr);
+            status = aku_add_sample(db, param_id, ts, memr);
         }
         if (status != AKU_SUCCESS) {
             std::cout << "aku_add_sample error " << aku_error_message(status) << std::endl;
