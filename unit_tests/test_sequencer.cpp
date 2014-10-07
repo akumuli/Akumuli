@@ -120,7 +120,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
         }
     }
 
-    int lock = seq.close();
+    int lock = seq.reset();
     BOOST_REQUIRE(lock % 2 == 1);
     RecordingCursor rec;
     Caller caller;
@@ -170,7 +170,10 @@ void test_sequencer_searching(int dir) {
     Caller caller;
     RecordingCursor cursor;
     SearchQuery query(42u, begin, end, dir);
-    seq.search(caller, &cursor, query);
+    aku_TimeStamp window;
+    int seq_id;
+    std::tie(window, seq_id) = seq.get_window();
+    seq.search(caller, &cursor, query, seq_id);
 
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());

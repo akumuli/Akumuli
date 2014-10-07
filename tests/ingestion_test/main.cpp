@@ -33,7 +33,7 @@ void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
 }
 
-bool query_database(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {1};
     aku_SelectQuery* query = aku_make_select_query( begin
@@ -203,7 +203,7 @@ int main(int cnt, const char** args)
         uint64_t counter = 0;
 
         timer.restart();
-        if (!query_database( db
+        if (!query_database_forward( db
                            , std::numeric_limits<aku_TimeStamp>::min()
                            , std::numeric_limits<aku_TimeStamp>::max()
                            , counter
@@ -239,7 +239,7 @@ int main(int cnt, const char** args)
         counter = 0;
         timer.restart();
         for(auto range: ranges) {
-            if (!query_database(db, range.first, range.second, counter, timer, 10000)) {
+            if (!query_database_forward(db, range.first, range.second, counter, timer, 10000)) {
                 return 3;
             }
         }

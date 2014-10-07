@@ -76,7 +76,7 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
-    , progress_flag_ {0}
+    , sequence_number_ {0}
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
     , space_estimate_(0u)
     , c_threshold_(config.compression_threshold)
@@ -98,7 +98,7 @@ aku_TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
 
 // move sorted runs to ready_ collection
 int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
-    int flag = progress_flag_.fetch_add(1) + 1;
+    int flag = sequence_number_.fetch_add(1) + 1;
     if (flag % 2 != 0) {
         auto old_top = get_timestamp_(checkpoint_);
         checkpoint_ = new_checkpoint;
@@ -136,7 +136,7 @@ int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
         if (ready_size < c_threshold_) {
             // If ready doesn't contains enough data compression wouldn't be efficient,
             //  we need to wait for more data to come
-            flag = progress_flag_.fetch_add(1) + 1;
+            flag = sequence_number_.fetch_add(1) + 1;
         }
     }
     return flag;
@@ -223,7 +223,7 @@ void unlock_all(Cont& cont) {
     }
 }
 
-int Sequencer::close() {
+int Sequencer::reset() {
     wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {
         ready_.push_back(move(sorted_run));
@@ -233,7 +233,7 @@ int Sequencer::close() {
     runs_resize_lock_.lock();
     runs_.clear();
     runs_resize_lock_.unlock();
-    progress_flag_.store(1);
+    sequence_number_.store(1);
     return 1;
 }
 
@@ -321,7 +321,7 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
 }
 
 void Sequencer::merge(Caller& caller, InternalCursor* cur) {
-    bool owns_lock = progress_flag_.load() % 2;  // progress_flag_ must be odd to start
+    bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
         // Error! Merge called too early
         cur->set_error(caller, AKU_EBUSY);
@@ -351,11 +351,11 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     ready_.clear();
     cur->complete(caller);
 
-    progress_flag_.fetch_add(1);  // progress_flag_ is even again
+    sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
 void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target) {
-    bool owns_lock = progress_flag_.load() % 2;  // progress_flag_ must be odd to start
+    bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
         cur->set_error(caller, AKU_EBUSY);
         return;
@@ -386,11 +386,11 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, PageHead
         return;
     }
 
-    progress_flag_.fetch_add(1);  // progress_flag_ is even again
+    sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
-aku_TimeStamp Sequencer::get_window() const {
-    return top_timestamp_ - window_size_;
+std::tuple<aku_TimeStamp, int> Sequencer::get_window() const {
+    return std::make_tuple(top_timestamp_ - window_size_, sequence_number_.load());
 }
 
 uint32_t Sequencer::get_space_estimate() const {
@@ -428,9 +428,9 @@ void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<P
     results->push_back(move(result));
 }
 
-void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) const {
-    int flag = progress_flag_.load();
-    if (flag % 2 != 0) {
+void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const {
+    int seq_id = sequence_number_.load();
+    if (seq_id % 2 != 0 || sequence_number != seq_id) {
         cur->set_error(caller, AKU_EBUSY);
         return;
     }
@@ -470,7 +470,7 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query) c
         kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
 
-    if (flag != progress_flag_.load()) {
+    if (seq_id != sequence_number_.load()) {
         cur->set_error(caller, AKU_EBUSY);
         return;
     } else {

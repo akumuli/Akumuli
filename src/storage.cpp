@@ -260,7 +260,7 @@ void Storage::advance_volume_(int local_rev) {
 
         auto old_page_id = active_page_->page_id;
 
-        int close_lock = active_volume_->cache_->close();
+        int close_lock = active_volume_->cache_->reset();
         if (close_lock % 2 == 1) {
             Caller caller;
             DirectPageSyncCursor cursor(rand_);
@@ -308,27 +308,34 @@ void Storage::log_message(const char* message, uint64_t value) {
 // Reading
 
 void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
+    using namespace std;
     // Find pages
     // at this stage of development - simply get all pages :)
-    std::vector<std::unique_ptr<ExternalCursor>> cursors;
+    vector<unique_ptr<ExternalCursor>> cursors;
     for(auto vol: volumes_) {
         // Search cache (optional, only for active page)
         if (vol == this->active_volume_) {
-            auto window = active_volume_->cache_->get_window();
-            if (query.lowerbound > window || query.upperbound > window) {
-                auto ccur = CoroCursor::make(&Sequencer::search, this->active_volume_->cache_.get(), query);
-                cursors.push_back(std::move(ccur));
+            aku_TimeStamp window;
+            int seq_id;
+            tie(window, seq_id) = active_volume_->cache_->get_window();
+            if (query.direction == AKU_CURSOR_DIR_BACKWARD &&              // Cache searched only if cursor
+               (query.lowerbound > window || query.upperbound > window))    // direction is backward.
+            {
+                auto ccur = CoroCursor::make(&Sequencer::search,            // Cache has optimistic concurrency
+                                             active_volume_->cache_.get(),  // control and can easily return
+                                             query, seq_id);                // AKU_EBUSY, because of that it
+                cursors.push_back(move(ccur));                              // must be searched in a first place.
             }
         }
         // Search pages
         auto pcur = CoroCursor::make(&Volume::search, vol, query);
-        cursors.push_back(std::move(pcur));
+        cursors.push_back(move(pcur));
     }
 
-    std::vector<ExternalCursor*> pcursors;
-    std::transform( cursors.begin(), cursors.end()
-                  , std::back_inserter(pcursors)
-                  , [](std::unique_ptr<ExternalCursor>& v) { return v.get(); });
+    vector<ExternalCursor*> pcursors;
+    transform( cursors.begin(), cursors.end()
+             , back_inserter(pcursors)
+             , [](unique_ptr<ExternalCursor>& v) { return v.get(); });
 
     assert(pcursors.size());
     FanInCursorCombinator fan_in_cursor(&pcursors[0], pcursors.size(), query.direction);

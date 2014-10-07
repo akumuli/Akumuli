@@ -73,7 +73,7 @@ struct Sequencer {
     const PageHeader* const      page_;
     aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
-    mutable std::atomic_int      progress_flag_;   //< Flag indicates that merge operation is in progress and
+    mutable std::atomic_int      sequence_number_;   //< Flag indicates that merge operation is in progress and
                                                   //< search will return inaccurate results.
                                                   //< If progress_flag_ is odd - merge is in progress if it is
                                                   //< even - there is no merge and search will work correctly.
@@ -90,16 +90,36 @@ struct Sequencer {
       */
     std::tuple<int, int> add(TimeSeriesValue const& value);
 
+    //! Simple merge and sync without compression. (depricated)
     void merge(Caller& caller, InternalCursor* cur);
 
+    /** Merge all values (ts, id, offset, length)
+      * and write it to target page.
+      * caller and cur parameters used for communication with storage (error reporting).
+      */
     void merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target);
 
-    int close();
+    /** Reset sequencer.
+      * All runs are ready for merging.
+      * @returns new sequence number.
+      */
+    int reset();
 
-    // Searching
-    void search(Caller& caller, InternalCursor* cur, SearchQuery query) const;
+    /** Search in sequencer data.
+      * @param caller represents caller
+      * @param cur search cursor
+      * @param query represents search query
+      * @param sequence_number sequence number obtained with get_window function
+      * @note search method follows common pattern used by all methods except sequence_number
+      * parameter. This parameter is used to organize optimistic concurrency control. User must
+      * call get_window fn and get current window and seq-number. This seq-number then passed to
+      * search method. If seq-number is changed between calls to get_window and search - search
+      * will be aborted and AKU_EBUSY.error code will be returned If merge occures during search -
+      * search will be aborted and AKU_EBUSY error code will be returned.
+      */
+    void search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const;
 
-    aku_TimeStamp get_window() const;
+    std::tuple<aku_TimeStamp, int> get_window() const;
 
     /** Returns number of bytes needed to store all data from the checkpoint
      *  in compressed mode. This number can be more than actually needed but
