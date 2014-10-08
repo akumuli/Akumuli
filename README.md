@@ -71,3 +71,5 @@ In case automatic script didn't work:
 1. `make -j`
 
 https://groups.google.com/forum/#!forum/akumuli
+
+[![Build Status](https://travis-ci.org/akumuli/Akumuli.svg?branch=master)](https://travis-ci.org/akumuli/Akumuli)
