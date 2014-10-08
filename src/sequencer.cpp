@@ -260,19 +260,19 @@ template<class TRun, int dir>
 struct RunIter;
 
 template<class TRun>
-struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_FORWARD> {
+struct RunIter<std::shared_ptr<TRun>, AKU_CURSOR_DIR_FORWARD> {
     typedef boost::iterator_range<typename TRun::const_iterator> range_type;
     typedef typename TRun::value_type value_type;
-    static range_type make_range(std::unique_ptr<TRun> const& run) {
+    static range_type make_range(std::shared_ptr<TRun> const& run) {
         return boost::make_iterator_range(run->begin(), run->end());
     }
 };
 
 template<class TRun>
-struct RunIter<std::unique_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
+struct RunIter<std::shared_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
     typedef boost::iterator_range<typename TRun::const_reverse_iterator> range_type;
     typedef typename TRun::value_type value_type;
-    static range_type make_range(std::unique_ptr<TRun> const& run) {
+    static range_type make_range(std::shared_ptr<TRun> const& run) {
         return boost::make_iterator_range(run->rbegin(), run->rend());
     }
 };
@@ -414,7 +414,7 @@ struct SearchPredicate {
     }
 };
 
-void Sequencer::filter(SortedRun const* run, SearchQuery const& q, std::vector<PSortedRun>* results) const {
+void Sequencer::filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun>* results) const {
     if (run->empty()) {
         return;
     }
@@ -435,12 +435,9 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
         return;
     }
     std::vector<PSortedRun> filtered;
-    std::vector<SortedRun const*> pruns;
+    std::vector<PSortedRun> pruns;
     Lock runs_guard(runs_resize_lock_);
-    std::transform(runs_.begin(), runs_.end(),
-                   std::back_inserter(pruns),
-                   [](PSortedRun const& r) {return r.get();}
-    );
+    pruns = runs_;
     runs_guard.unlock();
     int run_ix = 0;
     for (auto const& run: pruns) {

@@ -57,7 +57,7 @@ struct TimeSeriesValue {
   */
 struct Sequencer {
     typedef std::vector<TimeSeriesValue> SortedRun;
-    typedef std::unique_ptr<SortedRun>   PSortedRun;
+    typedef std::shared_ptr<SortedRun>   PSortedRun;
     typedef std::mutex                   Mutex;
     typedef std::unique_lock<Mutex>      Lock;
 
@@ -142,6 +142,6 @@ private:
       */
     std::tuple<int, int> check_timestamp_(aku_TimeStamp ts);
 
-    void filter(const SortedRun *run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
+    void filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
 };
 }
