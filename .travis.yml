@@ -1,5 +1,5 @@
 build_environment: Ubuntu 13.10
-language: cpp
+language: python
 compiler: gcc
 
 before_install:
