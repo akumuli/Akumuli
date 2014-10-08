@@ -1,9 +1,9 @@
+build_environment: Ubuntu 13.10
 language: cpp
 compiler: gcc
 
 before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq cmake
+  - sudo sh ./prerequisites.sh
 
 before_script:
    - mkdir build
