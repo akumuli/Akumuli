@@ -38,7 +38,7 @@ extern "C" {
     typedef uint64_t    aku_TimeStamp;
     typedef uint64_t    aku_Duration;
     typedef uint32_t    aku_EntryOffset;
-    typedef uint32_t    aku_ParamId;
+    typedef uint64_t    aku_ParamId;
     typedef int         aku_Status;
     typedef const void* aku_PData;
 

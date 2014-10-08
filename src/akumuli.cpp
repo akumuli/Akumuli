@@ -226,13 +226,13 @@ void aku_close_database(aku_Database* db)
 }
 
 aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId *params) {
-    size_t s = sizeof(aku_SelectQuery) + n_params*sizeof(uint32_t);
+    size_t s = sizeof(aku_SelectQuery) + n_params*sizeof(aku_ParamId);
     auto p = malloc(s);
     auto res = reinterpret_cast<aku_SelectQuery*>(p);
     res->begin = begin;
     res->end = end;
     res->n_params = n_params;
-    memcpy(&res->params, params, n_params*sizeof(uint32_t));
+    memcpy(&res->params, params, n_params*sizeof(aku_ParamId));
     std::sort(res->params, res->params + n_params);
     return res;
 }
