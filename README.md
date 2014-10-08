@@ -72,4 +72,4 @@ In case automatic script didn't work:
 
 https://groups.google.com/forum/#!forum/akumuli
 
-[![Build Status](https://travis-ci.org/akumuli/Akumuli.svg?branch=master)](https://travis-ci.org/akumuli/Akumuli)
+[![Build Status](https://api.shippable.com/projects/5434f2757a7fb11eaa64ac39/badge?branchName=master)](https://app.shippable.com/projects/5434f2757a7fb11eaa64ac39/builds/latest)
