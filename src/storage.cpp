@@ -110,6 +110,10 @@ void Volume::close() {
     mmap_.flush();
 }
 
+void Volume::flush() {
+    mmap_.flush();
+}
+
 void Volume::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const {
     page_->search(caller, cursor, query);
 }
@@ -400,6 +404,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                         Caller caller;
                         DirectPageSyncCursor cursor(rand_);
                         active_volume_->cache_->merge(caller, &cursor);
+                        active_volume_->flush();
                     }
                     return status;
                 }
@@ -429,6 +434,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                         DirectPageSyncCursor cursor(rand_);
                         active_volume_->cache_->merge_and_compress(caller, &cursor,
                                                                    active_volume_->get_page());
+                        active_volume_->flush();
                     }
                     return status;
                 }
