@@ -189,6 +189,8 @@ bool PageHeader::inside_bbox(aku_ParamId param, aku_TimeStamp time) const {
 }
 
 void PageHeader::reuse() {
+    sync_count = 0;
+    checkpoint = 0;
     count = 0;
     open_count++;
     last_offset = length - 1;

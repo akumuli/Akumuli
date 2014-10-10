@@ -74,6 +74,9 @@ struct Volume : std::enable_shared_from_this<Volume>
     //! Flush all data and close volume for write until reallocation
     void close();
 
+    //! Flush page
+    void flush();
+
     //! Search volume page (not cache)
     void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 };

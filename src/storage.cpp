@@ -110,6 +110,12 @@ void Volume::close() {
     mmap_.flush();
 }
 
+void Volume::flush() {
+    mmap_.flush();
+    page_->checkpoint = page_->sync_count;
+    mmap_.flush(0, sizeof(PageHeader));
+}
+
 void Volume::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const {
     page_->search(caller, cursor, query);
 }
@@ -228,6 +234,11 @@ void Storage::select_active_page() {
 void Storage::prepopulate_cache(int64_t max_cache_size) {
     // All entries between sync_index (included) and count must
     // be cached.
+    if (active_page_->sync_count != active_page_->checkpoint) {
+        active_page_->sync_count = active_page_->checkpoint;
+        active_volume_->flush();
+    }
+
     auto begin = active_page_->sync_count;
     auto end = active_page_->count;
 
@@ -382,6 +393,7 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 //! commit changes
 void Storage::commit() {
     // TODO: volume->flush()
+    active_volume_->flush();
 }
 
 //! write data
@@ -400,6 +412,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                         Caller caller;
                         DirectPageSyncCursor cursor(rand_);
                         active_volume_->cache_->merge(caller, &cursor);
+                        active_volume_->flush();
                     }
                     return status;
                 }
@@ -429,6 +442,24 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                         DirectPageSyncCursor cursor(rand_);
                         active_volume_->cache_->merge_and_compress(caller, &cursor,
                                                                    active_volume_->get_page());
+                        switch(1) {
+                        case 1:
+                            // Max durability
+                            active_volume_->flush();
+                            break;
+                        case 2:
+                            // Compromice some durability for speed
+                            if ((merge_lock % 8) == 1) {
+                                active_volume_->flush();
+                            }
+                            break;
+                        case 4:
+                            // Max speed
+                            if ((merge_lock % 32) == 1) {
+                                active_volume_->flush();
+                            }
+                            break;
+                        };
                     }
                     return status;
                 }
