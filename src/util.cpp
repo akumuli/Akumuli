@@ -187,7 +187,28 @@ size_t MemoryMappedFile::get_size() const noexcept {
 }
 
 apr_status_t MemoryMappedFile::flush() noexcept {
-    return apr_file_flush(fp_);
+    return flush(0, mmap_->size);
+}
+
+apr_status_t MemoryMappedFile::flush(size_t from, size_t to) noexcept {
+    void* p = align_to_page(static_cast<char*>(mmap_->mm) + from, get_page_size());
+    size_t len = to - from;
+    if (msync(p, len, MS_SYNC) == 0) {
+        return AKU_SUCCESS;
+    }
+    int e = errno;
+    switch(e) {
+    case EBUSY:
+        (*logger_)(tag_, "Can't msync, busy");
+        return AKU_EBUSY;
+    case EINVAL:
+    case ENOMEM:
+        (*logger_)(tag_, "Invalid args passed to msync");
+        return AKU_EBAD_ARG;
+    default:
+        (*logger_)(tag_, "Unknown msync error");
+    };
+    return AKU_EGENERAL;
 }
 
 int64_t log2(int64_t value) noexcept {
@@ -197,6 +218,11 @@ int64_t log2(int64_t value) noexcept {
 
 const void* align_to_page(const void* ptr, size_t page_size) {
     return reinterpret_cast<const void*>(
+        reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
+}
+
+void* align_to_page(void* ptr, size_t page_size) {
+    return reinterpret_cast<void*>(
         reinterpret_cast<unsigned long long>(ptr) & ~(page_size - 1));
 }
 

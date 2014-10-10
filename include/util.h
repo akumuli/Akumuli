@@ -72,6 +72,9 @@ namespace Akumuli
         void delete_file() noexcept;
         void* get_pointer() const noexcept;
         size_t get_size() const noexcept;
+        //! Flush only part of the page
+        apr_status_t flush(size_t from, size_t to) noexcept;
+        //! Flush full page
         apr_status_t flush() noexcept;
         bool is_bad() const noexcept;
         std::string error_message() const noexcept;
@@ -94,6 +97,8 @@ namespace Akumuli
     size_t get_page_size();
 
     const void* align_to_page(const void* ptr, size_t get_page_size);
+
+    void* align_to_page(void* ptr, size_t get_page_size);
 
     void prefetch_mem(const void* ptr, size_t mem_size);
 
