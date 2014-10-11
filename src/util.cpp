@@ -35,14 +35,39 @@ std::string apr_error_message(apr_status_t status) noexcept {
     return std::string(error_message);
 }
 
+static void aku_empty_panic_handler(const char* msg) {
+    // This is default panic handler, it does nothing.
+    // After panic handler returns - akumuli will
+    // throw exception.
+}
+
+static aku_panic_handler_t g_panic_handler = &aku_empty_panic_handler;
+
+void set_panic_handler(aku_panic_handler_t new_panic_handler) {
+    g_panic_handler = new_panic_handler;
+}
+
+
 AprException::AprException(apr_status_t status, const char* message)
     : std::runtime_error(message)
     , status(status)
 {
+    (*g_panic_handler)(message);
 }
 
 std::ostream& operator << (std::ostream& str, AprException const& e) {
     str << "Error: " << e.what() << ", status: " << e.status << ".";
+    return str;
+}
+
+Exception::Exception(const char* message)
+    : std::runtime_error(message)
+{
+    (*g_panic_handler)(message);
+}
+
+std::ostream& operator << (std::ostream& str, Exception const& e) {
+    str << e.what();
     return str;
 }
 

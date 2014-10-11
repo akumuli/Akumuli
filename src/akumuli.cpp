@@ -26,8 +26,11 @@
 
 using namespace Akumuli;
 
-void aku_initialize() {
+void aku_initialize(aku_panic_handler_t optional_panic_handler) {
     apr_initialize();
+    if (optional_panic_handler != nullptr) {
+        set_panic_handler(optional_panic_handler);
+    }
 }
 
 static const char* g_error_messages[] = {
@@ -221,6 +224,10 @@ aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp 
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
 {
+    if (config.logger == nullptr) {
+        // Use default console logger if user doesn't set it
+        config.logger = &aku_console_logger;
+    }
     aku_Database* ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
 }

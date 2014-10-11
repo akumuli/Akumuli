@@ -129,13 +129,8 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     : params_(params)
     , compression(true)
     , tag_(storage_cnt++)
+    , logger_(params.logger)
 {
-    aku_printf_t logger = params.logger;
-    if (logger == nullptr) {
-        logger = &aku_console_logger;
-    }
-    logger_ = logger;
-
     /* Exception, thrown from this c-tor means that something really bad
      * happend and we it's impossible to open this storage, for example -
      * because metadata file is corrupted, or volume is missed on disc.

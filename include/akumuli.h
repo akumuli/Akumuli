@@ -33,7 +33,10 @@
 
 extern "C" {
 
-    AKU_EXPORT void aku_initialize();
+    /** This function must be called before any other library function.
+      * @param optional_panic_handler function to alternative panic handler
+      */
+    AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler=0);
 
     typedef uint64_t    aku_TimeStamp;
     typedef uint64_t    aku_Duration;
@@ -56,9 +59,11 @@ extern "C" {
 
     AKU_EXPORT const char* aku_error_message(int error_code);
 
-    AKU_EXPORT void aku_console_logger(int tag, const char* msg);
-
-    // TODO: add support for custom panic handling
+    /** Default logger that is used if no logging function is
+      * specified. Exported for testing reasons, no need to use it
+      * explicitly.
+      */
+    AKU_EXPORT void aku_console_logger(int tag, const char* message);
 
     //! Database instance.
     struct aku_Database {
