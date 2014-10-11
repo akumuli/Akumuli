@@ -29,6 +29,7 @@
 #include <sstream>
 #include <cassert>
 #include <functional>
+#include <sstream>
 
 #include <apr_general.h>
 #include <apr_mmap.h>
@@ -264,10 +265,10 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
 
 void Storage::advance_volume_(int local_rev) {
     if (local_rev == active_volume_index_.load()) {
-        //log_message("advance volume, current:");
-        //log_message("....page ID", active_volume_->page_->page_id);
-        //log_message("....close count", active_volume_->page_->close_count);
-        //log_message("....open count", active_volume_->page_->open_count);
+        log_message("advance volume, current:");
+        log_message("....page ID", active_volume_->page_->page_id);
+        log_message("....close count", active_volume_->page_->close_count);
+        log_message("....open count", active_volume_->page_->open_count);
 
         auto old_page_id = active_page_->page_id;
 
@@ -282,7 +283,7 @@ void Storage::advance_volume_(int local_rev) {
             }
         }
         active_volume_->close();
-        //log_message("page complete");
+        log_message("page complete");
 
         // select next page in round robin order
         active_volume_index_++;
@@ -295,17 +296,13 @@ void Storage::advance_volume_(int local_rev) {
         auto new_page_id = active_page_->page_id;
         assert(new_page_id != old_page_id);
 
-        //log_message("next volume opened");
-        //log_message("....page ID", active_volume_->page_->page_id);
-        //log_message("....close count", active_volume_->page_->close_count);
-        //log_message("....open count", active_volume_->page_->open_count);
+        log_message("next volume opened");
+        log_message("....page ID", active_volume_->page_->page_id);
+        log_message("....close count", active_volume_->page_->close_count);
+        log_message("....open count", active_volume_->page_->open_count);
     }
     // Or other thread already done all the switching
     // just redo all the things
-}
-
-void Storage::log_error(const char* message) {
-    (*logger_)(tag_, "Write error: %s", message);
 }
 
 void Storage::log_message(const char* message) {
@@ -313,7 +310,10 @@ void Storage::log_message(const char* message) {
 }
 
 void Storage::log_message(const char* message, uint64_t value) {
-    (*logger_)(tag_, "%s, %d", message);
+    using namespace std;
+    stringstream fmt;
+    fmt << message << ", " << value;
+    (*logger_)(tag_, fmt.str().c_str());
 }
 
 // Reading
@@ -422,7 +422,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                 case AKU_ELATE_WRITE:
                     // Branch for rare and unexpected errors
                 default:
-                    log_error(aku_error_message(status));
+                    log_message(aku_error_message(status));
                     return status;
             };
         }
@@ -469,7 +469,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                 case AKU_ELATE_WRITE:
                     // Branch for rare and unexpected errors
                 default:
-                    log_error(aku_error_message(status));
+                    log_message(aku_error_message(status));
                     return status;
             };
         }
@@ -481,6 +481,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
 /** This function creates file with specified size
   */
 static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf_t logger) {
+    using namespace std;
     apr_status_t status;
     int success_count = 0;
     apr_pool_t* mem_pool = NULL;
@@ -505,7 +506,9 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf
     if (status != APR_SUCCESS) {
         char error_message[0x100];
         apr_strerror(status, error_message, 0x100);
-        (*logger)(0, "Can't create file, error %s on step %d", error_message, success_count);
+        stringstream err;
+        err << "Can't create file, error " << error_message << " on step " << success_count;
+        (*logger)(0, err.str().c_str());
     }
 
     switch(success_count) {
@@ -526,12 +529,15 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf
   * name and index.
   */
 static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_printf_t logger) {
+    using namespace std;
     apr_status_t status;
     int64_t size = AKU_MAX_PAGE_SIZE;
 
     status = create_file(file_name, size, logger);
     if (status != APR_SUCCESS) {
-        (*logger)(0, "Can't create page file %s", file_name);
+        stringstream err;
+        err << "Can't create page file " << file_name;
+        (*logger)(0, err.str().c_str());
         return status;
     }
 
@@ -563,6 +569,7 @@ static std::vector<apr_status_t> create_page_files(std::vector<std::string> cons
 }
 
 static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses, aku_printf_t logger) {
+    using namespace std;
     if (targets.size() != statuses.size()) {
         AKU_PANIC("sizes of targets and statuses doesn't match");
     }
@@ -575,17 +582,23 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
         for(auto ix = 0u; ix < targets.size(); ix++) {
             const std::string& target = targets[ix];
             if (statuses[ix] == APR_SUCCESS) {
-                (*logger)(0, "Removing %s", target.c_str());
+                stringstream fmt;
+                fmt << "Removing " << target;
+                (*logger)(0, fmt.str().c_str());
                 status = apr_file_remove(target.c_str(), mem_pool);
                 results.push_back(status);
                 if (status != APR_SUCCESS) {
                     char error_message[1024];
                     apr_strerror(status, error_message, 1024);
-                    (*logger)(0, "Error [%s] while deleting a file %s", error_message, target.c_str());
+                    stringstream err;
+                    err << "Error [" << error_message << "] while deleting a file " << target;
+                    (*logger)(0, err.str().c_str());
                 }
             }
             else {
-                (*logger)(0, "Target %s doesn't need to be removed", target.c_str());
+                stringstream fmt;
+                fmt << "Target " << target << " doesn't need to be removed";
+                (*logger)(0,fmt.str().c_str());
             }
         }
     }
@@ -609,6 +622,7 @@ static apr_status_t create_metadata_page( const char* file_name
 {
     // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
     //       is FUBAR and uses boost::spirit.
+    using namespace std;
     try {
         boost::property_tree::ptree root;
         auto now = apr_time_now();
@@ -630,7 +644,9 @@ static apr_status_t create_metadata_page( const char* file_name
         boost::property_tree::json_parser::write_json(file_name, root);
     }
     catch(const std::exception& err) {
-        (*logger)(0, "Can't generate JSON file %s, the error is: %s", file_name, err.what());
+        stringstream fmt;
+        fmt << "Can't generate JSON file " << file_name << ", the error is: " << err.what();
+        (*logger)(0, fmt.str().c_str());
         return APR_EGENERAL;
     }
     return APR_SUCCESS;
@@ -661,7 +677,9 @@ apr_status_t Storage::new_storage(const char  *file_name,
         status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
         if (status != APR_SUCCESS) {
             auto error_message = apr_error_message(status);
-            (*logger)(0, "Invalid volumes path: %s", error_message.c_str());
+            std::stringstream err;
+            err << "Invalid volumes path: " << error_message;
+            (*logger)(0, err.str().c_str());
             apr_pool_destroy(mempool);
             AKU_APR_PANIC(status, error_message.c_str());
         }
@@ -696,7 +714,9 @@ apr_status_t Storage::new_storage(const char  *file_name,
     status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
     if (status != APR_SUCCESS) {
         auto error_message = apr_error_message(status);
-        (*logger)(0, "Invalid metadata path: %s", error_message.c_str());
+        std::stringstream err;
+        err << "Invalid metadata path: %s" << error_message;
+        (*logger)(0, err.str().c_str());
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }

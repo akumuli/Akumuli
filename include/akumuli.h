@@ -56,7 +56,7 @@ extern "C" {
 
     AKU_EXPORT const char* aku_error_message(int error_code);
 
-    AKU_EXPORT void aku_console_logger(int tag, const char* format, ...);
+    AKU_EXPORT void aku_console_logger(int tag, const char* msg);
 
     // TODO: add support for custom panic handling
 

@@ -116,8 +116,6 @@ struct Storage
     //! Prepopulate cache
     void prepopulate_cache(int64_t max_cache_size);
 
-    void log_error(const char* message);
-
     void log_message(const char* message);
 
     void log_message(const char* message, uint64_t value);

@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <string>
 #include <memory>
+#include <iostream>
 
 #include "akumuli.h"
 #include "storage.h"
@@ -50,11 +51,16 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[10];
 }
 
-void aku_console_logger(int tag, const char* format, ...) {
-    va_list argptr;
-    va_start(argptr, format);
-    vfprintf(stderr, format, argptr);
-    va_end(argptr);
+void aku_console_logger(int tag, const char* msg) {
+    apr_time_t now = apr_time_now();
+    char ts[APR_RFC822_DATE_LEN];
+    if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
+        memset(ts, ' ', APR_RFC822_DATE_LEN);
+        ts[sizeof(ts) - 1] = 0;
+    }
+    char tagstr[9];                    // I don't want to use manipulators on cerr here
+    snprintf(tagstr, 9, "%08X", tag);  // because this can break formatting in host application.
+    std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
 }
 
 struct MatchPred {

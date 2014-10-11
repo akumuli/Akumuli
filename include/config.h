@@ -26,7 +26,7 @@
 extern "C" {
 
 //! Logging function type
-typedef void (*aku_printf_t) (int tag, const char * format, ...);
+typedef void (*aku_printf_t) (int tag, const char * msg);
 
 /** Library configuration.
  */
