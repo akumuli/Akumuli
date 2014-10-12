@@ -1,4 +1,4 @@
-README
+README [![Build Status](https://api.shippable.com/projects/5434f2757a7fb11eaa64ac39/badge?branchName=master)](https://app.shippable.com/projects/5434f2757a7fb11eaa64ac39/builds/latest)
 ======
 
 **Akumuli** is a time-series database. The word "akumuli" can be translated from esperanto as "accumulate".
@@ -71,5 +71,3 @@ In case automatic script didn't work:
 1. `make -j`
 
 https://groups.google.com/forum/#!forum/akumuli
-
-[![Build Status](https://api.shippable.com/projects/5434f2757a7fb11eaa64ac39/badge?branchName=master)](https://app.shippable.com/projects/5434f2757a7fb11eaa64ac39/builds/latest)
