@@ -26,7 +26,10 @@
 extern "C" {
 
 //! Logging function type
-typedef void (*aku_printf_t) (int tag, const char * format, ...);
+typedef void (*aku_printf_t) (int tag, const char * msg);
+
+//! Panic handler function type
+typedef void (*aku_panic_handler_t) (const char * msg);
 
 /** Library configuration.
  */
@@ -41,7 +44,7 @@ struct aku_FineTuneParams
     //! Maximum cache size in bytes
     uint32_t max_cache_size;  // TODO: move to config file
 
-    //! Pointer to logging function
+    //! Pointer to logging function, can be null
     aku_printf_t logger;
 };
 

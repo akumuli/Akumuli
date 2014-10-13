@@ -23,7 +23,7 @@
 
 //! Minimal possible TTL
 #define AKU_LIMITS_MIN_TTL        2
-#define AKU_LIMITS_MAX_ID         0xFFFFFFFF
+#define AKU_LIMITS_MAX_ID         0xFFFFFFFFFFFFFFFDul
 #define AKU_MIN_TIMESTAMP         0
 #define AKU_MAX_TIMESTAMP       (~0)
 #define AKU_STACK_SIZE            0x100000
@@ -90,11 +90,11 @@
 #define AKU_INTERPOLATION_SEARCH_CUTOFF 0x00000100
 
 //! If timestamp is greater or less than this value - entry stores compressed chunk
-#define AKU_ID_COMPRESSED               0xFFFFFFFE
+#define AKU_ID_COMPRESSED               0xFFFFFFFFFFFFFFFEul
 //! Id for forward scanning
-#define AKU_CHUNK_FWD_ID                0xFFFFFFFE
+#define AKU_CHUNK_FWD_ID                0xFFFFFFFFFFFFFFFEul
 //! Id for backward scanning
-#define AKU_CHUNK_BWD_ID                0xFFFFFFFF
+#define AKU_CHUNK_BWD_ID                0xFFFFFFFFFFFFFFFFul
 
 // Defaults
 #define AKU_DEFAULT_COMPRESSION_THRESHOLD 0x1000u

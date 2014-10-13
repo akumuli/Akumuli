@@ -38,18 +38,35 @@ namespace Akumuli
     /** APR error converter */
     std::string apr_error_message(apr_status_t status) noexcept;
 
+    /** Set global panic handler */
+    void set_panic_handler(aku_panic_handler_t new_panic_handler);
+
     /** APR error wrapper.
-     *  Code must deal with APR error codes and only if
-     *  it can't handle some error - it must throw AprException
-     *  to panic!
-     */
+      * Code doesn't need to throw this exception directly, it must use AKU_APR_PANIC macro.
+      */
     struct AprException : public std::runtime_error
     {
         apr_status_t status;
+
+        /** C-tor
+          * @param status APR status
+          * @param message APR error message
+          */
         AprException(apr_status_t status, const char* message);
     };
 
-    std::ostream& operator << (std::ostream& str, AprException const& except);
+    /** Akumuli exception type.
+     *  Code doesn't need to throw it directly, it must use AKU_PANIC macro.
+     */
+    struct Exception : public std::runtime_error
+    {
+        /** C-tor
+          * @param message error message
+          */
+        Exception(const char* message);
+    };
+
+    std::ostream& operator << (std::ostream& str, Exception const& except);
 
 
     /** Memory mapped file
@@ -163,7 +180,18 @@ namespace Akumuli
     };
 }
 
-#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(std::runtime_error(msg));
+/** Panic macro.
+  * @param msg error message
+  * @throws Exception.
+  */
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(msg));
+
+/** Panic macro that can use APR error code to panic more informative.
+  * @param msg error message
+  * @param status APR status
+  * @throws AprException.
+  */
 #define AKU_APR_PANIC(status, msg) BOOST_THROW_EXCEPTION(Akumuli::AprException(status, msg));
 
+//! Macro to supress `variable unused` warnings for variables that is unused for a reason.
 #define AKU_UNUSED(x) (void)(x)

@@ -19,14 +19,18 @@
 #include <cstdlib>
 #include <string>
 #include <memory>
+#include <iostream>
 
 #include "akumuli.h"
 #include "storage.h"
 
 using namespace Akumuli;
 
-void aku_initialize() {
+void aku_initialize(aku_panic_handler_t optional_panic_handler) {
     apr_initialize();
+    if (optional_panic_handler != nullptr) {
+        set_panic_handler(optional_panic_handler);
+    }
 }
 
 static const char* g_error_messages[] = {
@@ -50,11 +54,16 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[10];
 }
 
-void aku_console_logger(int tag, const char* format, ...) {
-    va_list argptr;
-    va_start(argptr, format);
-    vfprintf(stderr, format, argptr);
-    va_end(argptr);
+void aku_console_logger(int tag, const char* msg) {
+    apr_time_t now = apr_time_now();
+    char ts[APR_RFC822_DATE_LEN];
+    if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
+        memset(ts, ' ', APR_RFC822_DATE_LEN);
+        ts[sizeof(ts) - 1] = 0;
+    }
+    char tagstr[9];                    // I don't want to use manipulators on cerr here
+    snprintf(tagstr, 9, "%08X", tag);  // because this can break formatting in host application.
+    std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
 }
 
 struct MatchPred {
@@ -215,6 +224,10 @@ aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp 
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
 {
+    if (config.logger == nullptr) {
+        // Use default console logger if user doesn't set it
+        config.logger = &aku_console_logger;
+    }
     aku_Database* ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
 }

@@ -20,6 +20,9 @@
 #include <cassert>
 #include <chrono>
 #include <thread>
+#include <sstream>
+#include <iostream>
+
 #include <sys/mman.h>
 #include "akumuli_def.h"
 
@@ -32,14 +35,39 @@ std::string apr_error_message(apr_status_t status) noexcept {
     return std::string(error_message);
 }
 
+static void aku_empty_panic_handler(const char* msg) {
+    // This is default panic handler, it does nothing.
+    // After panic handler returns - akumuli will
+    // throw exception.
+}
+
+static aku_panic_handler_t g_panic_handler = &aku_empty_panic_handler;
+
+void set_panic_handler(aku_panic_handler_t new_panic_handler) {
+    g_panic_handler = new_panic_handler;
+}
+
+
 AprException::AprException(apr_status_t status, const char* message)
     : std::runtime_error(message)
     , status(status)
 {
+    (*g_panic_handler)(message);
 }
 
 std::ostream& operator << (std::ostream& str, AprException const& e) {
     str << "Error: " << e.what() << ", status: " << e.status << ".";
+    return str;
+}
+
+Exception::Exception(const char* message)
+    : std::runtime_error(message)
+{
+    (*g_panic_handler)(message);
+}
+
+std::ostream& operator << (std::ostream& str, Exception const& e) {
+    str << e.what();
     return str;
 }
 
@@ -59,13 +87,17 @@ void MemoryMappedFile::move_file(const char* new_name) noexcept {
 }
 
 void MemoryMappedFile::delete_file() noexcept {
+    using namespace std;
     status_ = apr_file_remove(path_.c_str(), mem_pool_);
     if (status_ != APR_SUCCESS) {
-        (*logger_)(tag_, "Can't remove file %s, error %s", path_.c_str(), error_message().c_str());
+        stringstream fmt;
+        fmt << "Can't remove file " << path_ << " error " << error_message();
+        (*logger_)(tag_, fmt.str().c_str());
     }
 }
 
 apr_status_t MemoryMappedFile::map_file() noexcept {
+    using namespace std;
     int success_count = 0;
     status_ = apr_pool_create(&mem_pool_, NULL);
     if (status_ == APR_SUCCESS) {
@@ -82,12 +114,15 @@ apr_status_t MemoryMappedFile::map_file() noexcept {
 
     if (status_ != APR_SUCCESS) {
         free_resources(success_count);
-        (*logger_)(tag_, "Can't mmap file, error %s on step %d", error_message().c_str(), success_count);
+        stringstream err;
+        err << "Can't mmap file " << path_ << ", error " << error_message() << " on step " << success_count;
+        (*logger_)(tag_, err.str().c_str());
     }
     return status_;
 }
 
 void MemoryMappedFile::remap_file_destructive() {
+    using namespace std;
     apr_off_t file_size = finfo_.size;
     free_resources(4);
     apr_pool_t* pool;
@@ -119,12 +154,16 @@ void MemoryMappedFile::remap_file_destructive() {
             apr_pool_destroy(pool);
     };
     if (status != APR_SUCCESS) {
-        (*logger_)(tag_, "Can't remap file, error %s on step %d", apr_error_message(status).c_str(), success_counter);
+        stringstream err;
+        err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
+        (*logger_)(tag_, err.str().c_str());
         AKU_PANIC("can't remap file");
     }
     status = map_file();
     if (status != APR_SUCCESS) {
-        (*logger_)(tag_, "Can't remap file, error %s", apr_error_message(status).c_str());
+        stringstream err;
+        err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
+        (*logger_)(tag_, err.str().c_str());
         AKU_PANIC("can't remap file");
     }
 }

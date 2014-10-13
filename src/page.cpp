@@ -137,10 +137,10 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     , count(count)
     , last_offset(length - 1)
     , sync_count(0)
-    , length(length)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
+    , length(length)
     , bbox()
 {
     // zero out histogram
@@ -282,22 +282,22 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 
     while(true) {
         // Body
-        status = add_chunk(timestamp_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= timestamp_stream.size();
-        status = add_chunk(paramid_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= paramid_stream.size();
         status = add_chunk(offset_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
         size_estimate -= offset_stream.size();
         status = add_chunk(length_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= offset_stream.size();
+        status = add_chunk(paramid_stream.get_memrange(), size_estimate);
+        if (status != AKU_SUCCESS) {
+            break;
+        }
+        size_estimate -= paramid_stream.size();
+        status = add_chunk(timestamp_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
@@ -649,7 +649,7 @@ struct SearchAlgorithm {
         bst.n_steps += steps;
     }
 
-    bool scan_compressed_entries(aku_Entry const* probe_entry)
+    bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false)
     {
         ChunkHeader header;
 
@@ -657,6 +657,38 @@ struct SearchAlgorithm {
         auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->data_offset);
         auto pend = (const unsigned char*)(page_->cdata() + page_->length);
         auto probe_length = pdesc->n_elements;
+
+        // read timestamps
+        DeltaRLETSReader tst_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.timestamps.push_back(tst_reader.next());
+        }
+        pbegin = tst_reader.pos();
+
+        size_t start_pos = 0;
+        if (IS_BACKWARD_) {
+            start_pos = static_cast<int>(probe_length - 1);
+        }
+        // test timestamp range
+        if (binary_search) {
+            auto it = std::lower_bound(header.timestamps.begin(), header.timestamps.end(), key_);
+            if (IS_BACKWARD_) {
+                if (!header.timestamps.empty()) {
+                    auto last = header.timestamps.begin() + start_pos;
+                    auto delta = last - it;
+                    start_pos -= delta;
+                }
+            } else {
+                start_pos += it - header.timestamps.begin();
+            }
+        }
+
+        // read paramids
+        Base128IdReader pid_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header.paramids.push_back(pid_reader.next());
+        }
+        pbegin = pid_reader.pos();
 
         // read lengths
         RLELenReader len_reader(pbegin, pend);
@@ -669,20 +701,6 @@ struct SearchAlgorithm {
         DeltaRLEOffReader off_reader(pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header.offsets.push_back(off_reader.next());
-        }
-        pbegin = off_reader.pos();
-
-        // read paramids
-        Base128IdReader pid_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.paramids.push_back(pid_reader.next());
-        }
-        pbegin = pid_reader.pos();
-
-        // read timestamps
-        DeltaRLETSReader tst_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.timestamps.push_back(tst_reader.next());
         }
 
         bool probe_in_time_range = true;
@@ -702,7 +720,7 @@ struct SearchAlgorithm {
         };
 
         if (IS_BACKWARD_) {
-            for (int i = static_cast<int>(probe_length - 1); i >= 0; i--) {
+            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
                 if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
@@ -715,7 +733,7 @@ struct SearchAlgorithm {
                 }
             }
         } else {
-            for (auto i = 0ul; i != probe_length; i++) {
+            for (auto i = start_pos; i != probe_length; i++) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
                 if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
@@ -774,9 +792,9 @@ struct SearchAlgorithm {
                                        : query_.upperbound >= probe_entry->time;
             } else {
                 if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                    proceed = scan_compressed_entries(probe_entry);
+                    proceed = scan_compressed_entries(probe_entry, true);
                 } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                    proceed = scan_compressed_entries(probe_entry);
+                    proceed = scan_compressed_entries(probe_entry, true);
                 } else {
                     proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
                                            : query_.upperbound >= probe_entry->time;
