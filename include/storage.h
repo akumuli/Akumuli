@@ -37,7 +37,6 @@
 #include "cursor.h"
 #include "akumuli_def.h"
 
-
 namespace Akumuli {
 
 /** Storage volume.

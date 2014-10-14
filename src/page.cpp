@@ -27,6 +27,7 @@
 
 #include <random>
 #include <iostream>
+#include <boost/crc.hpp>
 
 
 namespace Akumuli {
@@ -78,8 +79,10 @@ std::ostream& operator << (std::ostream& st, CursorResult res) {
 
 
 struct ChunkDesc {
-    uint32_t n_elements;
-    aku_EntryOffset data_offset;
+    uint32_t n_elements;              //< Number of elements in a chunk
+    aku_EntryOffset begin_offset;     //< Data begin offset
+    aku_EntryOffset end_offset;       //< Data end offset
+    uint32_t checksum;                //< Checksum
 } __attribute__((packed));
 
 
@@ -303,8 +306,23 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
         }
         // Head
         Rand rand;
-        aku_EntryOffset start = last_offset;
-        ChunkDesc desc = { static_cast<uint32_t>(data.lengths.size()), start };
+        // Calculate checksum
+        boost::crc_32_type checksum;
+        uint32_t end = 0u;
+        uint32_t begin = last_offset;
+        if (count == 0) {
+            // This is a first chunk!
+            end = length - 1;
+        } else {
+            end = page_index[count-1];
+        }
+        checksum.process_block(cdata() + begin, cdata() + end);
+        ChunkDesc desc = {
+            static_cast<uint32_t>(data.lengths.size()),
+            begin,
+            end,
+            checksum.checksum()
+        };
         aku_TimeStamp first_ts = data.timestamps.front();
         aku_TimeStamp last_ts = data.timestamps.back();
         head = {&desc, sizeof(desc)};
@@ -654,9 +672,18 @@ struct SearchAlgorithm {
         ChunkHeader header;
 
         auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
-        auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->data_offset);
-        auto pend = (const unsigned char*)(page_->cdata() + page_->length);
+        auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
+        auto pend = (const unsigned char*)(page_->cdata() + pdesc->end_offset);
         auto probe_length = pdesc->n_elements;
+
+        // TODO:checksum!
+        boost::crc_32_type checksum;
+        checksum.process_block(pbegin, pend);
+        if (checksum.checksum() != pdesc->checksum) {
+            AKU_PANIC("File damaged!");
+            // TODO: report error
+            return false;
+        }
 
         // read timestamps
         DeltaRLETSReader tst_reader(pbegin, pend);
