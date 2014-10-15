@@ -385,12 +385,6 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 
 // Writing
 
-//! commit changes
-void Storage::commit() {
-    // TODO: volume->flush()
-    active_volume_->flush();
-}
-
 //! write data
 aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
     if (!this->compression) {

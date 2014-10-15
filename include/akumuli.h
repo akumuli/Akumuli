@@ -152,13 +152,6 @@ extern "C" {
 
     AKU_EXPORT bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
-    /**
-     * @brief Flush data to disk.
-     * @param db database.
-     */
-    AKU_EXPORT void aku_flush_database(aku_Database* db);
-
-
     /** Open existing database.
      */
     AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams config);

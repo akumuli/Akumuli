@@ -170,10 +170,6 @@ struct DatabaseImpl : public aku_Database
         return pcur;
     }
 
-    void flush() {
-        storage_.commit();
-    }
-
     aku_Status add_sample(aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
         return storage_.write(param_id, ts, value);
     }
@@ -210,11 +206,6 @@ apr_status_t aku_create_database( const char     *file_name
         mcs = *max_cache_size;
     }
     return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, ct, ws, mcs, logger);
-}
-
-void aku_flush_database(aku_Database* db) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    dbi->flush();
 }
 
 aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {

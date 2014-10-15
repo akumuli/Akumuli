@@ -121,9 +121,6 @@ struct Storage
 
     // Writing
 
-    //! commit changes
-    void commit();
-
     /** Switch volume in round robin manner
       * @param ix current volume index
       */
