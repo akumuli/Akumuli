@@ -33,6 +33,8 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
+typedef uint64_t aku_Duration;     //< Time duration
+typedef uint32_t aku_EntryOffset;  //< Entry offset
 
 //! Storage configuration
 struct aku_Config {

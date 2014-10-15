@@ -38,8 +38,6 @@ extern "C" {
     //-----------------
 
     typedef uint64_t    aku_TimeStamp;    //< Timestamp
-    typedef uint64_t    aku_Duration;     //< Time duration
-    typedef uint32_t    aku_EntryOffset;  //< Entry offset
     typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
     typedef int         aku_Status;       //< Status code of any operation
     typedef const void* aku_PData;
@@ -175,7 +173,7 @@ extern "C" {
     // Writing
     //---------
 
-    AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
+    AKU_EXPORT aku_Status aku_write(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
 
 
     //---------

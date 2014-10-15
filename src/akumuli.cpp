@@ -208,7 +208,7 @@ apr_status_t aku_create_database( const char     *file_name
     return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, ct, ws, mcs, logger);
 }
 
-aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
+aku_Status aku_write(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->add_sample(param_id, ts, value);
 }

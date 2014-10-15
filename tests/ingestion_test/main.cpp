@@ -176,9 +176,9 @@ int main(int cnt, const char** args)
             aku_MemRange memr;
             memr.address = (void*)&k;
             memr.length = sizeof(k);
-            aku_Status status = aku_add_sample(db, 42, i, memr);
+            aku_Status status = aku_write(db, 42, i, memr);
             if (status == AKU_EBUSY) {
-                status = aku_add_sample(db, 42, i, memr);
+                status = aku_write(db, 42, i, memr);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
