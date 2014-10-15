@@ -45,6 +45,12 @@ struct aku_Config {
     uint32_t max_cache_size;
 };
 
+struct aku_Entry {
+    aku_TimeStamp  time;      //< Entry timestamp
+    aku_ParamId    param_id;  //< Parameter ID
+    uint32_t       length;    //< Entry length: constant + variable sized parts
+    uint32_t       value[];   //< Data begining
+} __attribute__((packed));
 
 //! PageHeader forward declaration
 struct PageHeader;

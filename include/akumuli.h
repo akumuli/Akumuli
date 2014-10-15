@@ -33,10 +33,9 @@
 
 extern "C" {
 
-    /** This function must be called before any other library function.
-      * @param optional_panic_handler function to alternative panic handler
-      */
-    AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler=0);
+    //-----------------
+    // Data structures
+    //-----------------
 
     typedef uint64_t    aku_TimeStamp;
     typedef uint64_t    aku_Duration;
@@ -50,12 +49,11 @@ extern "C" {
         uint32_t length;
     };
 
-    struct aku_Entry {
-        aku_TimeStamp  time;      //< Entry timestamp
-        aku_ParamId    param_id;  //< Parameter ID
-        uint32_t       length;    //< Entry length: constant + variable sized parts
-        uint32_t       value[];   //< Data begining
-    } __attribute__((packed));
+    /** This function must be called before any other library function.
+      * @param optional_panic_handler function to alternative panic handler
+      */
+    AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler=0);
+
 
     AKU_EXPORT const char* aku_error_message(int error_code);
 
