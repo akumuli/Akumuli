@@ -37,24 +37,92 @@ extern "C" {
     // Data structures
     //-----------------
 
-    typedef uint64_t    aku_TimeStamp;
-    typedef uint64_t    aku_Duration;
-    typedef uint32_t    aku_EntryOffset;
-    typedef uint64_t    aku_ParamId;
-    typedef int         aku_Status;
+    typedef uint64_t    aku_TimeStamp;    //< Timestamp
+    typedef uint64_t    aku_Duration;     //< Time duration
+    typedef uint32_t    aku_EntryOffset;  //< Entry offset
+    typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
+    typedef int         aku_Status;       //< Status code of any operation
     typedef const void* aku_PData;
 
+
+    //! Structure represents memory region
     struct aku_MemRange {
         void* address;
         uint32_t length;
     };
+
+
+    //! Database instance.
+    struct aku_Database {};
+
+    /**
+     * @brief Select search query.
+     */
+    struct aku_SelectQuery {
+        //! Begining of the search range
+        aku_TimeStamp begin;
+        //! End of the search range
+        aku_TimeStamp end;
+        //! Number of parameters to search
+        uint32_t n_params;
+        //! Array of parameters to search
+        aku_ParamId params[];
+    };
+
+
+    /**
+     * @brief The aku_Cursor struct
+     */
+    struct aku_Cursor {};
+
+
+    //! Search stats
+    struct aku_SearchStats {
+        struct InterpolationStats {
+            uint64_t n_times;               //< How many times interpolation search was performed
+            uint64_t n_steps;               //< How many interpolation search steps was performed
+            uint64_t n_overshoots;          //< Number of overruns
+            uint64_t n_undershoots;         //< Number of underruns
+            uint64_t n_matches;             //< Number of matches by interpolation search only
+            uint64_t n_reduced_to_one_page;
+            uint64_t n_page_in_core_checks; //< Number of page in core checks
+            uint64_t n_page_in_core_errors; //< Number of page in core check errors
+            uint64_t n_pages_in_core_found; //< Number of page in core found
+            uint64_t n_pages_in_core_miss;  //< Number of page misses
+        } istats;
+        struct BinarySearch {
+            uint64_t n_times;               //< How many times binary search was performed
+            uint64_t n_steps;               //< How many binary search steps was performed
+        } bstats;
+        struct Scan {
+            uint64_t fwd_bytes;             //< Number of scanned bytes in forward direction
+            uint64_t bwd_bytes;             //< Number of scanned bytes in backward direction
+        } scan;
+    };
+
+
+    //! Storage stats
+    struct aku_StorageStats {
+        uint64_t n_entries;       //< Total number of entries
+        uint64_t n_volumes;       //< Total number of volumes
+        uint64_t free_space;      //< Free space total
+        uint64_t used_space;      //< Space in use
+    };
+
+
+    //-------------------
+    // Utility functions
+    //-------------------
 
     /** This function must be called before any other library function.
       * @param optional_panic_handler function to alternative panic handler
       */
     AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler=0);
 
-
+    /** Convert error code to error message.
+      * Function returns pointer to statically allocated string
+      * there is no need to free it.
+      */
     AKU_EXPORT const char* aku_error_message(int error_code);
 
     /** Default logger that is used if no logging function is
@@ -63,9 +131,15 @@ extern "C" {
       */
     AKU_EXPORT void aku_console_logger(int tag, const char* message);
 
-    //! Database instance.
-    struct aku_Database {
-    };
+    /**
+     * @brief Destroy any object created with aku_make_*** function
+     */
+    AKU_EXPORT void aku_destroy(void* any);
+
+
+    //------------------------------
+    // Storage management functions
+    //------------------------------
 
     /**
      * @brief Creates storage for new database on the hard drive
@@ -86,35 +160,32 @@ extern "C" {
                                     , aku_printf_t logger
                                     );
 
-    /**
-     * @brief Select search query.
-     */
-    struct aku_SelectQuery {
-        //! Begining of the search range
-        aku_TimeStamp begin;
-        //! End of the search range
-        aku_TimeStamp end;
-        //! Number of parameters to search
-        uint32_t n_params;
-        //! Array of parameters to search
-        aku_ParamId params[];
-    };
+    /** Open recenlty create storage.
+      * @param path path to storage metadata file
+      * @param parameters open parameters
+      * @return pointer to new db instance, null if db doesn't exists.
+      */
+    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams parameters);
+
+    //! Close database. Free resources.
+    AKU_EXPORT void aku_close_database(aku_Database* db);
+
+
+    //---------
+    // Writing
+    //---------
+
+    AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
+
+
+    //---------
+    // Queries
+    //---------
 
     /**
-     * @brief The aku_Cursor struct
-     */
-    struct aku_Cursor {
-    };
-
-    /**
-     * @brief Create select query
+     * @brief Create select query with single parameter-id
      */
     AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
-
-    /**
-     * @brief Destroy any object created with aku_make_*** function
-     */
-    AKU_EXPORT void aku_destroy(void* any);
 
     /**
      * @brief Execute query
@@ -146,56 +217,26 @@ extern "C" {
                                           , uint32_t        *lengths
                                           , size_t           arrays_size );
 
+    //! Check cursor state.
     AKU_EXPORT bool aku_cursor_is_done(aku_Cursor* pcursor);
 
+    //! Check cursor error state.
     AKU_EXPORT bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
-    /** Open existing database.
-     */
-    AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams config);
 
-    AKU_EXPORT aku_Status aku_add_sample(aku_Database* db, aku_ParamId param_id, aku_TimeStamp long_timestamp, aku_MemRange value);
+    //--------------------
+    // Stats and counters
+    //--------------------
 
-
-    /** Close database.
-     */
-    AKU_EXPORT void aku_close_database(aku_Database* db);
-
-    /*
-     * Statistics
-     */
-
-    struct aku_SearchStats {
-        struct InterpolationStats {
-            uint64_t n_times;               //< How many times interpolation search was performed
-            uint64_t n_steps;               //< How many interpolation search steps was performed
-            uint64_t n_overshoots;          //< Number of overruns
-            uint64_t n_undershoots;         //< Number of underruns
-            uint64_t n_matches;             //< Number of matches by interpolation search only
-            uint64_t n_reduced_to_one_page;
-            uint64_t n_page_in_core_checks; //< Number of page in core checks
-            uint64_t n_page_in_core_errors; //< Number of page in core check errors
-            uint64_t n_pages_in_core_found; //< Number of page in core found
-            uint64_t n_pages_in_core_miss;  //< Number of page misses
-        } istats;
-        struct BinarySearch {
-            uint64_t n_times;               //< How many times binary search was performed
-            uint64_t n_steps;               //< How many binary search steps was performed
-        } bstats;
-        struct Scan {
-            uint64_t fwd_bytes;             //< Number of scanned bytes in forward direction
-            uint64_t bwd_bytes;             //< Number of scanned bytes in backward direction
-        } scan;
-    };
-
+    /** Get search counters.
+      * @param rcv_stats pointer to `aku_SearchStats` structure that will be filled with data.
+      * @param reset reset all counter if true
+      */
     AKU_EXPORT void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset=false);
 
-    struct aku_StorageStats {
-        uint64_t n_entries;       //< Total number of entries
-        uint64_t n_volumes;       //< Total number of volumes
-        uint64_t free_space;      //< Free space total
-        uint64_t used_space;      //< Space in use
-    };
-
+    /** Get storage stats.
+      * @param db database instance.
+      * @param rcv_stats pointer to destination
+      */
     AKU_EXPORT void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
 }
