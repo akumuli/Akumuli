@@ -14,11 +14,7 @@
 #include <apr_general.h>
 
 #include "akumuli.h"
-#include "page.h"
-#include "storage.h"
-#include "sequencer.h"
 
-using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 8;

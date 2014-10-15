@@ -1,3 +1,5 @@
+include_directories(../include)
+include_directories(../src)
 add_executable(
     ut_main
         test_sequencer.cpp

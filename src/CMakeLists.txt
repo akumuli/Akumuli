@@ -1,16 +1,16 @@
 add_library(akumuli SHARED
     ../include/version.h
-    ../include/storage.h
     ../include/config.h
-    ../include/page.h
     ../include/akumuli.h
     ../include/akumuli_def.h
-    ../include/util.h
-    ../include/sort.h
-    ../include/sequencer.h
-    ../include/cursor.h
-    ../include/internal_cursor.h
-    ../include/compression.h
+    storage.h
+    page.h
+    util.h
+    sort.h
+    sequencer.h
+    cursor.h
+    internal_cursor.h
+    compression.h
     storage.cpp
     page.cpp
     akumuli.cpp
