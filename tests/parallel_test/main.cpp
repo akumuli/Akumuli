@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <thread>
 
 #include <boost/timer.hpp>
 #include <boost/filesystem.hpp>
@@ -14,11 +15,7 @@
 #include <apr_general.h>
 
 #include "akumuli.h"
-#include "page.h"
-#include "storage.h"
-#include "sequencer.h"
 
-using namespace Akumuli;
 using namespace std;
 
 const int DB_SIZE = 3;
@@ -263,7 +260,7 @@ int main(int cnt, const char** args)
         auto value = ts << 2;
         memr.address = (void*)&value;
         memr.length = sizeof(value);
-        aku_Status status = aku_add_sample(db, param_id, ts, memr);
+        aku_Status status = aku_write(db, param_id, ts, memr);
         if (status == AKU_SUCCESS) {
             if (ts % 1000000 == 0) {
                 std::cout << ts << "---" << timer.elapsed() << "s" << std::endl;
@@ -271,7 +268,7 @@ int main(int cnt, const char** args)
             }
         } else if (status == AKU_EBUSY) {
             writer_n_busy++;
-            status = aku_add_sample(db, param_id, ts, memr);
+            status = aku_write(db, param_id, ts, memr);
         }
         if (status != AKU_SUCCESS) {
             std::cout << "aku_add_sample error " << aku_error_message(status) << std::endl;

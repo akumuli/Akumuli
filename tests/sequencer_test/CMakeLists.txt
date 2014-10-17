@@ -1,3 +1,5 @@
+include_directories(../../include)
+include_directories(../../src)
 add_executable(
     sequencer_test
         main.cpp

@@ -37,7 +37,6 @@
 #include "cursor.h"
 #include "akumuli_def.h"
 
-
 namespace Akumuli {
 
 /** Storage volume.
@@ -121,9 +120,6 @@ struct Storage
     void log_message(const char* message, uint64_t value);
 
     // Writing
-
-    //! commit changes
-    void commit();
 
     /** Switch volume in round robin manner
       * @param ix current volume index
