@@ -20,7 +20,6 @@ using namespace std;
 
 const int DB_SIZE = 3;
 const int NUM_ITERATIONS = 100*1000*1000;
-const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";

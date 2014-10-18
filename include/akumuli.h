@@ -51,7 +51,9 @@ extern "C" {
 
 
     //! Database instance.
-    struct aku_Database {};
+    struct aku_Database {
+        int padding;
+    };
 
     /**
      * @brief Select search query.
@@ -71,7 +73,9 @@ extern "C" {
     /**
      * @brief The aku_Cursor struct
      */
-    struct aku_Cursor {};
+    struct aku_Cursor {
+        int padding;
+    };
 
 
     //! Search stats
