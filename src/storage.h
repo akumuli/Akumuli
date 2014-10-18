@@ -53,11 +53,11 @@ struct Volume : std::enable_shared_from_this<Volume>
     std::string file_path_;
     const aku_Config& config_;
     const int tag_;
-    aku_printf_t logger_;
+    aku_logger_cb_t logger_;
     std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
 
     //! Create new volume stored in file
-    Volume(const char* file_path, const aku_Config &conf, int tag, aku_printf_t logger);
+    Volume(const char* file_path, const aku_Config &conf, int tag, aku_logger_cb_t logger);
 
     ~Volume();
 
@@ -95,13 +95,14 @@ struct Storage
     std::atomic<int>          active_volume_index_;
     aku_Duration              ttl_;                       //< Late write limit
     bool                      compression;                //< Compression enabled
+    aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
     apr_time_t                creation_time_;             //< Cached metadata
     int                       tag_;                       //< Tag to distinct different storage instances
-    aku_printf_t              logger_;
+    aku_logger_cb_t              logger_;
     Rand                      rand_;
 
     /** Storage c-tor.
@@ -148,10 +149,19 @@ struct Storage
                                     uint32_t compression_threshold,
                                     uint64_t window_size,
                                     uint32_t max_cache_size,
-                                    aku_printf_t    logger);
+                                    aku_logger_cb_t    logger);
+
+    /** Remove all volumes
+      * @param file_name
+      * @param logger
+      * @returns status
+      */
+    static apr_status_t remove_storage(const char* file_name, aku_logger_cb_t logger);
 
     // Stats
     void get_stats(aku_StorageStats* rcv_stats);
+
+    aku_Status get_open_error() const;
 };
 
 }

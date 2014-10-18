@@ -71,7 +71,7 @@ std::ostream& operator << (std::ostream& str, Exception const& e) {
     return str;
 }
 
-MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_printf_t logger) noexcept
+MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_logger_cb_t logger) noexcept
     : path_(file_name)
     , tag_(tag)
     , logger_(logger)

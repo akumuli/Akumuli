@@ -152,6 +152,10 @@ struct DatabaseImpl : public aku_Database
     {
     }
 
+    aku_Status get_open_error() const {
+        return storage_.get_open_error();
+    }
+
     CursorImpl* select(aku_SelectQuery* query) {
         uint32_t scan_dir;
         aku_TimeStamp begin, end;
@@ -189,7 +193,7 @@ apr_status_t aku_create_database( const char     *file_name
                                 , const uint32_t *compression_threshold
                                 , const uint64_t *window_size
                                 , const uint32_t *max_cache_size
-                                , aku_printf_t    logger)
+                                , aku_logger_cb_t    logger)
 {
     if (logger == nullptr) {
         logger = &aku_console_logger;
@@ -209,6 +213,11 @@ apr_status_t aku_create_database( const char     *file_name
     return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, ct, ws, mcs, logger);
 }
 
+apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
+
+    return Storage::remove_storage(file_name, logger);
+}
+
 aku_Status aku_write(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->add_sample(param_id, ts, value);
@@ -220,8 +229,13 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
         // Use default console logger if user doesn't set it
         config.logger = &aku_console_logger;
     }
-    aku_Database* ptr = new DatabaseImpl(path, config);
+    auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
+}
+
+aku_Status aku_open_status(aku_Database* db) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->get_open_error();
 }
 
 void aku_close_database(aku_Database* db)
