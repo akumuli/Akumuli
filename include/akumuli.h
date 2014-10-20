@@ -51,7 +51,9 @@ extern "C" {
 
 
     //! Database instance.
-    struct aku_Database {};
+    struct aku_Database {
+        int padding;
+    };
 
     /**
      * @brief Select search query.
@@ -71,7 +73,9 @@ extern "C" {
     /**
      * @brief The aku_Cursor struct
      */
-    struct aku_Cursor {};
+    struct aku_Cursor {
+        int padding;
+    };
 
 
     //! Search stats
@@ -139,6 +143,7 @@ extern "C" {
     // Storage management functions
     //------------------------------
 
+
     /**
      * @brief Creates storage for new database on the hard drive
      * @param file_name database file name
@@ -147,7 +152,8 @@ extern "C" {
      * @param num_volumes number of volumes to create
      * @return APR errorcode or APR_SUCCESS
      */
-    AKU_EXPORT apr_status_t aku_create_database( const char*  file_name
+    AKU_EXPORT apr_status_t aku_create_database
+                                    ( const char*  file_name
                                     , const char*  metadata_path
                                     , const char*  volumes_path
                                     , int32_t      num_volumes
@@ -155,8 +161,17 @@ extern "C" {
                                     , const uint32_t *compression_threshold
                                     , const uint64_t *window_size
                                     , const uint32_t *max_cache_size
-                                    , aku_printf_t logger
+                                    , aku_logger_cb_t logger
                                     );
+
+
+    /** Remove all volumes.
+      * @param file_name
+      * @param logger
+      * @returns status
+      */
+    AKU_EXPORT apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger);
+
 
     /** Open recenlty create storage.
       * @param path path to storage metadata file
@@ -164,6 +179,13 @@ extern "C" {
       * @return pointer to new db instance, null if db doesn't exists.
       */
     AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams parameters);
+
+
+    /** Check status of previous open operation
+      * @param db pointer to database
+      */
+    AKU_EXPORT aku_Status aku_open_status(aku_Database* db);
+
 
     //! Close database. Free resources.
     AKU_EXPORT void aku_close_database(aku_Database* db);

@@ -151,7 +151,7 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
 }
 
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
-    if (index < 0 || index > count) {
+    if (index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);
     }
     return std::make_pair(page_index[index], AKU_SUCCESS);
@@ -338,7 +338,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 }
 
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
-    if (index >= 0 && index < count) {
+    if (index < count) {
         auto offset = page_index[index];
         return read_entry(offset);
     }

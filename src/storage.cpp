@@ -42,12 +42,12 @@
 
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_printf_t logger);
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger);
 
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
-Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_printf_t logger)
+Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_logger_cb_t logger)
     : mmap_(file_name, tag, logger)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
@@ -123,76 +123,107 @@ void Volume::search(Caller& caller, InternalCursor* cursor, SearchQuery query) c
 
 //----------------------------------Storage---------------------------------------------
 
+struct VolumeIterator {
+    uint32_t                 compression_threshold;
+    uint32_t                 max_cache_size;
+    uint64_t                 window_size;
+    std::vector<std::string> volume_names;
+    aku_Status               error_code;
+
+    VolumeIterator(const char* path, aku_logger_cb_t logger)
+        : error_code(AKU_SUCCESS)
+    {
+        // 1. Read json file
+        boost::property_tree::ptree ptree;
+        boost::property_tree::json_parser::read_json(path, ptree);
+
+        // 2. Read configuration data
+        compression_threshold =
+                ptree.get_child("compression_threshold")
+                     .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
+
+        window_size =
+                ptree.get_child("window_size")
+                     .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
+
+        if (window_size == 0) {
+            error_code = AKU_EBAD_ARG;
+            if (logger) {
+                (*logger)(0, "invalid window size");
+            }
+        }
+
+        max_cache_size =
+                ptree.get_child("max_cache_size")
+                     .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
+
+        // 3. Read volumes
+        int num_volumes = ptree.get_child("num_volumes").get_value(0);
+        if (num_volumes == 0) {
+            if (logger) {
+                (*logger)(0, "no volumes specified");
+            }
+            error_code = AKU_EBAD_DATA;
+            return;
+        }
+
+        volume_names.resize(num_volumes);
+        for(auto child_node: ptree.get_child("volumes")) {
+            auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
+            auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
+
+            if (volume_index && volume_path) {
+                volume_names.at(*volume_index) = *volume_path;
+            }
+            else {
+                if (logger) {
+                    error_code = AKU_EBAD_ARG;
+                    (*logger)(0, "invalid storage, bad volume link");
+                    return;
+                }
+            }
+        }
+
+        // check result
+        for(std::string const& path: volume_names) {
+            if (path.empty()) {
+                error_code = AKU_EBAD_ARG;
+                (*logger)(0, "invalid storage, one of the volumes is missing");
+                return;
+            }
+        }
+    }
+
+    bool is_bad() const {
+        return error_code != AKU_SUCCESS;
+    }
+};
+
 static std::atomic<int> storage_cnt = {1};
 
 Storage::Storage(const char* path, aku_FineTuneParams const& params)
     : params_(params)
     , compression(true)
+    , open_error_code_(AKU_SUCCESS)
     , tag_(storage_cnt++)
     , logger_(params.logger)
 {
-    /* Exception, thrown from this c-tor means that something really bad
-     * happend and we it's impossible to open this storage, for example -
-     * because metadata file is corrupted, or volume is missed on disc.
-     */
-
     ttl_= params.max_late_write;
 
-    // NOTE: incremental backup target will be stored in metadata file
+    VolumeIterator v_iter(path, params.logger);
 
-    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
-    //       is FUBAR and uses boost::spirit.
-
-    // 1. Read json file
-    boost::property_tree::ptree ptree;
-    // NOTE: there is a known bug in boost 1.49 - https://svn.boost.org/trac/boost/ticket/6785
-    // FIX: sed -i -e 's/std::make_pair(c.name, Str(b, e))/std::make_pair(c.name, Ptree(Str(b, e)))/' json_parser_read.hpp
-    boost::property_tree::json_parser::read_json(path, ptree);
-
-    // 2. Read volumes
-    int num_volumes = ptree.get_child("num_volumes").get_value(0);
-    if (num_volumes == 0) {
-        AKU_PANIC("invalid storage");
+    if (v_iter.is_bad()) {
+        open_error_code_ = v_iter.error_code;
+        return;
     }
 
-    config_.compression_threshold =
-            ptree.get_child("compression_threshold")
-                 .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
-
-    config_.window_size =
-            ptree.get_child("window_size")
-                 .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
-
-    if (config_.window_size == 0) {
-        AKU_PANIC("invalid window_size");
-    }
-
-    config_.max_cache_size =
-            ptree.get_child("max_cache_size")
-                 .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
-
-    std::vector<std::string> volume_names(num_volumes);
-    for(auto child_node: ptree.get_child("volumes")) {
-        auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
-        auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
-
-        if (volume_index && volume_path) {
-            volume_names.at(*volume_index) = *volume_path;
-        }
-        else {
-            AKU_PANIC("invalid storage, bad volume link");
-        }
-    }
-
-    // check result
-    for(std::string const& path: volume_names) {
-        if (path.empty())
-            AKU_PANIC("invalid storage, one of the volumes is missing");
-    }
+    config_.compression_threshold = v_iter.compression_threshold;
+    // TODO: convert conf.max_cache_size from bytes
+    config_.max_cache_size = v_iter.max_cache_size;
+    config_.window_size = v_iter.window_size;
 
     // create volumes list
-    for(auto path: volume_names) {
-        // TODO: convert conf.max_cache_size from bytes
+    for(auto path: v_iter.volume_names) {
         PVolume vol;
         vol.reset(new Volume(path.c_str(), config_, tag_, logger_));
         volumes_.push_back(vol);
@@ -256,6 +287,10 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         }
         begin++;
     }
+}
+
+aku_Status Storage::get_open_error() const {
+    return open_error_code_;
 }
 
 void Storage::advance_volume_(int local_rev) {
@@ -469,7 +504,7 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
 
 /** This function creates file with specified size
   */
-static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf_t logger) {
+static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger_cb_t logger) {
     using namespace std;
     apr_status_t status;
     int success_count = 0;
@@ -517,7 +552,7 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_printf
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_printf_t logger) {
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger) {
     using namespace std;
     apr_status_t status;
     int64_t size = AKU_MAX_PAGE_SIZE;
@@ -548,7 +583,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 /** Create page files, return list of statuses.
   */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_printf_t logger) {
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
         apr_status_t res = create_page_file(targets[ix].c_str(), ix, logger);
@@ -557,7 +592,7 @@ static std::vector<apr_status_t> create_page_files(std::vector<std::string> cons
     return results;
 }
 
-static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses, aku_printf_t logger) {
+static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses, aku_logger_cb_t logger) {
     using namespace std;
     if (targets.size() != statuses.size()) {
         AKU_PANIC("sizes of targets and statuses doesn't match");
@@ -607,7 +642,7 @@ static apr_status_t create_metadata_page( const char* file_name
                                         , uint32_t compression_threshold
                                         , uint64_t window_size
                                         , uint32_t max_cache_size
-                                        , aku_printf_t logger)
+                                        , aku_logger_cb_t logger)
 {
     // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
     //       is FUBAR and uses boost::spirit.
@@ -649,7 +684,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
                                   uint32_t     compression_threshold,
                                   uint64_t     window_size,
                                   uint32_t     max_cache_size,
-                                  aku_printf_t logger)
+                                  aku_logger_cb_t logger)
 {
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
@@ -714,4 +749,34 @@ apr_status_t Storage::new_storage(const char  *file_name,
     return status;
 }
 
+
+apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logger) {
+    VolumeIterator v_iter(file_name, logger);
+
+    if (v_iter.is_bad()) {
+        return APR_EBADPATH;
+    }
+
+    apr_pool_t* mempool;
+    apr_status_t status = apr_pool_create(&mempool, NULL);
+
+    if (status != APR_SUCCESS) {
+        (*logger)(0, "can't create memory pool");
+        return status;
+    }
+
+    // create volumes list
+    for(auto path: v_iter.volume_names) {
+        status = apr_file_remove(path.c_str(), mempool);
+        if (status != APR_SUCCESS) {
+            std::stringstream fmt;
+            fmt << "can't remove file " << path;
+            (*logger)(0, fmt.str().c_str());
+        }
+    }
+
+    status = apr_file_remove(file_name, mempool);
+    apr_pool_destroy(mempool);
+    return status;
+}
 }

@@ -81,9 +81,9 @@ namespace Akumuli
         apr_status_t status_;
         std::string path_;
         int tag_;
-        aku_printf_t logger_;
+        aku_logger_cb_t logger_;
     public:
-        MemoryMappedFile(const char* file_name, int tag, aku_printf_t logger) noexcept;
+        MemoryMappedFile(const char* file_name, int tag, aku_logger_cb_t logger) noexcept;
         ~MemoryMappedFile();
         void move_file(const char* new_name) noexcept;
         void delete_file() noexcept;
