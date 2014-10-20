@@ -30,6 +30,18 @@ Some characteristics of time series data
 
 These characteristics can be used to "cut corners" and optimize write and query performance.
 
+Features
+--------
+* Implemented as dynamic C library
+* Memory mapped
+* x64 only
+* Uses constant amount of disk space (like RRD-tool)
+* Crash recovery
+* Very hight write thorowghput
+* Allows unordered writes
+* Compressed (up to 3x)
+* Interpolation search and fast range scans
+
 How to build
 ------------
 
@@ -48,10 +60,6 @@ In case automatic script didn't work:
 * Boost:
 
   `sudo apt-get install libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev`
-
-* Gperfttools:
-
-  `sudo apt-get install libgoogle-perftools-dev`
 
 * Cmake:
 
