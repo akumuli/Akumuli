@@ -61,7 +61,8 @@ In case automatic script didn't work:
 
   `sudo apt-get install libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev`
   
-* APR
+* APR:
+
   `sudo apt-get install libapr1`
 
 * Cmake:
