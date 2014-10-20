@@ -10,7 +10,7 @@ sudo apt-get install libboost-coroutine-dev \
      libboost-context-dev
      
 echo 'Trying to install other libraries'
-sudo apt-get install libgoogle-perftools-dev libapr1
+sudo apt-get install libapr1
 
 echo 'Trying to install cmake'
 sudo apt-get install cmake
