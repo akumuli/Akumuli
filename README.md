@@ -41,6 +41,12 @@ Features
 * Allows unordered writes
 * Compressed (up to 3x)
 * Interpolation search and fast range scans
+ 
+Documentation
+-------------
+* [Wiki](https://github.com/akumuli/Akumuli/wiki)
+* [Getting started](https://github.com/akumuli/Akumuli/wiki/Getting-started)
+* [API reference](https://github.com/akumuli/Akumuli/wiki/API-Reference)
 
 How to build
 ------------
@@ -74,4 +80,6 @@ In case automatic script didn't work:
 1. `cmake .`
 1. `make -j`
 
-https://groups.google.com/forum/#!forum/akumuli
+Questions?
+----------
+[Google group](https://groups.google.com/forum/#!forum/akumuli)
