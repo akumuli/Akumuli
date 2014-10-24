@@ -19,7 +19,7 @@ For example, OpenTSDB depends on Hadoop and HBase and can't be used in embedded 
 
 Most systems round timestamps up to some value (for example, OpenTSDB rounds every timestamp up to one second). This makes it difficult or impossible to use these systems in process control domain. Worse than that, they only work with real timestamps (like UNIX time or UTC time). It means one can't use some other values as timestamps. For example, some sensors or ASICs can generate time-series data that contains sequence numbers that can be used as timestamps directly.
 
-With akumuli I'm trying to solve these issues. Akumuli is embedded time-series database, without dependency on third-party software or services, that implements custom storage engine designed specifically for time series data.
+This project was started to solve these issues. Akumuli is embedded time-series database, without dependency on third-party software or services, that implements custom storage engine designed specifically for time series data.
 
 Some characteristics of time series data
 ----------------------------------------
@@ -37,7 +37,7 @@ Features
 * x64 only
 * Uses constant amount of disk space (like RRD-tool)
 * Crash recovery
-* Very hight write thorowghput
+* Very hight write thoroughput
 * Allows unordered writes
 * Compressed (up to 3x)
 * Interpolation search and fast range scans
