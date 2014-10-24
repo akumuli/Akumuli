@@ -37,7 +37,7 @@ Features
 * x64 only
 * Uses constant amount of disk space (like RRD-tool)
 * Crash recovery
-* Very hight write thoroughput
+* Very high write throughput
 * Allows unordered writes
 * Compressed (up to 3x)
 * Interpolation search and fast range scans
