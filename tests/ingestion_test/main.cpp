@@ -31,10 +31,10 @@ void delete_storage() {
 
 bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {1};
+    aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
-                                                  , 42
+                                                  , 1
                                                   , params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_TimeStamp current_time = begin;
