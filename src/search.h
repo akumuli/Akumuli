@@ -1,5 +1,8 @@
 #pragma once
 #include "util.h"
+#include <mutex>
+
+namespace Akumuli {
 
 struct SearchRange {
     uint32_t begin;  //< Begin index
@@ -13,7 +16,7 @@ struct SearchRange {
 template<class Derived, int SEARCH_QUOTA=4>
 struct InterpolationSearch {
     // Derived class must implement:
-    // - bool read_at(aku_TimeStamp* out_timestamp, aku_ParamId* out_paramid, uint32_t ix);
+    // - bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix);
     // - bool is_small(SearchRange range);
     // - get_search_stats();
 
@@ -39,8 +42,8 @@ struct InterpolationSearch {
         aku_TimeStamp search_lower_bound;
         aku_TimeStamp search_upper_bound;
         bool success =
-            cderived->read_at(range.begin, &search_lower_bound, nullptr) &&
-            cderived->read_at(range.end-1, &search_upper_bound, nullptr);
+            cderived->read_at(&search_lower_bound, range.begin) &&
+            cderived->read_at(&search_upper_bound, range.end-1);
         if (!success) {
             return false;
         }
@@ -86,7 +89,7 @@ struct InterpolationSearch {
             if (probe_index > range.begin && probe_index < range.end) {
 
                 aku_TimeStamp probe;
-                success = cderived->read_at(probe_index, &probe, nullptr);
+                success = cderived->read_at(&probe, probe_index);
                 if (!success) {
                     return false;
                 }
@@ -96,7 +99,7 @@ struct InterpolationSearch {
                     state = UNDERSHOOT;
                     prev_step_err = key - probe;
                     range.begin = probe_index;
-                    success = cderived->read_at(range.begin, &search_lower_bound, nullptr);
+                    success = cderived->read_at(&search_lower_bound, range.begin);
                     if (!success) {
                         return false;
                     }
@@ -105,7 +108,7 @@ struct InterpolationSearch {
                     state = OVERSHOOT;
                     prev_step_err = probe - key;
                     range.end = probe_index;
-                    success = cderived->read_at(range.end, &search_upper_bound, nullptr);
+                    success = cderived->read_at(&search_upper_bound, range.end);
                     if (!success) {
                         return false;
                     }
@@ -133,5 +136,7 @@ struct InterpolationSearch {
         stats.stats.istats.n_page_in_core_errors += page_scan_errors;
         stats.stats.istats.n_pages_in_core_found += page_scan_success;
         stats.stats.istats.n_pages_in_core_miss += page_miss;
+        return true;
     }
 };
+}  // namespace Akumuli
