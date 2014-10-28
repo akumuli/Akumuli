@@ -425,6 +425,28 @@ static SearchStats& get_global_search_stats() {
     return stats;
 }
 
+struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
+    ChunkHeader const& header;
+    ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
+
+    // Interpolation search supporting functions
+    bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+        if (ix < header.timestamps.size()) {
+            *out_timestamp = header.timestamps[ix];
+            return true;
+        }
+        return false;
+    }
+
+    bool is_small(SearchRange range) const {
+        return false;
+    }
+
+    SearchStats& get_search_stats() {
+        return get_global_search_stats();
+    }
+};
+
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     PageHeader const* page_;
@@ -609,13 +631,19 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
         pbegin = tst_reader.pos();
 
+
         size_t start_pos = 0;
         if (IS_BACKWARD_) {
             start_pos = static_cast<int>(probe_length - 1);
         }
         // test timestamp range
         if (binary_search) {
-            auto it = std::lower_bound(header.timestamps.begin(), header.timestamps.end(), key_);
+            ChunkHeaderSearcher int_searcher(header);
+            SearchRange sr = { 0, static_cast<uint32_t>(header.timestamps.size())};
+            int_searcher.run(key_, &sr);
+            auto begin = header.timestamps.begin() + sr.begin;
+            auto end = header.timestamps.begin() + sr.end;
+            auto it = std::lower_bound(begin, end, key_);
             if (IS_BACKWARD_) {
                 if (!header.timestamps.empty()) {
                     auto last = header.timestamps.begin() + start_pos;
