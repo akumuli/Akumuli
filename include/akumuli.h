@@ -22,7 +22,7 @@
 #pragma once
 #include <cstdint>
 #include <apr_errno.h>
-#include "config.h"
+#include "akumuli_config.h"
 #include "akumuli_def.h"
 
 #ifdef __unix__
