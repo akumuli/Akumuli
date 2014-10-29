@@ -138,7 +138,7 @@ int main(int cnt, const char** args)
 {
     Mode mode = read_cmd(cnt, args);
 
-    aku_initialize();
+    aku_initialize(nullptr);
 
     if (mode == DELETE) {
         delete_storage();

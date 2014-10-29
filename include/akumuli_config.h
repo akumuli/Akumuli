@@ -21,9 +21,7 @@
 
 
 #pragma once
-#include <cstdint>
-
-extern "C" {
+#include <stdint.h>
 
 //! Logging function type
 typedef void (*aku_logger_cb_t) (int tag, const char * msg);
@@ -33,7 +31,7 @@ typedef void (*aku_panic_handler_t) (const char * msg);
 
 /** Library configuration.
  */
-struct aku_FineTuneParams
+typedef struct
 {
     //! Debug mode trigger
     uint32_t debug_mode;
@@ -46,6 +44,6 @@ struct aku_FineTuneParams
 
     //! Pointer to logging function, can be null
     aku_logger_cb_t logger;
-};
 
-}
+} aku_FineTuneParams;
+

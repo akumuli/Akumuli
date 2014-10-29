@@ -199,7 +199,7 @@ aku_TimeStamp query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_
 
 int main(int cnt, const char** args)
 {
-    aku_initialize();
+    aku_initialize(nullptr);
 
     // Cleanup
     delete_storage();

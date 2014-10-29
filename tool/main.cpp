@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     int optch;
     const char *optarg;
 
-    aku_initialize();
+    aku_initialize(nullptr);
     apr_pool_create(&pool, NULL);
 
     /* initialize apr_getopt_t */
