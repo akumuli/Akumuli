@@ -88,8 +88,7 @@ struct Storage
     typedef std::shared_ptr<Volume> PVolume;
 
     // Active volume state
-    aku_Config                 config_;
-    aku_FineTuneParams const& params_;
+    aku_Config                config_;
     PVolume                   active_volume_;
     PageHeader*               active_page_;
     std::atomic<int>          active_volume_index_;

@@ -213,7 +213,6 @@ int main(int cnt, const char** args)
 
     aku_FineTuneParams params;
     params.debug_mode = 0;
-    params.max_late_write = 10000;
     auto db = aku_open_database(DB_META_FILE, params);
     boost::timer timer;
 

@@ -36,12 +36,6 @@ typedef struct
     //! Debug mode trigger
     uint32_t debug_mode;
 
-    //! Maximum depth of the late write
-    uint64_t max_late_write;  // TODO: move to config file
-
-    //! Maximum cache size in bytes
-    uint32_t max_cache_size;  // TODO: move to config file
-
     //! Pointer to logging function, can be null
     aku_logger_cb_t logger;
 
