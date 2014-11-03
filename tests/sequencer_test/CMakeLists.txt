@@ -15,5 +15,4 @@ target_link_libraries(sequencer_test
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
-    profiler
 )

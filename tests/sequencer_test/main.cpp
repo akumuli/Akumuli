@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <memory>
 
-#include <google/profiler.h>
-
 #include <boost/timer.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
