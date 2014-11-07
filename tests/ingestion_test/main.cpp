@@ -30,7 +30,7 @@ void delete_storage() {
 }
 
 bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
-    const unsigned int NUM_ELEMENTS = 1000;
+    const unsigned int NUM_ELEMENTS = 10000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
@@ -138,7 +138,7 @@ int main(int cnt, const char** args)
 {
     Mode mode = read_cmd(cnt, args);
 
-    aku_initialize();
+    aku_initialize(nullptr);
 
     if (mode == DELETE) {
         delete_storage();
@@ -151,7 +151,9 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr, nullptr, nullptr, nullptr);
+        uint32_t threshold = 1000;
+        uint64_t windowsize = 10000;
+        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, &threshold, &windowsize, nullptr, nullptr);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;
@@ -160,7 +162,6 @@ int main(int cnt, const char** args)
 
     aku_FineTuneParams params;
     params.debug_mode = 0;
-    params.max_late_write = 10000;
     auto db = aku_open_database(DB_META_FILE, params);
     boost::timer timer;
 

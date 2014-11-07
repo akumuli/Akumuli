@@ -282,21 +282,21 @@ int aku_cursor_read_columns( aku_Cursor      *pcursor
     return pimpl->read_columns(timestamps, params, pointers, lengths, arrays_size);
 }
 
-bool aku_cursor_is_done(aku_Cursor* pcursor) {
+int aku_cursor_is_done(aku_Cursor* pcursor) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->is_done();
+    return static_cast<int>(pimpl->is_done());
 }
 
-bool aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
+int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->is_error(out_error_code_or_null);
+    return static_cast<int>(pimpl->is_error(out_error_code_or_null));
 }
 
 //--------------------------------
 //         Statistics
 //--------------------------------
 
-void aku_global_search_stats(aku_SearchStats* rcv_stats, bool reset) {
+void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset) {
     PageHeader::get_search_stats(rcv_stats, reset);
 }
 

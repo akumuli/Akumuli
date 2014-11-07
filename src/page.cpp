@@ -24,6 +24,7 @@
 #include "page.h"
 #include "compression.h"
 #include "akumuli_def.h"
+#include "search.h"
 
 #include <random>
 #include <iostream>
@@ -424,19 +425,30 @@ static SearchStats& get_global_search_stats() {
     return stats;
 }
 
-struct SearchRange {
-    uint32_t begin;
-    uint32_t end;
+struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
+    ChunkHeader const& header;
+    ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
 
-    bool is_small(PageHeader const* page) {
-        auto ps = get_page_size();
-        auto b = align_to_page(reinterpret_cast<void const*>(page->read_entry_at(begin)), ps);
-        auto e = align_to_page(reinterpret_cast<void const*>(page->read_entry_at(end)), ps);
-        return b == e;
+    // Interpolation search supporting functions
+    bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+        if (ix < header.timestamps.size()) {
+            *out_timestamp = header.timestamps[ix];
+            return true;
+        }
+        return false;
+    }
+
+    bool is_small(SearchRange range) const {
+        return false;
+    }
+
+    SearchStats& get_search_stats() {
+        return get_global_search_stats();
     }
 };
 
-struct SearchAlgorithm {
+struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
+{
     PageHeader const* page_;
     Caller& caller_;
     InternalCursor* cursor_;
@@ -447,13 +459,6 @@ struct SearchAlgorithm {
     const aku_TimeStamp key_;
 
     SearchRange range_;
-
-    //! Interpolation search state
-    enum I10nState {
-        NONE,
-        UNDERSHOOT,
-        OVERSHOOT
-    };
 
     SearchAlgorithm(PageHeader const* page, Caller& caller, InternalCursor* cursor, SearchQuery query)
         : page_(page)
@@ -531,98 +536,32 @@ struct SearchAlgorithm {
         }
     }
 
-    void interpolation() {
-        if (range_.begin == range_.end) {
-            return;
+    // Interpolation search supporting functions
+    bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+        const aku_Entry *entry = page_->read_entry_at(ix);
+        if (entry) {
+            *out_timestamp = entry->time;
         }
-        aku_TimeStamp search_lower_bound = page_->read_entry_at(range_.begin)->time;
-        aku_TimeStamp search_upper_bound = page_->read_entry_at(range_.end - 1)->time;
-        uint32_t probe_index = 0u;
-        int interpolation_search_quota = 4;  // TODO: move to configuration
-        int steps_count = 0;
-        int small_range_finish = 0;
-        int page_scan_steps_num = 0;
-        int page_scan_errors = 0;
-        int page_scan_success = 0;
-        int page_miss = 0;
+        return entry != nullptr;
+    }
 
-        uint64_t overshoot = 0u;
-        uint64_t undershoot = 0u;
-        uint64_t exact_match = 0u;
-        aku_TimeStamp prev_step_err = 0u;
-        I10nState state = NONE;
+    bool is_small(SearchRange range) const {
+        auto ps = get_page_size();
+        auto b = align_to_page(reinterpret_cast<void const*>(page_->read_entry_at(range.begin)), ps);
+        auto e = align_to_page(reinterpret_cast<void const*>(page_->read_entry_at(range.end)), ps);
+        return b == e;
+    }
 
-        while(steps_count++ < interpolation_search_quota)  {
-            // On small distances - fallback to binary search
-            if (range_.is_small(page_) || search_lower_bound == search_upper_bound) {
-                small_range_finish = 1;
-                break;
-            }
+    SearchStats& get_search_stats() {
+        return get_global_search_stats();
+    }
 
-            uint64_t numerator = 0u;
-
-            switch(state) {
-            case UNDERSHOOT:
-                numerator = key_ - search_lower_bound + (prev_step_err >> steps_count);
-                break;
-            case OVERSHOOT:
-                numerator = key_ - search_lower_bound - (prev_step_err >> steps_count);
-                break;
-            default:
-                numerator = key_ - search_lower_bound;
-            }
-
-            probe_index = range_.begin + ((numerator * (range_.end - range_.begin)) /
-                                          (search_upper_bound - search_lower_bound));
-
-            if (probe_index > range_.begin && probe_index < range_.end) {
-
-                auto probe_offset = page_->page_index[probe_index];
-                auto probe_entry = page_->read_entry(probe_offset);
-                // TODO: count page faults
-                auto probe = probe_entry->time;
-
-                if (probe < key_) {
-                    undershoot++;
-                    state = UNDERSHOOT;
-                    prev_step_err = key_ - probe;
-                    range_.begin = probe_index;
-                    probe_offset = page_->page_index[range_.begin];
-                    probe_entry = page_->read_entry(probe_offset);
-                    search_lower_bound = probe_entry->time;
-                } else if (probe > key_) {
-                    overshoot++;
-                    state = OVERSHOOT;
-                    prev_step_err = probe - key_;
-                    range_.end = probe_index;
-                    probe_offset = page_->page_index[range_.end];
-                    probe_entry = page_->read_entry(probe_offset);
-                    search_upper_bound = probe_entry->time;
-                } else {
-                    // probe == key_
-                    exact_match = 1;
-                    range_.begin = probe_index;
-                    range_.end = probe_index;
-                    break;
-                }
-            }
-            else {
-                break;
-                // Continue with binary search
-            }
+    bool interpolation() {
+        if (!run(key_, &range_)) {
+            cursor_->set_error(caller_, AKU_ENOT_FOUND);
+            return false;
         }
-        auto& stats = get_global_search_stats();
-        std::lock_guard<std::mutex> lock(stats.mutex);
-        stats.stats.istats.n_matches += exact_match;
-        stats.stats.istats.n_overshoots += overshoot;
-        stats.stats.istats.n_undershoots += undershoot;
-        stats.stats.istats.n_times += 1;
-        stats.stats.istats.n_steps += steps_count;
-        stats.stats.istats.n_reduced_to_one_page += small_range_finish;
-        stats.stats.istats.n_page_in_core_checks += page_scan_steps_num;
-        stats.stats.istats.n_page_in_core_errors += page_scan_errors;
-        stats.stats.istats.n_pages_in_core_found += page_scan_success;
-        stats.stats.istats.n_pages_in_core_miss += page_miss;
+        return true;
     }
 
     void binary_search() {
@@ -692,13 +631,19 @@ struct SearchAlgorithm {
         }
         pbegin = tst_reader.pos();
 
+
         size_t start_pos = 0;
         if (IS_BACKWARD_) {
             start_pos = static_cast<int>(probe_length - 1);
         }
         // test timestamp range
         if (binary_search) {
-            auto it = std::lower_bound(header.timestamps.begin(), header.timestamps.end(), key_);
+            ChunkHeaderSearcher int_searcher(header);
+            SearchRange sr = { 0, static_cast<uint32_t>(header.timestamps.size())};
+            int_searcher.run(key_, &sr);
+            auto begin = header.timestamps.begin() + sr.begin;
+            auto end = header.timestamps.begin() + sr.end;
+            auto it = std::lower_bound(begin, end, key_);
             if (IS_BACKWARD_) {
                 if (!header.timestamps.empty()) {
                     auto last = header.timestamps.begin() + start_pos;
@@ -864,9 +809,10 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
     SearchAlgorithm search_alg(this, caller, cursor, query);
     if (search_alg.fast_path() == false) {
         search_alg.histogram();
-        search_alg.interpolation();
-        search_alg.binary_search();
-        search_alg.scan();
+        if (search_alg.interpolation()) {
+            search_alg.binary_search();
+            search_alg.scan();
+        }
     }
 }
 

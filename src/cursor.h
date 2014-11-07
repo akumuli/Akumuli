@@ -177,6 +177,72 @@ struct CoroCursor : Cursor {
     }
 };
 
+typedef std::tuple<CursorResult, int, int> HeapItem;
+
+struct HeapPred {
+    int dir;
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        bool result = false;
+        const CursorResult& lres = std::get<0>(lhs);
+        const CursorResult& rres = std::get<0>(rhs);
+        const auto lkey = std::make_tuple(lres.timestamp, lres.param_id);
+        const auto rkey = std::make_tuple(rres.timestamp, rres.param_id);
+        if (dir == AKU_CURSOR_DIR_BACKWARD) {
+            // Min heap is used
+            result = lkey < rkey;
+        } else if (dir == AKU_CURSOR_DIR_FORWARD) {
+            result = lkey > rkey;
+        } else {
+            AKU_PANIC("bad direction of the fan-in cursor")
+        }
+        return result;
+    }
+};
+
+/**
+ * @brief Fan in cursor.
+ * Takes list of cursors and pages and merges
+ * results from this cursors in one ordered
+ * sequence of events.
+ */
+class StacklessFanInCursorCombinator : ExternalCursor {
+    typedef std::vector<HeapItem> Heap;
+    const int                           direction_;
+    const std::vector<ExternalCursor*>  in_cursors_;
+    const HeapPred                      pred_;
+    Heap                                heap_;
+    // user owned data
+    CursorResult*   usr_buffer_;        //! User owned buffer for output
+    int             usr_buffer_len_;    //! Size of the user owned buffer
+    // library owned data
+    int             write_index_;       //! Current write position in usr_buffer_
+    bool            error_;             //! Error flag
+    int             error_code_;        //! Error code
+    bool            complete_;          //! Is complete
+    bool            closed_;
+
+    void read_impl_();
+    void set_error(int error_code);
+    bool put(CursorResult const& result);
+    void complete();
+public:
+    /**
+     * @brief C-tor
+     * @param cursors array of pointer to cursors
+     * @param size size of the cursors array
+     * @param direction direction of the cursor (forward or backward)
+     */
+    StacklessFanInCursorCombinator( ExternalCursor** in_cursors
+                                  , int size
+                                  , int direction);
+
+    // ExternalCursor interface
+public:
+    virtual int read(CursorResult *buf, int buf_len);
+    virtual bool is_done() const;
+    virtual bool is_error(int *out_error_code_or_null) const;
+    virtual void close();
+};
 
 /**
  * @brief Fan in cursor.

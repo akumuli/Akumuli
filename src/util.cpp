@@ -108,7 +108,7 @@ apr_status_t MemoryMappedFile::map_file() noexcept {
             status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
             if (status_ == APR_SUCCESS) {
                 success_count++;
-                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, APR_MMAP_WRITE|APR_MMAP_READ, mem_pool_);
+                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, APR_MMAP_WRITE|APR_MMAP_READ|MAP_HUGETLB, mem_pool_);
                 if (status_ == APR_SUCCESS)
                     success_count++; }}}
 

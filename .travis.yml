@@ -1,16 +1,19 @@
-build_environment: Ubuntu 14.04
+build_image: shippableimages/ubuntu1404_python
 language: python
 compiler: gcc
 
 before_install:
   - lsb_release -a
-  - sudo apt-get install libboost1.54-dev
-  - sudo apt-get install libapr1
-  - sudo apt-get install cmake
+  - sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev
+  - sudo apt-get install -y libapr1-dev libaprutil1-dev
+  - sudo apt-get install -y cmake
+
 
 before_script:
    - mkdir build
    - cd build
    - cmake ..
 
-script: make
+script: 
+   - make
+   - make test

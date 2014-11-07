@@ -1,6 +1,6 @@
 add_library(akumuli SHARED
-    ../include/version.h
-    ../include/config.h
+    ../include/akumuli_version.h
+    ../include/akumuli_config.h
     ../include/akumuli.h
     ../include/akumuli_def.h
     storage.h

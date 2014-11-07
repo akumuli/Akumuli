@@ -202,14 +202,11 @@ struct VolumeIterator {
 static std::atomic<int> storage_cnt = {1};
 
 Storage::Storage(const char* path, aku_FineTuneParams const& params)
-    : params_(params)
-    , compression(true)
+    : compression(true)
     , open_error_code_(AKU_SUCCESS)
     , tag_(storage_cnt++)
     , logger_(params.logger)
 {
-    ttl_= params.max_late_write;
-
     VolumeIterator v_iter(path, params.logger);
 
     if (v_iter.is_bad()) {
@@ -221,6 +218,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     // TODO: convert conf.max_cache_size from bytes
     config_.max_cache_size = v_iter.max_cache_size;
     config_.window_size = v_iter.window_size;
+    ttl_ = v_iter.window_size;
 
     // create volumes list
     for(auto path: v_iter.volume_names) {
@@ -231,7 +229,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
 
     select_active_page();
 
-    prepopulate_cache(params.max_cache_size);
+    prepopulate_cache(config_.max_cache_size);
 }
 
 void Storage::select_active_page() {

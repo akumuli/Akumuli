@@ -182,29 +182,129 @@ void CoroCursor::complete(Caller& caller) {
 }
 
 
-// FanInCursor implementation
+// StacklessFanInCursorCombinator
 
-typedef std::tuple<CursorResult, int, int> HeapItem;
-
-struct HeapPred {
-    int dir;
-    bool operator () (HeapItem const& lhs, HeapItem const& rhs) {
-        bool result = false;
-        const CursorResult& lres = std::get<0>(lhs);
-        const CursorResult& rres = std::get<0>(rhs);
-        const auto lkey = std::make_tuple(lres.timestamp, lres.param_id);
-        const auto rkey = std::make_tuple(rres.timestamp, rres.param_id);
-        if (dir == AKU_CURSOR_DIR_BACKWARD) {
-            // Min heap is used
-            result = lkey < rkey;
-        } else if (dir == AKU_CURSOR_DIR_FORWARD) {
-            result = lkey > rkey;
-        } else {
-            AKU_PANIC("bad direction of the fan-in cursor")
+StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
+        ExternalCursor** in_cursors,
+        int size,
+        int direction)
+    : direction_(direction)
+    , in_cursors_(in_cursors, in_cursors + size)
+    , pred_{direction}
+    , usr_buffer_(nullptr)
+    , usr_buffer_len_(0)
+    , write_index_(0)
+    , error_(false)
+    , error_code_(AKU_SUCCESS)
+    , complete_(false)
+    , closed_(false)
+{
+    int error = AKU_SUCCESS;
+    for (auto cursor: in_cursors_) {
+        if (cursor->is_error(&error)) {
+            set_error(error);
+            return;
         }
-        return result;
     }
-};
+
+    const int BUF_LEN = 0x200;
+    CursorResult buffer[BUF_LEN];
+    for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
+        if (!in_cursors_[cur_index]->is_done()) {
+            ExternalCursor* cursor = in_cursors_[cur_index];
+            int nwrites = cursor->read(buffer, BUF_LEN);
+            if (cursor->is_error(&error)) {
+                set_error(error);
+                return;
+            }
+            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+                auto cur_count = nwrites - buf_ix;
+                auto key = std::make_tuple(buffer[buf_ix], cur_index, cur_count);
+                heap_.push_back(key);
+            }
+        }
+    }
+
+    std::make_heap(heap_.begin(), heap_.end(), pred_);
+}
+
+void StacklessFanInCursorCombinator::read_impl_() {
+    // Check preconditions
+    int error = 0;
+    bool proceed = true;
+    const int BUF_LEN = 0x200;
+    CursorResult buffer[BUF_LEN];
+    while(proceed && !heap_.empty()) {
+        std::pop_heap(heap_.begin(), heap_.end(), pred_);
+        auto item = heap_.back();
+        const CursorResult& cur_result = std::get<0>(item);
+        int cur_index = std::get<1>(item);
+        int cur_count = std::get<2>(item);
+        proceed = put(cur_result);
+        heap_.pop_back();
+        if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
+            ExternalCursor* cursor = in_cursors_[cur_index];
+            int nwrites = cursor->read(buffer, BUF_LEN);
+            if (cursor->is_error(&error)) {
+                set_error(error);
+                return;
+            }
+            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+                auto key = std::make_tuple(buffer[buf_ix], cur_index, nwrites - buf_ix);
+                heap_.push_back(key);
+                std::push_heap(heap_.begin(), heap_.end(), pred_);
+            }
+        }
+    }
+    if (heap_.empty()) {
+        complete();
+    }
+}
+
+int StacklessFanInCursorCombinator::read(CursorResult *buf, int buf_len) {
+    usr_buffer_ = buf;
+    usr_buffer_len_ = buf_len;
+    write_index_ = 0;
+    read_impl_();
+    return write_index_;
+}
+
+bool StacklessFanInCursorCombinator::is_done() const {
+    return complete_;
+}
+
+bool StacklessFanInCursorCombinator::is_error(int *out_error_code_or_null) const {
+    if (error_) {
+        *out_error_code_or_null = error_code_;
+        return true;
+    }
+}
+
+void StacklessFanInCursorCombinator::close() {
+    closed_ = true;
+}
+
+void StacklessFanInCursorCombinator::set_error(int error_code) {
+    closed_ = true;
+    error_code_ = error_code;
+    error_ = true;
+    complete_ = true;
+}
+
+bool StacklessFanInCursorCombinator::put(CursorResult const& result) {
+    if (closed_ || complete_) {
+        return false;
+    }
+    usr_buffer_[write_index_++] = result;
+    return write_index_ >= usr_buffer_len_;
+}
+
+void StacklessFanInCursorCombinator::complete() {
+    complete_ = true;
+}
+
+
+// FanInCursor implementation
 
 FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size, int direction)
     : in_cursors_(cursors, cursors + size)

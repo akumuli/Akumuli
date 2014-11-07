@@ -15,7 +15,7 @@ using namespace Akumuli;
 
 struct AkumuliInitializer {
     AkumuliInitializer() {
-        aku_initialize();
+        aku_initialize(nullptr);
     }
 };
 
