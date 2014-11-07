@@ -4,9 +4,9 @@ compiler: gcc
 
 before_install:
   - lsb_release -a
-  - sudo apt-get install libboost-test-dev libboost-system-dev libboost-filesystem-dev libboost-thread-dev libboost-context-dev libboost-coroutine-dev
+  - sudo apt-get install libboost-dev
   - sudo apt-get install libapr1
-  - sudo apt-get install cmake
+  - sudo apt-get install -y cmake
 
 
 before_script:
