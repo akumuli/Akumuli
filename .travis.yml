@@ -4,12 +4,12 @@ compiler: gcc
 
 before_install:
   - lsb_release -a
-  - sudo apt-get install libboost1.54-dev
+  - sudo apt-get install libboost-test-dev libboost-system-dev libboost-filesystem-dev libboost-thread-dev libboost-context-dev libboost-coroutine-dev
   - sudo apt-get install libapr1
+  - sudo apt-get install cmake
 
 
 before_script:
-   - sudo apt-get install cmake
    - mkdir build
    - cd build
    - cmake ..
