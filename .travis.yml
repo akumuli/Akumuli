@@ -4,8 +4,8 @@ compiler: gcc
 
 before_install:
   - lsb_release -a
-  - sudo apt-get install libboost-dev
-  - sudo apt-get install libapr1
+  - sudo apt-get install -y libboost-dev
+  - sudo apt-get install -y libapr1
   - sudo apt-get install -y cmake
 
 
