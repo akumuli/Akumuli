@@ -447,6 +447,144 @@ struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
     }
 };
 
+/*
+struct ChunkCursor {
+    ChunkHeader header_;
+    bool binary_search_;
+    aku_Entry const* probe_entry_;
+    PageHeader const* page_;
+    aku_TimeStamp key_;
+    const bool IS_BACKWARD_;
+    bool complete_;
+    size_t start_pos_;
+
+    ChunkCursor(PageHeader const* page, aku_Entry const* entry, aku_TimeStamp key, bool backward, bool binary_search)
+        : binary_search_(binary_search)
+        , probe_entry_(entry)
+        , page_(page)
+        , key_(key)
+        , IS_BACKWARD_(backward)
+        , complete_(true)
+        , start_pos_(0u)
+    {
+        auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry_->value[0]);
+        auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
+        auto pend = (const unsigned char*)(page_->cdata() + pdesc->end_offset);
+        auto probe_length = pdesc->n_elements;
+
+        // TODO:checksum!
+        boost::crc_32_type checksum;
+        checksum.process_block(pbegin, pend);
+        if (checksum.checksum() != pdesc->checksum) {
+            AKU_PANIC("File damaged!");
+            return;
+        }
+
+        // read timestamps
+        DeltaRLETSReader tst_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header_.timestamps.push_back(tst_reader.next());
+        }
+        pbegin = tst_reader.pos();
+
+        if (IS_BACKWARD_) {
+            start_pos_ = static_cast<int>(probe_length - 1);
+        }
+        // test timestamp range
+        if (binary_search_) {
+            ChunkHeaderSearcher int_searcher(header_);
+            SearchRange sr = { 0, static_cast<uint32_t>(header_.timestamps.size())};
+            int_searcher.run(key_, &sr);
+            auto begin = header_.timestamps.begin() + sr.begin;
+            auto end = header_.timestamps.begin() + sr.end;
+            auto it = std::lower_bound(begin, end, key_);
+            if (it == end) {
+                // key_ not in chunk
+                complete_ = true;
+                return;
+            }
+            if (IS_BACKWARD_) {
+                if (!header_.timestamps.empty()) {
+                    auto last = header_.timestamps.begin() + start_pos_;
+                    auto delta = last - it;
+                    start_pos_ -= delta;
+                }
+            } else {
+                start_pos_ += it - header_.timestamps.begin();
+            }
+        }
+
+        // read paramids
+        Base128IdReader pid_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header_.paramids.push_back(pid_reader.next());
+        }
+        pbegin = pid_reader.pos();
+
+        // read lengths
+        RLELenReader len_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header_.lengths.push_back(len_reader.next());
+        }
+        pbegin = len_reader.pos();
+
+        // read offsets
+        DeltaRLEOffReader off_reader(pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header_.offsets.push_back(off_reader.next());
+        }
+    }
+
+    bool scan_compressed_entries()
+    {
+        bool probe_in_time_range = true;
+
+        auto cursor = cursor_;
+        auto& caller = caller_;
+        auto page = page_;
+        auto put_entry = [&header_, cursor, &caller, page] (uint32_t i) {
+            CursorResult result = {
+                header_.offsets[i],
+                header_.lengths[i],
+                header_.timestamps[i],
+                header_.paramids[i],
+                page
+            };
+            cursor->put(caller, result);
+        };
+
+        if (IS_BACKWARD_) {
+            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (auto i = start_pos; i != probe_length; i++) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.upperbound >= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        }
+        return probe_in_time_range;
+    }
+};
+*/
+
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     PageHeader const* page_;

@@ -30,7 +30,7 @@ void delete_storage() {
 }
 
 bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
-    const unsigned int NUM_ELEMENTS = 10000;
+    const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
@@ -201,6 +201,8 @@ int main(int cnt, const char** args)
         uint64_t counter = 0;
 
         timer.restart();
+
+        /*
         if (!query_database_forward( db
                            , std::numeric_limits<aku_TimeStamp>::min()
                            , std::numeric_limits<aku_TimeStamp>::max()
@@ -210,6 +212,7 @@ int main(int cnt, const char** args)
         {
             return 2;
         }
+        */
 
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);
@@ -218,16 +221,12 @@ int main(int cnt, const char** args)
         std::cout << "Prepare test data" << std::endl;
         std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
         for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
-            std::vector<aku_TimeStamp> range;
             aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
-            std::generate_n(std::back_inserter(range), CHUNK_SIZE, [&j]() {return j++;});
-            std::random_shuffle(range.begin(), range.end());
             int count = 5;
-            for (auto k: range) {
+            for (int d = 0; d < count; d++) {
+                int r = std::rand() % CHUNK_SIZE;
+                int k = j + r;
                 ranges.push_back(std::make_pair(k, k+1));
-                if (!count--) {
-                    break;
-                }
             }
         }
 

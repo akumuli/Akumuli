@@ -31,6 +31,30 @@
 
 namespace Akumuli {
 
+class CursorFSM {
+    // user data
+    CursorResult*   usr_buffer_;        //! User owned buffer for output
+    int             usr_buffer_len_;    //! Size of the user owned buffer
+    // cursor state
+    int             write_index_;       //! Current write position in usr_buffer_
+    bool            error_;             //! Error flag
+    int             error_code_;        //! Error code
+    bool            complete_;          //! Is complete
+    bool            closed_;            //! Used to check that close method was called
+public:
+    CursorFSM();
+    ~CursorFSM();
+    // modifiers
+    bool put(CursorResult const& result);
+    void complete();
+    void set_error(int error_code);
+    void update_buffer(CursorResult* buf, int buf_len);
+    void close();
+    // accessors
+    bool is_done() const;
+    bool get_error(int *error_code) const;
+    int get_data_len() const;
+};
 
 /** Simple cursor implementation for testing.
   * Stores all values in std::vector.
@@ -211,15 +235,7 @@ class StacklessFanInCursorCombinator : ExternalCursor {
     const std::vector<ExternalCursor*>  in_cursors_;
     const HeapPred                      pred_;
     Heap                                heap_;
-    // user owned data
-    CursorResult*   usr_buffer_;        //! User owned buffer for output
-    int             usr_buffer_len_;    //! Size of the user owned buffer
-    // library owned data
-    int             write_index_;       //! Current write position in usr_buffer_
-    bool            error_;             //! Error flag
-    int             error_code_;        //! Error code
-    bool            complete_;          //! Is complete
-    bool            closed_;
+    CursorFSM                           cursor_fsm_;
 
     void read_impl_();
     void set_error(int error_code);

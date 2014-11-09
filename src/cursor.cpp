@@ -21,6 +21,68 @@
 
 namespace Akumuli {
 
+// CursorFSM
+
+CursorFSM::CursorFSM()
+    : usr_buffer_(nullptr)
+    , usr_buffer_len_(0)
+    , write_index_(0)
+    , error_(false)
+    , error_code_(AKU_SUCCESS)
+    , complete_(false)
+    , closed_(false)
+{
+}
+
+CursorFSM::~CursorFSM() {
+    assert(closed_);
+}
+
+void CursorFSM::update_buffer(CursorResult* buf, int buf_len) {
+    usr_buffer_ = buf;
+    usr_buffer_len_ = buf_len;
+    write_index_ = 0;
+}
+
+bool CursorFSM::put(CursorResult const& result) {
+    if (closed_ || complete_) {
+        return false;
+    }
+    usr_buffer_[write_index_++] = result;
+    return write_index_ >= usr_buffer_len_;
+}
+
+void CursorFSM::close() {
+    closed_ = true;
+}
+
+void CursorFSM::complete() {
+    complete_ = true;
+}
+
+void CursorFSM::set_error(int error_code) {
+    error_code_ = error_code;
+    error_ = true;
+    complete_ = true;
+}
+
+bool CursorFSM::is_done() const {
+    return complete_ || closed_;
+}
+
+bool CursorFSM::get_error(int *error_code) const {
+    if (error_ && error_code) {
+        *error_code = error_code_;
+        return true;
+    }
+    return false;
+}
+
+int CursorFSM::get_data_len() const {
+    return write_index_;
+}
+
+// RecordingCursor
 
 bool RecordingCursor::put(Caller &, const CursorResult &result) {
     results.push_back(result);
@@ -191,13 +253,6 @@ StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
     : direction_(direction)
     , in_cursors_(in_cursors, in_cursors + size)
     , pred_{direction}
-    , usr_buffer_(nullptr)
-    , usr_buffer_len_(0)
-    , write_index_(0)
-    , error_(false)
-    , error_code_(AKU_SUCCESS)
-    , complete_(false)
-    , closed_(false)
 {
     int error = AKU_SUCCESS;
     for (auto cursor: in_cursors_) {
@@ -262,45 +317,33 @@ void StacklessFanInCursorCombinator::read_impl_() {
 }
 
 int StacklessFanInCursorCombinator::read(CursorResult *buf, int buf_len) {
-    usr_buffer_ = buf;
-    usr_buffer_len_ = buf_len;
-    write_index_ = 0;
+    cursor_fsm_.update_buffer(buf, buf_len);
     read_impl_();
-    return write_index_;
+    return cursor_fsm_.get_data_len();
 }
 
 bool StacklessFanInCursorCombinator::is_done() const {
-    return complete_;
+    return cursor_fsm_.is_done();
 }
 
 bool StacklessFanInCursorCombinator::is_error(int *out_error_code_or_null) const {
-    if (error_) {
-        *out_error_code_or_null = error_code_;
-        return true;
-    }
+    return cursor_fsm_.get_error(out_error_code_or_null);
 }
 
 void StacklessFanInCursorCombinator::close() {
-    closed_ = true;
+    cursor_fsm_.close();
 }
 
 void StacklessFanInCursorCombinator::set_error(int error_code) {
-    closed_ = true;
-    error_code_ = error_code;
-    error_ = true;
-    complete_ = true;
+    cursor_fsm_.set_error(error_code);
 }
 
 bool StacklessFanInCursorCombinator::put(CursorResult const& result) {
-    if (closed_ || complete_) {
-        return false;
-    }
-    usr_buffer_[write_index_++] = result;
-    return write_index_ >= usr_buffer_len_;
+    return cursor_fsm_.put(result);
 }
 
 void StacklessFanInCursorCombinator::complete() {
-    complete_ = true;
+    cursor_fsm_.complete();
 }
 
 

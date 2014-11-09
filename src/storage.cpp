@@ -299,6 +299,7 @@ void Storage::advance_volume_(int local_rev) {
         log_message("....open count", active_volume_->page_->open_count);
 
         auto old_page_id = active_page_->page_id;
+        AKU_UNUSED(old_page_id);
 
         int close_lock = active_volume_->cache_->reset();
         if (close_lock % 2 == 1) {
@@ -322,6 +323,7 @@ void Storage::advance_volume_(int local_rev) {
         active_page_ = active_volume_->page_;
 
         auto new_page_id = active_page_->page_id;
+        AKU_UNUSED(new_page_id);
         assert(new_page_id != old_page_id);
 
         log_message("next volume opened");
@@ -377,7 +379,7 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
              , [](unique_ptr<ExternalCursor>& v) { return v.get(); });
 
     assert(pcursors.size());
-    FanInCursorCombinator fan_in_cursor(&pcursors[0], pcursors.size(), query.direction);
+    StacklessFanInCursorCombinator fan_in_cursor(&pcursors[0], pcursors.size(), query.direction);
 
     // TODO: remove excessive copying
     // to do this I need to pass cur to fan_in_cursor somehow
