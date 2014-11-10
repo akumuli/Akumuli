@@ -44,6 +44,10 @@ void CursorFSM::update_buffer(CursorResult* buf, int buf_len) {
     write_index_ = 0;
 }
 
+bool CursorFSM::can_put() const {
+    return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
+}
+
 bool CursorFSM::put(CursorResult const& result) {
     if (closed_ || complete_) {
         return false;
@@ -52,8 +56,10 @@ bool CursorFSM::put(CursorResult const& result) {
     return write_index_ >= usr_buffer_len_;
 }
 
-void CursorFSM::close() {
+bool CursorFSM::close() {
+    bool old = closed_;
     closed_ = true;
+    return old != closed_;
 }
 
 void CursorFSM::complete() {
@@ -147,41 +153,24 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
     free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
 }
 
-CoroCursor::CoroCursor()
-    : usr_buffer_(nullptr)
-    , usr_buffer_len_(0)
-    , write_index_(0)
-    , error_(false)
-    , error_code_(AKU_SUCCESS)
-    , complete_(false)
-    , closed_(false)
-{
-}
-
 // External cursor implementation
 
 int CoroCursor::read(CursorResult* buf, int buf_len) {
-    usr_buffer_ = buf;
-    usr_buffer_len_ = buf_len;
-    write_index_ = 0;
+    cursor_fsm_.update_buffer(buf, buf_len);
     coroutine_->operator()(this);
-    return write_index_;
+    return cursor_fsm_.get_data_len();
 }
 
 bool CoroCursor::is_done() const {
-    return complete_;
+    return cursor_fsm_.is_done();
 }
 
-bool CoroCursor::is_error(int* out_error_code_or_null) const
-{
-    if (out_error_code_or_null)
-       *out_error_code_or_null = error_code_;
-    return error_;
+bool CoroCursor::is_error(int* out_error_code_or_null) const {
+    return cursor_fsm_.get_error(out_error_code_or_null);
 }
 
 void CoroCursor::close() {
-    if (!closed_) {
-        closed_ = true;
+    if (cursor_fsm_.close()) {
         coroutine_->operator()(this);
         coroutine_.reset();
     }
@@ -190,31 +179,26 @@ void CoroCursor::close() {
 // Internal cursor implementation
 
 void CoroCursor::set_error(Caller& caller, int error_code) {
-    closed_ = true;
-    error_code_ = error_code;
-    error_ = true;
-    complete_ = true;
+    cursor_fsm_.set_error(error_code);
     caller();
 }
 
 bool CoroCursor::put(Caller& caller, CursorResult const& result) {
-    if (closed_) {
+    if (cursor_fsm_.is_done()) {
         return false;
     }
-    if (write_index_ >= usr_buffer_len_) {
+    if (!cursor_fsm_.can_put()) {
         // yield control to client
         caller();
     }
-    if (closed_) {
+    if (cursor_fsm_.is_done()) {
         return false;
     }
-    usr_buffer_[write_index_++] = result;
-    return true;
+    return cursor_fsm_.put(result);
 }
 
 void CoroCursor::complete(Caller& caller) {
-    complete_ = true;
-    caller();
+    cursor_fsm_.complete();
 }
 
 
@@ -305,6 +289,9 @@ bool StacklessFanInCursorCombinator::is_error(int *out_error_code_or_null) const
 }
 
 void StacklessFanInCursorCombinator::close() {
+    for (auto cursor: in_cursors_) {
+        cursor->close();
+    }
     cursor_fsm_.close();
 }
 

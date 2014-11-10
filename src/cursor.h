@@ -49,8 +49,9 @@ public:
     void complete();
     void set_error(int error_code);
     void update_buffer(CursorResult* buf, int buf_len);
-    void close();
+    bool close();
     // accessors
+    bool can_put() const;
     bool is_done() const;
     bool get_error(int *error_code) const;
     int get_data_len() const;
@@ -118,17 +119,7 @@ struct CoroCursorStackAllocator {
 
 struct CoroCursor : Cursor {
     boost::shared_ptr<Coroutine> coroutine_;
-    // user owned data
-    CursorResult*   usr_buffer_;        //! User owned buffer for output
-    int             usr_buffer_len_;    //! Size of the user owned buffer
-    // library owned data
-    int             write_index_;       //! Current write position in usr_buffer_
-    bool            error_;             //! Error flag
-    int             error_code_;        //! Error code
-    bool            complete_;          //! Is complete
-    bool            closed_;
-
-    CoroCursor() ;
+    CursorFSM cursor_fsm_;
 
     // External cursor implementation
 
