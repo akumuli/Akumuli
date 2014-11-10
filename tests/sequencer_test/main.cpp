@@ -23,6 +23,43 @@ using namespace std;
 
 const int NUM_ITERATIONS = 100*1000*1000;
 
+
+//! Simple static buffer cursor
+struct BufferedCursor : InternalCursor {
+    CursorResult* results_buffer;
+    size_t buffer_size;
+    size_t count;
+    bool completed = false;
+    int error_code = AKU_SUCCESS;
+    //! C-tor
+    BufferedCursor(CursorResult* buf, size_t size)
+        : results_buffer(buf)
+        , buffer_size(size)
+        , count(0)
+    {
+    }
+
+    bool put(Caller&, CursorResult const& result) {
+        if (count == buffer_size) {
+            completed = true;
+            error_code = AKU_EOVERFLOW;
+            return false;
+        }
+        results_buffer[count++] = result;
+        return true;
+    }
+
+    void complete(Caller&) {
+        completed = true;
+    }
+
+    void set_error(Caller&, int code) {
+        completed = true;
+        error_code = code;
+    }
+};
+
+
 int main(int cnt, const char** args)
 {
     aku_initialize(nullptr);

@@ -99,32 +99,6 @@ void RecordingCursor::set_error(Caller&, int error_code) {
 }
 
 
-BufferedCursor::BufferedCursor(CursorResult* buf, size_t size)
-    : results_buffer(buf)
-    , buffer_size(size)
-    , count(0)
-{
-}
-
-bool BufferedCursor::put(Caller&, CursorResult const& result) {
-    if (count == buffer_size) {
-        completed = true;
-        error_code = AKU_EOVERFLOW;
-        return false;
-    }
-    results_buffer[count++] = result;
-    return true;
-}
-
-void BufferedCursor::complete(Caller&) {
-    completed = true;
-}
-
-void BufferedCursor::set_error(Caller&, int code) {
-    completed = true;
-    error_code = code;
-}
-
 // Page cursor
 
 DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)

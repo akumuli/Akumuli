@@ -73,21 +73,6 @@ struct RecordingCursor : InternalCursor {
 };
 
 
-//! Simple static buffer cursor
-struct BufferedCursor : InternalCursor {
-    CursorResult* results_buffer;
-    size_t buffer_size;
-    size_t count;
-    bool completed = false;
-    int error_code = AKU_SUCCESS;
-    //! C-tor
-    BufferedCursor(CursorResult *buf, size_t size);
-    virtual bool put(Caller&, CursorResult const& result);
-    virtual void complete(Caller&);
-    virtual void set_error(Caller&, int error_code);
-};
-
-
 /** Simple page cursor that write incomming data to
  *  page index directly.
  */
