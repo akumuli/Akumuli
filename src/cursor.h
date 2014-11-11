@@ -45,7 +45,7 @@ public:
     CursorFSM();
     ~CursorFSM();
     // modifiers
-    bool put(CursorResult const& result);
+    void put(CursorResult const& result);
     void complete();
     void set_error(int error_code);
     void update_buffer(CursorResult* buf, int buf_len);

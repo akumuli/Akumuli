@@ -48,12 +48,8 @@ bool CursorFSM::can_put() const {
     return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
 }
 
-bool CursorFSM::put(CursorResult const& result) {
-    if (closed_ || complete_) {
-        return false;
-    }
+void CursorFSM::put(CursorResult const& result) {
     usr_buffer_[write_index_++] = result;
-    return write_index_ >= usr_buffer_len_;
 }
 
 bool CursorFSM::close() {
@@ -81,7 +77,7 @@ bool CursorFSM::get_error(int *error_code) const {
         *error_code = error_code_;
         return true;
     }
-    return false;
+    return error_;
 }
 
 int CursorFSM::get_data_len() const {
@@ -194,11 +190,13 @@ bool CoroCursor::put(Caller& caller, CursorResult const& result) {
     if (cursor_fsm_.is_done()) {
         return false;
     }
-    return cursor_fsm_.put(result);
+    cursor_fsm_.put(result);
+    return true;
 }
 
 void CoroCursor::complete(Caller& caller) {
     cursor_fsm_.complete();
+    caller();
 }
 
 
@@ -300,7 +298,10 @@ void StacklessFanInCursorCombinator::set_error(int error_code) {
 }
 
 bool StacklessFanInCursorCombinator::put(CursorResult const& result) {
-    return cursor_fsm_.put(result);
+    if (cursor_fsm_.can_put()) {
+        cursor_fsm_.put(result);
+    }
+    return cursor_fsm_.is_done();
 }
 
 void StacklessFanInCursorCombinator::complete() {
