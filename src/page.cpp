@@ -447,7 +447,6 @@ struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
     }
 };
 
-/*
 struct ChunkCursor {
     ChunkHeader header_;
     bool binary_search_;
@@ -455,8 +454,8 @@ struct ChunkCursor {
     PageHeader const* page_;
     aku_TimeStamp key_;
     const bool IS_BACKWARD_;
-    bool complete_;
     size_t start_pos_;
+    CursorFSM cursor_fsm_;
 
     ChunkCursor(PageHeader const* page, aku_Entry const* entry, aku_TimeStamp key, bool backward, bool binary_search)
         : binary_search_(binary_search)
@@ -583,7 +582,6 @@ struct ChunkCursor {
         return probe_in_time_range;
     }
 };
-*/
 
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {

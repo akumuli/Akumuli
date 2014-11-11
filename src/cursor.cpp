@@ -84,22 +84,6 @@ int CursorFSM::get_data_len() const {
     return write_index_;
 }
 
-// RecordingCursor
-
-bool RecordingCursor::put(Caller &, const CursorResult &result) {
-    results.push_back(result);
-    return true;
-}
-
-void RecordingCursor::complete(Caller&) {
-    completed = true;
-}
-
-
-void RecordingCursor::set_error(Caller&, int error_code) {
-    this->error_code = error_code;
-}
-
 
 // Page cursor
 

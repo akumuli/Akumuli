@@ -57,22 +57,6 @@ public:
     int get_data_len() const;
 };
 
-/** Simple cursor implementation for testing.
-  * Stores all values in std::vector.
-  */
-struct RecordingCursor : InternalCursor {
-    std::vector<CursorResult> results;
-    bool completed = false;
-    enum ErrorCodes {
-        NO_ERROR = -1
-    };
-    int error_code = NO_ERROR;
-
-    virtual bool put(Caller&, CursorResult const& result);
-    virtual void complete(Caller&);
-    virtual void set_error(Caller&, int error_code);
-};
-
 
 /** Simple page cursor that write incomming data to
  *  page index directly.

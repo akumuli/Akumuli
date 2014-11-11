@@ -10,6 +10,34 @@
 using namespace Akumuli;
 using namespace std;
 
+namespace {
+
+/** Simple cursor implementation for testing.
+  * Stores all values in std::vector.
+  */
+struct RecordingCursor : InternalCursor {
+    std::vector<CursorResult> results;
+    bool completed = false;
+    enum ErrorCodes {
+        NO_ERROR = -1
+    };
+    int error_code = NO_ERROR;
+
+    virtual bool put(Caller&, CursorResult const& result) {
+        results.push_back(result);
+        return true;
+    }
+
+    virtual void complete(Caller&) {
+        completed = true;
+    }
+
+    virtual void set_error(Caller&, int error_code) {
+        this->error_code = error_code;
+    }
+};
+
+}  // namespace
 
 BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
 {

@@ -58,6 +58,8 @@ struct aku_Entry {
 struct PageHeader;
 
 
+// TODO: replace offset and page with pointer to data
+// TODO: move this dependency to cursor
 //! Cursor result
 struct CursorResult {
     aku_EntryOffset   data_offset;    //< entry data offset (without ts and id)
