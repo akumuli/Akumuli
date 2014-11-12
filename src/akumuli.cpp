@@ -127,7 +127,7 @@ struct CursorImpl : aku_Cursor {
                 params[i] = result.param_id;
             }
             if (pointers) {
-                pointers[i] = result.page->read_entry_data(result.data_offset);
+                pointers[i] = result.data;
             }
             if (lengths) {
                 lengths[i] = result.length;

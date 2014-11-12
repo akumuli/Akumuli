@@ -33,59 +33,6 @@
 
 namespace Akumuli {
 
-// Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<aku_TimeStamp> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, aku_TimeStamp> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, aku_TimeStamp> DeltaRLETSWriter;
-
-// Base128 -> RLE -> Delta -> Timestamps
-typedef Base128StreamReader<aku_TimeStamp, const unsigned char*> __Base128TSReader;
-typedef RLEStreamReader<__Base128TSReader, aku_TimeStamp> __RLETSReader;
-typedef DeltaStreamReader<__RLETSReader, aku_TimeStamp> DeltaRLETSReader;
-
-// ParamId -> Base128
-typedef Base128StreamWriter<aku_ParamId> Base128IdWriter;
-
-// Base128 -> ParamId
-typedef Base128StreamReader<aku_ParamId, const unsigned char*> Base128IdReader;
-
-// Length -> RLE -> Base128
-typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
-typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
-
-// Base128 -> RLE -> Length
-typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
-typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
-
-// Offset -> Delta -> ZigZag -> RLE -> Base128
-typedef Base128StreamWriter<int64_t> __Base128OffWriter;                    // int64_t is used instead of uint32_t
-typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;        // for a reason. Numbers is not always
-typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;      // increasing here so we can get negatives
-typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;    // after delta encoding (ZigZag coding
-                                                                            // solves this issue).
-
-// Base128 -> RLE -> ZigZag -> Delta -> Offset
-//typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
-typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128OffReader;
-typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
-typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
-typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
-
-std::ostream& operator << (std::ostream& st, CursorResult res) {
-    st << "CursorResult" << boost::to_string(res);
-    return st;
-}
-
-//------------------------
-
-
-struct ChunkDesc {
-    uint32_t n_elements;              //< Number of elements in a chunk
-    aku_EntryOffset begin_offset;     //< Data begin offset
-    aku_EntryOffset end_offset;       //< Data end offset
-    uint32_t checksum;                //< Checksum
-} __attribute__((packed));
-
 
 static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
     if (a == b) {
@@ -252,89 +199,50 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
 }
 
 int PageHeader::complete_chunk(const ChunkHeader& data) {
-    // NOTE: it is possible to avoid copying and write directly to page
-    // instead of temporary byte vectors
-    ByteVector timestamps;
-    ByteVector paramids;
-    ByteVector offsets;
-    ByteVector lengths;
 
-    DeltaRLETSWriter timestamp_stream(timestamps);
-    Base128IdWriter paramid_stream(paramids);
-    DeltaRLEOffWriter offset_stream(offsets);
-    RLELenWriter length_stream(lengths);
+    struct Writer : ChunkWriter {
+        PageHeader *header;
+        Writer(PageHeader *h) : header(h) {}
+        virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) {
+            header->add_chunk(range, size_estimate);
+        }
+    };
 
-    for (auto i = 0ul; i < data.timestamps.size(); i++) {
-        timestamp_stream.put(data.timestamps.at(i));
-        paramid_stream.put(data.paramids.at(i));
-        offset_stream.put(data.offsets.at(i));
-        length_stream.put(data.lengths.at(i));
+    Rand rand;
+    // Calculate checksum
+    boost::crc_32_type checksum;
+    uint32_t end = 0u;
+    uint32_t begin = last_offset;
+    if (count == 0) {
+        // This is a first chunk!
+        end = length - 1;
+    } else {
+        end = page_index[count-1];
     }
-    timestamp_stream.close();
-    paramid_stream.close();
-    offset_stream.close();
-    length_stream.close();
-
-    uint32_t size_estimate =
-            static_cast<uint32_t>( timestamp_stream.size()
-                    + paramid_stream.size()
-                    + offset_stream.size()
-                    + length_stream.size());
-
-    aku_Status status;
+    checksum.process_block(cdata() + begin, cdata() + end);
+    ChunkDesc desc;
+    aku_TimeStamp first_ts;
+    aku_TimeStamp last_ts;
+    Writer writer(this);
+    aku_Status status = create_chunk(&desc, &first_ts, &last_ts, &writer, data);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    desc.checksum = checksum.checksum();
     aku_MemRange head;
-
-    while(true) {
-        // Body
-        status = add_chunk(offset_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= offset_stream.size();
-        status = add_chunk(length_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= offset_stream.size();
-        status = add_chunk(paramid_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= paramid_stream.size();
-        status = add_chunk(timestamp_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        // Head
-        Rand rand;
-        // Calculate checksum
-        boost::crc_32_type checksum;
-        uint32_t end = 0u;
-        uint32_t begin = last_offset;
-        if (count == 0) {
-            // This is a first chunk!
-            end = length - 1;
-        } else {
-            end = page_index[count-1];
-        }
-        checksum.process_block(cdata() + begin, cdata() + end);
-        ChunkDesc desc = {
-            static_cast<uint32_t>(data.lengths.size()),
-            begin,
-            end,
-            checksum.checksum()
-        };
-        aku_TimeStamp first_ts = data.timestamps.front();
-        aku_TimeStamp last_ts = data.timestamps.back();
-        head = {&desc, sizeof(desc)};
-        status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
-        sync_next_index(last_offset, rand(), false);
-        status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
-        sync_next_index(last_offset, rand(), false);
-        // Sort histogram
-        sync_next_index(0, 0, true);
-        break;
+    head = {&desc, sizeof(desc)};
+    status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
+    if (status != AKU_SUCCESS) {
+        return status;
     }
+    sync_next_index(last_offset, rand(), false);
+    status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    sync_next_index(last_offset, rand(), false);
+    // Sort histogram
+    sync_next_index(0, 0, true);
     return status;
 }
 
@@ -447,6 +355,7 @@ struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
     }
 };
 
+/*
 struct ChunkCursor {
     ChunkHeader header_;
     bool binary_search_;
@@ -582,6 +491,7 @@ struct ChunkCursor {
         return probe_in_time_range;
     }
 };
+*/
 
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
@@ -818,11 +728,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto page = page_;
         auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
             CursorResult result = {
-                header.offsets[i],
                 header.lengths[i],
                 header.timestamps[i],
                 header.paramids[i],
-                page
+                static_cast<const void*>(page->read_entry_data(header.offsets[i]))
             };
             cursor->put(caller, result);
         };

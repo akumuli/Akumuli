@@ -1,8 +1,6 @@
 /**
  * PRIVATE HEADER
  *
- * Data structures for main memory storage.
- *
  * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,10 +30,20 @@ namespace Akumuli {
 struct InternalCursor;
 
 
+// NOTE: obsolete
 typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
+// NOTE: obsolete
 typedef typename Coroutine::caller_type Caller;
 
-struct CursorResult;
+//! Cursor result
+struct CursorResult {
+    uint32_t          length;         //< entry data length
+    aku_TimeStamp     timestamp;      //< entry timestamp
+    aku_ParamId       param_id;       //< entry param id
+    aku_PData         data;           //< pointer to data
+};
+
+std::ostream& operator << (std::ostream& st, CursorResult res);
 
 
 /** Interface used by different search procedures

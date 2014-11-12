@@ -27,6 +27,7 @@
 #include "akumuli.h"
 #include "util.h"
 #include "internal_cursor.h"
+#include "compression.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
 const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
@@ -34,6 +35,7 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 namespace Akumuli {
 
 typedef uint64_t aku_Duration;     //< Time duration
+// NOTE: Obsolete
 typedef uint32_t aku_EntryOffset;  //< Entry offset
 
 //! Storage configuration
@@ -56,20 +58,6 @@ struct aku_Entry {
 
 //! PageHeader forward declaration
 struct PageHeader;
-
-
-// TODO: replace offset and page with pointer to data
-// TODO: move this dependency to cursor
-//! Cursor result
-struct CursorResult {
-    aku_EntryOffset   data_offset;    //< entry data offset (without ts and id)
-    uint32_t          length;         //< entry data length
-    aku_TimeStamp     timestamp;      //< entry timestamp
-    aku_ParamId       param_id;       //< entry param id
-    PageHeader const* page;           //< entry page
-};
-
-std::ostream& operator << (std::ostream& st, CursorResult res);
 
 
 /** Page bounding box.
@@ -146,14 +134,6 @@ struct SearchQuery {
                , aku_TimeStamp low
                , aku_TimeStamp upp
                , int           scan_dir);
-};
-
-
-struct ChunkHeader {
-    std::vector<aku_TimeStamp>  timestamps;
-    std::vector<aku_ParamId>    paramids;
-    std::vector<uint32_t>       offsets;
-    std::vector<uint32_t>       lengths;
 };
 
 

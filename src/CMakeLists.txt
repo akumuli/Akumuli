@@ -17,4 +17,5 @@ add_library(akumuli SHARED
     util.cpp
     sequencer.cpp
     cursor.cpp
+    internal_cursor.cpp
 )

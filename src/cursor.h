@@ -31,6 +31,8 @@
 
 namespace Akumuli {
 
+std::ostream& operator << (std::ostream& st, CursorResult res);
+
 class CursorFSM {
     // user data
     CursorResult*   usr_buffer_;        //! User owned buffer for output
