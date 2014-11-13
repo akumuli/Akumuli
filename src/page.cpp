@@ -224,7 +224,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     aku_TimeStamp first_ts;
     aku_TimeStamp last_ts;
     Writer writer(this);
-    aku_Status status = create_chunk(&desc, &first_ts, &last_ts, &writer, data);
+    aku_Status status = CompressionUtil::create_chunk(&desc, &first_ts, &last_ts, &writer, data);
     if (status != AKU_SUCCESS) {
         return status;
     }
@@ -731,7 +731,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header.lengths[i],
                 header.timestamps[i],
                 header.paramids[i],
-                static_cast<const void*>(page->read_entry_data(header.offsets[i]))
+                page->read_entry_data(header.offsets[i])
             };
             cursor->put(caller, result);
         };
@@ -794,12 +794,12 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     dbg_prev_ts = probe_entry->time;
                     dbg_count++;
 #endif
+                    auto offset = static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry));
                     CursorResult result = {
-                        static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry)),
                         probe_entry->length,
                         probe_entry->time,
                         probe,//id
-                        page_
+                        page_->read_entry_data(offset)
                     };
                     if (!cursor_->put(caller_, result)) {
                         break;

@@ -84,43 +84,6 @@ int CursorFSM::get_data_len() const {
     return write_index_;
 }
 
-
-// Page cursor
-
-DirectPageSyncCursor::DirectPageSyncCursor(Rand &rand)
-    : error_code_()
-    , error_is_set_()
-    , completed_()
-    , last_page_(nullptr)
-    , rand_(rand)
-{
-}
-
-bool DirectPageSyncCursor::put(Caller&, CursorResult const& result) {
-    if (last_page_ != nullptr && last_page_ != result.page) {
-        // Stop synchronizing page
-        auto mutable_page = const_cast<PageHeader*>(last_page_);
-        mutable_page->sync_next_index(0, 0, true);
-    }
-    auto mutable_page = const_cast<PageHeader*>(result.page);
-    mutable_page->sync_next_index(result.data_offset, rand_(), false);
-    last_page_ = result.page;
-    return true;
-}
-
-void DirectPageSyncCursor::complete(Caller&) {
-    completed_ = true;
-    if (last_page_ != nullptr) {
-        const_cast<PageHeader*>(last_page_)->sync_next_index(0, 0, true);
-    }
-}
-
-void DirectPageSyncCursor::set_error(Caller&, int error_code) {
-    error_code_ = error_code;
-    error_is_set_ = true;
-}
-
-
 // CoroCursor
 
 void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const

@@ -60,23 +60,6 @@ public:
 };
 
 
-/** Simple page cursor that write incomming data to
- *  page index directly.
- */
-struct DirectPageSyncCursor : InternalCursor {
-    int error_code_;
-    bool error_is_set_;
-    bool completed_;
-    PageHeader const* last_page_;
-    Rand& rand_;
-    //! C-tor
-    DirectPageSyncCursor(Rand& rand);
-    virtual bool put(Caller&, CursorResult const& result);
-    virtual void complete(Caller&);
-    virtual void set_error(Caller&, int error_code);
-};
-
-
 /** Data retreival interface that can be used by
  *  code that reads data from akumuli.
  */

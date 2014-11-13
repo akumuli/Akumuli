@@ -97,7 +97,7 @@ struct Sequencer {
       * and write it to target page.
       * caller and cur parameters used for communication with storage (error reporting).
       */
-    void merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target);
+    aku_Status merge_and_compress(PageHeader* target);
 
     /** Reset sequencer.
       * All runs are ready for merging.

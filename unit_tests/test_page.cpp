@@ -194,7 +194,7 @@ void generic_search_test
 
     for(size_t i = 0; i < cursor.results.size(); i++) {
         auto t = cursor.results[i].timestamp;
-        auto p = page->read_entry_data(cursor.results[i].data_offset);
+        auto p = cursor.results[i].data;
         const uint32_t* value = static_cast<const uint32_t*>(p);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
             BOOST_CHECK_EQUAL(value[0], expectations.skew - i);
@@ -427,8 +427,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
         for(size_t i = 0; i < cursor.results.size(); i++) {
-            auto offset = cursor.results.at(i).data_offset;
-            const uint32_t* value = (const uint32_t*)page->read_entry_data(offset);
+            const uint32_t* value = (const uint32_t*)cursor.results.at(i).data;
             auto t = cursor.results.at(i).timestamp;
             auto id = cursor.results.at(i).param_id;
             auto index = value[0];
@@ -527,7 +526,7 @@ void generic_compression_test
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
                 BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
                 BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
-                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data, page->read_entry_data(exp_chunk.offsets[i]));
                 act_it++;
             }
         } else {
@@ -536,7 +535,7 @@ void generic_compression_test
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
                 BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
                 BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
-                BOOST_REQUIRE_EQUAL(act_it->data_offset, exp_chunk.offsets[i]);
+                BOOST_REQUIRE_EQUAL(act_it->data, page->read_entry_data(exp_chunk.offsets[i]));
                 act_it++;
             }
         }

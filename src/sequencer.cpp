@@ -50,9 +50,9 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length)
+TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset value, uint32_t value_length)
     : key_(ts, id)
-    , value(offset)
+    , value(value)
     , value_length(value_length)
 {
 }
@@ -337,11 +337,10 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
         CursorResult result = {
-            val.value,
             val.value_length,
             val.get_timestamp(),
             val.get_paramid(),
-            page
+            page->read_entry_data(val.value)
         };
         return cur->put(caller, result);
     };
@@ -354,15 +353,13 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
-void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, PageHeader* target) {
+aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
-        cur->set_error(caller, AKU_EBUSY);
-        return;
+        return AKU_EBUSY;
     }
     if (ready_.size() == 0) {
-        cur->set_error(caller, AKU_ENO_DATA);
-        return;
+        return AKU_ENO_DATA;
     }
 
     ChunkHeader chunk_header;
@@ -382,11 +379,10 @@ void Sequencer::merge_and_compress(Caller& caller, InternalCursor* cur, PageHead
 
     auto status = target->complete_chunk(chunk_header);
     if (status != AKU_SUCCESS) {
-        cur->set_error(caller, status);
-        return;
+        return status;
     }
-
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
+    return AKU_SUCCESS;
 }
 
 std::tuple<aku_TimeStamp, int> Sequencer::get_window() const {
@@ -452,11 +448,10 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
         CursorResult result = {
-            val.value,
             val.value_length,
             val.get_timestamp(),
             val.get_paramid(),
-            page
+            page->read_entry_data(val.value)
         };
         return cur->put(caller, result);
     };

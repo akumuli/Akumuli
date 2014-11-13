@@ -25,7 +25,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
-#include <bits/stl_iterator.h>
 #include <iterator>
 #include <vector>
 
@@ -53,18 +52,21 @@ struct ChunkWriter {
     virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) = 0;
 };
 
-/** Create ChunkDesc struct from ChunkHeader
-  * @param out_desc out parameter - ChunkDesc struct
-  * @param ts_begin out parameter - first timestamp
-  * @param ts_end out parameter - last timestamp
-  * @param data ChunkHeader to compress
-  */
-aku_Status create_chunk( ChunkDesc          *out_desc
-                       , aku_TimeStamp      *ts_begin
-                       , aku_TimeStamp      *ts_end
-                       , ChunkWriter        *writer
-                       , const ChunkHeader&  data
-                       );
+struct CompressionUtil {
+    /** Create ChunkDesc struct from ChunkHeader
+      * @param out_desc out parameter - ChunkDesc struct
+      * @param ts_begin out parameter - first timestamp
+      * @param ts_end out parameter - last timestamp
+      * @param data ChunkHeader to compress
+      */
+    static
+    aku_Status create_chunk( ChunkDesc          *out_desc
+                           , aku_TimeStamp      *ts_begin
+                           , aku_TimeStamp      *ts_end
+                           , ChunkWriter        *writer
+                           , const ChunkHeader&  data
+                           );
+};
 
 //! Base 128 encoded integer
 template<class TVal>

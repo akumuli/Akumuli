@@ -263,28 +263,6 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         active_page_->sync_count = active_page_->checkpoint;
         active_volume_->flush();
     }
-
-    auto begin = active_page_->sync_count;
-    auto end = active_page_->count;
-
-    // use 1Mb of cache by default
-    while(begin < end) {
-        const aku_Entry* entry = active_page_->read_entry_at(begin);
-        auto off_err = active_page_->index_to_offset(begin);
-        if (off_err.second != AKU_SUCCESS) {
-            continue;
-        }
-        TimeSeriesValue ts_value(entry->time, entry->param_id, off_err.first, entry->length);
-        int add_status = 0;
-        int merge_lock = 0;
-        std::tie(add_status, merge_lock) = active_volume_->cache_->add(ts_value);
-        if (merge_lock % 2 == 1) {
-            Caller caller;
-            DirectPageSyncCursor cursor(rand_);
-            active_volume_->cache_->merge(caller, &cursor);
-        }
-        begin++;
-    }
 }
 
 aku_Status Storage::get_open_error() const {
@@ -303,13 +281,7 @@ void Storage::advance_volume_(int local_rev) {
 
         int close_lock = active_volume_->cache_->reset();
         if (close_lock % 2 == 1) {
-            Caller caller;
-            DirectPageSyncCursor cursor(rand_);
-            if (!compression) {
-                active_volume_->cache_->merge(caller, &cursor);
-            } else {
-                active_volume_->cache_->merge_and_compress(caller, &cursor, active_page_);
-            }
+            active_volume_->cache_->merge_and_compress(active_page_);
         }
         active_volume_->close();
         log_message("page complete");
@@ -422,51 +394,20 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 
 //! write data
 aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
-    if (!this->compression) {
-        while (true) {
-            int local_rev = active_volume_index_.load();
-            int status = active_page_->add_entry(param, ts, data);
-            switch (status) {
-                case AKU_SUCCESS: {
-                    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
-                    int merge_lock = 0;
-                    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-                    if (merge_lock % 2 == 1) {
-                        // Slow path
-                        Caller caller;
-                        DirectPageSyncCursor cursor(rand_);
-                        active_volume_->cache_->merge(caller, &cursor);
-                        active_volume_->flush();
-                    }
-                    return status;
-                }
-                case AKU_EOVERFLOW:
-                    advance_volume_(local_rev);
-                    break;  // retry
-                case AKU_ELATE_WRITE:
-                    // Branch for rare and unexpected errors
-                default:
-                    log_message(aku_error_message(status));
-                    return status;
-            };
-        }
-    } else {
-        while (true) {
-            int local_rev = active_volume_index_.load();
-            auto space_required = active_volume_->cache_->get_space_estimate();
-            int status = active_page_->add_chunk(data, space_required);
-            switch (status) {
-                case AKU_SUCCESS: {
-                    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
-                    int merge_lock = 0;
-                    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-                    if (merge_lock % 2 == 1) {
-                        // Slow path
-                        Caller caller;
-                        DirectPageSyncCursor cursor(rand_);
-                        active_volume_->cache_->merge_and_compress(caller, &cursor,
-                                                                   active_volume_->get_page());
-                        switch(1) {
+    while (true) {
+        int local_rev = active_volume_index_.load();
+        auto space_required = active_volume_->cache_->get_space_estimate();
+        int status = active_page_->add_chunk(data, space_required);
+        switch (status) {
+            case AKU_SUCCESS: {
+                TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
+                int merge_lock = 0;
+                std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+                if (merge_lock % 2 == 1) {
+                    // Slow path
+                    status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
+                    if (status == AKU_SUCCESS) {
+                        switch(1) {  // TODO: this must be configured
                         case 1:
                             // Max durability
                             active_volume_->flush();
@@ -485,18 +426,18 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                             break;
                         };
                     }
-                    return status;
                 }
-                case AKU_EOVERFLOW:
-                    advance_volume_(local_rev);
-                    break;  // retry
-                case AKU_ELATE_WRITE:
-                    // Branch for rare and unexpected errors
-                default:
-                    log_message(aku_error_message(status));
-                    return status;
-            };
-        }
+                return status;
+            }
+            case AKU_EOVERFLOW:
+                advance_volume_(local_rev);
+                break;  // retry
+            case AKU_ELATE_WRITE:
+                // Branch for rare and unexpected errors
+            default:
+                log_message(aku_error_message(status));
+                return status;
+        };
     }
 }
 

@@ -9,6 +9,7 @@ add_library(akumuli SHARED
     sort.h
     sequencer.h
     cursor.h
+    compression.h
     internal_cursor.h
     compression.h
     storage.cpp
@@ -17,5 +18,6 @@ add_library(akumuli SHARED
     util.cpp
     sequencer.cpp
     cursor.cpp
+    compression.cpp
     internal_cursor.cpp
 )

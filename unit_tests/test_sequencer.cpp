@@ -136,13 +136,12 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
                 CursorResult res;
-                res.data_offset = j;
+                res.data = reinterpret_cast<void*>(j);
                 exp.emplace_back(res);
             }
             BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
-            // BOOST_REQUIRE_EQUAL_COLLECTIONS(rec.results.begin(), rec.results.end(), exp.begin(), exp.end());
             for(auto k = 0u; k < exp.size(); k++) {
-                BOOST_REQUIRE_EQUAL(rec.results[k].data_offset, exp[k].data_offset);
+                BOOST_REQUIRE_EQUAL(rec.results[k].data, exp[k].data);
             }
             begin = end;
         }
@@ -160,13 +159,12 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
         CursorResult res;
-        res.data_offset = i;
-        exp.emplace_back(res);
-    }
+        res.data = reinterpret_cast<void*>(i);  // NOTE: this is a hack, page in sequencer is null but merge
+        exp.emplace_back(res);                  // wouldn't fail, it will return offset value as pointer
+    }                                           // because it will be added to `this` and `this` == null.
     BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
-    // BOOST_REQUIRE_EQUAL_COLLECTIONS(rec.results.begin(), rec.results.end(), exp.begin(), exp.end());
     for(auto k = 0u; k < exp.size(); k++) {
-        BOOST_REQUIRE_EQUAL(rec.results[k].data_offset, exp[k].data_offset);
+        BOOST_REQUIRE_EQUAL(rec.results[k].data, exp[k].data);
     }
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
@@ -206,7 +204,7 @@ void test_sequencer_searching(int dir) {
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());
     for (auto i = 0u; i < cursor.results.size(); i++) {
-        auto offset = cursor.results[i].data_offset;
+        auto offset = reinterpret_cast<uint64_t>(cursor.results[i].data);
         BOOST_REQUIRE_EQUAL(offset, offsets[i]);
     }
 }

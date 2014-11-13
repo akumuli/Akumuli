@@ -80,9 +80,10 @@ int main(int cnt, const char** args)
                 Caller caller;
                 seq.merge(caller, &cursor);
                 for (size_t i = 0; i < cursor.count; i++) {
-                    if (cursor.results_buffer[i].data_offset != ix_merged) {
+                    size_t actual = reinterpret_cast<size_t>(cursor.results_buffer[i].data);
+                    if (actual != ix_merged) {
                         // report error
-                        std::cout << "Error at: " << i << " " << cursor.results_buffer[i].data_offset << " != " << ix_merged << std::endl;
+                        std::cout << "Error at: " << i << " " << actual << " != " << ix_merged << std::endl;
                         return -1;
                     }
                     ix_merged++;
@@ -119,9 +120,10 @@ int main(int cnt, const char** args)
                         Caller caller;
                         seq.merge(caller, &cursor);
                         for (size_t i = 0; i < cursor.count; i++) {
-                            if (cursor.results_buffer[i].data_offset != ix_merged) {
+                            auto offset = reinterpret_cast<size_t>(cursor.results_buffer[i].data);
+                            if (offset != ix_merged) {
                                 // report error
-                                std::cout << "Error at: " << i << " " << cursor.results_buffer[i].data_offset << " != " << ix_merged << std::endl;
+                                std::cout << "Error at: " << i << " " << offset << " != " << ix_merged << std::endl;
                                 return -1;
                             }
                             ix_merged++;

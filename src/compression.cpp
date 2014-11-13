@@ -2,12 +2,11 @@
 
 namespace Akumuli {
 
-aku_Status create_chunk( ChunkDesc          *out_desc
-                       , aku_TimeStamp      *ts_begin
-                       , aku_TimeStamp      *ts_end
-                       , ChunkWriter        *writer
-                       , const ChunkHeader&  data
-                       , uint32_t            checksum)
+aku_Status CompressionUtil::create_chunk( ChunkDesc          *out_desc
+                                        , aku_TimeStamp      *ts_begin
+                                        , aku_TimeStamp      *ts_end
+                                        , ChunkWriter        *writer
+                                        , const ChunkHeader&  data)
 {
     // NOTE: it is possible to avoid copying and write directly to page
     // instead of temporary byte vectors
@@ -64,8 +63,7 @@ aku_Status create_chunk( ChunkDesc          *out_desc
         *out_desc = {
             static_cast<uint32_t>(data.lengths.size()),
             begin,
-            end,
-            checksum
+            end
         };
         *ts_begin = data.timestamps.front();
         *ts_end   = data.timestamps.back();
