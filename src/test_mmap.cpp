@@ -1,6 +1,7 @@
 #include <iostream>
 
 #define BOOST_TEST_DYN_LINK
+#define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <apr.h>
 
@@ -8,6 +9,18 @@
 #include "util.h"
 
 using namespace Akumuli;
+
+struct AkumuliInitializer {
+    AkumuliInitializer() {
+        apr_initialize();
+    }
+};
+
+AkumuliInitializer initializer;
+
+void test_logger(int tag, const char* msg) {
+    BOOST_MESSAGE(msg);
+}
 
 void create_tmp_file(const char* file_path, int len) {
     apr_pool_t* pool = NULL;
@@ -41,7 +54,7 @@ BOOST_AUTO_TEST_CASE(TestMmap1)
     const char* tmp_file = "testfile";
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
-    MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+    MemoryMappedFile mmap(tmp_file, 0, &test_logger);
     BOOST_REQUIRE(mmap.is_bad() == false);
     BOOST_REQUIRE(mmap.get_size() == 100);
     delete_tmp_file(tmp_file);
@@ -51,7 +64,7 @@ BOOST_AUTO_TEST_CASE(TestMmap2)
 {
     const char* tmp_file = "file_that_doesnt_exist";
     delete_tmp_file(tmp_file);
-    MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+    MemoryMappedFile mmap(tmp_file, 0, &test_logger);
     BOOST_REQUIRE(mmap.is_bad() == true);
     bool throw_works = false;
     try {
@@ -69,7 +82,7 @@ BOOST_AUTO_TEST_CASE(TestMmap3)
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
     {
-        MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -79,7 +92,7 @@ BOOST_AUTO_TEST_CASE(TestMmap3)
     }
 
     {
-        MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -97,7 +110,7 @@ BOOST_AUTO_TEST_CASE(TestMmap4)
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
     {
-        MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -107,7 +120,7 @@ BOOST_AUTO_TEST_CASE(TestMmap4)
     }
 
     {
-        MemoryMappedFile mmap(tmp_file, 0, &aku_console_logger);
+        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         mmap.remap_file_destructive();

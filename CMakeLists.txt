@@ -28,9 +28,8 @@ add_definitions(-std=gnu++0x -fvisibility=hidden)
 
 include_directories(./include)
 
-add_subdirectory(src)
 enable_testing()
-add_subdirectory(unit_tests)
+add_subdirectory(src)
 add_subdirectory(tests/ingestion_test)
 add_subdirectory(tests/sequencer_test)
 add_subdirectory(tests/parallel_test)

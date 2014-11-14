@@ -43,9 +43,6 @@ struct CursorResult {
     aku_PData         data;           //< pointer to data
 };
 
-std::ostream& operator << (std::ostream& st, CursorResult res);
-
-
 /** Interface used by different search procedures
  *  in akumuli. Must be used only inside library.
  */

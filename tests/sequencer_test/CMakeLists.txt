@@ -10,7 +10,6 @@ add_executable(
         ../../src/sequencer.cpp
         ../../src/cursor.cpp
         ../../src/compression.cpp
-        ../../src/internal_cursor.cpp
 )
 target_link_libraries(sequencer_test
     "${APR_LIBRARY}"

@@ -1,14 +1,24 @@
 #include <iostream>
+#include <random>
 
 #define BOOST_TEST_DYN_LINK
-#include <iostream>
+#define BOOST_TEST_MODULE Main
+
 #include <boost/test/unit_test.hpp>
+#include <apr.h>
+#include <vector>
+#include <iostream>
 
 #include "sequencer.h"
-#include "cursor.h"
 
 using namespace Akumuli;
 using namespace std;
+
+struct AkumuliInitializer {
+    AkumuliInitializer() {
+        apr_initialize();
+    }
+};
 
 namespace {
 
