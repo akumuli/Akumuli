@@ -679,12 +679,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
 
         // read timestamps
-        DeltaRLETSReader tst_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.timestamps.push_back(tst_reader.next());
-        }
-        pbegin = tst_reader.pos();
-
+        CompressionUtil::decode_chunk(&header, &pbegin, pend, 0, 1, probe_length);
 
         size_t start_pos = 0;
         if (IS_BACKWARD_) {
@@ -698,6 +693,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto begin = header.timestamps.begin() + sr.begin;
             auto end = header.timestamps.begin() + sr.end;
             auto it = std::lower_bound(begin, end, key_);
+            // TODO: stop if key is out of range
             if (IS_BACKWARD_) {
                 if (!header.timestamps.empty()) {
                     auto last = header.timestamps.begin() + start_pos;
@@ -709,25 +705,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             }
         }
 
-        // read paramids
-        Base128IdReader pid_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.paramids.push_back(pid_reader.next());
-        }
-        pbegin = pid_reader.pos();
-
-        // read lengths
-        RLELenReader len_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.lengths.push_back(len_reader.next());
-        }
-        pbegin = len_reader.pos();
-
-        // read offsets
-        DeltaRLEOffReader off_reader(pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header.offsets.push_back(off_reader.next());
-        }
+        // Read lengths, param ids and offsets.
+        CompressionUtil::decode_chunk(&header, &pbegin, pend, 1, 3, probe_length);
 
         bool probe_in_time_range = true;
 

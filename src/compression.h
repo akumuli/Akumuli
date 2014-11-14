@@ -61,13 +61,24 @@ struct CompressionUtil {
                            , const ChunkHeader&  data
                            );
 
+    /** Decompress ChunkHeader.
+      * @brief Decode part of the ChunkHeader structure depending on stage and steps values.
+      * First goes list of timestamps, then all other values.
+      * @param header out header
+      * @param pbegin in - begining of the data, out - new begining of the data
+      * @param end end of the data
+      * @param stage current stage
+      * @param steps number of stages to do
+      * @param probe_length number of elements in header
+      * @return current stage number
+      */
     static
-    int decode_chunk( ChunkHeader *header
-                    , int stage
-                    , int steps
+    int decode_chunk( ChunkHeader          *header
                     , const unsigned char **pbegin
-                    , const unsigned char **pend
-                    , uint32_t probe_length);
+                    , const unsigned char  *pend
+                    , int                   stage
+                    , int                   steps
+                    , uint32_t              probe_length);
 };
 
 //! Base 128 encoded integer

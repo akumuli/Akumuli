@@ -68,10 +68,10 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 }
 
 int CompressionUtil::decode_chunk( ChunkHeader *header
+                                 , const unsigned char **pbegin
+                                 , const unsigned char *pend
                                  , int stage
                                  , int steps
-                                 , const unsigned char **pbegin
-                                 , const unsigned char **pend
                                  , uint32_t probe_length)
 {
     if (steps <= 0) {
@@ -80,7 +80,7 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     switch(stage) {
     case 0: {
         // read timestamps
-        DeltaRLETSReader tst_reader(*pbegin, *pend);
+        DeltaRLETSReader tst_reader(*pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header->timestamps.push_back(tst_reader.next());
         }
@@ -91,7 +91,7 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     }
     case 1: {
         // read paramids
-        Base128IdReader pid_reader(*pbegin, *pend);
+        Base128IdReader pid_reader(*pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header->paramids.push_back(pid_reader.next());
         }
@@ -102,7 +102,7 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     }
     case 2: {
             // read lengths
-            RLELenReader len_reader(*pbegin, *pend);
+            RLELenReader len_reader(*pbegin, pend);
             for (auto i = 0u; i < probe_length; i++) {
                 header->lengths.push_back(len_reader.next());
             }
@@ -113,7 +113,7 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
         }
     case 3: {
             // read offsets
-            DeltaRLEOffReader off_reader(*pbegin, *pend);
+            DeltaRLEOffReader off_reader(*pbegin, pend);
             for (auto i = 0u; i < probe_length; i++) {
                 header->offsets.push_back(off_reader.next());
             }
