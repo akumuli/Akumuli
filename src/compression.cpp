@@ -2,7 +2,7 @@
 
 namespace Akumuli {
 
-aku_Status CompressionUtil::create_chunk( ChunkDesc          *out_desc
+aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_TimeStamp      *ts_begin
                                         , aku_TimeStamp      *ts_end
                                         , ChunkWriter        *writer
@@ -60,11 +60,7 @@ aku_Status CompressionUtil::create_chunk( ChunkDesc          *out_desc
         if (status != AKU_SUCCESS) {
             break;
         }
-        *out_desc = {
-            static_cast<uint32_t>(data.lengths.size()),
-            begin,
-            end
-        };
+        *n_elements = static_cast<uint32_t>(data.lengths.size());
         *ts_begin = data.timestamps.front();
         *ts_end   = data.timestamps.back();
     }

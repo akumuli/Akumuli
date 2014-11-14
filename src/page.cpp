@@ -33,6 +33,12 @@
 
 namespace Akumuli {
 
+struct ChunkDesc {
+    uint32_t n_elements;        //< Number of elements in a chunk
+    uint32_t begin_offset;      //< Data begin offset
+    uint32_t end_offset;        //< Data end offset
+    uint32_t checksum;          //< Checksum
+} __attribute__((packed));
 
 static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
     if (a == b) {
@@ -199,17 +205,22 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
 }
 
 int PageHeader::complete_chunk(const ChunkHeader& data) {
-
+    ChunkDesc desc;
+    Rand rand;
+    aku_TimeStamp first_ts;
+    aku_TimeStamp last_ts;
     struct Writer : ChunkWriter {
         PageHeader *header;
         Writer(PageHeader *h) : header(h) {}
         virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) {
-            header->add_chunk(range, size_estimate);
+            return header->add_chunk(range, size_estimate);
         }
-    };
+    } writer(this);
 
-    Rand rand;
-    // Calculate checksum
+    // Write compressed data
+    aku_Status status = CompressionUtil::encode_chunk(&desc.n_elements, &first_ts, &last_ts, &writer, data);
+
+    // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
     uint32_t end = 0u;
     uint32_t begin = last_offset;
@@ -220,15 +231,12 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
         end = page_index[count-1];
     }
     checksum.process_block(cdata() + begin, cdata() + end);
-    ChunkDesc desc;
-    aku_TimeStamp first_ts;
-    aku_TimeStamp last_ts;
-    Writer writer(this);
-    aku_Status status = CompressionUtil::create_chunk(&desc, &first_ts, &last_ts, &writer, data);
     if (status != AKU_SUCCESS) {
         return status;
     }
     desc.checksum = checksum.checksum();
+    desc.begin_offset = begin;
+    desc.end_offset = end;
     aku_MemRange head;
     head = {&desc, sizeof(desc)};
     status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);

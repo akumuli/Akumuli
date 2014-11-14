@@ -14,6 +14,8 @@ add_executable(
         ../src/util.cpp
         ../src/sequencer.cpp
         ../src/cursor.cpp
+        ../src/compression.cpp
+        ../src/internal_cursor.cpp
 )
 target_link_libraries(
     ut_main

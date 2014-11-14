@@ -40,27 +40,21 @@ struct ChunkHeader {
     std::vector<uint32_t>       lengths;
 };
 
-struct ChunkDesc {
-    uint32_t n_elements;        //< Number of elements in a chunk
-    uint32_t begin_offset;      //< Data begin offset
-    uint32_t end_offset;        //< Data end offset
-    uint32_t checksum;          //< Checksum
-} __attribute__((packed));
-
 struct ChunkWriter {
     virtual ~ChunkWriter() {}
     virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) = 0;
 };
 
 struct CompressionUtil {
-    /** Create ChunkDesc struct from ChunkHeader
-      * @param out_desc out parameter - ChunkDesc struct
+
+    /** Compress and write ChunkHeader to memory stream.
+      * @param n_elements out parameter - number of written elements
       * @param ts_begin out parameter - first timestamp
       * @param ts_end out parameter - last timestamp
       * @param data ChunkHeader to compress
       */
     static
-    aku_Status create_chunk( ChunkDesc          *out_desc
+    aku_Status encode_chunk( uint32_t           *n_elements
                            , aku_TimeStamp      *ts_begin
                            , aku_TimeStamp      *ts_end
                            , ChunkWriter        *writer
