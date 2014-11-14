@@ -60,6 +60,14 @@ struct CompressionUtil {
                            , ChunkWriter        *writer
                            , const ChunkHeader&  data
                            );
+
+    static
+    int decode_chunk( ChunkHeader *header
+                    , int stage
+                    , int steps
+                    , const unsigned char **pbegin
+                    , const unsigned char **pend
+                    , uint32_t probe_length);
 };
 
 //! Base 128 encoded integer

@@ -67,4 +67,65 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     return status;
 }
 
+int CompressionUtil::decode_chunk( ChunkHeader *header
+                                 , int stage
+                                 , int steps
+                                 , const unsigned char **pbegin
+                                 , const unsigned char **pend
+                                 , uint32_t probe_length)
+{
+    if (steps <= 0) {
+        return 0;
+    }
+    switch(stage) {
+    case 0: {
+        // read timestamps
+        DeltaRLETSReader tst_reader(*pbegin, *pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header->timestamps.push_back(tst_reader.next());
+        }
+        *pbegin = tst_reader.pos();
+        if (--steps == 0) {
+            return 1;
+        }
+    }
+    case 1: {
+        // read paramids
+        Base128IdReader pid_reader(*pbegin, *pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header->paramids.push_back(pid_reader.next());
+        }
+        *pbegin = pid_reader.pos();
+        if (--steps == 1) {
+            return 2;
+        }
+    }
+    case 2: {
+            // read lengths
+            RLELenReader len_reader(*pbegin, *pend);
+            for (auto i = 0u; i < probe_length; i++) {
+                header->lengths.push_back(len_reader.next());
+            }
+            *pbegin = len_reader.pos();
+            if (--steps == 2) {
+                return 3;
+            }
+        }
+    case 3: {
+            // read offsets
+            DeltaRLEOffReader off_reader(*pbegin, *pend);
+            for (auto i = 0u; i < probe_length; i++) {
+                header->offsets.push_back(off_reader.next());
+            }
+            *pbegin = off_reader.pos();
+            if (--steps == 3) {
+                return 4;
+            }
+        }
+    default:
+        break;
+    }
+    return -1;
+}
+
 }

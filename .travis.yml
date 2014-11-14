@@ -3,7 +3,7 @@ language: python
 compiler: gcc
 
 before_install:
-  - lsb_release -a
+  - sudo apt-get update
   - sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev
   - sudo apt-get install -y libapr1-dev libaprutil1-dev
   - sudo apt-get install -y cmake
