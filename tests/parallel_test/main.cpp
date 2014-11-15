@@ -205,7 +205,7 @@ int main(int cnt, const char** args)
     delete_storage();
 
     // Create database
-    apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, nullptr, nullptr, nullptr, nullptr);
+    apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, 0, 0, 0, nullptr);
     if (result != APR_SUCCESS) {
         std::cout << "Error in new_storage" << std::endl;
         return (int)result;

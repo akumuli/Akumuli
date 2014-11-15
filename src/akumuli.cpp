@@ -190,27 +190,26 @@ apr_status_t aku_create_database( const char     *file_name
                                 , const char     *volumes_path
                                 , int32_t         num_volumes
                                 // optional args
-                                , const uint32_t *compression_threshold
-                                , const uint64_t *window_size
-                                , const uint32_t *max_cache_size
-                                , aku_logger_cb_t    logger)
+                                , uint32_t  compression_threshold
+                                , uint64_t  window_size
+                                , uint32_t  max_cache_size
+                                , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
         logger = &aku_console_logger;
     }
-    uint32_t ct = AKU_DEFAULT_COMPRESSION_THRESHOLD;
-    uint32_t mcs = AKU_DEFAULT_MAX_CACHE_SIZE;
-    uint64_t ws = AKU_DEFAULT_WINDOW_SIZE;
-    if (compression_threshold) {
-        ct = *compression_threshold;
+    if (compression_threshold == 0) {
+        compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
     }
-    if (window_size) {
-        ws = *window_size;
+    if (window_size == 0) {
+        window_size = AKU_DEFAULT_WINDOW_SIZE;
     }
-    if (max_cache_size) {
-        mcs = *max_cache_size;
+    if (max_cache_size == 0) {
+        max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
     }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, ct, ws, mcs, logger);
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes,
+                                compression_threshold, window_size, max_cache_size,
+                                logger);
 }
 
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {

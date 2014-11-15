@@ -153,7 +153,7 @@ int main(int cnt, const char** args)
         // Create database
         uint32_t threshold = 1000;
         uint64_t windowsize = 10000;
-        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, &threshold, &windowsize, nullptr, nullptr);
+        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, threshold, windowsize, 0, nullptr);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;

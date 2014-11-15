@@ -155,14 +155,14 @@ AKU_EXPORT void aku_destroy(void* any);
  * @return APR errorcode or APR_SUCCESS
  */
 AKU_EXPORT apr_status_t aku_create_database
-                                ( const char*  file_name
-                                , const char*  metadata_path
-                                , const char*  volumes_path
-                                , int32_t      num_volumes
+                                ( const char     *file_name
+                                , const char     *metadata_path
+                                , const char     *volumes_path
+                                , int32_t         num_volumes
                                 // optional args
-                                , const uint32_t *compression_threshold
-                                , const uint64_t *window_size
-                                , const uint32_t *max_cache_size
+                                , uint32_t  compression_threshold
+                                , uint64_t  window_size
+                                , uint32_t  max_cache_size
                                 , aku_logger_cb_t logger
                                 );
 
