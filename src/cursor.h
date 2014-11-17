@@ -236,4 +236,35 @@ public:
     virtual void close();
 };
 
+struct ChunkCursor : ExternalCursor {
+    ChunkHeader header_;
+    bool binary_search_;
+    aku_Entry const* probe_entry_;
+    PageHeader const* page_;
+    aku_TimeStamp key_;
+    SearchQuery query_;
+    const bool IS_BACKWARD_;
+    size_t start_pos_;
+    CursorFSM cursor_fsm_;
+    uint32_t probe_length_;
+
+    ChunkCursor(PageHeader const* page
+               , aku_Entry const* entry
+               , aku_TimeStamp key
+               , SearchQuery query, bool backward
+               , bool binary_search);
+
+    void scan_compressed_entries();
+
+    // External cursor implementation
+
+    int read(CursorResult *buf, int buf_len);
+
+    bool is_done() const;
+
+    bool is_error(int *out_error_code_or_null) const;
+
+    void close();
+};
+
 }  // namespace

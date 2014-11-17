@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <functional>
 #include <vector>
+#include <mutex>
 #include "akumuli.h"
 #include "util.h"
 #include "internal_cursor.h"
@@ -37,6 +38,13 @@ namespace Akumuli {
 typedef uint64_t aku_Duration;     //< Time duration
 // NOTE: Obsolete
 typedef uint32_t aku_EntryOffset;  //< Entry offset
+
+struct ChunkDesc {
+    uint32_t n_elements;        //< Number of elements in a chunk
+    uint32_t begin_offset;      //< Data begin offset
+    uint32_t end_offset;        //< Data end offset
+    uint32_t checksum;          //< Checksum
+} __attribute__((packed));
 
 //! Storage configuration
 struct aku_Config {
@@ -85,6 +93,17 @@ struct PageHistogram {
     PageHistogramEntry entries[AKU_HISTOGRAM_SIZE];
 };
 
+
+struct SearchStats {
+    aku_SearchStats stats;
+    std::mutex mutex;
+
+    SearchStats() {
+        memset(&stats, 0, sizeof(stats));
+    }
+};
+
+SearchStats& get_global_search_stats();
 
 /** Search query */
 struct SearchQuery {

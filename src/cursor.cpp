@@ -16,7 +16,10 @@
  */
 
 #include "cursor.h"
+#include "search.h"
+
 #include <algorithm>
+#include <boost/crc.hpp>
 
 
 namespace Akumuli {
@@ -369,6 +372,176 @@ void FanInCursorCombinator::close()
         cursor->close();
     }
     return out_cursor_.close();
+}
+
+// ChunkCursor
+
+namespace {
+
+struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
+    ChunkHeader const& header;
+    ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
+
+    // Interpolation search supporting functions
+    bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+        if (ix < header.timestamps.size()) {
+            *out_timestamp = header.timestamps[ix];
+            return true;
+        }
+        return false;
+    }
+
+    bool is_small(SearchRange range) const {
+        return false;
+    }
+
+    SearchStats& get_search_stats() {
+        return get_global_search_stats();
+    }
+};
+
+}
+
+ChunkCursor::ChunkCursor( PageHeader const* page
+                        , aku_Entry const* entry
+                        , aku_TimeStamp key
+                        , SearchQuery query
+                        , bool backward
+                        , bool binary_search)
+    : binary_search_(binary_search)
+    , probe_entry_(entry)
+    , page_(page)
+    , key_(key)
+    , query_(query)
+    , IS_BACKWARD_(backward)
+    , start_pos_(0u)
+{
+    auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry_->value[0]);
+    auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
+    auto pend = (const unsigned char*)(page_->cdata() + pdesc->end_offset);
+    auto probe_length_ = pdesc->n_elements;
+
+    // TODO:checksum!
+    boost::crc_32_type checksum;
+    checksum.process_block(pbegin, pend);
+    if (checksum.checksum() != pdesc->checksum) {
+        AKU_PANIC("File damaged!");
+        return;
+    }
+
+    // read timestamps
+    CompressionUtil::decode_chunk(&header_, &pbegin, pend, 0, 1, probe_length_);
+
+    if (IS_BACKWARD_) {
+        start_pos_ = static_cast<int>(probe_length_ - 1);
+    }
+    // test timestamp range
+    if (binary_search_) {
+        ChunkHeaderSearcher int_searcher(header_);
+        SearchRange sr = { 0, static_cast<uint32_t>(header_.timestamps.size())};
+        int_searcher.run(key_, &sr);
+        auto begin = header_.timestamps.begin() + sr.begin;
+        auto end = header_.timestamps.begin() + sr.end;
+        auto it = std::lower_bound(begin, end, key_);
+        if (it == end) {
+            // key_ not in chunk
+            cursor_fsm_.complete();
+            return;
+        }
+        if (IS_BACKWARD_) {
+            if (!header_.timestamps.empty()) {
+                auto last = header_.timestamps.begin() + start_pos_;
+                auto delta = last - it;
+                start_pos_ -= delta;
+            }
+        } else {
+            start_pos_ += it - header_.timestamps.begin();
+        }
+    }
+
+    CompressionUtil::decode_chunk(&header_, &pbegin, pend, 1, 3, probe_length_);
+}
+
+void ChunkCursor::scan_compressed_entries()
+{
+    bool probe_in_time_range = true;
+
+    if (IS_BACKWARD_) {
+        for (int i = static_cast<int>(start_pos_); i >= 0; i--) {
+            probe_in_time_range = query_.lowerbound <= header_.timestamps[i] &&
+                                  query_.upperbound >= header_.timestamps[i];
+            if (probe_in_time_range
+               && query_.param_pred(header_.paramids[i])
+               && !cursor_fsm_.is_done()) {
+                CursorResult result = {
+                    header_.lengths[i],
+                    header_.timestamps[i],
+                    header_.paramids[i],
+                    page_->read_entry_data(header_.offsets[i]),
+                };
+                if (cursor_fsm_.can_put()) {
+                    cursor_fsm_.put(result);
+                } else {
+                    start_pos_ = i;
+                    return;
+                }
+            } else {
+                probe_in_time_range = query_.lowerbound <= header_.timestamps[i];
+                if (!probe_in_time_range || cursor_fsm_.is_done()) {
+                    break;
+                }
+            }
+        }
+    } else {
+        for (auto i = start_pos_; i != probe_length_; i++) {
+            probe_in_time_range = query_.lowerbound <= header_.timestamps[i] &&
+                                  query_.upperbound >= header_.timestamps[i];
+            if (probe_in_time_range
+               && query_.param_pred(header_.paramids[i])
+               && !cursor_fsm_.is_done()) {
+                CursorResult result = {
+                    header_.lengths[i],
+                    header_.timestamps[i],
+                    header_.paramids[i],
+                    page_->read_entry_data(header_.offsets[i]),
+                };
+                if (cursor_fsm_.can_put()) {
+                    cursor_fsm_.put(result);
+                } else {
+                    start_pos_ = i;
+                    return;
+                }
+            } else {
+                probe_in_time_range = query_.upperbound >= header_.timestamps[i];
+                if (!probe_in_time_range || cursor_fsm_.is_done()) {
+                    break;
+                }
+            }
+        }
+    }
+    cursor_fsm_.close();
+}
+
+int ChunkCursor::read(CursorResult *buf, int buf_len)
+{
+    cursor_fsm_.update_buffer(buf, buf_len);
+    scan_compressed_entries();
+    return cursor_fsm_.get_data_len();
+}
+
+bool ChunkCursor::is_done() const
+{
+    return cursor_fsm_.is_done();
+}
+
+bool ChunkCursor::is_error(int *out_error_code_or_null) const
+{
+    return cursor_fsm_.get_error(out_error_code_or_null);
+}
+
+void ChunkCursor::close()
+{
+    cursor_fsm_.close();
 }
 
 }
