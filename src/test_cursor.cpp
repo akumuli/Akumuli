@@ -317,3 +317,72 @@ BOOST_AUTO_TEST_CASE(Test_stackless_fan_in_cursor_4_b)
 {
     test_fan_in_cursor<StacklessFanInCursorCombinator>(AKU_CURSOR_DIR_BACKWARD, 10, 100000 + sizeof(PageHeader));
 }
+
+struct CompressedPageWrapper {
+    char* buf;
+    PageHeader* page;
+    uint32_t page_id;
+    size_t count;
+
+    CompressedPageWrapper(int page_size, uint32_t id) {
+        count = 0;
+        page_id = id;
+        buf = new char[page_size];
+        page = new (buf) PageHeader(0, page_size, (int)page_id);
+        init();
+    }
+
+    ~CompressedPageWrapper() {
+        delete buf;
+    }
+
+private:
+    void init() {
+        std::vector<aku_TimeStamp> timestamps;
+        std::vector<aku_ParamId> params;
+        std::vector<uint32_t> lengths, offsets;
+        aku_TimeStamp ts = 0u;
+        aku_ParamId  pid = 0u;
+        while(true) {
+            timestamps.push_back(ts++);
+            params.push_back(pid);
+            lengths.push_back(sizeof(page_id));
+            aku_MemRange load = {(void*)&page_id, sizeof(page_id)};
+            auto space_est = static_cast<uint32_t>((sizeof(aku_TimeStamp)+2*sizeof(uint32_t))*timestamps.size());
+            auto status = page->add_chunk(load, space_est);
+            if (status != AKU_SUCCESS) {
+                break;
+            }
+            offsets.push_back(page->last_offset);
+        }
+        ChunkHeader header;
+        header.timestamps.swap(timestamps);
+        header.paramids.swap(params);
+        header.lengths.swap(lengths);
+        header.offsets.swap(offsets);
+        auto status = page->complete_chunk(header);
+        if (status != AKU_SUCCESS) {
+            BOOST_ERROR("Can't complete chunk");
+        }
+    }
+};
+
+void test_chunk_cursor(bool backward, bool do_binary_search) {
+    CompressedPageWrapper wpage(0x1000, 42);
+    const aku_Entry *entry = nullptr;
+    if (backward) {
+        entry = wpage.page->read_entry_at(1);
+        if (entry->param_id != AKU_CHUNK_BWD_ID) {
+            BOOST_ERROR("Invalid chunks order for backward search");
+        }
+    } else {
+        entry = wpage.page->read_entry_at(0);
+        if (entry->param_id != AKU_CHUNK_FWD_ID) {
+            BOOST_ERROR("Invalid chunks order for forward search");
+        }
+    }
+    auto scan_dir = backward ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD;
+    SearchQuery squery(42, 0, wpage.page->count, scan_dir);
+    ChunkCursor cursor(wpage.page, entry, wpage.page->count/2, squery, backward, do_binary_search);
+}
+
