@@ -38,7 +38,11 @@ CursorFSM::CursorFSM()
 }
 
 CursorFSM::~CursorFSM() {
-    assert(closed_);
+#ifdef DEBUG
+    if (closed_) {
+        std::cout << "Warning in " << __FUNCTION__ << " - cursor isn't closed" << std::endl;
+    }
+#endif
 }
 
 void CursorFSM::update_buffer(CursorResult* buf, int buf_len) {
@@ -52,6 +56,7 @@ bool CursorFSM::can_put() const {
 }
 
 void CursorFSM::put(CursorResult const& result) {
+    std::cout << "put " << write_index_ << ", " << result.timestamp << ", " << result.length << std::endl;
     usr_buffer_[write_index_++] = result;
 }
 

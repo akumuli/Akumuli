@@ -135,9 +135,13 @@ struct SortPred {
         for(auto i = begin; i != end; i++) {
             if (i != begin) {
                 if (dir == AKU_CURSOR_DIR_FORWARD) {
-                    BOOST_REQUIRE(*i >= prev);
+                    if (*i < prev) {
+                        BOOST_REQUIRE(*i >= prev);
+                    }
                 } else if (dir == AKU_CURSOR_DIR_BACKWARD) {
-                    BOOST_REQUIRE(*i <= prev);
+                    if (*i > prev) {
+                        BOOST_REQUIRE(*i <= prev);
+                    }
                 } else {
                     BOOST_FAIL("Bad direction");
                 }
@@ -323,8 +327,11 @@ struct CompressedPageWrapper {
     PageHeader* page;
     uint32_t page_id;
     size_t count;
+    aku_TimeStamp max_ts, min_ts;
 
     CompressedPageWrapper(int page_size, uint32_t id) {
+        min_ts = AKU_MAX_TIMESTAMP;
+        max_ts = AKU_MIN_TIMESTAMP;
         count = 0;
         page_id = id;
         buf = new char[page_size];
@@ -342,11 +349,10 @@ private:
         std::vector<aku_ParamId> params;
         std::vector<uint32_t> lengths, offsets;
         aku_TimeStamp ts = 0u;
-        aku_ParamId  pid = 0u;
+        aku_ParamId  pid = page_id;
         while(true) {
-            timestamps.push_back(ts++);
-            params.push_back(pid);
-            lengths.push_back(sizeof(page_id));
+            min_ts = std::min(ts, min_ts);
+            max_ts = std::max(ts, max_ts);
             aku_MemRange load = {(void*)&page_id, sizeof(page_id)};
             auto space_est = static_cast<uint32_t>((sizeof(aku_TimeStamp)+2*sizeof(uint32_t))*timestamps.size());
             auto status = page->add_chunk(load, space_est);
@@ -354,6 +360,9 @@ private:
                 break;
             }
             offsets.push_back(page->last_offset);
+            timestamps.push_back(ts++);
+            params.push_back(pid);
+            lengths.push_back(sizeof(page_id));
         }
         ChunkHeader header;
         header.timestamps.swap(timestamps);
@@ -368,21 +377,72 @@ private:
 };
 
 void test_chunk_cursor(bool backward, bool do_binary_search) {
-    CompressedPageWrapper wpage(0x1000, 42);
+    CompressedPageWrapper wpage(0x1000+sizeof(PageHeader), 42);
     const aku_Entry *entry = nullptr;
     if (backward) {
-        entry = wpage.page->read_entry_at(1);
+        entry = wpage.page->read_entry_at(0);
         if (entry->param_id != AKU_CHUNK_BWD_ID) {
             BOOST_ERROR("Invalid chunks order for backward search");
         }
     } else {
-        entry = wpage.page->read_entry_at(0);
+        entry = wpage.page->read_entry_at(1);
         if (entry->param_id != AKU_CHUNK_FWD_ID) {
             BOOST_ERROR("Invalid chunks order for forward search");
         }
     }
     auto scan_dir = backward ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD;
-    SearchQuery squery(42, 0, wpage.page->count, scan_dir);
+    SearchQuery squery(42, wpage.min_ts, wpage.max_ts, scan_dir);
     ChunkCursor cursor(wpage.page, entry, wpage.page->count/2, squery, backward, do_binary_search);
+    aku_TimeStamp expected_ts = backward ? wpage.max_ts : wpage.min_ts;
+    while(!cursor.is_done()) {
+        const auto NRES = 32;
+        CursorResult results[NRES];
+        const auto NREAD = cursor.read(results, NRES);
+        for (int i = 0; i < NREAD; i++) {
+            const auto value = results[i];
+            if (value.length != sizeof(uint32_t)) {
+                BOOST_MESSAGE("Invalid length, " << value.length << " at " << i);
+                BOOST_REQUIRE(value.length == sizeof(uint32_t));
+            }
+            if (value.param_id != 42) {
+                BOOST_REQUIRE(value.param_id == 42);
+            }
+            if (value.timestamp != expected_ts) {
+                BOOST_REQUIRE(value.timestamp == expected_ts);
+            }
+            if (*reinterpret_cast<const uint32_t*>(value.data) != 42) {
+                BOOST_REQUIRE(*reinterpret_cast<const uint32_t*>(value.data) == 42);
+            }
+            if (backward) {
+                expected_ts--;
+            } else {
+                expected_ts++;
+            }
+        }
+    }
+    cursor.close();
 }
 
+//! Check forward ChunkCursor without binary search
+BOOST_AUTO_TEST_CASE(Test_chunk_cursor_fw_nobs)
+{
+    test_chunk_cursor(false, false);
+}
+
+//! Check forward ChunkCursor with binary search
+BOOST_AUTO_TEST_CASE(Test_chunk_cursor_fw_bs)
+{
+    test_chunk_cursor(false, true);
+}
+
+//! Check backward ChunkCursor without binary search
+BOOST_AUTO_TEST_CASE(Test_chunk_cursor_bw_nobs)
+{
+    test_chunk_cursor(true, false);
+}
+
+//! Check backward ChunkCursor with binary search
+BOOST_AUTO_TEST_CASE(Test_chunk_cursor_bw_bs)
+{
+    test_chunk_cursor(true, true);
+}

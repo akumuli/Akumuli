@@ -140,4 +140,3 @@ set(CPACK_PACKAGE_VERSION_MINOR "1")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
 
 include(CPack)
->>>>>>> master
