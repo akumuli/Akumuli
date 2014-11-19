@@ -69,7 +69,7 @@ In case automatic script didn't work:
   
 * APR:
 
-  `sudo apt-get install libapr1`
+  `sudo apt-get install libapr1-dev libaprutil1-dev
 
 * Cmake:
 
