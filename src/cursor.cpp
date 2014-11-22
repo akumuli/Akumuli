@@ -18,6 +18,8 @@
 #include "cursor.h"
 #include "search.h"
 
+#include <iostream>
+
 #include <algorithm>
 #include <boost/crc.hpp>
 
@@ -39,7 +41,7 @@ CursorFSM::CursorFSM()
 
 CursorFSM::~CursorFSM() {
 #ifdef DEBUG
-    if (closed_) {
+    if (!closed_) {
         std::cout << "Warning in " << __FUNCTION__ << " - cursor isn't closed" << std::endl;
     }
 #endif
@@ -56,7 +58,12 @@ bool CursorFSM::can_put() const {
 }
 
 void CursorFSM::put(CursorResult const& result) {
-    std::cout << "put " << write_index_ << ", " << result.timestamp << ", " << result.length << std::endl;
+#ifdef DEBUG
+    if (result.length == 0) {
+        std::cout << "put error, result.length == 0" << std::endl;
+        assert(result.length);
+    }
+#endif
     usr_buffer_[write_index_++] = result;
 }
 
@@ -424,7 +431,7 @@ ChunkCursor::ChunkCursor( PageHeader const* page
     auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry_->value[0]);
     auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
     auto pend = (const unsigned char*)(page_->cdata() + pdesc->end_offset);
-    auto probe_length_ = pdesc->n_elements;
+    probe_length_ = pdesc->n_elements;
 
     // TODO:checksum!
     boost::crc_32_type checksum;

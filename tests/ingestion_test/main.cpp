@@ -7,11 +7,11 @@
 #include <algorithm>
 #include <memory>
 
-#include <boost/timer.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <apr_mmap.h>
 #include <apr_general.h>
+#include <sys/time.h>
 
 #include "akumuli.h"
 
@@ -25,11 +25,26 @@ const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
 const char* DB_META_FILE = "./test/test.akumuli";
 
+class Timer
+{
+public:
+    Timer() { gettimeofday(&_start_time, nullptr); }
+    void   restart() { gettimeofday(&_start_time, nullptr); }
+    double elapsed() const {
+        timeval curr;
+        gettimeofday(&curr, nullptr);
+        return double(curr.tv_sec - _start_time.tv_sec) +
+               double(curr.tv_usec - _start_time.tv_usec)/1000000.0;
+    }
+private:
+    timeval _start_time;
+};
+
 void delete_storage() {
     boost::filesystem::remove_all(DB_PATH);
 }
 
-bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
@@ -163,7 +178,7 @@ int main(int cnt, const char** args)
     aku_FineTuneParams params;
     params.debug_mode = 0;
     auto db = aku_open_database(DB_META_FILE, params);
-    boost::timer timer;
+    Timer timer;
 
     if (mode != READ) {
         uint64_t busy_count = 0;

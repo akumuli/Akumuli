@@ -19,6 +19,7 @@ void test_cursor(int n_iter, int buf_size) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
             r.data = reinterpret_cast<void*>(i);
+            r.length = sizeof(i);
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -46,6 +47,7 @@ void test_cursor_error(int n_iter, int buf_size) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
             r.data = reinterpret_cast<void*>(i);
+            r.length = sizeof(i);
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -351,8 +353,6 @@ private:
         aku_TimeStamp ts = 0u;
         aku_ParamId  pid = page_id;
         while(true) {
-            min_ts = std::min(ts, min_ts);
-            max_ts = std::max(ts, max_ts);
             aku_MemRange load = {(void*)&page_id, sizeof(page_id)};
             auto space_est = static_cast<uint32_t>((sizeof(aku_TimeStamp)+2*sizeof(uint32_t))*timestamps.size());
             auto status = page->add_chunk(load, space_est);
@@ -360,9 +360,12 @@ private:
                 break;
             }
             offsets.push_back(page->last_offset);
-            timestamps.push_back(ts++);
+            timestamps.push_back(ts);
             params.push_back(pid);
             lengths.push_back(sizeof(page_id));
+            min_ts = std::min(ts, min_ts);
+            max_ts = std::max(ts, max_ts);
+            ts++;
         }
         ChunkHeader header;
         header.timestamps.swap(timestamps);
@@ -405,12 +408,16 @@ void test_chunk_cursor(bool backward, bool do_binary_search) {
                 BOOST_REQUIRE(value.length == sizeof(uint32_t));
             }
             if (value.param_id != 42) {
+                BOOST_MESSAGE("Invalid param_id, " << value.param_id << " at " << i);
                 BOOST_REQUIRE(value.param_id == 42);
             }
             if (value.timestamp != expected_ts) {
+                BOOST_MESSAGE("Invalid timestamp, " << value.timestamp << " at " << i);
                 BOOST_REQUIRE(value.timestamp == expected_ts);
             }
-            if (*reinterpret_cast<const uint32_t*>(value.data) != 42) {
+            auto content = *reinterpret_cast<const uint32_t*>(value.data);
+            if (content != 42) {
+                BOOST_MESSAGE("Invalid content, " << content << " at " << i);
                 BOOST_REQUIRE(*reinterpret_cast<const uint32_t*>(value.data) == 42);
             }
             if (backward) {
