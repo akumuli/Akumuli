@@ -53,6 +53,12 @@ void CursorFSM::update_buffer(CursorResult* buf, int buf_len) {
     write_index_ = 0;
 }
 
+void CursorFSM::update_buffer(CursorFSM *other_fsm) {
+    usr_buffer_ = other_fsm->usr_buffer_;
+    usr_buffer_len_ = other_fsm->usr_buffer_len_;
+    write_index_ = other_fsm->write_index_;
+}
+
 bool CursorFSM::can_put() const {
     return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
 }
@@ -541,6 +547,13 @@ int ChunkCursor::read(CursorResult *buf, int buf_len)
     return cursor_fsm_.get_data_len();
 }
 
+void ChunkCursor::read(CursorFSM *other_cursor_fsm)
+{
+    cursor_fsm_.update_buffer(other_cursor_fsm);
+    scan_compressed_entries();
+    other_cursor_fsm->update_buffer(&cursor_fsm_);
+}
+
 bool ChunkCursor::is_done() const
 {
     return cursor_fsm_.is_done();
@@ -555,5 +568,131 @@ void ChunkCursor::close()
 {
     cursor_fsm_.close();
 }
+
+PageCursor::PageCursor(PageHeader const   *page,
+                       SearchRange         range,
+                       aku_TimeStamp       key,
+                       SearchQuery const&  query,
+                       uint32_t            probe_index)
+    : page_(page)
+    , range_(range)
+    , query_(query)
+    , KEY_(key)
+    , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
+    , probe_index_(probe_index)
+    , MAX_INDEX_(page->sync_count)
+{
+}
+
+bool PageCursor::scan_impl() {
+    const int INC_VAL = IS_BACKWARD_ ? -1 : 1;
+    bool yield = false;
+    while (!yield) {
+        auto current_index = probe_index_;
+        probe_index_ += INC_VAL;
+        auto probe_offset = page_->page_index[current_index];
+        auto probe_entry = page_->read_entry(probe_offset);
+        auto probe = probe_entry->param_id;
+        bool proceed = false;
+        bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                   query_.upperbound >= probe_entry->time;
+        if (probe < AKU_ID_COMPRESSED) {
+            if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+                auto offset = static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry));
+                CursorResult result = {
+                    probe_entry->length,
+                    probe_entry->time,
+                    probe,
+                    page_->read_entry_data(offset)
+                };
+                yield = !cursor_fsm_.can_put();
+                if (!yield) {
+                    cursor_fsm_.put(result);
+                    yield = !cursor_fsm_.can_put();
+                }
+            }
+            proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                   : query_.upperbound >= probe_entry->time;
+        } else {
+            if (chunk_cursor_) {
+                chunk_cursor_->read(&cursor_fsm_);
+                // After this point chunk_cursor is full or completed or errored. In the first case
+                // we need to yield control to server. In the second case we need to reset cursor
+                // and create the next one. In a case of error we need to move cursor_fsm_ to erroneous
+                // state and return.
+                yield = !cursor_fsm_.can_put();
+                int error_code = AKU_SUCCESS;
+                if (chunk_cursor_->is_error(&error_code)) {
+                    chunk_cursor_.reset();
+                    return true;
+                }
+                if (chunk_cursor_->is_done()) {
+                    chunk_cursor_.reset();
+                } else {
+                    continue;
+                }
+            }
+            if ((probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) ||
+                (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true)) {
+                auto pcur = new (cursor_storage_)
+                        ChunkCursor(page_, probe_entry, KEY_, query_, IS_BACKWARD_, true);
+                auto deleter = [](ChunkCursor *p) { p->~ChunkCursor(); };
+                chunk_cursor_.reset(pcur, deleter);
+            } else {
+                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                       : query_.upperbound >= probe_entry->time;
+            }
+        }
+        if (!proceed || probe_index_ >= MAX_INDEX_) {
+            // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
+            // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
+            // at the end of the page
+            return true;
+        }
+    }
+    return false;
+}
+
+void PageCursor::scan() {
+
+    if (range_.begin != range_.end) {
+        cursor_fsm_.set_error(AKU_EGENERAL);
+        return;
+    }
+
+    if (range_.begin >= MAX_INDEX_) {
+        cursor_fsm_.set_error(AKU_EOVERFLOW);
+        return;
+    }
+
+    bool done = scan_impl();
+
+    if (done) {
+        auto& stats = get_global_search_stats();
+        {
+            std::lock_guard<std::mutex> guard(stats.mutex);
+        }
+        cursor_fsm_.complete();
+    }
+}
+
+int PageCursor::read(CursorResult* buf, int buf_len) {
+    cursor_fsm_.update_buffer(buf, buf_len);
+    scan();
+    return cursor_fsm_.get_data_len();
+}
+
+bool PageCursor::is_done() const {
+    return cursor_fsm_.is_done();
+}
+
+bool PageCursor::is_error(int* out_error_code_or_null) const {
+    return cursor_fsm_.get_error(out_error_code_or_null);
+}
+
+void PageCursor::close() {
+    cursor_fsm_.close();
+}
+
 
 }

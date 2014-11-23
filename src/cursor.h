@@ -28,6 +28,7 @@
 #include "akumuli.h"
 #include "internal_cursor.h"
 #include "page.h"
+#include "search.h"
 
 namespace Akumuli {
 
@@ -51,6 +52,7 @@ public:
     void complete();
     void set_error(int error_code);
     void update_buffer(CursorResult* buf, int buf_len);
+    void update_buffer(CursorFSM *other_fsm);
     bool close();
     // accessors
     bool can_put() const;
@@ -260,10 +262,42 @@ struct ChunkCursor : ExternalCursor {
 
     int read(CursorResult *buf, int buf_len);
 
+    void read(CursorFSM *fsm);
+
     bool is_done() const;
 
     bool is_error(int *out_error_code_or_null) const;
 
+    void close();
+};
+
+struct PageCursor : ExternalCursor {
+    PageHeader const               *page_;
+    SearchRange                     range_;
+    SearchQuery                     query_;
+    const aku_TimeStamp             KEY_;
+    const bool                      IS_BACKWARD_;
+    uint32_t                        probe_index_;
+    const uint32_t                  MAX_INDEX_;
+    CursorFSM                       cursor_fsm_;
+    std::shared_ptr<ChunkCursor>    chunk_cursor_;
+    char                            cursor_storage_[sizeof(ChunkCursor)];
+
+    PageCursor( PageHeader const   *page,
+                SearchRange         range,
+                aku_TimeStamp       key,
+                SearchQuery const&  query,
+                uint32_t            probe_index);
+
+    // return false - yield
+    // return true - completed
+    bool scan_impl();
+
+    void scan();
+
+    int read(CursorResult* buf, int buf_len);
+    bool is_done() const;
+    bool is_error(int* out_error_code_or_null=nullptr) const;
     void close();
 };
 
