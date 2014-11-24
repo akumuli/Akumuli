@@ -429,7 +429,7 @@ ChunkCursor::ChunkCursor( PageHeader const* page
     : binary_search_(binary_search)
     , probe_entry_(entry)
     , page_(page)
-    , key_(key)
+    , KEY_(key)
     , query_(query)
     , IS_BACKWARD_(backward)
     , start_pos_(0u)
@@ -457,10 +457,10 @@ ChunkCursor::ChunkCursor( PageHeader const* page
     if (binary_search_) {
         ChunkHeaderSearcher int_searcher(header_);
         SearchRange sr = { 0, static_cast<uint32_t>(header_.timestamps.size())};
-        int_searcher.run(key_, &sr);
+        int_searcher.run(KEY_, &sr);
         auto begin = header_.timestamps.begin() + sr.begin;
         auto end = header_.timestamps.begin() + sr.end;
-        auto it = std::lower_bound(begin, end, key_);
+        auto it = std::lower_bound(begin, end, KEY_);
         if (it == end) {
             // key_ not in chunk
             cursor_fsm_.complete();
@@ -570,12 +570,10 @@ void ChunkCursor::close()
 }
 
 PageCursor::PageCursor(PageHeader const   *page,
-                       SearchRange         range,
                        aku_TimeStamp       key,
                        SearchQuery const&  query,
                        uint32_t            probe_index)
     : page_(page)
-    , range_(range)
     , query_(query)
     , KEY_(key)
     , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
@@ -588,62 +586,67 @@ bool PageCursor::scan_impl() {
     const int INC_VAL = IS_BACKWARD_ ? -1 : 1;
     bool yield = false;
     while (!yield) {
-        auto current_index = probe_index_;
-        probe_index_ += INC_VAL;
-        auto probe_offset = page_->page_index[current_index];
-        auto probe_entry = page_->read_entry(probe_offset);
-        auto probe = probe_entry->param_id;
-        bool proceed = false;
-        bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                   query_.upperbound >= probe_entry->time;
-        if (probe < AKU_ID_COMPRESSED) {
-            if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
-                auto offset = static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry));
-                CursorResult result = {
-                    probe_entry->length,
-                    probe_entry->time,
-                    probe,
-                    page_->read_entry_data(offset)
-                };
-                yield = !cursor_fsm_.can_put();
-                if (!yield) {
-                    cursor_fsm_.put(result);
-                    yield = !cursor_fsm_.can_put();
-                }
+        if (chunk_cursor_) {
+            chunk_cursor_->read(&cursor_fsm_);
+            // After this point chunk_cursor is full or completed or errored. In the first case
+            // we need to yield control to server. In the second case we need to reset cursor
+            // and create the next one. In a case of error we need to move cursor_fsm_ to erroneous
+            // state and return.
+            yield = !cursor_fsm_.can_put();
+            int error_code = AKU_SUCCESS;
+            if (chunk_cursor_->is_error(&error_code)) {
+                chunk_cursor_.reset();
+                return true;
             }
-            proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
-                                   : query_.upperbound >= probe_entry->time;
-        } else {
-            if (chunk_cursor_) {
-                chunk_cursor_->read(&cursor_fsm_);
-                // After this point chunk_cursor is full or completed or errored. In the first case
-                // we need to yield control to server. In the second case we need to reset cursor
-                // and create the next one. In a case of error we need to move cursor_fsm_ to erroneous
-                // state and return.
-                yield = !cursor_fsm_.can_put();
-                int error_code = AKU_SUCCESS;
-                if (chunk_cursor_->is_error(&error_code)) {
-                    chunk_cursor_.reset();
-                    return true;
-                }
-                if (chunk_cursor_->is_done()) {
-                    chunk_cursor_.reset();
-                } else {
-                    continue;
-                }
-            }
-            if ((probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) ||
-                (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true)) {
-                auto pcur = new (cursor_storage_)
-                        ChunkCursor(page_, probe_entry, KEY_, query_, IS_BACKWARD_, true);
-                auto deleter = [](ChunkCursor *p) { p->~ChunkCursor(); };
-                chunk_cursor_.reset(pcur, deleter);
+            if (chunk_cursor_->is_done()) {
+                chunk_cursor_.reset();
             } else {
+                continue;
+            }
+        } else {
+            auto current_index = probe_index_;
+            probe_index_ += INC_VAL;
+            auto probe_offset = page_->page_index[current_index];
+            auto probe_entry = page_->read_entry(probe_offset);
+            auto probe = probe_entry->param_id;
+            bool proceed = false;
+            bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
+                                       query_.upperbound >= probe_entry->time;
+            if (probe < AKU_ID_COMPRESSED) {
+                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+                    auto offset = static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry));
+                    CursorResult result = {
+                        probe_entry->length,
+                        probe_entry->time,
+                        probe,
+                        page_->read_entry_data(offset)
+                    };
+                    yield = !cursor_fsm_.can_put();
+                    if (!yield) {
+                        cursor_fsm_.put(result);
+                        yield = !cursor_fsm_.can_put();
+                    }
+                }
                 proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
                                        : query_.upperbound >= probe_entry->time;
+            } else {
+                if ((probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) ||
+                    (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true)) {
+                    auto pcur = new (cursor_storage_)
+                            ChunkCursor(page_, probe_entry, KEY_, query_, IS_BACKWARD_, true);
+                    auto deleter = [](ChunkCursor *p) { p->close(); p->~ChunkCursor(); };
+                    chunk_cursor_.reset(pcur, deleter);
+                    continue;
+                } else {
+                    proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
+                                           : query_.upperbound >= probe_entry->time;
+                }
+            }
+            if (!proceed) {
+                return true;
             }
         }
-        if (!proceed || probe_index_ >= MAX_INDEX_) {
+        if (probe_index_ >= MAX_INDEX_) {
             // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
             // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
             // at the end of the page
@@ -654,19 +657,7 @@ bool PageCursor::scan_impl() {
 }
 
 void PageCursor::scan() {
-
-    if (range_.begin != range_.end) {
-        cursor_fsm_.set_error(AKU_EGENERAL);
-        return;
-    }
-
-    if (range_.begin >= MAX_INDEX_) {
-        cursor_fsm_.set_error(AKU_EOVERFLOW);
-        return;
-    }
-
     bool done = scan_impl();
-
     if (done) {
         auto& stats = get_global_search_stats();
         {

@@ -158,6 +158,7 @@ struct PageWrapper {
     PageHeader* page;
     uint32_t page_id;
     size_t count;
+    std::vector<int64_t> timestamps;
 
     PageWrapper(int page_size, uint32_t id) {
         count = 0;
@@ -181,13 +182,13 @@ struct PageWrapper {
             count++;
         }
         page->_sort();
-        std::vector<int64_t> timestamps;
         for (auto ix = 0u; ix < page->count; ix++) {
             auto entry = page->read_entry_at(ix);
             timestamps.push_back(entry->time);
         }
         SortPred pred = { AKU_CURSOR_DIR_FORWARD };
         pred.check_order(timestamps.begin(), timestamps.end());
+        std::sort(timestamps.begin(), timestamps.end());
     }
 };
 
@@ -330,6 +331,7 @@ struct CompressedPageWrapper {
     uint32_t page_id;
     size_t count;
     aku_TimeStamp max_ts, min_ts;
+    std::vector<aku_TimeStamp> timestamps;
 
     CompressedPageWrapper(int page_size, uint32_t id) {
         min_ts = AKU_MAX_TIMESTAMP;
@@ -347,7 +349,6 @@ struct CompressedPageWrapper {
 
 private:
     void init() {
-        std::vector<aku_TimeStamp> timestamps;
         std::vector<aku_ParamId> params;
         std::vector<uint32_t> lengths, offsets;
         aku_TimeStamp ts = 0u;
@@ -368,7 +369,7 @@ private:
             ts++;
         }
         ChunkHeader header;
-        header.timestamps.swap(timestamps);
+        header.timestamps = timestamps;
         header.paramids.swap(params);
         header.lengths.swap(lengths);
         header.offsets.swap(offsets);
@@ -376,6 +377,7 @@ private:
         if (status != AKU_SUCCESS) {
             BOOST_ERROR("Can't complete chunk");
         }
+        std::sort(timestamps.begin(), timestamps.end());
     }
 };
 
@@ -453,3 +455,101 @@ BOOST_AUTO_TEST_CASE(Test_chunk_cursor_bw_bs)
 {
     test_chunk_cursor(true, true);
 }
+
+void test_page_cursor_without_compression(int scan_dir) {
+    const bool FW = scan_dir == AKU_CURSOR_DIR_FORWARD;
+    PageWrapper pwrapper(0x10000 + sizeof(PageHeader), 100500);
+    const auto KEY_IX = pwrapper.page->sync_count / 2;
+    const auto KEY = pwrapper.page->read_entry_at(KEY_IX)->time;
+    const auto TS_LO = AKU_MIN_TIMESTAMP;
+    const auto TS_HI = AKU_MAX_TIMESTAMP;
+    SearchQuery::MatcherFn match_all = [](aku_ParamId) {
+        return SearchQuery::MATCH;
+    };
+    auto query = SearchQuery(match_all, TS_LO, TS_HI, scan_dir);
+    PageCursor cur(pwrapper.page, KEY, query, KEY_IX);
+    int ts_ix = KEY_IX;
+    const auto RES_LEN = 0x100;
+    CursorResult results[RES_LEN];
+    while(!cur.is_done()) {
+        auto nres = cur.read(results, RES_LEN);
+        BOOST_REQUIRE(nres);
+        int error = AKU_SUCCESS;
+        if (cur.is_error(&error)) {
+            BOOST_MESSAGE("Error " << error);
+            BOOST_REQUIRE_EQUAL(error, AKU_SUCCESS);
+        }
+        for (int ix = 0; ix != nres; ix++) {
+            aku_TimeStamp expected = pwrapper.timestamps.at(ts_ix);
+            if (results[ix].timestamp != expected) {
+                BOOST_MESSAGE("Incorrect timestamp " << results[ix].timestamp << " at index " << ix);
+                BOOST_REQUIRE_EQUAL(results[ix].timestamp, expected);
+            }
+            if (FW) { ts_ix++; }
+            else { ts_ix--; }
+        }
+    }
+    cur.close();
+}
+
+//! Check forward PageCursor without compression
+BOOST_AUTO_TEST_CASE(Test_page_cursor_fw_no_compression)
+{
+    test_page_cursor_without_compression(AKU_CURSOR_DIR_FORWARD);
+}
+
+//! Check backward PageCursor without compression
+BOOST_AUTO_TEST_CASE(Test_page_cursor_bw_no_compression)
+{
+    test_page_cursor_without_compression(AKU_CURSOR_DIR_BACKWARD);
+}
+
+void test_page_cursor_with_compression(int scan_dir) {
+    const bool FW = scan_dir == AKU_CURSOR_DIR_FORWARD;
+    CompressedPageWrapper wpage(0x1000 + sizeof(PageHeader), 4242);
+    const auto KEY_IX = FW ? 0 : 1;
+    const auto KEY = FW ? wpage.min_ts : wpage.max_ts;
+    const auto TS_LO = AKU_MIN_TIMESTAMP;
+    const auto TS_HI = AKU_MAX_TIMESTAMP;
+    SearchQuery::MatcherFn match_all = [](aku_ParamId) {
+        return SearchQuery::MATCH;
+    };
+    auto query = SearchQuery(match_all, TS_LO, TS_HI, scan_dir);
+    PageCursor cur(wpage.page, KEY, query, KEY_IX);
+
+    const auto RES_LEN = 0x100;
+    CursorResult results[RES_LEN];
+    int ts_ix = FW ? 0 : wpage.timestamps.size() - 1;
+    while(!cur.is_done()) {
+        auto nres = cur.read(results, RES_LEN);
+        BOOST_REQUIRE(nres);
+        int error = AKU_SUCCESS;
+        if (cur.is_error(&error)) {
+            BOOST_MESSAGE("Error " << error);
+            BOOST_REQUIRE_EQUAL(error, AKU_SUCCESS);
+        }
+        for (int ix = 0; ix != nres; ix++) {
+            auto expected = wpage.timestamps.at(ts_ix);
+            if (results[ix].timestamp != expected) {
+                BOOST_MESSAGE("Incorrect timestamp " << results[ix].timestamp << " at index " << ix);
+                BOOST_REQUIRE_EQUAL(results[ix].timestamp, expected);
+            }
+            if (FW) { ts_ix++; }
+            else { ts_ix--; }
+        }
+    }
+    cur.close();
+}
+
+//! Check forward PageCursor with compression
+BOOST_AUTO_TEST_CASE(Test_page_cursor_fw_with_compression)
+{
+    test_page_cursor_with_compression(AKU_CURSOR_DIR_FORWARD);
+}
+
+//! Check backward PageCursor with compression
+BOOST_AUTO_TEST_CASE(Test_page_cursor_bw_with_compression)
+{
+    test_page_cursor_with_compression(AKU_CURSOR_DIR_BACKWARD);
+}
+

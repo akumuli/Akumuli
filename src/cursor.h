@@ -28,7 +28,6 @@
 #include "akumuli.h"
 #include "internal_cursor.h"
 #include "page.h"
-#include "search.h"
 
 namespace Akumuli {
 
@@ -243,7 +242,7 @@ struct ChunkCursor : ExternalCursor {
     bool binary_search_;
     aku_Entry const* probe_entry_;
     PageHeader const* page_;
-    aku_TimeStamp key_;
+    aku_TimeStamp KEY_;
     SearchQuery query_;
     const bool IS_BACKWARD_;
     size_t start_pos_;
@@ -273,7 +272,6 @@ struct ChunkCursor : ExternalCursor {
 
 struct PageCursor : ExternalCursor {
     PageHeader const               *page_;
-    SearchRange                     range_;
     SearchQuery                     query_;
     const aku_TimeStamp             KEY_;
     const bool                      IS_BACKWARD_;
@@ -284,7 +282,6 @@ struct PageCursor : ExternalCursor {
     char                            cursor_storage_[sizeof(ChunkCursor)];
 
     PageCursor( PageHeader const   *page,
-                SearchRange         range,
                 aku_TimeStamp       key,
                 SearchQuery const&  query,
                 uint32_t            probe_index);
