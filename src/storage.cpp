@@ -399,8 +399,8 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 
 // Writing
 
-//! write data
-aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+//! write binary data
+aku_Status Storage::write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
         auto space_required = active_volume_->cache_->get_space_estimate();
@@ -444,10 +444,14 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
             default:
                 log_message(aku_error_message(status));
                 return status;
-        };
+        }
     }
 }
 
+//! write binary data
+aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double value) {
+    AKU_PANIC("Not implemented");
+}
 
 
 /** This function creates file with specified size
