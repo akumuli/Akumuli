@@ -164,6 +164,7 @@ struct SearchQuery {
  * This class must be nonvirtual.
  */
 struct PageHeader {
+    typedef std::tuple<aku_TimeStamp, SearchQuery const&, uint32_t> CursorContext;
     // metadata
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
@@ -286,8 +287,8 @@ struct PageHeader {
     const void* read_entry_data(aku_EntryOffset offset) const;
 
     /**
-     *  Search for entry
-     */
+      * Execute search query. Results are sent to cursor.
+      */
     void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 
     // Only for testing
