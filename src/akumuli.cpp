@@ -228,6 +228,14 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
         // Use default console logger if user doesn't set it
         config.logger = &aku_console_logger;
     }
+    if (config.durability != AKU_MAX_DURABILITY &&
+        config.durability != AKU_DURABILITY_SPEED_TRADEOFF &&
+        config.durability != AKU_MAX_WRITE_SPEED)
+    {
+        // Set defaut
+        config.durability = AKU_MAX_DURABILITY;
+        (*config.logger)(-1, "config.durability = default(AKU_MAX_DURABILITY)");
+    }
     auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
 }

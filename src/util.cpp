@@ -29,7 +29,7 @@
 namespace Akumuli
 {
 
-std::string apr_error_message(apr_status_t status) noexcept {
+std::string apr_error_message(apr_status_t status) {
     char error_message[0x100];
     apr_strerror(status, error_message, 0x100);
     return std::string(error_message);
@@ -71,22 +71,23 @@ std::ostream& operator << (std::ostream& str, Exception const& e) {
     return str;
 }
 
-MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, aku_logger_cb_t logger) noexcept
+MemoryMappedFile::MemoryMappedFile(const char* file_name, int tag, bool enable_huge_tlb, aku_logger_cb_t logger)
     : path_(file_name)
     , tag_(tag)
     , logger_(logger)
+    , enable_huge_tlb_(enable_huge_tlb)
 {
     map_file();
 }
 
-void MemoryMappedFile::move_file(const char* new_name) noexcept {
+void MemoryMappedFile::move_file(const char* new_name) {
     status_ = apr_file_rename(path_.c_str(), new_name, mem_pool_);
     if (status_ == APR_SUCCESS) {
         path_ = new_name;
     }
 }
 
-void MemoryMappedFile::delete_file() noexcept {
+void MemoryMappedFile::delete_file() {
     using namespace std;
     status_ = apr_file_remove(path_.c_str(), mem_pool_);
     if (status_ != APR_SUCCESS) {
@@ -96,7 +97,7 @@ void MemoryMappedFile::delete_file() noexcept {
     }
 }
 
-apr_status_t MemoryMappedFile::map_file() noexcept {
+apr_status_t MemoryMappedFile::map_file() {
     using namespace std;
     int success_count = 0;
     status_ = apr_pool_create(&mem_pool_, NULL);
@@ -108,7 +109,11 @@ apr_status_t MemoryMappedFile::map_file() noexcept {
             status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
             if (status_ == APR_SUCCESS) {
                 success_count++;
-                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, APR_MMAP_WRITE|APR_MMAP_READ|MAP_HUGETLB, mem_pool_);
+                apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
+                if (enable_huge_tlb_) {
+                    flags |= MAP_HUGETLB;
+                }
+                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
                 if (status_ == APR_SUCCESS)
                     success_count++; }}}
 
@@ -168,17 +173,17 @@ void MemoryMappedFile::remap_file_destructive() {
     }
 }
 
-bool MemoryMappedFile::is_bad() const noexcept {
+bool MemoryMappedFile::is_bad() const {
     return status_ != APR_SUCCESS;
 }
 
-std::string MemoryMappedFile::error_message() const noexcept {
+std::string MemoryMappedFile::error_message() const {
     char error_message[0x100];
     apr_strerror(status_, error_message, 0x100);
     return std::string(error_message);
 }
 
-apr_status_t MemoryMappedFile::status_code() const noexcept {
+apr_status_t MemoryMappedFile::status_code() const {
     return status_;
 }
 
@@ -217,19 +222,19 @@ MemoryMappedFile::~MemoryMappedFile() {
         free_resources(4);
 }
 
-void* MemoryMappedFile::get_pointer() const noexcept {
+void* MemoryMappedFile::get_pointer() const {
     return mmap_->mm;
 }
 
-size_t MemoryMappedFile::get_size() const noexcept {
+size_t MemoryMappedFile::get_size() const {
     return mmap_->size;
 }
 
-apr_status_t MemoryMappedFile::flush() noexcept {
+apr_status_t MemoryMappedFile::flush() {
     return flush(0, mmap_->size);
 }
 
-apr_status_t MemoryMappedFile::flush(size_t from, size_t to) noexcept {
+apr_status_t MemoryMappedFile::flush(size_t from, size_t to) {
     void* p = align_to_page(static_cast<char*>(mmap_->mm) + from, get_page_size());
     size_t len = to - from;
     if (msync(p, len, MS_SYNC) == 0) {
@@ -250,7 +255,7 @@ apr_status_t MemoryMappedFile::flush(size_t from, size_t to) noexcept {
     return AKU_EGENERAL;
 }
 
-int64_t log2(int64_t value) noexcept {
+int64_t log2(int64_t value) {
     // TODO: visual studio version needed
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }

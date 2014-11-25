@@ -36,7 +36,7 @@
 namespace Akumuli
 {
     /** APR error converter */
-    std::string apr_error_message(apr_status_t status) noexcept;
+    std::string apr_error_message(apr_status_t status);
 
     /** Set global panic handler */
     void set_panic_handler(aku_panic_handler_t new_panic_handler);
@@ -82,32 +82,33 @@ namespace Akumuli
         std::string path_;
         int tag_;
         aku_logger_cb_t logger_;
+        const bool enable_huge_tlb_;
     public:
-        MemoryMappedFile(const char* file_name, int tag, aku_logger_cb_t logger) noexcept;
+        MemoryMappedFile(const char* file_name, int tag, bool enable_huge_tlb, aku_logger_cb_t logger);
         ~MemoryMappedFile();
-        void move_file(const char* new_name) noexcept;
-        void delete_file() noexcept;
-        void* get_pointer() const noexcept;
-        size_t get_size() const noexcept;
+        void move_file(const char* new_name);
+        void delete_file();
+        void* get_pointer() const;
+        size_t get_size() const;
         //! Flush only part of the page
-        apr_status_t flush(size_t from, size_t to) noexcept;
+        apr_status_t flush(size_t from, size_t to);
         //! Flush full page
-        apr_status_t flush() noexcept;
-        bool is_bad() const noexcept;
-        std::string error_message() const noexcept;
+        apr_status_t flush();
+        bool is_bad() const;
+        std::string error_message() const;
         void panic_if_bad();
-        apr_status_t status_code() const noexcept;
+        apr_status_t status_code() const;
         //! Remap file in a destructive way (all file content is lost)
         void remap_file_destructive();
     private:
         //! Map file into virtual address space
-        apr_status_t map_file() noexcept;
+        apr_status_t map_file();
         //! Free OS resources associated with object
         void free_resources(int cnt);
     };
 
     //! Fast integer logarithm
-    int64_t log2(int64_t value) noexcept;
+    int64_t log2(int64_t value);
 
     std::tuple<bool, aku_Status> page_in_core(const void* addr);
 

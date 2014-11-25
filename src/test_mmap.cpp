@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE(TestMmap1)
     const char* tmp_file = "testfile";
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
-    MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+    MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
     BOOST_REQUIRE(mmap.is_bad() == false);
     BOOST_REQUIRE(mmap.get_size() == 100);
     delete_tmp_file(tmp_file);
@@ -64,7 +64,7 @@ BOOST_AUTO_TEST_CASE(TestMmap2)
 {
     const char* tmp_file = "file_that_doesnt_exist";
     delete_tmp_file(tmp_file);
-    MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+    MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
     BOOST_REQUIRE(mmap.is_bad() == true);
     bool throw_works = false;
     try {
@@ -82,7 +82,7 @@ BOOST_AUTO_TEST_CASE(TestMmap3)
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
     {
-        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+        MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_CASE(TestMmap3)
     }
 
     {
-        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+        MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_CASE(TestMmap4)
     delete_tmp_file(tmp_file);
     create_tmp_file(tmp_file, 100);
     {
-        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+        MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         char* begin = (char*)mmap.get_pointer();
@@ -120,7 +120,7 @@ BOOST_AUTO_TEST_CASE(TestMmap4)
     }
 
     {
-        MemoryMappedFile mmap(tmp_file, 0, &test_logger);
+        MemoryMappedFile mmap(tmp_file, 0, false, &test_logger);
         BOOST_REQUIRE(mmap.is_bad() == false);
         BOOST_REQUIRE(mmap.get_size() == 100);
         mmap.remap_file_destructive();

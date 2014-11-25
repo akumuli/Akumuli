@@ -5,10 +5,12 @@ Akumuli project changelog
 =====
 Storage system:
 ---------------
-- different updates to simplify building and dependency management
-  - separate tests runners for different components for better reporting and code quality
+- Separate tests runners for different components for better reporting and code quality
 - API updates
   - `aku_create_database` optional parameters now passed by value, not by pointer
+  - new open parameters:
+    - durability - allows to trade some durability for speed (default is max durability)
+    - enable_huge_tlb - allows to enable or diable huge tlb in memory mapped files (0 - disabled)
 
 ----------------------------  
 

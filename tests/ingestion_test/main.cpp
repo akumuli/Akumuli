@@ -175,8 +175,10 @@ int main(int cnt, const char** args)
         }
     }
 
-    aku_FineTuneParams params;
+    aku_FineTuneParams params = {};
     params.debug_mode = 0;
+    params.durability = AKU_MAX_WRITE_SPEED;
+    params.enable_huge_tlb = 0;
     auto db = aku_open_database(DB_META_FILE, params);
     Timer timer;
 
@@ -217,7 +219,6 @@ int main(int cnt, const char** args)
 
         timer.restart();
 
-        /*
         if (!query_database_forward( db
                            , std::numeric_limits<aku_TimeStamp>::min()
                            , std::numeric_limits<aku_TimeStamp>::max()
@@ -227,7 +228,6 @@ int main(int cnt, const char** args)
         {
             return 2;
         }
-        */
 
         aku_global_search_stats(&search_stats, true);
         print_search_stats(search_stats);

@@ -55,9 +55,14 @@ struct Volume : std::enable_shared_from_this<Volume>
     const int tag_;
     aku_logger_cb_t logger_;
     std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
+    const bool huge_tlb_;
 
     //! Create new volume stored in file
-    Volume(const char* file_path, const aku_Config &conf, int tag, aku_logger_cb_t logger);
+    Volume(const char           *file_path,
+           const aku_Config&     conf,
+           int                   tag,
+           bool                  enable_huge_tlb,
+           aku_logger_cb_t       logger);
 
     ~Volume();
 
@@ -103,6 +108,8 @@ struct Storage
     int                       tag_;                       //< Tag to distinct different storage instances
     aku_logger_cb_t              logger_;
     Rand                      rand_;
+    const uint32_t            durability_;                //< Copy of the durability parameter
+    const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
 
     /** Storage c-tor.
       * @param file_name path to metadata file

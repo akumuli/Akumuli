@@ -23,6 +23,11 @@
 #pragma once
 #include <stdint.h>
 
+// Values for durability parameter
+#define AKU_MAX_DURABILITY            1  // default value
+#define AKU_DURABILITY_SPEED_TRADEOFF 2
+#define AKU_MAX_WRITE_SPEED                 4
+
 //! Logging function type
 typedef void (*aku_logger_cb_t) (int tag, const char * msg);
 
@@ -38,6 +43,12 @@ typedef struct
 
     //! Pointer to logging function, can be null
     aku_logger_cb_t logger;
+
+    //! 0 - huge tlbs disabled, other value - enabled
+    uint32_t enable_huge_tlb;
+
+    //! Consistency-speed tradeoff, 1 - max durability, 2 - tradeoff some durability for speed, 4 - max speed
+    uint32_t durability;
 
 } aku_FineTuneParams;
 

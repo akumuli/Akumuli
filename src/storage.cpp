@@ -47,8 +47,12 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
-Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_logger_cb_t logger)
-    : mmap_(file_name, tag, logger)
+Volume::Volume(const char* file_name,
+               aku_Config const& conf,
+               int tag,
+               bool enable_huge_tlb,
+               aku_logger_cb_t logger)
+    : mmap_(file_name, tag, enable_huge_tlb, logger)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
     , file_path_(file_name)
@@ -56,6 +60,7 @@ Volume::Volume(const char* file_name, aku_Config const& conf, int tag, aku_logge
     , tag_(tag)
     , logger_(logger)
     , is_temporary_ {0}
+    , huge_tlb_(enable_huge_tlb)
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
@@ -95,7 +100,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
         AKU_PANIC("can't create new page file (out of space?)");
     }
 
-    newvol.reset(new Volume(file_path_.c_str(), config_, tag_, logger_));
+    newvol.reset(new Volume(file_path_.c_str(), config_, tag_, huge_tlb_, logger_));
     newvol->page_->open_count = open_count;
     newvol->page_->close_count = close_count;
     return newvol;
@@ -206,6 +211,8 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     , open_error_code_(AKU_SUCCESS)
     , tag_(storage_cnt++)
     , logger_(params.logger)
+    , durability_(params.durability)
+    , huge_tlb_(params.enable_huge_tlb != 0)
 {
     VolumeIterator v_iter(path, params.logger);
 
@@ -223,7 +230,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     // create volumes list
     for(auto path: v_iter.volume_names) {
         PVolume vol;
-        vol.reset(new Volume(path.c_str(), config_, tag_, logger_));
+        vol.reset(new Volume(path.c_str(), config_, tag_, huge_tlb_, logger_));
         volumes_.push_back(vol);
     }
 
@@ -407,18 +414,18 @@ aku_Status Storage::write(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data
                     // Slow path
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
                     if (status == AKU_SUCCESS) {
-                        switch(1) {  // TODO: this must be configured
-                        case 1:
+                        switch(durability_) {
+                        case AKU_MAX_DURABILITY:
                             // Max durability
                             active_volume_->flush();
                             break;
-                        case 2:
+                        case AKU_DURABILITY_SPEED_TRADEOFF:
                             // Compromice some durability for speed
                             if ((merge_lock % 8) == 1) {
                                 active_volume_->flush();
                             }
                             break;
-                        case 4:
+                        case AKU_MAX_WRITE_SPEED:
                             // Max speed
                             if ((merge_lock % 32) == 1) {
                                 active_volume_->flush();
@@ -506,7 +513,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
         return status;
     }
 
-    MemoryMappedFile mfile(file_name, 0, logger);
+    MemoryMappedFile mfile(file_name, 0, false, logger);
     if (mfile.is_bad())
         return mfile.status_code();
 
