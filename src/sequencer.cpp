@@ -25,10 +25,6 @@
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
 
-// ParamId index inside key
-#define PARAM_ID 1
-// TimeStamp index inside key
-#define TIMESTMP 0
 // Max space required to store one data element
 #define SPACE_PER_ELEMENT 20
 
@@ -51,22 +47,34 @@ bool top_element_more(const RunType& x, const RunType& y)
 TimeSeriesValue::TimeSeriesValue() {}
 
 TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset value, uint32_t value_length)
-    : key_(ts, id)
-    , value(value)
-    , value_length(value_length)
+    : key_ts_(ts)
+    , key_id_(id)
+    , type_(BLOB)
 {
+    payload.blob.value = value;
+    payload.blob.value_length = value_length;
+}
+
+TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, double value)
+    : key_ts_(ts)
+    , key_id_(id)
+    , type_(DOUBLE)
+{
+    payload.value = value;
 }
 
 aku_TimeStamp TimeSeriesValue::get_timestamp() const {
-    return std::get<TIMESTMP>(key_);
+    return key_ts_;
 }
 
 aku_ParamId TimeSeriesValue::get_paramid() const {
-    return std::get<PARAM_ID>(key_);
+    return key_id_;
 }
 
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
-    return lhs.key_ < rhs.key_;
+    auto lhstup = std::make_tuple(lhs.key_ts_, lhs.key_id_);
+    auto rhstup = std::make_tuple(rhs.key_ts_, rhs.key_id_);
+    return lhstup < rhstup;
 }
 
 // Sequencer
@@ -172,7 +180,7 @@ std::tuple<int, int> Sequencer::add(TimeSeriesValue const& value) {
     // FIXME: max_cache_size_ is not used
     int status = 0;
     int lock = 0;
-    tie(status, lock) = check_timestamp_(get<0>(value.key_));
+    tie(status, lock) = check_timestamp_(value.get_timestamp());
     if (status != AKU_SUCCESS) {
         return make_tuple(status, lock);
     }
@@ -337,10 +345,10 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
         CursorResult result = {
-            val.value_length,
+            val.payload.blob.value_length,
             val.get_timestamp(),
             val.get_paramid(),
-            page->read_entry_data(val.value)
+            page->read_entry_data(val.payload.blob.value)
         };
         return cur->put(caller, result);
     };
@@ -369,8 +377,8 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
         auto id = val.get_paramid();
         chunk_header.timestamps.push_back(ts);
         chunk_header.paramids.push_back(id);
-        chunk_header.offsets.push_back(val.value);
-        chunk_header.lengths.push_back(val.value_length);
+        chunk_header.offsets.push_back(val.payload.blob.value);
+        chunk_header.lengths.push_back(val.payload.blob.value_length);
         return true;
     };
 
@@ -399,10 +407,10 @@ struct SearchPredicate {
     SearchPredicate(SearchQuery const& q) : query(q) {}
 
     bool operator () (TimeSeriesValue const& value) const {
-        if (query.lowerbound <= get<TIMESTMP>(value.key_) &&
-            query.upperbound >= get<TIMESTMP>(value.key_))
+        if (query.lowerbound <= value.get_timestamp() &&
+            query.upperbound >= value.get_timestamp())
         {
-            if (query.param_pred(get<PARAM_ID>(value.key_)) == SearchQuery::MATCH) {
+            if (query.param_pred(value.get_paramid()) == SearchQuery::MATCH) {
                 return true;
             }
         }
@@ -448,10 +456,10 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
         CursorResult result = {
-            val.value_length,
+            val.payload.blob.value_length,
             val.get_timestamp(),
             val.get_paramid(),
-            page->read_entry_data(val.value)
+            page->read_entry_data(val.payload.blob.value)
         };
         return cur->put(caller, result);
     };

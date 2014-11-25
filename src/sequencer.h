@@ -33,20 +33,42 @@
 namespace Akumuli {
 
 struct TimeSeriesValue {
-    std::tuple<aku_TimeStamp, aku_ParamId> key_;
-    aku_EntryOffset value;
-    uint32_t value_length;
+
+    // Type definitions
+    struct Blob {
+        aku_EntryOffset value;
+        uint32_t value_length;
+    };
+
+    enum ValueType {
+        BLOB,
+        DOUBLE,
+    };
+
+    // Data members
+    aku_TimeStamp                           key_ts_;  // Key value (time)
+    aku_ParamId                             key_id_;  // Key value (id)
+    ValueType                               type_;    // Payload type
+    union {
+            Blob                            blob;     // Binary payload
+            double                          value;    // Numeric payload
+    } payload;
+    // NOTE: this structure can be packed better without tuple.
+    // Tuple needed only for comparison and can be created on the stack.
 
     TimeSeriesValue();
 
     TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length);
+
+    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, double value);
 
     aku_TimeStamp get_timestamp() const;
 
     aku_ParamId get_paramid() const;
 
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
-};
+
+} __attribute__((packed));
 
 
 /** Time-series sequencer.
