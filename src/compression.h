@@ -38,6 +38,7 @@ struct ChunkHeader {
     std::vector<aku_ParamId>    paramids;
     std::vector<uint32_t>       offsets;
     std::vector<uint32_t>       lengths;
+    std::vector<double>         values;
 };
 
 struct ChunkWriter {

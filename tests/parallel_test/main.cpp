@@ -108,7 +108,7 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
                     return last;
 
                 }
-                uint64_t pvalue = *(uint64_t*)pointers[i];
+                uint64_t pvalue = *(uint64_t*)pointers[i].ptr;
                 if (pvalue != (current_time << 2)) {
                     std::cout << "(BW) Bad value at " << current_time << " expected " << (current_time << 2) << " acutal " << pvalue << std::endl;
                     aku_close_cursor(cursor);
@@ -177,7 +177,7 @@ aku_TimeStamp query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_
                 return last;
 
             }
-            uint64_t pvalue = *(uint64_t*)pointers[i];
+            uint64_t pvalue = *(uint64_t*)pointers[i].ptr;
             if (pvalue != (current_time << 2)) {
                 std::cout << "(FW) Bad value at " << current_time << " expected " << (current_time << 2) << " acutal " << pvalue << std::endl;
                 aku_close_cursor(cursor);
@@ -211,7 +211,7 @@ int main(int cnt, const char** args)
         return (int)result;
     }
 
-    aku_FineTuneParams params;
+    aku_FineTuneParams params = {};
     params.debug_mode = 0;
     auto db = aku_open_database(DB_META_FILE, params);
     boost::timer timer;

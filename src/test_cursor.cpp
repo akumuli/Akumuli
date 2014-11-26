@@ -18,7 +18,7 @@ void test_cursor(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
-            r.data = reinterpret_cast<void*>(i);
+            r.data.ptr = reinterpret_cast<void*>(i);
             r.length = sizeof(i);
             cursor.put(caller, r);
             expected.push_back(r);
@@ -36,7 +36,7 @@ void test_cursor(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data, actual.at(i).data);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data.ptr, actual.at(i).data.ptr);
     }
 }
 
@@ -46,7 +46,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
             CursorResult r;
-            r.data = reinterpret_cast<void*>(i);
+            r.data.ptr = reinterpret_cast<void*>(i);
             r.length = sizeof(i);
             cursor.put(caller, r);
             expected.push_back(r);
@@ -65,7 +65,7 @@ void test_cursor_error(int n_iter, int buf_size) {
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data, actual.at(i).data);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data.ptr, actual.at(i).data.ptr);
     }
 }
 

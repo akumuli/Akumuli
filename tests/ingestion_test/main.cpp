@@ -74,7 +74,7 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
                 std::cout << "Error at " << cursor_ix << " expected id 42 acutal id " << paramids[i]  << std::endl;
                 return false;
             }
-            uint64_t const* pvalue = (uint64_t const*)pointers[i];
+            uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
             if (*pvalue != current_time + 2) {
                 std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
                 return false;

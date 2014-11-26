@@ -39,10 +39,17 @@
 // Data structures
 //-----------------
 
+//! Payload data
+typedef union {
+    const void *ptr;
+    double      float64;
+    uint64_t    uint64;
+} aku_PData;
+
+
 typedef uint64_t    aku_TimeStamp;    //< Timestamp
 typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
 typedef int         aku_Status;       //< Status code of any operation
-typedef const void* aku_PData;
 
 
 //! Structure represents memory region

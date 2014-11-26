@@ -566,8 +566,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header.lengths[i],
                 header.timestamps[i],
                 header.paramids[i],
-                page->read_entry_data(header.offsets[i])
             };
+            result.data.ptr = page->read_entry_data(header.offsets[i]);
             cursor->put(caller, result);
         };
 

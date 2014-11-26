@@ -71,6 +71,33 @@ aku_ParamId TimeSeriesValue::get_paramid() const {
     return key_id_;
 }
 
+CursorResult TimeSeriesValue::to_result(PageHeader const *page) const {
+    CursorResult res;
+    if (type_ == BLOB) {
+        res.data.ptr = page->read_entry_data(payload.blob.value);
+        res.length = payload.blob.value_length;
+    } else {
+        res.data.float64 = payload.value;
+        res.length = 0;  // Indicates that res contains double value
+    }
+    res.param_id = key_id_;
+    res.timestamp = key_ts_;
+    return res;
+}
+
+void TimeSeriesValue::add_to_header(ChunkHeader *chunk_header) const {
+    chunk_header->timestamps.push_back(key_ts_);
+    chunk_header->paramids.push_back(key_id_);
+    if (type_ == BLOB) {
+        chunk_header->offsets.push_back(payload.blob.value);
+        chunk_header->lengths.push_back(payload.blob.value_length);
+    } else {
+        chunk_header->offsets.push_back(0u);
+        chunk_header->lengths.push_back(0u);
+        chunk_header->values.push_back(payload.value);
+    }
+}
+
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
     auto lhstup = std::make_tuple(lhs.key_ts_, lhs.key_id_);
     auto rhstup = std::make_tuple(rhs.key_ts_, rhs.key_id_);
@@ -344,12 +371,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        CursorResult result = {
-            val.payload.blob.value_length,
-            val.get_timestamp(),
-            val.get_paramid(),
-            page->read_entry_data(val.payload.blob.value)
-        };
+        CursorResult result = val.to_result(page);
         return cur->put(caller, result);
     };
 
@@ -373,12 +395,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     ChunkHeader chunk_header;
 
     auto consumer = [&](TimeSeriesValue const& val) {
-        auto ts = val.get_timestamp();
-        auto id = val.get_paramid();
-        chunk_header.timestamps.push_back(ts);
-        chunk_header.paramids.push_back(id);
-        chunk_header.offsets.push_back(val.payload.blob.value);
-        chunk_header.lengths.push_back(val.payload.blob.value_length);
+        val.add_to_header(&chunk_header);
         return true;
     };
 
