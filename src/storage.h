@@ -139,6 +139,8 @@ struct Storage
     //! Write fl
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
 
+    aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);
+
     // Reading
 
     //! Search storage using cursor

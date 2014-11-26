@@ -98,6 +98,10 @@ void TimeSeriesValue::add_to_header(ChunkHeader *chunk_header) const {
     }
 }
 
+bool TimeSeriesValue::is_blob() const {
+    return type_ == BLOB;
+}
+
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
     auto lhstup = std::make_tuple(lhs.key_ts_, lhs.key_id_);
     auto rhstup = std::make_tuple(rhs.key_ts_, rhs.key_id_);

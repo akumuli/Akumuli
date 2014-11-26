@@ -70,6 +70,8 @@ struct TimeSeriesValue {
 
     void add_to_header(ChunkHeader *chunk_header) const;
 
+    bool is_blob() const;
+
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
 } __attribute__((packed));

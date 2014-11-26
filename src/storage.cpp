@@ -399,15 +399,17 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 
 // Writing
 
-//! write binary data
-aku_Status Storage::write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
         auto space_required = active_volume_->cache_->get_space_estimate();
-        int status = active_page_->add_chunk(data, space_required);
+        int status = AKU_SUCCESS;
+        if (ts_value.is_blob()) {
+            status = active_page_->add_chunk(data, space_required);
+            ts_value.payload.blob.value = active_page_->last_offset;
+        }
         switch (status) {
             case AKU_SUCCESS: {
-                TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
                 int merge_lock = 0;
                 std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
                 if (merge_lock % 2 == 1) {
@@ -449,8 +451,16 @@ aku_Status Storage::write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange
 }
 
 //! write binary data
+aku_Status Storage::write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
+    return _write_impl(ts_value, data);
+}
+
+//! write binary data
 aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double value) {
-    AKU_PANIC("Not implemented");
+    aku_MemRange m = {};
+    TimeSeriesValue ts_value(ts, param, value);
+    return _write_impl(ts_value, m);
 }
 
 
