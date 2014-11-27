@@ -55,11 +55,11 @@ struct CompressionUtil {
       * @param data ChunkHeader to compress
       */
     static
-    aku_Status encode_chunk( uint32_t           *n_elements
+    aku_Status encode_chunk(uint32_t           *n_elements
                            , aku_TimeStamp      *ts_begin
                            , aku_TimeStamp      *ts_end
                            , ChunkWriter        *writer
-                           , const ChunkHeader&  data
+                           , const ChunkHeader &data
                            );
 
     /** Decompress ChunkHeader.

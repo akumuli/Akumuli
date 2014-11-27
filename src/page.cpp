@@ -554,7 +554,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
 
         // Read lengths, param ids and offsets.
-        CompressionUtil::decode_chunk(&header, &pbegin, pend, 1, 3, probe_length);
+        CompressionUtil::decode_chunk(&header, &pbegin, pend, 1, 4, probe_length);
 
         bool probe_in_time_range = true;
 
