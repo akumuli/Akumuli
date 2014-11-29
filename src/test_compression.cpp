@@ -128,3 +128,19 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
 }
 
+void test_doubles_compression(std::vector<double> input, std::vector<aku_ParamId> params) {
+    ByteVector buffer;
+    size_t nblocks = CompressionUtil::compress_doubles(input, params, &buffer);
+    std::vector<double> output;
+    CompressionUtil::decompress_doubles(buffer, nblocks, params, &output);
+}
+
+BOOST_AUTO_TEST_CASE(Test_doubles_compression_1) {
+    std::vector<double> input = {
+        100.00001, 100.0001, 100.001, 100.01
+    };
+    std::vector<aku_ParamId> params = {
+        0, 0, 0, 0
+    };
+    test_doubles_compression(input, params);
+}

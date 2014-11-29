@@ -32,6 +32,7 @@
 
 namespace Akumuli {
 
+typedef std::vector<unsigned char> ByteVector;
 
 struct ChunkHeader {
     std::vector<aku_TimeStamp>  timestamps;
@@ -80,7 +81,30 @@ struct CompressionUtil {
                     , int                   stage
                     , int                   steps
                     , uint32_t              probe_length);
+
+    /** Compress list of doubles.
+      * @param input array of doubles
+      * @param params array of parameter ids
+      * @param buffer resulting byte array
+      */
+    static
+    size_t compress_doubles(std::vector<double> const& input,
+                            std::vector<aku_ParamId> const& params,
+                            ByteVector *buffer);  // TODO: maybe I should use plain old buffer here
+
+    /** Decompress list of doubles.
+      * @param buffer input data
+      * @param numbloks number of 4bit blocs inside buffer
+      * @param params list of parameter ids
+      * @param output resulting array
+      */
+    static
+    void decompress_doubles(ByteVector& buffer,
+                            size_t numblocks,
+                            std::vector<aku_ParamId> const& params,
+                            std::vector<double> *output);
 };
+
 
 //! Base 128 encoded integer
 template<class TVal>
@@ -171,8 +195,6 @@ public:
         return value_;
     }
 };
-
-typedef std::vector<unsigned char> ByteVector;
 
 //! Base128 encoder
 template<class TVal>

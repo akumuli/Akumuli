@@ -2,6 +2,82 @@
 
 namespace Akumuli {
 
+//! Stream that can be used to read/write data by 4-bits
+struct HalfByteStream {
+    ByteVector *data;
+    size_t write_pos;
+    size_t read_pos;
+    char tmp;
+
+    HalfByteStream(ByteVector *d, size_t numblocks=0u) :
+        data(d),
+        write_pos(numblocks),
+        read_pos(0),
+        tmp(0) {
+    }
+
+    void add4bits(char value) {
+        if (write_pos % 2 == 0) {
+            tmp = value & 0xF;
+        } else {
+            tmp |= (value << 4);
+            data->push_back(tmp);
+            tmp = 0;
+        }
+        write_pos++;
+    }
+
+    char read4bits() {
+        if (read_pos % 2 == 0) {
+            return data->at(read_pos++) & 0xF;
+        }
+        return data->at(read_pos++) >> 4;
+    }
+
+    void close() {
+        if (write_pos % 2 != 0) {
+            data->push_back(tmp);
+        }
+    }
+};
+
+size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
+                                         std::vector<aku_ParamId> const& params,
+                                         ByteVector *buffer) {
+    uint64_t prev = 0ul;
+    HalfByteStream stream(buffer);
+    for (double x: input) {
+        uint64_t xx = *reinterpret_cast<uint64_t*>(&x);
+        uint64_t diff = xx ^ prev;
+        prev = xx;
+        int res = __builtin_clzl(diff);
+        int nsteps = 16 - res / 4;
+        int shift = res / 4 * 4;
+        uint64_t shifted = diff >> shift;
+        stream.add4bits(nsteps);
+        for (int i = nsteps; i --> 0;) {
+            stream.add4bits(shifted & 0xF);
+            shifted >>= 4;
+        }
+    }
+    return stream.write_pos;
+}
+
+void CompressionUtil::decompress_doubles(ByteVector& buffer,
+                                         size_t numblocks,
+                                         std::vector<aku_ParamId> const& params,
+                                         std::vector<double> *output) {
+    HalfByteStream stream(&buffer, numblocks);
+    uint64_t curr = 0ul;
+
+    int nsteps = stream.read4bits();
+    for (int i = nsteps; i--> 0;) {
+        curr |= stream.read4bits();
+        curr <<= 4;
+    }
+    output->push_back(*reinterpret_cast<double*>(&curr));
+}
+
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_TimeStamp      *ts_begin
                                         , aku_TimeStamp      *ts_end
