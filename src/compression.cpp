@@ -20,6 +20,13 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     DeltaRLEOffWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
+    for (auto i = 0ul; i < data.timestamps.size(); i++) {
+        timestamp_stream.put(data.timestamps.at(i));
+        paramid_stream.put(data.paramids.at(i));
+        offset_stream.put(data.offsets.at(i));
+        length_stream.put(data.lengths.at(i));
+    }
+
     timestamp_stream.close();
     paramid_stream.close();
     offset_stream.close();
@@ -47,13 +54,15 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                 doubles_size*8,
             };
             status = writer->add_chunk(doubles_mrange, size_estimate);
+            if (status != AKU_SUCCESS) {
+                break;
+            }
         }
         aku_MemRange doubles_size_mrange = {
             &doubles_size,
             sizeof(doubles_size),
         };
         // Doubles size
-        size_estimate -= sizeof(doubles_size);
         status = writer->add_chunk(doubles_size_mrange, size_estimate);
         if (status != AKU_SUCCESS) {
             break;
@@ -118,44 +127,44 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
             header->paramids.push_back(pid_reader.next());
         }
         *pbegin = pid_reader.pos();
-        if (--steps == 1) {
+        if (--steps == 0) {
             return 2;
         }
     }
     case 2: {
-            // read lengths
-            RLELenReader len_reader(*pbegin, pend);
-            for (auto i = 0u; i < probe_length; i++) {
-                header->lengths.push_back(len_reader.next());
-            }
-            *pbegin = len_reader.pos();
-            if (--steps == 2) {
-                return 3;
-            }
+        // read lengths
+        RLELenReader len_reader(*pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header->lengths.push_back(len_reader.next());
         }
+        *pbegin = len_reader.pos();
+        if (--steps == 0) {
+            return 3;
+        }
+    }
     case 3: {
-            // read offsets
-            DeltaRLEOffReader off_reader(*pbegin, pend);
-            for (auto i = 0u; i < probe_length; i++) {
-                header->offsets.push_back(off_reader.next());
-            }
-            *pbegin = off_reader.pos();
-            if (--steps == 3) {
-                return 4;
-            }
+        // read offsets
+        DeltaRLEOffReader off_reader(*pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header->offsets.push_back(off_reader.next());
         }
+        *pbegin = off_reader.pos();
+        if (--steps == 0) {
+            return 4;
+        }
+    }
     case 4: {
-            // read doubles
-            uint32_t doubles_size = *reinterpret_cast<const uint32_t*>(*pbegin);
-            *pbegin += sizeof(uint32_t);
-            const double *pdouble = reinterpret_cast<const double*>(*pbegin);
-            for (auto i = doubles_size; i --> 0;) {
-                header->values.push_back(*pdouble++);
-            }
-            *pbegin = reinterpret_cast<const unsigned char*>(pdouble);
-            if (--steps == 4) {
-                return 5;
-            }
+        // read doubles
+        uint32_t doubles_size = *reinterpret_cast<const uint32_t*>(*pbegin);
+        *pbegin += sizeof(uint32_t);
+        const double *pdouble = reinterpret_cast<const double*>(*pbegin);
+        for (auto i = doubles_size; i --> 0;) {
+            header->values.push_back(*pdouble++);
+        }
+        *pbegin = reinterpret_cast<const unsigned char*>(pdouble);
+        if (--steps == 0) {
+            return 5;
+        }
     }
     default:
         break;
