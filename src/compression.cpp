@@ -1,4 +1,5 @@
 #include "compression.h"
+#include <unordered_map>
 
 namespace Akumuli {
 
@@ -7,7 +8,7 @@ struct HalfByteStream {
     ByteVector *data;
     size_t write_pos;
     size_t read_pos;
-    char tmp;
+    unsigned char tmp;
 
     HalfByteStream(ByteVector *d, size_t numblocks=0u) :
         data(d),
@@ -16,7 +17,7 @@ struct HalfByteStream {
         tmp(0) {
     }
 
-    void add4bits(char value) {
+    void add4bits(unsigned char value) {
         if (write_pos % 2 == 0) {
             tmp = value & 0xF;
         } else {
@@ -27,11 +28,11 @@ struct HalfByteStream {
         write_pos++;
     }
 
-    char read4bits() {
+    unsigned char read4bits() {
         if (read_pos % 2 == 0) {
-            return data->at(read_pos++) & 0xF;
+            return data->at(read_pos++ / 2) & 0xF;
         }
-        return data->at(read_pos++) >> 4;
+        return data->at(read_pos++ / 2) >> 4;
     }
 
     void close() {
@@ -43,39 +44,65 @@ struct HalfByteStream {
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          std::vector<aku_ParamId> const& params,
-                                         ByteVector *buffer) {
-    uint64_t prev = 0ul;
+                                         ByteVector *buffer)
+{
+    std::unordered_map<aku_ParamId, uint64_t> prev_in_series;
+    for (auto id: params) {
+        prev_in_series[id] = 0ul;
+    }
     HalfByteStream stream(buffer);
-    for (double x: input) {
-        uint64_t xx = *reinterpret_cast<uint64_t*>(&x);
-        uint64_t diff = xx ^ prev;
-        prev = xx;
-        int res = __builtin_clzl(diff);
-        int nsteps = 16 - res / 4;
-        int shift = res / 4 * 4;
-        uint64_t shifted = diff >> shift;
-        stream.add4bits(nsteps);
-        for (int i = nsteps; i --> 0;) {
-            stream.add4bits(shifted & 0xF);
-            shifted >>= 4;
+    for (size_t ix = 0u; ix != input.size(); ix++) {
+        double real = input.at(ix);
+        aku_ParamId id = params.at(ix);
+        uint64_t prev = prev_in_series.at(id);
+        uint64_t curr = *reinterpret_cast<uint64_t*>(&real);
+        uint64_t diff = curr ^ prev;
+        prev_in_series.at(id) = curr;
+        int res = 64;
+        if (diff != 0) {
+            res = __builtin_clzl(diff);
+        }
+        int nblocks = 0xF - res / 4;
+        if (nblocks < 0) {
+            nblocks = 0;
+        }
+        stream.add4bits(nblocks);
+        for (int i = (nblocks + 1); i --> 0;) {
+            stream.add4bits(diff & 0xF);
+            diff >>= 4;
         }
     }
+    stream.close();
     return stream.write_pos;
 }
 
 void CompressionUtil::decompress_doubles(ByteVector& buffer,
                                          size_t numblocks,
                                          std::vector<aku_ParamId> const& params,
-                                         std::vector<double> *output) {
-    HalfByteStream stream(&buffer, numblocks);
-    uint64_t curr = 0ul;
-
-    int nsteps = stream.read4bits();
-    for (int i = nsteps; i--> 0;) {
-        curr |= stream.read4bits();
-        curr <<= 4;
+                                         std::vector<double> *output)
+{
+    std::unordered_map<aku_ParamId, uint64_t> prev_in_series;
+    for (auto id: params) {
+        prev_in_series[id] = 0ul;
     }
-    output->push_back(*reinterpret_cast<double*>(&curr));
+    HalfByteStream stream(&buffer, numblocks);
+    size_t ix = 0;
+    while(numblocks) {
+        aku_ParamId id = params.at(ix);
+        uint64_t prev = prev_in_series.at(id);
+        uint64_t diff = 0ul;
+        int nsteps = stream.read4bits();
+        for (int i = 0; i < (nsteps + 1); i++) {
+            uint64_t delta = stream.read4bits();
+            diff |= delta << (i*4);
+        }
+        numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of 4bit blocks
+        uint64_t curr = prev ^ diff;
+        double real = *reinterpret_cast<double*>(&curr);
+        output->push_back(real);
+        prev_in_series.at(id) = curr;
+        ix++;
+    }
 }
 
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements

@@ -133,14 +133,34 @@ void test_doubles_compression(std::vector<double> input, std::vector<aku_ParamId
     size_t nblocks = CompressionUtil::compress_doubles(input, params, &buffer);
     std::vector<double> output;
     CompressionUtil::decompress_doubles(buffer, nblocks, params, &output);
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(input.begin(), input.end(), output.begin(), output.end());
 }
 
-BOOST_AUTO_TEST_CASE(Test_doubles_compression_1) {
+BOOST_AUTO_TEST_CASE(Test_doubles_compression_1_series) {
     std::vector<double> input = {
-        100.00001, 100.0001, 100.001, 100.01
+        100.1001,
+        100.0999,
+        100.0998,
+        100.0997,
+        100.0996
     };
     std::vector<aku_ParamId> params = {
-        0, 0, 0, 0
+        0, 0, 0, 0, 0
+    };
+    test_doubles_compression(input, params);
+}
+
+BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
+    std::vector<double> input = {
+        100.1001, 200.4999,
+        100.0999, 200.499,
+        100.0998, 200.49,
+        100.0997, 200.5,
+        100.0996, 200.5001
+    };
+    std::vector<aku_ParamId> params = {
+        0, 1, 0, 1, 0, 1, 0, 1, 0, 1
     };
     test_doubles_compression(input, params);
 }
