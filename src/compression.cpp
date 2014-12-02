@@ -123,11 +123,20 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     DeltaRLEOffWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
+    std::vector<aku_ParamId> params_with_zlen;
+
     for (auto i = 0ul; i < data.timestamps.size(); i++) {
-        timestamp_stream.put(data.timestamps.at(i));
-        paramid_stream.put(data.paramids.at(i));
-        offset_stream.put(data.offsets.at(i));
-        length_stream.put(data.lengths.at(i));
+        auto pid = data.paramids.at(i);
+        auto offset = data.offsets.at(i);
+        auto len = data.lengths.at(i);
+        auto ts = data.timestamps.at(i);
+        timestamp_stream.put(ts);
+        paramid_stream.put(pid);
+        offset_stream.put(offset);
+        length_stream.put(len);
+        if (len == 0) {
+            params_with_zlen.push_back(pid);
+        }
     }
 
     timestamp_stream.close();
@@ -149,28 +158,30 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     switch(status) {
     case AKU_SUCCESS:
         // Doubles
-        uint32_t doubles_size = static_cast<uint32_t>(data.values.size());
-        if (doubles_size != 0) {
-            size_estimate -= data.values.size() * sizeof(double);
-            const aku_MemRange doubles_mrange = {
-                const_cast<void*>((const void*)data.values.data()),
-                doubles_size*8,
+        uint64_t nblocks = 0ul;
+        if (!data.values.empty()) {
+            ByteVector compressed;
+            nblocks = CompressionUtil::compress_doubles(data.values, params_with_zlen, &compressed);
+            size_estimate -= compressed.size() + sizeof(uint64_t);
+            const aku_MemRange compressed_mrange = {
+                compressed.data(),
+                static_cast<uint32_t>(compressed.size())
             };
-            status = writer->add_chunk(doubles_mrange, size_estimate);
+            status = writer->add_chunk(compressed_mrange, size_estimate);
             if (status != AKU_SUCCESS) {
                 break;
             }
         }
-        aku_MemRange doubles_size_mrange = {
-            &doubles_size,
-            sizeof(doubles_size),
+        aku_MemRange nblocks_mrange = {
+            &nblocks,
+            sizeof(nblocks),
         };
         // Doubles size
-        status = writer->add_chunk(doubles_size_mrange, size_estimate);
+        status = writer->add_chunk(nblocks_mrange, size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
-        size_estimate -= sizeof(doubles_size);
+        size_estimate -= sizeof(nblocks);
         // Offsets
         status = writer->add_chunk(offset_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
@@ -258,13 +269,20 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     }
     case 4: {
         // read doubles
-        uint32_t doubles_size = *reinterpret_cast<const uint32_t*>(*pbegin);
-        *pbegin += sizeof(uint32_t);
-        const double *pdouble = reinterpret_cast<const double*>(*pbegin);
-        for (auto i = doubles_size; i --> 0;) {
-            header->values.push_back(*pdouble++);
+        uint64_t nblocks = *reinterpret_cast<const uint64_t*>(*pbegin);
+        *pbegin += sizeof(uint64_t);
+        if (nblocks) {
+            std::vector<aku_ParamId> params;
+            for (size_t i = 0; i != header->paramids.size(); i++) {
+                if (header->lengths.at(i) == 0) {
+                    auto pid = header->paramids.at(i);
+                    params.push_back(pid);
+                }
+            }
+            ByteVector buffer(*pbegin, *pbegin + (nblocks/2 + 1));
+            CompressionUtil::decompress_doubles(buffer, nblocks, params, &header->values);
+            *pbegin += static_cast<uint32_t>(buffer.size());
         }
-        *pbegin = reinterpret_cast<const unsigned char*>(pdouble);
         if (--steps == 0) {
             return 5;
         }
