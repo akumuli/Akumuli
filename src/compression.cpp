@@ -52,12 +52,15 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     }
     HalfByteStream stream(buffer);
     for (size_t ix = 0u; ix != input.size(); ix++) {
-        double real = input.at(ix);
+        union {
+            double real;
+            uint64_t bits;
+        } curr = {};
+        curr.real = input.at(ix);
         aku_ParamId id = params.at(ix);
         uint64_t prev = prev_in_series.at(id);
-        uint64_t curr = *reinterpret_cast<uint64_t*>(&real);
-        uint64_t diff = curr ^ prev;
-        prev_in_series.at(id) = curr;
+        uint64_t diff = curr.bits ^ prev;
+        prev_in_series.at(id) = curr.bits;
         int res = 64;
         if (diff != 0) {
             res = __builtin_clzl(diff);
@@ -97,10 +100,13 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
             diff |= delta << (i*4);
         }
         numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of 4bit blocks
-        uint64_t curr = prev ^ diff;
-        double real = *reinterpret_cast<double*>(&curr);
-        output->push_back(real);
-        prev_in_series.at(id) = curr;
+        union {
+            uint64_t bits;
+            double real;
+        } curr = {};
+        curr.bits = prev ^ diff;
+        output->push_back(curr.real);
+        prev_in_series.at(id) = curr.bits;
         ix++;
     }
 }
@@ -149,8 +155,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                  + paramid_stream.size()
                                  + offset_stream.size()
                                  + length_stream.size()
-                                 + data.values.size()*sizeof(double)
-                                 + sizeof(uint32_t)
+                                 + sizeof(uint64_t)
                                  );
 
     aku_Status status = AKU_SUCCESS;
@@ -162,7 +167,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         if (!data.values.empty()) {
             ByteVector compressed;
             nblocks = CompressionUtil::compress_doubles(data.values, params_with_zlen, &compressed);
-            size_estimate -= compressed.size() + sizeof(uint64_t);
+            size_estimate += static_cast<uint32_t>(compressed.size());
             const aku_MemRange compressed_mrange = {
                 compressed.data(),
                 static_cast<uint32_t>(compressed.size())
@@ -171,6 +176,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
             if (status != AKU_SUCCESS) {
                 break;
             }
+            size_estimate -= compressed.size();
         }
         aku_MemRange nblocks_mrange = {
             &nblocks,
@@ -193,13 +199,14 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         if (status != AKU_SUCCESS) {
             break;
         }
-        size_estimate -= offset_stream.size();
+        size_estimate -= length_stream.size();
         // Param-Ids
         status = writer->add_chunk(paramid_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
-        size_estimate -= paramid_stream.size();
+        auto paramid_stream_size = paramid_stream.size();
+        size_estimate -= paramid_stream_size;
         // Timestamps
         status = writer->add_chunk(timestamp_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {

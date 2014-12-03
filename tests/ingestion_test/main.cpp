@@ -70,8 +70,9 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
                 return false;
             }
-            if (paramids[i] != 42) {
-                std::cout << "Error at " << cursor_ix << " expected id 42 acutal id " << paramids[i]  << std::endl;
+            aku_ParamId id = current_time & 0xF;
+            if (paramids[i] != id) {
+                std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << paramids[i]  << std::endl;
                 return false;
             }
             uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
@@ -187,12 +188,15 @@ int main(int cnt, const char** args)
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             uint64_t k = i + 2;
+            //double value = k;
+            aku_ParamId id = i & 0xF;
             aku_MemRange memr;
             memr.address = (void*)&k;
             memr.length = sizeof(k);
-            aku_Status status = aku_write(db, 42, i, memr);
+            //status = aku_write_double(db, i & 0xF, i, value);
+            aku_Status status = aku_write(db, id, i, memr);
             if (status == AKU_EBUSY) {
-                status = aku_write(db, 42, i, memr);
+                status = aku_write(db, id, i, memr);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
