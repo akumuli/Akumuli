@@ -75,11 +75,17 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
                 std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << paramids[i]  << std::endl;
                 return false;
             }
-            uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
-            if (*pvalue != current_time + 2) {
-                std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
+            double dvalue = pointers[i].float64;
+            double dexpected = (current_time + 2)*0.0001;
+            if (dvalue - dexpected > 0.000001) {
+                std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
                 return false;
             }
+            //uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
+            //if (*pvalue != current_time + 2) {
+            //    std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
+            //    return false;
+            //}
             current_time++;
             counter++;
             if (counter % mod == 0) {
@@ -188,13 +194,13 @@ int main(int cnt, const char** args)
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             uint64_t k = i + 2;
-            //double value = k;
+            double value = 0.0001*k;
             aku_ParamId id = i & 0xF;
             aku_MemRange memr;
             memr.address = (void*)&k;
             memr.length = sizeof(k);
-            //status = aku_write_double(db, i & 0xF, i, value);
-            aku_Status status = aku_write(db, id, i, memr);
+            aku_Status status = aku_write_double(db, id, i, value);
+            //aku_Status status = aku_write(db, id, i, memr);
             if (status == AKU_EBUSY) {
                 status = aku_write(db, id, i, memr);
                 busy_count++;

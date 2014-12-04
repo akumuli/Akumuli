@@ -64,12 +64,6 @@ bool CursorFSM::can_put() const {
 }
 
 void CursorFSM::put(CursorResult const& result) {
-#ifdef DEBUG
-    if (result.length == 0) {
-        std::cout << "put error, result.length == 0" << std::endl;
-        assert(result.length);
-    }
-#endif
     usr_buffer_[write_index_++] = result;
 }
 

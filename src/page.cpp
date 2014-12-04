@@ -561,13 +561,19 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto cursor = cursor_;
         auto& caller = caller_;
         auto page = page_;
-        auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
+        auto ix_value = 0u;
+        auto put_entry = [&header, cursor, &caller, page, &ix_value] (uint32_t i) {
+            auto len = header.lengths[i];
             CursorResult result = {
-                header.lengths[i],
+                len,
                 header.timestamps[i],
                 header.paramids[i],
             };
-            result.data.ptr = page->read_entry_data(header.offsets[i]);
+            if (len == 0) {
+                result.data.float64 = header.values[ix_value++];
+            } else {
+                result.data.ptr = page->read_entry_data(header.offsets[i]);
+            }
             cursor->put(caller, result);
         };
 
