@@ -7,6 +7,8 @@ Storage system:
 ---------------
 - Separate tests runners for different components for better reporting and code quality
 - API updates
+  - native IEEE 745 data type, new API method `aku_write_double`
+  - `aku_write` renamed to `aku_write_blob` (macro definition for backward compatibility)
   - `aku_create_database` optional parameters now passed by value, not by pointer
   - new open parameters:
     - durability - allows to trade some durability for speed (default is max durability)
