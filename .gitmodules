@@ -1,0 +1,3 @@
+[submodule "libakumuli"]
+	path = libakumuli
+	url = https://github.com/akumuli/libakumuli.git
