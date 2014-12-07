@@ -5,4 +5,3 @@ tags
 Makefile
 CMakeFiles/
 CMakeCache.txt
-*.cmake
