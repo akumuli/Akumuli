@@ -14,9 +14,10 @@ find_package(Boost 1.53.0
     filesystem
     coroutine
     context
-    asio
     REQUIRED
 )
+
+find_package(Log4Cxx REQUIRED)
 
 find_package(APR REQUIRED)
 
