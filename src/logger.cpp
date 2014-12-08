@@ -14,11 +14,13 @@ Formatter::~Formatter() {
     switch (sink_) {
     case LOGGER_INFO:
         LOG4CXX_INFO(logger_, str_.str());
+        break;
     case LOGGER_ERROR:
         for(auto msg: *buffer_) {
             LOG4CXX_TRACE(logger_, msg);
         }
         LOG4CXX_ERROR(logger_, str_.str());
+        break;
     case BUFFER:
         buffer_->push_back(str_.str());
     case NONE:
