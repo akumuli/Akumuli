@@ -8,9 +8,27 @@
 namespace Akumuli {
 
 class Formatter {
-    std::stringstream& str_;
 public:
-    Formatter(std::stringstream& str);
+    enum SinkType {
+        LOGGER_INFO,
+        LOGGER_ERROR,
+        BUFFER,
+        NONE,
+    };
+private:
+    std::stringstream str_;
+    // Optional parameters
+    SinkType sink_;
+    log4cxx::LoggerPtr logger_;
+    boost::circular_buffer<std::string> *buffer_;
+public:
+    Formatter();
+
+    ~Formatter();
+
+    void set_info_sink(log4cxx::LoggerPtr logger);
+    void set_trace_sink(boost::circular_buffer<std::string> *buffer);
+    void set_error_sink(log4cxx::LoggerPtr logger, boost::circular_buffer<std::string> *buffer);
 
     template<class T>
     Formatter& operator << (T const& value) {
@@ -20,29 +38,18 @@ public:
 };
 
 /** Logger class. Not thread safe.
-  * @code
-  * Logger logger("subsystem name");
-  * logger.trace() << "Trace message";
-  * logger.info() << "Info message";
-  * logger.commit(); // info message goes to file
-  * logger.error() << "Error message " << e.what(); // trace, info and error goes to file
   */
 class Logger
 {
-    typedef std::unique_ptr<std::string> TraceMessage;
-    boost::circular_buffer<TraceMessage> trace_;
-    std::stringstream stream_;
+    boost::circular_buffer<std::string> trace_;
     log4cxx::LoggerPtr plogger_;
 public:
     Logger(const char* log_name, int depth);
 
-    Formatter& trace();
-    Formatter& info();
-    Formatter& error();
-
-    void commit();
+    Formatter&& trace(Formatter&& fmt = Formatter());
+    Formatter&& info(Formatter&& fmt = Formatter());
+    Formatter&& error(Formatter&& fmt = Formatter());
 };
 
 }
 
-#endif // LOGGER_H

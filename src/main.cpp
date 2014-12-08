@@ -4,6 +4,8 @@
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 
+#include "logger.h"
+
 using namespace boost::asio;
 
 namespace Akumulil {
@@ -100,7 +102,11 @@ private:
 }
 
 int main(int argc, char** argv) {
-
+    Akumuli::Logger logger("test", 10);
+    logger.info() << "Info";
+    for (int i = 0; i < 10; i++)
+        logger.trace() << "Trace msg " << i;
+    logger.error() << "Hello " << "world";
     return 0;
 }
 

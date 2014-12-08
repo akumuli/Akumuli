@@ -1,4 +1,7 @@
-add_executable(akumulid main.cpp)
+add_executable(akumulid
+    main.cpp
+    logger.cpp logger.h
+)
 target_link_libraries(akumulid
     akumuli
     "${LOG4CXX_LIBRARIES}"
