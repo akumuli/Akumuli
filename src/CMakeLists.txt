@@ -16,6 +16,16 @@ target_link_libraries(akumulid
 #     Test suite     #
 ######################
 
+# Streams
+add_executable(test_streams
+    test_stream.cpp
+    stream.cpp stream.h
+)
+target_link_libraries(test_streams
+    ${Boost_LIBRARIES}
+)
+add_test(streams test_streams)
+
 # Protocol parser
 add_executable(test_protocolparser
     test_protocolparser.cpp
