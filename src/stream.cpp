@@ -24,6 +24,13 @@ Byte MemStreamReader::get() {
     return 0;
 }
 
+Byte MemStreamReader::pick() const {
+    if (pos_ < size_) {
+        return buf_[pos_];
+    }
+    return 0;
+}
+
 bool MemStreamReader::is_eof() {
     return pos_ == size_;
 }

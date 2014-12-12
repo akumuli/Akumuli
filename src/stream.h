@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 #include <cstddef>
 #include <string>
@@ -27,10 +28,16 @@ struct ByteStreamReader {
     virtual ~ByteStreamReader();
 
     /** Read one byte from stream (if any).
-      * If stream is empty zero byte is returned and no exception is generated.
+      * If stream is empty result is undefined and no exception is generated.
       * User should check if there any data in the stream using function `is_eof`.
       */
     virtual Byte get() = 0;
+
+    /** Read top element of the stream.
+      * If stream is closed or empty - result is undefined.
+      * This method doesn't change state of the stream.
+      */
+    virtual Byte pick() const = 0;
 
     /** Check whether or not stream end is reached.
       * @returns true if stream end is reached false otherwise.
@@ -60,7 +67,7 @@ struct ByteStreamReader {
     virtual bool get_error_if_any(int *error_code, std::string *message) = 0;
 };
 
-class MemStreamReader : ByteStreamReader {
+class MemStreamReader : public ByteStreamReader {
     const Byte   *buf_;   //< Source bytes
     const size_t  size_;  //< Source size
     size_t        pos_;   //< Position in the stream
@@ -70,6 +77,7 @@ public:
     // ByteStreamReader interface
 public:
     virtual Byte get();
+    virtual Byte pick() const;
     virtual bool is_eof();
     virtual int read(Byte *buffer, size_t buffer_len);
     virtual void close();

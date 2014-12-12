@@ -16,13 +16,68 @@
 #pragma once
 
 #include "stream.h"
+#include <vector>
+
+namespace Akumuli {
 
 /**
   * REdis Serialization Protocol implementation.
   */
-class RESP
+struct RESPStream
 {
-public:
-    void deserialize(ByteStream *input_stream);
+    enum {
+        MB = 1024*1024,
+        STRING_LENGTH_MAX = 1*MB,  //< Longest possible string
+        BULK_LENGTH_MAX   = 8*MB,  //< Longest possible bulk string
+    };
+
+    enum Type {
+        STRING,
+        INTEGER,
+        ARRAY,
+        BULK_STR,
+        ERROR,
+        BAD,
+    };
+
+    ByteStreamReader *stream_;  //< Stream
+
+    RESPStream(ByteStreamReader *stream);
+
+    bool is_error();
+
+    /** Read next element's type.
+      */
+    Type next_type() const;
+
+    /** Read integer.
+      * Result is undefined unless next element in a stream is an integer.
+      * @param output resulting integer
+      * @return true on success false on error
+      */
+    bool read_int(int *output);
+
+    /** Read string element.
+      * Result is undefined unless next element in a stream is a string.
+      * @param buffer user suplied buffer
+      * @param buffer_size size of the buffer
+      * @return number of bytes copied
+      */
+    size_t read_string(Byte *buffer, size_t buffer_size);
+
+    /** Read bulk string element.
+      * Result is undefined unless next element in a stream is a bulk string.
+      * @param buffer user suplied buffer
+      * @param buffer_size size of the buffer
+      * @return number of bytes copied
+      */
+    size_t read_bulkstr(Byte *bufer, size_t buffer_size);
+
+    /** Read size of the array element.
+      * Result is undefined unless next element in a stream is an array.
+      */
+    int read_array_size();
 };
+
+}
 
