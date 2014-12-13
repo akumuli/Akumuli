@@ -33,16 +33,12 @@ RESPStream::Type RESPStream::next_type() const {
     return result;
 }
 
-bool RESPStream::read_int(uint64_t *output) {
-    Byte c = stream_->get();
-    if (c != ':') {
-        return false;
-    }
+bool RESPStream::_read_int_body(uint64_t *output) {
     uint64_t result = 0;
     const int MAX_DIGITS = 84;  // Maximum number of decimal digits in uint64_t
     int quota = MAX_DIGITS;
     while(quota) {
-        c = stream_->get();
+        Byte c = stream_->get();
         if (c == '\r') {
             c = stream_->get();
             if (c == '\n') {
@@ -63,12 +59,76 @@ bool RESPStream::read_int(uint64_t *output) {
     return false;
 }
 
-size_t RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
-    throw "Not implemented";
+bool RESPStream::read_int(uint64_t *output) {
+    Byte c = stream_->get();
+    if (c != ':') {
+        return false;
+    }
+    return _read_int_body(output);
 }
 
-size_t RESPStream::read_bulkstr(Byte *bufer, size_t buffer_size) {
-    throw "Not implemented";
+int RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
+    auto p = buffer;
+    int quota = std::min(byte_buffer_size, (size_t)RESPStream::STRING_LENGTH_MAX);
+    while(quota) {
+        Byte c = stream_->get();
+        if (c == '\r') {
+            c = stream_->get();
+            if (c == '\n') {
+                return p - buffer;
+            } else {
+                // bad end sequence
+                return -1;
+            }
+        }
+        *p++ = c;
+        quota--;
+    }
+    // out of quota
+    return -1;
+}
+
+int RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
+    Byte c = stream_->get();
+    if (c != '+') {
+        // bad call
+        return -1;
+    }
+    return _read_string_body(buffer, byte_buffer_size);
+}
+
+int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
+    Byte c = stream_->get();
+    if (c != '$') {
+        // bad call
+        return -1;
+    }
+    uint64_t n;
+    // parse "{value}\r\n"
+    if (!_read_int_body(&n)) {
+        // can't read integer
+        return -1;
+    }
+    if (n > RESPStream::BULK_LENGTH_MAX) {
+        // declared object size is too large
+        return -1;
+    }
+    if (n > buffer_size) {
+        // buffer is too small
+        return -1;
+    }
+    int nread = stream_->read(buffer, n);
+    if (nread < 0) {
+        // stream error
+        return nread;
+    }
+    Byte cr = stream_->get();
+    Byte lf = stream_->get();
+    if (cr != '\r' || lf != '\n') {
+        // bad end seq
+        return -1;
+    }
+    return nread;
 }
 
 int RESPStream::read_array_size() {

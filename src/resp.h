@@ -26,9 +26,10 @@ namespace Akumuli {
 struct RESPStream
 {
     enum {
-        MB = 1024*1024,
-        STRING_LENGTH_MAX = 1*MB,  //< Longest possible string
-        BULK_LENGTH_MAX   = 8*MB,  //< Longest possible bulk string
+        KB = 1024,
+        MB = 1024*KB,
+        STRING_LENGTH_MAX = 1*KB,  //< Longest possible string
+        BULK_LENGTH_MAX   = 1*MB,  //< Longest possible bulk string
     };
 
     enum Type {
@@ -57,21 +58,27 @@ struct RESPStream
       */
     bool read_int(uint64_t *output);
 
+    /** Read integer implementation */
+    bool _read_int_body(uint64_t *output);
+
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.
       * @param buffer user suplied buffer
       * @param buffer_size size of the buffer
-      * @return number of bytes copied
+      * @return number of bytes copied or negative value on error
       */
-    size_t read_string(Byte *buffer, size_t buffer_size);
+    int read_string(Byte *buffer, size_t buffer_size);
+
+    /** Read string implementation */
+    int _read_string_body(Byte *buffer, size_t buffer_size);
 
     /** Read bulk string element.
       * Result is undefined unless next element in a stream is a bulk string.
       * @param buffer user suplied buffer
       * @param buffer_size size of the buffer
-      * @return number of bytes copied
+      * @return number of bytes copied or negative value on error
       */
-    size_t read_bulkstr(Byte *bufer, size_t buffer_size);
+    int read_bulkstr(Byte *buffer, size_t buffer_size);
 
     /** Read size of the array element.
       * Result is undefined unless next element in a stream is an array.
