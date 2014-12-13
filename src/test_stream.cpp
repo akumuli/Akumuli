@@ -30,12 +30,12 @@ BOOST_AUTO_TEST_CASE(Test_stream_2) {
 
 BOOST_AUTO_TEST_CASE(Test_stream_3) {
 
-    std::string expected = "hello world";
+    std::string expected = "abcde";
     MemStreamReader stream_reader(expected.data(), expected.size());
-    BOOST_REQUIRE_EQUAL(stream_reader.pick(), 'h');
-    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'h');
-    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'e');
-    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'l');
-    BOOST_REQUIRE_EQUAL(stream_reader.pick(), 'o');
-    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'o');
+    BOOST_REQUIRE_EQUAL(stream_reader.pick(), 'a');
+    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'a');
+    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'b');
+    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'c');
+    BOOST_REQUIRE_EQUAL(stream_reader.pick(), 'd');
+    BOOST_REQUIRE_EQUAL(stream_reader.get(),  'd');
 }

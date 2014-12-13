@@ -55,7 +55,7 @@ struct RESPStream
       * @param output resulting integer
       * @return true on success false on error
       */
-    bool read_int(int *output);
+    bool read_int(uint64_t *output);
 
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.

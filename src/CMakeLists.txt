@@ -35,7 +35,7 @@ add_executable(test_respstream
 target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
 )
-add_test(streams test_streams)
+add_test(respstream test_respstream)
 
 # Protocol parser
 add_executable(test_protocolparser

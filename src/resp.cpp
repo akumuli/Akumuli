@@ -33,13 +33,15 @@ RESPStream::Type RESPStream::next_type() const {
     return result;
 }
 
-bool RESPStream::read_int(int *output) {
+bool RESPStream::read_int(uint64_t *output) {
     Byte c = stream_->get();
     if (c != ':') {
         return false;
     }
-    int result = 0;
-    while(true) {
+    uint64_t result = 0;
+    const int MAX_DIGITS = 84;  // Maximum number of decimal digits in uint64_t
+    int quota = MAX_DIGITS;
+    while(quota) {
         c = stream_->get();
         if (c == '\r') {
             c = stream_->get();
@@ -55,7 +57,10 @@ bool RESPStream::read_int(int *output) {
             return false;
         }
         result = result*10 + static_cast<int>(c & 0x0F);
+        quota--;
     }
+    // Integer is too long
+    return false;
 }
 
 size_t RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {

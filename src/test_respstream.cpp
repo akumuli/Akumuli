@@ -12,7 +12,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_1) {
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
-    int result = -1;
+    uint64_t result = -1;
     BOOST_REQUIRE(resp.read_int(&result));
     BOOST_REQUIRE_EQUAL(result, 1234567890);
 }
@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_2) {
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::STRING);
-    int result = -1;
+    uint64_t result = -1;
     BOOST_REQUIRE(!resp.read_int(&result));
     BOOST_REQUIRE_EQUAL(result, -1);
 }
@@ -33,7 +33,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_3) {
     const char* buffer = ":123fl\r\n";
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
-    int result = -1;
+    uint64_t result = -1;
     BOOST_REQUIRE(!resp.read_int(&result));
     BOOST_REQUIRE_EQUAL(result, -1);
 }
@@ -43,7 +43,24 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_4) {
     const char* buffer = ":1234567890\r00";
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
-    int result = -1;
+    uint64_t result = -1;
+    BOOST_REQUIRE(!resp.read_int(&result));
+    BOOST_REQUIRE_EQUAL(result, -1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_5) {
+
+    const char* buffer = ":"
+            "11111111111111111111"
+            "22222222222222222222"
+            "11111111111111111111"
+            "22222222222222222222"
+            "11110000000000000000"
+            "\r\n";
+    // Integer is too long
+    MemStreamReader stream(buffer, 104);
+    RESPStream resp(&stream);
+    uint64_t result = -1;
     BOOST_REQUIRE(!resp.read_int(&result));
     BOOST_REQUIRE_EQUAL(result, -1);
 }
