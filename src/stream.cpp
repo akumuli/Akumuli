@@ -21,14 +21,14 @@ Byte MemStreamReader::get() {
     if (pos_ < size_) {
         return buf_[pos_++];
     }
-    return 0;
+    throw StreamError("unexpected end of stream");
 }
 
 Byte MemStreamReader::pick() const {
     if (pos_ < size_) {
         return buf_[pos_];
     }
-    return 0;
+    throw StreamError("unexpected end of stream");
 }
 
 bool MemStreamReader::is_eof() {
@@ -44,10 +44,6 @@ int MemStreamReader::read(Byte *buffer, size_t buffer_len) {
 
 void MemStreamReader::close() {
     pos_ = size_;
-}
-
-bool MemStreamReader::get_error_if_any(int *error_code, std::string *message) {
-    return false;
 }
 
 }

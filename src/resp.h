@@ -20,6 +20,8 @@
 
 namespace Akumuli {
 
+typedef std::runtime_error RESPError;
+
 /**
   * REdis Serialization Protocol implementation.
   */
@@ -45,21 +47,22 @@ struct RESPStream
 
     RESPStream(ByteStreamReader *stream);
 
-    bool is_error();
-
     /** Read next element's type.
       */
     Type next_type() const;
 
     /** Read integer.
       * Result is undefined unless next element in a stream is an integer.
-      * @param output resulting integer
-      * @return true on success false on error
+      * @return value
+      * @throw on error
       */
-    bool read_int(uint64_t *output);
+    uint64_t read_int();
 
-    /** Read integer implementation */
-    bool _read_int_body(uint64_t *output);
+    /** Read integer implementation
+      * @throw on error
+      * @return parsed integer
+      */
+    uint64_t _read_int_body();
 
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.
@@ -81,9 +84,11 @@ struct RESPStream
     int read_bulkstr(Byte *buffer, size_t buffer_size);
 
     /** Read size of the array element.
-      * Result is undefined unless next element in a stream is an array.
+      * Exception is thrown unless next element in a stream is an array.
+      * Funtion reads size of the array and puts stream cursor to the
+      * first array element.
       */
-    int read_array_size();
+    uint64_t read_array_size();
 };
 
 }

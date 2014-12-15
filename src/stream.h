@@ -17,10 +17,13 @@
 #pragma once
 #include <cstddef>
 #include <string>
+#include <stdexcept>
 
 namespace Akumuli {
 
 typedef char Byte;
+
+typedef std::runtime_error StreamError;
 
 /** Stream reader that operates on byte level. */
 struct ByteStreamReader {
@@ -28,13 +31,13 @@ struct ByteStreamReader {
     virtual ~ByteStreamReader();
 
     /** Read one byte from stream (if any).
-      * If stream is empty result is undefined and no exception is generated.
+      * If stream is empty StreamError exception is generated.
       * User should check if there any data in the stream using function `is_eof`.
       */
     virtual Byte get() = 0;
 
     /** Read top element of the stream.
-      * If stream is closed or empty - result is undefined.
+      * If stream is closed or empty StreamError exception is generated.
       * This method doesn't change state of the stream.
       */
     virtual Byte pick() const = 0;
@@ -58,13 +61,6 @@ struct ByteStreamReader {
     /** Close stream.
      **/
     virtual void close() = 0;
-
-    /** Get error and error code if error occured.
-      * Both parameters can be null, in this case method can be used to
-      * check whether or not error occured. Method doesn't change error
-      * state of the object.
-      */
-    virtual bool get_error_if_any(int *error_code, std::string *message) = 0;
 };
 
 class MemStreamReader : public ByteStreamReader {
@@ -81,7 +77,6 @@ public:
     virtual bool is_eof();
     virtual int read(Byte *buffer, size_t buffer_len);
     virtual void close();
-    virtual bool get_error_if_any(int *error_code, std::string *message);
 };
 
 }  // namespace
