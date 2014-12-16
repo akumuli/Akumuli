@@ -37,6 +37,16 @@ target_link_libraries(test_respstream
 )
 add_test(respstream test_respstream)
 
+# RESP perf test
+add_executable(perf_respstream
+    perf_respstream.cpp
+    stream.cpp stream.h
+    resp.cpp resp.h
+)
+target_link_libraries(perf_respstream
+    ${Boost_LIBRARIES}
+)
+
 # Protocol parser
 add_executable(test_protocolparser
     test_protocolparser.cpp
