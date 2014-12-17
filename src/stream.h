@@ -18,6 +18,9 @@
 #include <cstddef>
 #include <string>
 #include <stdexcept>
+#include <vector>
+#include <queue>
+#include <memory>
 
 namespace Akumuli {
 
@@ -69,6 +72,24 @@ class MemStreamReader : public ByteStreamReader {
     size_t        pos_;   //< Position in the stream
 public:
     MemStreamReader(const Byte *buffer, size_t buffer_len);
+
+    // ByteStreamReader interface
+public:
+    virtual Byte get();
+    virtual Byte pick() const;
+    virtual bool is_eof();
+    virtual int read(Byte *buffer, size_t buffer_len);
+    virtual void close();
+};
+
+struct MemoryStreamCombiner : ByteStreamReader {
+    typedef std::tuple<std::shared_ptr<Byte>, size_t, size_t> TBuf;
+    mutable std::queue<TBuf> buffers_;
+
+    // MemoryStreamCombiner interface
+public:
+    MemoryStreamCombiner();
+    void push(std::shared_ptr<Byte> buf, size_t len);
 
     // ByteStreamReader interface
 public:

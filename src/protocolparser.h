@@ -21,6 +21,8 @@
 #include <boost/coroutine/all.hpp>
 #include <memory>
 #include <cstdint>
+#include <vector>
+#include <queue>
 
 namespace Akumuli {
 
@@ -42,7 +44,14 @@ typedef typename Coroutine::caller_type Caller;
 
 class ProtocolParser
 {
+    typedef std::unique_ptr<PDU> PDURef;
+    std::shared_ptr<Coroutine> coroutine_;
+    std::queue<PDURef> input_;
+    bool stop_;
+
+    void worker(Caller &yield);
 public:
+    ProtocolParser();
     bool is_done();
     void parse_next(PDU pdu);
 };
