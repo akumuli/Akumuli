@@ -9,6 +9,4 @@
 using namespace Akumuli;
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
-
-    BOOST_FAIL("Implement tests!");
 }
