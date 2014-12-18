@@ -24,6 +24,8 @@
 #include <vector>
 #include <queue>
 
+#include "stream.h"
+
 namespace Akumuli {
 
 /** Protocol consumer. All decoded data goes here.
@@ -35,26 +37,37 @@ struct ProtocolConsumer {
 
 /** Protocol Data Unit */
 struct PDU {
-    std::shared_ptr<void*> buffer;
-    size_t buffer_size;
+    std::shared_ptr<Byte> buffer;
+    size_t size;
+    size_t pos;
 };
 
-typedef boost::coroutines::coroutine< void(ProtocolConsumer*) > Coroutine;
+typedef boost::coroutines::coroutine< void() > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
-class ProtocolParser
-{
+
+class ProtocolParser : ByteStreamReader {
     typedef std::unique_ptr<PDU> PDURef;
     std::shared_ptr<Coroutine> coroutine_;
-    std::queue<PDURef> input_;
+    mutable std::queue<PDURef> buffers_;
     bool stop_;
+    bool done_;
 
     void worker(Caller &yield);
 public:
     ProtocolParser();
-    bool is_done();
-    void parse_next(PDU pdu);
+    void start();
+    void parse_next(PDURef&& pdu);
+
+    // ByteStreamReader interface
+public:
+    virtual Byte get();
+    virtual Byte pick() const;
+    virtual bool is_eof();
+    virtual int read(Byte *buffer, size_t buffer_len);
+    virtual void close();
 };
+
 
 }  // namespace
 

@@ -51,6 +51,7 @@ target_link_libraries(perf_respstream
 add_executable(test_protocolparser
     test_protocolparser.cpp
     protocolparser.cpp protocolparser.h
+    stream.cpp stream.h
 )
 target_link_libraries(test_protocolparser
     ${Boost_LIBRARIES}
