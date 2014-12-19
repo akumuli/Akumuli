@@ -25,6 +25,7 @@
 #include <queue>
 
 #include "stream.h"
+#include "akumuli.h"
 
 namespace Akumuli {
 
@@ -32,7 +33,10 @@ namespace Akumuli {
   * Abstract class.
   */
 struct ProtocolConsumer {
+
     ~ProtocolConsumer() {}
+
+    virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
 };
 
 /** Protocol Data Unit */
@@ -42,6 +46,8 @@ struct PDU {
     size_t pos;
 };
 
+typedef std::runtime_error ProtocolParserError;
+
 typedef boost::coroutines::coroutine< void() > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
@@ -49,13 +55,20 @@ typedef typename Coroutine::caller_type Caller;
 class ProtocolParser : ByteStreamReader {
     typedef std::unique_ptr<PDU> PDURef;
     std::shared_ptr<Coroutine> coroutine_;
+    Caller *caller_;
     mutable std::queue<PDURef> buffers_;
     bool stop_;
     bool done_;
+    std::unique_ptr<ProtocolConsumer> consumer_;
 
     void worker(Caller &yield);
+    void set_caller(Caller& caller);
+    //! Yield control to worker
+    void yield_to_worker();
+    //! Yield control to external code
+    void yield_to_client();
 public:
-    ProtocolParser();
+    ProtocolParser(std::unique_ptr<ProtocolConsumer> &&consumer);
     void start();
     void parse_next(PDURef&& pdu);
 

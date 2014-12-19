@@ -8,5 +8,9 @@
 
 using namespace Akumuli;
 
+struct Consumer : ProtocolConsumer {
+
+};
+
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 }
