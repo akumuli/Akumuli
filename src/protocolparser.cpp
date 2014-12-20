@@ -104,9 +104,8 @@ void ProtocolParser::yield_to_client() {
     (*caller_)();
 }
 
-void ProtocolParser::parse_next(ProtocolParser::PDURef &&pdu) {
-    buffers_.push(std::move(pdu));
-
+void ProtocolParser::parse_next(PDU pdu) {
+    buffers_.push(pdu);
     yield_to_worker();
 }
 
@@ -115,10 +114,10 @@ Byte ProtocolParser::get() {
         if (buffers_.empty()) {
             yield_to_client();
         }
-        auto top = buffers_.front().get();
-        if (top->pos < top->size) {
-            Byte* buf = top->buffer.get();
-            return buf[top->pos++];
+        auto& top = buffers_.front();
+        if (top.pos < top.size) {
+            auto buf = top.buffer.get();
+            return buf[top.pos++];
         }
         buffers_.pop();
     }
@@ -127,10 +126,10 @@ Byte ProtocolParser::get() {
 
 Byte ProtocolParser::pick() const {
     while(!buffers_.empty()) {
-        auto top = buffers_.front().get();
-        if (top->pos < top->size) {
-            Byte* buf = top->buffer.get();
-            return buf[top->pos++];
+        auto& top = buffers_.front();
+        if (top.pos < top.size) {
+            auto buf = top.buffer.get();
+            return buf[top.pos++];
         }
         buffers_.pop();
     }
@@ -145,10 +144,10 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
     int bytes_copied = -1;
     while(!buffers_.empty()) {
         auto& top = buffers_.front();
-        if (top->pos < top->size) {
-            size_t sz = top->size - top->pos;
+        if (top.pos < top.size) {
+            size_t sz = top.size - top.pos;
             size_t bytes_to_copy = std::min(sz, buffer_len);
-            memcpy(buffer, top->buffer.get(), sz);
+            memcpy(buffer, top.buffer.get(), sz);
             bytes_copied += (int)bytes_to_copy;
             if (bytes_to_copy == buffer_len) {
                 // everything is copied!

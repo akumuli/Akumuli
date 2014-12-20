@@ -41,9 +41,9 @@ struct ProtocolConsumer {
 
 /** Protocol Data Unit */
 struct PDU {
-    std::shared_ptr<Byte> buffer;
-    size_t size;
-    size_t pos;
+    std::shared_ptr<const Byte> buffer;  //< Pointer to buffer (buffer can be referenced by several PDU)
+    size_t                      size;    //< Size of the buffer
+    size_t                      pos;     //< Position in the buffer
 };
 
 typedef std::runtime_error ProtocolParserError;
@@ -53,10 +53,9 @@ typedef typename Coroutine::caller_type Caller;
 
 
 class ProtocolParser : ByteStreamReader {
-    typedef std::unique_ptr<PDU> PDURef;
     std::shared_ptr<Coroutine> coroutine_;
     Caller *caller_;
-    mutable std::queue<PDURef> buffers_;
+    mutable std::queue<PDU> buffers_;
     bool stop_;
     bool done_;
     std::unique_ptr<ProtocolConsumer> consumer_;
@@ -70,7 +69,7 @@ class ProtocolParser : ByteStreamReader {
 public:
     ProtocolParser(std::unique_ptr<ProtocolConsumer> &&consumer);
     void start();
-    void parse_next(PDURef&& pdu);
+    void parse_next(PDU pdu);
 
     // ByteStreamReader interface
 public:

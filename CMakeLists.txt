@@ -28,7 +28,7 @@ include_directories("${APR_INCLUDE_DIR}")
 add_definitions(-std=gnu++0x -fvisibility=hidden)
 #endif()
 
-include_directories(./include)
+include_directories(./libakumuli/include)
 
 enable_testing()
 add_subdirectory(src)
