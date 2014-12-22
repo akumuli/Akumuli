@@ -52,22 +52,27 @@ typedef boost::coroutines::coroutine< void() > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
 
+//! Stop iteration exception
+struct EStopIteration {};
+
 class ProtocolParser : ByteStreamReader {
-    std::shared_ptr<Coroutine> coroutine_;
-    Caller *caller_;
+    mutable std::shared_ptr<Coroutine> coroutine_;
+    mutable Caller *caller_;
     mutable std::queue<PDU> buffers_;
-    bool stop_;
+    static const PDU POISON_;  //< This object marks end of the stream
     bool done_;
-    std::unique_ptr<ProtocolConsumer> consumer_;
+    std::shared_ptr<ProtocolConsumer> consumer_;
 
     void worker(Caller &yield);
     void set_caller(Caller& caller);
     //! Yield control to worker
     void yield_to_worker();
     //! Yield control to external code
-    void yield_to_client();
+    void yield_to_client() const;
+    //! Throw exception if poisoned
+    void throw_if_poisoned(PDU const& top) const;
 public:
-    ProtocolParser(std::unique_ptr<ProtocolConsumer> &&consumer);
+    ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer);
     void start();
     void parse_next(PDU pdu);
 

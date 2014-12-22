@@ -3,10 +3,14 @@
 
 namespace Akumuli {
 
-ProtocolParser::ProtocolParser(std::unique_ptr<ProtocolConsumer> &&consumer)
-    : stop_(false)
-    , done_(false)
-    , consumer_(std::move(consumer))
+const PDU ProtocolParser::POISON_ = {
+    std::shared_ptr<const Byte>(),
+    0u, 0u
+};
+
+ProtocolParser::ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer)
+    : done_(false)
+    , consumer_(consumer)
 {
 }
 
@@ -29,67 +33,71 @@ void ProtocolParser::worker(Caller& caller) {
     aku_TimeStamp ts;
     double value;
     //
-    RESPStream stream(this);
-    while(!stop_) {
-        // read id
-        auto next = stream.next_type();
-        switch(next) {
-        case RESPStream::INTEGER:
-            id = stream.read_int();
-            integer_id = true;
-            break;
-        case RESPStream::STRING:
-            bytes_read = stream.read_string(buffer, buffer_len);
-            sid = std::string(buffer, buffer + bytes_read);
-            integer_id = false;
-            break;
-        default:
-            // Bad frame
-            throw ProtocolParserError("Unexpected parameter id format");
-            break;
-        };
+    try {
+        RESPStream stream(this);
+        while(true) {
+            // read id
+            auto next = stream.next_type();
+            switch(next) {
+            case RESPStream::INTEGER:
+                id = stream.read_int();
+                integer_id = true;
+                break;
+            case RESPStream::STRING:
+                bytes_read = stream.read_string(buffer, buffer_len);
+                sid = std::string(buffer, buffer + bytes_read);
+                integer_id = false;
+                break;
+            default:
+                // Bad frame
+                throw ProtocolParserError("Unexpected parameter id format");
+                break;
+            };
 
-        // read ts
-        next = stream.next_type();
-        switch(next) {
-        case RESPStream::INTEGER:
-            ts = stream.read_int();
-            break;
-        case RESPStream::STRING:
-            bytes_read = stream.read_string(buffer, buffer_len);
-            // TODO: parse date-time
-            throw "Not implemented";
-            break;
-        default:
-            // Bad frame
-            throw ProtocolParserError("Unexpected parameter timestamp format");
-            break;
-        };
+            // read ts
+            next = stream.next_type();
+            switch(next) {
+            case RESPStream::INTEGER:
+                ts = stream.read_int();
+                break;
+            case RESPStream::STRING:
+                bytes_read = stream.read_string(buffer, buffer_len);
+                // TODO: parse date-time
+                throw "Not implemented";
+                break;
+            default:
+                // Bad frame
+                throw ProtocolParserError("Unexpected parameter timestamp format");
+                break;
+            };
 
-        // read value
-        next = stream.next_type();
-        switch(next) {
-        case RESPStream::INTEGER:
-            value = stream.read_int();
-            break;
-        case RESPStream::STRING:
-            bytes_read = stream.read_string(buffer, buffer_len);
-            value = strtod(buffer, nullptr);
-            break;
-        default:
-            // Bad frame
-            throw ProtocolParserError("Unexpected parameter value format");
-            break;
-        };
+            // read value
+            next = stream.next_type();
+            switch(next) {
+            case RESPStream::INTEGER:
+                value = stream.read_int();
+                break;
+            case RESPStream::STRING:
+                bytes_read = stream.read_string(buffer, buffer_len);
+                value = strtod(buffer, nullptr);
+                memset(buffer, 0, bytes_read);
+                break;
+            default:
+                // Bad frame
+                throw ProtocolParserError("Unexpected parameter value format");
+                break;
+            };
 
-        if (integer_id) {
-            consumer_->write_double(id, ts, value);
-        } else {
-            // TODO:
-            throw "Not implemented";
+            if (integer_id) {
+                consumer_->write_double(id, ts, value);
+            } else {
+                // TODO:
+                throw "Not implemented";
+            }
         }
+    } catch(EStopIteration const&) {
+        done_ = true;
     }
-    done_ = true;
 }
 
 void ProtocolParser::set_caller(Caller& caller) {
@@ -100,8 +108,14 @@ void ProtocolParser::yield_to_worker() {
     coroutine_->operator()();
 }
 
-void ProtocolParser::yield_to_client() {
+void ProtocolParser::yield_to_client() const {
     (*caller_)();
+}
+
+void ProtocolParser::throw_if_poisoned(PDU const& top) const {
+    if (top.size == 0 && top.pos == 0) {
+        throw EStopIteration();
+    }
 }
 
 void ProtocolParser::parse_next(PDU pdu) {
@@ -115,6 +129,11 @@ Byte ProtocolParser::get() {
             yield_to_client();
         }
         auto& top = buffers_.front();
+        if (top.pos == top.size) {
+            yield_to_client();
+            continue;
+        }
+        throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
             return buf[top.pos++];
@@ -125,11 +144,19 @@ Byte ProtocolParser::get() {
 }
 
 Byte ProtocolParser::pick() const {
-    while(!buffers_.empty()) {
+    while(true) {
+        if (buffers_.empty()) {
+            yield_to_client();
+        }
         auto& top = buffers_.front();
+        if (top.pos == top.size) {
+            yield_to_client();
+            continue;
+        }
+        throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
-            return buf[top.pos++];
+            return buf[top.pos];
         }
         buffers_.pop();
     }
@@ -164,6 +191,7 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
 }
 
 void ProtocolParser::close() {
+    buffers_.push(POISON_);
 }
 
 }
