@@ -48,6 +48,11 @@ void ProtocolParser::worker(Caller& caller) {
                 sid = std::string(buffer, buffer + bytes_read);
                 integer_id = false;
                 break;
+            case RESPStream::BULK_STR:
+                // Compressed chunk of data
+                bytes_read = stream.read_bulkstr(buffer, buffer_len);
+                consumer_->add_bulk_string(buffer, bytes_read);
+                continue;
             default:
                 // Bad frame
                 throw ProtocolParserError("Unexpected parameter id format");
@@ -129,16 +134,13 @@ Byte ProtocolParser::get() {
             yield_to_client();
         }
         auto& top = buffers_.front();
-        if (top.pos == top.size) {
-            yield_to_client();
-            continue;
-        }
         throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
             return buf[top.pos++];
         }
         buffers_.pop();
+        yield_to_client();
     }
     throw StreamError("unexpected end of stream");
 }
@@ -149,16 +151,13 @@ Byte ProtocolParser::pick() const {
             yield_to_client();
         }
         auto& top = buffers_.front();
-        if (top.pos == top.size) {
-            yield_to_client();
-            continue;
-        }
         throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
             return buf[top.pos];
         }
         buffers_.pop();
+        yield_to_client();
     }
     throw StreamError("unexpected end of stream");
 }
@@ -168,14 +167,18 @@ bool ProtocolParser::is_eof() {
 }
 
 int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
-    int bytes_copied = -1;
-    while(!buffers_.empty()) {
+    int bytes_copied = 0;
+    while(true) {
+        if (buffers_.empty()) {
+            yield_to_client();
+        }
         auto& top = buffers_.front();
         if (top.pos < top.size) {
             size_t sz = top.size - top.pos;
             size_t bytes_to_copy = std::min(sz, buffer_len);
-            memcpy(buffer, top.buffer.get(), sz);
+            memcpy(buffer, top.buffer.get() + top.pos, bytes_to_copy);
             bytes_copied += (int)bytes_to_copy;
+            top.pos += bytes_to_copy;
             if (bytes_to_copy == buffer_len) {
                 // everything is copied!
                 break;
@@ -192,6 +195,8 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
 
 void ProtocolParser::close() {
     buffers_.push(POISON_);
+    // stop worker
+    yield_to_worker();
 }
 
 }

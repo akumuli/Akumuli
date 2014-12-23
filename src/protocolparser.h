@@ -37,6 +37,9 @@ struct ProtocolConsumer {
     ~ProtocolConsumer() {}
 
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
+
+    // TODO: remove this function, bulk string decoding should be done inside ProtocolParser
+    virtual void add_bulk_string(const Byte *buffer, size_t n) = 0;
 };
 
 /** Protocol Data Unit */
