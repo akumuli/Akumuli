@@ -22,15 +22,30 @@ public:
     {
     }
 
-    //! Move expected value
-    Expected(Expected<Target> const&& t)
+    //! Copy expected value
+    Expected(Expected<Target> const& t)
         : is_set_(t.is_set_)
     {
         if (is_set_) {
-            value_ = std::move(t.value_);
+            value_ = t.value_;
         } else {
-            except_ = std::move(t.except_);
+            except_ = t.except_;
         }
+    }
+
+    //! Assignment
+    Expected<Target>& operator = (Expected<Target> const& t)
+    {
+        if (&t == this) {
+            return *this;
+        }
+        is_set_ = t.is_set_;
+        if (is_set_) {
+            value_ = t.value_;
+        } else {
+            except_ = t.except_;
+        }
+        return *this;
     }
 
     ~Expected() {

@@ -67,9 +67,11 @@ BOOST_AUTO_TEST_CASE(Test_expected_value_lifetime) {
     int dted = exception_dtor_calls;
     BOOST_REQUIRE_EQUAL(cted, dted);
     {
-        Exception v1, v2;
+        Exception v1, v2, v4;
         Expected<Exception> value(v1);
-        BOOST_REQUIRE_NO_THROW(v2 = value.get());
+        Expected<Exception> value2(v2), value4(v4);
+        value = value2;
+        BOOST_REQUIRE_NO_THROW(v2 = value4.get());
     }
     int cted2 = exception_ctor_calls;
     int dted2 = exception_dtor_calls;
