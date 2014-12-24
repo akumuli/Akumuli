@@ -2,7 +2,13 @@
 add_executable(akumulid
     main.cpp
     logger.cpp logger.h
+    stream.cpp stream.h
+    resp.cpp resp.h
+    protocolparser.cpp protocolparser.h
+    protocol_consumer.h
+    ingestion_pipeline.cpp ingestion_pipeline.h
 )
+
 target_link_libraries(akumulid
     akumuli
     "${LOG4CXX_LIBRARIES}"

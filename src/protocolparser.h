@@ -25,22 +25,9 @@
 #include <queue>
 
 #include "stream.h"
-#include "akumuli.h"
+#include "protocol_consumer.h"
 
 namespace Akumuli {
-
-/** Protocol consumer. All decoded data goes here.
-  * Abstract class.
-  */
-struct ProtocolConsumer {
-
-    ~ProtocolConsumer() {}
-
-    virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
-
-    // TODO: remove this function, bulk string decoding should be done inside ProtocolParser
-    virtual void add_bulk_string(const Byte *buffer, size_t n) = 0;
-};
 
 /** Protocol Data Unit */
 struct PDU {
@@ -49,14 +36,15 @@ struct PDU {
     size_t                      pos;     //< Position in the buffer
 };
 
-typedef std::runtime_error ProtocolParserError;
 
+typedef std::runtime_error ProtocolParserError;
 typedef boost::coroutines::coroutine< void() > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
 
 //! Stop iteration exception
 struct EStopIteration {};
+
 
 class ProtocolParser : ByteStreamReader {
     mutable std::shared_ptr<Coroutine> coroutine_;
