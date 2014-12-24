@@ -14,26 +14,48 @@ class Expected {
     };
     bool is_set_;
 public:
-    Expected(Expected<Target> const& t)
+
+    //! Value c-tor
+    Expected(Target const& t)
+        : value_(t)
+        , is_set_(true)
+    {
+    }
+
+    //! Move expected value
+    Expected(Expected<Target> const&& t)
         : is_set_(t.is_set_)
     {
         if (is_set_) {
-            value_ = t.value_;
+            value_ = std::move(t.value_);
         } else {
-            except_ = t.except_;
+            except_ = std::move(t.except_);
         }
     }
 
     ~Expected() {
+        if (is_set_) {
+            (&value_)->~Target();
+        } else {
+            (&except_)->~exception_ptr();
+        }
     }
 
+    //! Construct from exception ptr
+    Expected(std::exception_ptr&& ptr)
+        : except_(std::move(ptr))
+        , is_set_(false)
+    {
+    }
+
+    //! Construct from any exception
     template<class E>
-    Expected(E const& e) : except_(std::make_exception_ptr(e)), is_set_(false) {}
+    static Expected<Target> from(E const& e)
+    {
+        return Expected<Target>(std::make_exception_ptr(e));
+    }
 
-    Expected(std::exception_ptr&& ptr) : except_(std::move(ptr)), is_set_(false) {}
-
-    Expected(Target const& t) : value_(t), is_set_(true) {}
-
+    //! Get value or throw
     const Target& get() const {
         if (!is_set_) {
             std::rethrow_exception(except_);
@@ -41,6 +63,12 @@ public:
         return value_;
     }
 
+    //! Check for error
+    bool ok() const {
+        return is_set_;
+    }
+
+    //! Extract error from value
     template<class Exception>
     bool unpack_error(Exception *err) {
         if (is_set_) {

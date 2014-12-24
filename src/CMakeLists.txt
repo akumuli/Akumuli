@@ -22,6 +22,16 @@ target_link_libraries(akumulid
 #     Test suite     #
 ######################
 
+# Small utils
+add_executable(test_utils
+    test_utils.cpp
+    expected.h
+)
+target_link_libraries(test_utils
+    ${Boost_LIBRARIES}
+)
+add_test(utils test_utils)
+
 # Streams
 add_executable(test_streams
     test_stream.cpp
