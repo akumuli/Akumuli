@@ -61,7 +61,7 @@ void MemStreamReader::close() {
 }
 
 std::tuple<std::string, size_t> MemStreamReader::get_error_context(const char* error_message) const {
-    throw "Not implemented";
+    return std::make_tuple(error_message, 0u);
 }
 
 }
