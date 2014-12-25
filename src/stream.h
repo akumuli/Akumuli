@@ -26,7 +26,18 @@ namespace Akumuli {
 
 typedef char Byte;
 
-typedef std::runtime_error StreamError;
+class StreamError : public std::exception {
+    std::string line_;
+    int pos_;
+public:
+    enum {
+        MAX_LENGTH = 64,
+    };
+    StreamError(std::string line, int pos);
+
+    virtual const char* what() const throw();
+    std::string get_bottom_line() const;
+};
 
 /** Stream reader that operates on byte level. */
 struct ByteStreamReader {
@@ -64,6 +75,12 @@ struct ByteStreamReader {
     /** Close stream.
      **/
     virtual void close() = 0;
+
+    /** Method returns error context in form:
+     * Error message at "abcdefgh"
+     *                       ^
+     */
+    virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const = 0;
 };
 
 class MemStreamReader : public ByteStreamReader {
@@ -80,6 +97,7 @@ public:
     virtual bool is_eof();
     virtual int read(Byte *buffer, size_t buffer_len);
     virtual void close();
+    virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const;
 };
 
 }  // namespace

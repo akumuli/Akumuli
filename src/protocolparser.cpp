@@ -1,7 +1,13 @@
 #include "protocolparser.h"
 #include "resp.h"
+#include <sstream>
 
 namespace Akumuli {
+
+ProtocolParserError::ProtocolParserError(std::string line, int pos)
+    : StreamError(line, pos)
+{
+}
 
 const PDU ProtocolParser::POISON_ = {
     std::shared_ptr<const Byte>(),
@@ -55,8 +61,12 @@ void ProtocolParser::worker(Caller& caller) {
                 continue;
             default:
                 // Bad frame
-                throw ProtocolParserError("Unexpected parameter id format");
-                break;
+                {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context("Unexpected parameter id format");
+                    throw ProtocolParserError(msg, pos);
+                }
             };
 
             // read ts
@@ -69,11 +79,14 @@ void ProtocolParser::worker(Caller& caller) {
                 bytes_read = stream.read_string(buffer, buffer_len);
                 // TODO: parse date-time
                 throw "Not implemented";
-                break;
             default:
                 // Bad frame
-                throw ProtocolParserError("Unexpected parameter timestamp format");
-                break;
+                {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context("Unexpected parameter timestamp format");
+                    throw ProtocolParserError(msg, pos);
+                }
             };
 
             // read value
@@ -89,8 +102,12 @@ void ProtocolParser::worker(Caller& caller) {
                 break;
             default:
                 // Bad frame
-                throw ProtocolParserError("Unexpected parameter value format");
-                break;
+                {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context("Unexpected parameter value format");
+                    throw ProtocolParserError(msg, pos);
+                }
             };
 
             if (integer_id) {
@@ -142,7 +159,8 @@ Byte ProtocolParser::get() {
         buffers_.pop();
         yield_to_client();
     }
-    throw StreamError("unexpected end of stream");
+    auto ctx = get_error_context("unexpected end of stream");
+    throw ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx));
 }
 
 Byte ProtocolParser::pick() const {
@@ -159,7 +177,8 @@ Byte ProtocolParser::pick() const {
         buffers_.pop();
         yield_to_client();
     }
-    throw StreamError("unexpected end of stream");
+    auto ctx = get_error_context("unexpected end of stream");
+    throw ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx));
 }
 
 bool ProtocolParser::is_eof() {
@@ -197,6 +216,47 @@ void ProtocolParser::close() {
     buffers_.push(POISON_);
     // stop worker
     yield_to_worker();
+}
+
+std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pdu) const {
+    const char* p = pdu.buffer.get();
+    size_t pos = pdu.pos;
+    // Scan PDU back
+    auto spos = (p + pos);
+    size_t new_pos = 0;
+    int nbreaks = 3;  // Move back for two line breaks (CRLF) to guarantee that full message is dumped
+    for (; spos --> p;) {
+        new_pos++;
+        if (*spos == '\r') {
+            if (nbreaks-- == 0) {
+                break;
+            }
+        }
+        if (new_pos == StreamError::MAX_LENGTH - 1) {
+            break;
+        }
+    }
+    // Limit string length
+    // size--------------- (larger then StreamError::MAX_LENGTH)
+    //  pos--------^------
+    //         p--------
+    size_t size = std::max((pdu.size - (spos - p)), (size_t)StreamError::MAX_LENGTH);
+    return std::make_pair(std::string(spos, spos + size), new_pos);
+}
+
+std::tuple<std::string, size_t> ProtocolParser::get_error_context(const char* msg) const {
+    if (buffers_.empty()) {
+        return std::make_tuple(std::string("Can't generate error, no data"), 0u);
+    }
+    auto& top = buffers_.front();
+    std::string err;
+    size_t pos;
+    std::tie(err, pos) = get_error_from_pdu(top);
+    std::stringstream message;
+    message << msg << " - ";
+    pos += message.str().size();
+    message << err;
+    return std::make_tuple(message.str(), pos);
 }
 
 }

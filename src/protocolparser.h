@@ -36,8 +36,10 @@ struct PDU {
     size_t                      pos;     //< Position in the buffer
 };
 
+struct ProtocolParserError : StreamError {
+    ProtocolParserError(std::string line, int pos);
+};
 
-typedef std::runtime_error ProtocolParserError;
 typedef boost::coroutines::coroutine< void() > Coroutine;
 typedef typename Coroutine::caller_type Caller;
 
@@ -62,6 +64,8 @@ class ProtocolParser : ByteStreamReader {
     void yield_to_client() const;
     //! Throw exception if poisoned
     void throw_if_poisoned(PDU const& top) const;
+    //! Generate error message
+    std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 public:
     ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer);
     void start();
@@ -74,6 +78,7 @@ public:
     virtual bool is_eof();
     virtual int read(Byte *buffer, size_t buffer_len);
     virtual void close();
+    virtual std::tuple<std::string, size_t> get_error_context(const char* msg) const;
 };
 
 
