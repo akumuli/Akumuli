@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "protocolparser.h"
+#include "resp.h"
 
 using namespace Akumuli;
 
@@ -124,4 +125,33 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_bulk_strings) {
     // 1
     BOOST_REQUIRE_EQUAL(cons->bulk_[0], "123456789ABC");
     parser.close();
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
+
+    const char *messages = ":1\r\n:2\r\n+34.5\r\n:d\r\n:7\r\n+8.9\r\n";
+    auto buffer = buffer_from_static_string(messages);
+    PDU pdu = {
+        buffer,
+        29,
+        0u
+    };
+    auto check_resp_error = [](const RESPError& error) {
+        auto bl = error.get_bottom_line();
+        std::string what = error.what();
+        auto bls = bl.size();
+        if (bls == 0) {
+            return false;
+        }
+        if (bls == what.size()) {
+            return false;
+        }
+        auto c = what[bls-1];
+        return c == 'd';
+    };
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    ProtocolParser parser(cons);
+    parser.start();
+    BOOST_REQUIRE_EXCEPTION(parser.parse_next(pdu), RESPError, check_resp_error);
 }

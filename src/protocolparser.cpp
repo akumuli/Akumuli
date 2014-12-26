@@ -1,6 +1,7 @@
 #include "protocolparser.h"
 #include "resp.h"
 #include <sstream>
+#include <boost/algorithm/string.hpp>
 
 namespace Akumuli {
 
@@ -64,8 +65,8 @@ void ProtocolParser::worker(Caller& caller) {
                 {
                     std::string msg;
                     size_t pos;
-                    std::tie(msg, pos) = get_error_context("Unexpected parameter id format");
-                    throw ProtocolParserError(msg, pos);
+                    std::tie(msg, pos) = get_error_context("unexpected parameter id format");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             };
 
@@ -78,14 +79,19 @@ void ProtocolParser::worker(Caller& caller) {
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
                 // TODO: parse date-time
-                throw "Not implemented";
+                {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context("not implemented");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                }
             default:
                 // Bad frame
                 {
                     std::string msg;
                     size_t pos;
                     std::tie(msg, pos) = get_error_context("Unexpected parameter timestamp format");
-                    throw ProtocolParserError(msg, pos);
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             };
 
@@ -106,15 +112,15 @@ void ProtocolParser::worker(Caller& caller) {
                     std::string msg;
                     size_t pos;
                     std::tie(msg, pos) = get_error_context("Unexpected parameter value format");
-                    throw ProtocolParserError(msg, pos);
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             };
 
             if (integer_id) {
                 consumer_->write_double(id, ts, value);
             } else {
-                // TODO:
-                throw "Not implemented";
+                // TODO: write blob
+                BOOST_THROW_EXCEPTION(std::runtime_error("not implemented"));
             }
         }
     } catch(EStopIteration const&) {
@@ -160,7 +166,7 @@ Byte ProtocolParser::get() {
         yield_to_client();
     }
     auto ctx = get_error_context("unexpected end of stream");
-    throw ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx));
+    BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
 Byte ProtocolParser::pick() const {
@@ -178,7 +184,7 @@ Byte ProtocolParser::pick() const {
         yield_to_client();
     }
     auto ctx = get_error_context("unexpected end of stream");
-    throw ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx));
+    BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
 bool ProtocolParser::is_eof() {
@@ -219,29 +225,35 @@ void ProtocolParser::close() {
 }
 
 std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pdu) const {
-    const char* p = pdu.buffer.get();
-    size_t pos = pdu.pos;
-    // Scan PDU back
-    auto spos = (p + pos);
-    size_t new_pos = 0;
-    int nbreaks = 3;  // Move back for two line breaks (CRLF) to guarantee that full message is dumped
-    for (; spos --> p;) {
-        new_pos++;
-        if (*spos == '\r') {
-            if (nbreaks-- == 0) {
-                break;
-            }
-        }
-        if (new_pos == StreamError::MAX_LENGTH - 1) {
+    const char* origin = pdu.buffer.get();
+    // Scan to PDU head
+    if (pdu.pos == 0) {
+        // Error in first symbol
+        size_t size = std::min(pdu.size, (size_t)StreamError::MAX_LENGTH);
+        return std::make_pair(std::string(origin, origin + size), 0);
+    }
+    auto pdu_pos = pdu.pos;
+    auto ipos = origin + pdu_pos;   // Iterator
+    auto begin = origin;            // PDU begining
+    while (ipos > origin) {
+        if (*ipos == '\n') {        // Stop when prev. PDU begining or origin was reached
             break;
         }
+        begin = ipos;
+        ipos--;
     }
-    // Limit string length
-    // size--------------- (larger then StreamError::MAX_LENGTH)
-    //  pos--------^------
-    //         p--------
-    size_t size = std::max((pdu.size - (spos - p)), (size_t)StreamError::MAX_LENGTH);
-    return std::make_pair(std::string(spos, spos + size), new_pos);
+    auto delta = (begin - origin);       // PDU begining position from the origin
+    auto size = pdu.size - delta;
+    auto position = pdu_pos - delta;
+    if (position < StreamError::MAX_LENGTH) {
+        // Truncate string if it wouldn't hide error (most of the PDU's is small so
+        // this will be almost always the case).
+        size = std::min(size, (size_t)StreamError::MAX_LENGTH);
+    }
+    auto res = std::string(begin, begin + size);
+    boost::algorithm::replace_all(res, "\r", "\\r");
+    boost::algorithm::replace_all(res, "\n", "\\n");
+    return std::make_pair(res, position);
 }
 
 std::tuple<std::string, size_t> ProtocolParser::get_error_context(const char* msg) const {

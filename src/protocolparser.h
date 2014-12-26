@@ -25,6 +25,7 @@
 #include <queue>
 
 #include "stream.h"
+#include "resp.h"
 #include "protocol_consumer.h"
 
 namespace Akumuli {
