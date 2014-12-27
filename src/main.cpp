@@ -5,15 +5,16 @@
 #include <boost/bind.hpp>
 
 #include "logger.h"
+#include "protocolparser.h"
+#include "ingestion_pipeline.h"
 
 using namespace boost::asio;
 
-namespace Akumulil {
+namespace Akumuli {
 
 typedef io_service IOService;
 typedef ip::tcp::acceptor TcpAcceptor;
 typedef ip::tcp::socket TcpSocket;
-
 
 /** Server session. Reads data from socket.
  *  Must be created in the heap.

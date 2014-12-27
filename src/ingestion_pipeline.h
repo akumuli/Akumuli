@@ -16,16 +16,24 @@
 
 #pragma once
 #include <string>
-#include "protocol_consumer.h"
+#include <memory>
 
+#include <boost/lockfree/queue.hpp>
+
+#include "protocol_consumer.h"
 // akumuli-storage API
 #include "akumuli.h"
 #include "akumuli_config.h"
 
 namespace Akumuli {
 
+struct DbConnection {
+    virtual ~DbConnection() {}
+    virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
+};
+
 //! Object of this class writes everything to the database
-class IngestionPipeline : public ProtocolConsumer
+class AkumuliConnection : public DbConnection
 {
 public:
     enum Durability {
@@ -37,10 +45,26 @@ private:
     std::string     dbpath_;
     aku_Database   *db_;
 public:
-    IngestionPipeline(const char* path, bool hugetlb, Durability durability);
+    AkumuliConnection(const char* path, bool hugetlb, Durability durability);
 
     // ProtocolConsumer interface
 public:
+    void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
+};
+
+class IngestionPipeline : public ProtocolConsumer
+{
+    typedef std::tuple<aku_ParamId, aku_TimeStamp, double, bool> TVal;
+    typedef boost::lockfree::queue<const TVal*> Queue;
+
+    std::shared_ptr<DbConnection> con_;
+    Queue queue_;
+
+    void start();
+
+    // ProtocolConsumer interface
+public:
+    IngestionPipeline(std::shared_ptr<DbConnection> con);
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
     virtual void add_bulk_string(const Byte *buffer, size_t n);
 };
