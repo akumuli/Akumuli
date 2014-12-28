@@ -53,16 +53,6 @@ target_link_libraries(test_respstream
 )
 add_test(respstream test_respstream)
 
-# RESP perf test
-add_executable(perf_respstream
-    perf_respstream.cpp
-    stream.cpp stream.h
-    resp.cpp resp.h
-)
-target_link_libraries(perf_respstream
-    ${Boost_LIBRARIES}
-)
-
 # Protocol parser
 add_executable(test_protocolparser
     test_protocolparser.cpp
@@ -77,3 +67,33 @@ target_link_libraries(test_protocolparser
 )
 add_test(protocol-parser test_protocolparser)
 
+##############################################
+#                                            #
+#          Performance tests                 #
+#                                            #
+##############################################
+
+# RESP perf test
+add_executable(perf_respstream
+    perf_respstream.cpp
+    stream.cpp stream.h
+    resp.cpp resp.h
+)
+target_link_libraries(perf_respstream
+    ${Boost_LIBRARIES}
+)
+
+# Pipeline perf test
+add_executable(perf_pipeline
+    perf_pipeline.cpp
+    ingestion_pipeline.cpp
+    logger.cpp
+)
+target_link_libraries(perf_pipeline
+    akumuli
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)

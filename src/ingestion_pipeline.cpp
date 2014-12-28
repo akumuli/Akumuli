@@ -112,4 +112,10 @@ std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
     return std::make_shared<PipelineSpout>(queue_);
 }
 
+PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{0, 0, 0, nullptr};
+
+void IngestionPipeline::close() {
+    queue_->push(POISON);
+}
+
 }

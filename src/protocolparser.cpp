@@ -30,15 +30,15 @@ void ProtocolParser::worker(Caller& caller) {
     // Remember caller for use in ByteStreamReader's methods
     set_caller(caller);
     // Buffer to read strings from
-    const int buffer_len = RESPStream::STRING_LENGTH_MAX;
-    Byte buffer[buffer_len] = {};
-    int bytes_read = 0;
+    const int     buffer_len         = RESPStream::STRING_LENGTH_MAX;
+    Byte          buffer[buffer_len] = {};
+    int           bytes_read         = 0;
     // Data to read
-    aku_ParamId id;
-    std::string sid;
-    bool integer_id = false;
-    aku_TimeStamp ts;
-    double value;
+    aku_ParamId   id                 = 0;
+    std::string   sid;
+    bool          integer_id         = false;
+    aku_TimeStamp ts                 = 0;
+    double        value              = .0;
     //
     try {
         RESPStream stream(this);

@@ -109,6 +109,7 @@ class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
 {
     std::shared_ptr<DbConnection> con_;
     std::shared_ptr<PipelineSpout::Queue> queue_;
+    static PipelineSpout::TVal* POISON;
 public:
     /** Create new pipeline topology.
       */
@@ -120,6 +121,8 @@ public:
 
     /** Add new pipeline spout. */
     std::shared_ptr<PipelineSpout> make_spout();
+
+    void close();
 };
 
 }  // namespace Akumuli
