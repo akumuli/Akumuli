@@ -17,6 +17,7 @@
 #pragma once
 #include <string>
 #include <memory>
+#include <atomic>
 
 #include <boost/lockfree/queue.hpp>
 
@@ -52,21 +53,73 @@ public:
     void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
 };
 
-class IngestionPipeline : public ProtocolConsumer
-{
-    typedef std::tuple<aku_ParamId, aku_TimeStamp, double, bool> TVal;
-    typedef boost::lockfree::queue<const TVal*> Queue;
 
-    std::shared_ptr<DbConnection> con_;
-    Queue queue_;
+/** Pipeline's spout.
+  * Object of this class can be used to ingest data to pipeline.
+  * It should be connected with IngestionPipeline instance with
+  * the shared queue. Pooling is used to simplify allocator's
+  * life. All TVals should be deleted in the same thread where
+  * they was created. This shuld minimize contention inside
+  * allocator and limit overall memory usage (no need to create
+  * pool of objects beforehand).
+  */
+struct PipelineSpout : ProtocolConsumer {
+    // Typedefs
+    typedef struct { char emptybits[64]; }      Padding;        //< Padding
+    typedef std::atomic<uint64_t>               SpoutCounter;   //< Shared counter
+    typedef struct {
+        aku_ParamId     id;                                     //< Measurement ID
+        aku_TimeStamp   ts;                                     //< Measurement timestamp
+        double          value;                                  //< Value (TODO: should be variant type)
+        SpoutCounter   *cnt;                                    //< Pointer to spout's shared counter
+    }                                           TVal;           //< Value
+    typedef std::unique_ptr<TVal>               PVal;           //< Pointer to value
+    typedef boost::lockfree::queue<TVal*>       Queue;          //< Queue class
 
-    void start();
+    // Constants
+    enum {
+        //! PVal pool size
+        POOL_SIZE = 0x1000,
+    };
 
-    // ProtocolConsumer interface
-public:
-    IngestionPipeline(std::shared_ptr<DbConnection> con);
+    // Data
+    SpoutCounter counter_;
+    Padding pad0;
+    uint64_t created_;
+    uint64_t deleted_;
+    std::vector<PVal> pool_;
+    Padding pad1;
+    std::shared_ptr<Queue> queue_;
+
+    // C-tor
+    PipelineSpout(std::shared_ptr<Queue> q);
+
+    // ProtocolConsumer
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
     virtual void add_bulk_string(const Byte *buffer, size_t n);
+
+    // Utility
+    //! Reserve index for the next TVal in the pool or negative value on error.
+    int get_index_of_empty_slot();
+    //! Delete processed items from the pool.
+    void gc();
+};
+
+class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
+{
+    std::shared_ptr<DbConnection> con_;
+    std::shared_ptr<PipelineSpout::Queue> queue_;
+public:
+    /** Create new pipeline topology.
+      */
+    IngestionPipeline(std::shared_ptr<DbConnection> con);
+
+    /** Run pipeline topology.
+      */
+    void run();
+
+    /** Add new pipeline spout. */
+    std::shared_ptr<PipelineSpout> make_spout();
 };
 
 }  // namespace Akumuli

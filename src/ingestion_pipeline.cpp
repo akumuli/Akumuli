@@ -31,6 +31,54 @@ void AkumuliConnection::write_double(aku_ParamId param, aku_TimeStamp ts, double
     aku_write_double(db_, param, ts, data);
 }
 
+// Pipeline spout
+PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q)
+    : counter_{0}
+    , created_(0)
+    , deleted_(0)
+    , pool_()
+    , queue_(q)
+{
+    pool_.resize(POOL_SIZE);
+}
+
+void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    int ix = get_index_of_empty_slot();
+    if (ix < 0) {
+        // Try to delete old items from the pool
+        gc();
+        ix = get_index_of_empty_slot();
+        if (ix < 0) {
+            // Impossible to free some space
+            // TODO: register data loss
+            return;
+        }
+    }
+    pool_.at(ix).reset(new TVal{param, ts, data, &counter_});
+    auto pvalue = pool_.at(ix).get();
+    queue_->push(pvalue);
+}
+
+void PipelineSpout::add_bulk_string(const Byte *buffer, size_t n) {
+    // Shouldn't be implemented
+}
+
+int PipelineSpout::get_index_of_empty_slot() {
+    if (created_ - deleted_ < POOL_SIZE) {
+        // There is some space in the pool
+        return created_++;
+    }
+    return POOL_SIZE + deleted_ - created_;
+}
+
+void PipelineSpout::gc() {
+    uint64_t processed = counter_;
+    while(deleted_ < processed) {
+        pool_.at(deleted_ % POOL_SIZE).reset();
+        deleted_++;
+    }
+}
+
 // Ingestion pipeline
 
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con)
@@ -38,25 +86,20 @@ IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con)
 {
 }
 
-void IngestionPipeline::start() {
-    Queue *qref = &queue_;
+void IngestionPipeline::run() {
+    auto qref = queue_;
     auto con = con_;
     auto worker = [con, qref]() {
-        aku_ParamId     id   = 0;
-        aku_TimeStamp   ts   = 0;
-        double          data = 0;
-        bool            pois = false;
         // Write loop (should be unique)
         while(true) {
-            const TVal *val;
+            PipelineSpout::TVal *val;
             if (qref->pop(val)) {
                 // New write
-                std::tie(id, ts, data, pois) = *val;
-                delete val;
-                if (pois) {  //poisoned
+                if (val->cnt == nullptr) {  //poisoned
                     break;
                 }
-                con->write_double(id, ts, data);
+                con->write_double(val->id, val->ts, val->value);
+                val->cnt++;
             }
         }
     };
@@ -65,16 +108,8 @@ void IngestionPipeline::start() {
     th.detach();
 }
 
-void IngestionPipeline::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
-    const TVal *val = new TVal(param, ts, data, false);
-    if (!queue_.push(val)) {
-        // TODO: register data loss
-        delete val;
-    }
-}
-
-void IngestionPipeline::add_bulk_string(const Byte *buffer, size_t n) {
-
+std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
+    return std::make_shared<PipelineSpout>(queue_);
 }
 
 }
