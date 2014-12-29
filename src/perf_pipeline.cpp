@@ -30,7 +30,8 @@
 
 namespace detail {
     struct ConnectionMock : Akumuli::DbConnection {
-        void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {}
+        int cnt;
+        void write_double(aku_ParamId param, aku_TimeStamp ts, double data) { cnt++; }
     };
 };
 
@@ -50,6 +51,8 @@ struct SpoutTest {
             for (int i = N_ITERS/2; i > 0;) {
                 if (queue.push(1)) {
                     i--;
+                } else {
+                    std::this_thread::yield();
                 }
             }
         };
@@ -79,11 +82,12 @@ struct SpoutTest {
         using namespace Akumuli;
         using namespace detail;
         std::shared_ptr<ConnectionMock> con = std::make_shared<ConnectionMock>();
+        con->cnt = 0;
         IngestionPipeline pipeline(con);
         auto worker = [&]() {
             auto spout = pipeline.make_spout();
-            for (int i = N_ITERS; i --> 0;) {
-                spout->write_double(0, 0, 0.0);
+            for (int i = N_ITERS/2; i --> 0;) {
+                spout->write_double(1, 0, 0.0);
             }
         };
         boost::timer tm;
@@ -94,6 +98,9 @@ struct SpoutTest {
         workerB.join();
         double e = tm.elapsed();
         pipeline.close();
+        if (con->cnt != N_ITERS) {
+            std::cout << "Error in pipeline " << con->cnt << std::endl;
+        }
         return e;
     }
 };

@@ -53,6 +53,8 @@ public:
     void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
 };
 
+using boost::lockfree::queue;
+using boost::lockfree::capacity;
 
 /** Pipeline's spout.
   * Object of this class can be used to ingest data to pipeline.
@@ -64,32 +66,35 @@ public:
   * pool of objects beforehand).
   */
 struct PipelineSpout : ProtocolConsumer {
-    // Typedefs
-    typedef struct { char emptybits[64]; }      Padding;        //< Padding
-    typedef std::atomic<uint64_t>               SpoutCounter;   //< Shared counter
-    typedef struct {
-        aku_ParamId     id;                                     //< Measurement ID
-        aku_TimeStamp   ts;                                     //< Measurement timestamp
-        double          value;                                  //< Value (TODO: should be variant type)
-        SpoutCounter   *cnt;                                    //< Pointer to spout's shared counter
-    }                                           TVal;           //< Value
-    typedef std::unique_ptr<TVal>               PVal;           //< Pointer to value
-    typedef boost::lockfree::queue<TVal*>       Queue;          //< Queue class
 
     // Constants
     enum {
         //! PVal pool size
         POOL_SIZE = 0x1000,
+        QCAP      = 0x1000,
     };
 
+    // Typedefs
+    typedef struct { char emptybits[64]; }       Padding;        //< Padding
+    typedef std::atomic<uint64_t>                SpoutCounter;   //< Shared counter
+    typedef struct {
+        aku_ParamId     id;                                      //< Measurement ID
+        aku_TimeStamp   ts;                                      //< Measurement timestamp
+        double          value;                                   //< Value (TODO: should be variant type)
+        SpoutCounter   *cnt;                                     //< Pointer to spout's shared counter
+    }                                            TVal;           //< Value
+    typedef std::unique_ptr<TVal>                PVal;           //< Pointer to value
+    typedef queue<TVal*, capacity<QCAP>>         Queue;          //< Queue class
+    typedef std::shared_ptr<Queue>               PQueue;         //< Pointer to queue
+
     // Data
-    SpoutCounter counter_;
-    Padding pad0;
-    uint64_t created_;
-    uint64_t deleted_;
-    std::vector<PVal> pool_;
-    Padding pad1;
-    std::shared_ptr<Queue> queue_;
+    SpoutCounter        counter_;                                //< Processed counter
+    Padding             pad0;
+    uint64_t            created_;                                //< Created elements counter
+    uint64_t            deleted_;                                //< Deleted elements counter
+    std::vector<PVal>   pool_;                                   //< TVal pool
+    Padding             pad1;
+    PQueue              queue_;                                  //< Queue
 
     // C-tor
     PipelineSpout(std::shared_ptr<Queue> q);
@@ -107,9 +112,13 @@ struct PipelineSpout : ProtocolConsumer {
 
 class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
 {
-    std::shared_ptr<DbConnection> con_;
-    std::shared_ptr<PipelineSpout::Queue> queue_;
-    static PipelineSpout::TVal* POISON;
+    enum {
+        N_QUEUES = 16,
+    };
+    std::shared_ptr<DbConnection>      con_;        //< DB connection
+    std::vector<PipelineSpout::PQueue> queues_;     //< Queues collection
+    std::atomic<int>                   ixmake_;     //< Index for the make_spout mehtod
+    static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
 public:
     /** Create new pipeline topology.
       */

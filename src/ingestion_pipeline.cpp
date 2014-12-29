@@ -1,6 +1,7 @@
 #include "ingestion_pipeline.h"
 #include "logger.h"
 #include <thread>
+#include <iostream>  // TODO: remove iostream
 
 namespace Akumuli
 {
@@ -42,6 +43,7 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q)
     pool_.resize(POOL_SIZE);
 }
 
+bool r = false;
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
     int ix = get_index_of_empty_slot();
     if (ix < 0) {
@@ -51,12 +53,18 @@ void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double dat
         if (ix < 0) {
             // Impossible to free some space
             // TODO: register data loss
+            if (!r) {
+                std::cout << "data loss" << std::endl;
+                r = true;
+            }
             return;
         }
     }
     pool_.at(ix).reset(new TVal{param, ts, data, &counter_});
     auto pvalue = pool_.at(ix).get();
-    queue_->push(pvalue);
+    while (!queue_->push(pvalue)) {
+        std::this_thread::yield();
+    }
 }
 
 void PipelineSpout::add_bulk_string(const Byte *buffer, size_t n) {
@@ -83,20 +91,34 @@ void PipelineSpout::gc() {
 
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con)
     : con_(con)
+    , ixmake_{0}
 {
+    for (int i = N_QUEUES; i --> 0;) {
+        queues_.push_back(std::make_shared<PipelineSpout::Queue>());
+    }
 }
 
 void IngestionPipeline::run() {
-    auto qref = queue_;
+    auto qarr = queues_;
     auto con = con_;
-    auto worker = [con, qref]() {
+    auto worker = [con, qarr]() {
         // Write loop (should be unique)
-        while(true) {
-            PipelineSpout::TVal *val;
+        PipelineSpout::TVal *val;
+        int poison_cnt = 0;
+        for (int ix = 0; true; ix++) {
+            auto& qref = qarr.at(ix % N_QUEUES);
             if (qref->pop(val)) {
                 // New write
                 if (val->cnt == nullptr) {  //poisoned
-                    break;
+                    poison_cnt++;
+                    if (poison_cnt == N_QUEUES) {
+                        for (auto& x: qarr) {
+                            if (!x->empty()) {
+                                std::cout << "queue not empty" << std::endl;
+                            }
+                        }
+                        break;
+                    }
                 }
                 con->write_double(val->id, val->ts, val->value);
                 val->cnt++;
@@ -109,13 +131,16 @@ void IngestionPipeline::run() {
 }
 
 std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
-    return std::make_shared<PipelineSpout>(queue_);
+    ixmake_++;
+    return std::make_shared<PipelineSpout>(queues_.at(ixmake_ % N_QUEUES));
 }
 
 PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{0, 0, 0, nullptr};
 
 void IngestionPipeline::close() {
-    queue_->push(POISON);
+    for (auto& q: queues_) {
+        q->push(POISON);
+    }
 }
 
 }

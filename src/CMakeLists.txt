@@ -90,6 +90,7 @@ add_executable(perf_pipeline
     logger.cpp
 )
 target_link_libraries(perf_pipeline
+    jemalloc
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
