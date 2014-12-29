@@ -107,21 +107,23 @@ void IngestionPipeline::run() {
         int poison_cnt = 0;
         for (int ix = 0; true; ix++) {
             auto& qref = qarr.at(ix % N_QUEUES);
-            if (qref->pop(val)) {
-                // New write
-                if (val->cnt == nullptr) {  //poisoned
-                    poison_cnt++;
-                    if (poison_cnt == N_QUEUES) {
-                        for (auto& x: qarr) {
-                            if (!x->empty()) {
-                                std::cout << "queue not empty" << std::endl;
+            for (int i = 0; i < 16; i++) {
+                if (qref->pop(val)) {
+                    // New write
+                    if (val->cnt == nullptr) {  //poisoned
+                        poison_cnt++;
+                        if (poison_cnt == N_QUEUES) {
+                            for (auto& x: qarr) {
+                                if (!x->empty()) {
+                                    std::cout << "queue not empty" << std::endl;
+                                }
                             }
+                            return;
                         }
-                        break;
                     }
+                    con->write_double(val->id, val->ts, val->value);
+                    val->cnt++;
                 }
-                con->write_double(val->id, val->ts, val->value);
-                val->cnt++;
             }
         }
     };
