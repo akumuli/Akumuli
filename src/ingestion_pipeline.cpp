@@ -43,7 +43,6 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q)
     pool_.resize(POOL_SIZE);
 }
 
-bool r = false;
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
     int ix = get_index_of_empty_slot();
     if (ix < 0) {
@@ -53,10 +52,7 @@ void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double dat
         if (ix < 0) {
             // Impossible to free some space
             // TODO: register data loss
-            if (!r) {
-                std::cout << "data loss" << std::endl;
-                r = true;
-            }
+            std::cout << "data loss" << std::endl;
             return;
         }
     }
@@ -92,6 +88,7 @@ void PipelineSpout::gc() {
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con)
     : con_(con)
     , ixmake_{0}
+    , mutex_(std::make_shared<std::timed_mutex>())
 {
     for (int i = N_QUEUES; i --> 0;) {
         queues_.push_back(std::make_shared<PipelineSpout::Queue>());
@@ -101,8 +98,10 @@ IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con)
 void IngestionPipeline::run() {
     auto qarr = queues_;
     auto con = con_;
-    auto worker = [con, qarr]() {
+    auto mut = mutex_;
+    auto worker = [con, qarr, mut]() {
         // Write loop (should be unique)
+        std::lock_guard<std::timed_mutex> guard(*mut);
         PipelineSpout::TVal *val;
         int poison_cnt = 0;
         for (int ix = 0; true; ix++) {
@@ -112,7 +111,9 @@ void IngestionPipeline::run() {
                     // New write
                     if (val->cnt == nullptr) {  //poisoned
                         poison_cnt++;
+                        std::cout << "getting poison " << poison_cnt << std::endl;
                         if (poison_cnt == N_QUEUES) {
+                            std::cout << "poisoned" << std::endl;
                             for (auto& x: qarr) {
                                 if (!x->empty()) {
                                     std::cout << "queue not empty" << std::endl;
@@ -120,12 +121,14 @@ void IngestionPipeline::run() {
                             }
                             return;
                         }
+                    } else {
+                        con->write_double(val->id, val->ts, val->value);
+                        (*val->cnt)++;
                     }
-                    con->write_double(val->id, val->ts, val->value);
-                    val->cnt++;
                 }
             }
         }
+        std::cout << "exit worker" << std::endl;
     };
 
     std::thread th(worker);
@@ -138,10 +141,15 @@ std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
 }
 
 PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{0, 0, 0, nullptr};
+int IngestionPipeline::TIMEOUT = 15000;  // 15 seconds
 
 void IngestionPipeline::close() {
     for (auto& q: queues_) {
         q->push(POISON);
+    }
+    std::unique_lock<std::timed_mutex> lock(*mutex_, std::defer_lock);
+    if (!lock.try_lock_for(std::chrono::milliseconds(TIMEOUT))) {
+        logger_.error() << "Pipeline close timeout";
     }
 }
 

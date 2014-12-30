@@ -21,6 +21,7 @@
  */
 
 #include "ingestion_pipeline.h"
+#include "utility.h"
 
 #include <boost/lockfree/queue.hpp>
 #include <boost/timer.hpp>
@@ -29,9 +30,16 @@
 #include <iostream>
 
 namespace detail {
+    const static int TAG = 111222333;
     struct ConnectionMock : Akumuli::DbConnection {
         int cnt;
-        void write_double(aku_ParamId param, aku_TimeStamp ts, double data) { cnt++; }
+        void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+            if (AKU_LIKELY(param == TAG)) {
+                cnt++;
+            } else {
+                std::cout << "Error in ConnectionMock, unexpected value" << std::endl;
+            }
+        }
     };
 };
 
@@ -87,7 +95,7 @@ struct SpoutTest {
         auto worker = [&]() {
             auto spout = pipeline.make_spout();
             for (int i = N_ITERS/2; i --> 0;) {
-                spout->write_double(1, 0, 0.0);
+                spout->write_double(detail::TAG, 0, 0.0);
             }
         };
         boost::timer tm;

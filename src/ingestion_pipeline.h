@@ -18,6 +18,7 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include <mutex>
 
 #include <boost/lockfree/queue.hpp>
 
@@ -71,7 +72,7 @@ struct PipelineSpout : ProtocolConsumer {
     enum {
         //! PVal pool size
         POOL_SIZE = 0x1000,
-        QCAP      = 0x1000,
+        QCAP      = 0x100,
     };
 
     // Typedefs
@@ -118,7 +119,9 @@ class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
     std::shared_ptr<DbConnection>      con_;        //< DB connection
     std::vector<PipelineSpout::PQueue> queues_;     //< Queues collection
     std::atomic<int>                   ixmake_;     //< Index for the make_spout mehtod
+    std::shared_ptr<std::timed_mutex>  mutex_;      //< Mutex to wait thread completion
     static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
+    static int                         TIMEOUT;     //< Close timeout
 public:
     /** Create new pipeline topology.
       */
