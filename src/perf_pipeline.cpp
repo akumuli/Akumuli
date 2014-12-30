@@ -95,7 +95,7 @@ struct SpoutTest {
         using namespace detail;
         std::shared_ptr<ConnectionMock> con = std::make_shared<ConnectionMock>();
         con->cnt = 0;
-        auto pipeline = std::make_shared<IngestionPipeline>(con);
+        auto pipeline = std::make_shared<IngestionPipeline>(con, AKU_LINEAR_BACKOFF);
         auto worker = [&]() {
             auto spout = pipeline->make_spout();
             for (int i = N_ITERS/2; i --> 0;) {

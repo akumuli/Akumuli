@@ -7,6 +7,7 @@ add_executable(akumulid
     protocolparser.cpp protocolparser.h
     protocol_consumer.h
     ingestion_pipeline.cpp ingestion_pipeline.h
+    tcp_server.cpp tcp_server.h
 )
 
 target_link_libraries(akumulid

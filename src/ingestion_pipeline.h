@@ -35,6 +35,7 @@ struct DbConnection {
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
 };
 
+
 //! Object of this class writes everything to the database
 class AkumuliConnection : public DbConnection
 {

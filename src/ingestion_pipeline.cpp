@@ -3,7 +3,6 @@
 #include "utility.h"
 
 #include <thread>
-#include <iostream>  // TODO: remove iostream
 
 #include <boost/exception/all.hpp>
 
@@ -121,20 +120,19 @@ void IngestionPipeline::start() {
                         // New write
                         if (val->cnt == nullptr) {  //poisoned
                             poison_cnt++;
-                            std::cout << "getting poison " << poison_cnt << std::endl;
                             if (poison_cnt == N_QUEUES) {
-                                std::cout << "poisoned" << std::endl;
+                                // Check
                                 for (auto& x: self->queues_) {
                                     if (!x->empty()) {
-                                        std::cout << "queue not empty" << std::endl;
+                                        logger_.error() << "Queue not empty, some data will be lost.";
                                     }
                                 }
+                                // Stop
                                 {
                                     std::lock_guard<Mtx> m(*self->mutex_);
                                     self->stopped_ = true;
                                 }
                                 self->cvar_.notify_one();
-                                std::cout << "exit" << std::endl;
                                 return;
                             }
                         } else {
