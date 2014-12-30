@@ -13,6 +13,7 @@ TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     : io_(io)
     , socket_(*io)
     , spout_(spout)
+    , parser_(spout)
 {
 }
 
@@ -30,6 +31,23 @@ void TcpSession::start() {
                             boost::asio::placeholders::error,
                             boost::asio::placeholders::bytes_transferred)
                 );
+}
+
+void TcpSession::handle_read(std::shared_ptr<Byte> buffer,
+                             boost::system::error_code error,
+                             size_t nbytes) {
+    if (!error) {
+        start();
+        PDU pdu = {
+            buffer,
+            nbytes,
+            0u
+        };
+        parser_.parse_next(pdu);
+        // TODO: reuse buffer if it is almost empty
+    } else {
+        logger_.error() << error.message();
+    }
 }
 
 //                    //
@@ -56,7 +74,7 @@ void TcpServer::start() {
 
 void TcpServer::_start() {
     std::shared_ptr<TcpSession> session;
-    session.reset(new TcpSession(io_));
+    session.reset(new TcpSession(io_, pipeline_->make_spout()));
     acceptor_.async_accept(
                 session->socket(),
                 boost::bind(&TcpServer::handle_accept,

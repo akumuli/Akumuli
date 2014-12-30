@@ -39,11 +39,12 @@ typedef ip::tcp::socket TcpSocket;
 class TcpSession : public std::enable_shared_from_this<TcpSession> {
     enum {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
-        BUFFER_SIZE_THRESHOLD =  0x200,  //< Min free buffer space
+        BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
     };
     IOService *io_;
     TcpSocket socket_;
     std::shared_ptr<PipelineSpout> spout_;
+    ProtocolParser parser_;
 public:
     TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout);
 
@@ -53,25 +54,21 @@ public:
 
 private:
 
-    std::shared_ptr<void> get_next_buffer() {
-        void* buffer = malloc(BUFFER_SIZE);
-        std::shared_ptr<void> bufptr(buffer, &free);
+    std::shared_ptr<Byte> get_next_buffer() {
+        Byte *buffer = (Byte*)malloc(BUFFER_SIZE);
+        auto deleter = [](Byte* p) {
+            free((void*)p);
+        };
+        std::shared_ptr<Byte> bufptr(buffer, deleter);
         return bufptr;
     }
 
     void return_buffer(std::shared_ptr<void> buffer) {
     }
 
-    void handle_read(std::shared_ptr<void> buffer, boost::system::error_code error, size_t nbytes) {
-        if (!error) {
-            start();
-            // processing goes here
-            // done processing
-        } else {
-            // error reporting goes here
-            std::cout << "read error " << error << std::endl;
-        }
-    }
+    void handle_read(std::shared_ptr<Byte> buffer,
+                     boost::system::error_code error,
+                     size_t nbytes);
 };
 
 
