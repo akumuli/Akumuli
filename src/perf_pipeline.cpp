@@ -30,6 +30,7 @@
 #include <iostream>
 
 namespace detail {
+    bool err_shown = false;
     const static int TAG = 111222333;
     struct ConnectionMock : Akumuli::DbConnection {
         int cnt;
@@ -37,7 +38,10 @@ namespace detail {
             if (AKU_LIKELY(param == TAG)) {
                 cnt++;
             } else {
-                std::cout << "Error in ConnectionMock, unexpected value" << std::endl;
+                if (!err_shown) {
+                    err_shown = true;
+                    std::cout << "Error in ConnectionMock, unexpected value" << std::endl;
+                }
             }
         }
     };
@@ -91,21 +95,21 @@ struct SpoutTest {
         using namespace detail;
         std::shared_ptr<ConnectionMock> con = std::make_shared<ConnectionMock>();
         con->cnt = 0;
-        IngestionPipeline pipeline(con);
+        auto pipeline = std::make_shared<IngestionPipeline>(con);
         auto worker = [&]() {
-            auto spout = pipeline.make_spout();
+            auto spout = pipeline->make_spout();
             for (int i = N_ITERS/2; i --> 0;) {
-                spout->write_double(detail::TAG, 0, 0.0);
+                spout->write_double(detail::TAG, i, 0.0);
             }
         };
         boost::timer tm;
-        pipeline.run();
+        pipeline->start();
         std::thread workerA(worker);
         std::thread workerB(worker);
         workerA.join();
         workerB.join();
+        pipeline->stop();
         double e = tm.elapsed();
-        pipeline.close();
         if (con->cnt != N_ITERS) {
             std::cout << "Error in pipeline " << con->cnt << std::endl;
         }

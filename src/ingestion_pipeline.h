@@ -19,6 +19,7 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
 
 #include <boost/lockfree/queue.hpp>
 
@@ -57,6 +58,13 @@ public:
 using boost::lockfree::queue;
 using boost::lockfree::capacity;
 
+
+enum BackoffPolicy {
+    AKU_THROTTLE,
+    AKU_LINEAR_BACKOFF,
+};
+
+
 /** Pipeline's spout.
   * Object of this class can be used to ingest data to pipeline.
   * It should be connected with IngestionPipeline instance with
@@ -71,8 +79,8 @@ struct PipelineSpout : ProtocolConsumer {
     // Constants
     enum {
         //! PVal pool size
-        POOL_SIZE = 0x1000,
-        QCAP      = 0x100,
+        POOL_SIZE = 0x100,
+        QCAP      = 0x10,
     };
 
     // Typedefs
@@ -84,8 +92,8 @@ struct PipelineSpout : ProtocolConsumer {
         double          value;                                   //< Value (TODO: should be variant type)
         SpoutCounter   *cnt;                                     //< Pointer to spout's shared counter
     }                                            TVal;           //< Value
-    typedef std::unique_ptr<TVal>                PVal;           //< Pointer to value
-    typedef queue<TVal*, capacity<QCAP>>         Queue;          //< Queue class
+    typedef std::shared_ptr<TVal>                PVal;           //< Pointer to value
+    typedef queue<TVal*>                         Queue;          //< Queue class
     typedef std::shared_ptr<Queue>               PQueue;         //< Pointer to queue
 
     // Data
@@ -96,9 +104,10 @@ struct PipelineSpout : ProtocolConsumer {
     std::vector<PVal>   pool_;                                   //< TVal pool
     Padding             pad1;
     PQueue              queue_;                                  //< Queue
+    const BackoffPolicy backoff_;
 
     // C-tor
-    PipelineSpout(std::shared_ptr<Queue> q);
+    PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp);
 
     // ProtocolConsumer
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
@@ -116,25 +125,29 @@ class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
     enum {
         N_QUEUES = 16,
     };
+    typedef std::mutex                 Mtx;
     std::shared_ptr<DbConnection>      con_;        //< DB connection
     std::vector<PipelineSpout::PQueue> queues_;     //< Queues collection
     std::atomic<int>                   ixmake_;     //< Index for the make_spout mehtod
-    std::shared_ptr<std::timed_mutex>  mutex_;      //< Mutex to wait thread completion
+    std::shared_ptr<Mtx>               mutex_;      //< Mutex to wait thread completion
+    std::condition_variable            cvar_;       //< Cond. variable for stopping
+    bool                               stopped_;    //< Stopping flag
     static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
     static int                         TIMEOUT;     //< Close timeout
+    const BackoffPolicy                backoff_;    //< Back-pressure policy
 public:
     /** Create new pipeline topology.
       */
-    IngestionPipeline(std::shared_ptr<DbConnection> con);
+    IngestionPipeline(std::shared_ptr<DbConnection> con, BackoffPolicy bp = AKU_THROTTLE);
 
     /** Run pipeline topology.
       */
-    void run();
+    void start();
 
     /** Add new pipeline spout. */
     std::shared_ptr<PipelineSpout> make_spout();
 
-    void close();
+    void stop();
 };
 
 }  // namespace Akumuli

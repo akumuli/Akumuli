@@ -67,6 +67,23 @@ target_link_libraries(test_protocolparser
 )
 add_test(protocol-parser test_protocolparser)
 
+# Pipeline test
+add_executable(test_pipeline
+    test_pipeline.cpp
+    ingestion_pipeline.cpp
+    logger.cpp
+)
+target_link_libraries(test_pipeline
+    jemalloc
+    akumuli
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
+add_test(protocol-parser test_protocolparser)
+
 ##############################################
 #                                            #
 #          Performance tests                 #
