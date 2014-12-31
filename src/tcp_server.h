@@ -95,6 +95,8 @@ public:
     //! Start listening on socket
     void start();
 
+    //! Stop listening on socket
+    void stop();
 private:
 
     //! Start implementation

@@ -85,6 +85,10 @@ void TcpServer::_start() {
                 );
 }
 
+void TcpServer::stop() {
+    acceptor_.close();
+}
+
 void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start();

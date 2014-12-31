@@ -50,20 +50,21 @@ int main() {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     // Push data to server
-    const int COUNT = 10000000;  // 10M
-    TcpSocket socket(io);
-    auto loopback = boost::asio::ip::address_v4::loopback();
-    boost::asio::ip::tcp::endpoint peer(loopback, 4096);
-    socket.connect(peer);
-
     auto push = [&]() {
+        const int COUNT = 5000000;  // 5M
+        TcpSocket socket(io);
+        auto loopback = boost::asio::ip::address_v4::loopback();
+        boost::asio::ip::tcp::endpoint peer(loopback, 4096);
+        socket.connect(peer);
+
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        for (int i = COUNT/2; i --> 0; ) {
+        for (int i = COUNT; i --> 0; ) {
             os << ":1\r\n" ":2\r\n" "+3.14\r\n";
             size_t n = socket.send(stream.data());
             stream.consume(n);
         }
+        socket.close();
     };
 
     boost::timer tm;
@@ -73,12 +74,21 @@ int main() {
     pusherA.join();
     pusherB.join();
 
+    serv->stop();
+    std::cout << "TcpServer stopped" << std::endl;
+
+    io.stop();
+    std::cout << "I/O service stopped" << std::endl;
+    iothreadA.join();
+    //iothreadB.join();
+    std::cout << "I/O thread stopped" << std::endl;
+
     pline->stop();
+    std::cout << "Pipeline stopped" << std::endl;
+
     // Every message is processed here
     double elapsed = tm.elapsed();
     std::cout << "10M sent in " << elapsed << "s" << std::endl;
 
-    io.stop();
-    iothreadA.join();
-    //iothreadB.join();
+    return 0;
 }
