@@ -137,3 +137,23 @@ target_link_libraries(perf_pipeline
     libboost_coroutine.a
     libboost_context.a
 )
+
+# TCP server perf test
+add_executable(perf_tcp_server
+    perf_tcp_server.cpp
+    tcp_server.cpp
+    resp.cpp
+    protocolparser.cpp
+    stream.cpp
+    ingestion_pipeline.cpp
+    logger.cpp
+)
+target_link_libraries(perf_tcp_server
+    jemalloc
+    akumuli
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
