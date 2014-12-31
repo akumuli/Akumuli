@@ -230,7 +230,10 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pd
     if (pdu.pos == 0) {
         // Error in first symbol
         size_t size = std::min(pdu.size, (size_t)StreamError::MAX_LENGTH);
-        return std::make_pair(std::string(origin, origin + size), 0);
+        auto res = std::string(origin, origin + size);
+        boost::algorithm::replace_all(res, "\r", "\\r");
+        boost::algorithm::replace_all(res, "\n", "\\n");
+        return std::make_pair(res, 0);
     }
     auto pdu_pos = pdu.pos;
     auto ipos = origin + pdu_pos;   // Iterator

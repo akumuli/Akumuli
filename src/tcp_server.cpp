@@ -15,6 +15,7 @@ TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     , spout_(spout)
     , parser_(spout)
 {
+    parser_.start();
 }
 
 TcpSocket& TcpSession::socket() {
