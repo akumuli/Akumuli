@@ -12,6 +12,7 @@ static Logger logger_ = Logger("tcp-server", 64);
 TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     : io_(io)
     , socket_(*io)
+    , strand_(*io)
     , spout_(spout)
     , parser_(spout)
 {
@@ -22,16 +23,26 @@ TcpSocket& TcpSession::socket() {
     return socket_;
 }
 
+std::shared_ptr<Byte> TcpSession::get_next_buffer() {
+    Byte *buffer = (Byte*)malloc(BUFFER_SIZE);
+    auto deleter = [](Byte* p) {
+        free((void*)p);
+    };
+    std::shared_ptr<Byte> bufptr(buffer, deleter);
+    return bufptr;
+}
+
 void TcpSession::start() {
     auto bufptr = get_next_buffer();
     socket_.async_read_some(
                 boost::asio::buffer(bufptr.get(), BUFFER_SIZE),
-                boost::bind(&TcpSession::handle_read,
-                            shared_from_this(),
-                            bufptr,
-                            boost::asio::placeholders::error,
-                            boost::asio::placeholders::bytes_transferred)
-                );
+                strand_.wrap(
+                    boost::bind(&TcpSession::handle_read,
+                                shared_from_this(),
+                                bufptr,
+                                boost::asio::placeholders::error,
+                                boost::asio::placeholders::bytes_transferred)
+                ));
 }
 
 void TcpSession::handle_read(std::shared_ptr<Byte> buffer,
@@ -61,7 +72,7 @@ TcpServer::TcpServer(// Server parameters
                         std::shared_ptr<IngestionPipeline> pipeline
                      )
     : io_(io)
-    , acceptor_(*io_, ip::tcp::endpoint(ip::tcp::v4(), port))
+    , acceptor_(*io_, EndpointT(boost::asio::ip::tcp::v4(), port))
     , pipeline_(pipeline)
 {
     logger_.info() << "Server created!";

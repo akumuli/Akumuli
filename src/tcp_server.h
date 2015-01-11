@@ -25,13 +25,13 @@
 #include "protocolparser.h"
 #include "ingestion_pipeline.h"
 
-using namespace boost::asio;
-
 namespace Akumuli {
 
-typedef io_service IOService;
-typedef ip::tcp::acceptor TcpAcceptor;
-typedef ip::tcp::socket TcpSocket;
+typedef boost::asio::io_service IOService;
+typedef boost::asio::ip::tcp::acceptor TcpAcceptor;
+typedef boost::asio::ip::tcp::socket TcpSocket;
+typedef boost::asio::ip::tcp::endpoint EndpointT;
+typedef boost::asio::strand StrandT;
 
 /** Server session. Reads data from socket.
  *  Must be created in the heap.
@@ -43,6 +43,7 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     };
     IOService *io_;
     TcpSocket socket_;
+    StrandT strand_;
     std::shared_ptr<PipelineSpout> spout_;
     ProtocolParser parser_;
 public:
@@ -54,17 +55,7 @@ public:
 
 private:
 
-    std::shared_ptr<Byte> get_next_buffer() {
-        Byte *buffer = (Byte*)malloc(BUFFER_SIZE);
-        auto deleter = [](Byte* p) {
-            free((void*)p);
-        };
-        std::shared_ptr<Byte> bufptr(buffer, deleter);
-        return bufptr;
-    }
-
-    void return_buffer(std::shared_ptr<void> buffer) {
-    }
+    std::shared_ptr<Byte> get_next_buffer();
 
     void handle_read(std::shared_ptr<Byte> buffer,
                      boost::system::error_code error,

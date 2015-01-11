@@ -45,7 +45,7 @@ int main() {
     };
 
     std::thread iothreadA(iorun);
-    //std::thread iothreadB(iorun);
+    std::thread iothreadB(iorun);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -80,7 +80,7 @@ int main() {
     io.stop();
     std::cout << "I/O service stopped" << std::endl;
     iothreadA.join();
-    //iothreadB.join();
+    iothreadB.join();
     std::cout << "I/O thread stopped" << std::endl;
 
     pline->stop();
