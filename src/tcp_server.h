@@ -47,17 +47,34 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     std::shared_ptr<PipelineSpout> spout_;
     ProtocolParser parser_;
 public:
+    typedef std::shared_ptr<Byte> BufferT;
     TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout);
 
     TcpSocket& socket();
 
-    void start();
+    void start(BufferT buf,
+               size_t buf_size,
+               size_t pos,
+               size_t bytes_read);
 
+    static BufferT NO_BUFFER;
 private:
 
-    std::shared_ptr<Byte> get_next_buffer();
+    /** Allocate new buffer or reuse old if there is enough space in there.
+      * @param prev_buf previous buffer or NO_BUFFER
+      * @param size buffer full size
+      * @param pos position in the buffer
+      * @param bytes_read number of newly overwritten bytes in the buffer
+      * @return buffer (allocated or reused), full buffer size and write position (three element tuple)
+      */
+    std::tuple<BufferT, size_t, size_t> get_next_buffer(BufferT prev_buf,
+                                                        size_t size,
+                                                        size_t pos,
+                                                        size_t bytes_read);
 
-    void handle_read(std::shared_ptr<Byte> buffer,
+    void handle_read(BufferT buffer,
+                     size_t pos,
+                     size_t buf_size,
                      boost::system::error_code error,
                      size_t nbytes);
 };
