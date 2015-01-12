@@ -80,7 +80,7 @@ struct PipelineSpout : ProtocolConsumer {
     // Constants
     enum {
         //! PVal pool size
-        POOL_SIZE = 0x100,
+        POOL_SIZE = 0x200,
         QCAP      = 0x10,
     };
 
@@ -98,10 +98,9 @@ struct PipelineSpout : ProtocolConsumer {
     typedef std::shared_ptr<Queue>               PQueue;         //< Pointer to queue
 
     // Data
-    SpoutCounter        counter_;                                //< Processed counter
+    SpoutCounter        created_;                                //< Created elements counter
     Padding             pad0;
-    uint64_t            created_;                                //< Created elements counter
-    uint64_t            deleted_;                                //< Deleted elements counter
+    SpoutCounter        deleted_;                                //< Deleted elements counter
     std::vector<PVal>   pool_;                                   //< TVal pool
     Padding             pad1;
     PQueue              queue_;                                  //< Queue
@@ -117,14 +116,12 @@ struct PipelineSpout : ProtocolConsumer {
     // Utility
     //! Reserve index for the next TVal in the pool or negative value on error.
     int get_index_of_empty_slot();
-    //! Delete processed items from the pool.
-    void gc();
 };
 
 class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
 {
     enum {
-        N_QUEUES = 16,
+        N_QUEUES = 8,
     };
     typedef std::mutex                 Mtx;
     std::shared_ptr<DbConnection>      con_;        //< DB connection

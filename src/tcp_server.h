@@ -27,11 +27,16 @@
 
 namespace Akumuli {
 
-typedef boost::asio::io_service IOService;
-typedef boost::asio::ip::tcp::acceptor TcpAcceptor;
-typedef boost::asio::ip::tcp::socket TcpSocket;
-typedef boost::asio::ip::tcp::endpoint EndpointT;
-typedef boost::asio::strand StrandT;
+//                                                //
+//          Type aliases from boost.asio          //
+//                                                //
+
+typedef boost::asio::io_service         IOService;
+typedef boost::asio::ip::tcp::acceptor  TcpAcceptor;
+typedef boost::asio::ip::tcp::socket    TcpSocket;
+typedef boost::asio::ip::tcp::endpoint  EndpointT;
+typedef boost::asio::strand             StrandT;
+typedef boost::asio::io_service::work   WorkT;
 
 /** Server session. Reads data from socket.
  *  Must be created in the heap.
@@ -85,9 +90,21 @@ private:
   */
 class TcpServer : public std::enable_shared_from_this<TcpServer>
 {
-    IOService *io_;
-    TcpAcceptor acceptor_;
-    std::shared_ptr<IngestionPipeline> pipeline_;
+    IOService                           own_io_;         //< Acceptor's own io-service
+    TcpAcceptor                         acceptor_;       //< Acceptor
+    std::vector<IOService*>             sessions_io_;    //< List of io-services for sessions
+    std::vector<WorkT>                  sessions_work_;  //< Work to block io-services from completing too early
+    std::shared_ptr<IngestionPipeline>  pipeline_;       //< Pipeline instance
+    std::atomic<int>                    io_index_;       //< I/O service index
+
+    // Acceptor thread control
+    std::mutex                          mutex_;
+    std::condition_variable             cond_;
+    enum {
+        UNDEFINED,
+        STARTED,
+        STOPPED,
+    }                                   acceptor_state_;
 public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
@@ -95,7 +112,7 @@ public:
       * @param pipeline ingestion pipeline
       */
     TcpServer(// Server parameters
-                 IOService *io, int port,
+                 std::vector<IOService*> io, int port,
               // Storage & pipeline
                  std::shared_ptr<IngestionPipeline> pipeline
               );

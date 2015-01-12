@@ -37,33 +37,38 @@ void AkumuliConnection::write_double(aku_ParamId param, aku_TimeStamp ts, double
 
 // Pipeline spout
 PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
-    : counter_{0}
-    , created_(0)
-    , deleted_(0)
+    : created_{0}
+    , deleted_{0}
     , pool_()
     , queue_(q)
     , backoff_(bp)
 {
     pool_.resize(POOL_SIZE);
+    for(int ix = POOL_SIZE; ix --> 0;) {
+        pool_.at(ix).reset(new TVal());
+    }
 }
 
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
     int ix = get_index_of_empty_slot();
     while (AKU_UNLIKELY(ix < 0)) {
-        // Try to delete old items from the pool
-        gc();
         ix = get_index_of_empty_slot();
-        if ( ix < 0 && AKU_LIKELY(backoff_ == AKU_THROTTLE)     ) { // this setting will be used in production
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            return;
-        } else if (ix < 0 && backoff_      == AKU_LINEAR_BACKOFF) {
-            // Linear backoff if needed and stop when hitting backoff threshold
+        if (ix < 0 && backoff_ == AKU_LINEAR_BACKOFF) {
             std::this_thread::yield();
             continue;
+        } else if ( ix < 0 && backoff_ == AKU_THROTTLE) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return;
         }
     }
-    pool_.at(ix).reset(new TVal{param, ts, data, &counter_});
+
     auto pvalue = pool_.at(ix).get();
+
+    pvalue->id    =     param;
+    pvalue->ts    =        ts;
+    pvalue->value =      data;
+    pvalue->cnt   = &deleted_;
+
     while (!queue_->push(pvalue)) {
         std::this_thread::yield();
     }
@@ -81,14 +86,6 @@ int PipelineSpout::get_index_of_empty_slot() {
         return result;
     }
     return -1;
-}
-
-void PipelineSpout::gc() {
-    uint64_t processed = counter_;
-    while(deleted_ < processed) {
-        pool_.at(deleted_ % POOL_SIZE).reset();
-        deleted_++;
-    }
 }
 
 // Ingestion pipeline
@@ -113,32 +110,32 @@ void IngestionPipeline::start() {
             // Write loop (should be unique)
             PipelineSpout::TVal *val;
             int poison_cnt = 0;
+            std::vector<PipelineSpout::PQueue> queues = self->queues_;
             for (int ix = 0; true; ix++) {
-                auto& qref = self->queues_.at(ix % N_QUEUES);
-                for (int i = 0; i < 16; i++) {
-                    if (qref->pop(val)) {
-                        // New write
-                        if (val->cnt == nullptr) {  //poisoned
-                            poison_cnt++;
-                            if (poison_cnt == N_QUEUES) {
-                                // Check
-                                for (auto& x: self->queues_) {
-                                    if (!x->empty()) {
-                                        logger_.error() << "Queue not empty, some data will be lost.";
-                                    }
+                auto& qref = queues.at(ix % N_QUEUES);
+                if (qref->pop(val)) {
+                    // New write
+                    if (AKU_UNLIKELY(val->cnt == nullptr)) {  //poisoned
+                        poison_cnt++;
+                        if (poison_cnt == N_QUEUES) {
+                            // Check
+                            for (auto& x: self->queues_) {
+                                if (!x->empty()) {
+                                    logger_.error() << "Queue not empty, some data will be lost.";
                                 }
-                                // Stop
-                                {
-                                    std::lock_guard<Mtx> m(*self->mutex_);
-                                    self->stopped_ = true;
-                                }
-                                self->cvar_.notify_one();
-                                return;
                             }
-                        } else {
-                            self->con_->write_double(val->id, val->ts, val->value);
-                            (*val->cnt)++;
+                            // Stop
+                            {
+                                std::lock_guard<Mtx> m(*self->mutex_);
+                                self->stopped_ = true;
+                                logger_.info() << "Stopping pipeline";
+                            }
+                            self->cvar_.notify_one();
+                            return;
                         }
+                    } else {
+                        self->con_->write_double(val->id, val->ts, val->value);
+                        (*val->cnt)++;
                     }
                 }
             }

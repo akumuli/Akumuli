@@ -23,7 +23,7 @@ struct DbMock : DbConnection {
 struct TCPServerTestSuite {
     std::shared_ptr<DbMock>             dbcon;
     std::shared_ptr<IngestionPipeline>  pline;
-    boost::asio::io_service             io;
+    IOService                           io;
     std::shared_ptr<TcpServer>          serv;
 
     TCPServerTestSuite() {
@@ -34,9 +34,14 @@ struct TCPServerTestSuite {
 
         // Run server
         int port = 4096;
-        serv = std::make_shared<TcpServer>(&io, port, pline);
+        std::vector<IOService*> iovec = { &io };
+        serv = std::make_shared<TcpServer>(iovec, port, pline);
         serv->start();
 
+    }
+
+    ~TCPServerTestSuite() {
+        serv->stop();
     }
 
     template<class Fn>
@@ -46,9 +51,6 @@ struct TCPServerTestSuite {
         auto loopback = boost::asio::ip::address_v4::loopback();
         boost::asio::ip::tcp::endpoint peer(loopback, 4096);
         socket.connect(peer);
-
-        // TCPServer.handle_accept
-        io.run_one();
 
         // Run tests
         fn(socket);

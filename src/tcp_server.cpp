@@ -1,5 +1,6 @@
 #include "tcp_server.h"
 #include "utility.h"
+#include <thread>
 
 namespace Akumuli {
 
@@ -76,26 +77,63 @@ void TcpSession::handle_read(BufferT buffer,
 //                    //
 
 TcpServer::TcpServer(// Server parameters
-                        IOService *io, int port,
+                        std::vector<IOService *> io, int port,
                      // Storage & pipeline
                         std::shared_ptr<IngestionPipeline> pipeline
                      )
-    : io_(io)
-    , acceptor_(*io_, EndpointT(boost::asio::ip::tcp::v4(), port))
+    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
+    , sessions_io_(io)
     , pipeline_(pipeline)
+    , io_index_{0}
+    , acceptor_state_(UNDEFINED)
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
+
+    // Blocking I/O services
+    for (auto io: sessions_io_) {
+        sessions_work_.emplace_back(*io);
+    }
 }
 
 void TcpServer::start() {
+    WorkT work(own_io_);
+
+    // Run detached thread for accepts
+    auto self = shared_from_this();
+    std::thread accept_thread([self]() {
+
+        self->acceptor_state_ = STARTED;
+        self->cond_.notify_one();
+
+        try {
+            self->own_io_.run();
+        } catch (...) {
+            logger_.error() << "Error in acceptor worker thread: " << boost::current_exception_diagnostic_information();
+            throw;
+        }
+        logger_.info() << "Acceptor worker thread stopped.";
+
+        self->acceptor_state_ = STOPPED;
+        self->cond_.notify_one();
+    });
+    accept_thread.detach();
+
+    std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait(lock);
+    if (acceptor_state_ != STARTED) {
+        logger_.error() << "Invalid acceptor state";
+    } else {
+        logger_.info() << "Acceptor worker thread started.";
+    }
+
     logger_.info() << "Start listening";
     _start();
 }
 
 void TcpServer::_start() {
     std::shared_ptr<TcpSession> session;
-    session.reset(new TcpSession(io_, pipeline_->make_spout()));
+    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), pipeline_->make_spout()));
     acceptor_.async_accept(
                 session->socket(),
                 boost::bind(&TcpServer::handle_accept,
@@ -106,7 +144,15 @@ void TcpServer::_start() {
 }
 
 void TcpServer::stop() {
+    logger_.error() << "Stopping acceptor";
     acceptor_.close();
+    own_io_.stop();
+    sessions_work_.clear();
+    std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait(lock);
+    if (acceptor_state_ != STOPPED) {
+        logger_.error() << "Invalid acceptor state after stopping attempt";
+    }
 }
 
 void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
@@ -115,7 +161,7 @@ void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system
     } else {
         logger_.error() << "Acceptor error " << err.message();
     }
-    start();
+    _start();
 }
 
 }
