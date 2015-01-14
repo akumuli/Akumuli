@@ -16,11 +16,13 @@ Formatter::~Formatter() {
         LOG4CXX_INFO(logger_, str_.str());
         break;
     case LOGGER_ERROR:
-        LOG4CXX_TRACE(logger_, "=Begin=trace=======================================================");
-        for(auto msg: *buffer_) {
-            LOG4CXX_TRACE(logger_, msg);
+        if (!buffer_->empty()) {
+            LOG4CXX_TRACE(logger_, "=Begin=trace=======================================================");
+            for(auto msg: *buffer_) {
+                LOG4CXX_TRACE(logger_, msg);
+            }
+            LOG4CXX_TRACE(logger_, "==========================================================End=trace=");
         }
-        LOG4CXX_TRACE(logger_, "==========================================================End=trace=");
         LOG4CXX_ERROR(logger_, str_.str());
         break;
     case BUFFER:

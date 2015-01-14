@@ -1,7 +1,13 @@
 #include "resp.h"
+#include <boost/exception/all.hpp>
 #include <cassert>
 
 namespace Akumuli {
+
+RESPError::RESPError(std::string msg, int pos)
+    : StreamError(msg, pos)
+{
+}
 
 RESPStream::RESPStream(ByteStreamReader *stream) {
     stream_ = stream;
@@ -45,22 +51,26 @@ uint64_t RESPStream::_read_int_body() {
                 return result;
             }
             // Bad stream
-            throw RESPError("invalid symbol inside stream - '\\r'");
+            auto ctx = stream_->get_error_context("invalid symbol inside stream - '\\r'");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
         }
         // c must be in [0x30:0x39] range
         if (c > 0x39 || c < 0x30) {
-            throw RESPError("can't parse integer (character value out of range)");
+            auto ctx = stream_->get_error_context("can't parse integer (character value out of range)");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
         }
         result = result*10 + static_cast<int>(c & 0x0F);
         quota--;
     }
-    throw RESPError("integer is too long");
+    auto ctx = stream_->get_error_context("integer is too long");
+    BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
 uint64_t RESPStream::read_int() {
     Byte c = stream_->get();
     if (c != ':') {
-        throw RESPError("bad call");
+        auto ctx = stream_->get_error_context("bad call");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     return _read_int_body();
 }
@@ -75,19 +85,22 @@ int RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
             if (c == '\n') {
                 return p - buffer;
             } else {
-                throw RESPError("bad end of sequence");
+                auto ctx = stream_->get_error_context("bad end of sequence");
+                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
             }
         }
         *p++ = c;
         quota--;
     }
-    throw RESPError("out of quota");
+    auto ctx = stream_->get_error_context("out of quota");
+    BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
 int RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
     Byte c = stream_->get();
     if (c != '+') {
-        throw RESPError("bad call");
+        auto ctx = stream_->get_error_context("bad call");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     return _read_string_body(buffer, byte_buffer_size);
 }
@@ -95,16 +108,19 @@ int RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
 int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
     Byte c = stream_->get();
     if (c != '$') {
-        throw RESPError("bad call");
+        auto ctx = stream_->get_error_context("bad call");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     // parse "{value}\r\n"
     uint64_t n = _read_int_body();
     if (n > RESPStream::BULK_LENGTH_MAX) {
-        throw RESPError("declared object size is too large");
+        auto ctx = stream_->get_error_context("declared object size is too large");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     if (n > buffer_size) {
         // buffer is too small
-        throw RESPError("declared object size is too large");
+        auto ctx = stream_->get_error_context("declared object size is too large");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     int nread = stream_->read(buffer, n);
     if (nread < 0) {
@@ -114,7 +130,8 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
     Byte cr = stream_->get();
     Byte lf = stream_->get();
     if (cr != '\r' || lf != '\n') {
-        throw RESPError("bad end of stream");
+        auto ctx = stream_->get_error_context("bad end of stream");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     return nread;
 }
@@ -122,7 +139,8 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
 uint64_t RESPStream::read_array_size() {
     Byte c = stream_->get();
     if (c != '*') {
-        throw RESPError("bad call");
+        auto ctx = stream_->get_error_context("bad call");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     return _read_int_body();
 }

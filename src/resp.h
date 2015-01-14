@@ -20,7 +20,9 @@
 
 namespace Akumuli {
 
-typedef std::runtime_error RESPError;
+struct RESPError : StreamError {
+    RESPError(std::string msg, int pos);
+};
 
 /**
   * REdis Serialization Protocol implementation.

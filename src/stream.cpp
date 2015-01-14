@@ -2,8 +2,29 @@
 #include <cassert>
 #include <limits>
 #include <cstring>  // for memcpy
+#include <sstream>
+#include <boost/exception/all.hpp>
 
 namespace Akumuli {
+
+StreamError::StreamError(std::string line, int pos)
+    : line_(line)
+    , pos_(pos)
+{
+}
+
+const char* StreamError::what() const throw() {
+    return line_.c_str();
+}
+
+std::string StreamError::get_bottom_line() const {
+    std::stringstream s;
+    for (int i = 0; i < (pos_-1); i++) {
+        s << ' ';
+    }
+    s << '^';
+    return s.str();
+}
 
 ByteStreamReader::~ByteStreamReader() {}
 
@@ -21,14 +42,14 @@ Byte MemStreamReader::get() {
     if (pos_ < size_) {
         return buf_[pos_++];
     }
-    throw StreamError("unexpected end of stream");
+    BOOST_THROW_EXCEPTION(StreamError("unexpected end of stream", pos_));
 }
 
 Byte MemStreamReader::pick() const {
     if (pos_ < size_) {
         return buf_[pos_];
     }
-    throw StreamError("unexpected end of stream");
+    BOOST_THROW_EXCEPTION(StreamError("unexpected end of stream", pos_));
 }
 
 bool MemStreamReader::is_eof() {
@@ -46,71 +67,8 @@ void MemStreamReader::close() {
     pos_ = size_;
 }
 
-// Memory stream combiner
-
-MemoryStreamCombiner::MemoryStreamCombiner() {
-}
-
-void MemoryStreamCombiner::push(std::shared_ptr<Byte> buf, size_t len) {
-    buffers_.push(std::make_tuple(buf, len, (size_t)0u));
-}
-
-static const int POS = 2;
-static const int SIZE = 1;
-static const int BUF = 0;
-
-Byte MemoryStreamCombiner::get() {
-    while(!buffers_.empty()) {
-        auto& top = buffers_.front();
-        if (std::get<POS>(top) < std::get<SIZE>(top)) {
-            Byte* buf = std::get<BUF>(top).get();
-            return buf[std::get<POS>(top)++];
-        }
-        buffers_.pop();
-    }
-    throw StreamError("unexpected end of stream");
-}
-
-Byte MemoryStreamCombiner::pick() const {
-    while(!buffers_.empty()) {
-        auto& top = buffers_.front();
-        if (std::get<POS>(top) < std::get<SIZE>(top)) {
-            Byte* buf = std::get<BUF>(top).get();
-            return buf[std::get<POS>(top)];
-        }
-        buffers_.pop();
-    }
-    throw StreamError("unexpected end of stream");
-}
-
-bool MemoryStreamCombiner::is_eof() {
-    return buffers_.empty();
-}
-
-int MemoryStreamCombiner::read(Byte *buffer, size_t buffer_len) {
-    int bytes_copied = -1;
-    while(!buffers_.empty()) {
-        auto& top = buffers_.front();
-        if (std::get<POS>(top) < std::get<SIZE>(top)) {
-            size_t sz = std::get<SIZE>(top) - std::get<POS>(top);
-            size_t bytes_to_copy = std::min(sz, buffer_len);
-            memcpy(buffer, std::get<BUF>(top).get(), sz);
-            bytes_copied += (int)bytes_to_copy;
-            if (bytes_to_copy == buffer_len) {
-                // everything is copied!
-                break;
-            } else {
-                // continue reading from the next buffer in the queue
-                buffer += bytes_to_copy;
-                buffer_len -= bytes_to_copy;
-            }
-        }
-        buffers_.pop();
-    }
-    return bytes_copied;
-}
-
-void MemoryStreamCombiner::close() {
+std::tuple<std::string, size_t> MemStreamReader::get_error_context(const char* error_message) const {
+    return std::make_tuple(error_message, 0u);
 }
 
 }
