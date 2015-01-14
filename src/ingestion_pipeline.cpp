@@ -9,10 +9,10 @@
 namespace Akumuli
 {
 
-static Logger logger_ = Logger("IP", 32);
+static Logger db_logger_ = Logger("akumuli-storage", 32);
 
 static void db_logger(int tag, const char *msg) {
-    logger_.error() << "(" << tag << ") " << msg;
+    db_logger_.error() << "(" << tag << ") " << msg;
 }
 
 AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability durability)
@@ -42,6 +42,7 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
     , pool_()
     , queue_(q)
     , backoff_(bp)
+    , logger_("pipeline-spout", 32)
 {
     pool_.resize(POOL_SIZE);
     for(int ix = POOL_SIZE; ix --> 0;) {
@@ -96,6 +97,7 @@ IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con, BackoffP
     , mutex_(std::make_shared<Mtx>())
     , stopped_(false)
     , backoff_(bp)
+    , logger_("ingestion-pipeline", 32)
 
 {
     for (int i = N_QUEUES; i --> 0;) {
@@ -121,14 +123,14 @@ void IngestionPipeline::start() {
                             // Check
                             for (auto& x: self->queues_) {
                                 if (!x->empty()) {
-                                    logger_.error() << "Queue not empty, some data will be lost.";
+                                    self->logger_.error() << "Queue not empty, some data will be lost.";
                                 }
                             }
                             // Stop
                             {
                                 std::lock_guard<Mtx> m(*self->mutex_);
                                 self->stopped_ = true;
-                                logger_.info() << "Stopping pipeline";
+                                self->logger_.info() << "Stopping pipeline";
                             }
                             self->cvar_.notify_one();
                             return;
@@ -141,8 +143,8 @@ void IngestionPipeline::start() {
             }
         } catch (...) {
             // Fatal error. Report. Die!
-            logger_.error() << "Fatal error in ingestion pipeline worker thread!";
-            logger_.error() << boost::current_exception_diagnostic_information();
+            self->logger_.error() << "Fatal error in ingestion pipeline worker thread!";
+            self->logger_.error() << boost::current_exception_diagnostic_information();
             throw;
         }
     };
@@ -167,6 +169,8 @@ void IngestionPipeline::stop() {
     if (cvar_.wait_for(lock, std::chrono::milliseconds(TIMEOUT)) == std::cv_status::no_timeout) {
         if (!stopped_) {
             logger_.error() << "Can't stop pipeline";
+        } else {
+            logger_.info() << "Pipeline stopped";
         }
     } else {
         logger_.error() << "Pipeline stop timeout";

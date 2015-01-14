@@ -27,6 +27,7 @@
 #include "stream.h"
 #include "resp.h"
 #include "protocol_consumer.h"
+#include "logger.h"
 
 namespace Akumuli {
 
@@ -56,6 +57,7 @@ class ProtocolParser : ByteStreamReader {
     static const PDU POISON_;  //< This object marks end of the stream
     bool done_;
     std::shared_ptr<ProtocolConsumer> consumer_;
+    Logger logger_;
 
     void worker(Caller &yield);
     void set_caller(Caller& caller);

@@ -51,6 +51,7 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     StrandT strand_;
     std::shared_ptr<PipelineSpout> spout_;
     ProtocolParser parser_;
+    Logger logger_;
 public:
     typedef std::shared_ptr<Byte> BufferT;
     TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout);
@@ -105,6 +106,9 @@ class TcpServer : public std::enable_shared_from_this<TcpServer>
         STARTED,
         STOPPED,
     }                                   acceptor_state_;
+
+    // Logger
+    Logger logger_;
 public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
@@ -122,10 +126,16 @@ public:
 
     //! Stop listening on socket
     void stop();
-private:
 
-    //! Start implementation
+    //! Stop listening on socket (for testing)
+    void _stop();
+
+    //! Start implementation (this method is public only for testing purposes)
     void _start();
+
+    //! Run one handler (should be used only for testing)
+    void _run_one();
+private:
 
     //! Accept event handler
     void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);

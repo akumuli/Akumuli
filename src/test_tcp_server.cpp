@@ -7,14 +7,20 @@
 #include <boost/test/unit_test.hpp>
 
 #include "tcp_server.h"
+#include "logger.h"
 
 using namespace Akumuli;
+
+
+static Logger logger_ = Logger("tcp-server-test", 10);
+
 
 struct DbMock : DbConnection {
     typedef std::tuple<aku_ParamId, aku_TimeStamp, double> ValueT;
     std::vector<ValueT> results;
 
     void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+        logger_.trace() << "write_double(" << param << ", " << ts << ", " << data << ")";
         results.push_back(std::make_tuple(param, ts, data));
     }
 };
@@ -36,12 +42,16 @@ struct TCPServerTestSuite {
         int port = 4096;
         std::vector<IOService*> iovec = { &io };
         serv = std::make_shared<TcpServer>(iovec, port, pline);
-        serv->start();
 
+        // Start reading but don't start iorun thread
+        serv->_start();
     }
 
     ~TCPServerTestSuite() {
-        serv->stop();
+        logger_.info() << "Clean up suite resources";
+        if (serv) {
+            serv->_stop();
+        }
     }
 
     template<class Fn>
@@ -51,6 +61,7 @@ struct TCPServerTestSuite {
         auto loopback = boost::asio::ip::address_v4::loopback();
         boost::asio::ip::tcp::endpoint peer(loopback, 4096);
         socket.connect(peer);
+        serv->_run_one();  // run handle_accept one time
 
         // Run tests
         fn(socket);
@@ -65,14 +76,18 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
-        socket.send(stream.data());
+
+        boost::asio::write(socket, stream);
 
         // TCPSession.handle_read
         suite.io.run_one();
         suite.pline->stop();
 
         // Check
-        BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
+        if (suite.dbcon->results.size() != 1) {
+            logger_.error() << "Error detected";
+            BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
+        }
         aku_ParamId id;
         aku_TimeStamp ts;
         double value;
@@ -83,6 +98,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
     });
 }
 
+
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
     TCPServerTestSuite suite;
@@ -91,17 +107,16 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n";
-        size_t n = socket.send(stream.data());
+        size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
         // Process first part of the message
         suite.io.run_one();
 
         os << "+3.14\r\n";
-        n = socket.send(stream.data());
+        n = boost::asio::write(socket, stream);
         // Process last
         suite.io.run_one();
-
         suite.pline->stop();
 
         // Check
@@ -127,7 +142,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
         // Fist message
         os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
-        size_t n = socket.send(stream.data());
+        size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
         // Process first part of the message
@@ -135,10 +150,10 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
         // Second message
         os << ":3\r\n" << ":4\r\n" << "+1.61\r\n";
-        n = socket.send(stream.data());
+        n = boost::asio::write(socket, stream);
+
         // Process last
         suite.io.run_one();
-
         suite.pline->stop();
 
         // Check

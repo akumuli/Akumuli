@@ -18,10 +18,12 @@ const PDU ProtocolParser::POISON_ = {
 ProtocolParser::ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer)
     : done_(false)
     , consumer_(consumer)
+    , logger_("protocol-parser", 32)
 {
 }
 
 void ProtocolParser::start() {
+    logger_.info() << "Starting protocol parser";
     auto fn = std::bind(&ProtocolParser::worker, this, std::placeholders::_1);
     coroutine_.reset(new Coroutine(fn));
 }
@@ -38,7 +40,7 @@ void ProtocolParser::worker(Caller& caller) {
     std::string   sid;
     bool          integer_id         = false;
     aku_TimeStamp ts                 = 0;
-    double        value              = .0;
+    double        value              =.0;
     //
     try {
         RESPStream stream(this);
@@ -124,6 +126,7 @@ void ProtocolParser::worker(Caller& caller) {
             }
         }
     } catch(EStopIteration const&) {
+        logger_.info() << "EStopIteration";
         done_ = true;
     }
 }

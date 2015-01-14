@@ -58,11 +58,13 @@ add_test(respstream test_respstream)
 add_executable(test_protocolparser
     test_protocolparser.cpp
     protocolparser.cpp protocolparser.h
+    logger.cpp logger.h
     stream.cpp stream.h
     resp.cpp resp.h
 )
 target_link_libraries(test_protocolparser
     ${Boost_LIBRARIES}
+    "${LOG4CXX_LIBRARIES}"
     libboost_coroutine.a
     libboost_context.a
 )

@@ -24,6 +24,7 @@
 #include <boost/lockfree/queue.hpp>
 
 #include "protocol_consumer.h"
+#include "logger.h"
 // akumuli-storage API
 #include "akumuli.h"
 #include "akumuli_config.h"
@@ -105,6 +106,7 @@ struct PipelineSpout : ProtocolConsumer {
     Padding             pad1;
     PQueue              queue_;                                  //< Queue
     const BackoffPolicy backoff_;
+    Logger              logger_;                                 //< Logger instance
 
     // C-tor
     PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp);
@@ -133,6 +135,7 @@ class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
     static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
     static int                         TIMEOUT;     //< Close timeout
     const BackoffPolicy                backoff_;    //< Back-pressure policy
+    Logger                             logger_;     //< Logger instance
 public:
     /** Create new pipeline topology.
       */

@@ -4,8 +4,6 @@
 
 namespace Akumuli {
 
-static Logger logger_ = Logger("tcp-server", 64);
-
 //                     //
 //     Tcp Session     //
 //                     //
@@ -16,7 +14,9 @@ TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     , strand_(*io)
     , spout_(spout)
     , parser_(spout)
+    , logger_("tcp-session", 10)
 {
+    logger_.info() << "Session created";
     parser_.start();
 }
 
@@ -66,9 +66,11 @@ void TcpSession::handle_read(BufferT buffer,
             nbytes,
             pos
         };
+        // TODO: remove
         parser_.parse_next(pdu);
     } else {
         logger_.error() << error.message();
+        parser_.close();
     }
 }
 
@@ -86,6 +88,7 @@ TcpServer::TcpServer(// Server parameters
     , pipeline_(pipeline)
     , io_index_{0}
     , acceptor_state_(UNDEFINED)
+    , logger_("tcp-acceptor", 10)
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
@@ -109,13 +112,13 @@ void TcpServer::start() {
         try {
             self->own_io_.run();
         } catch (...) {
-            logger_.error() << "Error in acceptor worker thread: " << boost::current_exception_diagnostic_information();
+            self->logger_.error() << "Error in acceptor worker thread: " << boost::current_exception_diagnostic_information();
             throw;
         }
-        logger_.info() << "Acceptor worker thread stopped.";
 
         self->acceptor_state_ = STOPPED;
         self->cond_.notify_one();
+        self->logger_.info() << "Acceptor worker thread have stopped.";
     });
     accept_thread.detach();
 
@@ -129,6 +132,10 @@ void TcpServer::start() {
 
     logger_.info() << "Start listening";
     _start();
+}
+
+void TcpServer::_run_one() {
+    own_io_.run_one();
 }
 
 void TcpServer::_start() {
@@ -153,6 +160,13 @@ void TcpServer::stop() {
     if (acceptor_state_ != STOPPED) {
         logger_.error() << "Invalid acceptor state after stopping attempt";
     }
+}
+
+void TcpServer::_stop() {
+    logger_.error() << "Stopping acceptor";
+    acceptor_.close();
+    own_io_.stop();
+    sessions_work_.clear();
 }
 
 void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
