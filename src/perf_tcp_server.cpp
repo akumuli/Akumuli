@@ -1,5 +1,6 @@
 #include <iostream>
 #include <thread>
+#include <boost/thread/barrier.hpp>
 
 #include "tcp_server.h"
 #include <sys/time.h>
@@ -49,8 +50,10 @@ int main() {
     pline->start();
 
     // Run server
-    boost::asio::io_service ioA, ioB, ioC;
-    std::vector<IOService*> iovec = { &ioA , &ioB, &ioC };
+    // boost::asio::io_service ioA, ioB, ioC;  // Several io-services version
+    boost::asio::io_service ioA;
+    //std::vector<IOService*> iovec = { &ioA , &ioB, &ioC };  // Several io-services version
+    std::vector<IOService*> iovec = { &ioA };
     int port = 4096;
     auto serv = std::make_shared<TcpServer>(iovec, port, pline);
     serv->start();
@@ -64,19 +67,24 @@ int main() {
     };
 
     std::thread iothreadA(iorun(ioA));
-    std::thread iothreadB(iorun(ioB));
-    std::thread iothreadC(iorun(ioC));
+    std::thread iothreadB(iorun(ioA));
+    std::thread iothreadC(iorun(ioA));
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    boost::barrier barrier(4);
 
     // Push data to server
     auto push = [&]() {
         IOService io;
-        const int COUNT = 25000000;  // 5M
+        const int COUNT = 2500000;  // 25M
         TcpSocket socket(io);
         auto loopback = boost::asio::ip::address_v4::loopback();
         boost::asio::ip::tcp::endpoint peer(loopback, 4096);
         socket.connect(peer);
+
+        sleep(1);
+        barrier.wait();
 
         boost::asio::streambuf stream;
         std::ostream os(&stream);
@@ -85,7 +93,7 @@ int main() {
             size_t n = socket.send(stream.data());
             stream.consume(n);
         }
-        socket.close();
+        socket.shutdown(TcpSocket::shutdown_both);
         std::cout << "Push process completed" << std::endl;
     };
 
@@ -103,9 +111,6 @@ int main() {
     serv->stop();
     std::cout << "TcpServer stopped" << std::endl;
 
-    ioA.stop();
-    ioB.stop();
-    std::cout << "I/O service stopped" << std::endl;
     iothreadA.join();
     iothreadB.join();
     iothreadC.join();
@@ -113,6 +118,11 @@ int main() {
 
     pline->stop();
     std::cout << "Pipeline stopped" << std::endl;
+
+    ioA.stop();
+    //ioB.stop();
+    //ioC.stop();
+    std::cout << "I/O service stopped" << std::endl;
 
     std::cout << dbcon->idsum << " messages received" << std::endl;
 

@@ -50,6 +50,10 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
     }
 }
 
+PipelineSpout::~PipelineSpout() {
+    logger_.info() << "dtor";
+}
+
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
     int ix = get_index_of_empty_slot();
     while (AKU_UNLIKELY(ix < 0)) {
