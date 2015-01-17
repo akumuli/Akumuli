@@ -18,6 +18,7 @@
   * a) `mode` can accept three parameters - 'client', 'server' or 'local'.
   * b) `host` url or ip of the server if app was started in client mode.
   * c) `count` number of messages to send inf started in client mode.
+  * d) `njobs` number of threads to use
   */
 #include <iostream>
 #include <thread>
@@ -156,6 +157,53 @@ struct Server {
     }
 };
 
+
+struct Client {
+    int nthreads;
+    int count;
+    boost::barrier start_barrier, stop_barrier;
+    EndpointT endpoint;
+
+    Client(EndpointT ep, int nthreads = 4, int count = 2500000)
+        : nthreads(nthreads)
+        , count(count)
+        , start_barrier(nthreads)
+        , stop_barrier(nthreads + 1)
+        , endpoint(ep)
+    {
+    }
+
+    void start() {
+        auto self = this;
+        auto push = [self]() {
+            IOService io;
+            TcpSocket socket(io);
+            std::cout << "Connecting to server at " << self->endpoint << std::endl;
+            socket.connect(self->endpoint);
+            self->start_barrier.wait();
+
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << ":1\r\n" ":2\r\n" "+3.14\r\n";
+            for (int i = self->count; i --> 0; ) {
+                boost::asio::write(socket, stream);
+            }
+            socket.shutdown(TcpSocket::shutdown_both);
+            self->stop_barrier.wait();
+            std::cout << "Push process completed" << std::endl;
+        };
+
+        for (int i = 0; i < nthreads; i++) {
+            std::thread th(push);
+            th.detach();
+        }
+    }
+
+    void stop() {
+        stop_barrier.wait();
+    }
+};
+
 int main(int argc, char *argv[]) {
     std::cout << "Tcp server performance test" << std::endl;
     po::options_description desc("Allowed options");
@@ -164,6 +212,7 @@ int main(int argc, char *argv[]) {
      * a) `mode` can accept three parameters - 'client', 'server' or 'local'.
      * b) `host` url or ip of the server if app was started in client mode.
      * c) `count` number of messages to send inf started in client mode.
+     * d) `njobs` number of threads to use
      */
     std::string mode;
     std::string host;
