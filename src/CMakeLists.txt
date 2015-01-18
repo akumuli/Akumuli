@@ -118,6 +118,7 @@ add_test(tcp-server test_tcp_server)
 add_executable(perf_respstream
     perf_respstream.cpp
     stream.cpp stream.h
+    graphite_client.cpp
     resp.cpp resp.h
 )
 target_link_libraries(perf_respstream
@@ -128,6 +129,7 @@ target_link_libraries(perf_respstream
 add_executable(perf_pipeline
     perf_pipeline.cpp
     ingestion_pipeline.cpp
+    graphite_client.cpp
     logger.cpp
 )
 target_link_libraries(perf_pipeline
@@ -148,6 +150,7 @@ add_executable(perf_tcp_server
     protocolparser.cpp
     stream.cpp
     ingestion_pipeline.cpp
+    graphite_client.cpp
     logger.cpp
 )
 target_link_libraries(perf_tcp_server

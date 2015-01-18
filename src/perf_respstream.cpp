@@ -1,14 +1,20 @@
 #include "resp.h"
+#include "graphite_client.h"
 #include <boost/timer.hpp>
 #include <iostream>
 #include <algorithm>
 
-const int TEST_ITERATIONS = 1000;
-const int N_TESTS = 1000;
+const int TEST_ITERATIONS = 1000000;
+const int N_TESTS = 100;
 
 using namespace Akumuli;
 
-int main() {
+bool push_to_graphite = false;
+
+int main(int argc, char *argv[]) {
+    if (argc == 2) {
+        push_to_graphite = std::string(argv[1]) == "graphite";
+    }
     const char* pattern = ":1234567\r\n+3.14159\r\n";
     std::string input;
     for (int i = 0; i < TEST_ITERATIONS/2; i++) {
@@ -21,7 +27,7 @@ int main() {
         boost::timer tm;
         MemStreamReader stream(input.data(), input.size());
         RESPStream protocol(&stream);
-        for (int j = TEST_ITERATIONS; i --> 0;) {
+        for (int j = TEST_ITERATIONS; j --> 0;) {
             auto type = protocol.next_type();
             switch(type) {
             case RESPStream::INTEGER:
@@ -59,6 +65,9 @@ int main() {
     double min = std::numeric_limits<double>::max();
     for (auto t: timedeltas) {
         min = std::min(min, t);
+    }
+    if (push_to_graphite) {
+        push_metric_to_graphite("respstream", 1000.0*min);
     }
     std::cout << "Parsing " << TEST_ITERATIONS << " messages in " << min << " sec." << std::endl;
     return 0;
