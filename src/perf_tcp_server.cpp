@@ -26,6 +26,7 @@
 #include <boost/program_options.hpp>
 
 #include "tcp_server.h"
+#include "perftest_tools.h"
 #include <sys/time.h>
 
 using namespace Akumuli;
@@ -49,22 +50,6 @@ struct DbMock : DbConnection {
         valsum += data;
     }
 };
-
-class Timer
-{
-public:
-    Timer() { gettimeofday(&_start_time, nullptr); }
-    void   restart() { gettimeofday(&_start_time, nullptr); }
-    double elapsed() const {
-        timeval curr;
-        gettimeofday(&curr, nullptr);
-        return double(curr.tv_sec - _start_time.tv_sec) +
-               double(curr.tv_usec - _start_time.tv_usec)/1000000.0;
-    }
-private:
-    timeval _start_time;
-};
-
 
 enum Mode {
     CLIENT,
@@ -286,7 +271,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Push process completed" << std::endl;
     };
 
-    Timer tm;
+    PerfTimer tm;
     std::thread pusherA(push);
     std::thread pusherB(push);
     std::thread pusherC(push);

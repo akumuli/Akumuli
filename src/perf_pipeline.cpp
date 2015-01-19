@@ -22,12 +22,14 @@
 
 #include "ingestion_pipeline.h"
 #include "utility.h"
+#include "perftest_tools.h"
 
 #include <boost/lockfree/queue.hpp>
-#include <boost/timer.hpp>
 
 #include <thread>
 #include <iostream>
+
+using namespace Akumuli;
 
 namespace detail {
     bool err_shown = false;
@@ -72,7 +74,7 @@ struct SpoutTest {
         std::thread workerA(worker);
         std::thread workerB(worker);
 
-        boost::timer timer;
+        PerfTimer timer;
         int cnt = 0;
         while(true) {
             int val;
@@ -91,7 +93,6 @@ struct SpoutTest {
     }
 
     static double run_pipeline() {
-        using namespace Akumuli;
         using namespace detail;
         std::shared_ptr<ConnectionMock> con = std::make_shared<ConnectionMock>();
         con->cnt = 0;
@@ -102,7 +103,7 @@ struct SpoutTest {
                 spout->write_double(detail::TAG, i, 0.0);
             }
         };
-        boost::timer tm;
+        PerfTimer tm;
         pipeline->start();
         std::thread workerA(worker);
         std::thread workerB(worker);
@@ -118,10 +119,19 @@ struct SpoutTest {
 };
 
 
-int main() {
+int main(int argc, char* argv[]) {
     std::cout << "Spout test" << std::endl;
-    double e = SpoutTest::run_baseline();
-    std::cout << "- baseline " << e << "s" << std::endl;
-    e = SpoutTest::run_pipeline();
+    double b = SpoutTest::run_baseline();
+    std::cout << "- baseline " << b << "s" << std::endl;
+    double e = SpoutTest::run_pipeline();
     std::cout << "- pipeline " << e << "s" << std::endl;
+    double rel = b/e;
+    std::cout << "relative speedup " << rel << std::endl;
+    bool push_to_graphite = false;
+    if (argc == 2) {
+        push_to_graphite = std::string(argv[1]) == "graphite";
+    }
+    if (push_to_graphite) {
+        push_metric_to_graphite("pipeline", rel);
+    }
 }

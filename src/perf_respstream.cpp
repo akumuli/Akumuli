@@ -1,11 +1,10 @@
 #include "resp.h"
-#include "graphite_client.h"
-#include <boost/timer.hpp>
+#include "perftest_tools.h"
 #include <iostream>
 #include <algorithm>
 
-const int TEST_ITERATIONS = 1000000;
-const int N_TESTS = 100;
+const int TEST_ITERATIONS = 100000;
+const int N_TESTS = 1000;
 
 using namespace Akumuli;
 
@@ -24,7 +23,7 @@ int main(int argc, char *argv[]) {
     uint64_t intvalue;
     Byte buffer[RESPStream::STRING_LENGTH_MAX];
     for (int i = N_TESTS; i --> 0;) {
-        boost::timer tm;
+        PerfTimer tm;
         MemStreamReader stream(input.data(), input.size());
         RESPStream protocol(&stream);
         for (int j = TEST_ITERATIONS; j --> 0;) {
@@ -66,9 +65,9 @@ int main(int argc, char *argv[]) {
     for (auto t: timedeltas) {
         min = std::min(min, t);
     }
+    std::cout << "Parsing " << TEST_ITERATIONS << " messages in " << min << " sec." << std::endl;
     if (push_to_graphite) {
         push_metric_to_graphite("respstream", 1000.0*min);
     }
-    std::cout << "Parsing " << TEST_ITERATIONS << " messages in " << min << " sec." << std::endl;
     return 0;
 }
