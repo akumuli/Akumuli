@@ -1,0 +1,77 @@
+---
+# Provisioning
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  user: Lazin
+  vars:
+    aws_region: us-west-2
+    aws_instance_type: m3.xlarge
+    aws_image: ami-3d50120d
+    proj_name: akumuli-dev
+  tasks:
+  - name: Create instance
+    ec2:
+      key_name: myawskeypair
+      group: default
+      instance_type: "{{ aws_instance_type }}"
+      image: "{{ aws_image }}"
+      wait: True
+      exact_count: 1
+      count_tag:
+        Name: "{{ proj_name }}"
+      instance_tags:
+        Name: "{{ proj_name }}"
+      region: "{{ aws_region }}"
+    register: ec2
+
+  - name: Create host group
+    add_host: hostname={{ item.public_ip }} groupname=launched
+    with_items: ec2.instances
+
+  - name: Wait for SSH to come up
+    wait_for: host={{ item.public_ip }} port=22 delay=60 timeout=320 state=started
+    with_items: ec2.instances
+
+- name: configure machines
+  hosts: launched
+  sudo: yes
+
+  # Instal all the things!
+  tasks:
+  - name: update apt cache
+    apt: update_cache=yes
+    # Packages to install other packages and to fetch code from git repository
+  - name: install essential packages from ubuntu repository
+    action: apt pkg={{ item }} state=latest
+    with_items:
+    - git
+    - build-essential
+    - libboost-dev 
+    - libboost-all-dev
+    - libapr1-dev 
+    - libaprutil1-dev
+    - liblog4cxx10-dev 
+    - liblog4cxx10
+    - libjemalloc-dev
+    - cmake
+  # Install project from git repository
+  - name: install main prject
+    action: git repo=https://github.com/akumuli/Akumuli
+            dest=/home/ubuntu/Akumuli
+  - name: checkout dev branch
+    command: git fetch
+    args:
+        chdir: /home/ubuntu/Akumuli
+    command: git checkout dev
+    args:
+        chdir: /home/ubuntu/Akumuli
+  - name: create build dir
+    file: state=directory path=/home/ubuntu/build
+
+  - name: build
+    command: "{{ item }} chdir=/home/ubuntu/build"
+    with_items:
+    - cmake ../Akumuli
+    - make
+
