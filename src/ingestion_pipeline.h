@@ -110,6 +110,7 @@ struct PipelineSpout : ProtocolConsumer {
 
     // C-tor
     PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp);
+   ~PipelineSpout();
 
     // ProtocolConsumer
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);

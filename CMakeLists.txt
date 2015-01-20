@@ -9,6 +9,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror")
 find_package(Boost 1.53.0
     COMPONENTS
     unit_test_framework
+    program_options
     system
     thread
     filesystem

@@ -1,14 +1,19 @@
 #include "resp.h"
-#include <boost/timer.hpp>
+#include "perftest_tools.h"
 #include <iostream>
 #include <algorithm>
 
-const int TEST_ITERATIONS = 1000;
+const int TEST_ITERATIONS = 100000;
 const int N_TESTS = 1000;
 
 using namespace Akumuli;
 
-int main() {
+bool push_to_graphite = false;
+
+int main(int argc, char *argv[]) {
+    if (argc == 2) {
+        push_to_graphite = std::string(argv[1]) == "graphite";
+    }
     const char* pattern = ":1234567\r\n+3.14159\r\n";
     std::string input;
     for (int i = 0; i < TEST_ITERATIONS/2; i++) {
@@ -18,10 +23,10 @@ int main() {
     uint64_t intvalue;
     Byte buffer[RESPStream::STRING_LENGTH_MAX];
     for (int i = N_TESTS; i --> 0;) {
-        boost::timer tm;
+        PerfTimer tm;
         MemStreamReader stream(input.data(), input.size());
         RESPStream protocol(&stream);
-        for (int j = TEST_ITERATIONS; i --> 0;) {
+        for (int j = TEST_ITERATIONS; j --> 0;) {
             auto type = protocol.next_type();
             switch(type) {
             case RESPStream::INTEGER:
@@ -61,5 +66,8 @@ int main() {
         min = std::min(min, t);
     }
     std::cout << "Parsing " << TEST_ITERATIONS << " messages in " << min << " sec." << std::endl;
+    if (push_to_graphite) {
+        push_metric_to_graphite("respstream", 1000.0*min);
+    }
     return 0;
 }
