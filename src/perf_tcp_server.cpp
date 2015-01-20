@@ -77,37 +77,32 @@ struct Server {
     std::shared_ptr<TcpServer>          serv;
     boost::asio::io_service             ioA;
     std::vector<IOService*>             iovec       = { &ioA };
-    std::atomic<int>                    thread_cnt  = {0};
-    std::mutex                          mutex;
-    std::condition_variable             condvar;
+    boost::barrier                      barrier;
 
     Server(Mode mode)
         : mode(mode)
+        , barrier(iovec.size() + 1)
     {
         dbcon = std::make_shared<DbMock>();
         pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
         int port = 4096;
         serv = std::make_shared<TcpServer>(iovec, port, pline);
-    }
-
-    void start() {
         pline->start();
         serv->start();
+    }
 
-        // Run IO service
-        Server* serv = this;
-        auto iorun = [serv](IOService& io) {
+    //! Run IO service
+    void start() {
+        auto iorun = [](IOService& io, boost::barrier& bar) {
             auto fn = [&]() {
                 io.run();
-                serv->thread_cnt--;
-                serv->condvar.notify_one();
+                bar.wait();
             };
             return fn;
         };
 
         for (auto io: iovec) {
-            thread_cnt++;
-            std::thread iothread(iorun(*io));
+            std::thread iothread(iorun(*io, barrier));
             iothread.detach();
         }
     }
@@ -117,17 +112,7 @@ struct Server {
         std::cout << "TcpServer stopped" << std::endl;
 
         // No need to joint I/O threads, just wait until they completes.
-        // Waiting procedure
-        std::unique_lock<std::mutex> lock(mutex);
-        while(true) {
-            condvar.wait(lock);
-            int val = thread_cnt.load();
-            if (val == 0) {
-                break;
-            } else if (val < 0) {
-                throw std::runtime_error("Error in server wait proc. Invariant broken.");
-            }
-        }
+        barrier.wait();
         std::cout << "I/O threads stopped" << std::endl;
 
         pline->stop();
@@ -184,7 +169,7 @@ struct Client {
         }
     }
 
-    void stop() {
+    void wait() {
         stop_barrier.wait();
     }
 };
@@ -199,12 +184,12 @@ int main(int argc, char *argv[]) {
      * c) `count` number of messages to send inf started in client mode.
      * d) `njobs` number of threads to use
      */
-    std::string mode;
+    std::string strmode;
     std::string host;
     int num_messages;
     desc.add_options()
         ("help",                                                                "produce help message")
-        ("mode",    po::value<std::string>(&mode)->default_value("local"),      "test mode")
+        ("mode",    po::value<std::string>(&strmode)->default_value("local"),   "test mode")
         ("host",    po::value<std::string>(&host)->default_value("localhost"),  "server host in client mode")
         ("count",   po::value<int>(&num_messages)->default_value(1000000),      "number of messages to send")
     ;
@@ -218,91 +203,25 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    // Create mock pipeline
-    auto dbcon = std::make_shared<DbMock>();
-    auto pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
-    pline->start();
+    Mode mode = str_to_mode(strmode);
 
-    // Run server
-    // boost::asio::io_service ioA, ioB, ioC;  // Several io-services version
-    boost::asio::io_service ioA;
-    //std::vector<IOService*> iovec = { &ioA , &ioB, &ioC };  // Several io-services version
-    std::vector<IOService*> iovec = { &ioA };
-    int port = 4096;
-    auto serv = std::make_shared<TcpServer>(iovec, port, pline);
-    serv->start();
+    switch(mode) {
+    case LOCAL: {
+        Server server(mode);
+        EndpointT ep(boost::asio::ip::address_v4::loopback(), 4096);
+        Client client(ep);
+        server.start();
+        client.start();
+        client.wait();
+        server.stop();
+        break;
+    }
+    case SERVER:
+        break;
+    case CLIENT:
+        break;
+    }
 
-    // Run IO service
-    auto iorun = [](IOService& io) {
-        auto fn = [&]() {
-            io.run();
-        };
-        return fn;
-    };
-
-    std::thread iothreadA(iorun(ioA));
-    std::thread iothreadB(iorun(ioA));
-    std::thread iothreadC(iorun(ioA));
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    boost::barrier barrier(4);
-
-    // Push data to server
-    auto push = [&]() {
-        IOService io;
-        const int COUNT = 2500000;  // 25M
-        TcpSocket socket(io);
-        auto loopback = boost::asio::ip::address_v4::loopback();
-        boost::asio::ip::tcp::endpoint peer(loopback, 4096);
-        socket.connect(peer);
-
-        sleep(1);
-        barrier.wait();
-
-        boost::asio::streambuf stream;
-        std::ostream os(&stream);
-        for (int i = COUNT; i --> 0; ) {
-            os << ":1\r\n" ":2\r\n" "+3.14\r\n";
-            size_t n = socket.send(stream.data());
-            stream.consume(n);
-        }
-        socket.shutdown(TcpSocket::shutdown_both);
-        std::cout << "Push process completed" << std::endl;
-    };
-
-    PerfTimer tm;
-    std::thread pusherA(push);
-    std::thread pusherB(push);
-    std::thread pusherC(push);
-    std::thread pusherD(push);
-
-    pusherA.join();
-    pusherB.join();
-    pusherC.join();
-    pusherD.join();
-
-    serv->stop();
-    std::cout << "TcpServer stopped" << std::endl;
-
-    iothreadA.join();
-    iothreadB.join();
-    iothreadC.join();
-    std::cout << "I/O thread stopped" << std::endl;
-
-    pline->stop();
-    std::cout << "Pipeline stopped" << std::endl;
-
-    ioA.stop();
-    //ioB.stop();
-    //ioC.stop();
-    std::cout << "I/O service stopped" << std::endl;
-
-    std::cout << dbcon->idsum << " messages received" << std::endl;
-
-    // Every message is processed here
-    double elapsed = tm.elapsed();
-    std::cout << "100M sent in " << elapsed << "s" << std::endl;
 
     return 0;
 }
