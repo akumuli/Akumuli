@@ -98,8 +98,8 @@ int PipelineSpout::get_index_of_empty_slot() {
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con, BackoffPolicy bp)
     : con_(con)
     , ixmake_{0}
-    , mutex_(std::make_shared<Mtx>())
-    , stopped_(false)
+    , stopbar_(2)
+    , startbar_(2)
     , backoff_(bp)
     , logger_("ingestion-pipeline", 32)
 
@@ -113,6 +113,10 @@ void IngestionPipeline::start() {
     auto self = shared_from_this();
     auto worker = [self]() {
         try {
+            self->logger_.info() << "Starting pipeline worker";
+            self->startbar_.wait();
+            self->logger_.info() << "Pipeline worker started";
+
             // Write loop (should be unique)
             PipelineSpout::TVal *val;
             int poison_cnt = 0;
@@ -131,12 +135,9 @@ void IngestionPipeline::start() {
                                 }
                             }
                             // Stop
-                            {
-                                std::lock_guard<Mtx> m(*self->mutex_);
-                                self->stopped_ = true;
-                                self->logger_.info() << "Stopping pipeline";
-                            }
-                            self->cvar_.notify_one();
+                            self->logger_.info() << "Stopping pipeline worker";
+                            self->stopbar_.wait();
+                            self->logger_.info() << "Pipeline worker stopped";
                             return;
                         }
                     } else {
@@ -155,6 +156,10 @@ void IngestionPipeline::start() {
 
     std::thread th(worker);
     th.detach();
+
+    logger_.info() << "Starting pipeline";
+    startbar_.wait();
+    logger_.info() << "Pipeline started";
 }
 
 std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
@@ -166,19 +171,15 @@ PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{0, 0, 0
 int IngestionPipeline::TIMEOUT = 15000;  // 15 seconds
 
 void IngestionPipeline::stop() {
+    logger_.info() << "Trying to stop pipeline, pushing poison to nodes";
     for (auto& q: queues_) {
-        q->push(POISON);
-    }
-    std::unique_lock<Mtx> lock(*mutex_);
-    if (cvar_.wait_for(lock, std::chrono::milliseconds(TIMEOUT)) == std::cv_status::no_timeout) {
-        if (!stopped_) {
-            logger_.error() << "Can't stop pipeline";
-        } else {
-            logger_.info() << "Pipeline stopped";
+        while(!q->push(POISON)) {
+            std::this_thread::yield();
         }
-    } else {
-        logger_.error() << "Pipeline stop timeout";
     }
+    logger_.info() << "Trying to stop pipeline, waiting for worker to stop";
+    stopbar_.wait();
+    logger_.info() << "Pipeline stopped (IngestionPipeline::stop)";
 }
 
 }

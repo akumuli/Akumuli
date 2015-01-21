@@ -98,14 +98,8 @@ class TcpServer : public std::enable_shared_from_this<TcpServer>
     std::shared_ptr<IngestionPipeline>  pipeline_;       //< Pipeline instance
     std::atomic<int>                    io_index_;       //< I/O service index
 
-    // Acceptor thread control
-    std::mutex                          mutex_;
-    std::condition_variable             cond_;
-    enum {
-        UNDEFINED,
-        STARTED,
-        STOPPED,
-    }                                   acceptor_state_;
+    boost::barrier                      start_barrier_;  //< Barrier to start worker thread
+    boost::barrier                      stop_barrier_;   //< Barrier to stop worker thread
 
     // Logger
     Logger logger_;

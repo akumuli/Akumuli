@@ -18,10 +18,9 @@
 #include <string>
 #include <memory>
 #include <atomic>
-#include <mutex>
-#include <condition_variable>
 
 #include <boost/lockfree/queue.hpp>
+#include <boost/thread/barrier.hpp>
 
 #include "protocol_consumer.h"
 #include "logger.h"
@@ -126,13 +125,12 @@ class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
     enum {
         N_QUEUES = 8,
     };
-    typedef std::mutex                 Mtx;
+    typedef boost::barrier             Barr;
     std::shared_ptr<DbConnection>      con_;        //< DB connection
     std::vector<PipelineSpout::PQueue> queues_;     //< Queues collection
     std::atomic<int>                   ixmake_;     //< Index for the make_spout mehtod
-    std::shared_ptr<Mtx>               mutex_;      //< Mutex to wait thread completion
-    std::condition_variable            cvar_;       //< Cond. variable for stopping
-    bool                               stopped_;    //< Stopping flag
+    Barr                               stopbar_;    //< Stopping barrier
+    Barr                               startbar_;   //< Stopping barrier
     static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
     static int                         TIMEOUT;     //< Close timeout
     const BackoffPolicy                backoff_;    //< Back-pressure policy

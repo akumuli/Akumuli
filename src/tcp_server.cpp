@@ -87,7 +87,8 @@ TcpServer::TcpServer(// Server parameters
     , sessions_io_(io)
     , pipeline_(pipeline)
     , io_index_{0}
-    , acceptor_state_(UNDEFINED)
+    , start_barrier_(2)
+    , stop_barrier_(2)
     , logger_("tcp-acceptor", 10)
 {
     logger_.info() << "Server created!";
@@ -106,8 +107,9 @@ void TcpServer::start() {
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
 
-        self->acceptor_state_ = STARTED;
-        self->cond_.notify_one();
+        self->logger_.info() << "Starting acceptor worker thread";
+        self->start_barrier_.wait();
+        self->logger_.info() << "Acceptor worker thread have started";
 
         try {
             self->own_io_.run();
@@ -116,19 +118,13 @@ void TcpServer::start() {
             throw;
         }
 
-        self->acceptor_state_ = STOPPED;
-        self->cond_.notify_one();
-        self->logger_.info() << "Acceptor worker thread have stopped.";
+        self->logger_.info() << "Stopping acceptor worker thread";
+        self->stop_barrier_.wait();
+        self->logger_.info() << "Acceptor worker thread have stopped";
     });
     accept_thread.detach();
 
-    std::unique_lock<std::mutex> lock(mutex_);
-    cond_.wait(lock);
-    if (acceptor_state_ != STARTED) {
-        logger_.error() << "Invalid acceptor state";
-    } else {
-        logger_.info() << "Acceptor worker thread started.";
-    }
+    start_barrier_.wait();
 
     logger_.info() << "Start listening";
     _start();
@@ -155,11 +151,9 @@ void TcpServer::stop() {
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
-    std::unique_lock<std::mutex> lock(mutex_);
-    cond_.wait(lock);
-    if (acceptor_state_ != STOPPED) {
-        logger_.error() << "Invalid acceptor state after stopping attempt";
-    }
+    logger_.info() << "Trying to stop acceptor";
+    stop_barrier_.wait();
+    logger_.info() << "Acceptor successfully stopped";
 }
 
 void TcpServer::_stop() {
