@@ -133,19 +133,22 @@ struct Client {
     int count;
     boost::barrier start_barrier, stop_barrier;
     EndpointT endpoint;
+    PerfTimer *timer;
 
-    Client(EndpointT ep, int nthreads = 4, int count = 2500000)
+    Client(EndpointT ep, PerfTimer *timer, int nthreads = 4, int count = 2500000)
         : nthreads(nthreads)
         , count(count)
-        , start_barrier(nthreads)
+        , start_barrier(nthreads + 1)
         , stop_barrier(nthreads + 1)
         , endpoint(ep)
+        , timer(timer)
     {
     }
 
     void start() {
         auto self = this;
         auto push = [self]() {
+            std::vector<double> threshold_values;
             IOService io;
             TcpSocket socket(io);
             std::cout << "Connecting to server at " << self->endpoint << std::endl;
@@ -154,19 +157,46 @@ struct Client {
 
             boost::asio::streambuf stream;
             std::ostream os(&stream);
-            os << ":1\r\n" ":2\r\n" "+3.14\r\n";
+            size_t nsent = 0u;
+            double tm = self->timer->elapsed();
             for (int i = self->count; i --> 0; ) {
-                boost::asio::write(socket, stream);
+                os << ":1\r\n" ":2\r\n" "+3.14\r\n";
+                nsent += boost::asio::write(socket, stream);
+                if (nsent >= 1024*1024) {  // +1Mb was sent
+                    double newtm = self->timer->elapsed();
+                    threshold_values.push_back(newtm - tm);
+                    nsent = 0u;
+                    tm = newtm;
+                }
             }
             socket.shutdown(TcpSocket::shutdown_both);
             self->stop_barrier.wait();
             std::cout << "Push process completed" << std::endl;
+            if (threshold_values.size()) {
+                std::sort(threshold_values.begin(), threshold_values.end());
+                double min = threshold_values.front(), max = threshold_values.back();
+                double sum = 0, avg = 0, med = threshold_values[threshold_values.size() / 2];
+                for (auto x: threshold_values) { sum += x; }
+                avg = sum / threshold_values.size();
+                auto convert = [&](double val) {
+                    // Convert seconds per Mb to Mb per second
+                    return 1.0/val;
+                };
+                std::cout << "Push process performance" << std::endl;
+                std::cout << "max: " << convert(min) << " Mb/sec" << std::endl;  // min and max should be
+                std::cout << "min: " << convert(max) << " Mb/sec" << std::endl;  // swapped because of conv
+                std::cout << "avg: " << convert(avg) << " Mb/sec" << std::endl;
+                std::cout << "med: " << convert(med) << " Mb/sec" << std::endl;
+            }
         };
 
         for (int i = 0; i < nthreads; i++) {
             std::thread th(push);
             th.detach();
         }
+
+        start_barrier.wait();
+        timer->restart();
     }
 
     void wait() {
@@ -187,11 +217,13 @@ int main(int argc, char *argv[]) {
     std::string strmode;
     std::string host;
     int num_messages;
+    bool graphite_enabled = false;
     desc.add_options()
-        ("help",                                                                "produce help message")
-        ("mode",    po::value<std::string>(&strmode)->default_value("local"),   "test mode")
-        ("host",    po::value<std::string>(&host)->default_value("localhost"),  "server host in client mode")
-        ("count",   po::value<int>(&num_messages)->default_value(1000000),      "number of messages to send")
+        ("help",                                                                 "produce help message")
+        ("mode",     po::value<std::string>(&strmode)->default_value("local"),   "test mode")
+        ("host",     po::value<std::string>(&host)->default_value("localhost"),  "server host in client mode")
+        ("count",    po::value<int>(&num_messages)->default_value(1000000),      "number of messages to send")
+        ("graphite", po::value<bool>(&graphite_enabled)->default_value(false),   "push result to graphite")
     ;
 
     po::variables_map vm;
@@ -207,13 +239,19 @@ int main(int argc, char *argv[]) {
 
     switch(mode) {
     case LOCAL: {
+        PerfTimer tm;
         Server server(mode);
         EndpointT ep(boost::asio::ip::address_v4::loopback(), 4096);
-        Client client(ep);
+        Client client(ep, &tm, 4, 2500000);
         server.start();
         client.start();
         client.wait();
         server.stop();
+        double elapsed = tm.elapsed();
+        std::cout << "Local test completed in " << elapsed << " seconds" << std::endl;
+        if (graphite_enabled) {
+            push_metric_to_graphite("tcp_server_local", elapsed);
+        }
         break;
     }
     case SERVER:
