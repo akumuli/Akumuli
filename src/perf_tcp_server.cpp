@@ -78,10 +78,13 @@ struct Server {
     boost::asio::io_service             ioA;
     std::vector<IOService*>             iovec       = { &ioA };
     boost::barrier                      barrier;
+    boost::asio::signal_set             sig;
+    std::atomic<int>                    stopped = {0};
 
     Server(Mode mode)
         : mode(mode)
         , barrier(iovec.size() + 1)
+        , sig(ioA, SIGINT)
     {
         dbcon = std::make_shared<DbMock>();
         pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
@@ -93,6 +96,14 @@ struct Server {
 
     //! Run IO service
     void start() {
+
+        sig.async_wait(
+                    // Wait for sigint
+                    boost::bind(&Server::handle_sigint,
+                                this,
+                                boost::asio::placeholders::error)
+                    );
+
         auto iorun = [](IOService& io, boost::barrier& bar) {
             auto fn = [&]() {
                 io.run();
@@ -107,23 +118,54 @@ struct Server {
         }
     }
 
-    void stop() {
-        serv->stop();
-        std::cout << "TcpServer stopped" << std::endl;
-
-        // No need to joint I/O threads, just wait until they completes.
-        barrier.wait();
-        std::cout << "I/O threads stopped" << std::endl;
-
-        pline->stop();
-        std::cout << "Pipeline stopped" << std::endl;
-
-        for (auto io: iovec) {
-            io->stop();
+    void handle_sigint(boost::system::error_code err) {
+        if (!err) {
+            if (stopped++ == 0) {
+                std::cout << "SIGINT catched, stopping pipeline" << std::endl;
+                for (auto io: iovec) {
+                    io->stop();
+                }
+                pline->stop();
+                serv->stop();
+                barrier.wait();
+                std::cout << "Server stopped" << std::endl;
+            } else {
+                std::cout << "Already stopped (sigint)" << std::endl;
+            }
+        } else {
+            std::cout << "Signal handler error " << err.message() << std::endl;
         }
-        std::cout << "I/O service stopped" << std::endl;
+    }
 
-        std::cout << dbcon->idsum << " messages received" << std::endl;
+    void stop() {
+        if (stopped++ == 0) {
+            serv->stop();
+            std::cout << "TcpServer stopped" << std::endl;
+
+            sig.cancel();
+
+            // No need to joint I/O threads, just wait until they completes.
+            barrier.wait();
+            std::cout << "I/O threads stopped" << std::endl;
+
+            pline->stop();
+            std::cout << "Pipeline stopped" << std::endl;
+
+            for (auto io: iovec) {
+                io->stop();
+            }
+            std::cout << "I/O service stopped" << std::endl;
+
+            std::cout << dbcon->idsum << " messages received" << std::endl;
+        } else {
+            std::cout << "Already stopped" << std::endl;
+        }
+    }
+
+    void wait() {
+        while(!stopped) {
+            sleep(1);
+        }
     }
 };
 
@@ -254,9 +296,21 @@ int main(int argc, char *argv[]) {
         }
         break;
     }
-    case SERVER:
+    case SERVER: {
+        PerfTimer tm;
+        Server server(mode);
+        server.start();
+        server.wait();
+        server.stop();
         break;
+    }
     case CLIENT:
+        PerfTimer tm;
+        Server server(mode);
+        EndpointT ep(boost::asio::ip::address_v4::from_string(host), 4096);
+        Client client(ep, &tm, 1, num_messages);
+        client.start();
+        client.wait();
         break;
     }
 
