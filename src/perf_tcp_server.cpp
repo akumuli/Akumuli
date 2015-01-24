@@ -20,6 +20,7 @@
   * c) `count` number of messages to send inf started in client mode.
   * d) `njobs` number of threads to use
   */
+
 #include <iostream>
 #include <thread>
 #include <boost/thread/barrier.hpp>
@@ -34,20 +35,18 @@ namespace po = boost::program_options;
 
 struct DbMock : DbConnection {
     typedef std::tuple<aku_ParamId, aku_TimeStamp, double> ValueT;
-    aku_ParamId idsum;
-    aku_TimeStamp tssum;
-    double valsum;
-
-    DbMock() {
-        idsum  = 0;
-        tssum  = 0;
-        valsum = 0;
-    }
+    size_t nrec = 0u;
+    PerfTimer tm;
+    Logger logger_ = Logger("dbmock", 100);
 
     void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
-        idsum  += param;
-        tssum  += ts;
-        valsum += data;
+        static const int N = 1000000;
+        if (nrec++ % N == 0) {
+            double elapsed = tm.elapsed();
+            auto throughput = static_cast<int>(N*(1.0/elapsed));
+            logger_.info() << "Server throughput " << throughput << " msg/sec";
+            tm.restart();
+        }
     }
 };
 
@@ -68,6 +67,7 @@ Mode str_to_mode(std::string str) {
     }
     throw std::runtime_error("Bad mode value");
 }
+
 
 struct Server {
 
@@ -156,7 +156,7 @@ struct Server {
             }
             std::cout << "I/O service stopped" << std::endl;
 
-            std::cout << dbcon->idsum << " messages received" << std::endl;
+            std::cout << dbcon->nrec << " messages received" << std::endl;
         } else {
             std::cout << "Already stopped" << std::endl;
         }
@@ -306,7 +306,6 @@ int main(int argc, char *argv[]) {
     }
     case CLIENT:
         PerfTimer tm;
-        Server server(mode);
         EndpointT ep(boost::asio::ip::address_v4::from_string(host), 4096);
         Client client(ep, &tm, 1, num_messages);
         client.start();
