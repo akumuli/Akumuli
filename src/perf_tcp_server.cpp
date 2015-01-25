@@ -106,8 +106,14 @@ struct Server {
 
         auto iorun = [](IOService& io, boost::barrier& bar) {
             auto fn = [&]() {
+                try {
                 io.run();
                 bar.wait();
+                } catch (RESPError const& e) {
+                    std::cout << e.what() << std::endl;
+                    std::cout << e.get_bottom_line() << std::endl;
+                    throw;
+                }
             };
             return fn;
         };
