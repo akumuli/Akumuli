@@ -20,6 +20,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/thread/barrier.hpp>
 
 #include "logger.h"
 #include "protocolparser.h"
@@ -134,4 +135,28 @@ private:
     void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);
 };
 
+
+struct TcpServer : public std::enable_shared_from_this<TcpServer>
+{
+
+    std::shared_ptr<IngestionPipeline>  pline;
+    std::shared_ptr<DbConnection>       dbcon;
+    std::shared_ptr<TcpAcceptor>        serv;
+    boost::asio::io_service             ioA;
+    std::vector<IOServiceT*>            iovec       = { &ioA };
+    boost::barrier                      barrier;
+    boost::asio::signal_set             sig;
+    std::atomic<int>                    stopped = {0};
+
+    TcpServer(std::shared_ptr<DbConnection> con);
+
+    //! Run IO service
+    void start();
+
+    void handle_sigint(boost::system::error_code err);
+
+    void stop();
+
+    void wait();
+};
 }

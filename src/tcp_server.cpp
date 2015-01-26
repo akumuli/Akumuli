@@ -74,9 +74,9 @@ void TcpSession::handle_read(BufferT buffer,
     }
 }
 
-//                    //
-//     Tcp Server     //
-//                    //
+//                      //
+//     Tcp Acceptor     //
+//                      //
 
 TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
@@ -169,6 +169,100 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
         logger_.error() << "Acceptor error " << err.message();
     }
     _start();
+}
+
+//                    //
+//     Tcp Server     //
+//                    //
+
+TcpServer::TcpServer(std::shared_ptr<DbConnection> con)
+    : dbcon(con)
+    , barrier(iovec.size() + 1)
+    , sig(ioA, SIGINT)
+{
+    pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
+    int port = 4096;
+    serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
+    pline->start();
+    serv->start();
+}
+
+void TcpServer::start() {
+
+    sig.async_wait(
+                // Wait for sigint
+                boost::bind(&TcpServer::handle_sigint,
+                            shared_from_this(),
+                            boost::asio::placeholders::error)
+                );
+
+    auto iorun = [](IOServiceT& io, boost::barrier& bar) {
+        auto fn = [&]() {
+            try {
+                io.run();
+                bar.wait();
+            } catch (RESPError const& e) {
+                std::cout << e.what() << std::endl;
+                std::cout << e.get_bottom_line() << std::endl;
+                throw;
+            }
+        };
+        return fn;
+    };
+
+    for (auto io: iovec) {
+        std::thread iothread(iorun(*io, barrier));
+        iothread.detach();
+    }
+}
+
+void TcpServer::handle_sigint(boost::system::error_code err) {
+    if (!err) {
+        if (stopped++ == 0) {
+            std::cout << "SIGINT catched, stopping pipeline" << std::endl;
+            for (auto io: iovec) {
+                io->stop();
+            }
+            pline->stop();
+            serv->stop();
+            barrier.wait();
+            std::cout << "Server stopped" << std::endl;
+        } else {
+            std::cout << "Already stopped (sigint)" << std::endl;
+        }
+    } else {
+        std::cout << "Signal handler error " << err.message() << std::endl;
+    }
+}
+
+void TcpServer::stop() {
+    if (stopped++ == 0) {
+        serv->stop();
+        std::cout << "TcpServer stopped" << std::endl;
+
+        sig.cancel();
+
+        // No need to joint I/O threads, just wait until they completes.
+        barrier.wait();
+        std::cout << "I/O threads stopped" << std::endl;
+
+        pline->stop();
+        std::cout << "Pipeline stopped" << std::endl;
+
+        for (auto io: iovec) {
+            io->stop();
+        }
+        std::cout << "I/O service stopped" << std::endl;
+    } else {
+        std::cout << "Already stopped" << std::endl;
+    }
+}
+
+void TcpServer::wait() {
+    // TODO: use cond var
+    while(!stopped) {
+        sleep(1);
+    }
 }
 
 }
