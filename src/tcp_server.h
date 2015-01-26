@@ -31,9 +31,9 @@ namespace Akumuli {
 //          Type aliases from boost.asio          //
 //                                                //
 
-typedef boost::asio::io_service         IOService;
-typedef boost::asio::ip::tcp::acceptor  TcpAcceptor;
-typedef boost::asio::ip::tcp::socket    TcpSocket;
+typedef boost::asio::io_service         IOServiceT;
+typedef boost::asio::ip::tcp::acceptor  AcceptorT;
+typedef boost::asio::ip::tcp::socket    SocketT;
 typedef boost::asio::ip::tcp::endpoint  EndpointT;
 typedef boost::asio::strand             StrandT;
 typedef boost::asio::io_service::work   WorkT;
@@ -46,17 +46,17 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
         BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
     };
-    IOService *io_;
-    TcpSocket socket_;
+    IOServiceT *io_;
+    SocketT socket_;
     StrandT strand_;
     std::shared_ptr<PipelineSpout> spout_;
     ProtocolParser parser_;
     Logger logger_;
 public:
     typedef std::shared_ptr<Byte> BufferT;
-    TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout);
+    TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout);
 
-    TcpSocket& socket();
+    SocketT& socket();
 
     void start(BufferT buf,
                size_t buf_size,
@@ -89,11 +89,11 @@ private:
 /** Tcp server.
   * Accepts connections and creates new client sessions
   */
-class TcpServer : public std::enable_shared_from_this<TcpServer>
+class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor>
 {
-    IOService                           own_io_;         //< Acceptor's own io-service
-    TcpAcceptor                         acceptor_;       //< Acceptor
-    std::vector<IOService*>             sessions_io_;    //< List of io-services for sessions
+    IOServiceT                          own_io_;         //< Acceptor's own io-service
+    AcceptorT                           acceptor_;       //< Acceptor
+    std::vector<IOServiceT*>            sessions_io_;    //< List of io-services for sessions
     std::vector<WorkT>                  sessions_work_;  //< Work to block io-services from completing too early
     std::shared_ptr<IngestionPipeline>  pipeline_;       //< Pipeline instance
     std::atomic<int>                    io_index_;       //< I/O service index
@@ -109,11 +109,10 @@ public:
       * @param port port to listen for new connections
       * @param pipeline ingestion pipeline
       */
-    TcpServer(// Server parameters
-                 std::vector<IOService*> io, int port,
-              // Storage & pipeline
-                 std::shared_ptr<IngestionPipeline> pipeline
-              );
+    TcpAcceptor(// Server parameters
+                std::vector<IOServiceT*> io, int port,
+                // Storage & pipeline
+                std::shared_ptr<IngestionPipeline> pipeline);
 
     //! Start listening on socket
     void start();

@@ -29,8 +29,8 @@ struct DbMock : DbConnection {
 struct TCPServerTestSuite {
     std::shared_ptr<DbMock>             dbcon;
     std::shared_ptr<IngestionPipeline>  pline;
-    IOService                           io;
-    std::shared_ptr<TcpServer>          serv;
+    IOServiceT                           io;
+    std::shared_ptr<TcpAcceptor>          serv;
 
     TCPServerTestSuite() {
         // Create mock pipeline
@@ -40,8 +40,8 @@ struct TCPServerTestSuite {
 
         // Run server
         int port = 4096;
-        std::vector<IOService*> iovec = { &io };
-        serv = std::make_shared<TcpServer>(iovec, port, pline);
+        std::vector<IOServiceT*> iovec = { &io };
+        serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
 
         // Start reading but don't start iorun thread
         serv->_start();
@@ -57,7 +57,7 @@ struct TCPServerTestSuite {
     template<class Fn>
     void run(Fn const& fn) {
         // Connect to server
-        TcpSocket socket(io);
+        SocketT socket(io);
         auto loopback = boost::asio::ip::address_v4::loopback();
         boost::asio::ip::tcp::endpoint peer(loopback, 4096);
         socket.connect(peer);
@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
@@ -103,7 +103,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n";
@@ -136,7 +136,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
 

@@ -8,7 +8,7 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
-TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout)
     : io_(io)
     , socket_(*io)
     , strand_(*io)
@@ -20,7 +20,7 @@ TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     parser_.start();
 }
 
-TcpSocket& TcpSession::socket() {
+SocketT& TcpSession::socket() {
     return socket_;
 }
 
@@ -78,11 +78,10 @@ void TcpSession::handle_read(BufferT buffer,
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(// Server parameters
-                        std::vector<IOService *> io, int port,
-                     // Storage & pipeline
-                        std::shared_ptr<IngestionPipeline> pipeline
-                     )
+TcpAcceptor::TcpAcceptor(// Server parameters
+                        std::vector<IOServiceT *> io, int port,
+                        // Storage & pipeline
+                        std::shared_ptr<IngestionPipeline> pipeline )
     : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
     , sessions_io_(io)
     , pipeline_(pipeline)
@@ -100,7 +99,7 @@ TcpServer::TcpServer(// Server parameters
     }
 }
 
-void TcpServer::start() {
+void TcpAcceptor::start() {
     WorkT work(own_io_);
 
     // Run detached thread for accepts
@@ -130,23 +129,23 @@ void TcpServer::start() {
     _start();
 }
 
-void TcpServer::_run_one() {
+void TcpAcceptor::_run_one() {
     own_io_.run_one();
 }
 
-void TcpServer::_start() {
+void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
     session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), pipeline_->make_spout()));
     acceptor_.async_accept(
                 session->socket(),
-                boost::bind(&TcpServer::handle_accept,
+                boost::bind(&TcpAcceptor::handle_accept,
                             shared_from_this(),
                             session,
                             boost::asio::placeholders::error)
                 );
 }
 
-void TcpServer::stop() {
+void TcpAcceptor::stop() {
     logger_.error() << "Stopping acceptor";
     acceptor_.close();
     own_io_.stop();
@@ -156,14 +155,14 @@ void TcpServer::stop() {
     logger_.info() << "Acceptor successfully stopped";
 }
 
-void TcpServer::_stop() {
+void TcpAcceptor::_stop() {
     logger_.error() << "Stopping acceptor";
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
 }
 
-void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
+void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
     } else {
