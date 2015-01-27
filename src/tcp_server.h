@@ -43,6 +43,7 @@ typedef boost::asio::io_service::work   WorkT;
  *  Must be created in the heap.
   */
 class TcpSession : public std::enable_shared_from_this<TcpSession> {
+    // TODO: Unique session ID
     enum {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
         BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
@@ -84,6 +85,8 @@ private:
                      size_t buf_size,
                      boost::system::error_code error,
                      size_t nbytes);
+
+    void handle_write_error(boost::system::error_code error);
 };
 
 
@@ -138,17 +141,16 @@ private:
 
 struct TcpServer : public std::enable_shared_from_this<TcpServer>
 {
-
     std::shared_ptr<IngestionPipeline>  pline;
     std::shared_ptr<DbConnection>       dbcon;
     std::shared_ptr<TcpAcceptor>        serv;
-    boost::asio::io_service             ioA;
-    std::vector<IOServiceT*>            iovec       = { &ioA };
+    boost::asio::io_service             io;
+    std::vector<IOServiceT*>            iovec;
     boost::barrier                      barrier;
     boost::asio::signal_set             sig;
-    std::atomic<int>                    stopped = {0};
+    std::atomic<int>                    stopped;
 
-    TcpServer(std::shared_ptr<DbConnection> con);
+    TcpServer(std::shared_ptr<DbConnection> con, int concurrency);
 
     //! Run IO service
     void start();

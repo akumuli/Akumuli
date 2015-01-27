@@ -27,7 +27,7 @@ struct DbMock : DbConnection {
 int main(int argc, char *argv[]) {
     std::cout << "Tcp server performance test" << std::endl;
     auto con = std::make_shared<DbMock>();
-    auto server = std::make_shared<TcpServer>(con);
+    auto server = std::make_shared<TcpServer>(con, 4);
     server->start();
     server->wait();
     server->stop();

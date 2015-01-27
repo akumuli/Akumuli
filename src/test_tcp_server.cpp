@@ -5,6 +5,7 @@
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "tcp_server.h"
 #include "logger.h"
@@ -173,5 +174,36 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         BOOST_REQUIRE_EQUAL(id, 3);
         BOOST_REQUIRE_EQUAL(ts, 4);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 1.61, 0.00001);
+    });
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
+
+    TCPServerTestSuite suite;
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        os << ":1\r\n:E\r\n+3.14\r\n";
+        //      error ^
+
+        boost::asio::write(socket, stream);
+
+        // TCPSession.handle_read
+        suite.io.run_one();  // run message handler (should send error back to us)
+
+        boost::asio::read(socket, stream);
+        std::istream is(&stream);
+
+        //suite.io.run_one();  // run error handler
+
+        // Check
+        BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 0);
+        char buffer[0x1000];
+        is.getline(buffer, 0x1000);
+        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
+        is.getline(buffer, 0x1000);
+        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
     });
 }

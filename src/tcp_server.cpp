@@ -60,15 +60,51 @@ void TcpSession::handle_read(BufferT buffer,
                              boost::system::error_code error,
                              size_t nbytes) {
     if (!error) {
-        start(buffer, buf_size, pos, nbytes);
-        PDU pdu = {
-            buffer,
-            nbytes,
-            pos
-        };
-        // TODO: remove
-        parser_.parse_next(pdu);
+        try {
+            start(buffer, buf_size, pos, nbytes);
+            PDU pdu = {
+                buffer,
+                nbytes,
+                pos
+            };
+            parser_.parse_next(pdu);
+        } catch (RESPError const& resp_err) {
+            // This error is related to client so we need to send it back
+            logger_.error() << resp_err.what();
+            logger_.error() << resp_err.get_bottom_line();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-PARSER " << resp_err.what() << "\r\n";
+            os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        } catch (...) {
+            // Unexpected error
+            logger_.error() << boost::current_exception_diagnostic_information();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-ERR " << boost::current_exception_diagnostic_information() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        }
+
     } else {
+        logger_.error() << error.message();
+        parser_.close();
+    }
+}
+
+void TcpSession::handle_write_error(boost::system::error_code error) {
+    if (!error) {
+        socket_.shutdown(SocketT::shutdown_both);
+    } else {
+        logger_.error() << "Error sending error message to client";
         logger_.error() << error.message();
         parser_.close();
     }
@@ -175,11 +211,15 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<DbConnection> con)
+TcpServer::TcpServer(std::shared_ptr<DbConnection> con, int concurrency)
     : dbcon(con)
-    , barrier(iovec.size() + 1)
-    , sig(ioA, SIGINT)
+    , barrier(concurrency + 1)
+    , sig(io, SIGINT)
+    , stopped{0}
 {
+    for(;concurrency --> 0;) {
+        iovec.push_back(&io);
+    }
     pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
     int port = 4096;
     serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
