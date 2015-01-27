@@ -69,6 +69,7 @@ struct TCPServerTestSuite {
     }
 };
 
+
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
     TCPServerTestSuite suite;
@@ -188,16 +189,24 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
         os << ":1\r\n:E\r\n+3.14\r\n";
         //      error ^
 
+        boost::asio::streambuf instream;
+        std::istream is(&instream);
         boost::asio::write(socket, stream);
+
+        bool handler_called = false;
+        auto cb = [&](boost::system::error_code err) {
+            BOOST_REQUIRE(err == boost::asio::error::eof);
+            handler_called = true;
+        };
+        boost::asio::async_read(socket, instream, boost::bind<void>(cb, boost::asio::placeholders::error));
 
         // TCPSession.handle_read
         suite.io.run_one();  // run message handler (should send error back to us)
+        while(!handler_called) {
+            suite.io.run_one();  // run error handler
+        }
 
-        boost::asio::read(socket, stream);
-        std::istream is(&stream);
-
-        //suite.io.run_one();  // run error handler
-
+        BOOST_REQUIRE(handler_called);
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 0);
         char buffer[0x1000];
