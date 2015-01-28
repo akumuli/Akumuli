@@ -8,7 +8,7 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
-TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout)
     : io_(io)
     , socket_(*io)
     , strand_(*io)
@@ -20,7 +20,7 @@ TcpSession::TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout)
     parser_.start();
 }
 
-TcpSocket& TcpSession::socket() {
+SocketT& TcpSession::socket() {
     return socket_;
 }
 
@@ -60,34 +60,70 @@ void TcpSession::handle_read(BufferT buffer,
                              boost::system::error_code error,
                              size_t nbytes) {
     if (!error) {
-        start(buffer, buf_size, pos, nbytes);
-        PDU pdu = {
-            buffer,
-            nbytes,
-            pos
-        };
-        // TODO: remove
-        parser_.parse_next(pdu);
+        try {
+            start(buffer, buf_size, pos, nbytes);
+            PDU pdu = {
+                buffer,
+                nbytes,
+                pos
+            };
+            parser_.parse_next(pdu);
+        } catch (RESPError const& resp_err) {
+            // This error is related to client so we need to send it back
+            logger_.error() << resp_err.what();
+            logger_.error() << resp_err.get_bottom_line();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-PARSER " << resp_err.what() << "\r\n";
+            os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        } catch (...) {
+            // Unexpected error
+            logger_.error() << boost::current_exception_diagnostic_information();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-ERR " << boost::current_exception_diagnostic_information() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        }
+
     } else {
         logger_.error() << error.message();
         parser_.close();
     }
 }
 
-//                    //
-//     Tcp Server     //
-//                    //
+void TcpSession::handle_write_error(boost::system::error_code error) {
+    if (!error) {
+        socket_.shutdown(SocketT::shutdown_both);
+    } else {
+        logger_.error() << "Error sending error message to client";
+        logger_.error() << error.message();
+        parser_.close();
+    }
+}
 
-TcpServer::TcpServer(// Server parameters
-                        std::vector<IOService *> io, int port,
-                     // Storage & pipeline
-                        std::shared_ptr<IngestionPipeline> pipeline
-                     )
+//                      //
+//     Tcp Acceptor     //
+//                      //
+
+TcpAcceptor::TcpAcceptor(// Server parameters
+                        std::vector<IOServiceT *> io, int port,
+                        // Storage & pipeline
+                        std::shared_ptr<IngestionPipeline> pipeline )
     : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
     , sessions_io_(io)
     , pipeline_(pipeline)
     , io_index_{0}
-    , acceptor_state_(UNDEFINED)
+    , start_barrier_(2)
+    , stop_barrier_(2)
     , logger_("tcp-acceptor", 10)
 {
     logger_.info() << "Server created!";
@@ -99,15 +135,16 @@ TcpServer::TcpServer(// Server parameters
     }
 }
 
-void TcpServer::start() {
+void TcpAcceptor::start() {
     WorkT work(own_io_);
 
     // Run detached thread for accepts
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
 
-        self->acceptor_state_ = STARTED;
-        self->cond_.notify_one();
+        self->logger_.info() << "Starting acceptor worker thread";
+        self->start_barrier_.wait();
+        self->logger_.info() << "Acceptor worker thread have started";
 
         try {
             self->own_io_.run();
@@ -116,66 +153,156 @@ void TcpServer::start() {
             throw;
         }
 
-        self->acceptor_state_ = STOPPED;
-        self->cond_.notify_one();
-        self->logger_.info() << "Acceptor worker thread have stopped.";
+        self->logger_.info() << "Stopping acceptor worker thread";
+        self->stop_barrier_.wait();
+        self->logger_.info() << "Acceptor worker thread have stopped";
     });
     accept_thread.detach();
 
-    std::unique_lock<std::mutex> lock(mutex_);
-    cond_.wait(lock);
-    if (acceptor_state_ != STARTED) {
-        logger_.error() << "Invalid acceptor state";
-    } else {
-        logger_.info() << "Acceptor worker thread started.";
-    }
+    start_barrier_.wait();
 
     logger_.info() << "Start listening";
     _start();
 }
 
-void TcpServer::_run_one() {
+void TcpAcceptor::_run_one() {
     own_io_.run_one();
 }
 
-void TcpServer::_start() {
+void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
     session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), pipeline_->make_spout()));
     acceptor_.async_accept(
                 session->socket(),
-                boost::bind(&TcpServer::handle_accept,
+                boost::bind(&TcpAcceptor::handle_accept,
                             shared_from_this(),
                             session,
                             boost::asio::placeholders::error)
                 );
 }
 
-void TcpServer::stop() {
+void TcpAcceptor::stop() {
     logger_.error() << "Stopping acceptor";
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
-    std::unique_lock<std::mutex> lock(mutex_);
-    cond_.wait(lock);
-    if (acceptor_state_ != STOPPED) {
-        logger_.error() << "Invalid acceptor state after stopping attempt";
-    }
+    logger_.info() << "Trying to stop acceptor";
+    stop_barrier_.wait();
+    logger_.info() << "Acceptor successfully stopped";
 }
 
-void TcpServer::_stop() {
+void TcpAcceptor::_stop() {
     logger_.error() << "Stopping acceptor";
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
 }
 
-void TcpServer::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
+void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
     } else {
         logger_.error() << "Acceptor error " << err.message();
     }
     _start();
+}
+
+//                    //
+//     Tcp Server     //
+//                    //
+
+TcpServer::TcpServer(std::shared_ptr<DbConnection> con, int concurrency)
+    : dbcon(con)
+    , barrier(concurrency + 1)
+    , sig(io, SIGINT)
+    , stopped{0}
+{
+    for(;concurrency --> 0;) {
+        iovec.push_back(&io);
+    }
+    pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
+    int port = 4096;
+    serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
+    pline->start();
+    serv->start();
+}
+
+void TcpServer::start() {
+
+    sig.async_wait(
+                // Wait for sigint
+                boost::bind(&TcpServer::handle_sigint,
+                            shared_from_this(),
+                            boost::asio::placeholders::error)
+                );
+
+    auto iorun = [](IOServiceT& io, boost::barrier& bar) {
+        auto fn = [&]() {
+            try {
+                io.run();
+                bar.wait();
+            } catch (RESPError const& e) {
+                std::cout << e.what() << std::endl;
+                std::cout << e.get_bottom_line() << std::endl;
+                throw;
+            }
+        };
+        return fn;
+    };
+
+    for (auto io: iovec) {
+        std::thread iothread(iorun(*io, barrier));
+        iothread.detach();
+    }
+}
+
+void TcpServer::handle_sigint(boost::system::error_code err) {
+    if (!err) {
+        if (stopped++ == 0) {
+            std::cout << "SIGINT catched, stopping pipeline" << std::endl;
+            for (auto io: iovec) {
+                io->stop();
+            }
+            pline->stop();
+            serv->stop();
+            barrier.wait();
+            std::cout << "Server stopped" << std::endl;
+        } else {
+            std::cout << "Already stopped (sigint)" << std::endl;
+        }
+    } else {
+        std::cout << "Signal handler error " << err.message() << std::endl;
+    }
+}
+
+void TcpServer::stop() {
+    if (stopped++ == 0) {
+        serv->stop();
+        std::cout << "TcpServer stopped" << std::endl;
+
+        sig.cancel();
+
+        // No need to joint I/O threads, just wait until they completes.
+        barrier.wait();
+        std::cout << "I/O threads stopped" << std::endl;
+
+        pline->stop();
+        std::cout << "Pipeline stopped" << std::endl;
+
+        for (auto io: iovec) {
+            io->stop();
+        }
+        std::cout << "I/O service stopped" << std::endl;
+    } else {
+        std::cout << "Already stopped" << std::endl;
+    }
+}
+
+void TcpServer::wait() {
+    // TODO: use cond var
+    while(!stopped) {
+        sleep(1);
+    }
 }
 
 }

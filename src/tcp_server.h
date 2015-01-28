@@ -20,6 +20,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/thread/barrier.hpp>
 
 #include "logger.h"
 #include "protocolparser.h"
@@ -31,9 +32,9 @@ namespace Akumuli {
 //          Type aliases from boost.asio          //
 //                                                //
 
-typedef boost::asio::io_service         IOService;
-typedef boost::asio::ip::tcp::acceptor  TcpAcceptor;
-typedef boost::asio::ip::tcp::socket    TcpSocket;
+typedef boost::asio::io_service         IOServiceT;
+typedef boost::asio::ip::tcp::acceptor  AcceptorT;
+typedef boost::asio::ip::tcp::socket    SocketT;
 typedef boost::asio::ip::tcp::endpoint  EndpointT;
 typedef boost::asio::strand             StrandT;
 typedef boost::asio::io_service::work   WorkT;
@@ -42,21 +43,22 @@ typedef boost::asio::io_service::work   WorkT;
  *  Must be created in the heap.
   */
 class TcpSession : public std::enable_shared_from_this<TcpSession> {
+    // TODO: Unique session ID
     enum {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
         BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
     };
-    IOService *io_;
-    TcpSocket socket_;
+    IOServiceT *io_;
+    SocketT socket_;
     StrandT strand_;
     std::shared_ptr<PipelineSpout> spout_;
     ProtocolParser parser_;
     Logger logger_;
 public:
     typedef std::shared_ptr<Byte> BufferT;
-    TcpSession(IOService *io, std::shared_ptr<PipelineSpout> spout);
+    TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout);
 
-    TcpSocket& socket();
+    SocketT& socket();
 
     void start(BufferT buf,
                size_t buf_size,
@@ -83,29 +85,25 @@ private:
                      size_t buf_size,
                      boost::system::error_code error,
                      size_t nbytes);
+
+    void handle_write_error(boost::system::error_code error);
 };
 
 
 /** Tcp server.
   * Accepts connections and creates new client sessions
   */
-class TcpServer : public std::enable_shared_from_this<TcpServer>
+class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor>
 {
-    IOService                           own_io_;         //< Acceptor's own io-service
-    TcpAcceptor                         acceptor_;       //< Acceptor
-    std::vector<IOService*>             sessions_io_;    //< List of io-services for sessions
+    IOServiceT                          own_io_;         //< Acceptor's own io-service
+    AcceptorT                           acceptor_;       //< Acceptor
+    std::vector<IOServiceT*>            sessions_io_;    //< List of io-services for sessions
     std::vector<WorkT>                  sessions_work_;  //< Work to block io-services from completing too early
     std::shared_ptr<IngestionPipeline>  pipeline_;       //< Pipeline instance
     std::atomic<int>                    io_index_;       //< I/O service index
 
-    // Acceptor thread control
-    std::mutex                          mutex_;
-    std::condition_variable             cond_;
-    enum {
-        UNDEFINED,
-        STARTED,
-        STOPPED,
-    }                                   acceptor_state_;
+    boost::barrier                      start_barrier_;  //< Barrier to start worker thread
+    boost::barrier                      stop_barrier_;   //< Barrier to stop worker thread
 
     // Logger
     Logger logger_;
@@ -115,11 +113,10 @@ public:
       * @param port port to listen for new connections
       * @param pipeline ingestion pipeline
       */
-    TcpServer(// Server parameters
-                 std::vector<IOService*> io, int port,
-              // Storage & pipeline
-                 std::shared_ptr<IngestionPipeline> pipeline
-              );
+    TcpAcceptor(// Server parameters
+                std::vector<IOServiceT*> io, int port,
+                // Storage & pipeline
+                std::shared_ptr<IngestionPipeline> pipeline);
 
     //! Start listening on socket
     void start();
@@ -141,4 +138,27 @@ private:
     void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);
 };
 
+
+struct TcpServer : public std::enable_shared_from_this<TcpServer>
+{
+    std::shared_ptr<IngestionPipeline>  pline;
+    std::shared_ptr<DbConnection>       dbcon;
+    std::shared_ptr<TcpAcceptor>        serv;
+    boost::asio::io_service             io;
+    std::vector<IOServiceT*>            iovec;
+    boost::barrier                      barrier;
+    boost::asio::signal_set             sig;
+    std::atomic<int>                    stopped;
+
+    TcpServer(std::shared_ptr<DbConnection> con, int concurrency);
+
+    //! Run IO service
+    void start();
+
+    void handle_sigint(boost::system::error_code err);
+
+    void stop();
+
+    void wait();
+};
 }

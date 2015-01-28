@@ -5,6 +5,7 @@
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "tcp_server.h"
 #include "logger.h"
@@ -29,8 +30,8 @@ struct DbMock : DbConnection {
 struct TCPServerTestSuite {
     std::shared_ptr<DbMock>             dbcon;
     std::shared_ptr<IngestionPipeline>  pline;
-    IOService                           io;
-    std::shared_ptr<TcpServer>          serv;
+    IOServiceT                           io;
+    std::shared_ptr<TcpAcceptor>          serv;
 
     TCPServerTestSuite() {
         // Create mock pipeline
@@ -40,8 +41,8 @@ struct TCPServerTestSuite {
 
         // Run server
         int port = 4096;
-        std::vector<IOService*> iovec = { &io };
-        serv = std::make_shared<TcpServer>(iovec, port, pline);
+        std::vector<IOServiceT*> iovec = { &io };
+        serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
 
         // Start reading but don't start iorun thread
         serv->_start();
@@ -57,7 +58,7 @@ struct TCPServerTestSuite {
     template<class Fn>
     void run(Fn const& fn) {
         // Connect to server
-        TcpSocket socket(io);
+        SocketT socket(io);
         auto loopback = boost::asio::ip::address_v4::loopback();
         boost::asio::ip::tcp::endpoint peer(loopback, 4096);
         socket.connect(peer);
@@ -68,11 +69,12 @@ struct TCPServerTestSuite {
     }
 };
 
+
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
@@ -103,7 +105,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
         os << ":1\r\n" << ":2\r\n";
@@ -136,7 +138,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
     TCPServerTestSuite suite;
 
-    suite.run([&](TcpSocket& socket) {
+    suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
 
@@ -173,5 +175,44 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         BOOST_REQUIRE_EQUAL(id, 3);
         BOOST_REQUIRE_EQUAL(ts, 4);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 1.61, 0.00001);
+    });
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
+
+    TCPServerTestSuite suite;
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        os << ":1\r\n:E\r\n+3.14\r\n";
+        //      error ^
+
+        boost::asio::streambuf instream;
+        std::istream is(&instream);
+        boost::asio::write(socket, stream);
+
+        bool handler_called = false;
+        auto cb = [&](boost::system::error_code err) {
+            BOOST_REQUIRE(err == boost::asio::error::eof);
+            handler_called = true;
+        };
+        boost::asio::async_read(socket, instream, boost::bind<void>(cb, boost::asio::placeholders::error));
+
+        // TCPSession.handle_read
+        suite.io.run_one();  // run message handler (should send error back to us)
+        while(!handler_called) {
+            suite.io.run_one();  // run error handler
+        }
+
+        BOOST_REQUIRE(handler_called);
+        // Check
+        BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 0);
+        char buffer[0x1000];
+        is.getline(buffer, 0x1000);
+        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
+        is.getline(buffer, 0x1000);
+        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
     });
 }
