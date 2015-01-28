@@ -121,9 +121,12 @@ void IngestionPipeline::start() {
             PipelineSpout::TVal *val;
             int poison_cnt = 0;
             std::vector<PipelineSpout::PQueue> queues = self->queues_;
+            const int IDLE_THRESHOLD = 0x10000;
+            int idle_count = 0;
             for (int ix = 0; true; ix++) {
                 auto& qref = queues.at(ix % N_QUEUES);
                 if (qref->pop(val)) {
+                    idle_count = 0;
                     // New write
                     if (AKU_UNLIKELY(val->cnt == nullptr)) {  //poisoned
                         poison_cnt++;
@@ -143,6 +146,15 @@ void IngestionPipeline::start() {
                     } else {
                         self->con_->write_double(val->id, val->ts, val->value);
                         (*val->cnt)++;
+                    }
+                } else {
+                    idle_count++;
+                    if (idle_count > IDLE_THRESHOLD) {
+                        if (idle_count % N_QUEUES == 0) {
+                            // in idle state
+                            // check all queues and go idle again
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        }
                     }
                 }
             }
