@@ -45,7 +45,7 @@ struct TCPServerTestSuite {
 
     TCPServerTestSuite() {
         // Create mock pipeline
-        dbcon = std::make_shared<DbMock>();
+        dbcon = std::make_shared<Mock>();
         pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
         pline->start();
 
@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 }
 
 
-BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
+BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
 
     TCPServerTestSuite<DbMock> suite;
 
@@ -224,5 +224,40 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
         is.getline(buffer, 0x1000);
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
+    });
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
+
+    TCPServerTestSuite<DbErrMock> suite;
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        os << ":1\r\n:2\r\n+3.14\r\n";
+
+        boost::asio::streambuf instream;
+        std::istream is(&instream);
+        boost::asio::write(socket, stream);
+
+        bool handler_called = false;
+        auto cb = [&](boost::system::error_code err) {
+            BOOST_REQUIRE(err == boost::asio::error::eof);
+            handler_called = true;
+        };
+        boost::asio::async_read(socket, instream, boost::bind<void>(cb, boost::asio::placeholders::error));
+
+        // TCPSession.handle_read
+        suite.io.run_one();  // run message handler (should send error back to us)
+        while(!handler_called) {
+            suite.io.run_one();  // run error handler
+        }
+
+        BOOST_REQUIRE(handler_called);
+        // Check
+        char buffer[0x1000];
+        is.getline(buffer, 0x1000);
+        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 3), "-DB");
     });
 }
