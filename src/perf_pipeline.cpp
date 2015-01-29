@@ -36,7 +36,7 @@ namespace detail {
     const static int TAG = 111222333;
     struct ConnectionMock : Akumuli::DbConnection {
         int cnt;
-        void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+        aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
             if (AKU_LIKELY(param == TAG)) {
                 cnt++;
             } else {
@@ -44,7 +44,9 @@ namespace detail {
                     err_shown = true;
                     std::cout << "Error in ConnectionMock, unexpected value" << std::endl;
                 }
+                return AKU_EBAD_ARG;
             }
+            return AKU_SUCCESS;
         }
     };
 };

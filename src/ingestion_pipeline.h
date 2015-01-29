@@ -32,7 +32,7 @@ namespace Akumuli {
 
 struct DbConnection {
     virtual ~DbConnection() {}
-    virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
+    virtual aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
 };
 
 
@@ -53,7 +53,7 @@ public:
 
     // ProtocolConsumer interface
 public:
-    void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
+    virtual aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data);
 };
 
 using boost::lockfree::queue;

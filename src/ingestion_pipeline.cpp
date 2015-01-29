@@ -31,8 +31,8 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
-void AkumuliConnection::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
-    aku_write_double(db_, param, ts, data);
+aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    return aku_write_double(db_, param, ts, data);
 }
 
 // Pipeline spout

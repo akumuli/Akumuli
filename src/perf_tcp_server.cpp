@@ -13,7 +13,7 @@ struct DbMock : DbConnection {
     PerfTimer tm;
     Logger logger_ = Logger("dbmock", 100);
 
-    void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
         static const int N = 1000000;
         if (nrec++ % N == 0) {
             double elapsed = tm.elapsed();
@@ -21,6 +21,7 @@ struct DbMock : DbConnection {
             logger_.info() << "Server throughput " << throughput << " msg/sec";
             tm.restart();
         }
+        return AKU_SUCCESS;
     }
 };
 

@@ -20,18 +20,28 @@ struct DbMock : DbConnection {
     typedef std::tuple<aku_ParamId, aku_TimeStamp, double> ValueT;
     std::vector<ValueT> results;
 
-    void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
         logger_.trace() << "write_double(" << param << ", " << ts << ", " << data << ")";
         results.push_back(std::make_tuple(param, ts, data));
+        return AKU_SUCCESS;
     }
 };
 
 
+struct DbErrMock : DbConnection {
+    aku_Status err = AKU_ELATE_WRITE;
+    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+        return err;
+    }
+};
+
+
+template<class Mock>
 struct TCPServerTestSuite {
-    std::shared_ptr<DbMock>             dbcon;
+    std::shared_ptr<Mock>               dbcon;
     std::shared_ptr<IngestionPipeline>  pline;
-    IOServiceT                           io;
-    std::shared_ptr<TcpAcceptor>          serv;
+    IOServiceT                          io;
+    std::shared_ptr<TcpAcceptor>        serv;
 
     TCPServerTestSuite() {
         // Create mock pipeline
@@ -72,7 +82,7 @@ struct TCPServerTestSuite {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
-    TCPServerTestSuite suite;
+    TCPServerTestSuite<DbMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -103,7 +113,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
-    TCPServerTestSuite suite;
+    TCPServerTestSuite<DbMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -136,7 +146,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
-    TCPServerTestSuite suite;
+    TCPServerTestSuite<DbMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -181,7 +191,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_error_handling) {
 
-    TCPServerTestSuite suite;
+    TCPServerTestSuite<DbMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
