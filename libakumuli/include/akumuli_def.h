@@ -57,6 +57,8 @@
 //! Late write error
 #define AKU_ELATE_WRITE           9
 
+#define AKU_EMAX_ERROR            9
+
 
 // Search error codes
 

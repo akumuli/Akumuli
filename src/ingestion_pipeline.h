@@ -92,6 +92,7 @@ struct PipelineSpout : ProtocolConsumer {
         aku_TimeStamp   ts;                                      //< Measurement timestamp
         double          value;                                   //< Value (TODO: should be variant type)
         SpoutCounter   *cnt;                                     //< Pointer to spout's shared counter
+        SpoutCounter   *err;                                     //< Errors array
     }                                            TVal;           //< Value
     typedef std::shared_ptr<TVal>                PVal;           //< Pointer to value
     typedef queue<TVal*>                         Queue;          //< Queue class
@@ -99,6 +100,7 @@ struct PipelineSpout : ProtocolConsumer {
 
     // Data
     SpoutCounter        created_;                                //< Created elements counter
+    SpoutCounter        errors_[AKU_EMAX_ERROR];
     Padding             pad0;
     SpoutCounter        deleted_;                                //< Deleted elements counter
     std::vector<PVal>   pool_;                                   //< TVal pool

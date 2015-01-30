@@ -48,10 +48,12 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
     for(int ix = POOL_SIZE; ix --> 0;) {
         pool_.at(ix).reset(new TVal());
     }
+    for(int i = AKU_EMAX_ERROR; i-->0;) {
+        errors_[i] = 0;
+    }
 }
 
 PipelineSpout::~PipelineSpout() {
-    logger_.info() << "dtor";
 }
 
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
@@ -73,6 +75,7 @@ void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double dat
     pvalue->ts    =        ts;
     pvalue->value =      data;
     pvalue->cnt   = &deleted_;
+    pvalue->err   =   errors_;
 
     while (!queue_->push(pvalue)) {
         std::this_thread::yield();
@@ -144,8 +147,11 @@ void IngestionPipeline::start() {
                             return;
                         }
                     } else {
-                        self->con_->write_double(val->id, val->ts, val->value);
+                        auto err = self->con_->write_double(val->id, val->ts, val->value);
                         (*val->cnt)++;
+                        if (err >= 0 && err <= AKU_EMAX_ERROR) {
+                            val->err[err]++;
+                        }
                     }
                 } else {
                     idle_count++;
