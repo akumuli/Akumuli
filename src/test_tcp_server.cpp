@@ -28,8 +28,9 @@ struct DbMock : DbConnection {
 };
 
 
+template<aku_Status ERR>
 struct DbErrMock : DbConnection {
-    aku_Status err = AKU_ELATE_WRITE;
+    aku_Status err = ERR;
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
         return err;
     }
@@ -230,7 +231,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
 
-    TCPServerTestSuite<DbErrMock> suite;
+    TCPServerTestSuite<DbErrMock<AKU_EBAD_DATA>> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;

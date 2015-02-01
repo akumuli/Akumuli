@@ -61,25 +61,15 @@ PipelineErrorCb TcpSession::get_error_cb() {
         auto session = weak.lock();
         if (session) {
             const char* msg = aku_error_message(status);
-            // TODO: logger should be thread safe!
             session->logger_.trace() << msg;
             boost::asio::streambuf stream;
             std::ostream os(&stream);
             os << "-DB " << msg << "\r\n";
-            boost::function<void(boost::system::error_code err)> handler;
-            if (status == AKU_ELATE_WRITE) {
-                handler = boost::bind<void>(
-                            [](boost::system::error_code) {},
-                            boost::asio::placeholders::error);
-                boost::asio::async_write(session->socket_, stream,
-                                         boost::bind<void>([](boost::system::error_code err) {},
-                                                           boost::asio::placeholders::error));
-            } else {
-                boost::asio::async_write(session->socket_, stream,
-                                         boost::bind(&TcpSession::handle_write_error,
-                                         session,
-                                         boost::asio::placeholders::error));
-            }
+            boost::asio::async_write(session->socket_,
+                                     stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 session,
+                                                 boost::asio::placeholders::error));
         }
     };
     return PipelineErrorCb(fn);
