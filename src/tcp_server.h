@@ -65,6 +65,8 @@ public:
                size_t pos,
                size_t bytes_read);
 
+    PipelineErrorCb get_error_cb();
+
     static BufferT NO_BUFFER;
 private:
 

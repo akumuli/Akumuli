@@ -18,6 +18,7 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include <functional>
 
 #include <boost/lockfree/queue.hpp>
 #include <boost/thread/barrier.hpp>
@@ -66,6 +67,10 @@ enum BackoffPolicy {
 };
 
 
+//! Callback from pipeline to session
+typedef std::function<void(aku_Status, uint64_t)> PipelineErrorCb;
+
+
 /** Pipeline's spout.
   * Object of this class can be used to ingest data to pipeline.
   * It should be connected with IngestionPipeline instance with
@@ -88,11 +93,11 @@ struct PipelineSpout : ProtocolConsumer {
     typedef struct { char emptybits[64]; }       Padding;        //< Padding
     typedef std::atomic<uint64_t>                SpoutCounter;   //< Shared counter
     typedef struct {
-        aku_ParamId     id;                                      //< Measurement ID
-        aku_TimeStamp   ts;                                      //< Measurement timestamp
-        double          value;                                   //< Value (TODO: should be variant type)
-        SpoutCounter   *cnt;                                     //< Pointer to spout's shared counter
-        SpoutCounter   *err;                                     //< Errors array
+        aku_ParamId            id;                               //< Measurement ID
+        aku_TimeStamp          ts;                               //< Measurement timestamp
+        double                 value;                            //< Value (TODO: should be variant type)
+        SpoutCounter          *cnt;                              //< Pointer to spout's shared counter
+        PipelineErrorCb       *on_error;                         //< On error callback
     }                                            TVal;           //< Value
     typedef std::shared_ptr<TVal>                PVal;           //< Pointer to value
     typedef queue<TVal*>                         Queue;          //< Queue class
@@ -100,7 +105,6 @@ struct PipelineSpout : ProtocolConsumer {
 
     // Data
     SpoutCounter        created_;                                //< Created elements counter
-    SpoutCounter        errors_[AKU_EMAX_ERROR];
     Padding             pad0;
     SpoutCounter        deleted_;                                //< Deleted elements counter
     std::vector<PVal>   pool_;                                   //< TVal pool
@@ -108,10 +112,13 @@ struct PipelineSpout : ProtocolConsumer {
     PQueue              queue_;                                  //< Queue
     const BackoffPolicy backoff_;
     Logger              logger_;                                 //< Logger instance
+    PipelineErrorCb     on_error_;                               //< Session callback
 
     // C-tor
     PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp);
    ~PipelineSpout();
+
+    void set_error_cb(PipelineErrorCb cb);
 
     // ProtocolConsumer
     virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
@@ -120,6 +127,11 @@ struct PipelineSpout : ProtocolConsumer {
     // Utility
     //! Reserve index for the next TVal in the pool or negative value on error.
     int get_index_of_empty_slot();
+
+    /** Dump all errors to ostr or report that everything is OK
+      * @param ostr stream to write
+      */
+    void get_error(std::ostream& ostr);
 };
 
 class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>

@@ -48,12 +48,13 @@ PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
     for(int ix = POOL_SIZE; ix --> 0;) {
         pool_.at(ix).reset(new TVal());
     }
-    for(int i = AKU_EMAX_ERROR; i-->0;) {
-        errors_[i] = 0;
-    }
 }
 
 PipelineSpout::~PipelineSpout() {
+}
+
+void PipelineSpout::set_error_cb(PipelineErrorCb cb) {
+    on_error_ = cb;
 }
 
 void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
@@ -71,11 +72,11 @@ void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double dat
 
     auto pvalue = pool_.at(ix).get();
 
-    pvalue->id    =     param;
-    pvalue->ts    =        ts;
-    pvalue->value =      data;
-    pvalue->cnt   = &deleted_;
-    pvalue->err   =   errors_;
+    pvalue->id       =      param;
+    pvalue->ts       =         ts;
+    pvalue->value    =       data;
+    pvalue->cnt      =  &deleted_;
+    pvalue->on_error = &on_error_;
 
     while (!queue_->push(pvalue)) {
         std::this_thread::yield();
@@ -147,10 +148,10 @@ void IngestionPipeline::start() {
                             return;
                         }
                     } else {
-                        auto err = self->con_->write_double(val->id, val->ts, val->value);
+                        auto error = self->con_->write_double(val->id, val->ts, val->value);
                         (*val->cnt)++;
-                        if (err >= 0 && err <= AKU_EMAX_ERROR) {
-                            val->err[err]++;
+                        if (AKU_UNLIKELY(error != AKU_SUCCESS)) {
+                            (*val->on_error)(error, *val->cnt);
                         }
                     }
                 } else {
