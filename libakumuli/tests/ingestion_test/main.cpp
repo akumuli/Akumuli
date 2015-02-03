@@ -41,7 +41,7 @@ private:
 };
 
 void delete_storage() {
-    boost::filesystem::remove_all(DB_PATH);
+    aku_remove_database(DB_PATH, &aku_console_logger);
 }
 
 bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
