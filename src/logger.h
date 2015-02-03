@@ -16,12 +16,25 @@
 
 #pragma once
 #include <sstream>
+#include <mutex>
 
 #include <log4cxx/logger.h>
 
 #include <boost/circular_buffer.hpp>
 
 namespace Akumuli {
+
+namespace details {
+
+struct CircularBuffer {
+    boost::circular_buffer<std::string> trace_;
+    std::mutex mutex_;
+
+    CircularBuffer(size_t depth);
+    CircularBuffer(CircularBuffer&& other);
+};
+
+}
 
 class Formatter {
 public:
@@ -36,15 +49,15 @@ private:
     // Optional parameters
     SinkType sink_;
     log4cxx::LoggerPtr logger_;
-    boost::circular_buffer<std::string> *buffer_;
+    details::CircularBuffer *buffer_;
 public:
     Formatter();
 
     ~Formatter();
 
     void set_info_sink(log4cxx::LoggerPtr logger);
-    void set_trace_sink(boost::circular_buffer<std::string> *buffer);
-    void set_error_sink(log4cxx::LoggerPtr logger, boost::circular_buffer<std::string> *buffer);
+    void set_trace_sink(details::CircularBuffer *buffer);
+    void set_error_sink(log4cxx::LoggerPtr logger, details::CircularBuffer *buffer);
 
     template<class T>
     Formatter& operator << (T const& value) {
@@ -53,17 +66,17 @@ public:
     }
 };
 
-/** Logger class. Not thread safe.
+/** Logger class.
   */
 class Logger
 {
-    boost::circular_buffer<std::string> trace_;
+    details::CircularBuffer trace_;
     log4cxx::LoggerPtr plogger_;
 public:
     Logger(const char* log_name, int depth);
 
     Formatter&& trace(Formatter&& fmt = Formatter());
-    Formatter&& info(Formatter&& fmt = Formatter());
+    Formatter&& info (Formatter&& fmt = Formatter());
     Formatter&& error(Formatter&& fmt = Formatter());
 };
 

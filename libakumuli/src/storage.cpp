@@ -138,6 +138,15 @@ struct VolumeIterator {
     VolumeIterator(const char* path, aku_logger_cb_t logger)
         : error_code(AKU_SUCCESS)
     {
+        // 0. Check that file exists
+        auto filedesc = std::fopen(const_cast<char*>(path), "r");
+        if (filedesc == nullptr) {
+            // No such file
+            error_code = AKU_ENOT_FOUND;
+            (*logger)(0, "invalid path, no such file");
+            return;
+        }
+        std::fclose(filedesc);
         // 1. Read json file
         boost::property_tree::ptree ptree;
         boost::property_tree::json_parser::read_json(path, ptree);

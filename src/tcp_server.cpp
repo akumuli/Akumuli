@@ -1,6 +1,7 @@
 #include "tcp_server.h"
 #include "utility.h"
 #include <thread>
+#include <boost/function.hpp>
 
 namespace Akumuli {
 
@@ -50,6 +51,28 @@ void TcpSession::start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_re
                                 boost::asio::placeholders::error,
                                 boost::asio::placeholders::bytes_transferred)
                 ));
+}
+
+PipelineErrorCb TcpSession::get_error_cb() {
+    logger_.info() << "Creating error handler for session";
+    auto self = shared_from_this();
+    auto weak = std::weak_ptr<TcpSession>(self);
+    auto fn = [weak](aku_Status status, uint64_t counter) {
+        auto session = weak.lock();
+        if (session) {
+            const char* msg = aku_error_message(status);
+            session->logger_.trace() << msg;
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-DB " << msg << "\r\n";
+            boost::asio::async_write(session->socket_,
+                                     stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 session,
+                                                 boost::asio::placeholders::error));
+        }
+    };
+    return PipelineErrorCb(fn);
 }
 
 std::shared_ptr<Byte> TcpSession::NO_BUFFER = std::shared_ptr<Byte>();
@@ -171,7 +194,11 @@ void TcpAcceptor::_run_one() {
 
 void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
-    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), pipeline_->make_spout()));
+    auto spout = pipeline_->make_spout();
+    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), spout));
+    // attach session to spout
+    spout->set_error_cb(session->get_error_cb());
+    // run session
     acceptor_.async_accept(
                 session->socket(),
                 boost::bind(&TcpAcceptor::handle_accept,

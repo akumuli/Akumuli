@@ -11,13 +11,14 @@
 struct ConnectionMock : Akumuli::DbConnection {
     int cntp;
     int cntt;
-    void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
         if (ts == 1) {
             cntt += 1;
             cntp += (int)param;
         } else {
             BOOST_ERROR("Invalid value!");
         }
+        return AKU_SUCCESS;
     }
 };
 
