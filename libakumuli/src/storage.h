@@ -136,7 +136,7 @@ struct Storage
     //! Write binary data.
     aku_Status write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data);
 
-    //! Write fl
+    //! Write double.
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
 
     aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);

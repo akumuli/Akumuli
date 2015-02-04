@@ -35,6 +35,7 @@ add_executable(
 target_link_libraries(
     test_page
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -56,6 +57,7 @@ add_executable(
 target_link_libraries(
     test_sequencer
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -76,6 +78,7 @@ add_executable(
 target_link_libraries(
     test_cursor
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -93,6 +96,7 @@ add_executable(
 target_link_libraries(
     test_mmap
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 

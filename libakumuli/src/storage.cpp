@@ -31,9 +31,9 @@
 #include <functional>
 #include <sstream>
 
-#include <apr_general.h>
+#include <apr.h>
 #include <apr_mmap.h>
-#include <apr_xml.h>
+#include <apr_dbd.h>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -147,6 +147,7 @@ struct VolumeIterator {
             return;
         }
         std::fclose(filedesc);
+
         // 1. Read json file
         boost::property_tree::ptree ptree;
         boost::property_tree::json_parser::read_json(path, ptree);
@@ -603,6 +604,55 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
     return results;
 }
 
+apr_status_t create_metadata_db( const char* file_name
+                                      , std::vector<std::string> const& page_file_names
+                                      , uint32_t compression_threshold
+                                      , uint64_t window_size
+                                      , uint32_t max_cache_size
+                                      , aku_logger_cb_t logger)
+{
+    apr_status_t status;
+    apr_pool_t *pool = nullptr;
+    const apr_dbd_driver_t* driver = nullptr;
+    apr_dbd_t* handle = nullptr;
+    const char* params = "";
+    int nsuccess = 0;
+    status = apr_pool_create(&pool, NULL);
+    if (status != APR_SUCCESS) {
+        // report error
+        (*logger)(0, "Can't create memory pool");
+        goto ERROR;
+    }
+    nsuccess++;
+    status = apr_dbd_get_driver(pool, "sqlite3", &driver);
+    if (status != APR_SUCCESS) {
+        // can't get sqlite dirver
+        (*logger)(0, "Can't load sqlite3 dirver");
+        goto ERROR;
+    }
+    nsuccess++;
+    status = apr_dbd_open(driver, pool, params, &handle);
+    if (status != APR_SUCCESS) {
+        (*logger)(0, "Can't open database");
+        goto ERROR;
+    }
+    nsuccess++;
+    // TBD:
+    ERROR:
+    switch(nsuccess) {
+    case 3:
+    case 2: {
+        apr_dbd_close(driver, handle);
+        break;
+    }
+    case 1: {
+        // Destroy pool
+        apr_pool_destroy(pool);
+    }
+    case 0: break;
+    }
+    return status;
+}
 
 /** This function creates metadata file - root of the storage system.
   * This page contains creation date and time, number of pages,

@@ -1,4 +1,19 @@
-# -*- cmake -*-
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 # - Find Apache Portable Runtime
 # Find the APR includes and libraries
@@ -12,16 +27,23 @@
 # APR first.
 
 FIND_PATH(APR_INCLUDE_DIR apr.h
-/usr/local/include/apr-1
-/usr/local/include/apr-1.0
-/usr/include/apr-1
-/usr/include/apr-1.0
+  /opt/homebrew/opt/apr/include/apr-1
+  /usr/local/include/apr-1
+  /usr/local/include/apr-1.0
+  /usr/include/apr-1
+  /usr/include/apr-1.0
+  /usr/local/apr/include/apr-1
 )
 
 SET(APR_NAMES ${APR_NAMES} apr-1)
 FIND_LIBRARY(APR_LIBRARY
   NAMES ${APR_NAMES}
-  PATHS /usr/lib /usr/local/lib
+  HINTS
+    /opt/homebrew/opt/apr/lib
+  PATHS
+    /usr/lib
+    /usr/local/lib
+    /usr/local/apr/lib
   )
 
 IF (APR_LIBRARY AND APR_INCLUDE_DIR)
@@ -34,7 +56,8 @@ ENDIF (APR_LIBRARY AND APR_INCLUDE_DIR)
 
 IF (APR_FOUND)
    IF (NOT APR_FIND_QUIETLY)
-      MESSAGE(STATUS "Found APR: ${APR_LIBRARIES}")
+      MESSAGE(STATUS "Found APR headers: ${APR_INCLUDE_DIR}")
+      MESSAGE(STATUS "Found APR library: ${APR_LIBRARIES}")
    ENDIF (NOT APR_FIND_QUIETLY)
 ELSE (APR_FOUND)
    IF (APR_FIND_REQUIRED)
@@ -42,7 +65,61 @@ ELSE (APR_FOUND)
    ENDIF (APR_FIND_REQUIRED)
 ENDIF (APR_FOUND)
 
+# Deprecated declarations.
+SET (NATIVE_APR_INCLUDE_PATH ${APR_INCLUDE_DIR} )
+GET_FILENAME_COMPONENT (NATIVE_APR_LIB_PATH ${APR_LIBRARY} PATH)
+
 MARK_AS_ADVANCED(
   APR_LIBRARY
   APR_INCLUDE_DIR
+  )
+
+# Next, APRUTIL.
+
+FIND_PATH(APRUTIL_INCLUDE_DIR apu.h
+  /opt/homebrew/opt/apr-util/include/apr-1
+  /usr/local/include/apr-1
+  /usr/local/include/apr-1.0
+  /usr/include/apr-1
+  /usr/include/apr-1.0
+  /usr/local/apr/include/apr-1
+)
+
+SET(APRUTIL_NAMES ${APRUTIL_NAMES} aprutil-1)
+FIND_LIBRARY(APRUTIL_LIBRARY
+  NAMES ${APRUTIL_NAMES}
+  HINTS
+    /opt/homebrew/opt/apr-util/lib
+  PATHS
+    /usr/lib
+    /usr/local/lib
+    /usr/local/apr/lib
+  )
+
+IF (APRUTIL_LIBRARY AND APRUTIL_INCLUDE_DIR)
+    SET(APRUTIL_LIBRARIES ${APRUTIL_LIBRARY})
+    SET(APRUTIL_FOUND "YES")
+ELSE (APRUTIL_LIBRARY AND APRUTIL_INCLUDE_DIR)
+  SET(APRUTIL_FOUND "NO")
+ENDIF (APRUTIL_LIBRARY AND APRUTIL_INCLUDE_DIR)
+
+
+IF (APRUTIL_FOUND)
+   IF (NOT APRUTIL_FIND_QUIETLY)
+      MESSAGE(STATUS "Found APRUTIL headers: ${APRUTIL_INCLUDE_DIR}")
+      MESSAGE(STATUS "Found APRUTIL library: ${APRUTIL_LIBRARIES}")
+   ENDIF (NOT APRUTIL_FIND_QUIETLY)
+ELSE (APRUTIL_FOUND)
+   IF (APRUTIL_FIND_REQUIRED)
+      MESSAGE(FATAL_ERROR "Could not find APRUTIL library")
+   ENDIF (APRUTIL_FIND_REQUIRED)
+ENDIF (APRUTIL_FOUND)
+
+# Deprecated declarations.
+SET (NATIVE_APRUTIL_INCLUDE_PATH ${APRUTIL_INCLUDE_DIR} )
+GET_FILENAME_COMPONENT (NATIVE_APRUTIL_LIB_PATH ${APRUTIL_LIBRARY} PATH)
+
+MARK_AS_ADVANCED(
+  APRUTIL_LIBRARY
+  APRUTIL_INCLUDE_DIR
   )
