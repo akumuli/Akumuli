@@ -615,7 +615,6 @@ apr_status_t create_metadata_db( const char* file_name
     apr_pool_t *pool = nullptr;
     const apr_dbd_driver_t* driver = nullptr;
     apr_dbd_t* handle = nullptr;
-    const char* params = "";
     int nsuccess = 0;
     status = apr_pool_create(&pool, NULL);
     if (status != APR_SUCCESS) {
@@ -631,7 +630,7 @@ apr_status_t create_metadata_db( const char* file_name
         goto ERROR;
     }
     nsuccess++;
-    status = apr_dbd_open(driver, pool, params, &handle);
+    status = apr_dbd_open(driver, pool, file_name, &handle);
     if (status != APR_SUCCESS) {
         (*logger)(0, "Can't open database");
         goto ERROR;
@@ -669,6 +668,17 @@ static apr_status_t create_metadata_page( const char* file_name
     //       is FUBAR and uses boost::spirit.
     using namespace std;
     try {
+        // TODO: remove this block
+        {
+            create_metadata_db(file_name,
+                               page_file_names,
+                               compression_threshold,
+                               window_size,
+                               max_cache_size,
+                               logger);
+            throw std::runtime_error("");
+        }
+
         boost::property_tree::ptree root;
         auto now = apr_time_now();
         char date_time[0x100];
