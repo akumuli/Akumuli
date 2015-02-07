@@ -31,6 +31,11 @@
 #include <memory>
 #include <mutex>
 
+// APR headers
+#include <apr_dbd.h>
+#include <apr.h>
+#include <apr_mmap.h>
+
 #include "page.h"
 #include "util.h"
 #include "sequencer.h"
@@ -38,6 +43,40 @@
 #include "akumuli_def.h"
 
 namespace Akumuli {
+
+//! Delete apr pool
+void delete_apr_pool(apr_pool_t *p);
+
+//! Deleter apr dbd driver for sqlite3
+void delete_apr_driver(apr_dbd_driver_t *d);
+
+/** Sqlite3 backed storage for metadata.
+  * Metadata includes:
+  * - Volumes list
+  * - Conviguration data
+  * - Key to id mapping
+  */
+struct MetadataStorage {
+    // Typedefs
+    typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)>         PoolT;
+    typedef std::unique_ptr<apr_dbd_driver_t, decltype(&delete_apr_driver)> DriverT;
+    typedef std::unique_ptr<apr_dbd_t, decltype(&delete_apr_handle)>        HandleT;
+
+    // Members
+    PoolT pool_;
+    DriverT driver_;
+    HandleT handle_;
+
+    /** Create new or open existing db.
+      * @throw std::runtime_error in a case of error
+      */
+    MetadataStorage(const char* db);
+
+    /** Read list of volumes and their sequence numbers.
+      * @throw std::runtime_error in a case of error
+      */
+    std::vector<std::string> get_volume_names() const;
+};
 
 /** Storage volume.
   * Coresponds to one of the storage pages. Includes page

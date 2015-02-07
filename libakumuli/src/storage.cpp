@@ -31,10 +31,6 @@
 #include <functional>
 #include <sstream>
 
-#include <apr.h>
-#include <apr_mmap.h>
-#include <apr_dbd.h>
-
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
@@ -43,6 +39,51 @@
 namespace Akumuli {
 
 static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger);
+
+void delete_apr_pool(apr_pool_t *p) {
+    if (p) {
+        apr_pool_destroy(p);
+    }
+}
+
+void delete_apr_driver(apr_dbd_driver_t *d) {
+    // No-op
+}
+
+
+//-------------------------------MetadataStorage----------------------------------------
+
+MetadataStorage::MetadataStorage(const char* db)
+{
+    apr_pool_t *pool = nullptr;
+    auto status = apr_pool_create(&pool, NULL);
+    if (status != APR_SUCCESS) {
+        // report error (can't return error from c-tor)
+        throw std::runtime_error("Can't create memory pool");
+    }
+    pool_.reset(pool);
+
+    apr_dbd_driver_t *driver = nullptr;
+    status = apr_dbd_get_driver(pool, "sqlite3", &driver);
+    if (status != APR_SUCCESS) {
+        throw std::runtime_error("Can't load sqlite3 dirver");
+    }
+    driver_.reset(driver);
+
+    apr_dbd_t *handle = nullptr;
+    status = apr_dbd_open(driver, pool, db, &handle);
+    if (status != APR_SUCCESS) {
+        throw std::runtime_error("Can't open database");
+    }
+    handle_.reset(handle);
+}
+
+std::vector<std::string> MetadataStorage::get_volume_names() const {
+    int status = apr_dbd_query(driver_.get(), handle_.get(), &nrows, query);
+    if (!status) {
+        throw std::runtime_error("Query error");
+    }
+}
 
 //----------------------------------Volume----------------------------------------------
 
@@ -616,6 +657,7 @@ apr_status_t create_metadata_db( const char* file_name
     const apr_dbd_driver_t* driver = nullptr;
     apr_dbd_t* handle = nullptr;
     int nsuccess = 0;
+    int rows = 0;
     status = apr_pool_create(&pool, NULL);
     if (status != APR_SUCCESS) {
         // report error
@@ -636,19 +678,28 @@ apr_status_t create_metadata_db( const char* file_name
         goto ERROR;
     }
     nsuccess++;
+
+    status = apr_dbd_query(driver, handle, &rows,
+                           "CREATE TABLE volumes ("
+                           "    volume_id int "
+                           "    volume_id varchar "
+                           ")"
+                           );
+    if (status) {
+        (*logger)(0, "Create table error");
+        goto ERROR;
+    }
     // TBD:
     ERROR:
     switch(nsuccess) {
-    case 3:
+    default:
     case 2: {
         apr_dbd_close(driver, handle);
-        break;
     }
     case 1: {
         // Destroy pool
         apr_pool_destroy(pool);
     }
-    case 0: break;
     }
     return status;
 }
