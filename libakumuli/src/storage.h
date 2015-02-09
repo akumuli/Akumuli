@@ -47,8 +47,12 @@ namespace Akumuli {
 //! Delete apr pool
 void delete_apr_pool(apr_pool_t *p);
 
-//! Deleter apr dbd driver for sqlite3
-void delete_apr_driver(apr_dbd_driver_t *d);
+//! APR DBD handle deleter
+struct AprHandleDeleter {
+    const apr_dbd_driver_t *driver;
+    AprHandleDeleter(const apr_dbd_driver_t *driver);
+    void operator()(apr_dbd_t* handle);
+};
 
 /** Sqlite3 backed storage for metadata.
   * Metadata includes:
@@ -59,8 +63,9 @@ void delete_apr_driver(apr_dbd_driver_t *d);
 struct MetadataStorage {
     // Typedefs
     typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)>         PoolT;
-    typedef std::unique_ptr<apr_dbd_driver_t, decltype(&delete_apr_driver)> DriverT;
-    typedef std::unique_ptr<apr_dbd_t, decltype(&delete_apr_handle)>        HandleT;
+    typedef const apr_dbd_driver_t*                                         DriverT;
+    typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter>                    HandleT;
+    typedef std::pair<int, std::string>                                     VolumeDesc;
 
     // Members
     PoolT pool_;
@@ -72,10 +77,17 @@ struct MetadataStorage {
       */
     MetadataStorage(const char* db);
 
+    void create_tables();
+
+    /** Initialize volumes table
+      * @throw std::runtime_error in a case of error
+      */
+    void init_volumes(std::vector<VolumeDesc> volumes);
+
     /** Read list of volumes and their sequence numbers.
       * @throw std::runtime_error in a case of error
       */
-    std::vector<std::string> get_volume_names() const;
+    std::vector<VolumeDesc> get_volumes() const;
 };
 
 /** Storage volume.

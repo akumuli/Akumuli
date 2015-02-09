@@ -35,6 +35,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/scoped_array.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace Akumuli {
 
@@ -46,14 +47,24 @@ void delete_apr_pool(apr_pool_t *p) {
     }
 }
 
-void delete_apr_driver(apr_dbd_driver_t *d) {
-    // No-op
+AprHandleDeleter::AprHandleDeleter(const apr_dbd_driver_t *driver)
+    : driver(driver)
+{
+}
+
+void AprHandleDeleter::operator()(apr_dbd_t* handle) {
+    if (driver != nullptr && handle != nullptr) {
+        apr_dbd_close(driver, handle);
+    }
 }
 
 
 //-------------------------------MetadataStorage----------------------------------------
 
 MetadataStorage::MetadataStorage(const char* db)
+    : pool_(nullptr, &delete_apr_pool)
+    , driver_(nullptr)
+    , handle_(nullptr, AprHandleDeleter(nullptr))
 {
     apr_pool_t *pool = nullptr;
     auto status = apr_pool_create(&pool, NULL);
@@ -63,26 +74,83 @@ MetadataStorage::MetadataStorage(const char* db)
     }
     pool_.reset(pool);
 
-    apr_dbd_driver_t *driver = nullptr;
-    status = apr_dbd_get_driver(pool, "sqlite3", &driver);
+    status = apr_dbd_get_driver(pool, "sqlite3", &driver_);
     if (status != APR_SUCCESS) {
         throw std::runtime_error("Can't load sqlite3 dirver");
     }
-    driver_.reset(driver);
 
     apr_dbd_t *handle = nullptr;
-    status = apr_dbd_open(driver, pool, db, &handle);
+    status = apr_dbd_open(driver_, pool, db, &handle);
     if (status != APR_SUCCESS) {
         throw std::runtime_error("Can't open database");
     }
-    handle_.reset(handle);
+    handle_ = HandleT(handle, AprHandleDeleter(driver_));
+
+    create_tables();
 }
 
-std::vector<std::string> MetadataStorage::get_volume_names() const {
-    int status = apr_dbd_query(driver_.get(), handle_.get(), &nrows, query);
-    if (!status) {
-        throw std::runtime_error("Query error");
+void MetadataStorage::create_tables() {
+
+    const char* query =
+            "CREATE TABLE IF NOT EXISTS volumes("
+            "id INTEGER UNIQUE,"
+            "path TEXT UNIQUE"
+            ");";
+
+    int nrows = -1;
+    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
+    if (status != 0) {
+        // generate error and throw
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
     }
+}
+
+void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
+    for (auto desc: volumes) {
+        std::stringstream query;
+        query << "INSERT INTO volumes VALUES (" << desc.first << ", " << desc.second << ");";
+        int nrows = -1;
+        int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.str().c_str());
+        if (status != 0) {
+            // generate error and throw
+            throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+        }
+    }
+}
+
+std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
+
+    const char* query =
+            "SELECT id, path FROM volumes;";
+
+    std::vector<VolumeDesc> tuples;
+    apr_dbd_results_t *results = nullptr;
+    int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
+    if (!status) {
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+    }
+    // get rows
+    int ntuples = apr_dbd_num_tuples(driver_, results);
+    for (int i = ntuples; i --> 0; i++) {
+        apr_dbd_row_t *row = nullptr;
+        status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
+        if (!status) {
+            throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+        }
+        // get id
+        int id = -1;
+        const char* idrepr = apr_dbd_get_entry(driver_, row, 0);
+        if (idrepr == nullptr) {
+            throw std::runtime_error("Bad db-schema");
+        }
+        id = boost::lexical_cast<int>(idrepr);
+
+        // get path
+        const char* path = apr_dbd_get_entry(driver_, row, 1);
+
+        tuples.push_back(std::make_pair(id, path));
+    }
+    return tuples;
 }
 
 //----------------------------------Volume----------------------------------------------

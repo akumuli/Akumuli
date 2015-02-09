@@ -119,6 +119,28 @@ target_link_libraries(
 
 add_test(compression test_compression)
 
+add_executable(
+    test_storage
+        test_storage.cpp
+        storage.cpp
+        page.cpp
+        util.cpp
+        compression.cpp
+        cursor.cpp
+        sequencer.cpp
+        akumuli.cpp
+)
+
+target_link_libraries(
+    test_storage
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(storage test_storage)
+
 install(
     TARGETS
         akumuli
