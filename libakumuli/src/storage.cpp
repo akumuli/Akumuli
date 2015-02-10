@@ -108,12 +108,14 @@ void MetadataStorage::create_tables() {
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     for (auto desc: volumes) {
         std::stringstream query;
-        query << "INSERT INTO volumes VALUES (" << desc.first << ", " << desc.second << ");";
+        query << "INSERT INTO volumes (id, path) VALUES (" << desc.first << ", '" << desc.second << "');";
         int nrows = -1;
-        int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.str().c_str());
+        std::string query_string = query.str();
+        int status = apr_dbd_query(driver_, handle_.get(), &nrows, query_string.c_str());
         if (status != 0) {
             // generate error and throw
-            throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+            std::string error_message = apr_dbd_error(driver_, handle_.get(), status);
+            throw std::runtime_error(error_message.c_str());
         }
     }
 }
@@ -126,15 +128,15 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     std::vector<VolumeDesc> tuples;
     apr_dbd_results_t *results = nullptr;
     int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
-    if (!status) {
+    if (status != 0) {
         throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
     }
     // get rows
     int ntuples = apr_dbd_num_tuples(driver_, results);
-    for (int i = ntuples; i --> 0; i++) {
+    for (int i = ntuples; i --> 0;) {
         apr_dbd_row_t *row = nullptr;
         status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
-        if (!status) {
+        if (status != 0) {
             throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
         }
         // get id

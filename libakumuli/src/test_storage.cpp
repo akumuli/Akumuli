@@ -10,6 +10,14 @@
 
 using namespace Akumuli;
 
+struct AkumuliInitializer {
+    AkumuliInitializer() {
+        aku_initialize(nullptr);
+    }
+};
+
+AkumuliInitializer initializer;
+
 BOOST_AUTO_TEST_CASE(Test_metadata_storage) {
 
     auto db = MetadataStorage(":memory:");
@@ -21,6 +29,7 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage) {
     db.init_volumes(volumes);
     auto actual = db.get_volumes();
     for (int i = 0; i < 3; i++) {
-        BOOST_REQUIRE(volumes.at(3) == actual.at(3));
+        BOOST_REQUIRE_EQUAL(volumes.at(i).first, actual.at(i).first);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).second, actual.at(i).second);
     }
 }
