@@ -54,6 +54,49 @@ struct AprHandleDeleter {
     void operator()(apr_dbd_t* handle);
 };
 
+
+//! Time-series index types supported by akumuli
+enum SeriesIndex {
+    AKU_INDEX_BASIC,  //< basic time-series index for faster graphing and summarization
+};
+
+
+/** Time-series catoegory description in metadata storage.
+  * Many different time-series can be stored within the
+  * same time-series category.
+  */
+struct SeriesCategory {
+    uint64_t        id;             //< Index type
+    std::string     name;           //< Series category name
+    std::string     table_name;     //< Series metadata table name
+    SeriesIndex     index_type;     //< Index type used for series category
+};
+
+
+/** Time-series schema.
+  * Stores all the variety of different time-series categories.
+  */
+struct Schema {
+    std::vector<std::shared_ptr<SeriesCategory>> categories;
+
+    //! C-tor
+    template<class FwdIt>
+    Schema(FwdIt begin, FwdIt end)
+        : categories(begin, end)
+    {
+    }
+};
+
+
+/** Concrete series description.
+  */
+struct SeriesInstance {
+    uint64_t        id;                         //< Time-series ID
+    std::string     name;                       //< Time-series name
+    std::weak_ptr<SeriesCategory>   category;   //< Category that hosts this time-series instance
+};
+
+
 /** Sqlite3 backed storage for metadata.
   * Metadata includes:
   * - Volumes list
@@ -77,17 +120,40 @@ struct MetadataStorage {
       */
     MetadataStorage(const char* db);
 
+    // Creation //
+
+    /** Create tables if database is empty
+      * @throw std::runtime_error in a case of error
+      */
     void create_tables();
+
+    /** Create new database from schema.
+      */
+    void create_schema(std::shared_ptr<Schema> schema);
 
     /** Initialize volumes table
       * @throw std::runtime_error in a case of error
       */
     void init_volumes(std::vector<VolumeDesc> volumes);
 
+    void init_config(uint32_t compression_threshold,
+                     uint32_t max_cache_size,
+                     uint64_t window_size);
+
+    // Retreival //
+
     /** Read list of volumes and their sequence numbers.
       * @throw std::runtime_error in a case of error
       */
     std::vector<VolumeDesc> get_volumes() const;
+
+
+private:
+    /** Execute query that doesn't return anything.
+      * @throw std::runtime_error in a case of error
+      * @return number of rows changed
+      */
+    int execute_query(const char* query);
 };
 
 /** Storage volume.

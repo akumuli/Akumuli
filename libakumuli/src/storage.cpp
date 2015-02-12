@@ -89,6 +89,16 @@ MetadataStorage::MetadataStorage(const char* db)
     create_tables();
 }
 
+int MetadataStorage::execute_query(const char* query) {
+    int nrows = -1;
+    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
+    if (status != 0) {
+        // generate error and throw
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+    }
+    return nrows;
+}
+
 void MetadataStorage::create_tables() {
 
     const char* query =
@@ -96,28 +106,44 @@ void MetadataStorage::create_tables() {
             "id INTEGER UNIQUE,"
             "path TEXT UNIQUE"
             ");";
+    execute_query(query);
+}
 
-    int nrows = -1;
-    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
-    if (status != 0) {
-        // generate error and throw
-        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
-    }
+void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
+
+}
+
+void MetadataStorage::init_config(uint32_t compression_threshold,
+                                  uint32_t max_cache_size,
+                                  uint64_t window_size) {
+    // Create table and insert data into it
+    const char* query =
+            "CREATE TABLE IF NOT EXISTS numeric_configuration_parameters ("
+            "name TEXT UNIQUE,"
+            "value INTEGER,"
+            "comment TEXT"
+            ");";
+
+    execute_query(query);
+
+    std::stringstream insert;
+    insert << "";
 }
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
+    std::stringstream query;
+    query << "INSERT INTO volumes (id, path)" << std::endl;
+    bool first = true;
     for (auto desc: volumes) {
-        std::stringstream query;
-        query << "INSERT INTO volumes (id, path) VALUES (" << desc.first << ", '" << desc.second << "');";
-        int nrows = -1;
-        std::string query_string = query.str();
-        int status = apr_dbd_query(driver_, handle_.get(), &nrows, query_string.c_str());
-        if (status != 0) {
-            // generate error and throw
-            std::string error_message = apr_dbd_error(driver_, handle_.get(), status);
-            throw std::runtime_error(error_message.c_str());
+        if (first) {
+            query << "\tSELECT " << desc.first << " as id, " << desc.second << " as path" << std::endl;
+            first = false;
+        } else {
+            query << "\t UNION SELECT " << desc.first << ", " << desc.second << std::endl;
         }
     }
+    std::string full_query = query.str();
+    execute_query(full_query.c_str());
 }
 
 std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
@@ -715,65 +741,6 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
     return results;
 }
 
-apr_status_t create_metadata_db( const char* file_name
-                                      , std::vector<std::string> const& page_file_names
-                                      , uint32_t compression_threshold
-                                      , uint64_t window_size
-                                      , uint32_t max_cache_size
-                                      , aku_logger_cb_t logger)
-{
-    apr_status_t status;
-    apr_pool_t *pool = nullptr;
-    const apr_dbd_driver_t* driver = nullptr;
-    apr_dbd_t* handle = nullptr;
-    int nsuccess = 0;
-    int rows = 0;
-    status = apr_pool_create(&pool, NULL);
-    if (status != APR_SUCCESS) {
-        // report error
-        (*logger)(0, "Can't create memory pool");
-        goto ERROR;
-    }
-    nsuccess++;
-    status = apr_dbd_get_driver(pool, "sqlite3", &driver);
-    if (status != APR_SUCCESS) {
-        // can't get sqlite dirver
-        (*logger)(0, "Can't load sqlite3 dirver");
-        goto ERROR;
-    }
-    nsuccess++;
-    status = apr_dbd_open(driver, pool, file_name, &handle);
-    if (status != APR_SUCCESS) {
-        (*logger)(0, "Can't open database");
-        goto ERROR;
-    }
-    nsuccess++;
-
-    status = apr_dbd_query(driver, handle, &rows,
-                           "CREATE TABLE volumes ("
-                           "    volume_id int "
-                           "    volume_id varchar "
-                           ")"
-                           );
-    if (status) {
-        (*logger)(0, "Create table error");
-        goto ERROR;
-    }
-    // TBD:
-    ERROR:
-    switch(nsuccess) {
-    default:
-    case 2: {
-        apr_dbd_close(driver, handle);
-    }
-    case 1: {
-        // Destroy pool
-        apr_pool_destroy(pool);
-    }
-    }
-    return status;
-}
-
 /** This function creates metadata file - root of the storage system.
   * This page contains creation date and time, number of pages,
   * all the page file names and they order.
@@ -789,17 +756,6 @@ static apr_status_t create_metadata_page( const char* file_name
     //       is FUBAR and uses boost::spirit.
     using namespace std;
     try {
-        // TODO: remove this block
-        {
-            create_metadata_db(file_name,
-                               page_file_names,
-                               compression_threshold,
-                               window_size,
-                               max_cache_size,
-                               logger);
-            throw std::runtime_error("");
-        }
-
         boost::property_tree::ptree root;
         auto now = apr_time_now();
         char date_time[0x100];
