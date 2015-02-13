@@ -136,10 +136,10 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     bool first = true;
     for (auto desc: volumes) {
         if (first) {
-            query << "\tSELECT " << desc.first << " as id, " << desc.second << " as path" << std::endl;
+            query << "\tSELECT " << desc.first << " as id, '" << desc.second << "' as path" << std::endl;
             first = false;
         } else {
-            query << "\t UNION SELECT " << desc.first << ", " << desc.second << std::endl;
+            query << "\tUNION SELECT " << desc.first << ", '" << desc.second << "'" << std::endl;
         }
     }
     std::string full_query = query.str();
