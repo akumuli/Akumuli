@@ -18,7 +18,7 @@ struct AkumuliInitializer {
 
 AkumuliInitializer initializer;
 
-BOOST_AUTO_TEST_CASE(Test_metadata_storage) {
+BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
     auto db = MetadataStorage(":memory:");
     std::vector<MetadataStorage::VolumeDesc> volumes = {
@@ -32,4 +32,19 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage) {
         BOOST_REQUIRE_EQUAL(volumes.at(i).first, actual.at(i).first);
         BOOST_REQUIRE_EQUAL(volumes.at(i).second, actual.at(i).second);
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
+
+    auto db = MetadataStorage(":memory:");
+    auto window_size = std::numeric_limits<uint64_t>::max();
+    auto threshold = 10;
+    auto cache_size = 20;
+    db.init_config(threshold, cache_size, window_size);
+    uint32_t actual_threshold, actual_cache_size;
+    uint64_t actual_window_size;
+    db.get_configs(&actual_threshold, &actual_cache_size, &actual_window_size);
+    BOOST_REQUIRE_EQUAL(threshold, actual_threshold);
+    BOOST_REQUIRE_EQUAL(cache_size, actual_cache_size);
+    BOOST_REQUIRE_EQUAL(window_size, actual_window_size);
 }

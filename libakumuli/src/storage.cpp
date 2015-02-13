@@ -115,7 +115,8 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
                                   uint32_t max_cache_size,
-                                  uint64_t window_size) {
+                                  uint64_t window_size)
+{
     // Create table and insert data into it
     const char* query =
             "CREATE TABLE IF NOT EXISTS numeric_configuration_parameters ("
@@ -127,7 +128,19 @@ void MetadataStorage::init_config(uint32_t compression_threshold,
     execute_query(query);
 
     std::stringstream insert;
-    insert << "";
+    insert << "INSERT INTO numeric_configuration_parameters (name, value, comment)" << std::endl;
+    insert << "\tSELECT 'compression_threshold' as name, " << compression_threshold << " as value"
+           << "'Compression threshold value' as comment" << std::endl;
+    insert << "\tUNION SELECT 'max_cache_size', " << max_cache_size << ", 'Maximal cache size'" << std::endl;
+    insert << "\tUNION SELECT 'window_size', " << window_size << ", 'Write window size'" << std::endl;
+    std::string insert_query = insert.str();
+    execute_query(insert_query.c_str());
+}
+
+void MetadataStorage::get_configs(uint32_t *compression_threshold,
+                                  uint32_t *max_cache_size,
+                                  uint64_t *window_size)
+{
 }
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
@@ -146,12 +159,9 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     execute_query(full_query.c_str());
 }
 
-std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
 
-    const char* query =
-            "SELECT id, path FROM volumes;";
-
-    std::vector<VolumeDesc> tuples;
+std::vector<MetadataStorage::UntypedTuple>&& MetadataStorage::select_query(const char* query) const {
+    std::vector<UntypedTuple> tuples;
     apr_dbd_results_t *results = nullptr;
     int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
     if (status != 0) {
@@ -159,23 +169,47 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     }
     // get rows
     int ntuples = apr_dbd_num_tuples(driver_, results);
+    int ncolumns = apr_dbd_num_cols(driver_, results);
     for (int i = ntuples; i --> 0;) {
         apr_dbd_row_t *row = nullptr;
         status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
         if (status != 0) {
             throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
         }
+        UntypedTuple tup;
+        for (int col = ncolumns; col --> 0;) {
+            const char* entry = apr_dbd_get_entry(driver_, row, 0);
+            if (entry) {
+                tup.emplace_back(new std::string(entry));
+            } else {
+                tup.emplace_back();
+            }
+        }
+        tuples.push_back(std::move(tup));
+    }
+    return std::move(tuples);
+}
+
+std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
+    const char* query =
+            "SELECT id, path FROM volumes;";
+    std::vector<VolumeDesc> tuples;
+    std::vector<UntypedTuple> untyped = select_query(query);
+    // get rows
+    auto ntuples = untyped.size();
+    for (auto i = ntuples; i --> 0;) {
         // get id
         int id = -1;
-        const char* idrepr = apr_dbd_get_entry(driver_, row, 0);
-        if (idrepr == nullptr) {
+        if (!untyped.at(i).at(0)) {
             throw std::runtime_error("Bad db-schema");
         }
+        std::string idrepr = *untyped.at(i).at(0);
         id = boost::lexical_cast<int>(idrepr);
-
         // get path
-        const char* path = apr_dbd_get_entry(driver_, row, 1);
-
+        if (!untyped.at(i).at(1)) {
+            throw std::runtime_error("Bad db-schema");
+        }
+        std::string path = *untyped.at(i).at(1);
         tuples.push_back(std::make_pair(id, path));
     }
     return tuples;

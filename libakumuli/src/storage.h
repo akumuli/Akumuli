@@ -147,6 +147,9 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
+    void get_configs(uint32_t *compression_threshold,
+                     uint32_t *max_cache_size,
+                     uint64_t *window_size);
 
 private:
     /** Execute query that doesn't return anything.
@@ -154,6 +157,14 @@ private:
       * @return number of rows changed
       */
     int execute_query(const char* query);
+
+    typedef std::vector<std::unique_ptr<std::string>> UntypedTuple;
+
+    /** Execute select query and return untyped results.
+      * @throw std::runtime_error in a case of error
+      * @return bunch of strings with results
+      */
+    std::vector<UntypedTuple> &&select_query(const char* query) const;
 };
 
 /** Storage volume.
