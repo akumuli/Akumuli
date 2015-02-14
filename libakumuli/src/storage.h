@@ -158,13 +158,13 @@ private:
       */
     int execute_query(const char* query);
 
-    typedef std::vector<std::unique_ptr<std::string>> UntypedTuple;
+    typedef std::vector<std::string> UntypedTuple;
 
     /** Execute select query and return untyped results.
       * @throw std::runtime_error in a case of error
       * @return bunch of strings with results
       */
-    std::vector<UntypedTuple> &&select_query(const char* query) const;
+    std::vector<UntypedTuple> select_query(const char* query) const;
 };
 
 /** Storage volume.

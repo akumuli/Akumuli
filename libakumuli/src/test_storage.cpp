@@ -37,9 +37,9 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
 
     auto db = MetadataStorage(":memory:");
-    auto window_size = std::numeric_limits<uint64_t>::max();
-    auto threshold = 10;
-    auto cache_size = 20;
+    auto window_size = 0xFFFFFFFFFFFF;
+    auto threshold = 0xFFFFFF;
+    auto cache_size = 0xFFFFFF;
     db.init_config(threshold, cache_size, window_size);
     uint32_t actual_threshold, actual_cache_size;
     uint64_t actual_window_size;

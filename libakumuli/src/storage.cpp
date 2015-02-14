@@ -129,7 +129,7 @@ void MetadataStorage::init_config(uint32_t compression_threshold,
 
     std::stringstream insert;
     insert << "INSERT INTO numeric_configuration_parameters (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'compression_threshold' as name, " << compression_threshold << " as value"
+    insert << "\tSELECT 'compression_threshold' as name, " << compression_threshold << " as value, "
            << "'Compression threshold value' as comment" << std::endl;
     insert << "\tUNION SELECT 'max_cache_size', " << max_cache_size << ", 'Maximal cache size'" << std::endl;
     insert << "\tUNION SELECT 'window_size', " << window_size << ", 'Write window size'" << std::endl;
@@ -141,6 +141,44 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
                                   uint32_t *max_cache_size,
                                   uint64_t *window_size)
 {
+    {   // Read compression_threshold
+        std::string query = "SELECT value FROM numeric_configuration_parameters "
+                            "WHERE name='compression_threshold'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (compression_threshold)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (compression_threshold)");
+        }
+        *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
+    }
+    {   // Read max_cache_size
+        std::string query = "SELECT value FROM numeric_configuration_parameters WHERE name='max_cache_size'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (max_cache_size)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (max_cache_size)");
+        }
+        *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
+    }
+    {   // Read window_size
+        std::string query = "SELECT value FROM numeric_configuration_parameters WHERE name='window_size'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (window_size)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (window_size)");
+        }
+        // This value can be encoded as dobule by the sqlite engine
+        *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
+    }
 }
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
@@ -160,7 +198,7 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
 }
 
 
-std::vector<MetadataStorage::UntypedTuple>&& MetadataStorage::select_query(const char* query) const {
+std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
     std::vector<UntypedTuple> tuples;
     apr_dbd_results_t *results = nullptr;
     int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
@@ -177,17 +215,17 @@ std::vector<MetadataStorage::UntypedTuple>&& MetadataStorage::select_query(const
             throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
         }
         UntypedTuple tup;
-        for (int col = ncolumns; col --> 0;) {
-            const char* entry = apr_dbd_get_entry(driver_, row, 0);
+        for (int col = 0; col < ncolumns; col++) {
+            const char* entry = apr_dbd_get_entry(driver_, row, col);
             if (entry) {
-                tup.emplace_back(new std::string(entry));
+                tup.emplace_back(entry);
             } else {
                 tup.emplace_back();
             }
         }
         tuples.push_back(std::move(tup));
     }
-    return std::move(tuples);
+    return tuples;
 }
 
 std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
@@ -197,19 +235,12 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     std::vector<UntypedTuple> untyped = select_query(query);
     // get rows
     auto ntuples = untyped.size();
-    for (auto i = ntuples; i --> 0;) {
+    for (size_t i = 0; i < ntuples; i++) {
         // get id
-        int id = -1;
-        if (!untyped.at(i).at(0)) {
-            throw std::runtime_error("Bad db-schema");
-        }
-        std::string idrepr = *untyped.at(i).at(0);
-        id = boost::lexical_cast<int>(idrepr);
+        std::string idrepr = untyped.at(i).at(0);
+        int id = boost::lexical_cast<int>(idrepr);
         // get path
-        if (!untyped.at(i).at(1)) {
-            throw std::runtime_error("Bad db-schema");
-        }
-        std::string path = *untyped.at(i).at(1);
+        std::string path = untyped.at(i).at(1);
         tuples.push_back(std::make_pair(id, path));
     }
     return tuples;
