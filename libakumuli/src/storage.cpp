@@ -100,11 +100,22 @@ int MetadataStorage::execute_query(const char* query) {
 }
 
 void MetadataStorage::create_tables() {
+    const char* query = nullptr;
 
-    const char* query =
+    // Create volumes table
+    query =
             "CREATE TABLE IF NOT EXISTS volumes("
             "id INTEGER UNIQUE,"
             "path TEXT UNIQUE"
+            ");";
+    execute_query(query);
+
+    // Create configuration table (key-value-commmentary)
+    query =
+            "CREATE TABLE IF NOT EXISTS primary_configuration("
+            "name TEXT UNIQUE,"
+            "value TEXT,"
+            "comment TEXT"
             ");";
     execute_query(query);
 }
@@ -115,34 +126,31 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
                                   uint32_t max_cache_size,
-                                  uint64_t window_size)
+                                  uint64_t window_size,
+                                  const char* creation_datetime)
 {
     // Create table and insert data into it
-    const char* query =
-            "CREATE TABLE IF NOT EXISTS numeric_configuration_parameters ("
-            "name TEXT UNIQUE,"
-            "value INTEGER,"
-            "comment TEXT"
-            ");";
-
-    execute_query(query);
 
     std::stringstream insert;
-    insert << "INSERT INTO numeric_configuration_parameters (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'compression_threshold' as name, " << compression_threshold << " as value, "
+    insert << "INSERT INTO primary_configuration (name, value, comment)" << std::endl;
+    insert << "\tSELECT 'compression_threshold' as name, '" << compression_threshold << "' as value, "
            << "'Compression threshold value' as comment" << std::endl;
-    insert << "\tUNION SELECT 'max_cache_size', " << max_cache_size << ", 'Maximal cache size'" << std::endl;
-    insert << "\tUNION SELECT 'window_size', " << window_size << ", 'Write window size'" << std::endl;
+    insert << "\tUNION SELECT 'max_cache_size', '" << max_cache_size
+           << "', 'Maximal cache size'" << std::endl;
+    insert << "\tUNION SELECT 'window_size', '" << window_size << "', 'Write window size'" << std::endl;
+    insert << "\tUNION SELECT 'creation_time', '" << creation_datetime
+           << "', 'Database creation time'" << std::endl;
     std::string insert_query = insert.str();
     execute_query(insert_query.c_str());
 }
 
 void MetadataStorage::get_configs(uint32_t *compression_threshold,
                                   uint32_t *max_cache_size,
-                                  uint64_t *window_size)
+                                  uint64_t *window_size,
+                                  std::string *creation_datetime)
 {
     {   // Read compression_threshold
-        std::string query = "SELECT value FROM numeric_configuration_parameters "
+        std::string query = "SELECT value FROM primary_configuration "
                             "WHERE name='compression_threshold'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
@@ -155,7 +163,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
     }
     {   // Read max_cache_size
-        std::string query = "SELECT value FROM numeric_configuration_parameters WHERE name='max_cache_size'";
+        std::string query = "SELECT value FROM primary_configuration WHERE name='max_cache_size'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
             throw std::runtime_error("Invalid configuration (max_cache_size)");
@@ -167,7 +175,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
     }
     {   // Read window_size
-        std::string query = "SELECT value FROM numeric_configuration_parameters WHERE name='window_size'";
+        std::string query = "SELECT value FROM primary_configuration WHERE name='window_size'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
             throw std::runtime_error("Invalid configuration (window_size)");
@@ -178,6 +186,19 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         }
         // This value can be encoded as dobule by the sqlite engine
         *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
+    }
+    {   // Read creation time
+        std::string query = "SELECT value FROM primary_configuration WHERE name='creation_time'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (creation_time)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (creation_time)");
+        }
+        // This value can be encoded as dobule by the sqlite engine
+        *creation_datetime = tuple.at(0);
     }
 }
 
@@ -676,6 +697,9 @@ aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double val
 }
 
 
+// Standalone functions //
+
+
 /** This function creates file with specified size
   */
 static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger_cb_t logger) {
@@ -747,7 +771,6 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
     auto index_ptr = mfile.get_pointer();
     auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
 
-    // FIXME: revisit - is it actually needed?
     // Activate the first page
     if (page_index == 0) {
         index_page->reuse();
@@ -809,6 +832,7 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
 /** This function creates metadata file - root of the storage system.
   * This page contains creation date and time, number of pages,
   * all the page file names and they order.
+  * @return APR_EINIT on DB error.
   */
 static apr_status_t create_metadata_page( const char* file_name
                                         , std::vector<std::string> const& page_file_names

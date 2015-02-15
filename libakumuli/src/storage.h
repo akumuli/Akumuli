@@ -138,7 +138,7 @@ struct MetadataStorage {
 
     void init_config(uint32_t compression_threshold,
                      uint32_t max_cache_size,
-                     uint64_t window_size);
+                     uint64_t window_size, const char *creation_datetime);
 
     // Retreival //
 
@@ -149,7 +149,7 @@ struct MetadataStorage {
 
     void get_configs(uint32_t *compression_threshold,
                      uint32_t *max_cache_size,
-                     uint64_t *window_size);
+                     uint64_t *window_size, std::string *creation_datetime);
 
 private:
     /** Execute query that doesn't return anything.
