@@ -371,55 +371,45 @@ struct VolumeIterator {
         }
         std::fclose(filedesc);
 
-        // 1. Read json file
-        boost::property_tree::ptree ptree;
-        boost::property_tree::json_parser::read_json(path, ptree);
+        std::shared_ptr<MetadataStorage> db;
 
-        // 2. Read configuration data
-        compression_threshold =
-                ptree.get_child("compression_threshold")
-                     .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
-
-        window_size =
-                ptree.get_child("window_size")
-                     .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
-
-        if (window_size == 0) {
-            error_code = AKU_EBAD_ARG;
-            if (logger) {
-                (*logger)(0, "invalid window size");
-            }
-        }
-
-        max_cache_size =
-                ptree.get_child("max_cache_size")
-                     .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
-
-        // 3. Read volumes
-        int num_volumes = ptree.get_child("num_volumes").get_value(0);
-        if (num_volumes == 0) {
-            if (logger) {
-                (*logger)(0, "no volumes specified");
-            }
-            error_code = AKU_EBAD_DATA;
+        // 1. Open db
+        try {
+            db = std::make_shared<MetadataStorage>(path);
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENOT_FOUND;
             return;
         }
 
-        volume_names.resize(num_volumes);
-        for(auto child_node: ptree.get_child("volumes")) {
-            auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
-            auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
+        // 2. Read configuration data
+        std::string creation_time;
+        try {
+        db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENO_DATA;
+            return;
+        }
 
-            if (volume_index && volume_path) {
-                volume_names.at(*volume_index) = *volume_path;
+        // 3. Read volumes
+        std::vector<MetadataStorage::VolumeDesc> volumes;
+        try {
+            volumes = db->get_volumes();
+            if (volumes.size() == 0u) {
+                throw std::runtime_error("no volumes specified");
             }
-            else {
-                if (logger) {
-                    error_code = AKU_EBAD_ARG;
-                    (*logger)(0, "invalid storage, bad volume link");
-                    return;
-                }
-            }
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENO_DATA;
+            return;
+        }
+
+        volume_names.resize(volumes.size());
+        for(auto desc: volumes) {
+            auto volume_index = desc.first;
+            auto volume_path = desc.second;
+            volume_names.at(volume_index) = volume_path;
         }
 
         // check result
@@ -841,32 +831,29 @@ static apr_status_t create_metadata_page( const char* file_name
                                         , uint32_t max_cache_size
                                         , aku_logger_cb_t logger)
 {
-    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
-    //       is FUBAR and uses boost::spirit.
     using namespace std;
     try {
-        boost::property_tree::ptree root;
+        auto storage = std::make_shared<MetadataStorage>(file_name);
+
         auto now = apr_time_now();
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
-        root.add("creation_time", date_time);
-        root.add("num_volumes", page_file_names.size());
-        root.add("compression_threshold", compression_threshold);
-        root.add("window_size", window_size);
-        root.add("max_cache_size", max_cache_size);
-        boost::property_tree::ptree volumes_list;
-        for(size_t i = 0; i < page_file_names.size(); i++) {
-            boost::property_tree::ptree page_desc;
-            page_desc.add("index", i);
-            page_desc.add("path", page_file_names[i]);
-            volumes_list.push_back(std::make_pair("", page_desc));
+
+        storage->init_config(compression_threshold,
+                             max_cache_size,
+                             window_size,
+                             date_time);
+
+        std::vector<MetadataStorage::VolumeDesc> desc;
+        int ix = 0;
+        for(auto str: page_file_names) {
+            desc.push_back(std::make_pair(ix++, str));
         }
-        root.add_child("volumes", volumes_list);
-        boost::property_tree::json_parser::write_json(file_name, root);
-    }
-    catch(const std::exception& err) {
-        stringstream fmt;
-        fmt << "Can't generate JSON file " << file_name << ", the error is: " << err.what();
+        storage->init_volumes(desc);
+
+    } catch (std::exception const& err) {
+        std::stringstream fmt;
+        fmt << "Can't create metadata file " << file_name << ", the error is: " << err.what();
         (*logger)(0, fmt.str().c_str());
         return APR_EGENERAL;
     }
@@ -976,4 +963,5 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
     apr_pool_destroy(mempool);
     return status;
 }
+
 }
