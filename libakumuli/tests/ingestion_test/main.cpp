@@ -41,7 +41,7 @@ private:
 };
 
 void delete_storage() {
-    aku_remove_database(DB_PATH, &aku_console_logger);
+    aku_remove_database(DB_META_FILE, &aku_console_logger);
 }
 
 bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
