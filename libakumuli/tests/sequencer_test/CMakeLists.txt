@@ -12,6 +12,8 @@ add_executable(
         ../../src/compression.cpp
 )
 target_link_libraries(sequencer_test
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a

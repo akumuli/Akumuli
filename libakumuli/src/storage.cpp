@@ -31,18 +31,241 @@
 #include <functional>
 #include <sstream>
 
-#include <apr_general.h>
-#include <apr_mmap.h>
-#include <apr_xml.h>
-
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/scoped_array.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace Akumuli {
 
 static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger);
+
+void delete_apr_pool(apr_pool_t *p) {
+    if (p) {
+        apr_pool_destroy(p);
+    }
+}
+
+AprHandleDeleter::AprHandleDeleter(const apr_dbd_driver_t *driver)
+    : driver(driver)
+{
+}
+
+void AprHandleDeleter::operator()(apr_dbd_t* handle) {
+    if (driver != nullptr && handle != nullptr) {
+        apr_dbd_close(driver, handle);
+    }
+}
+
+
+//-------------------------------MetadataStorage----------------------------------------
+
+MetadataStorage::MetadataStorage(const char* db)
+    : pool_(nullptr, &delete_apr_pool)
+    , driver_(nullptr)
+    , handle_(nullptr, AprHandleDeleter(nullptr))
+{
+    apr_pool_t *pool = nullptr;
+    auto status = apr_pool_create(&pool, NULL);
+    if (status != APR_SUCCESS) {
+        // report error (can't return error from c-tor)
+        throw std::runtime_error("Can't create memory pool");
+    }
+    pool_.reset(pool);
+
+    status = apr_dbd_get_driver(pool, "sqlite3", &driver_);
+    if (status != APR_SUCCESS) {
+        throw std::runtime_error("Can't load sqlite3 dirver");
+    }
+
+    apr_dbd_t *handle = nullptr;
+    status = apr_dbd_open(driver_, pool, db, &handle);
+    if (status != APR_SUCCESS) {
+        throw std::runtime_error("Can't open database");
+    }
+    handle_ = HandleT(handle, AprHandleDeleter(driver_));
+
+    create_tables();
+}
+
+int MetadataStorage::execute_query(const char* query) {
+    int nrows = -1;
+    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
+    if (status != 0) {
+        // generate error and throw
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+    }
+    return nrows;
+}
+
+void MetadataStorage::create_tables() {
+    const char* query = nullptr;
+
+    // Create volumes table
+    query =
+            "CREATE TABLE IF NOT EXISTS volumes("
+            "id INTEGER UNIQUE,"
+            "path TEXT UNIQUE"
+            ");";
+    execute_query(query);
+
+    // Create configuration table (key-value-commmentary)
+    query =
+            "CREATE TABLE IF NOT EXISTS primary_configuration("
+            "name TEXT UNIQUE,"
+            "value TEXT,"
+            "comment TEXT"
+            ");";
+    execute_query(query);
+}
+
+void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
+
+}
+
+void MetadataStorage::init_config(uint32_t compression_threshold,
+                                  uint32_t max_cache_size,
+                                  uint64_t window_size,
+                                  const char* creation_datetime)
+{
+    // Create table and insert data into it
+
+    std::stringstream insert;
+    insert << "INSERT INTO primary_configuration (name, value, comment)" << std::endl;
+    insert << "\tSELECT 'compression_threshold' as name, '" << compression_threshold << "' as value, "
+           << "'Compression threshold value' as comment" << std::endl;
+    insert << "\tUNION SELECT 'max_cache_size', '" << max_cache_size
+           << "', 'Maximal cache size'" << std::endl;
+    insert << "\tUNION SELECT 'window_size', '" << window_size << "', 'Write window size'" << std::endl;
+    insert << "\tUNION SELECT 'creation_time', '" << creation_datetime
+           << "', 'Database creation time'" << std::endl;
+    std::string insert_query = insert.str();
+    execute_query(insert_query.c_str());
+}
+
+void MetadataStorage::get_configs(uint32_t *compression_threshold,
+                                  uint32_t *max_cache_size,
+                                  uint64_t *window_size,
+                                  std::string *creation_datetime)
+{
+    {   // Read compression_threshold
+        std::string query = "SELECT value FROM primary_configuration "
+                            "WHERE name='compression_threshold'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (compression_threshold)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (compression_threshold)");
+        }
+        *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
+    }
+    {   // Read max_cache_size
+        std::string query = "SELECT value FROM primary_configuration WHERE name='max_cache_size'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (max_cache_size)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (max_cache_size)");
+        }
+        *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
+    }
+    {   // Read window_size
+        std::string query = "SELECT value FROM primary_configuration WHERE name='window_size'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (window_size)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (window_size)");
+        }
+        // This value can be encoded as dobule by the sqlite engine
+        *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
+    }
+    {   // Read creation time
+        std::string query = "SELECT value FROM primary_configuration WHERE name='creation_time'";
+        auto results = select_query(query.c_str());
+        if (results.size() != 1) {
+            throw std::runtime_error("Invalid configuration (creation_time)");
+        }
+        auto tuple = results.at(0);
+        if (tuple.size() != 1) {
+            throw std::runtime_error("Invalid configuration query (creation_time)");
+        }
+        // This value can be encoded as dobule by the sqlite engine
+        *creation_datetime = tuple.at(0);
+    }
+}
+
+void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
+    std::stringstream query;
+    query << "INSERT INTO volumes (id, path)" << std::endl;
+    bool first = true;
+    for (auto desc: volumes) {
+        if (first) {
+            query << "\tSELECT " << desc.first << " as id, '" << desc.second << "' as path" << std::endl;
+            first = false;
+        } else {
+            query << "\tUNION SELECT " << desc.first << ", '" << desc.second << "'" << std::endl;
+        }
+    }
+    std::string full_query = query.str();
+    execute_query(full_query.c_str());
+}
+
+
+std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
+    std::vector<UntypedTuple> tuples;
+    apr_dbd_results_t *results = nullptr;
+    int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
+    if (status != 0) {
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+    }
+    // get rows
+    int ntuples = apr_dbd_num_tuples(driver_, results);
+    int ncolumns = apr_dbd_num_cols(driver_, results);
+    for (int i = ntuples; i --> 0;) {
+        apr_dbd_row_t *row = nullptr;
+        status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
+        if (status != 0) {
+            throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+        }
+        UntypedTuple tup;
+        for (int col = 0; col < ncolumns; col++) {
+            const char* entry = apr_dbd_get_entry(driver_, row, col);
+            if (entry) {
+                tup.emplace_back(entry);
+            } else {
+                tup.emplace_back();
+            }
+        }
+        tuples.push_back(std::move(tup));
+    }
+    return tuples;
+}
+
+std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
+    const char* query =
+            "SELECT id, path FROM volumes;";
+    std::vector<VolumeDesc> tuples;
+    std::vector<UntypedTuple> untyped = select_query(query);
+    // get rows
+    auto ntuples = untyped.size();
+    for (size_t i = 0; i < ntuples; i++) {
+        // get id
+        std::string idrepr = untyped.at(i).at(0);
+        int id = boost::lexical_cast<int>(idrepr);
+        // get path
+        std::string path = untyped.at(i).at(1);
+        tuples.push_back(std::make_pair(id, path));
+    }
+    return tuples;
+}
 
 //----------------------------------Volume----------------------------------------------
 
@@ -147,55 +370,46 @@ struct VolumeIterator {
             return;
         }
         std::fclose(filedesc);
-        // 1. Read json file
-        boost::property_tree::ptree ptree;
-        boost::property_tree::json_parser::read_json(path, ptree);
 
-        // 2. Read configuration data
-        compression_threshold =
-                ptree.get_child("compression_threshold")
-                     .get_value<uint32_t>(AKU_DEFAULT_COMPRESSION_THRESHOLD);
+        std::shared_ptr<MetadataStorage> db;
 
-        window_size =
-                ptree.get_child("window_size")
-                     .get_value<uint64_t>(AKU_DEFAULT_WINDOW_SIZE);
-
-        if (window_size == 0) {
-            error_code = AKU_EBAD_ARG;
-            if (logger) {
-                (*logger)(0, "invalid window size");
-            }
-        }
-
-        max_cache_size =
-                ptree.get_child("max_cache_size")
-                     .get_value<uint32_t>(AKU_DEFAULT_MAX_CACHE_SIZE);
-
-        // 3. Read volumes
-        int num_volumes = ptree.get_child("num_volumes").get_value(0);
-        if (num_volumes == 0) {
-            if (logger) {
-                (*logger)(0, "no volumes specified");
-            }
-            error_code = AKU_EBAD_DATA;
+        // 1. Open db
+        try {
+            db = std::make_shared<MetadataStorage>(path);
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENOT_FOUND;
             return;
         }
 
-        volume_names.resize(num_volumes);
-        for(auto child_node: ptree.get_child("volumes")) {
-            auto volume_index = child_node.second.get_child("index").get_value_optional<int>();
-            auto volume_path = child_node.second.get_child("path").get_value_optional<std::string>();
+        // 2. Read configuration data
+        std::string creation_time;
+        try {
+        db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENO_DATA;
+            return;
+        }
 
-            if (volume_index && volume_path) {
-                volume_names.at(*volume_index) = *volume_path;
+        // 3. Read volumes
+        std::vector<MetadataStorage::VolumeDesc> volumes;
+        try {
+            volumes = db->get_volumes();
+            if (volumes.size() == 0u) {
+                throw std::runtime_error("no volumes specified");
             }
-            else {
-                if (logger) {
-                    error_code = AKU_EBAD_ARG;
-                    (*logger)(0, "invalid storage, bad volume link");
-                    return;
-                }
-            }
+        } catch(std::exception const& err) {
+            (*logger)(0u, err.what());
+            error_code = AKU_ENO_DATA;
+            return;
+        }
+
+        volume_names.resize(volumes.size());
+        for(auto desc: volumes) {
+            auto volume_index = desc.first;
+            auto volume_path = desc.second;
+            volume_names.at(volume_index) = volume_path;
         }
 
         // check result
@@ -473,6 +687,9 @@ aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double val
 }
 
 
+// Standalone functions //
+
+
 /** This function creates file with specified size
   */
 static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger_cb_t logger) {
@@ -544,7 +761,6 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
     auto index_ptr = mfile.get_pointer();
     auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
 
-    // FIXME: revisit - is it actually needed?
     // Activate the first page
     if (page_index == 0) {
         index_page->reuse();
@@ -603,10 +819,10 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
     return results;
 }
 
-
 /** This function creates metadata file - root of the storage system.
   * This page contains creation date and time, number of pages,
   * all the page file names and they order.
+  * @return APR_EINIT on DB error.
   */
 static apr_status_t create_metadata_page( const char* file_name
                                         , std::vector<std::string> const& page_file_names
@@ -615,32 +831,29 @@ static apr_status_t create_metadata_page( const char* file_name
                                         , uint32_t max_cache_size
                                         , aku_logger_cb_t logger)
 {
-    // TODO: use xml (apr_xml.h) instead of json because boost::property_tree json parsing
-    //       is FUBAR and uses boost::spirit.
     using namespace std;
     try {
-        boost::property_tree::ptree root;
+        auto storage = std::make_shared<MetadataStorage>(file_name);
+
         auto now = apr_time_now();
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
-        root.add("creation_time", date_time);
-        root.add("num_volumes", page_file_names.size());
-        root.add("compression_threshold", compression_threshold);
-        root.add("window_size", window_size);
-        root.add("max_cache_size", max_cache_size);
-        boost::property_tree::ptree volumes_list;
-        for(size_t i = 0; i < page_file_names.size(); i++) {
-            boost::property_tree::ptree page_desc;
-            page_desc.add("index", i);
-            page_desc.add("path", page_file_names[i]);
-            volumes_list.push_back(std::make_pair("", page_desc));
+
+        storage->init_config(compression_threshold,
+                             max_cache_size,
+                             window_size,
+                             date_time);
+
+        std::vector<MetadataStorage::VolumeDesc> desc;
+        int ix = 0;
+        for(auto str: page_file_names) {
+            desc.push_back(std::make_pair(ix++, str));
         }
-        root.add_child("volumes", volumes_list);
-        boost::property_tree::json_parser::write_json(file_name, root);
-    }
-    catch(const std::exception& err) {
-        stringstream fmt;
-        fmt << "Can't generate JSON file " << file_name << ", the error is: " << err.what();
+        storage->init_volumes(desc);
+
+    } catch (std::exception const& err) {
+        std::stringstream fmt;
+        fmt << "Can't create metadata file " << file_name << ", the error is: " << err.what();
         (*logger)(0, fmt.str().c_str());
         return APR_EGENERAL;
     }
@@ -750,4 +963,5 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
     apr_pool_destroy(mempool);
     return status;
 }
+
 }

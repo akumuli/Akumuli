@@ -34,6 +34,8 @@ add_executable(
 
 target_link_libraries(
     test_page
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
@@ -55,6 +57,8 @@ add_executable(
 
 target_link_libraries(
     test_sequencer
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
@@ -75,6 +79,8 @@ add_executable(
 
 target_link_libraries(
     test_cursor
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
@@ -92,6 +98,8 @@ add_executable(
 
 target_link_libraries(
     test_mmap
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
 )
@@ -110,6 +118,28 @@ target_link_libraries(
 )
 
 add_test(compression test_compression)
+
+add_executable(
+    test_storage
+        test_storage.cpp
+        storage.cpp
+        page.cpp
+        util.cpp
+        compression.cpp
+        cursor.cpp
+        sequencer.cpp
+        akumuli.cpp
+)
+
+target_link_libraries(
+    test_storage
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(storage test_storage)
 
 install(
     TARGETS

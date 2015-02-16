@@ -31,6 +31,11 @@
 #include <memory>
 #include <mutex>
 
+// APR headers
+#include <apr_dbd.h>
+#include <apr.h>
+#include <apr_mmap.h>
+
 #include "page.h"
 #include "util.h"
 #include "sequencer.h"
@@ -38,6 +43,129 @@
 #include "akumuli_def.h"
 
 namespace Akumuli {
+
+//! Delete apr pool
+void delete_apr_pool(apr_pool_t *p);
+
+//! APR DBD handle deleter
+struct AprHandleDeleter {
+    const apr_dbd_driver_t *driver;
+    AprHandleDeleter(const apr_dbd_driver_t *driver);
+    void operator()(apr_dbd_t* handle);
+};
+
+
+//! Time-series index types supported by akumuli
+enum SeriesIndex {
+    AKU_INDEX_BASIC,  //< basic time-series index for faster graphing and summarization
+};
+
+
+/** Time-series catoegory description in metadata storage.
+  * Many different time-series can be stored within the
+  * same time-series category.
+  */
+struct SeriesCategory {
+    uint64_t        id;             //< Index type
+    std::string     name;           //< Series category name
+    std::string     table_name;     //< Series metadata table name
+    SeriesIndex     index_type;     //< Index type used for series category
+};
+
+
+/** Time-series schema.
+  * Stores all the variety of different time-series categories.
+  */
+struct Schema {
+    std::vector<std::shared_ptr<SeriesCategory>> categories;
+
+    //! C-tor
+    template<class FwdIt>
+    Schema(FwdIt begin, FwdIt end)
+        : categories(begin, end)
+    {
+    }
+};
+
+
+/** Concrete series description.
+  */
+struct SeriesInstance {
+    uint64_t        id;                         //< Time-series ID
+    std::string     name;                       //< Time-series name
+    std::weak_ptr<SeriesCategory>   category;   //< Category that hosts this time-series instance
+};
+
+
+/** Sqlite3 backed storage for metadata.
+  * Metadata includes:
+  * - Volumes list
+  * - Conviguration data
+  * - Key to id mapping
+  */
+struct MetadataStorage {
+    // Typedefs
+    typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)>         PoolT;
+    typedef const apr_dbd_driver_t*                                         DriverT;
+    typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter>                    HandleT;
+    typedef std::pair<int, std::string>                                     VolumeDesc;
+
+    // Members
+    PoolT pool_;
+    DriverT driver_;
+    HandleT handle_;
+
+    /** Create new or open existing db.
+      * @throw std::runtime_error in a case of error
+      */
+    MetadataStorage(const char* db);
+
+    // Creation //
+
+    /** Create tables if database is empty
+      * @throw std::runtime_error in a case of error
+      */
+    void create_tables();
+
+    /** Create new database from schema.
+      */
+    void create_schema(std::shared_ptr<Schema> schema);
+
+    /** Initialize volumes table
+      * @throw std::runtime_error in a case of error
+      */
+    void init_volumes(std::vector<VolumeDesc> volumes);
+
+    void init_config(uint32_t compression_threshold,
+                     uint32_t max_cache_size,
+                     uint64_t window_size, const char *creation_datetime);
+
+    // Retreival //
+
+    /** Read list of volumes and their sequence numbers.
+      * @throw std::runtime_error in a case of error
+      */
+    std::vector<VolumeDesc> get_volumes() const;
+
+    void get_configs(uint32_t *compression_threshold,
+                     uint32_t *max_cache_size,
+                     uint64_t *window_size, std::string *creation_datetime);
+
+private:
+    /** Execute query that doesn't return anything.
+      * @throw std::runtime_error in a case of error
+      * @return number of rows changed
+      */
+    int execute_query(const char* query);
+
+    typedef std::vector<std::string> UntypedTuple;
+
+    /** Execute select query and return untyped results.
+      * @throw std::runtime_error in a case of error
+      * @return bunch of strings with results
+      */
+    std::vector<UntypedTuple> select_query(const char* query) const;
+};
 
 /** Storage volume.
   * Coresponds to one of the storage pages. Includes page
@@ -136,7 +264,7 @@ struct Storage
     //! Write binary data.
     aku_Status write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data);
 
-    //! Write fl
+    //! Write double.
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
 
     aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);

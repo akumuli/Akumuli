@@ -21,15 +21,28 @@
 #include <memory>
 #include <iostream>
 
+#include <apr_dbd.h>
+
 #include "akumuli.h"
 #include "storage.h"
 
 using namespace Akumuli;
 
+//! Pool for `apr_dbd_init`
+static apr_pool_t* g_dbd_pool = nullptr;
+
 void aku_initialize(aku_panic_handler_t optional_panic_handler) {
     apr_initialize();
     if (optional_panic_handler != nullptr) {
         set_panic_handler(optional_panic_handler);
+    }
+    auto status = apr_pool_create(&g_dbd_pool, nullptr);
+    if (status != APR_SUCCESS) {
+        AKU_PANIC("Initialization error");
+    }
+    status = apr_dbd_init(g_dbd_pool);
+    if (status != APR_SUCCESS) {
+        AKU_PANIC("DBD initialization error");
     }
 }
 

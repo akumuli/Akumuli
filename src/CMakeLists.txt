@@ -14,6 +14,7 @@ target_link_libraries(akumulid
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -81,6 +82,7 @@ target_link_libraries(test_pipeline
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -102,6 +104,7 @@ target_link_libraries(test_tcp_server
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -137,6 +140,7 @@ target_link_libraries(perf_pipeline
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
@@ -158,6 +162,7 @@ target_link_libraries(perf_tcp_server
     akumuli
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
