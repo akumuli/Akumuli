@@ -26,10 +26,16 @@
 // Values for durability parameter
 #define AKU_MAX_DURABILITY            1  // default value
 #define AKU_DURABILITY_SPEED_TRADEOFF 2
-#define AKU_MAX_WRITE_SPEED                 4
+#define AKU_MAX_WRITE_SPEED           4
+
+
+// Log levels
+#define AKU_LOG_TRACE                 7
+#define AKU_LOG_INFO                  2
+#define AKU_LOG_ERROR                 1
 
 //! Logging function type
-typedef void (*aku_logger_cb_t) (int tag, const char * msg);
+typedef void (*aku_logger_cb_t) (int level, const char * msg);
 
 //! Panic handler function type
 typedef void (*aku_panic_handler_t) (const char * msg);

@@ -272,15 +272,13 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
 // TODO: remove max_cache_size
 Volume::Volume(const char* file_name,
                aku_Config const& conf,
-               int tag,
                bool enable_huge_tlb,
                aku_logger_cb_t logger)
-    : mmap_(file_name, tag, enable_huge_tlb, logger)
+    : mmap_(file_name, enable_huge_tlb, logger)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
     , file_path_(file_name)
     , config_(conf)
-    , tag_(tag)
     , logger_(logger)
     , is_temporary_ {0}
     , huge_tlb_(enable_huge_tlb)
@@ -323,7 +321,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
         AKU_PANIC("can't create new page file (out of space?)");
     }
 
-    newvol.reset(new Volume(file_path_.c_str(), config_, tag_, huge_tlb_, logger_));
+    newvol.reset(new Volume(file_path_.c_str(), config_, huge_tlb_, logger_));
     newvol->page_->open_count = open_count;
     newvol->page_->close_count = close_count;
     return newvol;
@@ -366,7 +364,7 @@ struct VolumeIterator {
         if (filedesc == nullptr) {
             // No such file
             error_code = AKU_ENOT_FOUND;
-            (*logger)(0, "invalid path, no such file");
+            (*logger)(AKU_LOG_ERROR, "invalid path, no such file");
             return;
         }
         std::fclose(filedesc);
@@ -377,7 +375,7 @@ struct VolumeIterator {
         try {
             db = std::make_shared<MetadataStorage>(path);
         } catch(std::exception const& err) {
-            (*logger)(0u, err.what());
+            (*logger)(AKU_LOG_ERROR, err.what());
             error_code = AKU_ENOT_FOUND;
             return;
         }
@@ -385,9 +383,9 @@ struct VolumeIterator {
         // 2. Read configuration data
         std::string creation_time;
         try {
-        db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
+            db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
         } catch(std::exception const& err) {
-            (*logger)(0u, err.what());
+            (*logger)(AKU_LOG_ERROR, err.what());
             error_code = AKU_ENO_DATA;
             return;
         }
@@ -400,7 +398,7 @@ struct VolumeIterator {
                 throw std::runtime_error("no volumes specified");
             }
         } catch(std::exception const& err) {
-            (*logger)(0u, err.what());
+            (*logger)(AKU_LOG_ERROR, err.what());
             error_code = AKU_ENO_DATA;
             return;
         }
@@ -416,7 +414,7 @@ struct VolumeIterator {
         for(std::string const& path: volume_names) {
             if (path.empty()) {
                 error_code = AKU_EBAD_ARG;
-                (*logger)(0, "invalid storage, one of the volumes is missing");
+                (*logger)(AKU_LOG_ERROR, "invalid storage, one of the volumes is missing");
                 return;
             }
         }
@@ -427,12 +425,10 @@ struct VolumeIterator {
     }
 };
 
-static std::atomic<int> storage_cnt = {1};
 
 Storage::Storage(const char* path, aku_FineTuneParams const& params)
     : compression(true)
     , open_error_code_(AKU_SUCCESS)
-    , tag_(storage_cnt++)
     , logger_(params.logger)
     , durability_(params.durability)
     , huge_tlb_(params.enable_huge_tlb != 0)
@@ -453,7 +449,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     // create volumes list
     for(auto path: v_iter.volume_names) {
         PVolume vol;
-        vol.reset(new Volume(path.c_str(), config_, tag_, huge_tlb_, logger_));
+        vol.reset(new Volume(path.c_str(), config_, huge_tlb_, logger_));
         volumes_.push_back(vol);
     }
 
@@ -538,14 +534,18 @@ void Storage::advance_volume_(int local_rev) {
 }
 
 void Storage::log_message(const char* message) {
-    (*logger_)(tag_, message);
+    (*logger_)(AKU_LOG_INFO, message);
+}
+
+void Storage::log_error(const char* message) {
+    (*logger_)(AKU_LOG_ERROR, message);
 }
 
 void Storage::log_message(const char* message, uint64_t value) {
     using namespace std;
     stringstream fmt;
     fmt << message << ", " << value;
-    (*logger_)(tag_, fmt.str().c_str());
+    (*logger_)(AKU_LOG_INFO, fmt.str().c_str());
 }
 
 // Reading
@@ -667,7 +667,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
             case AKU_ELATE_WRITE:
                 // Branch for rare and unexpected errors
             default:
-                log_message(aku_error_message(status));
+                log_error(aku_error_message(status));
                 return status;
         }
     }
@@ -753,7 +753,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
         return status;
     }
 
-    MemoryMappedFile mfile(file_name, 0, false, logger);
+    MemoryMappedFile mfile(file_name, false, logger);
     if (mfile.is_bad())
         return mfile.status_code();
 

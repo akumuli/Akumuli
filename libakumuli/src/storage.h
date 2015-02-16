@@ -180,7 +180,6 @@ struct Volume : std::enable_shared_from_this<Volume>
     std::unique_ptr<Sequencer> cache_;
     std::string file_path_;
     const aku_Config& config_;
-    const int tag_;
     aku_logger_cb_t logger_;
     std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
     const bool huge_tlb_;
@@ -188,7 +187,6 @@ struct Volume : std::enable_shared_from_this<Volume>
     //! Create new volume stored in file
     Volume(const char           *file_path,
            const aku_Config&     conf,
-           int                   tag,
            bool                  enable_huge_tlb,
            aku_logger_cb_t       logger);
 
@@ -233,8 +231,7 @@ struct Storage
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
     apr_time_t                creation_time_;             //< Cached metadata
-    int                       tag_;                       //< Tag to distinct different storage instances
-    aku_logger_cb_t              logger_;
+    aku_logger_cb_t           logger_;
     Rand                      rand_;
     const uint32_t            durability_;                //< Copy of the durability parameter
     const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
@@ -251,6 +248,8 @@ struct Storage
     void prepopulate_cache(int64_t max_cache_size);
 
     void log_message(const char* message);
+
+    void log_error(const char* message);
 
     void log_message(const char* message, uint64_t value);
 
