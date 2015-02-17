@@ -11,7 +11,17 @@ using namespace Akumuli;
 
 static void static_logger(int tag, const char * msg) {
     static Logger logger = Logger("Main", 32);
-    logger.error() << msg;
+    switch(tag) {
+    case AKU_LOG_ERROR:
+        logger.error() << msg;
+        break;
+    case AKU_LOG_INFO:
+        logger.info() << msg;
+        break;
+    case AKU_LOG_TRACE:
+        logger.trace() << msg;
+        break;
+    }
 }
 
 void create_db(const char* name,

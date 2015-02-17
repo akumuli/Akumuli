@@ -16,11 +16,13 @@ struct AkumuliInitializer {
     }
 };
 
+void logger_stub(int tag, const char* msg) {}
+
 AkumuliInitializer initializer;
 
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
-    auto db = MetadataStorage(":memory:");
+    auto db = MetadataStorage(":memory:", &logger_stub);
     std::vector<MetadataStorage::VolumeDesc> volumes = {
         std::make_pair(0, "first"),
         std::make_pair(1, "second"),
@@ -36,7 +38,7 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
 
-    auto db = MetadataStorage(":memory:");
+    auto db = MetadataStorage(":memory:", &logger_stub);
     auto window_size = 0xFFFFFFFFFFFF;
     auto threshold = 0xFFFFFF;
     auto cache_size = 0xFFFFFF;

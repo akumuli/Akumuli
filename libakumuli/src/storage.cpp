@@ -61,10 +61,11 @@ void AprHandleDeleter::operator()(apr_dbd_t* handle) {
 
 //-------------------------------MetadataStorage----------------------------------------
 
-MetadataStorage::MetadataStorage(const char* db)
+MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     : pool_(nullptr, &delete_apr_pool)
     , driver_(nullptr)
     , handle_(nullptr, AprHandleDeleter(nullptr))
+    , logger_(logger)
 {
     apr_pool_t *pool = nullptr;
     auto status = apr_pool_create(&pool, NULL);
@@ -76,12 +77,14 @@ MetadataStorage::MetadataStorage(const char* db)
 
     status = apr_dbd_get_driver(pool, "sqlite3", &driver_);
     if (status != APR_SUCCESS) {
+        (*logger_)(AKU_LOG_ERROR, "Can't load driver, maybe libaprutil1-dbd-sqlite3 isn't installed");
         throw std::runtime_error("Can't load sqlite3 dirver");
     }
 
     apr_dbd_t *handle = nullptr;
     status = apr_dbd_open(driver_, pool, db, &handle);
     if (status != APR_SUCCESS) {
+        (*logger_)(AKU_LOG_ERROR, "Can't open database, check file path");
         throw std::runtime_error("Can't open database");
     }
     handle_ = HandleT(handle, AprHandleDeleter(driver_));
@@ -90,10 +93,12 @@ MetadataStorage::MetadataStorage(const char* db)
 }
 
 int MetadataStorage::execute_query(const char* query) {
+    (*logger_)(AKU_LOG_TRACE, query);
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
     if (status != 0) {
         // generate error and throw
+        (*logger_)(AKU_LOG_ERROR, "Error executing query");
         throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
     }
     return nrows;
@@ -220,10 +225,12 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
 
 
 std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
+    (*logger_)(AKU_LOG_TRACE, query);
     std::vector<UntypedTuple> tuples;
     apr_dbd_results_t *results = nullptr;
     int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
     if (status != 0) {
+        (*logger_)(AKU_LOG_ERROR, "Error executing query");
         throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
     }
     // get rows
@@ -233,6 +240,7 @@ std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const c
         apr_dbd_row_t *row = nullptr;
         status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
         if (status != 0) {
+            (*logger_)(AKU_LOG_ERROR, "Error getting row from resultset");
             throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
         }
         UntypedTuple tup;
@@ -315,6 +323,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     std::shared_ptr<Volume> newvol;
     auto status = create_page_file(file_path_.c_str(), page_id, logger_);
     if (status != AKU_SUCCESS) {
+        (*logger_)(AKU_LOG_ERROR, "Failed to create new volume");
         // Try to restore previous state on disk
         mmap_.move_file(file_path_.c_str());
         mmap_.panic_if_bad();
@@ -373,7 +382,7 @@ struct VolumeIterator {
 
         // 1. Open db
         try {
-            db = std::make_shared<MetadataStorage>(path);
+            db = std::make_shared<MetadataStorage>(path, logger);
         } catch(std::exception const& err) {
             (*logger)(AKU_LOG_ERROR, err.what());
             error_code = AKU_ENOT_FOUND;
@@ -833,7 +842,7 @@ static apr_status_t create_metadata_page( const char* file_name
 {
     using namespace std;
     try {
-        auto storage = std::make_shared<MetadataStorage>(file_name);
+        auto storage = std::make_shared<MetadataStorage>(file_name, logger);
 
         auto now = apr_time_now();
         char date_time[0x100];
