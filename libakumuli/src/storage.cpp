@@ -126,7 +126,19 @@ void MetadataStorage::create_tables() {
 }
 
 void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
+    auto create_global_id_table =
+            "CREATE TABLE IF NOT EXISTS global_id_table("
+            "id INTEGER UNIQUE,"
+            "table_name TEXT,"
+            ");";
+    execute_query(create_global_id_table);
 
+    auto create_tables_registry =
+            "CREATE TABLE IF NOT EXISTS tables_registry("
+            "id INTEGER UNIQUE,"
+            "name TEXT UNIQUE"
+            ");";
+    execute_query(create_tables_registry);
 }
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
