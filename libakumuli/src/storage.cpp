@@ -129,7 +129,7 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
     auto create_global_id_table =
             "CREATE TABLE IF NOT EXISTS global_id_table("
             "id INTEGER UNIQUE,"
-            "table_name TEXT,"
+            "table_name TEXT"
             ");";
     execute_query(create_global_id_table);
 
@@ -139,6 +139,45 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
             "name TEXT UNIQUE"
             ");";
     execute_query(create_tables_registry);
+
+    auto create_series_schema =
+            "CREATE TABLE IF NOT EXISTS series_schema("
+            "id INTEGER AUTOINCRIMENT,"
+            "name TEXT UNIQUE,"
+            "table_name TEXT UNIQUE,"
+            "index_type INTEGER"
+            ");";
+    execute_query(create_series_schema);
+
+    auto create_series_columns =
+            "CREATE TABLE IF NOT EXISTS series_columns("
+            "series_id INTEGER,"
+            "column TEXT,"
+            "FOREIGN KEY(series_id) REFERENCES series_schema(id)"
+            ");";
+    execute_query(create_series_columns);
+
+    // Create individual tables
+    std::stringstream query;
+    query <<
+        "INSERT INTO series_schema (name, table_name, index_type)" << std::endl;
+    int cnt = 0;
+    for(std::shared_ptr<SeriesCategory> category: schema->categories) {
+        category->index_type;
+        category->name;
+        if (cnt++ == 0) {
+            query <<
+                "SELECT '" << category->name << "' as name, ' series_"
+                  << category->name << "' as table_name, "
+                  << category->index_type << " as index_type" << std::endl;
+        } else {
+            query <<
+                "UNION SELECT '" << category->name << "', 'series_" << category->name << "', "
+                  << category->index_type << std::endl;
+        }
+    }
+    std::string query_text = query.str();
+    execute_query(query_text.c_str());
 }
 
 void MetadataStorage::init_config(uint32_t compression_threshold,

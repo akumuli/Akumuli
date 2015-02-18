@@ -53,3 +53,19 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
     BOOST_REQUIRE_EQUAL(window_size, actual_window_size);
     BOOST_REQUIRE_EQUAL(creation_datetime, actual_dt);
 }
+
+BOOST_AUTO_TEST_CASE(Test_metadata_storage_schema_1) {
+
+    auto db = MetadataStorage(":memory:", &logger_stub);
+    std::vector<std::shared_ptr<SeriesCategory>> cats;
+    auto cat = std::make_shared<SeriesCategory>();
+    cat->name = "first";
+    cat->index_type = AKU_INDEX_BASIC;
+    cats.push_back(cat);
+    cat = std::make_shared<SeriesCategory>();
+    cat->name = "second";
+    cat->index_type = AKU_INDEX_BASIC;
+    cats.push_back(cat);
+    auto schema = std::make_shared<Schema>(cats.begin(), cats.end());
+    db.create_schema(schema);
+}

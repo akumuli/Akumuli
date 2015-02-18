@@ -66,10 +66,9 @@ enum SeriesIndex {
   * same time-series category.
   */
 struct SeriesCategory {
-    uint64_t        id;             //< Index type
-    std::string     name;           //< Series category name
-    std::string     table_name;     //< Series metadata table name
-    SeriesIndex     index_type;     //< Index type used for series category
+    std::string                 name;           //< Series category name
+    SeriesIndex                 index_type;     //< Index type used for series category
+    std::vector<std::string>    columns;        //< List of column names
 };
 
 
