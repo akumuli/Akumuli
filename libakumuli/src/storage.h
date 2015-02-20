@@ -165,6 +165,11 @@ private:
       * @return bunch of strings with results
       */
     std::vector<UntypedTuple> select_query(const char* query) const;
+
+    /** Create schema tables from tables series_schema and series_columns.
+      * @throw std::runtime_error in a case of error
+      */
+    void create_schema_tables();
 };
 
 /** Storage volume.

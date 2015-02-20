@@ -190,7 +190,33 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
             execute_query(query_str.c_str());
         }
     }
-    // TODO: read data back - select * from series_schema left join series_columns on id=series_id;
+}
+
+void MetadataStorage::create_schema_tables() {
+    auto query_names =
+            "SELECT DISTINCT name, table_name FROM series_schema";
+    std::vector<UntypedTuple> rows = select_query(query_names);
+    std::vector<std::pair<std::string, std::string>> names;
+    std::transform(rows.begin(), rows.end(), std::back_inserter(names), [](UntypedTuple row) {
+        return std::make_pair(row.at(0), row.at(1));
+    });
+
+    for(auto name: names) {
+        std::stringstream query;
+        query <<
+                "SELECT column FROM series_schema LEFT JOIN series_columns ON id=series_id " <<
+                "WHERE name='" << name.first << "';"
+                ;
+        // get all column names in one place
+        std::string query_str = query.str();
+        auto col_rows = select_query(query_str.c_str());
+        std::vector<std::string> column_names;
+        std::transform(col_rows.begin(), col_rows.end(), std::back_inserter(column_names),
+        [](UntypedTuple row) {
+            return row.at(0);
+        });
+        // TODO: build create table query from list of column names
+    }
 }
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
