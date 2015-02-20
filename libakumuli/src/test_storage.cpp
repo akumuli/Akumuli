@@ -61,6 +61,7 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_schema_1) {
     auto cat = std::make_shared<SeriesCategory>();
     cat->name = "first";
     cat->index_type = AKU_INDEX_BASIC;
+    cat->columns = { "key" };
     cats.push_back(cat);
     cat = std::make_shared<SeriesCategory>();
     cat->name = "second";

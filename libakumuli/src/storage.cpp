@@ -142,7 +142,7 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
 
     auto create_series_schema =
             "CREATE TABLE IF NOT EXISTS series_schema("
-            "id INTEGER AUTOINCRIMENT,"
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "name TEXT UNIQUE,"
             "table_name TEXT UNIQUE,"
             "index_type INTEGER"
@@ -160,24 +160,37 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
     // Create individual tables
     std::stringstream query;
     query <<
-        "INSERT INTO series_schema (name, table_name, index_type)" << std::endl;
+            "INSERT INTO series_schema (name, table_name, index_type)" << std::endl;
     int cnt = 0;
     for(std::shared_ptr<SeriesCategory> category: schema->categories) {
         category->index_type;
         category->name;
         if (cnt++ == 0) {
             query <<
-                "SELECT '" << category->name << "' as name, ' series_"
-                  << category->name << "' as table_name, "
-                  << category->index_type << " as index_type" << std::endl;
+                    "SELECT '" << category->name << "' as name, ' series_"
+                      << category->name << "' as table_name, "
+                      << category->index_type << " as index_type" << std::endl;
         } else {
             query <<
-                "UNION SELECT '" << category->name << "', 'series_" << category->name << "', "
-                  << category->index_type << std::endl;
+                    "UNION SELECT '" << category->name << "', 'series_" << category->name << "', "
+                      << category->index_type << std::endl;
         }
     }
     std::string query_text = query.str();
     execute_query(query_text.c_str());
+
+    for(std::shared_ptr<SeriesCategory> category: schema->categories) {
+        for (auto column: category->columns) {
+            std::stringstream query;
+            query <<
+                    "INSERT INTO series_columns (series_id, column) "
+                    "SELECT id, '" << column << "' FROM series_schema WHERE name='"
+                    << category->name << "';";
+            std::string query_str = query.str();
+            execute_query(query_str.c_str());
+        }
+    }
+    // TODO: read data back - select * from series_schema left join series_columns on id=series_id;
 }
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
