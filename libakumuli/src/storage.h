@@ -151,6 +151,8 @@ struct MetadataStorage {
                      uint32_t *max_cache_size,
                      uint64_t *window_size, std::string *creation_datetime);
 
+    std::shared_ptr<Schema> get_schema() const;
+
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error

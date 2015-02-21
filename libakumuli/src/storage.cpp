@@ -96,7 +96,7 @@ int MetadataStorage::execute_query(const char* query) {
     (*logger_)(AKU_LOG_TRACE, query);
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
-    if (status != 0) {
+    if (status != 0 && status != 21) {
         // generate error and throw
         (*logger_)(AKU_LOG_ERROR, "Error executing query");
         throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
@@ -128,7 +128,7 @@ void MetadataStorage::create_tables() {
 void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
     auto create_global_id_table =
             "CREATE TABLE IF NOT EXISTS global_id_table("
-            "id INTEGER UNIQUE,"
+            "id INTEGER PRIMARY KEY UNIQUE,"
             "table_name TEXT"
             ");";
     execute_query(create_global_id_table);
@@ -167,7 +167,7 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
         category->name;
         if (cnt++ == 0) {
             query <<
-                    "SELECT '" << category->name << "' as name, ' series_"
+                    "SELECT '" << category->name << "' as name, 'series_"
                       << category->name << "' as table_name, "
                       << category->index_type << " as index_type" << std::endl;
         } else {
@@ -190,6 +190,8 @@ void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
             execute_query(query_str.c_str());
         }
     }
+
+    create_schema_tables();
 }
 
 void MetadataStorage::create_schema_tables() {
@@ -201,11 +203,11 @@ void MetadataStorage::create_schema_tables() {
         return std::make_pair(row.at(0), row.at(1));
     });
 
-    for(auto name: names) {
+    for(auto namepair: names) {
         std::stringstream query;
         query <<
                 "SELECT column FROM series_schema LEFT JOIN series_columns ON id=series_id " <<
-                "WHERE name='" << name.first << "';"
+                "WHERE name='" << namepair.first << "';"
                 ;
         // get all column names in one place
         std::string query_str = query.str();
@@ -216,6 +218,17 @@ void MetadataStorage::create_schema_tables() {
             return row.at(0);
         });
         // TODO: build create table query from list of column names
+        std::stringstream create_query;
+        create_query <<
+            "CREATE TABLE IF NOT EXISTS " << namepair.second << " (" << std::endl <<
+            "id INTEGER PRIMARY KEY";
+        for(auto col: column_names) {
+            create_query << "," << std::endl <<
+                col << " TEXT";
+        }
+        create_query << ");" << std::endl;
+        std::string create_query_string = create_query.str();
+        execute_query(create_query_string.c_str());
     }
 }
 
