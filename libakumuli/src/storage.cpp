@@ -109,7 +109,7 @@ void MetadataStorage::create_tables() {
 
     // Create volumes table
     query =
-            "CREATE TABLE IF NOT EXISTS volumes("
+            "CREATE TABLE IF NOT EXISTS akumuli_volumes("
             "id INTEGER UNIQUE,"
             "path TEXT UNIQUE"
             ");";
@@ -117,119 +117,21 @@ void MetadataStorage::create_tables() {
 
     // Create configuration table (key-value-commmentary)
     query =
-            "CREATE TABLE IF NOT EXISTS primary_configuration("
+            "CREATE TABLE IF NOT EXISTS akumuli_configuration("
             "name TEXT UNIQUE,"
             "value TEXT,"
             "comment TEXT"
             ");";
     execute_query(query);
-}
 
-void MetadataStorage::create_schema(std::shared_ptr<Schema> schema) {
-    auto create_global_id_table =
-            "CREATE TABLE IF NOT EXISTS global_id_table("
+    query =
+            "CREATE TABLE IF NOT EXISTS akumuli_series("
             "id INTEGER PRIMARY KEY UNIQUE,"
-            "table_name TEXT"
+            "series_id TEXT,"
+            "keyslist TEXT,"
+            "storage_id INTEGER UNIQUE"
             ");";
-    execute_query(create_global_id_table);
-
-    auto create_tables_registry =
-            "CREATE TABLE IF NOT EXISTS tables_registry("
-            "id INTEGER UNIQUE,"
-            "name TEXT UNIQUE"
-            ");";
-    execute_query(create_tables_registry);
-
-    auto create_series_schema =
-            "CREATE TABLE IF NOT EXISTS series_schema("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "name TEXT UNIQUE,"
-            "table_name TEXT UNIQUE,"
-            "index_type INTEGER"
-            ");";
-    execute_query(create_series_schema);
-
-    auto create_series_columns =
-            "CREATE TABLE IF NOT EXISTS series_columns("
-            "series_id INTEGER,"
-            "column TEXT,"
-            "FOREIGN KEY(series_id) REFERENCES series_schema(id)"
-            ");";
-    execute_query(create_series_columns);
-
-    // Create individual tables
-    std::stringstream query;
-    query <<
-            "INSERT INTO series_schema (name, table_name, index_type)" << std::endl;
-    int cnt = 0;
-    for(std::shared_ptr<SeriesCategory> category: schema->categories) {
-        category->index_type;
-        category->name;
-        if (cnt++ == 0) {
-            query <<
-                    "SELECT '" << category->name << "' as name, 'series_"
-                      << category->name << "' as table_name, "
-                      << category->index_type << " as index_type" << std::endl;
-        } else {
-            query <<
-                    "UNION SELECT '" << category->name << "', 'series_" << category->name << "', "
-                      << category->index_type << std::endl;
-        }
-    }
-    std::string query_text = query.str();
-    execute_query(query_text.c_str());
-
-    for(std::shared_ptr<SeriesCategory> category: schema->categories) {
-        for (auto column: category->columns) {
-            std::stringstream query;
-            query <<
-                    "INSERT INTO series_columns (series_id, column) "
-                    "SELECT id, '" << column << "' FROM series_schema WHERE name='"
-                    << category->name << "';";
-            std::string query_str = query.str();
-            execute_query(query_str.c_str());
-        }
-    }
-
-    create_schema_tables();
-}
-
-void MetadataStorage::create_schema_tables() {
-    auto query_names =
-            "SELECT DISTINCT name, table_name FROM series_schema";
-    std::vector<UntypedTuple> rows = select_query(query_names);
-    std::vector<std::pair<std::string, std::string>> names;
-    std::transform(rows.begin(), rows.end(), std::back_inserter(names), [](UntypedTuple row) {
-        return std::make_pair(row.at(0), row.at(1));
-    });
-
-    for(auto namepair: names) {
-        std::stringstream query;
-        query <<
-                "SELECT column FROM series_schema LEFT JOIN series_columns ON id=series_id " <<
-                "WHERE name='" << namepair.first << "';"
-                ;
-        // get all column names in one place
-        std::string query_str = query.str();
-        auto col_rows = select_query(query_str.c_str());
-        std::vector<std::string> column_names;
-        std::transform(col_rows.begin(), col_rows.end(), std::back_inserter(column_names),
-        [](UntypedTuple row) {
-            return row.at(0);
-        });
-        // TODO: build create table query from list of column names
-        std::stringstream create_query;
-        create_query <<
-            "CREATE TABLE IF NOT EXISTS " << namepair.second << " (" << std::endl <<
-            "id INTEGER PRIMARY KEY";
-        for(auto col: column_names) {
-            create_query << "," << std::endl <<
-                col << " TEXT";
-        }
-        create_query << ");" << std::endl;
-        std::string create_query_string = create_query.str();
-        execute_query(create_query_string.c_str());
-    }
+    execute_query(query);
 }
 
 void MetadataStorage::init_config(uint32_t compression_threshold,
@@ -240,7 +142,7 @@ void MetadataStorage::init_config(uint32_t compression_threshold,
     // Create table and insert data into it
 
     std::stringstream insert;
-    insert << "INSERT INTO primary_configuration (name, value, comment)" << std::endl;
+    insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
     insert << "\tSELECT 'compression_threshold' as name, '" << compression_threshold << "' as value, "
            << "'Compression threshold value' as comment" << std::endl;
     insert << "\tUNION SELECT 'max_cache_size', '" << max_cache_size
@@ -258,7 +160,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
                                   std::string *creation_datetime)
 {
     {   // Read compression_threshold
-        std::string query = "SELECT value FROM primary_configuration "
+        std::string query = "SELECT value FROM akumuli_configuration "
                             "WHERE name='compression_threshold'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
@@ -271,7 +173,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
     }
     {   // Read max_cache_size
-        std::string query = "SELECT value FROM primary_configuration WHERE name='max_cache_size'";
+        std::string query = "SELECT value FROM akumuli_configuration WHERE name='max_cache_size'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
             throw std::runtime_error("Invalid configuration (max_cache_size)");
@@ -283,7 +185,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
     }
     {   // Read window_size
-        std::string query = "SELECT value FROM primary_configuration WHERE name='window_size'";
+        std::string query = "SELECT value FROM akumuli_configuration WHERE name='window_size'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
             throw std::runtime_error("Invalid configuration (window_size)");
@@ -296,7 +198,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
         *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
     }
     {   // Read creation time
-        std::string query = "SELECT value FROM primary_configuration WHERE name='creation_time'";
+        std::string query = "SELECT value FROM akumuli_configuration WHERE name='creation_time'";
         auto results = select_query(query.c_str());
         if (results.size() != 1) {
             throw std::runtime_error("Invalid configuration (creation_time)");
@@ -312,7 +214,7 @@ void MetadataStorage::get_configs(uint32_t *compression_threshold,
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     std::stringstream query;
-    query << "INSERT INTO volumes (id, path)" << std::endl;
+    query << "INSERT INTO akumuli_volumes (id, path)" << std::endl;
     bool first = true;
     for (auto desc: volumes) {
         if (first) {
@@ -362,7 +264,7 @@ std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const c
 
 std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     const char* query =
-            "SELECT id, path FROM volumes;";
+            "SELECT id, path FROM akumuli_volumes;";
     std::vector<VolumeDesc> tuples;
     std::vector<UntypedTuple> untyped = select_query(query);
     // get rows
@@ -468,31 +370,10 @@ struct VolumeIterator {
     std::vector<std::string> volume_names;
     aku_Status               error_code;
 
-    VolumeIterator(const char* path, aku_logger_cb_t logger)
+    VolumeIterator(std::shared_ptr<MetadataStorage> db, aku_logger_cb_t logger)
         : error_code(AKU_SUCCESS)
     {
-        // 0. Check that file exists
-        auto filedesc = std::fopen(const_cast<char*>(path), "r");
-        if (filedesc == nullptr) {
-            // No such file
-            error_code = AKU_ENOT_FOUND;
-            (*logger)(AKU_LOG_ERROR, "invalid path, no such file");
-            return;
-        }
-        std::fclose(filedesc);
-
-        std::shared_ptr<MetadataStorage> db;
-
-        // 1. Open db
-        try {
-            db = std::make_shared<MetadataStorage>(path, logger);
-        } catch(std::exception const& err) {
-            (*logger)(AKU_LOG_ERROR, err.what());
-            error_code = AKU_ENOT_FOUND;
-            return;
-        }
-
-        // 2. Read configuration data
+        // 1. Read configuration data
         std::string creation_time;
         try {
             db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
@@ -502,7 +383,7 @@ struct VolumeIterator {
             return;
         }
 
-        // 3. Read volumes
+        // 2. Read volumes
         std::vector<MetadataStorage::VolumeDesc> volumes;
         try {
             volumes = db->get_volumes();
@@ -545,7 +426,26 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     , durability_(params.durability)
     , huge_tlb_(params.enable_huge_tlb != 0)
 {
-    VolumeIterator v_iter(path, params.logger);
+    // 0. Check that file exists
+    auto filedesc = std::fopen(const_cast<char*>(path), "r");
+    if (filedesc == nullptr) {
+        // No such file
+        open_error_code_ = AKU_ENOT_FOUND;
+        (*logger_)(AKU_LOG_ERROR, "invalid path, no such file");
+        return;
+    }
+    std::fclose(filedesc);
+
+    // 1. Open db
+    try {
+        metadata_ = std::make_shared<MetadataStorage>(path, logger_);
+    } catch(std::exception const& err) {
+        (*logger_)(AKU_LOG_ERROR, err.what());
+        open_error_code_ = AKU_ENOT_FOUND;
+        return;
+    }
+
+    VolumeIterator v_iter(metadata_, logger_);
 
     if (v_iter.is_bad()) {
         open_error_code_ = v_iter.error_code;
@@ -832,7 +732,7 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
         apr_strerror(status, error_message, 0x100);
         stringstream err;
         err << "Can't create file, error " << error_message << " on step " << success_count;
-        (*logger)(0, err.str().c_str());
+        (*logger)(AKU_LOG_ERROR, err.str().c_str());
     }
 
     switch(success_count) {
@@ -861,7 +761,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
     if (status != APR_SUCCESS) {
         stringstream err;
         err << "Can't create page file " << file_name;
-        (*logger)(0, err.str().c_str());
+        (*logger)(AKU_LOG_ERROR, err.str().c_str());
         return status;
     }
 
@@ -891,7 +791,10 @@ static std::vector<apr_status_t> create_page_files(std::vector<std::string> cons
     return results;
 }
 
-static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets, const std::vector<apr_status_t>& statuses, aku_logger_cb_t logger) {
+static std::vector<apr_status_t> delete_files(const std::vector<std::string>& targets,
+                                              const std::vector<apr_status_t>& statuses,
+                                              aku_logger_cb_t logger)
+{
     using namespace std;
     if (targets.size() != statuses.size()) {
         AKU_PANIC("sizes of targets and statuses doesn't match");
@@ -907,7 +810,7 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
             if (statuses[ix] == APR_SUCCESS) {
                 stringstream fmt;
                 fmt << "Removing " << target;
-                (*logger)(0, fmt.str().c_str());
+                (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
                 status = apr_file_remove(target.c_str(), mem_pool);
                 results.push_back(status);
                 if (status != APR_SUCCESS) {
@@ -915,13 +818,13 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
                     apr_strerror(status, error_message, 1024);
                     stringstream err;
                     err << "Error [" << error_message << "] while deleting a file " << target;
-                    (*logger)(0, err.str().c_str());
+                    (*logger)(AKU_LOG_ERROR, err.str().c_str());
                 }
             }
             else {
                 stringstream fmt;
                 fmt << "Target " << target << " doesn't need to be removed";
-                (*logger)(0,fmt.str().c_str());
+                (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
             }
         }
     }
@@ -966,7 +869,7 @@ static apr_status_t create_metadata_page( const char* file_name
     } catch (std::exception const& err) {
         std::stringstream fmt;
         fmt << "Can't create metadata file " << file_name << ", the error is: " << err.what();
-        (*logger)(0, fmt.str().c_str());
+        (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
         return APR_EGENERAL;
     }
     return APR_SUCCESS;
@@ -999,7 +902,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
             auto error_message = apr_error_message(status);
             std::stringstream err;
             err << "Invalid volumes path: " << error_message;
-            (*logger)(0, err.str().c_str());
+            (*logger)(AKU_LOG_ERROR, err.str().c_str());
             apr_pool_destroy(mempool);
             AKU_APR_PANIC(status, error_message.c_str());
         }
@@ -1010,17 +913,17 @@ apr_status_t Storage::new_storage(const char  *file_name,
 
     status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
-        (*logger)(0, "Metadata dir already exists");
+        (*logger)(AKU_LOG_INFO, "Metadata dir already exists");
     }
     status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
-        (*logger)(0, "Volumes dir already exists");
+        (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
 
     std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger);
     for(auto creation_status: page_creation_statuses) {
         if (creation_status != APR_SUCCESS) {
-            (*logger)(0, "Not all pages successfullly created. Cleaning up.");
+            (*logger)(AKU_LOG_ERROR, "Not all pages successfullly created. Cleaning up.");
             apr_pool_destroy(mempool);
             delete_files(page_names, page_creation_statuses, logger);
             return creation_status;
@@ -1036,7 +939,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         auto error_message = apr_error_message(status);
         std::stringstream err;
         err << "Invalid metadata path: %s" << error_message;
-        (*logger)(0, err.str().c_str());
+        (*logger)(AKU_LOG_ERROR, err.str().c_str());
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }
@@ -1047,17 +950,25 @@ apr_status_t Storage::new_storage(const char  *file_name,
 
 
 apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logger) {
-    VolumeIterator v_iter(file_name, logger);
+    std::shared_ptr<MetadataStorage> db;
+    try {
+        db = std::make_shared<MetadataStorage>(file_name, logger);
+    } catch(std::runtime_error const& err) {
+        (*logger)(AKU_LOG_ERROR, err.what());
+        return APR_EBADPATH;
+    }
+
+    VolumeIterator v_iter(db, logger);
 
     if (v_iter.is_bad()) {
-        return APR_EBADPATH;
+        return v_iter.error_code;
     }
 
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
 
     if (status != APR_SUCCESS) {
-        (*logger)(0, "can't create memory pool");
+        (*logger)(AKU_LOG_ERROR, "can't create memory pool");
         return status;
     }
 
@@ -1067,7 +978,7 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
         if (status != APR_SUCCESS) {
             std::stringstream fmt;
             fmt << "can't remove file " << path;
-            (*logger)(0, fmt.str().c_str());
+            (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
         }
     }
 

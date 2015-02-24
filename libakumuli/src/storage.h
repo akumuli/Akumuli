@@ -55,47 +55,6 @@ struct AprHandleDeleter {
 };
 
 
-//! Time-series index types supported by akumuli
-enum SeriesIndex {
-    AKU_INDEX_BASIC,  //< basic time-series index for faster graphing and summarization
-};
-
-
-/** Time-series catoegory description in metadata storage.
-  * Many different time-series can be stored within the
-  * same time-series category.
-  */
-struct SeriesCategory {
-    std::string                 name;           //< Series category name
-    SeriesIndex                 index_type;     //< Index type used for series category
-    std::vector<std::string>    columns;        //< List of column names
-};
-
-
-/** Time-series schema.
-  * Stores all the variety of different time-series categories.
-  */
-struct Schema {
-    std::vector<std::shared_ptr<SeriesCategory>> categories;
-
-    //! C-tor
-    template<class FwdIt>
-    Schema(FwdIt begin, FwdIt end)
-        : categories(begin, end)
-    {
-    }
-};
-
-
-/** Concrete series description.
-  */
-struct SeriesInstance {
-    uint64_t        id;                         //< Time-series ID
-    std::string     name;                       //< Time-series name
-    std::weak_ptr<SeriesCategory>   category;   //< Category that hosts this time-series instance
-};
-
-
 /** Sqlite3 backed storage for metadata.
   * Metadata includes:
   * - Volumes list
@@ -127,10 +86,6 @@ struct MetadataStorage {
       */
     void create_tables();
 
-    /** Create new database from schema.
-      */
-    void create_schema(std::shared_ptr<Schema> schema);
-
     /** Initialize volumes table
       * @throw std::runtime_error in a case of error
       */
@@ -151,8 +106,6 @@ struct MetadataStorage {
                      uint32_t *max_cache_size,
                      uint64_t *window_size, std::string *creation_datetime);
 
-    std::shared_ptr<Schema> get_schema() const;
-
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error
@@ -167,11 +120,6 @@ private:
       * @return bunch of strings with results
       */
     std::vector<UntypedTuple> select_query(const char* query) const;
-
-    /** Create schema tables from tables series_schema and series_columns.
-      * @throw std::runtime_error in a case of error
-      */
-    void create_schema_tables();
 };
 
 /** Storage volume.
@@ -224,6 +172,7 @@ struct Storage
 {
     typedef std::mutex      LockType;
     typedef std::shared_ptr<Volume> PVolume;
+    typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
 
     // Active volume state
     aku_Config                config_;
@@ -234,6 +183,7 @@ struct Storage
     bool                      compression;                //< Compression enabled
     aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
+    PMetadataStorage          metadata_;                  //< Metadata storage
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
