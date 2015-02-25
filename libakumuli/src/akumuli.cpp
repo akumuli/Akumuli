@@ -239,9 +239,13 @@ aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_TimeStamp 
     return dbi->add_blob(param_id, ts, value);
 }
 
-aku_Status aku_write_double(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value) {
+aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->add_double(param_id, timestamp, value);
+}
+
+aku_Status aku_write_double(aku_Database* db, const char* series_key, aku_TimeStamp timestamp, double value) {
+    return AKU_ENOT_IMPLEMENTED; // Not implemented
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)

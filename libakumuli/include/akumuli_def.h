@@ -56,6 +56,8 @@
 #define AKU_EGENERAL              8
 //! Late write error
 #define AKU_ELATE_WRITE           9
+//! Not implemented error
+#define AKU_ENOT_IMPLEMENTED     10
 
 #define AKU_EMAX_ERROR            9
 
