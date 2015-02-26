@@ -119,6 +119,8 @@ target_link_libraries(
 
 add_test(compression test_compression)
 
+# Test storage
+
 add_executable(
     test_storage
         test_storage.cpp
@@ -140,6 +142,20 @@ target_link_libraries(
 )
 
 add_test(storage test_storage)
+
+# Test series parser
+
+add_executable(
+    test_seriesparser
+    seriesparser.cpp
+)
+
+target_link_libraries(
+    test_seriesparser
+    ${Boost_LIBRARIES}
+)
+
+add_test(seriesparser test_seriesparser)
 
 install(
     TARGETS
