@@ -24,6 +24,7 @@
 //! Minimal possible TTL
 #define AKU_LIMITS_MIN_TTL        2
 #define AKU_LIMITS_MAX_ID         0xFFFFFFFFFFFFFFFDul
+#define AKU_LIMITS_MAX_TAGS      32
 #define AKU_MIN_TIMESTAMP         0
 #define AKU_MAX_TIMESTAMP       (~0)
 #define AKU_STACK_SIZE            0x100000

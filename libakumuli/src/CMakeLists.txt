@@ -148,6 +148,7 @@ add_test(storage test_storage)
 add_executable(
     test_seriesparser
     seriesparser.cpp
+    test_parser.cpp
 )
 
 target_link_libraries(
