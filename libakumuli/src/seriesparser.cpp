@@ -33,16 +33,22 @@ static const char* copy_until(const char* begin, const char* end, const char pat
 }
 
 //! Move pointer to the beginning of the next tag, return this pointer or end on error
-static const char* skip_tag(const char* p, const char* end) {
+static const char* skip_tag(const char* p, const char* end, bool *error) {
     // skip until '='
-    while(p < end && *p != '=') {
+    while(p < end && *p != '=' && *p != ' ' && *p != '\t') {
         p++;
+    }
+    if (p == end || *p != '=') {
+        *error = true;
+        return end;
     }
     // skip until ' '
-    while(p < end && *p != ' ') {
-        p++;
+    const char* c = p;
+    while(c < end && *c != ' ') {
+        c++;
     }
-    return p;
+    *error = c == p;
+    return c;
 }
 
 int SeriesParser::to_normal_form(const char* begin, const char* end,
@@ -77,10 +83,24 @@ int SeriesParser::to_normal_form(const char* begin, const char* end,
     // Get pointers to the keys
     const char* tags[AKU_LIMITS_MAX_TAGS];
     auto ix_tag = 0u;
+    bool error = false;
     while(it < end && ix_tag < AKU_LIMITS_MAX_TAGS) {
-        tags[ix_tag++] = it;
-        it = skip_tag(it, end);
+        tags[ix_tag] = it;
+        it = skip_tag(it, end, &error);
         it = skip_space(it, end);
+        if (!error) {
+            ix_tag++;
+        } else {
+            break;
+        }
+    }
+    if (error) {
+        // Bad string
+        return AKU_EBAD_DATA;
+    }
+    if (ix_tag == 0) {
+        // User should specify at least one tag
+        return AKU_EBAD_DATA;
     }
 
     std::sort(tags, tags + ix_tag, [tags, end](const char* lhs, const char* rhs) {

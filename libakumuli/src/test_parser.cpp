@@ -20,3 +20,33 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
     std::string actual = std::string(out);
     BOOST_REQUIRE_EQUAL(expected, actual);
 }
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_1) {
+
+    const char* series = "cpu";
+    auto len = strlen(series);
+    char out[27];
+    const char* pend = nullptr;
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_2) {
+
+    const char* series = "cpu region host=127.0.0.1 ";
+    auto len = strlen(series);
+    char out[27];
+    const char* pend = nullptr;
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_3) {
+
+    const char* series = "cpu region=europe host";
+    auto len = strlen(series);
+    char out[27];
+    const char* pend = nullptr;
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
+}
