@@ -1,14 +1,64 @@
 #include "seriesparser.h"
+#include "util.h"
 #include <string>
 #include <map>
 #include <algorithm>
 
 namespace Akumuli {
 
+//                       //
+//      String Pool      //
+//                       //
 
-SeriesParser::SeriesParser()
-{
+StringPool::StringT StringPool::add(const char* begin, const char* end) {
+    if (pool.empty()) {
+        pool.emplace_back();
+        pool.reserve(MAX_BIN_SIZE);
+    }
+    int size = end - begin;
+    std::vector<char>* bin = &pool.back();
+    if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
+        pool.emplace_back();
+        bin = &pool.back();
+    }
+    for(auto i = begin; i < end; i++) {
+        bin->push_back(*i);
+    }
+    const char* p = &bin->back();
+    p -= size;
+    return std::make_pair(p, size);
 }
+
+
+//                          //
+//      Series Matcher      //
+//                          //
+
+size_t SeriesMatcher::hash(SeriesMatcher::StringT str) {
+    // TODO: use good hash function
+    return 0u;
+}
+
+SeriesMatcher::SeriesMatcher(uint64_t starting_id)
+    : series_id(starting_id)
+{
+    if (starting_id == 0u) {
+        AKU_PANIC("Bad series ID");
+    }
+}
+
+void SeriesMatcher::add(const char* begin, const char* end) {
+    StringT pstr = pool.add(begin, end);
+    table[pstr] = series_id++;
+}
+
+uint64_t SeriesMatcher::match(const char* begin, const char* end) {
+    throw "Not implemented";
+}
+
+//                         //
+//      Series Parser      //
+//                         //
 
 //! Move pointer to the of the whitespace, return this pointer or end on error
 static const char* skip_space(const char* p, const char* end) {
@@ -62,7 +112,11 @@ int SeriesParser::to_normal_form(const char* begin, const char* end,
     if (out_end < out_begin) {
         return AKU_EBAD_ARG;
     }
-    if ((end - begin) > (out_end - out_begin)) {
+    int series_name_len = end - begin;
+    if (series_name_len > AKU_LIMITS_MAX_SNAME) {
+        return AKU_EBAD_DATA;
+    }
+    if (series_name_len > (out_end - out_begin)) {
         return AKU_EBAD_ARG;
     }
 

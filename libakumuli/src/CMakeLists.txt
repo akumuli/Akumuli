@@ -149,11 +149,13 @@ add_executable(
     test_seriesparser
     seriesparser.cpp
     test_parser.cpp
+    util.cpp
 )
 
 target_link_libraries(
     test_seriesparser
     ${Boost_LIBRARIES}
+    "${APR_LIBRARY}"
 )
 
 add_test(seriesparser test_seriesparser)
