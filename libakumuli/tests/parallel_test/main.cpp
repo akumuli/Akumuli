@@ -253,12 +253,10 @@ int main(int cnt, const char** args)
 
     int writer_n_busy = 0;
     for(uint64_t ts = 0; ts < NUM_ITERATIONS; ts++) {
-        aku_MemRange memr;
-        auto param_id = 42u;
-        auto value = ts << 2;
-        memr.address = (void*)&value;
-        memr.length = sizeof(value);
-        aku_Status status = aku_write(db, param_id, ts, memr);
+        uint64_t k = ts + 2;
+        double value = 0.0001*k;
+        aku_ParamId id = ts & 0xF;
+        aku_Status status = aku_write_double_raw(db, id, ts, value);
         if (status == AKU_SUCCESS) {
             if (ts % 1000000 == 0) {
                 std::cout << ts << "---" << timer.elapsed() << "s" << std::endl;
@@ -266,7 +264,7 @@ int main(int cnt, const char** args)
             }
         } else if (status == AKU_EBUSY) {
             writer_n_busy++;
-            status = aku_write(db, param_id, ts, memr);
+            status = aku_write_double_raw(db, id, ts, value);
         }
         if (status != AKU_SUCCESS) {
             std::cout << "aku_add_sample error " << aku_error_message(status) << std::endl;

@@ -24,6 +24,10 @@
 //! Minimal possible TTL
 #define AKU_LIMITS_MIN_TTL        2
 #define AKU_LIMITS_MAX_ID         0xFFFFFFFFFFFFFFFDul
+//! Max number of tags in series name
+#define AKU_LIMITS_MAX_TAGS      32
+//! Longest possible series name
+#define AKU_LIMITS_MAX_SNAME  0x200
 #define AKU_MIN_TIMESTAMP         0
 #define AKU_MAX_TIMESTAMP       (~0)
 #define AKU_STACK_SIZE            0x100000
@@ -56,6 +60,8 @@
 #define AKU_EGENERAL              8
 //! Late write error
 #define AKU_ELATE_WRITE           9
+//! Not implemented error
+#define AKU_ENOT_IMPLEMENTED     10
 
 #define AKU_EMAX_ERROR            9
 

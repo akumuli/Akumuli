@@ -194,16 +194,11 @@ int main(int cnt, const char** args)
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             uint64_t k = i + 2;
-            //double value = 0.0001*k;
+            double value = 0.0001*k;
             aku_ParamId id = i & 0xF;
-            aku_MemRange memr;
-            memr.address = (void*)&k;
-            memr.length = sizeof(k);
-            //aku_Status status = aku_write_double(db, id, i, value);
-            aku_Status status = aku_write(db, id, i, memr);
+            aku_Status status = aku_write_double_raw(db, id, i, value);
             if (status == AKU_EBUSY) {
-                //status = aku_write_double(db, id, i, value);
-                status = aku_write(db, id, i, memr);
+                status = aku_write_double_raw(db, id, i, value);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;

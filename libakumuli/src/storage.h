@@ -55,48 +55,6 @@ struct AprHandleDeleter {
 };
 
 
-//! Time-series index types supported by akumuli
-enum SeriesIndex {
-    AKU_INDEX_BASIC,  //< basic time-series index for faster graphing and summarization
-};
-
-
-/** Time-series catoegory description in metadata storage.
-  * Many different time-series can be stored within the
-  * same time-series category.
-  */
-struct SeriesCategory {
-    uint64_t        id;             //< Index type
-    std::string     name;           //< Series category name
-    std::string     table_name;     //< Series metadata table name
-    SeriesIndex     index_type;     //< Index type used for series category
-};
-
-
-/** Time-series schema.
-  * Stores all the variety of different time-series categories.
-  */
-struct Schema {
-    std::vector<std::shared_ptr<SeriesCategory>> categories;
-
-    //! C-tor
-    template<class FwdIt>
-    Schema(FwdIt begin, FwdIt end)
-        : categories(begin, end)
-    {
-    }
-};
-
-
-/** Concrete series description.
-  */
-struct SeriesInstance {
-    uint64_t        id;                         //< Time-series ID
-    std::string     name;                       //< Time-series name
-    std::weak_ptr<SeriesCategory>   category;   //< Category that hosts this time-series instance
-};
-
-
 /** Sqlite3 backed storage for metadata.
   * Metadata includes:
   * - Volumes list
@@ -114,11 +72,12 @@ struct MetadataStorage {
     PoolT pool_;
     DriverT driver_;
     HandleT handle_;
+    aku_logger_cb_t logger_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
-    MetadataStorage(const char* db);
+    MetadataStorage(const char* db, aku_logger_cb_t logger);
 
     // Creation //
 
@@ -126,10 +85,6 @@ struct MetadataStorage {
       * @throw std::runtime_error in a case of error
       */
     void create_tables();
-
-    /** Create new database from schema.
-      */
-    void create_schema(std::shared_ptr<Schema> schema);
 
     /** Initialize volumes table
       * @throw std::runtime_error in a case of error
@@ -180,7 +135,6 @@ struct Volume : std::enable_shared_from_this<Volume>
     std::unique_ptr<Sequencer> cache_;
     std::string file_path_;
     const aku_Config& config_;
-    const int tag_;
     aku_logger_cb_t logger_;
     std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
     const bool huge_tlb_;
@@ -188,7 +142,6 @@ struct Volume : std::enable_shared_from_this<Volume>
     //! Create new volume stored in file
     Volume(const char           *file_path,
            const aku_Config&     conf,
-           int                   tag,
            bool                  enable_huge_tlb,
            aku_logger_cb_t       logger);
 
@@ -219,6 +172,7 @@ struct Storage
 {
     typedef std::mutex      LockType;
     typedef std::shared_ptr<Volume> PVolume;
+    typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
 
     // Active volume state
     aku_Config                config_;
@@ -229,12 +183,12 @@ struct Storage
     bool                      compression;                //< Compression enabled
     aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
+    PMetadataStorage          metadata_;                  //< Metadata storage
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
     apr_time_t                creation_time_;             //< Cached metadata
-    int                       tag_;                       //< Tag to distinct different storage instances
-    aku_logger_cb_t              logger_;
+    aku_logger_cb_t           logger_;
     Rand                      rand_;
     const uint32_t            durability_;                //< Copy of the durability parameter
     const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
@@ -251,6 +205,8 @@ struct Storage
     void prepopulate_cache(int64_t max_cache_size);
 
     void log_message(const char* message);
+
+    void log_error(const char* message);
 
     void log_message(const char* message, uint64_t value);
 

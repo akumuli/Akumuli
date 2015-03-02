@@ -213,17 +213,23 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
   */
 AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, aku_MemRange value);
 
-//! Macro for backward compatibility (deprecated)
-#define aku_write aku_write_blob
-
 /** Write measurement to DB
   * @param db opened database instance
-  * @param param_id paramter id
+  * @param param_id storage parameter id
   * @param timestamp timestamp
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value);
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value);
+
+/** Write measurement to DB
+  * @param db opened database instance
+  * @param series_key string containing series name and key-value list
+  * @param timestamp timestamp
+  * @param value parameter value
+  * @returns operation status
+  */
+AKU_EXPORT aku_Status aku_write_double(aku_Database* db, const char* series_key, aku_TimeStamp timestamp, double value);
 
 //---------
 // Queries
