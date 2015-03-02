@@ -13,19 +13,24 @@ namespace Akumuli {
 StringPool::StringT StringPool::add(const char* begin, const char* end) {
     if (pool.empty()) {
         pool.emplace_back();
-        pool.reserve(MAX_BIN_SIZE);
+        pool.back().reserve(MAX_BIN_SIZE);
     }
     int size = end - begin;
+    if (size == 0) {
+        return std::make_pair("", 0);
+    }
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
+        // New bin
         pool.emplace_back();
         bin = &pool.back();
+        bin->reserve(MAX_BIN_SIZE);
     }
     for(auto i = begin; i < end; i++) {
         bin->push_back(*i);
     }
     const char* p = &bin->back();
-    p -= size;
+    p -= size - 1;
     return std::make_pair(p, size);
 }
 
@@ -35,12 +40,29 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
 //                          //
 
 size_t SeriesMatcher::hash(SeriesMatcher::StringT str) {
-    // TODO: use good hash function
-    return 0u;
+    // implementation of Dan Bernstein's djb2
+    const char* begin = str.first;
+    int len = str.second;
+    const char* end = begin + len;
+    size_t hash = 5381;
+    int c;
+    while (begin < end) {
+        c = *begin++;
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+    return hash;
+}
+
+bool SeriesMatcher::equal(StringT lhs, StringT rhs) {
+    if (lhs.second != rhs.second) {
+        return false;
+    }
+    return std::equal(lhs.first, lhs.first + lhs.second, rhs.first);
 }
 
 SeriesMatcher::SeriesMatcher(uint64_t starting_id)
-    : series_id(starting_id)
+    : table(0x1000, &SeriesMatcher::hash, &SeriesMatcher::equal)
+    , series_id(starting_id)
 {
     if (starting_id == 0u) {
         AKU_PANIC("Bad series ID");
@@ -53,7 +75,13 @@ void SeriesMatcher::add(const char* begin, const char* end) {
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
-    throw "Not implemented";
+    int len = end - begin;
+    StringT str = std::make_pair(begin, len);
+    auto it = table.find(str);
+    if (it == table.end()) {
+        return 0ul;
+    }
+    return it->second;
 }
 
 //                         //

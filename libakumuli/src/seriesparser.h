@@ -5,6 +5,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <deque>
 
 
 namespace Akumuli {
@@ -12,7 +13,7 @@ namespace Akumuli {
 struct StringPool {
     typedef std::pair<const char*, int> StringT;
     const int MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME*0x1000;
-    std::vector<std::vector<char>> pool;
+    std::deque<std::vector<char>> pool;
     StringT add(const char* begin, const char *end);
 };
 
@@ -23,7 +24,10 @@ struct SeriesMatcher {
     // TODO: add LRU cache
     typedef std::pair<const char*, int> StringT;
     static size_t hash(StringT str);
-    typedef std::unordered_map<StringT, uint64_t, decltype(&SeriesMatcher::hash)> TableT;
+    static bool equal(StringT lhs, StringT rhs);
+    typedef std::unordered_map<StringT, uint64_t,
+                               decltype(&SeriesMatcher::hash),
+                               decltype(&SeriesMatcher::equal)> TableT;
 
     // Variables
     StringPool pool;

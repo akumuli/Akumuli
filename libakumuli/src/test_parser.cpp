@@ -8,6 +8,38 @@
 
 using namespace Akumuli;
 
+BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
+
+    StringPool pool;
+    const char* foo = "foo";
+    auto result_foo = pool.add(foo, foo + 3);
+    const char* bar = "123456";
+    auto result_bar = pool.add(bar, bar + 6);
+    BOOST_REQUIRE_EQUAL(result_foo.second, 3);
+    BOOST_REQUIRE_EQUAL(std::string(result_foo.first, result_foo.first + result_foo.second), foo);
+    BOOST_REQUIRE_EQUAL(result_bar.second, 6);
+    BOOST_REQUIRE_EQUAL(std::string(result_bar.first, result_bar.first + result_bar.second), bar);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesmatcher_0) {
+
+    SeriesMatcher matcher(1ul);
+    const char* foo = "foobar";
+    const char* bar = "barfoobar";
+    const char* buz = "buz";
+    matcher.add(foo, foo+6);
+    matcher.add(bar, bar+9);
+
+    auto foo_id = matcher.match(foo, foo+6);
+    BOOST_REQUIRE_EQUAL(foo_id, 1ul);
+
+    auto bar_id = matcher.match(bar, bar+9);
+    BOOST_REQUIRE_EQUAL(bar_id, 2ul);
+
+    auto buz_id = matcher.match(buz, buz+3);
+    BOOST_REQUIRE_EQUAL(buz_id, 0ul);
+}
+
 BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
 
     const char* series = " cpu  region=europe   host=127.0.0.1 ";
