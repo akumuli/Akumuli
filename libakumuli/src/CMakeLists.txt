@@ -160,6 +160,23 @@ target_link_libraries(
 
 add_test(seriesparser test_seriesparser)
 
+# Series parser perftest
+
+add_executable(
+    perf_seriesmatcher
+    seriesparser.cpp
+    perf_seriesmatcher.cpp
+    util.cpp
+)
+
+target_link_libraries(
+    perf_seriesmatcher
+    ${Boost_LIBRARIES}
+    "${APR_LIBRARY}"
+)
+
+# libakumuli
+
 install(
     TARGETS
         akumuli

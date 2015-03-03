@@ -85,9 +85,9 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_3) {
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_4) {
 
-    const char* series = "bs";
     auto len = AKU_LIMITS_MAX_SNAME + 1;
-    char out[10];
+    char series[len];
+    char out[len];
     const char* pend = nullptr;
     int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
@@ -95,8 +95,8 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_4) {
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
 
-    const char* series = "bs";
     auto len = AKU_LIMITS_MAX_SNAME - 1;
+    char series[len];
     char out[10];
     const char* pend = nullptr;
     int status = SeriesParser::to_normal_form(series, series + len, out, out + 10, &pend);
