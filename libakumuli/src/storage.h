@@ -106,6 +106,14 @@ struct MetadataStorage {
                      uint32_t *max_cache_size,
                      uint64_t *window_size, std::string *creation_datetime);
 
+    // Writing //
+
+    typedef std::tuple<std::string, std::string, uint64_t> SeriesT;
+
+    /** Add new series to the metadata storage.
+      */
+    void insert(std::vector<SeriesT> const& items);
+
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error

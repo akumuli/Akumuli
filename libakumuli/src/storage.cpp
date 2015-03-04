@@ -93,7 +93,9 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
 }
 
 int MetadataStorage::execute_query(const char* query) {
-    (*logger_)(AKU_LOG_TRACE, query);
+    if (logger_ != &aku_console_logger) {
+        (*logger_)(AKU_LOG_TRACE, query);
+    }
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
     if (status != 0 && status != 21) {
@@ -278,6 +280,29 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
         tuples.push_back(std::make_pair(id, path));
     }
     return tuples;
+}
+
+void MetadataStorage::insert(std::vector<std::tuple<std::string, std::string, uint64_t>> const& items) {
+    std::stringstream query;
+    query << "INSERT INTO akumuli_series (series_id, keyslist, storage_id)" << std::endl;
+    bool first = true;
+    for (auto item: items) {
+        if (first) {
+            query << "\tSELECT '" << std::get<0>(item) << "' as series_id, '"
+                                  << std::get<1>(item) << "' as keyslist, "
+                                  << std::get<2>(item) << "  as storage_id"
+                                  << std::endl;
+            first = false;
+        } else {
+            query << "\tUNION "
+                  <<   "SELECT '" << std::get<0>(item) << "', '"
+                                  << std::get<1>(item) << "', "
+                                  << std::get<2>(item)
+                                  << std::endl;
+        }
+    }
+    std::string full_query = query.str();
+    execute_query(full_query.c_str());
 }
 
 //----------------------------------Volume----------------------------------------------
@@ -650,6 +675,17 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                 if (merge_lock % 2 == 1) {
                     // Slow path
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
+                    // TODO: remove
+                    {
+                        static uint64_t id = 1ul;
+                        if (id < 10000) {
+                            auto item = std::make_tuple(std::string("series"),
+                                                        std::string("key1=value1 key2=value2"),
+                                                        id++);
+                            std::vector<MetadataStorage::SeriesT> items = {item};
+                            metadata_->insert(items);
+                        }
+                    }
                     if (status == AKU_SUCCESS) {
                         switch(durability_) {
                         case AKU_MAX_DURABILITY:

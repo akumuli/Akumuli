@@ -18,7 +18,7 @@
 using namespace std;
 
 const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 100*1000*1000;
+const int NUM_ITERATIONS = 1000*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -174,8 +174,9 @@ int main(int cnt, const char** args)
 
         // Create database
         uint32_t threshold = 1000;
-        uint64_t windowsize = 10000;
-        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, threshold, windowsize, 0, nullptr);
+        uint64_t windowsize = 100000;
+        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
+                                                  threshold, windowsize, 0, nullptr);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;
