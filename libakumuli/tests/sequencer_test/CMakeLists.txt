@@ -4,6 +4,7 @@ add_executable(
     sequencer_test
         main.cpp
         ../../src/storage.cpp
+        ../../src/seriesparser.cpp
         ../../src/page.cpp
         ../../src/akumuli.cpp
         ../../src/util.cpp

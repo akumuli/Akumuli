@@ -14,6 +14,7 @@ add_library(akumuli SHARED
     internal_cursor.h
     compression.h
     storage.cpp
+    seriesparser.cpp
     page.cpp
     akumuli.cpp
     util.cpp
@@ -125,6 +126,7 @@ add_executable(
     test_storage
         test_storage.cpp
         storage.cpp
+        seriesparser.cpp
         page.cpp
         util.cpp
         compression.cpp

@@ -282,23 +282,63 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     return tuples;
 }
 
-void MetadataStorage::insert(std::vector<std::tuple<std::string, std::string, uint64_t>> const& items) {
+struct LightweightString {
+    const char* str;
+    int len;
+};
+
+std::ostream& operator << (std::ostream& s, LightweightString val) {
+    s.write(val.str, val.len);
+    return s;
+}
+
+static bool split_series(const char* str, int n, LightweightString* outname, LightweightString* outkeys) {
+    int len = 0;
+    while(len < n && str[len] != ' ' && str[len] != '\t') {
+        len++;
+    }
+    if (len >= n) {
+        // Error
+        return false;
+    }
+    outname->str = str;
+    outname->len = len;
+    // Skip space
+    auto end = str + n;
+    str = str + len;
+    while(str < end && (*str == ' ' || *str == '\t')) {
+        str++;
+    }
+    if (str == end) {
+        // Error (no keys present)
+        return false;
+    }
+    outkeys->str = str;
+    outkeys->len = end - str;
+    return true;
+}
+
+void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> const& items) {
     std::stringstream query;
     query << "INSERT INTO akumuli_series (series_id, keyslist, storage_id)" << std::endl;
     bool first = true;
     for (auto item: items) {
-        if (first) {
-            query << "\tSELECT '" << std::get<0>(item) << "' as series_id, '"
-                                  << std::get<1>(item) << "' as keyslist, "
-                                  << std::get<2>(item) << "  as storage_id"
-                                  << std::endl;
-            first = false;
-        } else {
-            query << "\tUNION "
-                  <<   "SELECT '" << std::get<0>(item) << "', '"
-                                  << std::get<1>(item) << "', "
-                                  << std::get<2>(item)
-                                  << std::endl;
+        LightweightString name, keys;
+        auto stid = std::get<2>(item);
+        if (split_series(std::get<0>(item), std::get<1>(item), &name, &keys)) {
+            if (first) {
+                query << "\tSELECT '" << name << "' as series_id, '"
+                                      << keys << "' as keyslist, "
+                                      << stid << "  as storage_id"
+                                      << std::endl;
+                first = false;
+            } else {
+                query << "\tUNION "
+                      <<   "SELECT '" << name << "', '"
+                                      << keys << "', "
+                                      << stid
+                                      << std::endl;
+            }
         }
     }
     std::string full_query = query.str();
@@ -675,17 +715,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                 if (merge_lock % 2 == 1) {
                     // Slow path
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
-                    // TODO: remove
-                    {
-                        static uint64_t id = 1ul;
-                        if (id < 10000) {
-                            auto item = std::make_tuple(std::string("series"),
-                                                        std::string("key1=value1 key2=value2"),
-                                                        id++);
-                            std::vector<MetadataStorage::SeriesT> items = {item};
-                            metadata_->insert(items);
-                        }
-                    }
                     if (status == AKU_SUCCESS) {
                         switch(durability_) {
                         case AKU_MAX_DURABILITY:
@@ -705,6 +734,12 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                             }
                             break;
                         };
+                    }
+                    // Update metadata store
+                    std::vector<SeriesMatcher::SeriesNameT> names;
+                    matcher_->pull_new_names(&names);
+                    if (!names.empty()) {
+                        metadata_->insert_new_names(names);
                     }
                 }
                 return status;

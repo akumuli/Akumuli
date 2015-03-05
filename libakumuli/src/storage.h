@@ -40,6 +40,7 @@
 #include "util.h"
 #include "sequencer.h"
 #include "cursor.h"
+#include "seriesparser.h"
 #include "akumuli_def.h"
 
 namespace Akumuli {
@@ -108,11 +109,11 @@ struct MetadataStorage {
 
     // Writing //
 
-    typedef std::tuple<std::string, std::string, uint64_t> SeriesT;
+    typedef std::tuple<const char*, int, uint64_t> SeriesT;
 
     /** Add new series to the metadata storage.
       */
-    void insert(std::vector<SeriesT> const& items);
+    void insert_new_names(std::vector<SeriesT> const& items);
 
 private:
     /** Execute query that doesn't return anything.
@@ -181,6 +182,7 @@ struct Storage
     typedef std::mutex      LockType;
     typedef std::shared_ptr<Volume> PVolume;
     typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
+    typedef std::shared_ptr<SeriesMatcher> PSeriesMatcher;
 
     // Active volume state
     aku_Config                config_;
@@ -192,6 +194,7 @@ struct Storage
     aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
     PMetadataStorage          metadata_;                  //< Metadata storage
+    PSeriesMatcher            matcher_;                   //< Series matcher
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 

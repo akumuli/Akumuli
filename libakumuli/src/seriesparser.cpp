@@ -71,7 +71,10 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
 
 void SeriesMatcher::add(const char* begin, const char* end) {
     StringT pstr = pool.add(begin, end);
-    table[pstr] = series_id++;
+    auto id = series_id++;
+    table[pstr] = id;
+    auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
+    names.push_back(tup);
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
@@ -82,6 +85,10 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
         return 0ul;
     }
     return it->second;
+}
+
+void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
+    std::swap(names, *buffer);
 }
 
 //                         //

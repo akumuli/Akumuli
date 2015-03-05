@@ -3,10 +3,10 @@
 
 #include <stdint.h>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 #include <deque>
-
 
 namespace Akumuli {
 
@@ -22,7 +22,12 @@ struct StringPool {
   */
 struct SeriesMatcher {
     // TODO: add LRU cache
+
+    //! Pooled string
     typedef std::pair<const char*, int> StringT;
+    //! Series name descriptor - pointer to string, length, series id.
+    typedef std::tuple<const char*, int, uint64_t> SeriesNameT;
+
     static size_t hash(StringT str);
     static bool equal(StringT lhs, StringT rhs);
     typedef std::unordered_map<StringT, uint64_t,
@@ -30,9 +35,10 @@ struct SeriesMatcher {
                                decltype(&SeriesMatcher::equal)> TableT;
 
     // Variables
-    StringPool pool;
-    TableT table;
-    uint64_t series_id;
+    StringPool               pool;       //! String pool that stores time-series
+    TableT                   table;      //! Series table (name to id mapping)
+    uint64_t                 series_id;  //! Series ID counter
+    std::vector<SeriesNameT> names;      //! List of recently added names
 
     SeriesMatcher(uint64_t starting_id);
 
@@ -43,6 +49,11 @@ struct SeriesMatcher {
     /** Match string and return it's id. If string is new return 0.
       */
     uint64_t match(const char* begin, const char* end);
+
+    /** Push all new elements to the buffer.
+      * @param buffer is an output parameter that will receive new elements
+      */
+    void pull_new_names(std::vector<SeriesNameT> *buffer);
 };
 
 /** Namespace class to store all parsing related things.
