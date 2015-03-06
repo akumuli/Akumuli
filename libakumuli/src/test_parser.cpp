@@ -45,12 +45,18 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
     const char* series = " cpu  region=europe   host=127.0.0.1 ";
     auto len = strlen(series);
     char out[40];
+    const char* pbegin = nullptr;
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pbegin, &pend);
+
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
     std::string expected = "cpu host=127.0.0.1 region=europe";
     std::string actual = std::string(out);
     BOOST_REQUIRE_EQUAL(expected, actual);
+
+    std::string keystr = std::string(pbegin, pend);
+    BOOST_REQUIRE_EQUAL("host=127.0.0.1 region=europe", keystr);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_1) {
@@ -59,7 +65,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_1) {
     auto len = strlen(series);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -69,7 +75,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_2) {
     auto len = strlen(series);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -79,7 +85,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_3) {
     auto len = strlen(series);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -89,7 +95,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_4) {
     char series[len];
     char out[len];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -99,6 +105,6 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
     char series[len];
     char out[10];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + 10, &pend);
+    int status = SeriesParser::to_normal_form(series, series + len, out, out + 10, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
 }

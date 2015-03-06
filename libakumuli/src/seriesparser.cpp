@@ -69,12 +69,13 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
     }
 }
 
-void SeriesMatcher::add(const char* begin, const char* end) {
+uint64_t SeriesMatcher::add(const char* begin, const char* end) {
     StringT pstr = pool.add(begin, end);
     auto id = series_id++;
     table[pstr] = id;
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
     names.push_back(tup);
+    return id;
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
@@ -138,7 +139,8 @@ static const char* skip_tag(const char* p, const char* end, bool *error) {
 
 int SeriesParser::to_normal_form(const char* begin, const char* end,
                                  char* out_begin, char* out_end,
-                                 const char** keystr_begin)
+                                 const char** keystr_begin,
+                                 const char** keystr_end)
 {
     // Verify args
     if (end < begin) {
@@ -230,7 +232,7 @@ int SeriesParser::to_normal_form(const char* begin, const char* end,
         copy_until(tag, end, ' ', &it_out);
     }
     *it_out = '\0';
-
+    *keystr_end = it_out;
     return AKU_SUCCESS;
 }
 

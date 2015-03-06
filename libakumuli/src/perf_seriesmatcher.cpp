@@ -48,8 +48,9 @@ int main() {
     for(int i = 0; i < NELEMENTS; i++) {
         int n = sprintf(input, series_name_fmt, i%100000, i%100000);
         const char* keystr = nullptr;
-        SeriesParser::to_normal_form(input, input+n, output, output+n+1, &keystr);
-        matcher.add(output, output+n);
+        const char* outend = nullptr;
+        SeriesParser::to_normal_form(input, input+n, output, output+n+1, &keystr, &outend);
+        matcher.add(output, outend);
     }
     double elapsed = tm.elapsed();
     std::cout << "Putting " << NELEMENTS << " values to the matcher in "

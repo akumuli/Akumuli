@@ -224,12 +224,17 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
 
 /** Write measurement to DB
   * @param db opened database instance
-  * @param series_key string containing series name and key-value list
+  * @param series_key_begin should point to the begining of the string with series name
+  * @param series_key_end should point to the end of the string
   * @param timestamp timestamp
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double(aku_Database* db, const char* series_key, aku_TimeStamp timestamp, double value);
+AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
+                                       const char* series_key_begin,
+                                       const char* series_key_end,
+                                       aku_TimeStamp timestamp,
+                                       double value);
 
 //---------
 // Queries

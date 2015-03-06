@@ -234,7 +234,18 @@ struct Storage
     //! Write double.
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
 
+    //! Write double.
+    aku_Status write_double(const char* begin, const char* end, aku_TimeStamp ts, double value);
+
     aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);
+
+    /** Convert series name to parameter id
+      * @param begin should point to series name
+      * @param end should point to series name end
+      * @param value is a pointer to output parameter
+      * @returns status code
+      */
+    aku_Status _series_to_param_id(const char* begin, const char* end, uint64_t *value);
 
     // Reading
 

@@ -44,7 +44,7 @@ struct SeriesMatcher {
 
     /** Add new string to matcher.
       */
-    void add(const char* begin, const char* end);
+    uint64_t add(const char* begin, const char* end);
 
     /** Match string and return it's id. If string is new return 0.
       */
@@ -73,7 +73,7 @@ struct SeriesParser
       */
     static int to_normal_form(const char* begin, const char* end,
                               char* out_begin, char* out_end,
-                              const char** keystr_begin);
+                              const char** keystr_begin, const char **keystr_end);
 };
 
 }
