@@ -345,6 +345,46 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> con
     execute_query(full_query.c_str());
 }
 
+uint64_t MetadataStorage::get_prev_largest_id() {
+    auto query = "SELECT max(storage_id) FROM akumuli_series;";
+    try {
+        auto results = select_query(query);
+        if (results.empty()) {
+            // Table is empty, this is OK, return 1
+            return 1ul;
+        }
+        auto row = results.at(0);
+        if (row.empty()) {
+            AKU_PANIC("Can't get max storage id");
+        }
+        auto id = row.at(0);
+        return boost::lexical_cast<uint64_t>(id);
+    } catch(...) {
+        (*logger_)(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
+        AKU_PANIC("Can't get max storage id");
+    }
+}
+
+
+aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
+    auto query = "SELECT series_id || ' ' || keyslist, storage_id FROM akumuli_series;";
+    try {
+        auto results = select_query(query);
+        for(auto row: results) {
+            if (row.size() != 2) {
+                continue;
+            }
+            auto series = row.at(0);
+            auto id = boost::lexical_cast<uint64_t>(row.at(1));
+            matcher._add(series, id);
+        }
+    } catch(...) {
+        (*logger_)(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
+        return AKU_EGENERAL;
+    }
+    return AKU_SUCCESS;
+}
+
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
@@ -565,6 +605,14 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     if (active_page_->sync_count != active_page_->checkpoint) {
         active_page_->sync_count = active_page_->checkpoint;
         active_volume_->flush();
+    }
+
+    // Read data from sqlite to series matcher
+    uint64_t nextid = 1 + metadata_->get_prev_largest_id();
+    matcher_ = std::make_shared<SeriesMatcher>(nextid + 1);
+    aku_Status status = metadata_->load_matcher_data(*matcher_);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't read series names from sqlite");
     }
 }
 

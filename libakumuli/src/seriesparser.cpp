@@ -78,6 +78,17 @@ uint64_t SeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
+void SeriesMatcher::_add(std::string series, uint64_t id) {
+    if (series.empty()) {
+        return;
+    }
+    const char* begin = &series[0];
+    const char* end = begin + series.size();
+    StringT pstr = pool.add(begin, end);
+    table[pstr] = id;
+
+}
+
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     int len = end - begin;
     StringT str = std::make_pair(begin, len);
@@ -231,7 +242,7 @@ int SeriesParser::to_normal_form(const char* begin, const char* end,
         const char* tag = tags[i];
         copy_until(tag, end, ' ', &it_out);
     }
-    *it_out = '\0';
+    *keystr_begin = skip_space(*keystr_begin, out_end);
     *keystr_end = it_out;
     return AKU_SUCCESS;
 }

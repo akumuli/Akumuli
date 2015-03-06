@@ -52,7 +52,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     std::string expected = "cpu host=127.0.0.1 region=europe";
-    std::string actual = std::string(out);
+    std::string actual = std::string((const char*)out, pend);
     BOOST_REQUIRE_EQUAL(expected, actual);
 
     std::string keystr = std::string(pbegin, pend);

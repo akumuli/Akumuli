@@ -46,6 +46,12 @@ struct SeriesMatcher {
       */
     uint64_t add(const char* begin, const char* end);
 
+    /** Add value from DB to matcher. This function should be
+      * used only to load data from database to matcher. Internal
+      * `series_id` counter shouldn't be affected by this call.
+      */
+    void _add(std::string series, uint64_t id);
+
     /** Match string and return it's id. If string is new return 0.
       */
     uint64_t match(const char* begin, const char* end);

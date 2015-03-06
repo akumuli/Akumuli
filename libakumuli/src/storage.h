@@ -107,6 +107,11 @@ struct MetadataStorage {
                      uint32_t *max_cache_size,
                      uint64_t *window_size, std::string *creation_datetime);
 
+    /** Read larges series id */
+    uint64_t get_prev_largest_id();
+
+    aku_Status load_matcher_data(SeriesMatcher& matcher);
+
     // Writing //
 
     typedef std::tuple<const char*, int, uint64_t> SeriesT;
