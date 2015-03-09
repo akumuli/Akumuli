@@ -118,14 +118,14 @@ struct MetadataStorage {
 
     /** Add new series to the metadata storage.
       */
-    void insert_new_names(std::vector<SeriesT> const& items);
+    void insert_new_names(std::vector<SeriesT> items);
 
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error
       * @return number of rows changed
       */
-    int execute_query(const char* query);
+    int execute_query(std::string query);
 
     typedef std::vector<std::string> UntypedTuple;
 

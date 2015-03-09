@@ -18,7 +18,7 @@
 using namespace std;
 
 const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 1000*1000*1000;
+const int NUM_ITERATIONS = 10*1000*1000;
 const int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -197,7 +197,11 @@ int main(int cnt, const char** args)
             uint64_t k = i + 2;
             double value = 0.0001*k;
             aku_ParamId id = i & 0xF;
-            aku_Status status = aku_write_double_raw(db, id, i, value);
+            char series_name[0x200];
+            int slen = sprintf(series_name, "cpu host=%X ", unsigned(i) % 10000);
+            const char* series_begin = series_name;
+            const char* series_end = series_begin + slen;
+            aku_Status status = aku_write_double(db, series_begin, series_end, i, value);
             if (status == AKU_EBUSY) {
                 status = aku_write_double_raw(db, id, i, value);
                 busy_count++;

@@ -92,12 +92,12 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     create_tables();
 }
 
-int MetadataStorage::execute_query(const char* query) {
+int MetadataStorage::execute_query(std::string query) {
     if (logger_ != &aku_console_logger) {
-        (*logger_)(AKU_LOG_TRACE, query);
+        (*logger_)(AKU_LOG_TRACE, query.c_str());
     }
     int nrows = -1;
-    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
+    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.c_str());
     if (status != 0 && status != 21) {
         // generate error and throw
         (*logger_)(AKU_LOG_ERROR, "Error executing query");
@@ -153,7 +153,7 @@ void MetadataStorage::init_config(uint32_t compression_threshold,
     insert << "\tUNION SELECT 'creation_time', '" << creation_datetime
            << "', 'Database creation time'" << std::endl;
     std::string insert_query = insert.str();
-    execute_query(insert_query.c_str());
+    execute_query(insert_query);
 }
 
 void MetadataStorage::get_configs(uint32_t *compression_threshold,
@@ -227,7 +227,7 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
         }
     }
     std::string full_query = query.str();
-    execute_query(full_query.c_str());
+    execute_query(full_query);
 }
 
 
@@ -318,46 +318,55 @@ static bool split_series(const char* str, int n, LightweightString* outname, Lig
     return true;
 }
 
-void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> const& items) {
-    std::stringstream query;
-    query << "INSERT INTO akumuli_series (series_id, keyslist, storage_id)" << std::endl;
-    bool first = true;
-    for (auto item: items) {
-        LightweightString name, keys;
-        auto stid = std::get<2>(item);
-        if (split_series(std::get<0>(item), std::get<1>(item), &name, &keys)) {
-            if (first) {
-                query << "\tSELECT '" << name << "' as series_id, '"
-                                      << keys << "' as keyslist, "
-                                      << stid << "  as storage_id"
-                                      << std::endl;
-                first = false;
-            } else {
-                query << "\tUNION "
-                      <<   "SELECT '" << name << "', '"
-                                      << keys << "', "
-                                      << stid
-                                      << std::endl;
+void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> items) {
+    if (items.size() == 0) {
+        return;
+    }
+    while(!items.empty()) {
+        const size_t batchsize = 100;
+        const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
+        std::vector<MetadataStorage::SeriesT> batch(items.begin() + newsize, items.end());
+        items.resize(newsize);
+        std::stringstream query;
+        query << "INSERT INTO akumuli_series (series_id, keyslist, storage_id)" << std::endl;
+        bool first = true;
+        for (auto item: batch) {
+            LightweightString name, keys;
+            auto stid = std::get<2>(item);
+            if (split_series(std::get<0>(item), std::get<1>(item), &name, &keys)) {
+                if (first) {
+                    query << "\tSELECT '" << name << "' as series_id, '"
+                                          << keys << "' as keyslist, "
+                                          << stid << "  as storage_id"
+                                          << std::endl;
+                    first = false;
+                } else {
+                    query << "\tUNION "
+                          <<   "SELECT '" << name << "', '"
+                                          << keys << "', "
+                                          << stid
+                                          << std::endl;
+                }
             }
         }
+        std::string full_query = query.str();
+        execute_query(full_query);
     }
-    std::string full_query = query.str();
-    execute_query(full_query.c_str());
 }
 
 uint64_t MetadataStorage::get_prev_largest_id() {
     auto query = "SELECT max(storage_id) FROM akumuli_series;";
     try {
         auto results = select_query(query);
-        if (results.empty()) {
-            // Table is empty, this is OK, return 1
-            return 1ul;
-        }
         auto row = results.at(0);
         if (row.empty()) {
             AKU_PANIC("Can't get max storage id");
         }
         auto id = row.at(0);
+        if (id == "") {
+            // Table is empty
+            return 1ul;
+        }
         return boost::lexical_cast<uint64_t>(id);
     } catch(...) {
         (*logger_)(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
@@ -836,7 +845,12 @@ aku_Status Storage::_series_to_param_id(const char* begin, const char* end, uint
                                                buffer, buffer+AKU_LIMITS_MAX_SNAME,
                                                &keystr_begin, &keystr_end);
     if (status == AKU_SUCCESS) {
-        *value = matcher_->add(buffer, keystr_end);
+        auto id = matcher_->match(buffer, keystr_end);
+        if (id == 0) {
+            *value = matcher_->add(buffer, keystr_end);
+        } else {
+            *value = id;
+        }
     }
     return status;
 }
