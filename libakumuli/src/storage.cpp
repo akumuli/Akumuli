@@ -90,6 +90,14 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     handle_ = HandleT(handle, AprHandleDeleter(driver_));
 
     create_tables();
+
+    // Create prepared statement
+    const char* query = "INSERT INTO akumuli_series (series_id, keyslist, storage_id) VALUES (%s, %s, %d)";
+    status = apr_dbd_prepare(driver_, pool_.get(), handle_.get(), query, "INSERT_SERIES_NAME", &insert_);
+    if (status != 0) {
+        (*logger_)(AKU_LOG_ERROR, "Error creating prepared statement");
+        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
+    }
 }
 
 int MetadataStorage::execute_query(std::string query) {
@@ -322,6 +330,10 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
     if (items.size() == 0) {
         return;
     }
+
+    execute_query("BEGIN TRANSACTION;");
+
+    // Write all data
     while(!items.empty()) {
         const size_t batchsize = 100;
         const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
@@ -352,6 +364,8 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
         std::string full_query = query.str();
         execute_query(full_query);
     }
+
+    execute_query("END TRANSACTION;");
 }
 
 uint64_t MetadataStorage::get_prev_largest_id() {
@@ -770,7 +784,17 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                 int merge_lock = 0;
                 std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
                 if (merge_lock % 2 == 1) {
-                    // Slow path
+
+                    // Slow path //
+
+                    // Update metadata store
+                    std::vector<SeriesMatcher::SeriesNameT> names;
+                    matcher_->pull_new_names(&names);
+                    if (!names.empty()) {
+                        metadata_->insert_new_names(names);
+                    }
+
+                    // Move data from cache to disk
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
                     if (status == AKU_SUCCESS) {
                         switch(durability_) {
@@ -791,12 +815,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                             }
                             break;
                         };
-                    }
-                    // Update metadata store
-                    std::vector<SeriesMatcher::SeriesNameT> names;
-                    matcher_->pull_new_names(&names);
-                    if (!names.empty()) {
-                        metadata_->insert_new_names(names);
                     }
                 }
                 return status;

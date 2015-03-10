@@ -19,6 +19,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     if (size == 0) {
         return std::make_pair("", 0);
     }
+    size++;
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
         // New bin
@@ -29,6 +30,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     for(auto i = begin; i < end; i++) {
         bin->push_back(*i);
     }
+    bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
     return std::make_pair(p, size);

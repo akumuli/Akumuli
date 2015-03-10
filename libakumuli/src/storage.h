@@ -68,11 +68,13 @@ struct MetadataStorage {
     typedef const apr_dbd_driver_t*                                         DriverT;
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter>                    HandleT;
     typedef std::pair<int, std::string>                                     VolumeDesc;
+    typedef apr_dbd_prepared_t*                                             PreparedT;
 
     // Members
-    PoolT pool_;
-    DriverT driver_;
-    HandleT handle_;
+    PoolT           pool_;
+    DriverT         driver_;
+    HandleT         handle_;
+    PreparedT       insert_;
     aku_logger_cb_t logger_;
 
     /** Create new or open existing db.
