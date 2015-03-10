@@ -33,7 +33,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
-    return std::make_pair(p, size);
+    return std::make_pair(p, size-1);
 }
 
 

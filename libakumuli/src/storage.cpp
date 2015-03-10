@@ -100,8 +100,8 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     }
 }
 
-int MetadataStorage::execute_query(std::string query) {
-    if (logger_ != &aku_console_logger) {
+int MetadataStorage::execute_query(std::string query, bool supress_logging) {
+    if (!supress_logging) {
         (*logger_)(AKU_LOG_TRACE, query.c_str());
     }
     int nrows = -1;
@@ -331,7 +331,7 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
         return;
     }
 
-    execute_query("BEGIN TRANSACTION;");
+    execute_query("BEGIN TRANSACTION;", true);
 
     // Write all data
     while(!items.empty()) {
@@ -362,10 +362,10 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
             }
         }
         std::string full_query = query.str();
-        execute_query(full_query);
+        execute_query(full_query, true);
     }
 
-    execute_query("END TRANSACTION;");
+    execute_query("END TRANSACTION;", true);
 }
 
 uint64_t MetadataStorage::get_prev_largest_id() {
