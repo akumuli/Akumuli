@@ -1,12 +1,14 @@
 #pragma once
 #include "akumuli_def.h"
+#include "queryprocessor.h"
 
 #include <stdint.h>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 #include <deque>
-
+#include <memory>
 
 namespace Akumuli {
 
@@ -22,7 +24,12 @@ struct StringPool {
   */
 struct SeriesMatcher {
     // TODO: add LRU cache
+
+    //! Pooled string
     typedef std::pair<const char*, int> StringT;
+    //! Series name descriptor - pointer to string, length, series id.
+    typedef std::tuple<const char*, int, uint64_t> SeriesNameT;
+
     static size_t hash(StringT str);
     static bool equal(StringT lhs, StringT rhs);
     typedef std::unordered_map<StringT, uint64_t,
@@ -30,19 +37,33 @@ struct SeriesMatcher {
                                decltype(&SeriesMatcher::equal)> TableT;
 
     // Variables
-    StringPool pool;
-    TableT table;
-    uint64_t series_id;
+    StringPool               pool;       //! String pool that stores time-series
+    TableT                   table;      //! Series table (name to id mapping)
+    uint64_t                 series_id;  //! Series ID counter
+    std::vector<SeriesNameT> names;      //! List of recently added names
 
     SeriesMatcher(uint64_t starting_id);
 
     /** Add new string to matcher.
       */
-    void add(const char* begin, const char* end);
+    uint64_t add(const char* begin, const char* end);
+
+    /** Add value from DB to matcher. This function should be
+      * used only to load data from database to matcher. Internal
+      * `series_id` counter shouldn't be affected by this call.
+      */
+    void _add(std::string series, uint64_t id);
 
     /** Match string and return it's id. If string is new return 0.
       */
     uint64_t match(const char* begin, const char* end);
+
+    /** Push all new elements to the buffer.
+      * @param buffer is an output parameter that will receive new elements
+      */
+    void pull_new_names(std::vector<SeriesNameT> *buffer);
+
+    std::shared_ptr<QueryProcessor> build_query_processor(const char* query);
 };
 
 /** Namespace class to store all parsing related things.
@@ -62,7 +83,7 @@ struct SeriesParser
       */
     static int to_normal_form(const char* begin, const char* end,
                               char* out_begin, char* out_end,
-                              const char** keystr_begin);
+                              const char** keystr_begin, const char **keystr_end);
 };
 
 }

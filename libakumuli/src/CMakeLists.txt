@@ -13,12 +13,16 @@ add_library(akumuli SHARED
     compression.cpp
     internal_cursor.h
     compression.h
+    metadatastorage.h
     storage.cpp
+    seriesparser.cpp
     page.cpp
     akumuli.cpp
     util.cpp
     sequencer.cpp
     cursor.cpp
+    metadatastorage.cpp
+    queryprocessor.cpp
 )
 
 include_directories(../include)
@@ -125,12 +129,15 @@ add_executable(
     test_storage
         test_storage.cpp
         storage.cpp
+        seriesparser.cpp
         page.cpp
         util.cpp
         compression.cpp
         cursor.cpp
         sequencer.cpp
         akumuli.cpp
+        metadatastorage.cpp
+        queryprocessor.cpp
 )
 
 target_link_libraries(
@@ -159,6 +166,23 @@ target_link_libraries(
 )
 
 add_test(seriesparser test_seriesparser)
+
+# Series parser perftest
+
+add_executable(
+    perf_seriesmatcher
+    seriesparser.cpp
+    perf_seriesmatcher.cpp
+    util.cpp
+)
+
+target_link_libraries(
+    perf_seriesmatcher
+    ${Boost_LIBRARIES}
+    "${APR_LIBRARY}"
+)
+
+# libakumuli
 
 install(
     TARGETS

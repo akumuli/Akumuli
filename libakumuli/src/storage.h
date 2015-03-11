@@ -32,7 +32,6 @@
 #include <mutex>
 
 // APR headers
-#include <apr_dbd.h>
 #include <apr.h>
 #include <apr_mmap.h>
 
@@ -40,87 +39,11 @@
 #include "util.h"
 #include "sequencer.h"
 #include "cursor.h"
+#include "seriesparser.h"
 #include "akumuli_def.h"
+#include "metadatastorage.h"
 
 namespace Akumuli {
-
-//! Delete apr pool
-void delete_apr_pool(apr_pool_t *p);
-
-//! APR DBD handle deleter
-struct AprHandleDeleter {
-    const apr_dbd_driver_t *driver;
-    AprHandleDeleter(const apr_dbd_driver_t *driver);
-    void operator()(apr_dbd_t* handle);
-};
-
-
-/** Sqlite3 backed storage for metadata.
-  * Metadata includes:
-  * - Volumes list
-  * - Conviguration data
-  * - Key to id mapping
-  */
-struct MetadataStorage {
-    // Typedefs
-    typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)>         PoolT;
-    typedef const apr_dbd_driver_t*                                         DriverT;
-    typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter>                    HandleT;
-    typedef std::pair<int, std::string>                                     VolumeDesc;
-
-    // Members
-    PoolT pool_;
-    DriverT driver_;
-    HandleT handle_;
-    aku_logger_cb_t logger_;
-
-    /** Create new or open existing db.
-      * @throw std::runtime_error in a case of error
-      */
-    MetadataStorage(const char* db, aku_logger_cb_t logger);
-
-    // Creation //
-
-    /** Create tables if database is empty
-      * @throw std::runtime_error in a case of error
-      */
-    void create_tables();
-
-    /** Initialize volumes table
-      * @throw std::runtime_error in a case of error
-      */
-    void init_volumes(std::vector<VolumeDesc> volumes);
-
-    void init_config(uint32_t compression_threshold,
-                     uint32_t max_cache_size,
-                     uint64_t window_size, const char *creation_datetime);
-
-    // Retreival //
-
-    /** Read list of volumes and their sequence numbers.
-      * @throw std::runtime_error in a case of error
-      */
-    std::vector<VolumeDesc> get_volumes() const;
-
-    void get_configs(uint32_t *compression_threshold,
-                     uint32_t *max_cache_size,
-                     uint64_t *window_size, std::string *creation_datetime);
-
-private:
-    /** Execute query that doesn't return anything.
-      * @throw std::runtime_error in a case of error
-      * @return number of rows changed
-      */
-    int execute_query(const char* query);
-
-    typedef std::vector<std::string> UntypedTuple;
-
-    /** Execute select query and return untyped results.
-      * @throw std::runtime_error in a case of error
-      * @return bunch of strings with results
-      */
-    std::vector<UntypedTuple> select_query(const char* query) const;
-};
 
 /** Storage volume.
   * Coresponds to one of the storage pages. Includes page
@@ -173,6 +96,7 @@ struct Storage
     typedef std::mutex      LockType;
     typedef std::shared_ptr<Volume> PVolume;
     typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
+    typedef std::shared_ptr<SeriesMatcher> PSeriesMatcher;
 
     // Active volume state
     aku_Config                config_;
@@ -184,6 +108,7 @@ struct Storage
     aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
     PMetadataStorage          metadata_;                  //< Metadata storage
+    PSeriesMatcher            matcher_;                   //< Series matcher
 
     LockType                  mutex_;                     //< Storage lock (used by worker thread)
 
@@ -223,7 +148,18 @@ struct Storage
     //! Write double.
     aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
 
+    //! Write double.
+    aku_Status write_double(const char* begin, const char* end, aku_TimeStamp ts, double value);
+
     aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);
+
+    /** Convert series name to parameter id
+      * @param begin should point to series name
+      * @param end should point to series name end
+      * @param value is a pointer to output parameter
+      * @returns status code
+      */
+    aku_Status _series_to_param_id(const char* begin, const char* end, uint64_t *value);
 
     // Reading
 

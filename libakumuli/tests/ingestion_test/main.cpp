@@ -174,8 +174,9 @@ int main(int cnt, const char** args)
 
         // Create database
         uint32_t threshold = 1000;
-        uint64_t windowsize = 10000;
-        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE, threshold, windowsize, 0, nullptr);
+        uint64_t windowsize = 100000;
+        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
+                                                  threshold, windowsize, 0, nullptr);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;
@@ -196,7 +197,11 @@ int main(int cnt, const char** args)
             uint64_t k = i + 2;
             double value = 0.0001*k;
             aku_ParamId id = i & 0xF;
-            aku_Status status = aku_write_double_raw(db, id, i, value);
+            char series_name[0x200];
+            int slen = sprintf(series_name, "cpu host=%X ", unsigned(i) % 100000);
+            const char* series_begin = series_name;
+            const char* series_end = series_begin + slen;
+            aku_Status status = aku_write_double(db, series_begin, series_end, i, value);
             if (status == AKU_EBUSY) {
                 status = aku_write_double_raw(db, id, i, value);
                 busy_count++;

@@ -41,245 +41,6 @@ namespace Akumuli {
 
 static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger);
 
-void delete_apr_pool(apr_pool_t *p) {
-    if (p) {
-        apr_pool_destroy(p);
-    }
-}
-
-AprHandleDeleter::AprHandleDeleter(const apr_dbd_driver_t *driver)
-    : driver(driver)
-{
-}
-
-void AprHandleDeleter::operator()(apr_dbd_t* handle) {
-    if (driver != nullptr && handle != nullptr) {
-        apr_dbd_close(driver, handle);
-    }
-}
-
-
-//-------------------------------MetadataStorage----------------------------------------
-
-MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
-    : pool_(nullptr, &delete_apr_pool)
-    , driver_(nullptr)
-    , handle_(nullptr, AprHandleDeleter(nullptr))
-    , logger_(logger)
-{
-    apr_pool_t *pool = nullptr;
-    auto status = apr_pool_create(&pool, NULL);
-    if (status != APR_SUCCESS) {
-        // report error (can't return error from c-tor)
-        throw std::runtime_error("Can't create memory pool");
-    }
-    pool_.reset(pool);
-
-    status = apr_dbd_get_driver(pool, "sqlite3", &driver_);
-    if (status != APR_SUCCESS) {
-        (*logger_)(AKU_LOG_ERROR, "Can't load driver, maybe libaprutil1-dbd-sqlite3 isn't installed");
-        throw std::runtime_error("Can't load sqlite3 dirver");
-    }
-
-    apr_dbd_t *handle = nullptr;
-    status = apr_dbd_open(driver_, pool, db, &handle);
-    if (status != APR_SUCCESS) {
-        (*logger_)(AKU_LOG_ERROR, "Can't open database, check file path");
-        throw std::runtime_error("Can't open database");
-    }
-    handle_ = HandleT(handle, AprHandleDeleter(driver_));
-
-    create_tables();
-}
-
-int MetadataStorage::execute_query(const char* query) {
-    (*logger_)(AKU_LOG_TRACE, query);
-    int nrows = -1;
-    int status = apr_dbd_query(driver_, handle_.get(), &nrows, query);
-    if (status != 0 && status != 21) {
-        // generate error and throw
-        (*logger_)(AKU_LOG_ERROR, "Error executing query");
-        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
-    }
-    return nrows;
-}
-
-void MetadataStorage::create_tables() {
-    const char* query = nullptr;
-
-    // Create volumes table
-    query =
-            "CREATE TABLE IF NOT EXISTS akumuli_volumes("
-            "id INTEGER UNIQUE,"
-            "path TEXT UNIQUE"
-            ");";
-    execute_query(query);
-
-    // Create configuration table (key-value-commmentary)
-    query =
-            "CREATE TABLE IF NOT EXISTS akumuli_configuration("
-            "name TEXT UNIQUE,"
-            "value TEXT,"
-            "comment TEXT"
-            ");";
-    execute_query(query);
-
-    query =
-            "CREATE TABLE IF NOT EXISTS akumuli_series("
-            "id INTEGER PRIMARY KEY UNIQUE,"
-            "series_id TEXT,"
-            "keyslist TEXT,"
-            "storage_id INTEGER UNIQUE"
-            ");";
-    execute_query(query);
-}
-
-void MetadataStorage::init_config(uint32_t compression_threshold,
-                                  uint32_t max_cache_size,
-                                  uint64_t window_size,
-                                  const char* creation_datetime)
-{
-    // Create table and insert data into it
-
-    std::stringstream insert;
-    insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'compression_threshold' as name, '" << compression_threshold << "' as value, "
-           << "'Compression threshold value' as comment" << std::endl;
-    insert << "\tUNION SELECT 'max_cache_size', '" << max_cache_size
-           << "', 'Maximal cache size'" << std::endl;
-    insert << "\tUNION SELECT 'window_size', '" << window_size << "', 'Write window size'" << std::endl;
-    insert << "\tUNION SELECT 'creation_time', '" << creation_datetime
-           << "', 'Database creation time'" << std::endl;
-    std::string insert_query = insert.str();
-    execute_query(insert_query.c_str());
-}
-
-void MetadataStorage::get_configs(uint32_t *compression_threshold,
-                                  uint32_t *max_cache_size,
-                                  uint64_t *window_size,
-                                  std::string *creation_datetime)
-{
-    {   // Read compression_threshold
-        std::string query = "SELECT value FROM akumuli_configuration "
-                            "WHERE name='compression_threshold'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (compression_threshold)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (compression_threshold)");
-        }
-        *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
-    }
-    {   // Read max_cache_size
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='max_cache_size'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (max_cache_size)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (max_cache_size)");
-        }
-        *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
-    }
-    {   // Read window_size
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='window_size'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (window_size)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (window_size)");
-        }
-        // This value can be encoded as dobule by the sqlite engine
-        *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
-    }
-    {   // Read creation time
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='creation_time'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (creation_time)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (creation_time)");
-        }
-        // This value can be encoded as dobule by the sqlite engine
-        *creation_datetime = tuple.at(0);
-    }
-}
-
-void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
-    std::stringstream query;
-    query << "INSERT INTO akumuli_volumes (id, path)" << std::endl;
-    bool first = true;
-    for (auto desc: volumes) {
-        if (first) {
-            query << "\tSELECT " << desc.first << " as id, '" << desc.second << "' as path" << std::endl;
-            first = false;
-        } else {
-            query << "\tUNION SELECT " << desc.first << ", '" << desc.second << "'" << std::endl;
-        }
-    }
-    std::string full_query = query.str();
-    execute_query(full_query.c_str());
-}
-
-
-std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
-    (*logger_)(AKU_LOG_TRACE, query);
-    std::vector<UntypedTuple> tuples;
-    apr_dbd_results_t *results = nullptr;
-    int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
-    if (status != 0) {
-        (*logger_)(AKU_LOG_ERROR, "Error executing query");
-        throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
-    }
-    // get rows
-    int ntuples = apr_dbd_num_tuples(driver_, results);
-    int ncolumns = apr_dbd_num_cols(driver_, results);
-    for (int i = ntuples; i --> 0;) {
-        apr_dbd_row_t *row = nullptr;
-        status = apr_dbd_get_row(driver_, pool_.get(), results, &row, -1);
-        if (status != 0) {
-            (*logger_)(AKU_LOG_ERROR, "Error getting row from resultset");
-            throw std::runtime_error(apr_dbd_error(driver_, handle_.get(), status));
-        }
-        UntypedTuple tup;
-        for (int col = 0; col < ncolumns; col++) {
-            const char* entry = apr_dbd_get_entry(driver_, row, col);
-            if (entry) {
-                tup.emplace_back(entry);
-            } else {
-                tup.emplace_back();
-            }
-        }
-        tuples.push_back(std::move(tup));
-    }
-    return tuples;
-}
-
-std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
-    const char* query =
-            "SELECT id, path FROM akumuli_volumes;";
-    std::vector<VolumeDesc> tuples;
-    std::vector<UntypedTuple> untyped = select_query(query);
-    // get rows
-    auto ntuples = untyped.size();
-    for (size_t i = 0; i < ntuples; i++) {
-        // get id
-        std::string idrepr = untyped.at(i).at(0);
-        int id = boost::lexical_cast<int>(idrepr);
-        // get path
-        std::string path = untyped.at(i).at(1);
-        tuples.push_back(std::make_pair(id, path));
-    }
-    return tuples;
-}
-
 //----------------------------------Volume----------------------------------------------
 
 // TODO: remove max_cache_size
@@ -501,6 +262,14 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
         active_page_->sync_count = active_page_->checkpoint;
         active_volume_->flush();
     }
+
+    // Read data from sqlite to series matcher
+    uint64_t nextid = 1 + metadata_->get_prev_largest_id();
+    matcher_ = std::make_shared<SeriesMatcher>(nextid + 1);
+    aku_Status status = metadata_->load_matcher_data(*matcher_);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't read series names from sqlite");
+    }
 }
 
 aku_Status Storage::get_open_error() const {
@@ -648,7 +417,17 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
                 int merge_lock = 0;
                 std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
                 if (merge_lock % 2 == 1) {
-                    // Slow path
+
+                    // Slow path //
+
+                    // Update metadata store
+                    std::vector<SeriesMatcher::SeriesNameT> names;
+                    matcher_->pull_new_names(&names);
+                    if (!names.empty()) {
+                        metadata_->insert_new_names(names);
+                    }
+
+                    // Move data from cache to disk
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
                     if (status == AKU_SUCCESS) {
                         switch(durability_) {
@@ -696,6 +475,35 @@ aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double val
     aku_MemRange m = {};
     TimeSeriesValue ts_value(ts, param, value);
     return _write_impl(ts_value, m);
+}
+
+aku_Status Storage::write_double(const char* begin, const char* end, aku_TimeStamp ts, double value) {
+    aku_ParamId id;
+    auto status = _series_to_param_id(begin, end, &id);
+    if (status == AKU_SUCCESS) {
+        aku_MemRange m = {};
+        TimeSeriesValue ts_value(ts, id, value);
+        status = _write_impl(ts_value, m);
+    }
+    return status;
+}
+
+aku_Status Storage::_series_to_param_id(const char* begin, const char* end, uint64_t *value) {
+    char buffer[AKU_LIMITS_MAX_SNAME];
+    const char* keystr_begin = nullptr;
+    const char* keystr_end = nullptr;
+    auto status = SeriesParser::to_normal_form(begin, end,
+                                               buffer, buffer+AKU_LIMITS_MAX_SNAME,
+                                               &keystr_begin, &keystr_end);
+    if (status == AKU_SUCCESS) {
+        auto id = matcher_->match(buffer, keystr_end);
+        if (id == 0) {
+            *value = matcher_->add(buffer, keystr_end);
+        } else {
+            *value = id;
+        }
+    }
+    return status;
 }
 
 

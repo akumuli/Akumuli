@@ -19,6 +19,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     if (size == 0) {
         return std::make_pair("", 0);
     }
+    size++;
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
         // New bin
@@ -29,9 +30,10 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     for(auto i = begin; i < end; i++) {
         bin->push_back(*i);
     }
+    bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
-    return std::make_pair(p, size);
+    return std::make_pair(p, size-1);
 }
 
 
@@ -69,9 +71,24 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
     }
 }
 
-void SeriesMatcher::add(const char* begin, const char* end) {
+uint64_t SeriesMatcher::add(const char* begin, const char* end) {
     StringT pstr = pool.add(begin, end);
-    table[pstr] = series_id++;
+    auto id = series_id++;
+    table[pstr] = id;
+    auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
+    names.push_back(tup);
+    return id;
+}
+
+void SeriesMatcher::_add(std::string series, uint64_t id) {
+    if (series.empty()) {
+        return;
+    }
+    const char* begin = &series[0];
+    const char* end = begin + series.size();
+    StringT pstr = pool.add(begin, end);
+    table[pstr] = id;
+
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
@@ -82,6 +99,30 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
         return 0ul;
     }
     return it->second;
+}
+
+void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
+    std::swap(names, *buffer);
+}
+
+std::shared_ptr<QueryProcessor> SeriesMatcher::build_query_processor(const char* query) {
+    /* Query format:
+     * {
+     *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
+     *      "metric": "cpu",
+     *      // or
+     *      "metrics": ["cpu", "mem"],
+     *      "where": [
+     *          { "equals": { "key1": "val1" }},
+     *          { "not_equals" : { "key2": "val2" }},
+     *          { "in" : { "key3": [1, 2, 3, "foo"]}
+     *      ],
+     *      "group_by": [
+     *          "key" : [ "key1", "key2" ]
+     *      ]
+     * }
+     */
+    throw "not implemented";
 }
 
 //                         //
@@ -131,7 +172,8 @@ static const char* skip_tag(const char* p, const char* end, bool *error) {
 
 int SeriesParser::to_normal_form(const char* begin, const char* end,
                                  char* out_begin, char* out_end,
-                                 const char** keystr_begin)
+                                 const char** keystr_begin,
+                                 const char** keystr_end)
 {
     // Verify args
     if (end < begin) {
@@ -222,8 +264,8 @@ int SeriesParser::to_normal_form(const char* begin, const char* end,
         const char* tag = tags[i];
         copy_until(tag, end, ' ', &it_out);
     }
-    *it_out = '\0';
-
+    *keystr_begin = skip_space(*keystr_begin, out_end);
+    *keystr_end = it_out;
     return AKU_SUCCESS;
 }
 

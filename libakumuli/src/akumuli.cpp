@@ -196,6 +196,10 @@ struct DatabaseImpl : public aku_Database
         return storage_.write_double(param_id, ts, value);
     }
 
+    aku_Status add_double(const char* begin, const char* end, aku_TimeStamp ts, double value) {
+        return storage_.write_double(begin, end, ts, value);
+    }
+
     // Stats
     void get_storage_stats(aku_StorageStats* recv_stats) {
         storage_.get_stats(recv_stats);
@@ -244,8 +248,14 @@ aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Time
     return dbi->add_double(param_id, timestamp, value);
 }
 
-aku_Status aku_write_double(aku_Database* db, const char* series_key, aku_TimeStamp timestamp, double value) {
-    return AKU_ENOT_IMPLEMENTED; // Not implemented
+aku_Status aku_write_double(aku_Database* db,
+                            const char* series_key_begin,
+                            const char* series_key_end,
+                            aku_TimeStamp timestamp,
+                            double value)
+{
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->add_double(series_key_begin, series_key_end, timestamp, value);
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
