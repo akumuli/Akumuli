@@ -93,7 +93,6 @@ struct PageHistogram {
     PageHistogramEntry entries[AKU_HISTOGRAM_SIZE];
 };
 
-
 struct SearchStats {
     aku_SearchStats stats;
     std::mutex mutex;
@@ -105,7 +104,10 @@ struct SearchStats {
 
 SearchStats& get_global_search_stats();
 
-/** Search query */
+
+/** Search query
+  * @obsolete would be replaced with query processor
+  */
 struct SearchQuery {
 
     // ParamId match type

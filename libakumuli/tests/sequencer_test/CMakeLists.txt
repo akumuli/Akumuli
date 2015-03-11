@@ -12,6 +12,7 @@ add_executable(
         ../../src/cursor.cpp
         ../../src/compression.cpp
         ../../src/metadatastorage.cpp
+        ../../src/queryprocessor.cpp
 )
 target_link_libraries(sequencer_test
     "${SQLITE3_LIBRARY}"

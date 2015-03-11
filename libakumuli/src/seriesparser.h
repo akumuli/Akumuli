@@ -1,5 +1,6 @@
 #pragma once
 #include "akumuli_def.h"
+#include "queryprocessor.h"
 
 #include <stdint.h>
 #include <map>
@@ -7,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 #include <deque>
+#include <memory>
 
 namespace Akumuli {
 
@@ -60,6 +62,8 @@ struct SeriesMatcher {
       * @param buffer is an output parameter that will receive new elements
       */
     void pull_new_names(std::vector<SeriesNameT> *buffer);
+
+    std::shared_ptr<QueryProcessor> build_query_processor(const char* query);
 };
 
 /** Namespace class to store all parsing related things.

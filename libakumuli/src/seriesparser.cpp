@@ -105,6 +105,26 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
+std::shared_ptr<QueryProcessor> SeriesMatcher::build_query_processor(const char* query) {
+    /* Query format:
+     * {
+     *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
+     *      "metric": "cpu",
+     *      // or
+     *      "metrics": ["cpu", "mem"],
+     *      "where": [
+     *          { "equals": { "key1": "val1" }},
+     *          { "not_equals" : { "key2": "val2" }},
+     *          { "in" : { "key3": [1, 2, 3, "foo"]}
+     *      ],
+     *      "group_by": [
+     *          "key" : [ "key1", "key2" ]
+     *      ]
+     * }
+     */
+    throw "not implemented";
+}
+
 //                         //
 //      Series Parser      //
 //                         //

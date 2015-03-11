@@ -22,6 +22,7 @@ add_library(akumuli SHARED
     sequencer.cpp
     cursor.cpp
     metadatastorage.cpp
+    queryprocessor.cpp
 )
 
 include_directories(../include)
@@ -136,6 +137,7 @@ add_executable(
         sequencer.cpp
         akumuli.cpp
         metadatastorage.cpp
+        queryprocessor.cpp
 )
 
 target_link_libraries(
