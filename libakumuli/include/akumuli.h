@@ -241,6 +241,7 @@ AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
 //---------
 
 /**
+ * @obsolete should be replaced with json query format
  * @brief Create select query with single parameter-id
  */
 AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
@@ -251,6 +252,8 @@ AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeS
  * @return cursor
  */
 AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, aku_SelectQuery* query);
+
+// TODO: AKU_EXPORT aku_Cursor* aku_selecct(aku_Database* db, const char* query);
 
 /**
  * @brief Close cursor

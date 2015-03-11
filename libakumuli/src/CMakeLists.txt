@@ -13,6 +13,7 @@ add_library(akumuli SHARED
     compression.cpp
     internal_cursor.h
     compression.h
+    metadatastorage.h
     storage.cpp
     seriesparser.cpp
     page.cpp
@@ -20,6 +21,7 @@ add_library(akumuli SHARED
     util.cpp
     sequencer.cpp
     cursor.cpp
+    metadatastorage.cpp
 )
 
 include_directories(../include)
@@ -133,6 +135,7 @@ add_executable(
         cursor.cpp
         sequencer.cpp
         akumuli.cpp
+        metadatastorage.cpp
 )
 
 target_link_libraries(
