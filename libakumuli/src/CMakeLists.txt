@@ -14,6 +14,7 @@ add_library(akumuli SHARED
     internal_cursor.h
     compression.h
     metadatastorage.h
+    stringpool.h
     storage.cpp
     seriesparser.cpp
     page.cpp
@@ -23,6 +24,7 @@ add_library(akumuli SHARED
     cursor.cpp
     metadatastorage.cpp
     queryprocessor.cpp
+    stringpool.cpp
 )
 
 include_directories(../include)
@@ -138,6 +140,7 @@ add_executable(
         akumuli.cpp
         metadatastorage.cpp
         queryprocessor.cpp
+        stringpool.cpp
 )
 
 target_link_libraries(
@@ -155,6 +158,7 @@ add_test(storage test_storage)
 add_executable(
     test_seriesparser
     seriesparser.cpp
+    stringpool.cpp
     test_parser.cpp
     util.cpp
 )
@@ -172,6 +176,7 @@ add_test(seriesparser test_seriesparser)
 add_executable(
     perf_seriesmatcher
     seriesparser.cpp
+    stringpool.cpp
     perf_seriesmatcher.cpp
     util.cpp
 )
