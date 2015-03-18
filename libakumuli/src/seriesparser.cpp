@@ -16,9 +16,13 @@
 
 #include "seriesparser.h"
 #include "util.h"
+
 #include <string>
 #include <map>
 #include <algorithm>
+
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 namespace Akumuli {
 
@@ -69,13 +73,19 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
-std::shared_ptr<QueryProcessor> SeriesMatcher::build_query_processor(const char* query) {
+std::shared_ptr<QueryProcessor>
+SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
+    static const std::shared_ptr<QueryProcessor> NONE;
     /* Query format:
      * {
      *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
      *      "metric": "cpu",
      *      // or
-     *      "metrics": ["cpu", "mem"],
+     *      "metric": ["cpu", "mem"],
+     *      "range": {
+     *          "from": "2015-01-01 00:00:00-07:89",
+     *          "to"  : "2015-01-02 00:00:00-07:89"
+     *      },
      *      "where": [
      *          { "equals": { "key1": "val1" }},
      *          { "not_equals" : { "key2": "val2" }},
@@ -86,6 +96,29 @@ std::shared_ptr<QueryProcessor> SeriesMatcher::build_query_processor(const char*
      *      ]
      * }
      */
+    namespace pt = boost::property_tree;
+
+    //! C-string to streambuf adapter
+    struct MemStreambuf : std::streambuf {
+        MemStreambuf(const char* buf) {
+            char* p = const_cast<char*>(buf);
+            setg(p, p, p+strlen(p));
+        }
+    };
+
+    boost::property_tree::ptree ptree;
+    MemStreambuf strbuf(query);
+    std::istream stream(&strbuf);
+    try {
+        pt::json_parser::read_json(stream, ptree);
+    } catch (pt::json_parser_error& e) {
+        // Error, bad query
+        (*logger)(AKU_LOG_ERROR, e.what());
+        return NONE;
+    }
+
+    /*boost::property_tree::ptree sample =*/ ptree.get_child("sample");
+
     throw "not implemented";
 }
 
