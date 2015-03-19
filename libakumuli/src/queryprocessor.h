@@ -15,10 +15,44 @@
  */
 
 #pragma once
+#include <chrono>
+#include <memory>
+
 #include "akumuli.h"
 #include "stringpool.h"
 
 namespace Akumuli {
+
+struct Bolt {
+
+    enum BoltType {
+        // Samplers
+        RandomSampler,
+        Resampler,
+        // Joins
+        JoinByTimestamp,
+    };
+
+    virtual ~Bolt() = default;
+    virtual void add_next(std::shared_ptr<Bolt> next) = 0;
+    virtual void complete() = 0;
+    virtual void put(aku_TimeStamp ts, aku_ParamId id, double value) = 0;
+};
+
+struct BoltException : std::runtime_error {
+    Bolt::BoltType type_;
+    BoltException(Bolt::BoltType type, const char* msg);
+
+    Bolt::BoltType get_type() const;
+};
+
+
+
+struct BoltsBuilder {
+    static std::shared_ptr<Bolt> make_random_sampler(std::string type,
+                                                     size_t buffer_size,
+                                                     aku_logger_cb_t logger);
+};
 
 /** Query processor.
   * Should be built from textual representation (json at first).

@@ -117,7 +117,9 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         return NONE;
     }
 
-    /*boost::property_tree::ptree sample =*/ ptree.get_child("sample");
+    //boost::property_tree::ptree sample = ptree.get_child("sample");
+
+    //auto qproc = std::make_shared<QueryProcessor>();
 
     throw "not implemented";
 }
