@@ -18,6 +18,7 @@
 #include "util.h"
 
 #include <random>
+#include <algorithm>
 
 #include <boost/lexical_cast.hpp>
 
@@ -34,14 +35,17 @@ Bolt::BoltType BoltException::get_type() const {
 }
 
 struct RandomSamplingBolt : Bolt {
-    size_t                              buffer_size_;
+    const uint32_t                      buffer_size_;
     std::vector<std::shared_ptr<Bolt>>  outputs_;
     std::vector<aku_TimeStamp>          timestamps_;
     std::vector<aku_ParamId>            paramids_;
     std::vector<double>                 values_;
     Rand                                random_;
 
-    // TODO: check buffer_size_ to have less then max uint32_t value
+    RandomSamplingBolt(uint32_t buffer_size)
+        : buffer_size_(buffer_size)
+    {
+    }
 
     // Bolt interface
     virtual void add_next(std::shared_ptr<Bolt> next) {
@@ -49,21 +53,36 @@ struct RandomSamplingBolt : Bolt {
     }
 
     virtual void complete() {
+
         if (outputs_.empty()) {
             BoltException except(Bolt::RandomSampler, "no output bolt");
             BOOST_THROW_EXCEPTION(except);
         }
-        // TODO: sort data by timestamp
-        for(auto i = 0u; i < timestamps_.size(); i++) {
+
+        auto& tsarray = timestamps_;
+        auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
+            return tsarray.at(lhs) < tsarray.at(rhs);
+        };
+
+        std::vector<uint32_t> indexes;
+        uint32_t gencnt = 0u;
+        std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
+        std::stable_sort(indexes.begin(), indexes.end(), predicate);
+
+        for(auto ix: indexes) {
             for(auto& bolt: outputs_) {
-                bolt->put(timestamps_.at(i),
-                         paramids_.at(i),
-                         values_.at(i));
+                bolt->put(timestamps_.at(ix),
+                         paramids_.at(ix),
+                         values_.at(ix));
             }
         }
     }
 
     virtual void put(aku_TimeStamp ts, aku_ParamId id, double value) {
+        if (outputs_.empty()) {
+            BoltException except(Bolt::RandomSampler, "no output bolt");
+            BOOST_THROW_EXCEPTION(except);
+        }
         if (timestamps_.size() < buffer_size_) {
             // Just append new values
             timestamps_.push_back(ts);
@@ -96,7 +115,7 @@ std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
         BOOST_THROW_EXCEPTION(except);
     }
     // Build object
-    return std::shared_ptr<Bolt>();
+    return std::make_shared<RandomSamplingBolt>(buffer_size);
 }
 
 QueryProcessor::QueryProcessor()

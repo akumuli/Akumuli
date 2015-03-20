@@ -187,6 +187,24 @@ target_link_libraries(
     "${APR_LIBRARY}"
 )
 
+# Test query processor
+
+add_executable(
+    test_queryprocessor
+    queryprocessor.cpp
+    stringpool.cpp
+    test_queryprocessor.cpp
+    util.cpp
+)
+
+target_link_libraries(
+    test_queryprocessor
+    ${Boost_LIBRARIES}
+    "${APR_LIBRARY}"
+)
+
+add_test(queryprocessor test_queryprocessor)
+
 # libakumuli
 
 install(
