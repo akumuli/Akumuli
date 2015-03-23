@@ -160,6 +160,7 @@ add_executable(
     seriesparser.cpp
     stringpool.cpp
     test_parser.cpp
+    queryprocessor.cpp
     util.cpp
 )
 
@@ -178,6 +179,7 @@ add_executable(
     seriesparser.cpp
     stringpool.cpp
     perf_seriesmatcher.cpp
+    queryprocessor.cpp
     util.cpp
 )
 

@@ -117,8 +117,19 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         return NONE;
     }
 
-    //boost::property_tree::ptree sample = ptree.get_child("sample");
-
+    boost::property_tree::ptree sample = ptree.get_child("sample");
+    if (sample.empty()) {
+        (*logger)(AKU_LOG_ERROR, "No `sample` tag");
+        return NONE;
+    }
+    std::string sample_type;
+    size_t sampling_buffer_size;
+    for (auto child: sample) {
+        sample_type = child.first;
+        sampling_buffer_size = child.second.get_value<size_t>();
+        break;
+    }
+    BoltsBuilder::make_random_sampler(sample_type, sampling_buffer_size, logger);
     //auto qproc = std::make_shared<QueryProcessor>();
 
     throw "not implemented";

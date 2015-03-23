@@ -8,6 +8,12 @@
 
 using namespace Akumuli;
 
+void logger(int errlvl, const char* msg) {
+    if (errlvl == AKU_LOG_ERROR) {
+        std::cout << msg << std::endl;
+    }
+}
+
 BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
     StringPool pool;
@@ -107,4 +113,17 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
     const char* pend = nullptr;
     int status = SeriesParser::to_normal_form(series, series + len, out, out + 10, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
+}
+
+// Test queryprocessor building
+
+
+BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
+
+    SeriesMatcher matcher(1ul);
+    const char* json =
+        " {"
+        "      \"sample\": { \"reservoir\": 1000 }"
+        " }";
+    matcher.build_query_processor(json, &logger);
 }
