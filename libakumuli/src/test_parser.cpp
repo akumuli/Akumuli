@@ -117,7 +117,6 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
 
 // Test queryprocessor building
 
-
 BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
 
     SeriesMatcher matcher(1ul);
@@ -125,5 +124,6 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
         " {"
         "      \"sample\": { \"reservoir\": 1000 }"
         " }";
-    matcher.build_query_processor(json, &logger);
+    auto qproc = matcher.build_query_processor(json, &logger);
+    BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
 }

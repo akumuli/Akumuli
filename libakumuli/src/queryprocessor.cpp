@@ -34,9 +34,10 @@ Bolt::BoltType BoltException::get_type() const {
     return type_;
 }
 
-struct RandomSamplingBolt : Bolt {
+struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bolt {
     const uint32_t                      buffer_size_;
     std::vector<std::shared_ptr<Bolt>>  outputs_;
+    std::vector<std::weak_ptr<Bolt>>    inputs_;
     std::vector<aku_TimeStamp>          timestamps_;
     std::vector<aku_ParamId>            paramids_;
     std::vector<double>                 values_;
@@ -48,17 +49,53 @@ struct RandomSamplingBolt : Bolt {
     }
 
     // Bolt interface
-    virtual void add_next(std::shared_ptr<Bolt> next) {
+    virtual void add_output(std::shared_ptr<Bolt> next) {
         outputs_.push_back(next);
     }
 
-    virtual void complete() {
+    virtual void add_input(std::weak_ptr<Bolt> input) {
+        inputs_.push_back(input);
+    }
 
+    virtual BoltType get_bolt_type() const {
+        return Bolt::RandomSampler;
+    }
+
+    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_outputs() const {
+        return outputs_;
+    }
+
+    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_inputs() const {
+        std::vector<std::shared_ptr<Bolt>> result;
+        for(auto wref: inputs_) {
+            result.push_back(wref.lock());
+        }
+        return result;
+    }
+
+    virtual void complete(std::shared_ptr<Bolt> caller) {
+
+        // Reset caller in inputs list
+        for(auto& wref: inputs_) {                              // TODO: this logic should be
+            auto sref = wref.lock();                            // moved to separate mixin class
+            if (sref && sref == caller) {                       // tested and inherited by all
+                wref.reset();                                   // blots.
+                break;
+            }
+        }
+
+        // Check precondition (all inputs was gone)
+        for(auto& wref: inputs_) {
+            if (wref.expired() == false) {
+                return;
+            }
+        }
         if (outputs_.empty()) {
             BoltException except(Bolt::RandomSampler, "no output bolt");
             BOOST_THROW_EXCEPTION(except);
         }
 
+        // Do the actual job
         auto& tsarray = timestamps_;
         auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
             return tsarray.at(lhs) < tsarray.at(rhs);
@@ -75,6 +112,10 @@ struct RandomSamplingBolt : Bolt {
                          paramids_.at(ix),
                          values_.at(ix));
             }
+        }
+
+        for(auto& bolt: outputs_) {
+            bolt->complete(shared_from_this());
         }
     }
 

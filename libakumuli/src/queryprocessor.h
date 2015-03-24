@@ -31,12 +31,31 @@ struct Bolt {
         Resampler,
         // Joins
         JoinByTimestamp,
+        // Testing
+        Mock,
     };
 
     virtual ~Bolt() = default;
-    virtual void add_next(std::shared_ptr<Bolt> next) = 0;
-    virtual void complete() = 0;
+    //! Complete adding values
+    virtual void complete(std::shared_ptr<Bolt> caller) = 0;
+    //! Process value
     virtual void put(aku_TimeStamp ts, aku_ParamId id, double value) = 0;
+
+    // Connections management
+    //! Add output
+    virtual void add_output(std::shared_ptr<Bolt> next) = 0;
+    virtual void add_input(std::weak_ptr<Bolt> input) = 0;
+
+    // Introspections
+
+    //! Get bolt type
+    virtual BoltType get_bolt_type() const = 0;
+
+    //! Get all inputs
+    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_inputs() const = 0;
+
+    //! Get all outputs
+    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_outputs() const = 0;
 };
 
 struct BoltException : std::runtime_error {
@@ -67,8 +86,10 @@ struct QueryProcessor {
     aku_TimeStamp                     lowerbound;
     aku_TimeStamp                     upperbound;
     int                                direction;
-    std::unordered_map<uint64_t, int>  idmapping;
     TableT                       namesofinterest;
+
+    //! Root of the processing topology
+    std::shared_ptr<Bolt>              root_bolt;
 
     QueryProcessor();
 

@@ -129,10 +129,12 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         sampling_buffer_size = child.second.get_value<size_t>();
         break;
     }
-    BoltsBuilder::make_random_sampler(sample_type, sampling_buffer_size, logger);
-    //auto qproc = std::make_shared<QueryProcessor>();
+    auto sampler = BoltsBuilder::make_random_sampler(sample_type, sampling_buffer_size, logger);
 
-    throw "not implemented";
+    auto qproc = std::make_shared<QueryProcessor>();
+    qproc->root_bolt = sampler;
+
+    return qproc;
 }
 
 //                         //
