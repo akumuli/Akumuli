@@ -73,6 +73,40 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
+static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
+                                                            aku_logger_cb_t logger) {
+    auto sample = ptree.get_child("sample");
+    if (sample.empty()) {
+        (*logger)(AKU_LOG_ERROR, "No `sample` tag");
+        auto rte = std::runtime_error("`sample` expected");
+        BOOST_THROW_EXCEPTION(rte);
+    }
+    std::string sample_type;
+    size_t sampling_buffer_size;
+    for (auto child: sample) {
+        sample_type = child.first;
+        sampling_buffer_size = child.second.get_value<size_t>();
+        break;
+    }
+    return std::make_pair(sample_type, sampling_buffer_size);
+}
+
+static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
+                                             aku_logger_cb_t logger) {
+    std::vector<std::string> metrics;
+    boost::property_tree::ptree metric = ptree.get_child("metric");
+    auto single = metric.get_value<std::string>();
+    if (single.empty()) {
+        for(auto child: metric) {
+            auto metric_name = child.second.get_value<std::string>();
+            metrics.push_back(metric_name);
+        }
+    } else {
+        metrics.push_back(single);
+    }
+    return metrics;
+}
+
 std::shared_ptr<QueryProcessor>
 SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
     static const std::shared_ptr<QueryProcessor> NONE;
@@ -117,24 +151,24 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         return NONE;
     }
 
-    boost::property_tree::ptree sample = ptree.get_child("sample");
-    if (sample.empty()) {
-        (*logger)(AKU_LOG_ERROR, "No `sample` tag");
+    try {
+        // Read metric(s) name
+        auto metrics = parse_metric(ptree, logger);
+
+        // Read sampling method
+        auto sampling_params = parse_sampling_params(ptree, logger);
+
+        // Build topology
+        auto sampler = BoltsBuilder::make_random_sampler(sampling_params.first, sampling_params.second, logger);
+
+        // Build query processor
+        auto qproc = std::make_shared<QueryProcessor>(sampler, metrics);
+        return qproc;
+
+    } catch(std::exception const& e) {
+        (*logger)(AKU_LOG_ERROR, e.what());
         return NONE;
     }
-    std::string sample_type;
-    size_t sampling_buffer_size;
-    for (auto child: sample) {
-        sample_type = child.first;
-        sampling_buffer_size = child.second.get_value<size_t>();
-        break;
-    }
-    auto sampler = BoltsBuilder::make_random_sampler(sample_type, sampling_buffer_size, logger);
-
-    auto qproc = std::make_shared<QueryProcessor>();
-    qproc->root_bolt = sampler;
-
-    return qproc;
 }
 
 //                         //

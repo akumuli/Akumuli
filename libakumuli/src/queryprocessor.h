@@ -86,12 +86,14 @@ struct QueryProcessor {
     aku_TimeStamp                     lowerbound;
     aku_TimeStamp                     upperbound;
     int                                direction;
+    std::vector<std::string>             metrics;
     TableT                       namesofinterest;
 
     //! Root of the processing topology
     std::shared_ptr<Bolt>              root_bolt;
 
-    QueryProcessor();
+    QueryProcessor(std::shared_ptr<Bolt> root,
+                   std::vector<std::string> metrics);
 
     /** Match param_id. Return group id on success or
       * negative value on error.

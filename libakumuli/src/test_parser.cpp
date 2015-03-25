@@ -122,8 +122,32 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
     SeriesMatcher matcher(1ul);
     const char* json =
         " {"
-        "      \"sample\": { \"reservoir\": 1000 }"
+        "      \"sample\": { \"reservoir\": 1000 },"
+        "      \"metric\": \"cpu\""
         " }";
     auto qproc = matcher.build_query_processor(json, &logger);
     BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
+    BOOST_REQUIRE(qproc->metrics.size() == 1);
+    BOOST_REQUIRE(qproc->metrics.at(0) == "cpu");
+}
+
+BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
+
+    SeriesMatcher matcher(1ul);
+    const char* json =
+        " {"
+        "      \"sample\": { \"reservoir\": 1000 },"
+        "      \"metric\": [\"cpu\", \"mem\"]"
+        " }";
+    auto qproc = matcher.build_query_processor(json, &logger);
+    BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
+    BOOST_REQUIRE(qproc->metrics.size() == 2);
+    auto m1 = qproc->metrics.at(0);
+    auto m2 = qproc->metrics.at(1);
+    if (m1 == "cpu") {
+        BOOST_REQUIRE(m2 == "mem");
+    } else {
+        BOOST_REQUIRE(m1 == "mem");
+        BOOST_REQUIRE(m2 == "cpu");
+    }
 }

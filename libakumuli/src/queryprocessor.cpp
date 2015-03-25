@@ -159,8 +159,11 @@ std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
     return std::make_shared<RandomSamplingBolt>(buffer_size);
 }
 
-QueryProcessor::QueryProcessor()
-    : namesofinterest(StringTools::create_table(0x1000))
+QueryProcessor::QueryProcessor(std::shared_ptr<Bolt> root,
+               std::vector<std::string> metrics)
+    : metrics(metrics)
+    , namesofinterest(StringTools::create_table(0x1000))
+    , root_bolt(root)
 {
 }
 
