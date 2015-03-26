@@ -25,6 +25,7 @@ add_library(akumuli SHARED
     metadatastorage.cpp
     queryprocessor.cpp
     stringpool.cpp
+    datetime.cpp
 )
 
 include_directories(../include)
