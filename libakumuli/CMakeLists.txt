@@ -1,40 +1,61 @@
-project(Akumuli)
-cmake_minimum_required(VERSION 2.8)
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
-
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror")
-
-find_package(Boost 1.53.0
-    COMPONENTS
-    unit_test_framework
-    system
-    thread
-    filesystem
-    coroutine
-    context
-    REQUIRED
+add_library(akumuli SHARED
+    ../include/akumuli_version.h
+    ../include/akumuli_config.h
+    ../include/akumuli.h
+    ../include/akumuli_def.h
+    storage.h
+    page.h
+    util.h
+    sort.h
+    sequencer.h
+    cursor.h
+    compression.h
+    compression.cpp
+    internal_cursor.h
+    compression.h
+    metadatastorage.h
+    stringpool.h
+    storage.cpp
+    seriesparser.cpp
+    page.cpp
+    akumuli.cpp
+    util.cpp
+    sequencer.cpp
+    cursor.cpp
+    metadatastorage.cpp
+    queryprocessor.cpp
+    stringpool.cpp
+    datetime.cpp
 )
 
-find_package(APR REQUIRED)
+# libakumuli
 
-find_package(Sqlite3 REQUIRED)
+install(
+    TARGETS
+        akumuli
+    LIBRARY DESTINATION
+        ${CMAKE_INSTALL_PREFIX}/lib
+)
 
-include_directories(${Boost_INCLUDE_DIRS})
-include_directories("${APR_INCLUDE_DIR}")
-include_directories("${APRUTIL_INCLUDE_DIR}")
-include_directories("${SQLITE3_INCLUDE_DIR}")
+install(
+    FILES ../include/akumuli_version.h
+	  ../include/akumuli_config.h
+	  ../include/akumuli.h
+	  ../include/akumuli_def.h
+    DESTINATION
+        ${CMAKE_INSTALL_PREFIX}/include
+)
 
-#if(CMAKE_COMPILER_IS_GNUCXX)
-add_definitions(-std=gnu++0x -fvisibility=hidden)
-#endif()
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_NAME "akumuli")
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Evgeny Lazin")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Time-series storage engine")
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 
-include_directories(./include)
+set(CPACK_PACKAGE_VERSION "0.1.0")
+set(CPACK_PACKAGE_VERSION_MAJOR "0")
+set(CPACK_PACKAGE_VERSION_MINOR "1")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 
-enable_testing()
-add_subdirectory(src)
-add_subdirectory(tests/ingestion_test)
-add_subdirectory(tests/sequencer_test)
-add_subdirectory(tests/parallel_test)
-add_subdirectory(tool)
+include(CPack)
