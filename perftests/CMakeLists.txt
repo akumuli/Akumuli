@@ -89,3 +89,17 @@ target_link_libraries(
     "${APR_LIBRARY}"
 )
 
+# Datetime parser perftest
+add_executable(
+    perf_datetime_parsing
+    perf_datetime_parsing.cpp
+    perftest_tools.cpp
+    ../libakumuli/datetime.cpp
+)
+
+target_link_libraries(
+    perf_datetime_parsing
+    jemalloc
+    ${Boost_LIBRARIES}
+)
+
