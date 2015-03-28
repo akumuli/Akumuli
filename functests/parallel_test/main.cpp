@@ -61,7 +61,7 @@ void print_search_stats(aku_SearchStats& ss) {
               << ss.scan.fwd_bytes << " bytes read in forward direction" << std::endl;
 }
 
-aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( end
@@ -69,8 +69,8 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
                                                   , 1
                                                   , params);
     aku_Cursor* cursor = aku_select(db, query);
-    aku_TimeStamp current_time = end;
-    aku_TimeStamp last = begin;
+    aku_Timestamp current_time = end;
+    aku_Timestamp last = begin;
     bool last_initialized = false;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
@@ -84,7 +84,7 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
                 throw std::runtime_error(aku_error_message(err));
             }
         }
-        aku_TimeStamp timestamps[NUM_ELEMENTS];
+        aku_Timestamp timestamps[NUM_ELEMENTS];
         aku_ParamId paramids[NUM_ELEMENTS];
         aku_PData pointers[NUM_ELEMENTS];
         uint32_t lengths[NUM_ELEMENTS];
@@ -133,15 +133,15 @@ aku_TimeStamp query_database_backward(aku_Database* db, aku_TimeStamp begin, aku
     return last;
 }
 
-aku_TimeStamp query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
+aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
                                                   , 1, params);
     aku_Cursor* cursor = aku_select(db, query);
-    aku_TimeStamp current_time = begin;
-    aku_TimeStamp last = begin;
+    aku_Timestamp current_time = begin;
+    aku_Timestamp last = begin;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
@@ -154,7 +154,7 @@ aku_TimeStamp query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_
                 throw std::runtime_error(aku_error_message(err));
             }
         }
-        aku_TimeStamp timestamps[NUM_ELEMENTS];
+        aku_Timestamp timestamps[NUM_ELEMENTS];
         aku_ParamId paramids[NUM_ELEMENTS];
         aku_PData pointers[NUM_ELEMENTS];
         uint32_t lengths[NUM_ELEMENTS];
@@ -218,7 +218,7 @@ int main(int cnt, const char** args)
 
     auto reader_fn_bw = [&db]() {
         boost::timer timer;
-        aku_TimeStamp top = 0u;
+        aku_Timestamp top = 0u;
         uint64_t counter = 0;
         uint64_t query_counter = 0;
         // query last elements from database
@@ -234,7 +234,7 @@ int main(int cnt, const char** args)
 
     auto reader_fn_fw = [&db]() {
         boost::timer timer;
-        aku_TimeStamp top = 0u;
+        aku_Timestamp top = 0u;
         uint64_t counter = 0;
         uint64_t query_counter = 0;
         // query last elements from database

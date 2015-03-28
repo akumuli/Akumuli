@@ -58,7 +58,7 @@ struct aku_Config {
 };
 
 struct aku_Entry {
-    aku_TimeStamp  time;      //< Entry timestamp
+    aku_Timestamp  time;      //< Entry timestamp
     aku_ParamId    param_id;  //< Parameter ID
     uint32_t       length;    //< Entry length: constant + variable sized parts
     uint32_t       value[];   //< Data begining
@@ -74,15 +74,15 @@ struct PageHeader;
 struct PageBoundingBox {
     aku_ParamId max_id;
     aku_ParamId min_id;
-    aku_TimeStamp max_timestamp;
-    aku_TimeStamp min_timestamp;
+    aku_Timestamp max_timestamp;
+    aku_Timestamp min_timestamp;
 
     PageBoundingBox();
 };
 
 
 struct PageHistogramEntry {
-    aku_TimeStamp timestamp;
+    aku_Timestamp timestamp;
     uint32_t index;
 };
 
@@ -128,8 +128,8 @@ struct SearchQuery {
     typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
 
     // search query
-    aku_TimeStamp lowerbound;     //< begining of the time interval (0 for -inf) to search
-    aku_TimeStamp upperbound;     //< end of the time interval (0 for inf) to search
+    aku_Timestamp lowerbound;     //< begining of the time interval (0 for -inf) to search
+    aku_Timestamp upperbound;     //< end of the time interval (0 for inf) to search
     MatcherFn     param_pred;     //< parmeter search predicate
     int            direction;     //< scan direction
 
@@ -140,8 +140,8 @@ struct SearchQuery {
      *  @param scan_dir scan direction
      */
     SearchQuery( aku_ParamId      param_id
-               , aku_TimeStamp    low
-               , aku_TimeStamp    upp
+               , aku_Timestamp    low
+               , aku_Timestamp    upp
                , int              scan_dir);
 
 
@@ -152,8 +152,8 @@ struct SearchQuery {
      *  @param scan_dir scan direction
      */
     SearchQuery( MatcherFn     matcher
-               , aku_TimeStamp low
-               , aku_TimeStamp upp
+               , aku_Timestamp low
+               , aku_Timestamp upp
                , int           scan_dir);
 };
 
@@ -166,7 +166,7 @@ struct SearchQuery {
  * This class must be nonvirtual.
  */
 struct PageHeader {
-    typedef std::tuple<aku_TimeStamp, SearchQuery const&, uint32_t> CursorContext;
+    typedef std::tuple<aku_Timestamp, SearchQuery const&, uint32_t> CursorContext;
     // metadata
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
@@ -191,7 +191,7 @@ struct PageHeader {
     //! Get pointer to the begining of the page
     char* data();
 
-    void update_bounding_box(aku_ParamId param, aku_TimeStamp time);
+    void update_bounding_box(aku_ParamId param, aku_Timestamp time);
 
     //! C-tor
     PageHeader(uint32_t count, uint64_t length, uint32_t page_id);
@@ -208,14 +208,14 @@ struct PageHeader {
     //! Returns amount of free space in bytes
     size_t get_free_space() const;
 
-    bool inside_bbox(aku_ParamId param, aku_TimeStamp time) const;
+    bool inside_bbox(aku_ParamId param, aku_Timestamp time) const;
 
     /**
      * Add new entry to page data.
      * @param entry entry
      * @returns operation status
      */
-    int add_entry(const aku_ParamId param, const aku_TimeStamp timestamp, const aku_MemRange data);
+    int add_entry(const aku_ParamId param, const aku_Timestamp timestamp, const aku_MemRange data);
 
     /**
      * Add some data to last entry. (without length)

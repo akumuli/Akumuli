@@ -23,16 +23,21 @@ typedef std::chrono::nanoseconds DurationT;
 
 static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
 
-aku_TimeStamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_point timestamp) {
+aku_Timestamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_point timestamp) {
     auto duration = timestamp.time_since_epoch();
     DurationT result = std::chrono::duration_cast<DurationT>(duration);
     return result.count();
 }
 
-aku_TimeStamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp) {
+aku_Timestamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp) {
     boost::posix_time::time_duration duration = timestamp - EPOCH;
     uint64_t ns = duration.total_nanoseconds();
     return ns;
+}
+
+aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
+    auto pt = boost::posix_time::from_iso_string(iso_str);
+    return DateTimeUtil::from_boost_ptime(pt);
 }
 
 }

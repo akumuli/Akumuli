@@ -31,7 +31,7 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
-aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
     return aku_write_double_raw(db_, param, ts, data);
 }
 
@@ -57,7 +57,7 @@ void PipelineSpout::set_error_cb(PipelineErrorCb cb) {
     on_error_ = cb;
 }
 
-void PipelineSpout::write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+void PipelineSpout::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
     int ix = get_index_of_empty_slot();
     while (AKU_UNLIKELY(ix < 0)) {
         ix = get_index_of_empty_slot();

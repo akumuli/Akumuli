@@ -46,7 +46,7 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset value, uint32_t value_length)
+TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, aku_EntryOffset value, uint32_t value_length)
     : key_ts_(ts)
     , key_id_(id)
     , type_(BLOB)
@@ -55,7 +55,7 @@ TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffs
     payload.blob.value_length = value_length;
 }
 
-TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, double value)
+TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value)
     : key_ts_(ts)
     , key_id_(id)
     , type_(DOUBLE)
@@ -63,7 +63,7 @@ TimeSeriesValue::TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, double value)
     payload.value = value;
 }
 
-aku_TimeStamp TimeSeriesValue::get_timestamp() const {
+aku_Timestamp TimeSeriesValue::get_timestamp() const {
     return key_ts_;
 }
 
@@ -125,13 +125,13 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
-uint32_t Sequencer::get_checkpoint_(aku_TimeStamp ts) const {
+uint32_t Sequencer::get_checkpoint_(aku_Timestamp ts) const {
     // TODO: use fast integer division (libdivision or else)
     return ts / window_size_;
 }
 
 //! Convert checkpoint id to timestamp
-aku_TimeStamp Sequencer::get_timestamp_(uint32_t cp) const {
+aku_Timestamp Sequencer::get_timestamp_(uint32_t cp) const {
     return cp*window_size_;
 }
 
@@ -184,7 +184,7 @@ int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-std::tuple<int, int> Sequencer::check_timestamp_(aku_TimeStamp ts) {
+std::tuple<int, int> Sequencer::check_timestamp_(aku_Timestamp ts) {
     int error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
@@ -414,7 +414,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_TimeStamp, int> Sequencer::get_window() const {
+std::tuple<aku_Timestamp, int> Sequencer::get_window() const {
     return std::make_tuple(top_timestamp_ - window_size_, sequence_number_.load());
 }
 

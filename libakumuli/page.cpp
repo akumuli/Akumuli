@@ -41,8 +41,8 @@ static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b
 }
 
 SearchQuery::SearchQuery( aku_ParamId   param_id
-                        , aku_TimeStamp low
-                        , aku_TimeStamp upp
+                        , aku_Timestamp low
+                        , aku_Timestamp upp
                         , int           scan_dir)
     : lowerbound(low)
     , upperbound(upp)
@@ -52,8 +52,8 @@ SearchQuery::SearchQuery( aku_ParamId   param_id
 }
 
 SearchQuery::SearchQuery(MatcherFn matcher
-                        , aku_TimeStamp low
-                        , aku_TimeStamp upp
+                        , aku_Timestamp low
+                        , aku_Timestamp upp
                         , int scan_dir)
     : lowerbound(low)
     , upperbound(upp)
@@ -116,7 +116,7 @@ size_t PageHeader::get_free_space() const {
     return end - begin;
 }
 
-void PageHeader::update_bounding_box(aku_ParamId param, aku_TimeStamp time) {
+void PageHeader::update_bounding_box(aku_ParamId param, aku_Timestamp time) {
     if (param > bbox.max_id) {
         bbox.max_id = param;
     }
@@ -131,7 +131,7 @@ void PageHeader::update_bounding_box(aku_ParamId param, aku_TimeStamp time) {
     }
 }
 
-bool PageHeader::inside_bbox(aku_ParamId param, aku_TimeStamp time) const {
+bool PageHeader::inside_bbox(aku_ParamId param, aku_Timestamp time) const {
     return time  <= bbox.max_timestamp
         && time  >= bbox.min_timestamp
         && param <= bbox.max_id
@@ -153,7 +153,7 @@ void PageHeader::close() {
 }
 
 int PageHeader::add_entry( const aku_ParamId param
-                         , const aku_TimeStamp timestamp
+                         , const aku_Timestamp timestamp
                          , const aku_MemRange range )
 {
 
@@ -200,8 +200,8 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
 int PageHeader::complete_chunk(const ChunkHeader& data) {
     ChunkDesc desc;
     Rand rand;
-    aku_TimeStamp first_ts;
-    aku_TimeStamp last_ts;
+    aku_Timestamp first_ts;
+    aku_Timestamp last_ts;
     struct Writer : ChunkWriter {
         PageHeader *header;
         Writer(PageHeader *h) : header(h) {}
@@ -331,7 +331,7 @@ namespace {
         ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
 
         // Interpolation search supporting functions
-        bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+        bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
             if (ix < header.timestamps.size()) {
                 *out_timestamp = header.timestamps[ix];
                 return true;
@@ -358,7 +358,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     const uint32_t MAX_INDEX_;
     const bool IS_BACKWARD_;
-    const aku_TimeStamp key_;
+    const aku_Timestamp key_;
 
     SearchRange range_;
 
@@ -439,7 +439,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     // Interpolation search supporting functions
-    bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix) const {
+    bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
         const aku_Entry *entry = page_->read_entry_at(ix);
         if (entry) {
             *out_timestamp = entry->time;
@@ -610,7 +610,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
 #ifdef DEBUG
         // Debug variables
-        aku_TimeStamp dbg_prev_ts;
+        aku_Timestamp dbg_prev_ts;
         long dbg_count = 0;
 #endif
         int index_increment = IS_BACKWARD_ ? -1 : 1;
@@ -710,8 +710,8 @@ void PageHeader::_sort() {
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
         auto ea = read_entry(a);
         auto eb = read_entry(b);
-        auto ta = std::tuple<aku_TimeStamp, aku_ParamId>(ea->time, ea->param_id);
-        auto tb = std::tuple<aku_TimeStamp, aku_ParamId>(eb->time, eb->param_id);
+        auto ta = std::tuple<aku_Timestamp, aku_ParamId>(ea->time, ea->param_id);
+        auto tb = std::tuple<aku_Timestamp, aku_ParamId>(eb->time, eb->param_id);
         return ta < tb;
     });
     sync_count = count;

@@ -39,7 +39,7 @@ void ProtocolParser::worker(Caller& caller) {
     aku_ParamId   id                 = 0;
     std::string   sid;
     bool          integer_id         = false;
-    aku_TimeStamp ts                 = 0;
+    aku_Timestamp ts                 = 0;
     double        value              =.0;
     //
     try {

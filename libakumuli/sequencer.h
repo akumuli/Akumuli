@@ -46,7 +46,7 @@ struct TimeSeriesValue {
     };
 
     // Data members
-    aku_TimeStamp                           key_ts_;  // Key value (time)
+    aku_Timestamp                           key_ts_;  // Key value (time)
     aku_ParamId                             key_id_;  // Key value (id)
     ValueType                               type_;    // Payload type
     union {
@@ -58,11 +58,11 @@ struct TimeSeriesValue {
 
     TimeSeriesValue();
 
-    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length);
+    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, aku_EntryOffset offset, uint32_t value_length);
 
-    TimeSeriesValue(aku_TimeStamp ts, aku_ParamId id, double value);
+    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value);
 
-    aku_TimeStamp get_timestamp() const;
+    aku_Timestamp get_timestamp() const;
 
     aku_ParamId get_paramid() const;
 
@@ -99,7 +99,7 @@ struct Sequencer {
     PSortedRun                   key_;
     const aku_Duration           window_size_;
     const PageHeader* const      page_;
-    aku_TimeStamp                top_timestamp_;  //< Largest timestamp ever seen
+    aku_Timestamp                top_timestamp_;  //< Largest timestamp ever seen
     uint32_t                     checkpoint_;     //< Last checkpoint timestamp
     mutable std::atomic_int      sequence_number_;   //< Flag indicates that merge operation is in progress and
                                                   //< search will return inaccurate results.
@@ -147,7 +147,7 @@ struct Sequencer {
       */
     void search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const;
 
-    std::tuple<aku_TimeStamp, int> get_window() const;
+    std::tuple<aku_Timestamp, int> get_window() const;
 
     /** Returns number of bytes needed to store all data from the checkpoint
      *  in compressed mode. This number can be more than actually needed but
@@ -157,10 +157,10 @@ struct Sequencer {
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
-    uint32_t get_checkpoint_(aku_TimeStamp ts) const;
+    uint32_t get_checkpoint_(aku_Timestamp ts) const;
 
     //! Convert checkpoint id to timestamp
-    aku_TimeStamp get_timestamp_(uint32_t cp) const;
+    aku_Timestamp get_timestamp_(uint32_t cp) const;
 
     // move sorted runs to ready_ collection
     int make_checkpoint_(uint32_t new_checkpoint);
@@ -168,7 +168,7 @@ private:
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created
       */
-    std::tuple<int, int> check_timestamp_(aku_TimeStamp ts);
+    std::tuple<int, int> check_timestamp_(aku_Timestamp ts);
 
     void filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
 };

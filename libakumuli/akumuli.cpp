@@ -121,7 +121,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read_columns( aku_TimeStamp   *timestamps
+    int read_columns( aku_Timestamp   *timestamps
                     , aku_ParamId     *params
                     , aku_PData       *pointers
                     , uint32_t        *lengths
@@ -171,7 +171,7 @@ struct DatabaseImpl : public aku_Database
 
     CursorImpl* select(aku_SelectQuery* query) {
         uint32_t scan_dir;
-        aku_TimeStamp begin, end;
+        aku_Timestamp begin, end;
         if (query->begin < query->end) {
             begin = query->begin;
             end = query->end;
@@ -188,15 +188,15 @@ struct DatabaseImpl : public aku_Database
         return pcur;
     }
 
-    aku_Status add_blob(aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
+    aku_Status add_blob(aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
         return storage_.write_blob(param_id, ts, value);
     }
 
-    aku_Status add_double(aku_ParamId param_id, aku_TimeStamp ts, double value) {
+    aku_Status add_double(aku_ParamId param_id, aku_Timestamp ts, double value) {
         return storage_.write_double(param_id, ts, value);
     }
 
-    aku_Status add_double(const char* begin, const char* end, aku_TimeStamp ts, double value) {
+    aku_Status add_double(const char* begin, const char* end, aku_Timestamp ts, double value) {
         return storage_.write_double(begin, end, ts, value);
     }
 
@@ -238,12 +238,12 @@ apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) 
     return Storage::remove_storage(file_name, logger);
 }
 
-aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_TimeStamp ts, aku_MemRange value) {
+aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->add_blob(param_id, ts, value);
 }
 
-aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value) {
+aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->add_double(param_id, timestamp, value);
 }
@@ -251,7 +251,7 @@ aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Time
 aku_Status aku_write_double(aku_Database* db,
                             const char* series_key_begin,
                             const char* series_key_end,
-                            aku_TimeStamp timestamp,
+                            aku_Timestamp timestamp,
                             double value)
 {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
@@ -287,7 +287,7 @@ void aku_close_database(aku_Database* db)
     delete dbi;
 }
 
-aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId *params) {
+aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId *params) {
     size_t s = sizeof(aku_SelectQuery) + n_params*sizeof(aku_ParamId);
     auto p = malloc(s);
     auto res = reinterpret_cast<aku_SelectQuery*>(p);
@@ -314,7 +314,7 @@ void aku_close_cursor(aku_Cursor* pcursor) {
 }
 
 int aku_cursor_read_columns( aku_Cursor      *pcursor
-                           , aku_TimeStamp   *timestamps
+                           , aku_Timestamp   *timestamps
                            , aku_ParamId     *params
                            , aku_PData       *pointers
                            , uint32_t        *lengths

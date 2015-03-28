@@ -15,7 +15,7 @@ void logger_stub(int level, const char* msg) {
 }
 
 struct BoltMock : Bolt {
-    std::vector<aku_TimeStamp> timestamps;
+    std::vector<aku_Timestamp> timestamps;
     std::vector<aku_ParamId>   ids;
     std::vector<double>        values;
 
@@ -29,7 +29,7 @@ public:
     virtual std::vector<std::shared_ptr<Bolt> > get_bolt_inputs() const { return {}; }
     virtual std::vector<std::shared_ptr<Bolt> > get_bolt_outputs() const { return {}; }
 
-    void put(aku_TimeStamp ts, aku_ParamId id, double value) {
+    void put(aku_Timestamp ts, aku_ParamId id, double value) {
         timestamps.push_back(ts);
         ids.push_back(id);
         values.push_back(value);

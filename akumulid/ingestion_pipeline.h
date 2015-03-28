@@ -33,7 +33,7 @@ namespace Akumuli {
 
 struct DbConnection {
     virtual ~DbConnection() {}
-    virtual aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) = 0;
+    virtual aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) = 0;
 };
 
 
@@ -54,7 +54,7 @@ public:
 
     // ProtocolConsumer interface
 public:
-    virtual aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data);
+    virtual aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data);
 };
 
 using boost::lockfree::queue;
@@ -94,7 +94,7 @@ struct PipelineSpout : ProtocolConsumer {
     typedef std::atomic<uint64_t>                SpoutCounter;   //< Shared counter
     typedef struct {
         aku_ParamId            id;                               //< Measurement ID
-        aku_TimeStamp          ts;                               //< Measurement timestamp
+        aku_Timestamp          ts;                               //< Measurement timestamp
         double                 value;                            //< Value (TODO: should be variant type)
         SpoutCounter          *cnt;                              //< Pointer to spout's shared counter
         PipelineErrorCb       *on_error;                         //< On error callback
@@ -121,7 +121,7 @@ struct PipelineSpout : ProtocolConsumer {
     void set_error_cb(PipelineErrorCb cb);
 
     // ProtocolConsumer
-    virtual void write_double(aku_ParamId param, aku_TimeStamp ts, double data);
+    virtual void write_double(aku_ParamId param, aku_Timestamp ts, double data);
     virtual void add_bulk_string(const Byte *buffer, size_t n);
 
     // Utility

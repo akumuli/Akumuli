@@ -19,6 +19,7 @@
 #include "akumuli.h"
 #include "akumuli_def.h"
 
+#define BOOST_DATE_TIME_POSIX_TIME_STD_CONFIG
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include <chrono>
@@ -33,11 +34,12 @@ namespace Akumuli {
 //! Static utility class for date-time utility functions
 struct DateTimeUtil {
 
-    static aku_TimeStamp from_std_chrono(std::chrono::system_clock::time_point timestamp);
+    static aku_Timestamp from_std_chrono(std::chrono::system_clock::time_point timestamp);
 
-    static aku_TimeStamp from_boost_ptime(boost::posix_time::ptime timestamp);
+    static aku_Timestamp from_boost_ptime(boost::posix_time::ptime timestamp);
 
-    //static aku_TimeStamp from_iso_string(const char* p);
+    //! Convert ISO string to akumuli's timestamp.
+    static aku_Timestamp from_iso_string(const char* iso_str);
 
 };
 

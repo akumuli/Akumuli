@@ -339,7 +339,7 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
     for(auto vol: volumes_) {
         // Search cache (optional, only for active page)
         if (vol == this->active_volume_) {
-            aku_TimeStamp window;
+            aku_Timestamp window;
             int seq_id;
             tie(window, seq_id) = active_volume_->cache_->get_window();
             if (query.direction == AKU_CURSOR_DIR_BACKWARD &&              // Cache searched only if cursor
@@ -465,19 +465,19 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
 }
 
 //! write binary data
-aku_Status Storage::write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data) {
+aku_Status Storage::write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data) {
     TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
     return _write_impl(ts_value, data);
 }
 
 //! write binary data
-aku_Status Storage::write_double(aku_ParamId param, aku_TimeStamp ts, double value) {
+aku_Status Storage::write_double(aku_ParamId param, aku_Timestamp ts, double value) {
     aku_MemRange m = {};
     TimeSeriesValue ts_value(ts, param, value);
     return _write_impl(ts_value, m);
 }
 
-aku_Status Storage::write_double(const char* begin, const char* end, aku_TimeStamp ts, double value) {
+aku_Status Storage::write_double(const char* begin, const char* end, aku_Timestamp ts, double value) {
     aku_ParamId id;
     auto status = _series_to_param_id(begin, end, &id);
     if (status == AKU_SUCCESS) {

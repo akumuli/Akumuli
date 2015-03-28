@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(i), 42u, 0u, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0u, 0u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 != 0) {
             RecordingCursor rec;
@@ -89,20 +89,20 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(i), 42u, 0u, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0u, 0u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 != 0) {
             // present write (ts <= last checkpoint)
             for (int j = 0; j < SMALL_LOOP; j++) {
                 int other_lock = 0;
-                tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(i + j), 24u, 0u, 0u));
+                tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + j), 24u, 0u, 0u));
                 BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
                 BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
             }
 
             // future write (ts > last checkpoint)
             int other_lock = 0;
-            tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(i + SMALL_LOOP), 24u, 0u, 0u));
+            tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + SMALL_LOOP), 24u, 0u, 0u));
             BOOST_REQUIRE_EQUAL(status, AKU_EBUSY);
             BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
 
@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(i), 42u, i, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, i, 0u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 == 1) {
             RecordingCursor rec;
@@ -190,13 +190,13 @@ void test_sequencer_searching(int dir) {
     for (int i = 0; i < SZLOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_TimeStamp>(42u + i), 42u, i, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(42u + i), 42u, i, 0u));
         offsets.push_back(i);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         BOOST_REQUIRE(lock % 2 == 0);  // because window is larger than number of iterations
     }
 
-    aku_TimeStamp begin = AKU_MIN_TIMESTAMP,
+    aku_Timestamp begin = AKU_MIN_TIMESTAMP,
                   end   = AKU_MAX_TIMESTAMP;
 
     if (dir == AKU_CURSOR_DIR_BACKWARD) {
@@ -206,7 +206,7 @@ void test_sequencer_searching(int dir) {
     Caller caller;
     RecordingCursor cursor;
     SearchQuery query(42u, begin, end, dir);
-    aku_TimeStamp window;
+    aku_Timestamp window;
     int seq_id;
     std::tie(window, seq_id) = seq.get_window();
     seq.search(caller, &cursor, query, seq_id);

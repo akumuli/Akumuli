@@ -143,13 +143,13 @@ struct Storage
     void advance_volume_(int ix);
 
     //! Write binary data.
-    aku_Status write_blob(aku_ParamId param, aku_TimeStamp ts, aku_MemRange data);
+    aku_Status write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data);
 
     //! Write double.
-    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double value);
+    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double value);
 
     //! Write double.
-    aku_Status write_double(const char* begin, const char* end, aku_TimeStamp ts, double value);
+    aku_Status write_double(const char* begin, const char* end, aku_Timestamp ts, double value);
 
     aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);
 

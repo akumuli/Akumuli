@@ -39,7 +39,7 @@ struct Bolt {
     //! Complete adding values
     virtual void complete(std::shared_ptr<Bolt> caller) = 0;
     //! Process value
-    virtual void put(aku_TimeStamp ts, aku_ParamId id, double value) = 0;
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) = 0;
 
     // Connections management
     //! Add output
@@ -83,8 +83,8 @@ struct QueryProcessor {
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
 
-    aku_TimeStamp                     lowerbound;
-    aku_TimeStamp                     upperbound;
+    aku_Timestamp                     lowerbound;
+    aku_Timestamp                     upperbound;
     int                                direction;
     std::vector<std::string>             metrics;
     TableT                       namesofinterest;

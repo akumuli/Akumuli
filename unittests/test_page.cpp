@@ -112,7 +112,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
-    aku_TimeStamp inst = 1111L;
+    aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(uint32_t)*sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
@@ -132,7 +132,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {1, 2, 3, 4};
-    aku_TimeStamp inst = 1111L;
+    aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)*sizeof(uint32_t)};
     auto result = page->add_entry(3333, inst, range);
 
@@ -148,7 +148,7 @@ static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_
     auto page = new (page_ptr) PageHeader(0, page_len, 0);
 
     for(uint32_t i = 0u; i < (uint32_t)num_values; i++) {
-        aku_TimeStamp inst = 1000L + i;
+        aku_Timestamp inst = 1000L + i;
         uint32_t box[1] = {i};
         aku_MemRange range = {(void*)box, sizeof(uint32_t)};
         aku_ParamId id = 1;
@@ -169,8 +169,8 @@ struct ExpectedSearchResults {
 
 void generic_search_test
     ( int param_id
-    , aku_TimeStamp begin
-    , aku_TimeStamp end
+    , aku_Timestamp begin
+    , aku_Timestamp end
     , int direction
     , ExpectedSearchResults const& expectations
     )
@@ -312,7 +312,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
 static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len, int num_values, int time_skew) {
     auto page = new (page_ptr) PageHeader(0, page_len, 0);
     for(int i = 0; i < num_values; i++) {
-        aku_TimeStamp inst = 1000L + i*time_skew;
+        aku_Timestamp inst = 1000L + i*time_skew;
         aku_MemRange range = {(void*)&i, sizeof(i)};
         BOOST_CHECK(page->add_entry(1, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
@@ -322,8 +322,8 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
 
 void generic_search_test_with_skew
      ( int param_id
-     , aku_TimeStamp begin
-     , aku_TimeStamp end
+     , aku_Timestamp begin
+     , aku_Timestamp end
      , int direction
      , ExpectedSearchResults const& expectations
      )
@@ -394,7 +394,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     for(int i = 0; true; i++)
     {
         int rand_num = rand();
-        aku_TimeStamp inst = time_stamp;
+        aku_Timestamp inst = time_stamp;
         aku_ParamId id = 1 + (rand_num & 1);
         aku_MemRange range = {(void*)&i, sizeof(i)};
         if(page->add_entry(id, inst, range) == AKU_WRITE_STATUS_OVERFLOW) {
@@ -416,8 +416,8 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         };
         int dir = directions[rand() & 1];
         double rnd_double = 0.001*((rand() + 1) % 200);
-        aku_TimeStamp start_time = (uint64_t)(rnd_double*page->bbox.max_timestamp);
-        aku_TimeStamp stop_time  = (uint64_t)((rnd_double + 0.6)*page->bbox.max_timestamp);
+        aku_Timestamp start_time = (uint64_t)(rnd_double*page->bbox.max_timestamp);
+        aku_Timestamp stop_time  = (uint64_t)((rnd_double + 0.6)*page->bbox.max_timestamp);
         aku_ParamId id2search = 1 + (rand() & 1);
         BOOST_REQUIRE(start_time > 0 && start_time < page->bbox.max_timestamp);
         BOOST_REQUIRE(stop_time > 0 && stop_time < page->bbox.max_timestamp);
@@ -470,7 +470,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 
 void generic_compression_test
     ( aku_ParamId param_id
-    , aku_TimeStamp begin
+    , aku_Timestamp begin
     , int dir
     , int n_elements_per_chunk
     )

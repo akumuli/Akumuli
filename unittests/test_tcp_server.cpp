@@ -17,10 +17,10 @@ static Logger logger_ = Logger("tcp-server-test", 10);
 
 
 struct DbMock : DbConnection {
-    typedef std::tuple<aku_ParamId, aku_TimeStamp, double> ValueT;
+    typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
     std::vector<ValueT> results;
 
-    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
         logger_.trace() << "write_double(" << param << ", " << ts << ", " << data << ")";
         results.push_back(std::make_tuple(param, ts, data));
         return AKU_SUCCESS;
@@ -31,7 +31,7 @@ struct DbMock : DbConnection {
 template<aku_Status ERR>
 struct DbErrMock : DbConnection {
     aku_Status err = ERR;
-    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
         return err;
     }
 };
@@ -102,7 +102,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
             BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
         }
         aku_ParamId id;
-        aku_TimeStamp ts;
+        aku_Timestamp ts;
         double value;
         std::tie(id, ts, value) = suite.dbcon->results.at(0);
         BOOST_REQUIRE_EQUAL(id, 1);
@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
         aku_ParamId id;
-        aku_TimeStamp ts;
+        aku_Timestamp ts;
         double value;
         std::tie(id, ts, value) = suite.dbcon->results.at(0);
         BOOST_REQUIRE_EQUAL(id, 1);
@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 2);
         aku_ParamId id;
-        aku_TimeStamp ts;
+        aku_Timestamp ts;
         double value;
 
         // First message

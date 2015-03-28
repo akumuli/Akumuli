@@ -11,11 +11,11 @@ using namespace Akumuli;
 
 struct ConsumerMock : ProtocolConsumer {
     std::vector<aku_ParamId>     param_;
-    std::vector<aku_TimeStamp>   ts_;
+    std::vector<aku_Timestamp>   ts_;
     std::vector<double>          data_;
     std::vector<std::string>     bulk_;
 
-    void write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    void write_double(aku_ParamId param, aku_Timestamp ts, double data) {
         param_.push_back(param);
         ts_.push_back(ts);
         data_.push_back(data);

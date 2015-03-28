@@ -8,12 +8,12 @@
 using namespace Akumuli;
 
 struct DbMock : DbConnection {
-    typedef std::tuple<aku_ParamId, aku_TimeStamp, double> ValueT;
+    typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
     size_t nrec = 0u;
     PerfTimer tm;
     Logger logger_ = Logger("dbmock", 100);
 
-    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
         static const int N = 1000000;
         if (nrec++ % N == 0) {
             double elapsed = tm.elapsed();

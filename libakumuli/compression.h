@@ -35,7 +35,7 @@ namespace Akumuli {
 typedef std::vector<unsigned char> ByteVector;
 
 struct ChunkHeader {
-    std::vector<aku_TimeStamp>  timestamps;
+    std::vector<aku_Timestamp>  timestamps;
     std::vector<aku_ParamId>    paramids;
     std::vector<uint32_t>       offsets;
     std::vector<uint32_t>       lengths;
@@ -57,8 +57,8 @@ struct CompressionUtil {
       */
     static
     aku_Status encode_chunk(uint32_t           *n_elements
-                           , aku_TimeStamp      *ts_begin
-                           , aku_TimeStamp      *ts_end
+                           , aku_Timestamp      *ts_begin
+                           , aku_Timestamp      *ts_end
                            , ChunkWriter        *writer
                            , const ChunkHeader &data
                            );
@@ -420,14 +420,14 @@ struct RLEStreamReader {
 };
 
 // Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<aku_TimeStamp> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, aku_TimeStamp> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, aku_TimeStamp> DeltaRLETSWriter;
+typedef Base128StreamWriter<aku_Timestamp> __Base128TSWriter;
+typedef RLEStreamWriter<__Base128TSWriter, aku_Timestamp> __RLETSWriter;
+typedef DeltaStreamWriter<__RLETSWriter, aku_Timestamp> DeltaRLETSWriter;
 
 // Base128 -> RLE -> Delta -> Timestamps
-typedef Base128StreamReader<aku_TimeStamp, const unsigned char*> __Base128TSReader;
-typedef RLEStreamReader<__Base128TSReader, aku_TimeStamp> __RLETSReader;
-typedef DeltaStreamReader<__RLETSReader, aku_TimeStamp> DeltaRLETSReader;
+typedef Base128StreamReader<aku_Timestamp, const unsigned char*> __Base128TSReader;
+typedef RLEStreamReader<__Base128TSReader, aku_Timestamp> __RLETSReader;
+typedef DeltaStreamReader<__RLETSReader, aku_Timestamp> DeltaRLETSReader;
 
 // ParamId -> Base128
 typedef Base128StreamWriter<aku_ParamId> Base128IdWriter;

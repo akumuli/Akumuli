@@ -32,15 +32,15 @@ struct InterpolationSearch {
      *  @param prange pointer to search index range
      *  @return true on success.
      */
-    bool run(aku_TimeStamp key, SearchRange* prange) {
+    bool run(aku_Timestamp key, SearchRange* prange) {
         SearchRange& range = *prange;
         if (range.begin == range.end) {
             return true;
         }
         const Derived* cderived = static_cast<const Derived*>(this);
         Derived* derived = static_cast<Derived*>(this);
-        aku_TimeStamp search_lower_bound;
-        aku_TimeStamp search_upper_bound;
+        aku_Timestamp search_lower_bound;
+        aku_Timestamp search_upper_bound;
         bool success =
             cderived->read_at(&search_lower_bound, range.begin) &&
             cderived->read_at(&search_upper_bound, range.end-1);
@@ -59,7 +59,7 @@ struct InterpolationSearch {
         uint64_t overshoot = 0u;
         uint64_t undershoot = 0u;
         uint64_t exact_match = 0u;
-        aku_TimeStamp prev_step_err = 0u;
+        aku_Timestamp prev_step_err = 0u;
         I10nState state = NONE;
 
         while(steps_count++ < interpolation_search_quota)  {
@@ -88,7 +88,7 @@ struct InterpolationSearch {
 
             if (probe_index > range.begin && probe_index < range.end) {
 
-                aku_TimeStamp probe;
+                aku_Timestamp probe;
                 success = cderived->read_at(&probe, probe_index);
                 if (!success) {
                     return false;

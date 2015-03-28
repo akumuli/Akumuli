@@ -47,7 +47,7 @@ typedef union {
 } aku_PData;
 
 
-typedef uint64_t    aku_TimeStamp;    //< Timestamp
+typedef uint64_t    aku_Timestamp;    //< Timestamp
 typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
 typedef int         aku_Status;       //< Status code of any operation
 
@@ -69,9 +69,9 @@ typedef struct {
  */
 typedef struct {
     //! Begining of the search range
-    aku_TimeStamp begin;
+    aku_Timestamp begin;
     //! End of the search range
-    aku_TimeStamp end;
+    aku_Timestamp end;
     //! Number of parameters to search
     uint32_t n_params;
     //! Array of parameters to search
@@ -211,7 +211,7 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
   * @param value BLOB memory range
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, aku_MemRange value);
+AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, aku_MemRange value);
 
 /** Write measurement to DB
   * @param db opened database instance
@@ -220,7 +220,7 @@ AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_TimeStamp timestamp, double value);
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value);
 
 /** Write measurement to DB
   * @param db opened database instance
@@ -233,7 +233,7 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
 AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
                                        const char* series_key_begin,
                                        const char* series_key_end,
-                                       aku_TimeStamp timestamp,
+                                       aku_Timestamp timestamp,
                                        double value);
 
 //---------
@@ -244,7 +244,7 @@ AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
  * @obsolete should be replaced with json query format
  * @brief Create select query with single parameter-id
  */
-AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_TimeStamp begin, aku_TimeStamp end, uint32_t n_params, aku_ParamId* params);
+AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId* params);
 
 /**
  * @brief Execute query
@@ -272,7 +272,7 @@ AKU_EXPORT void aku_close_cursor(aku_Cursor* pcursor);
  * @note every output parmeter can be null if we doesn't interested in it's value
  */
 AKU_EXPORT int aku_cursor_read_columns( aku_Cursor      *pcursor
-                                      , aku_TimeStamp   *timestamps
+                                      , aku_Timestamp   *timestamps
                                       , aku_ParamId     *params
                                       , aku_PData       *pointers
                                       , uint32_t        *lengths

@@ -112,8 +112,8 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
 }
 
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
-                                        , aku_TimeStamp      *ts_begin
-                                        , aku_TimeStamp      *ts_end
+                                        , aku_Timestamp      *ts_begin
+                                        , aku_Timestamp      *ts_end
                                         , ChunkWriter        *writer
                                         , const ChunkHeader&  data)
 {

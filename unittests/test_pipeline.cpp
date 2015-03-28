@@ -11,7 +11,7 @@
 struct ConnectionMock : Akumuli::DbConnection {
     int cntp;
     int cntt;
-    aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
         if (ts == 1) {
             cntt += 1;
             cntp += (int)param;

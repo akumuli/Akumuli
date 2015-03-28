@@ -36,7 +36,7 @@ namespace detail {
     const static int TAG = 111222333;
     struct ConnectionMock : Akumuli::DbConnection {
         int cnt;
-        aku_Status write_double(aku_ParamId param, aku_TimeStamp ts, double data) {
+        aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
             if (AKU_LIKELY(param == TAG)) {
                 cnt++;
             } else {

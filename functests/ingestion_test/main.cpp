@@ -44,7 +44,7 @@ void delete_storage() {
     aku_remove_database(DB_META_FILE, &aku_console_logger);
 }
 
-bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
+bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
     aku_ParamId params[] = {42};
     aku_SelectQuery* query = aku_make_select_query( begin
@@ -52,7 +52,7 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
                                                   , 1
                                                   , params);
     aku_Cursor* cursor = aku_select(db, query);
-    aku_TimeStamp current_time = begin;
+    aku_Timestamp current_time = begin;
     size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
@@ -60,7 +60,7 @@ bool query_database_forward(aku_Database* db, aku_TimeStamp begin, aku_TimeStamp
             std::cout << aku_error_message(err) << std::endl;
             return false;
         }
-        aku_TimeStamp timestamps[NUM_ELEMENTS];
+        aku_Timestamp timestamps[NUM_ELEMENTS];
         aku_ParamId paramids[NUM_ELEMENTS];
         aku_PData pointers[NUM_ELEMENTS];
         uint32_t lengths[NUM_ELEMENTS];
@@ -231,8 +231,8 @@ int main(int cnt, const char** args)
         timer.restart();
 
         if (!query_database_forward( db
-                           , std::numeric_limits<aku_TimeStamp>::min()
-                           , std::numeric_limits<aku_TimeStamp>::max()
+                           , std::numeric_limits<aku_Timestamp>::min()
+                           , std::numeric_limits<aku_Timestamp>::max()
                            , counter
                            , timer
                            , 1000000))
@@ -245,9 +245,9 @@ int main(int cnt, const char** args)
 
         // Random access
         std::cout << "Prepare test data" << std::endl;
-        std::vector<std::pair<aku_TimeStamp, aku_TimeStamp>> ranges;
-        for (aku_TimeStamp i = 1u; i < (aku_TimeStamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
-            aku_TimeStamp j = (i - 1)*CHUNK_SIZE;
+        std::vector<std::pair<aku_Timestamp, aku_Timestamp>> ranges;
+        for (aku_Timestamp i = 1u; i < (aku_Timestamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
+            aku_Timestamp j = (i - 1)*CHUNK_SIZE;
             int count = 5;
             for (int d = 0; d < count; d++) {
                 int r = std::rand() % CHUNK_SIZE;

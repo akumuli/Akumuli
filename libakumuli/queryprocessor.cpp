@@ -38,7 +38,7 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bo
     const uint32_t                      buffer_size_;
     std::vector<std::shared_ptr<Bolt>>  outputs_;
     std::vector<std::weak_ptr<Bolt>>    inputs_;
-    std::vector<aku_TimeStamp>          timestamps_;
+    std::vector<aku_Timestamp>          timestamps_;
     std::vector<aku_ParamId>            paramids_;
     std::vector<double>                 values_;
     Rand                                random_;
@@ -119,7 +119,7 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bo
         }
     }
 
-    virtual void put(aku_TimeStamp ts, aku_ParamId id, double value) {
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
         if (outputs_.empty()) {
             BoltException except(Bolt::RandomSampler, "no output bolt");
             BOOST_THROW_EXCEPTION(except);
