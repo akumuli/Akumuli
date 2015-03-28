@@ -26,7 +26,7 @@
 namespace Akumuli {
 
 /** aku_TimeStamp is a main datatype to represent date-time values.
-  * It stores number of 10ns intervals since epoch so it can fit uint64_t and doesn't prone to year 2038
+  * It stores number of nanoseconds since epoch so it can fit uint64_t and doesn't prone to year 2038
   * problem.
   */
 
@@ -36,6 +36,8 @@ struct DateTimeUtil {
     static aku_TimeStamp from_std_chrono(std::chrono::system_clock::time_point timestamp);
 
     static aku_TimeStamp from_boost_ptime(boost::posix_time::ptime timestamp);
+
+    //static aku_TimeStamp from_iso_string(const char* p);
 
 };
 

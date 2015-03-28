@@ -18,10 +18,8 @@
 
 namespace Akumuli {
 
-//! 10ns interval
-typedef std::ratio<1, 100000000> TenNanoseconds;
-
-typedef std::chrono::duration<aku_TimeStamp, TenNanoseconds> DurationT;
+//! 1ns interval
+typedef std::chrono::nanoseconds DurationT;
 
 static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
 
@@ -33,7 +31,7 @@ aku_TimeStamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_poin
 
 aku_TimeStamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp) {
     boost::posix_time::time_duration duration = timestamp - EPOCH;
-    uint64_t ns = duration.total_nanoseconds() / 10;
+    uint64_t ns = duration.total_nanoseconds();
     return ns;
 }
 

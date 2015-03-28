@@ -277,3 +277,17 @@ target_link_libraries(
 )
 
 add_test(queryprocessor test_queryprocessor)
+
+# Datetime test
+add_executable(
+    test_datetime
+    test_datetime.cpp
+    ../libakumuli/datetime.cpp
+)
+
+target_link_libraries(
+    test_datetime
+    ${Boost_LIBRARIES}
+)
+
+add_test(datetime test_datetime)
