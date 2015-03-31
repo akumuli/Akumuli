@@ -31,6 +31,9 @@ namespace Akumuli {
   * problem.
   */
 
+//! Timestamp parsing error
+struct BadDateTimeFormat;
+
 //! Static utility class for date-time utility functions
 struct DateTimeUtil {
 

@@ -40,7 +40,7 @@ aku_Timestamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp)
 }
 
 // parse N digits from string
-int parse_n_digits(const char* p, int n, const char* error_message = "can't parse digit") {
+static int parse_n_digits(const char* p, int n, const char* error_message = "can't parse digit") {
     int value = 0;
     for(int i = 0; i < n; i++) {
         char c = *p++;
