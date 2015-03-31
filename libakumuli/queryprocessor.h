@@ -83,17 +83,31 @@ struct QueryProcessor {
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
 
-    aku_Timestamp                     lowerbound;
-    aku_Timestamp                     upperbound;
-    int                                direction;
-    std::vector<std::string>             metrics;
-    TableT                       namesofinterest;
+    //! Lowerbound
+    const aku_Timestamp                lowerbound;
+    //! Upperbound
+    const aku_Timestamp                upperbound;
+    //! Scan direction
+    const int                          direction;
+    //! List of metrics of interest
+    const std::vector<std::string>     metrics;
+    //! Name to id mapping
+    TableT                             namesofinterest;
 
     //! Root of the processing topology
     std::shared_ptr<Bolt>              root_bolt;
 
+    /** Create new query processor.
+      * @param root is a root of the processing topology
+      * @param metrics is a list of metrics of interest
+      * @param begin is a timestamp to begin from
+      * @param end is a timestamp to end with
+      *        (depending on a scan direction can be greater or smaller then lo)
+      */
     QueryProcessor(std::shared_ptr<Bolt> root,
-                   std::vector<std::string> metrics);
+                   std::vector<std::string> metrics,
+                   aku_Timestamp begin,
+                   aku_Timestamp end);
 
     /** Match param_id. Return group id on success or
       * negative value on error.

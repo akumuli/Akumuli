@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "seriesparser.h"
+#include "datetime.h"
 
 using namespace Akumuli;
 
@@ -123,7 +124,11 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
     const char* json =
         " {"
         "      \"sample\": { \"reservoir\": 1000 },"
-        "      \"metric\": \"cpu\""
+        "      \"metric\": \"cpu\",                "
+        "      \"range\" : {                       "
+        "           \"from\": \"20150101T000000\", "
+        "           \"to\"  : \"20150102T000000\"  "
+        "       }                                  "
         " }";
     auto qproc = matcher.build_query_processor(json, &logger);
     BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
@@ -135,9 +140,13 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
 
     SeriesMatcher matcher(1ul);
     const char* json =
-        " {"
+        " {                                        "
         "      \"sample\": { \"reservoir\": 1000 },"
-        "      \"metric\": [\"cpu\", \"mem\"]"
+        "      \"metric\": [\"cpu\", \"mem\"],     "
+        "      \"range\" : {                       "
+        "           \"from\": \"20150101T000000\", "
+        "           \"to\"  : \"20150102T000000\"  "
+        "       }                                  "
         " }";
     auto qproc = matcher.build_query_processor(json, &logger);
     BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
@@ -150,4 +159,8 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
         BOOST_REQUIRE(m1 == "mem");
         BOOST_REQUIRE(m2 == "cpu");
     }
+    auto first_ts  = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 01));
+    auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
+    BOOST_REQUIRE(qproc->lowerbound == DateTimeUtil::from_boost_ptime(first_ts));
+    BOOST_REQUIRE(qproc->upperbound == DateTimeUtil::from_boost_ptime(second_ts));
 }

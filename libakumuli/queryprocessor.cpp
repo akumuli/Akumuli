@@ -160,8 +160,13 @@ std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
 }
 
 QueryProcessor::QueryProcessor(std::shared_ptr<Bolt> root,
-               std::vector<std::string> metrics)
-    : metrics(metrics)
+               std::vector<std::string> metrics,
+               aku_Timestamp begin,
+               aku_Timestamp end)
+    : lowerbound(std::min(begin, end))
+    , upperbound(std::max(begin, end))
+    , direction(begin > end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD)
+    , metrics(metrics)
     , namesofinterest(StringTools::create_table(0x1000))
     , root_bolt(root)
 {

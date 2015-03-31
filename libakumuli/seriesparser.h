@@ -29,6 +29,10 @@
 
 namespace Akumuli {
 
+//! Exception triggered by query parser
+struct QueryParserError;
+
+
 /** Series matcher. Table that maps series names to series
   * ids. Should be initialized on startup from sqlite table.
   */

@@ -16,6 +16,7 @@
 
 #include "seriesparser.h"
 #include "util.h"
+#include "datetime.h"
 
 #include <string>
 #include <map>
@@ -73,6 +74,10 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
+struct QueryParserError : std::runtime_error {
+    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
+};
+
 static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
                                                             aku_logger_cb_t logger) {
     auto sample = ptree.get_child("sample");
@@ -107,6 +112,23 @@ static std::vector<std::string> parse_metric(boost::property_tree::ptree const& 
     return metrics;
 }
 
+static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,
+                                           std::string const& name,
+                                           aku_logger_cb_t logger) {
+    boost::property_tree::ptree range = ptree.get_child("range");
+    for(auto child: range) {
+        if (child.first == name) {
+            auto iso_string = child.second.get_value<std::string>();
+            auto ts = DateTimeUtil::from_iso_string(iso_string.c_str());
+            return ts;
+        }
+    }
+    std::stringstream fmt;
+    fmt << "can't find `" << name << "` tag inside the query";
+    QueryParserError error(fmt.str().c_str());
+    BOOST_THROW_EXCEPTION(error);
+}
+
 std::shared_ptr<QueryProcessor>
 SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
     static const std::shared_ptr<QueryProcessor> NONE;
@@ -117,8 +139,8 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
      *      // or
      *      "metric": ["cpu", "mem"],
      *      "range": {
-     *          "from": "2015-01-01 00:00:00-07:89",
-     *          "to"  : "2015-01-02 00:00:00-07:89"
+     *          "from": "20150101T000000",
+     *          "to"  : "20150102T000000"
      *      },
      *      "where": [
      *          { "equals": { "key1": "val1" }},
@@ -158,11 +180,15 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         // Read sampling method
         auto sampling_params = parse_sampling_params(ptree, logger);
 
+        // Read timestamps
+        auto ts_begin = parse_range_timestamp(ptree, "from", logger);
+        auto ts_end = parse_range_timestamp(ptree, "to", logger);
+
         // Build topology
         auto sampler = BoltsBuilder::make_random_sampler(sampling_params.first, sampling_params.second, logger);
 
         // Build query processor
-        auto qproc = std::make_shared<QueryProcessor>(sampler, metrics);
+        auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);
         return qproc;
 
     } catch(std::exception const& e) {
