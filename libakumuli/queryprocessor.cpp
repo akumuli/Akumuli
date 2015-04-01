@@ -34,31 +34,21 @@ Bolt::BoltType BoltException::get_type() const {
     return type_;
 }
 
-struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bolt {
-    const uint32_t                      buffer_size_;
+
+/** Abstract graph node. Handles inputs and outputs.
+  * Implements part of the Bolt interface.
+  */
+struct AcyclicGraphNode : Bolt
+{
     std::vector<std::shared_ptr<Bolt>>  outputs_;
     std::vector<std::weak_ptr<Bolt>>    inputs_;
-    std::vector<aku_Timestamp>          timestamps_;
-    std::vector<aku_ParamId>            paramids_;
-    std::vector<double>                 values_;
-    Rand                                random_;
 
-    RandomSamplingBolt(uint32_t buffer_size)
-        : buffer_size_(buffer_size)
-    {
-    }
-
-    // Bolt interface
     virtual void add_output(std::shared_ptr<Bolt> next) {
         outputs_.push_back(next);
     }
 
     virtual void add_input(std::weak_ptr<Bolt> input) {
         inputs_.push_back(input);
-    }
-
-    virtual BoltType get_bolt_type() const {
-        return Bolt::RandomSampler;
     }
 
     virtual std::vector<std::shared_ptr<Bolt>> get_bolt_outputs() const {
@@ -73,13 +63,16 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bo
         return result;
     }
 
-    virtual void complete(std::shared_ptr<Bolt> caller) {
-
+    /** Remove input from inputs list.
+      * @return true if all inputs was gone and false otherwise
+      * @param caller is a pointer to input node that needs to be removed
+      */
+    bool remove_input(std::shared_ptr<Bolt> caller) {
         // Reset caller in inputs list
-        for(auto& wref: inputs_) {                              // TODO: this logic should be
-            auto sref = wref.lock();                            // moved to separate mixin class
-            if (sref && sref == caller) {                       // tested and inherited by all
-                wref.reset();                                   // blots.
+        for(auto& wref: inputs_) {
+            auto sref = wref.lock();
+            if (sref && sref == caller) {
+                wref.reset();
                 break;
             }
         }
@@ -87,43 +80,81 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bo
         // Check precondition (all inputs was gone)
         for(auto& wref: inputs_) {
             if (wref.expired() == false) {
-                return;
+                return false;
             }
         }
+        return true;
+    }
+
+    void distribute(aku_Timestamp ts, aku_ParamId pid, double value) {
+        for(auto& bolt: outputs_) {
+            bolt->put(ts, pid, value);
+        }
+    }
+
+    /** Throw exception if there is no output node
+      * @throw BoltException
+      */
+    void throw_if_no_output() {
         if (outputs_.empty()) {
             BoltException except(Bolt::RandomSampler, "no output bolt");
             BOOST_THROW_EXCEPTION(except);
         }
+    }
 
-        // Do the actual job
-        auto& tsarray = timestamps_;
-        auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
-            return tsarray.at(lhs) < tsarray.at(rhs);
-        };
-
-        std::vector<uint32_t> indexes;
-        uint32_t gencnt = 0u;
-        std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
-        std::stable_sort(indexes.begin(), indexes.end(), predicate);
-
-        for(auto ix: indexes) {
-            for(auto& bolt: outputs_) {
-                bolt->put(timestamps_.at(ix),
-                         paramids_.at(ix),
-                         values_.at(ix));
-            }
-        }
-
+    template<class Derived>
+    void complete_children(std::shared_ptr<Derived> caller) {
         for(auto& bolt: outputs_) {
-            bolt->complete(shared_from_this());
+            bolt->complete(caller);
+        }
+    }
+};
+
+
+struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, AcyclicGraphNode {
+    const uint32_t                      buffer_size_;
+    std::vector<aku_Timestamp>          timestamps_;
+    std::vector<aku_ParamId>            paramids_;
+    std::vector<double>                 values_;
+    Rand                                random_;
+
+    RandomSamplingBolt(uint32_t buffer_size)
+        : buffer_size_(buffer_size)
+    {
+    }
+
+    // Bolt interface
+    virtual BoltType get_bolt_type() const {
+        return Bolt::RandomSampler;
+    }
+
+    virtual void complete(std::shared_ptr<Bolt> caller) {
+        if (remove_input(caller)) {
+            throw_if_no_output();
+
+            // Do the actual job
+            auto& tsarray = timestamps_;
+            auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
+                return tsarray.at(lhs) < tsarray.at(rhs);
+            };
+
+            std::vector<uint32_t> indexes;
+            uint32_t gencnt = 0u;
+            std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
+            std::stable_sort(indexes.begin(), indexes.end(), predicate);
+
+            for(auto ix: indexes) {
+                distribute(timestamps_.at(ix),
+                           paramids_.at(ix),
+                           values_.at(ix));
+            }
+
+            complete_children(shared_from_this());
         }
     }
 
     virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
-        if (outputs_.empty()) {
-            BoltException except(Bolt::RandomSampler, "no output bolt");
-            BOOST_THROW_EXCEPTION(except);
-        }
+        throw_if_no_output();
         if (timestamps_.size() < buffer_size_) {
             // Just append new values
             timestamps_.push_back(ts);
@@ -140,6 +171,24 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Bo
         }
     }
 };
+
+/*
+struct RandomSamplingBolt : AcyclicGraphNode<RandomSamplingBolt> {
+
+    // Bolt interface
+    virtual void complete(std::shared_ptr<Bolt> caller);
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value);
+    virtual void add_output(std::shared_ptr<Bolt> next);
+    virtual void add_input(std::weak_ptr<Bolt> input);
+    virtual BoltType get_bolt_type() const;
+    virtual std::vector<std::shared_ptr<Bolt> > get_bolt_inputs() const;
+    virtual std::vector<std::shared_ptr<Bolt> > get_bolt_outputs() const;
+};
+*/
+
+//                                   //
+//         Factory methods           //
+//                                   //
 
 std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
                                                         size_t buffer_size,
