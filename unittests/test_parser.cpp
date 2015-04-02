@@ -8,6 +8,7 @@
 #include "datetime.h"
 
 using namespace Akumuli;
+using namespace Akumuli::QP;
 
 void logger(int errlvl, const char* msg) {
     if (errlvl == AKU_LOG_ERROR) {
@@ -131,7 +132,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
         "       }                                  "
         " }";
     auto qproc = matcher.build_query_processor(json, &logger);
-    BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
+    BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics.size() == 1);
     BOOST_REQUIRE(qproc->metrics.at(0) == "cpu");
 }
@@ -149,7 +150,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
         "       }                                  "
         " }";
     auto qproc = matcher.build_query_processor(json, &logger);
-    BOOST_REQUIRE(qproc->root_bolt->get_bolt_type() == Bolt::RandomSampler);
+    BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics.size() == 2);
     auto m1 = qproc->metrics.at(0);
     auto m2 = qproc->metrics.at(1);

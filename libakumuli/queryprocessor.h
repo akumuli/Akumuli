@@ -22,56 +22,57 @@
 #include "stringpool.h"
 
 namespace Akumuli {
+namespace QP {
 
-struct Bolt {
+struct Node {
 
-    enum BoltType {
+    enum NodeType {
         // Samplers
         RandomSampler,
         Resampler,
         // Joins
         JoinByTimestamp,
+        // Filtering
+        FilterById,
         // Testing
         Mock,
     };
 
-    virtual ~Bolt() = default;
+    virtual ~Node() = default;
     //! Complete adding values
-    virtual void complete(std::shared_ptr<Bolt> caller) = 0;
+    virtual void complete() = 0;
     //! Process value
     virtual void put(aku_Timestamp ts, aku_ParamId id, double value) = 0;
 
-    // Connections management
-    //! Add output
-    virtual void add_output(std::shared_ptr<Bolt> next) = 0;
-    virtual void add_input(std::weak_ptr<Bolt> input) = 0;
-
     // Introspections
 
-    //! Get bolt type
-    virtual BoltType get_bolt_type() const = 0;
-
-    //! Get all inputs
-    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_inputs() const = 0;
-
-    //! Get all outputs
-    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_outputs() const = 0;
-};
-
-struct BoltException : std::runtime_error {
-    Bolt::BoltType type_;
-    BoltException(Bolt::BoltType type, const char* msg);
-
-    Bolt::BoltType get_type() const;
+    //! Get node type
+    virtual NodeType get_type() const = 0;
 };
 
 
+struct NodeException : std::runtime_error {
+    Node::NodeType type_;
+    NodeException(Node::NodeType type, const char* msg);
+    Node::NodeType get_type() const;
+};
 
-struct BoltsBuilder {
-    static std::shared_ptr<Bolt> make_random_sampler(std::string type,
-                                                     size_t buffer_size,
+
+struct NodeBuilder {
+    //! Create random sampling node
+    static std::shared_ptr<Node> make_random_sampler(std::string type,
+                                                     size_t buffer_size, std::shared_ptr<Node> next,
                                                      aku_logger_cb_t logger);
+
+    //! Create filtering node
+    static std::shared_ptr<Node> make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next,
+                                                   aku_logger_cb_t logger);
+
+    //! Create filtering node
+    static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
+                                                        aku_logger_cb_t logger);
 };
+
 
 /** Query processor.
   * Should be built from textual representation (json at first).
@@ -95,7 +96,7 @@ struct QueryProcessor {
     TableT                             namesofinterest;
 
     //! Root of the processing topology
-    std::shared_ptr<Bolt>              root_bolt;
+    std::shared_ptr<Node>              root_node;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -104,7 +105,7 @@ struct QueryProcessor {
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
-    QueryProcessor(std::shared_ptr<Bolt> root,
+    QueryProcessor(std::shared_ptr<Node> root,
                    std::vector<std::string> metrics,
                    aku_Timestamp begin,
                    aku_Timestamp end);
@@ -115,4 +116,4 @@ struct QueryProcessor {
     int match(uint64_t param_id);
 };
 
-}
+}}  // namespaces

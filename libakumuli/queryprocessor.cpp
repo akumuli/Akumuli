@@ -19,142 +19,73 @@
 
 #include <random>
 #include <algorithm>
+#include <unordered_set>
 
 #include <boost/lexical_cast.hpp>
 
 namespace Akumuli {
+namespace QP {
 
-BoltException::BoltException(Bolt::BoltType type, const char* msg)
+NodeException::NodeException(Node::NodeType type, const char* msg)
     : std::runtime_error(msg)
     , type_(type)
 {
 }
 
-Bolt::BoltType BoltException::get_type() const {
+Node::NodeType NodeException::get_type() const {
     return type_;
 }
 
-
-/** Abstract graph node. Handles inputs and outputs.
-  * Implements part of the Bolt interface.
-  */
-struct AcyclicGraphNode : Bolt
-{
-    std::vector<std::shared_ptr<Bolt>>  outputs_;
-    std::vector<std::weak_ptr<Bolt>>    inputs_;
-
-    virtual void add_output(std::shared_ptr<Bolt> next) {
-        outputs_.push_back(next);
-    }
-
-    virtual void add_input(std::weak_ptr<Bolt> input) {
-        inputs_.push_back(input);
-    }
-
-    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_outputs() const {
-        return outputs_;
-    }
-
-    virtual std::vector<std::shared_ptr<Bolt>> get_bolt_inputs() const {
-        std::vector<std::shared_ptr<Bolt>> result;
-        for(auto wref: inputs_) {
-            result.push_back(wref.lock());
-        }
-        return result;
-    }
-
-    /** Remove input from inputs list.
-      * @return true if all inputs was gone and false otherwise
-      * @param caller is a pointer to input node that needs to be removed
-      */
-    bool remove_input(std::shared_ptr<Bolt> caller) {
-        // Reset caller in inputs list
-        for(auto& wref: inputs_) {
-            auto sref = wref.lock();
-            if (sref && sref == caller) {
-                wref.reset();
-                break;
-            }
-        }
-
-        // Check precondition (all inputs was gone)
-        for(auto& wref: inputs_) {
-            if (wref.expired() == false) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void distribute(aku_Timestamp ts, aku_ParamId pid, double value) {
-        for(auto& bolt: outputs_) {
-            bolt->put(ts, pid, value);
-        }
-    }
-
-    /** Throw exception if there is no output node
-      * @throw BoltException
-      */
-    void throw_if_no_output() {
-        if (outputs_.empty()) {
-            BoltException except(Bolt::RandomSampler, "no output bolt");
-            BOOST_THROW_EXCEPTION(except);
-        }
-    }
-
-    template<class Derived>
-    void complete_children(std::shared_ptr<Derived> caller) {
-        for(auto& bolt: outputs_) {
-            bolt->complete(caller);
-        }
-    }
-};
-
-
-struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, AcyclicGraphNode {
+struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, Node {
     const uint32_t                      buffer_size_;
     std::vector<aku_Timestamp>          timestamps_;
     std::vector<aku_ParamId>            paramids_;
     std::vector<double>                 values_;
     Rand                                random_;
+    std::shared_ptr<Node>               next_;
 
-    RandomSamplingBolt(uint32_t buffer_size)
+    RandomSamplingNode(uint32_t buffer_size, std::shared_ptr<Node> next)
         : buffer_size_(buffer_size)
+        , next_(next)
     {
     }
 
     // Bolt interface
-    virtual BoltType get_bolt_type() const {
-        return Bolt::RandomSampler;
+    virtual NodeType get_type() const {
+        return Node::RandomSampler;
     }
 
-    virtual void complete(std::shared_ptr<Bolt> caller) {
-        if (remove_input(caller)) {
-            throw_if_no_output();
-
-            // Do the actual job
-            auto& tsarray = timestamps_;
-            auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
-                return tsarray.at(lhs) < tsarray.at(rhs);
-            };
-
-            std::vector<uint32_t> indexes;
-            uint32_t gencnt = 0u;
-            std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
-            std::stable_sort(indexes.begin(), indexes.end(), predicate);
-
-            for(auto ix: indexes) {
-                distribute(timestamps_.at(ix),
-                           paramids_.at(ix),
-                           values_.at(ix));
-            }
-
-            complete_children(shared_from_this());
+    virtual void complete() {
+        if (!next_) {
+            NodeException err(Node::RandomSampler, "next not set");
+            BOOST_THROW_EXCEPTION(err);
         }
+
+        // Do the actual job
+        auto& tsarray = timestamps_;
+        auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
+            return tsarray.at(lhs) < tsarray.at(rhs);
+        };
+
+        std::vector<uint32_t> indexes;
+        uint32_t gencnt = 0u;
+        std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
+        std::stable_sort(indexes.begin(), indexes.end(), predicate);
+
+        for(auto ix: indexes) {
+            next_->put(timestamps_.at(ix),
+                       paramids_.at(ix),
+                       values_.at(ix));
+        }
+
+        next_->complete();
     }
 
     virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
-        throw_if_no_output();
+        if (!next_) {
+            NodeException err(Node::RandomSampler, "next not set");
+            BOOST_THROW_EXCEPTION(err);
+        }
         if (timestamps_.size() < buffer_size_) {
             // Just append new values
             timestamps_.push_back(ts);
@@ -172,27 +103,54 @@ struct RandomSamplingBolt : std::enable_shared_from_this<RandomSamplingBolt>, Ac
     }
 };
 
-/*
-struct RandomSamplingBolt : AcyclicGraphNode<RandomSamplingBolt> {
+
+/** Filter ids using predicate.
+  * Predicate is an unary functor that accepts parameter of type aku_ParamId - fun(aku_ParamId) -> bool.
+  */
+template<class Predicate>
+struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>, Node {
+    //! Id matching predicate
+    Predicate op_;
+    std::shared_ptr<Node> next_;
+
+    FilterByIdNode(Predicate pred, std::shared_ptr<Node> next)
+        : op_(pred)
+        , next_(next)
+    {
+    }
 
     // Bolt interface
-    virtual void complete(std::shared_ptr<Bolt> caller);
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value);
-    virtual void add_output(std::shared_ptr<Bolt> next);
-    virtual void add_input(std::weak_ptr<Bolt> input);
-    virtual BoltType get_bolt_type() const;
-    virtual std::vector<std::shared_ptr<Bolt> > get_bolt_inputs() const;
-    virtual std::vector<std::shared_ptr<Bolt> > get_bolt_outputs() const;
+    virtual void complete() {
+        if (!next_) {
+            NodeException err(Node::FilterById, "no next node");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        next_->complete();
+    }
+
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
+        if (!next_) {
+            NodeException err(Node::FilterById, "no next node");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        if (op_(id)) {
+            next_->put(ts, id, value);
+        }
+    }
+
+    virtual NodeType get_type() const {
+        return NodeType::FilterById;
+    }
 };
-*/
 
 //                                   //
 //         Factory methods           //
 //                                   //
 
-std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
-                                                        size_t buffer_size,
-                                                        aku_logger_cb_t logger)
+std::shared_ptr<Node> NodeBuilder::make_random_sampler(std::string type,
+                                                       size_t buffer_size,
+                                                       std::shared_ptr<Node> next,
+                                                       aku_logger_cb_t logger)
 {
     {
         std::stringstream logfmt;
@@ -201,14 +159,48 @@ std::shared_ptr<Bolt> BoltsBuilder::make_random_sampler(std::string type,
     }
     // only reservoir sampling is supported
     if (type != "reservoir") {
-        BoltException except(Bolt::RandomSampler, "unsupported sampler type");
+        NodeException except(Node::RandomSampler, "unsupported sampler type");
         BOOST_THROW_EXCEPTION(except);
     }
     // Build object
-    return std::make_shared<RandomSamplingBolt>(buffer_size);
+    return std::make_shared<RandomSamplingNode>(buffer_size, next);
 }
 
-QueryProcessor::QueryProcessor(std::shared_ptr<Bolt> root,
+std::shared_ptr<Node> NodeBuilder::make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next, aku_logger_cb_t logger) {
+    struct Fun {
+        aku_ParamId id_;
+        bool operator () (aku_ParamId id) {
+            return id == id_;
+        }
+    };
+    typedef FilterByIdNode<Fun> NodeT;
+    Fun fun = { id };
+    std::stringstream logfmt;
+    logfmt << "Creating id filter node for id " << id;
+    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
+    return std::make_shared<NodeT>(fun, next);
+}
+
+std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamId> ids,
+                                                          std::shared_ptr<Node> next,
+                                                          aku_logger_cb_t logger) {
+    struct Matcher {
+        std::unordered_set<aku_ParamId> idset;
+
+        bool operator () (aku_ParamId id) {
+            return idset.count(id) > 0;
+        }
+    };
+    typedef FilterByIdNode<Matcher> NodeT;
+    std::unordered_set<aku_ParamId> idset(ids.begin(), ids.end());
+    Matcher fn = { idset };
+    std::stringstream logfmt;
+    logfmt << "Creating id-list filter node (" << ids.size() << " nodes in a list)";
+    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
+    return std::make_shared<NodeT>(fn, next);
+}
+
+QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
                std::vector<std::string> metrics,
                aku_Timestamp begin,
                aku_Timestamp end)
@@ -217,7 +209,7 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Bolt> root,
     , direction(begin > end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD)
     , metrics(metrics)
     , namesofinterest(StringTools::create_table(0x1000))
-    , root_bolt(root)
+    , root_node(root)
 {
 }
 
@@ -225,5 +217,4 @@ int QueryProcessor::match(uint64_t param_id) {
     return -1;
 }
 
-}
-
+}}

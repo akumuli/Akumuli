@@ -129,9 +129,9 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     BOOST_THROW_EXCEPTION(error);
 }
 
-std::shared_ptr<QueryProcessor>
+std::shared_ptr<QP::QueryProcessor>
 SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
-    static const std::shared_ptr<QueryProcessor> NONE;
+    static const std::shared_ptr<QP::QueryProcessor> NONE;
     /* Query format:
      * {
      *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
@@ -153,6 +153,7 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
      * }
      */
     namespace pt = boost::property_tree;
+    using namespace QP;
 
     //! C-string to streambuf adapter
     struct MemStreambuf : std::streambuf {
@@ -185,7 +186,10 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
         // Build topology
-        auto sampler = BoltsBuilder::make_random_sampler(sampling_params.first, sampling_params.second, logger);
+        auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
+                                                        sampling_params.second,
+                                                        std::shared_ptr<Node>(), // TODO: Create nodes correct
+                                                        logger);                 // order, pass correct value
 
         // Build query processor
         auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);

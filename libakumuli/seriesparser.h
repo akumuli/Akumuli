@@ -73,7 +73,7 @@ struct SeriesMatcher {
       */
     void pull_new_names(std::vector<SeriesNameT> *buffer);
 
-    std::shared_ptr<QueryProcessor> build_query_processor(const char* query, aku_logger_cb_t logger);
+    std::shared_ptr<QP::QueryProcessor> build_query_processor(const char* query, aku_logger_cb_t logger);
 };
 
 /** Namespace class to store all parsing related things.
