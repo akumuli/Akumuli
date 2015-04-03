@@ -15,22 +15,31 @@ find_package(Boost 1.53.0
     filesystem
     coroutine
     context
+    #date_time
     REQUIRED
 )
 
 find_package(Log4Cxx REQUIRED)
-
+find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${APR_INCLUDE_DIR}")
+include_directories("${APRUTIL_INCLUDE_DIR}")
+include_directories("${SQLITE3_INCLUDE_DIR}")
 
 #if(CMAKE_COMPILER_IS_GNUCXX)
 add_definitions(-std=gnu++0x -fvisibility=hidden)
 #endif()
 
-include_directories(./libakumuli/include)
+include_directories(./include)
+
+add_subdirectory(libakumuli)
+add_subdirectory(akumulid)
+add_subdirectory(perftests)
+add_subdirectory(functests/ingestion_test)
+add_subdirectory(functests/parallel_test)
+add_subdirectory(functests/sequencer_test)
 
 enable_testing()
-add_subdirectory(src)
-add_subdirectory(libakumuli)
+add_subdirectory(unittests)

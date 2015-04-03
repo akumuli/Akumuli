@@ -1,0 +1,25 @@
+include_directories(../../libakumuli)
+add_executable(
+    sequencer_test
+        main.cpp
+        ../../libakumuli/storage.cpp
+        ../../libakumuli/seriesparser.cpp
+        ../../libakumuli/page.cpp
+        ../../libakumuli/akumuli.cpp
+        ../../libakumuli/util.cpp
+        ../../libakumuli/sequencer.cpp
+        ../../libakumuli/cursor.cpp
+        ../../libakumuli/compression.cpp
+        ../../libakumuli/metadatastorage.cpp
+        ../../libakumuli/queryprocessor.cpp
+        ../../libakumuli/stringpool.cpp
+        ../../libakumuli/datetime.cpp
+)
+target_link_libraries(sequencer_test
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
