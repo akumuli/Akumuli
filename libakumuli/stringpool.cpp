@@ -15,6 +15,7 @@
  */
 
 #include "stringpool.h"
+#include <boost/regex.hpp>
 
 namespace Akumuli {
 
@@ -23,6 +24,7 @@ namespace Akumuli {
 //                       //
 
 StringPool::StringT StringPool::add(const char* begin, const char* end) {
+    std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
         pool.back().reserve(MAX_BIN_SIZE);
@@ -46,6 +48,30 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     const char* p = &bin->back();
     p -= size - 1;
     return std::make_pair(p, size-1);
+}
+
+std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) {
+    std::vector<StringPool::StringT> results;
+    boost::regex series_regex(regex, boost::regex_constants::optimize);
+    typedef std::vector<char>* PBuffer;
+    std::vector<PBuffer> buffers;
+    {
+        std::lock_guard<std::mutex> guard(pool_mutex);
+        for(auto& buf: pool) {
+            buffers.push_back(&buf);
+        }
+    }
+    for(auto pbuf: buffers) {
+        auto begin = boost::cregex_iterator(pbuf->data(), pbuf->data() + pbuf->size(), series_regex);
+        auto end = boost::cregex_iterator();
+        for(boost::cregex_iterator i = begin; i != end; i++) {
+            boost::cmatch match = *i;
+            const char* p = match[0].first;
+            size_t sz = match[0].second - match[0].first;
+            results.push_back(std::make_pair(p, sz));
+        }
+    }
+    return results;
 }
 
 size_t StringTools::hash(StringT str) {
