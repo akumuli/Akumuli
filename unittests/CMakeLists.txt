@@ -231,6 +231,7 @@ add_executable(
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/stringpool.cpp
+    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(

@@ -13,6 +13,7 @@ add_executable(
         ../../libakumuli/metadatastorage.cpp
         ../../libakumuli/queryprocessor.cpp
         ../../libakumuli/stringpool.cpp
+        ../../libakumuli/datetime.cpp
 )
 target_link_libraries(sequencer_test
     "${SQLITE3_LIBRARY}"
