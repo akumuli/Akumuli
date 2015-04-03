@@ -270,6 +270,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(

@@ -123,14 +123,21 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
 
     SeriesMatcher matcher(1ul);
     const char* json =
-        " {"
+        " {                                        "
         "      \"sample\": { \"reservoir\": 1000 },"
         "      \"metric\": \"cpu\",                "
         "      \"range\" : {                       "
         "           \"from\": \"20150101T000000\", "
         "           \"to\"  : \"20150102T000000\"  "
-        "       }                                  "
-        " }";
+        "       },                                 "
+        "      \"where\": [                        "
+        "                      {\"in\":            "
+        "                          {\"key3\":      "
+        "                                 [1, 2, 3]"
+        "                          }               "
+        "                      }                   "
+        "                 ]                        "
+        " }                                        ";
     auto qproc = matcher.build_query_processor(json, &logger);
     BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics.size() == 1);
@@ -147,8 +154,15 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
         "      \"range\" : {                       "
         "           \"from\": \"20150101T000000\", "
         "           \"to\"  : \"20150102T000000\"  "
-        "       }                                  "
-        " }";
+        "       },                                 "
+        "      \"where\": [                        "
+        "                      {\"in\":            "
+        "                          {\"key3\":      "
+        "                                 [1, 2, 3]"
+        "                          }               "
+        "                      }                   "
+        "                 ]                        "
+        " }                                        ";
     auto qproc = matcher.build_query_processor(json, &logger);
     BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics.size() == 2);

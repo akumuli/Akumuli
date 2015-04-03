@@ -99,7 +99,7 @@ static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
                                              aku_logger_cb_t logger) {
     std::vector<std::string> metrics;
-    boost::property_tree::ptree metric = ptree.get_child("metric");
+    auto metric = ptree.get_child("metric");
     auto single = metric.get_value<std::string>();
     if (single.empty()) {
         for(auto child: metric) {
@@ -115,7 +115,7 @@ static std::vector<std::string> parse_metric(boost::property_tree::ptree const& 
 static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,
                                            std::string const& name,
                                            aku_logger_cb_t logger) {
-    boost::property_tree::ptree range = ptree.get_child("range");
+    auto range = ptree.get_child("range");
     for(auto child: range) {
         if (child.first == name) {
             auto iso_string = child.second.get_value<std::string>();
@@ -127,6 +127,34 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     fmt << "can't find `" << name << "` tag inside the query";
     QueryParserError error(fmt.str().c_str());
     BOOST_THROW_EXCEPTION(error);
+}
+
+static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree const& ptree,
+                                                   std::string metric,
+                                                   std::string pred,
+                                                   SeriesMatcher::TableT const& table,
+                                                   aku_logger_cb_t logger)
+{
+    std::vector<aku_ParamId> ids;
+    auto where = ptree.get_child("where");
+    for (auto child: where) {
+        auto predicate = child.second;
+        auto items = predicate.get_child_optional(pred);
+        if (items) {
+            for (auto item: *items) {
+                std::string tag = item.first;
+                auto idslist = item.second;
+                // Read idlist
+                for (auto idnode: idslist) {
+                    std::string value = idnode.second.get_value<std::string>();
+                    std::stringstream series_regexp;
+                    series_regexp << metric << R"([\w\s=]*?)" << tag << "=" << value << R"([\w\s=]*?)";
+                    // TODO: use regexp to find series of interest, fill the `ids` list
+                }
+            }
+        }
+    }
+    return ids;
 }
 
 std::shared_ptr<QP::QueryProcessor>
@@ -185,12 +213,15 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         auto ts_begin = parse_range_timestamp(ptree, "from", logger);
         auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
+        // Read where clause
+        // TODO: for each metric
+        /*auto ids =*/ parse_where_clause(ptree, "cpu", "in", table, logger);
+
         // Build topology
         auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
                                                         sampling_params.second,
                                                         std::shared_ptr<Node>(), // TODO: Create nodes correct
                                                         logger);                 // order, pass correct value
-
         // Build query processor
         auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);
         return qproc;
