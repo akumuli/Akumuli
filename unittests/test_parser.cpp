@@ -20,9 +20,9 @@ BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
     StringPool pool;
     const char* foo = "foo";
-    auto result_foo = pool.add(foo, foo + 3);
+    auto result_foo = pool.add(foo, foo + 3, 0ul);
     const char* bar = "123456";
-    auto result_bar = pool.add(bar, bar + 6);
+    auto result_bar = pool.add(bar, bar + 6, 0ul);
     BOOST_REQUIRE_EQUAL(result_foo.second, 3);
     BOOST_REQUIRE_EQUAL(std::string(result_foo.first, result_foo.first + result_foo.second), foo);
     BOOST_REQUIRE_EQUAL(result_bar.second, 6);

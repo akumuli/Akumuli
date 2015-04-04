@@ -33,8 +33,8 @@ struct StringPool {
     std::deque<std::vector<char>> pool;
     mutable std::mutex pool_mutex;
 
-    StringT add(const char* begin, const char *end);
-    std::vector<StringT> regex_match(const char* regex);
+    StringT add(const char* begin, const char *end, uint64_t payload);
+    std::vector<StringT> regex_match(const char* regex) const;
 };
 
 struct StringTools {

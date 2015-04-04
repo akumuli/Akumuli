@@ -23,7 +23,7 @@ namespace Akumuli {
 //      String Pool      //
 //                       //
 
-StringPool::StringT StringPool::add(const char* begin, const char* end) {
+StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t payload) {
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
@@ -33,7 +33,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     if (size == 0) {
         return std::make_pair("", 0);
     }
-    size++;
+    size += 2 + sizeof(uint64_t);  // 2 is for two \0 characters
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
         // New bin
@@ -45,15 +45,19 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
         bin->push_back(*i);
     }
     bin->push_back('\0');
+    for(int i = 56; i >= 0; i -= 8) {
+        bin->push_back(payload >> i);
+    }
+    bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
     return std::make_pair(p, size-1);
 }
 
-std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) {
+std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) const {
     std::vector<StringPool::StringT> results;
     boost::regex series_regex(regex, boost::regex_constants::optimize);
-    typedef std::vector<char>* PBuffer;
+    typedef std::vector<char> const* PBuffer;
     std::vector<PBuffer> buffers;
     {
         std::lock_guard<std::mutex> guard(pool_mutex);

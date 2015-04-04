@@ -42,11 +42,9 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
 }
 
 uint64_t SeriesMatcher::add(const char* begin, const char* end) {
-    StringT pstr = pool.add(begin, end);
     auto id = series_id++;
+    StringT pstr = pool.add(begin, end, id);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
-
-    std::lock_guard<std::mutex> lock(mutex);
     table[pstr] = id;
     names.push_back(tup);
     return id;
@@ -58,9 +56,7 @@ void SeriesMatcher::_add(std::string series, uint64_t id) {
     }
     const char* begin = &series[0];
     const char* end = begin + series.size();
-    StringT pstr = pool.add(begin, end);
-
-    std::lock_guard<std::mutex> lock(mutex);
+    StringT pstr = pool.add(begin, end, id);
     table[pstr] = id;
 
 }
@@ -70,7 +66,6 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     int len = end - begin;
     StringT str = std::make_pair(begin, len);
 
-    std::lock_guard<std::mutex> lock(mutex);
     auto it = table.find(str);
     if (it == table.end()) {
         return 0ul;
@@ -79,7 +74,6 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
 }
 
 void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
-    std::lock_guard<std::mutex> lock(mutex);
     std::swap(names, *buffer);
 }
 
@@ -157,9 +151,9 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                 for (auto idnode: idslist) {
                     std::string value = idnode.second.get_value<std::string>();
                     std::stringstream series_regexp;
-                    series_regexp << metric << R"([\w\s=]*?)" << tag << "=" << value << R"([\w\s=]*?)";
-                    std::regex regex(series_regexp.str());
-                    // TODO: Try to match all possible series names
+                    series_regexp << "(" << metric << "\\s(\\w+=\\w+)*" << tag << "=" << value << "(\\s\\w+=\\w+)*)";
+                    auto results = pool.regex_match(series_regexp.str().c_str());
+                    // TODO: Extract all series IDs
                 }
             }
         }
