@@ -26,6 +26,7 @@
 #include <vector>
 #include <deque>
 #include <memory>
+#include <mutex>
 
 namespace Akumuli {
 
@@ -51,6 +52,7 @@ struct SeriesMatcher {
     TableT                   table;      //! Series table (name to id mapping)
     uint64_t                 series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
+    std::mutex               mutex;      //! Mutex for shared data
 
     SeriesMatcher(uint64_t starting_id);
 
