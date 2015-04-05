@@ -15,7 +15,7 @@ find_package(Boost 1.53.0
     filesystem
     coroutine
     context
-    #date_time
+    regex
     REQUIRED
 )
 

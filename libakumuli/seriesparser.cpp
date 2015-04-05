@@ -21,6 +21,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include <regex>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -41,10 +42,10 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
 }
 
 uint64_t SeriesMatcher::add(const char* begin, const char* end) {
-    StringT pstr = pool.add(begin, end);
     auto id = series_id++;
-    table[pstr] = id;
+    StringT pstr = pool.add(begin, end, id);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
+    table[pstr] = id;
     names.push_back(tup);
     return id;
 }
@@ -55,14 +56,16 @@ void SeriesMatcher::_add(std::string series, uint64_t id) {
     }
     const char* begin = &series[0];
     const char* end = begin + series.size();
-    StringT pstr = pool.add(begin, end);
+    StringT pstr = pool.add(begin, end, id);
     table[pstr] = id;
 
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
+
     int len = end - begin;
     StringT str = std::make_pair(begin, len);
+
     auto it = table.find(str);
     if (it == table.end()) {
         return 0ul;
@@ -132,7 +135,7 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
 static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                    std::string metric,
                                                    std::string pred,
-                                                   SeriesMatcher::TableT const& table,
+                                                   StringPool const& pool,
                                                    aku_logger_cb_t logger)
 {
     std::vector<aku_ParamId> ids;
@@ -148,8 +151,9 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                 for (auto idnode: idslist) {
                     std::string value = idnode.second.get_value<std::string>();
                     std::stringstream series_regexp;
-                    series_regexp << metric << R"([\w\s=]*?)" << tag << "=" << value << R"([\w\s=]*?)";
-                    // TODO: use regexp to find series of interest, fill the `ids` list
+                    series_regexp << "(" << metric << "\\s(\\w+=\\w+)*" << tag << "=" << value << "(\\s\\w+=\\w+)*)";
+                    auto results = pool.regex_match(series_regexp.str().c_str());
+                    // TODO: Extract all series IDs
                 }
             }
         }
@@ -214,8 +218,11 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
         // Read where clause
-        // TODO: for each metric
-        /*auto ids =*/ parse_where_clause(ptree, "cpu", "in", table, logger);
+        std::vector<aku_ParamId> ids;
+        for(auto metric: metrics) {
+            auto tmp = parse_where_clause(ptree, "cpu", "in", pool, logger);
+            std::copy(tmp.begin(), tmp.end(), std::back_inserter(ids));
+        }
 
         // Build topology
         auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,

@@ -19,6 +19,7 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <mutex>
 
 #include "akumuli_def.h"
 
@@ -28,8 +29,12 @@ struct StringPool {
 
     typedef std::pair<const char*, int> StringT;
     const int MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME*0x1000;
+
     std::deque<std::vector<char>> pool;
-    StringT add(const char* begin, const char *end);
+    mutable std::mutex pool_mutex;
+
+    StringT add(const char* begin, const char *end, uint64_t payload);
+    std::vector<StringT> regex_match(const char* regex) const;
 };
 
 struct StringTools {
