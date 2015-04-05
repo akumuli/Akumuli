@@ -415,7 +415,9 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
 }
 
 std::tuple<aku_Timestamp, int> Sequencer::get_window() const {
-    return std::make_tuple(top_timestamp_ - window_size_, sequence_number_.load());
+    return std::make_tuple(top_timestamp_ > window_size_ ? top_timestamp_ - window_size_
+                                                         : top_timestamp_,
+                           sequence_number_.load());
 }
 
 uint32_t Sequencer::get_space_estimate() const {
