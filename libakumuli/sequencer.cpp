@@ -478,13 +478,24 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        CursorResult result = {
-            val.payload.blob.value_length,
-            val.get_timestamp(),
-            val.get_paramid(),
-            page->read_entry_data(val.payload.blob.value)
-        };
-        return cur->put(caller, result);
+        if (val.type_ == TimeSeriesValue::BLOB) {
+            CursorResult result = {
+                val.payload.blob.value_length,
+                val.get_timestamp(),
+                val.get_paramid(),
+            };
+            result.data.ptr = page->read_entry_data(val.payload.blob.value);
+            return cur->put(caller, result);
+        } else if (val.type_ == TimeSeriesValue::DOUBLE) {
+            CursorResult result = {
+                0u,
+                val.get_timestamp(),
+                val.get_paramid(),
+            };
+            result.data.float64 = val.payload.value;
+            return cur->put(caller, result);
+        }
+        AKU_PANIC("Sequencer data corrupted");
     };
 
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {
