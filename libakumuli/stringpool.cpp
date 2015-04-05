@@ -51,7 +51,8 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
-    return std::make_pair(p, size-1);
+    int token_size = end - begin;
+    return std::make_pair(p, token_size);
 }
 
 std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) const {
