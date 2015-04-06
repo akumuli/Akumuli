@@ -650,9 +650,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                                        : query_.upperbound >= probe_entry->time;
             } else {
                 if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                    proceed = scan_compressed_entries(probe_entry, true);
+                    proceed = scan_compressed_entries(probe_entry, false);
                 } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                    proceed = scan_compressed_entries(probe_entry, true);
+                    proceed = scan_compressed_entries(probe_entry, false);
                 } else {
                     proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
                                            : query_.upperbound >= probe_entry->time;
