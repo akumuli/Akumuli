@@ -137,6 +137,9 @@ struct Storage
 
     // Writing
 
+    //! Close db (this call should be performed by writer thread)
+    void close();
+
     /** Switch volume in round robin manner
       * @param ix current volume index
       */

@@ -127,6 +127,9 @@ struct Sequencer {
       */
     aku_Status merge_and_compress(PageHeader* target);
 
+    //! Close cache for writing, merge everything to page header.
+    aku_Status close(PageHeader* target);
+
     /** Reset sequencer.
       * All runs are ready for merging.
       * @returns new sequence number.

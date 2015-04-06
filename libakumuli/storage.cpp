@@ -231,6 +231,15 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     prepopulate_cache(config_.max_cache_size);
 }
 
+void Storage::close() {
+    auto status = active_volume_->cache_->close(active_page_);
+    if (status != AKU_SUCCESS) {
+        log_error("Can't merge cached values back to disk, some data would be lost");
+        return;
+    }
+    active_volume_->flush();
+}
+
 void Storage::select_active_page() {
     // volume with max overwrites_count and max index must be active
     int max_index = -1;
