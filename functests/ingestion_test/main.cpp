@@ -17,9 +17,9 @@
 
 using namespace std;
 
-const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 100*1000*1000;
-const int CHUNK_SIZE = 5000;
+int DB_SIZE = 8;
+uint64_t NUM_ITERATIONS = 100*1000*1000;
+int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -143,6 +143,17 @@ Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
     }
+    if (cnt == 2) {
+        DB_SIZE = 2;
+        NUM_ITERATIONS = 10*1000*1000;
+    } else if (cnt == 4) {
+        DB_SIZE        = boost::lexical_cast<int>(args[2]);
+        NUM_ITERATIONS = boost::lexical_cast<int>(args[3]);
+    } else {
+        if (std::string(args[1]) != "delete") {
+            throw std::runtime_error("Bad command line parameters");
+        }
+    }
     if (std::string(args[1]) == "create") {
         return CREATE;
     }
@@ -153,7 +164,7 @@ Mode read_cmd(int cnt, const char** args) {
         return DELETE;
     }
     std::cout << "Invalid command line" << std::endl;
-    std::terminate();
+    throw std::runtime_error("Bad command line parameters");
 }
 
 int main(int cnt, const char** args)
@@ -197,11 +208,13 @@ int main(int cnt, const char** args)
             uint64_t k = i + 2;
             double value = 0.0001*k;
             aku_ParamId id = i & 0xF;
+            /*
             char series_name[0x200];
             int slen = sprintf(series_name, "cpu host=%X ", unsigned(i) % 100000);
             const char* series_begin = series_name;
             const char* series_end = series_begin + slen;
-            aku_Status status = aku_write_double(db, series_begin, series_end, i, value);
+            */
+            aku_Status status = aku_write_double_raw(db, id, i, value);
             if (status == AKU_EBUSY) {
                 status = aku_write_double_raw(db, id, i, value);
                 busy_count++;
