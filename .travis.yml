@@ -20,7 +20,6 @@ before_script:
 script: 
    - make -j
    - make test
-   - cd /tmp
-   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test create 2 100000
-   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test   read 2 100000
-   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test delete
+   - functests/ingestion_test/ingestion_test create 2 100000
+   - functests/ingestion_test/ingestion_test   read 2 100000
+   - functests/ingestion_test/ingestion_test delete
