@@ -18,6 +18,9 @@ before_script:
    - cmake ..
 
 script: 
-   - make
+   - make -j
    - make test
-   - (cd /tmp; functests/ingestion_test/ingestion_test create 2 1000000; functests/ingestion_test/ingestion_test read 2 1000000; functests/ingestion_test/ingestion_test delete)
+   - cd /tmp
+   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test create 2 100000
+   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test   read 2 100000
+   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/ingestion_test/ingestion_test delete
