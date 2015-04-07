@@ -262,6 +262,21 @@ void unlock_all(Cont& cont) {
     }
 }
 
+aku_Status Sequencer::close(PageHeader* target) {
+    wrlock_all(run_locks_);
+    for (auto& sorted_run: runs_) {
+        ready_.push_back(move(sorted_run));
+    }
+    unlock_all(run_locks_);
+
+    runs_resize_lock_.lock();
+    runs_.clear();
+    runs_resize_lock_.unlock();
+
+    sequence_number_.store(1);
+    return merge_and_compress(target);
+}
+
 int Sequencer::reset() {
     wrlock_all(run_locks_);
     for (auto& sorted_run: runs_) {

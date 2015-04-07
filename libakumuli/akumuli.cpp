@@ -169,6 +169,10 @@ struct DatabaseImpl : public aku_Database
         return storage_.get_open_error();
     }
 
+    void close() {
+        storage_.close();
+    }
+
     CursorImpl* select(aku_SelectQuery* query) {
         uint32_t scan_dir;
         aku_Timestamp begin, end;
@@ -284,6 +288,7 @@ aku_Status aku_open_status(aku_Database* db) {
 void aku_close_database(aku_Database* db)
 {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    dbi->close();
     delete dbi;
 }
 
