@@ -70,22 +70,17 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
                 return false;
             }
-            aku_ParamId id = current_time & 0xF;
+            aku_ParamId id = (current_time+1) & 0xF;
             if (paramids[i] != id) {
                 std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << paramids[i]  << std::endl;
                 return false;
             }
             double dvalue = pointers[i].float64;
-            double dexpected = (current_time + 2)*0.0001;
+            double dexpected = current_time + 1;
             if (dvalue - dexpected > 0.000001) {
                 std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
                 return false;
             }
-            //uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
-            //if (*pvalue != current_time + 2) {
-            //    std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
-            //    return false;
-            //}
             current_time++;
             counter++;
             if (counter % mod == 0) {
@@ -96,6 +91,10 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
         }
     }
     aku_close_cursor(cursor);
+    if (current_time < end) {
+        std::cout << "some values lost, actual timestamp: " << current_time << ", expected timestamp: " << end << std::endl;
+        throw std::runtime_error("values lost");
+    }
     if (cursor_ix > 1000) {
         std::cout << "cursor_ix = " << cursor_ix << std::endl;
     }
@@ -205,18 +204,12 @@ int main(int cnt, const char** args)
         uint64_t busy_count = 0;
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-            uint64_t k = i + 2;
-            double value = 0.0001*k;
-            aku_ParamId id = i & 0xF;
-            /*
-            char series_name[0x200];
-            int slen = sprintf(series_name, "cpu host=%X ", unsigned(i) % 100000);
-            const char* series_begin = series_name;
-            const char* series_end = series_begin + slen;
-            */
-            aku_Status status = aku_write_double_raw(db, id, i, value);
+            double value = i + 1;
+            aku_ParamId id = (i + 1) & 0xF;
+            aku_Timestamp ts = i;
+            aku_Status status = aku_write_double_raw(db, id, ts, value);
             if (status == AKU_EBUSY) {
-                status = aku_write_double_raw(db, id, i, value);
+                status = aku_write_double_raw(db, id, ts, value);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
@@ -243,12 +236,11 @@ int main(int cnt, const char** args)
 
         timer.restart();
 
-        if (!query_database_forward( db
-                           , std::numeric_limits<aku_Timestamp>::min()
-                           , std::numeric_limits<aku_Timestamp>::max()
-                           , counter
-                           , timer
-                           , 1000000))
+        if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
+                                    NUM_ITERATIONS,
+                                    counter,
+                                    timer,
+                                    1000000))
         {
             return 2;
         }
