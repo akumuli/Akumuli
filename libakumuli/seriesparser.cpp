@@ -132,6 +132,15 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     BOOST_THROW_EXCEPTION(error);
 }
 
+
+static aku_ParamId extract_id_from_pool(StringPool::StringT res) {
+    // Series name in string pool should be followed by \0 character and 64-bit series id.
+    auto p = res.first + res.second;
+    assert(p[0] == '\0');
+    p += 1;  // zero terminator + sizeof(uint64_t)
+    return *reinterpret_cast<uint64_t const*>(p);
+}
+
 static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                    std::string metric,
                                                    std::string pred,
@@ -151,9 +160,14 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                 for (auto idnode: idslist) {
                     std::string value = idnode.second.get_value<std::string>();
                     std::stringstream series_regexp;
-                    series_regexp << "(" << metric << "\\s(\\w+=\\w+)*" << tag << "=" << value << "(\\s\\w+=\\w+)*)";
-                    auto results = pool.regex_match(series_regexp.str().c_str());
-                    // TODO: Extract all series IDs
+                    series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                    std::string regex = series_regexp.str();
+                    auto results = pool.regex_match(regex.c_str());
+                    for(auto res: results) {
+                        aku_ParamId id = extract_id_from_pool(res);
+                        ids.push_back(id);
+                    }
                 }
             }
         }
@@ -175,9 +189,8 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
      *          "to"  : "20150102T000000"
      *      },
      *      "where": [
-     *          { "equals": { "key1": "val1" }},
-     *          { "not_equals" : { "key2": "val2" }},
-     *          { "in" : { "key3": [1, 2, 3, "foo"]}
+     *          { "in" : { "key3": [1, 2, 3, "foo"]},
+     *          { "not_in" : { "key4": [3, 4, 5]}
      *      ],
      *      "group_by": [
      *          "key" : [ "key1", "key2" ]
@@ -218,10 +231,16 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
         // Read where clause
-        std::vector<aku_ParamId> ids;
+        std::vector<aku_ParamId> ids_included;
+        std::vector<aku_ParamId> ids_excluded;
+
         for(auto metric: metrics) {
-            auto tmp = parse_where_clause(ptree, "cpu", "in", pool, logger);
-            std::copy(tmp.begin(), tmp.end(), std::back_inserter(ids));
+
+            auto in = parse_where_clause(ptree, metric, "in", pool, logger);
+            std::copy(in.begin(), in.end(), std::back_inserter(ids_included));
+
+            auto notin = parse_where_clause(ptree, metric, "not_in", pool, logger);
+            std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
         }
 
         // Build topology

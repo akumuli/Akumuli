@@ -18,5 +18,8 @@ before_script:
    - cmake ..
 
 script: 
-   - make
+   - make -j
    - make test
+   - functests/ingestion_test/ingestion_test create 2 100000
+   - functests/ingestion_test/ingestion_test   read 2 100000
+   - functests/ingestion_test/ingestion_test delete

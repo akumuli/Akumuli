@@ -45,9 +45,11 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
         bin->push_back(*i);
     }
     bin->push_back('\0');
-    for(int i = 56; i >= 0; i -= 8) {
-        bin->push_back(payload >> i);
+    char* payload_ptr = bin->data() + bin->size();
+    for(int i = 0; i < 8; i++) {
+        bin->push_back(0);
     }
+    *reinterpret_cast<uint64_t*>(payload_ptr) = payload;
     bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;

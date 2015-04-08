@@ -143,6 +143,30 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
+struct GroupByNode :  std::enable_shared_from_this<GroupByNode>, Node {
+    // Contains mapping from series_id to output_id
+    // Expression `group by key` should match all
+    // series containing the same key value to the
+    // same output_id. Expression `group by key1, key2`
+    // should match all series with the same key1 and
+    // key2 combination to the same output_id.
+
+
+    // Node interface
+    virtual void complete()
+    {
+        throw "Not implemented";
+    }
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value)
+    {
+        throw "Not implemented";
+    }
+    virtual NodeType get_type() const
+    {
+        throw "Not implemented";
+    }
+};
+
 //                                   //
 //         Factory methods           //
 //                                   //
