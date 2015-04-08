@@ -119,14 +119,14 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 {
     // NOTE: it is possible to avoid copying and write directly to page
     // instead of temporary byte vectors
-    ByteVector timestamps;
     ByteVector paramids;
+    ByteVector timestamps;
     ByteVector offsets;
     ByteVector lengths;
 
-    DeltaRLETSWriter timestamp_stream(timestamps);
-    Base128IdWriter paramid_stream(paramids);
-    DeltaRLEOffWriter offset_stream(offsets);
+    DeltaRLEWriter paramid_stream(paramids);
+    DeltaRLEWriter timestamp_stream(timestamps);
+    DeltaRLEWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
     std::vector<aku_ParamId> params_with_zlen;
@@ -136,8 +136,8 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         auto offset = data.offsets.at(i);
         auto len = data.lengths.at(i);
         auto ts = data.timestamps.at(i);
-        timestamp_stream.put(ts);
         paramid_stream.put(pid);
+        timestamp_stream.put(ts);
         offset_stream.put(offset);
         length_stream.put(len);
         if (len == 0) {
@@ -145,14 +145,14 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         }
     }
 
-    timestamp_stream.close();
     paramid_stream.close();
+    timestamp_stream.close();
     offset_stream.close();
     length_stream.close();
 
     uint32_t size_estimate =
-            static_cast<uint32_t>( timestamp_stream.size()
-                                 + paramid_stream.size()
+            static_cast<uint32_t>( paramid_stream.size()
+                                 + timestamp_stream.size()
                                  + offset_stream.size()
                                  + length_stream.size()
                                  + sizeof(uint64_t)
@@ -200,15 +200,15 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
             break;
         }
         size_estimate -= length_stream.size();
-        // Param-Ids
-        status = writer->add_chunk(paramid_stream.get_memrange(), size_estimate);
+        // Timestamps
+        status = writer->add_chunk(timestamp_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
-        auto paramid_stream_size = paramid_stream.size();
-        size_estimate -= paramid_stream_size;
-        // Timestamps
-        status = writer->add_chunk(timestamp_stream.get_memrange(), size_estimate);
+        auto ts_stream_size = timestamp_stream.size();
+        size_estimate -= ts_stream_size;
+        // Param-Ids
+        status = writer->add_chunk(paramid_stream.get_memrange(), size_estimate);
         if (status != AKU_SUCCESS) {
             break;
         }
@@ -231,25 +231,25 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     }
     switch(stage) {
     case 0: {
-        // read timestamps
-        DeltaRLETSReader tst_reader(*pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header->timestamps.push_back(tst_reader.next());
-        }
-        *pbegin = tst_reader.pos();
-        if (--steps == 0) {
-            return 1;
-        }
-    }
-    case 1: {
         // read paramids
-        Base128IdReader pid_reader(*pbegin, pend);
+        DeltaRLEReader pid_reader(*pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header->paramids.push_back(pid_reader.next());
         }
         *pbegin = pid_reader.pos();
         if (--steps == 0) {
             return 2;
+        }
+    }
+    case 1: {
+        // read timestamps
+        DeltaRLEReader tst_reader(*pbegin, pend);
+        for (auto i = 0u; i < probe_length; i++) {
+            header->timestamps.push_back(tst_reader.next());
+        }
+        *pbegin = tst_reader.pos();
+        if (--steps == 0) {
+            return 1;
         }
     }
     case 2: {
@@ -265,7 +265,7 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
     }
     case 3: {
         // read offsets
-        DeltaRLEOffReader off_reader(*pbegin, pend);
+        DeltaRLEReader off_reader(*pbegin, pend);
         for (auto i = 0u; i < probe_length; i++) {
             header->offsets.push_back(off_reader.next());
         }
