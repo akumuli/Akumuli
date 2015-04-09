@@ -108,6 +108,12 @@ bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
     return lhstup < rhstup;
 }
 
+bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
+    auto lhstup = std::make_tuple(lhs.key_id_, lhs.key_ts_);
+    auto rhstup = std::make_tuple(rhs.key_id_, rhs.key_ts_);
+    return lhstup < rhstup;
+}
+
 // Sequencer
 
 Sequencer::Sequencer(PageHeader const* page, aku_Config config)
@@ -292,10 +298,10 @@ int Sequencer::reset() {
 }
 
 template<class TKey, int dir>
-struct MergePred;
+struct TimeOrderMergePredicate;
 
 template<class TKey>
-struct MergePred<TKey, AKU_CURSOR_DIR_FORWARD> {
+struct TimeOrderMergePredicate<TKey, AKU_CURSOR_DIR_FORWARD> {
     greater<TKey> greater_;
     bool operator () (TKey const& lhs, TKey const& rhs) const {
         return greater_(lhs, rhs);
@@ -303,10 +309,21 @@ struct MergePred<TKey, AKU_CURSOR_DIR_FORWARD> {
 };
 
 template<class TKey>
-struct MergePred<TKey, AKU_CURSOR_DIR_BACKWARD> {
+struct TimeOrderMergePredicate<TKey, AKU_CURSOR_DIR_BACKWARD> {
     less<TKey> less_;
     bool operator () (TKey const& lhs, TKey const& rhs) const {
         return less_(lhs, rhs);
+    }
+};
+
+template<class TKey, int Dir>
+struct ChunkOrderMergePredicate;
+
+template<class TKey>
+struct ChunkOrderMergePredicate<std::tuple<TKey, int>, AKU_CURSOR_DIR_FORWARD> {
+    // Only forward chunk-order merge is allowed
+    bool operator () (std::tuple<TKey, int> const& lhs, std::tuple<TKey, int> const& rhs) const {
+        return chunk_order_LT(std::get<0>(lhs), std::get<0>(rhs));
     }
 };
 
@@ -332,7 +349,12 @@ struct RunIter<std::shared_ptr<TRun>, AKU_CURSOR_DIR_BACKWARD> {
 };
 
 /** Merge sequences and push it to consumer */
-template <int dir, class Consumer>
+template <
+        //! Merge predicate for time-series values
+        template<class PredKey, int PredDirection> class Predicate,
+        int dir,
+        class Consumer
+>
 void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
     typedef RunIter<Sequencer::PSortedRun, dir> RIter;
     typedef typename RIter::range_type range_t;
@@ -343,7 +365,7 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
     }
 
     typedef tuple<KeyType, int> HeapItem;
-    typedef MergePred<HeapItem, dir> Comp;
+    typedef Predicate<HeapItem, dir> Comp;
     typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
     Heap heap;
 
@@ -394,12 +416,25 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
         return cur->put(caller, result);
     };
 
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
+    kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
 
     ready_.clear();
     cur->complete(caller);
 
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
+}
+
+std::vector<int> index_chunk_header(ChunkHeader* header) {
+    std::vector<int> indexes;
+    for (auto i = 0u; i < header->timestamps.size(); i++) {
+        indexes.push_back(i);
+    }
+    std::stable_sort(indexes.begin(), indexes.end(), [header](int lhs, int rhs) {
+        auto lhstup = std::make_tuple(header->paramids[lhs], header->timestamps[lhs]);
+        auto rhstup = std::make_tuple(header->paramids[rhs], header->timestamps[rhs]);
+        return lhstup < rhstup;
+    });
+    return indexes;
 }
 
 aku_Status Sequencer::merge_and_compress(PageHeader* target) {
@@ -418,10 +453,24 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
         return true;
     };
 
-    kway_merge<AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
+    kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     ready_.clear();
 
-    auto status = target->complete_chunk(chunk_header);
+    std::vector<int> index = index_chunk_header(&chunk_header);
+    ChunkHeader reindexed_header;
+    reindexed_header.lengths.reserve(index.size());
+    reindexed_header.offsets.reserve(index.size());
+    reindexed_header.paramids.reserve(index.size());
+    reindexed_header.timestamps.reserve(index.size());
+    reindexed_header.values.reserve(index.size());
+    for(auto ix: index) {
+        reindexed_header.lengths.push_back(chunk_header.lengths.at(ix));
+        reindexed_header.offsets.push_back(chunk_header.offsets.at(ix));
+        reindexed_header.paramids.push_back(chunk_header.paramids.at(ix));
+        reindexed_header.timestamps.push_back(chunk_header.timestamps.at(ix));
+        reindexed_header.values.push_back(chunk_header.values.at(ix));
+    }
+    auto status = target->complete_chunk(reindexed_header);
     if (status != AKU_SUCCESS) {
         return status;
     }
@@ -514,9 +563,9 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
     };
 
     if (query.direction == AKU_CURSOR_DIR_FORWARD) {
-        kway_merge<AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
+        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
-        kway_merge<AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
+        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
 
     if (seq_id != sequence_number_.load()) {

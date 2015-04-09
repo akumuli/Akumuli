@@ -349,6 +349,37 @@ namespace {
     };
 }
 
+/** Conver from chunk to time order*/
+static bool convert_from_chunk_order(ChunkHeader* header, ChunkHeader* out) {
+    auto len = header->timestamps.size();
+    if (len != header->offsets.size() || len != header->paramids.size() ||
+            len != header->lengths.size() || len != header->values.size()) {
+        return false;
+    }
+    std::vector<int> index;
+    for (auto i = 0u; i < header->timestamps.size(); i++) {
+        index.push_back(i);
+    }
+    std::stable_sort(index.begin(), index.end(), [header](int lhs, int rhs) {
+        auto lhstup = std::make_tuple(header->timestamps[lhs], header->paramids[lhs]);
+        auto rhstup = std::make_tuple(header->timestamps[rhs], header->paramids[rhs]);
+        return lhstup < rhstup;
+    });
+    out->lengths.reserve(index.size());
+    out->offsets.reserve(index.size());
+    out->paramids.reserve(index.size());
+    out->timestamps.reserve(index.size());
+    out->values.reserve(index.size());
+    for(auto ix: index) {
+        out->lengths.push_back(header->lengths.at(ix));
+        out->offsets.push_back(header->offsets.at(ix));
+        out->paramids.push_back(header->paramids.at(ix));
+        out->timestamps.push_back(header->timestamps.at(ix));
+        out->values.push_back(header->values.at(ix));
+    }
+    return true;
+}
+
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     PageHeader const* page_;
@@ -510,7 +541,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false)
     {
-        ChunkHeader header;
+        ChunkHeader chunk_header, header;
 
         auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
         auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
@@ -526,36 +557,22 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return false;
         }
 
-        // read timestamps
-        CompressionUtil::decode_chunk(&header, &pbegin, pend, 0, 1, probe_length);
+        CompressionUtil::decode_chunk(&chunk_header, &pbegin, pend, 0, 5, probe_length);
+
+        // TODO: depending on a query type we can use chunk order or convert back to time-order.
+        // If we extract evertyhing it is better to convert to time order. If we picking some
+        // parameter ids it is better to check if this ids present in a chunk and extract values
+        // in chunk order and only after that - convert results to time-order.
+
+        // Convert from chunk order to time order
+        if (!convert_from_chunk_order(&chunk_header, &header)) {
+            AKU_PANIC("Bad chunk");
+        }
 
         size_t start_pos = 0;
         if (IS_BACKWARD_) {
             start_pos = static_cast<int>(probe_length - 1);
         }
-        // test timestamp range
-        if (binary_search) {
-            ChunkHeaderSearcher int_searcher(header);
-            SearchRange sr = { 0, static_cast<uint32_t>(header.timestamps.size())};
-            int_searcher.run(key_, &sr);
-            auto begin = header.timestamps.begin() + sr.begin;
-            auto end = header.timestamps.begin() + sr.end;
-            auto it = std::lower_bound(begin, end, key_);
-            // TODO: stop if key is out of range
-            if (IS_BACKWARD_) {
-                if (!header.timestamps.empty()) {
-                    auto last = header.timestamps.begin() + start_pos;
-                    auto delta = last - it;
-                    start_pos -= delta;
-                }
-            } else {
-                start_pos += it - header.timestamps.begin();
-            }
-        }
-
-        // Read lengths, param ids and offsets.
-        CompressionUtil::decode_chunk(&header, &pbegin, pend, 1, 4, probe_length);
-
         bool probe_in_time_range = true;
 
         auto cursor = cursor_;

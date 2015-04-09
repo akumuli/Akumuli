@@ -91,9 +91,11 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
         }
     }
     aku_close_cursor(cursor);
-    if (current_time < end) {
+    if (current_time != end) {
         std::cout << "some values lost, actual timestamp: " << current_time << ", expected timestamp: " << end << std::endl;
         throw std::runtime_error("values lost");
+    } else {
+        std::cout << "all data retrieved" << std::endl;
     }
     if (cursor_ix > 1000) {
         std::cout << "cursor_ix = " << cursor_ix << std::endl;
