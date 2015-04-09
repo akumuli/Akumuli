@@ -44,8 +44,13 @@ int main() {
         Writer(ByteVector *out) : out(out) {}
         virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) {
             const char* p = (const char*)range.address;
+            ByteVector tmp;
             for(uint32_t i = 0; i < range.length; i++) {
-                out->push_back(p[i]);
+                tmp.push_back(p[i]);
+            }
+            std::swap(*out, tmp);
+            for(auto val: tmp) {
+                out->push_back(val);
             }
             return AKU_SUCCESS;
         }
@@ -69,9 +74,20 @@ int main() {
     ChunkHeader decomp;
     const unsigned char* pbegin = out.data();
     const unsigned char* pend = pbegin + out.size();
-    status = CompressionUtil::decode_chunk(&decomp, &pbegin, pend, 0, 5, header.timestamps.size());
-    if (status != AKU_SUCCESS) {
-        std::cout << "Dencoding error" << std::endl;
-        return 2;
+    CompressionUtil::decode_chunk(&decomp, &pbegin, pend, 0, 5, header.timestamps.size());
+
+    for (auto i = 0u; i < header.timestamps.size(); i++) {
+        if (header.timestamps.at(i) != decomp.timestamps.at(i)) {
+            std::cout << "Error, bad timestamp at " << i << std::endl;
+        }
+        if (header.paramids.at(i) != decomp.paramids.at(i)) {
+            std::cout << "Error, bad paramid at " << i << std::endl;
+        }
+        if (header.lengths.at(i) != decomp.lengths.at(i)) {
+            std::cout << "Error, bad length at " << i << std::endl;
+        }
+        if (header.offsets.at(i) != decomp.offsets.at(i)) {
+            std::cout << "Error, bad offset at " << i << std::endl;
+        }
     }
 }
