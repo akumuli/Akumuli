@@ -547,8 +547,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto cursor = cursor_;
         auto& caller = caller_;
         auto page = page_;
-        auto ix_value = 0u;
-        auto put_entry = [&header, cursor, &caller, page, &ix_value] (uint32_t i) {
+        auto ix_value = IS_BACKWARD_ ? static_cast<int>(start_pos) : 0;
+        int inc = IS_BACKWARD_ ? -1 : 1;
+        auto put_entry = [&header, cursor, &caller, page, &ix_value, inc] (uint32_t i) {
             auto len = header.lengths[i];
             CursorResult result = {
                 len,
@@ -556,7 +557,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header.paramids[i],
             };
             if (len == 0) {
-                result.data.float64 = header.values[ix_value++];
+                result.data.float64 = header.values[ix_value];
+                ix_value += inc;
             } else {
                 result.data.ptr = page->read_entry_data(header.offsets[i]);
             }
@@ -567,7 +569,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
+                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
                     put_entry(i);
                 } else {
                     probe_in_time_range = query_.lowerbound <= header.timestamps[i];
@@ -580,7 +582,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             for (auto i = start_pos; i != probe_length; i++) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i])) {
+                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
                     put_entry(i);
                 } else {
                     probe_in_time_range = query_.upperbound >= header.timestamps[i];

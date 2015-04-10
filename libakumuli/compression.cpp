@@ -304,10 +304,21 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
 template<class Fn>
 bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const& f) {
     auto len = header.timestamps.size();
-    if (len != header.offsets.size() || len != header.paramids.size() ||
-            len != header.lengths.size() || len != header.values.size()) {
+    if (len != header.offsets.size() || len != header.paramids.size() || len != header.lengths.size()) {
+        // `header.values.size()` can be less then `len`
         return false;
     }
+    // prepare values arr
+    std::vector<double> values;
+    int val_ix = 0;
+    for(int i = 0u; i < header.lengths.size(); i++) {
+        if (header.lengths.at(i) == 0) {
+            values.push_back(header.values.at(val_ix++));
+        } else {
+            values.push_back(0.0);
+        }
+    }
+    // prepare indexes
     std::vector<int> index;
     for (auto i = 0u; i < header.timestamps.size(); i++) {
         index.push_back(i);
@@ -323,7 +334,14 @@ bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const&
         out->offsets.push_back(header.offsets.at(ix));
         out->paramids.push_back(header.paramids.at(ix));
         out->timestamps.push_back(header.timestamps.at(ix));
-        out->values.push_back(header.values.at(ix));
+        out->values.push_back(values.at(ix));
+    }
+    // revert values proc
+    val_ix = 0;
+    for(int i = 0u; i < header.lengths.size(); i++) {
+        if (out->lengths.at(i) == 0) {
+            out->values.at(i) = values.at(val_ix++);
+        }
     }
     return true;
 }
