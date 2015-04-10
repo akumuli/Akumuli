@@ -119,34 +119,20 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
 
 // Test queryprocessor building
 
-BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_0) {
-
-    SeriesMatcher matcher(1ul);
-    const char* json =
-        " {                                        "
-        "      \"sample\": { \"reservoir\": 1000 },"
-        "      \"metric\": \"cpu\",                "
-        "      \"range\" : {                       "
-        "           \"from\": \"20150101T000000\", "
-        "           \"to\"  : \"20150102T000000\"  "
-        "       },                                 "
-        "      \"where\": [                        "
-        "                      {\"in\":            "
-        "                          {\"key3\":      "
-        "                                 [1, 2, 3]"
-        "                          }               "
-        "                      }                   "
-        "                 ]                        "
-        " }                                        ";
-    auto qproc = matcher.build_query_processor(json, &logger);
-    BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
-    BOOST_REQUIRE(qproc->metrics.size() == 1);
-    BOOST_REQUIRE(qproc->metrics.at(0) == "cpu");
-}
-
 BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
 
     SeriesMatcher matcher(1ul);
+    const char* series[] = {
+        "cpu key1=1 key3=1",
+        "cpu key2=2 key3=2",
+        "cpu key3=3",
+        "cpu key3=4",
+    };
+    for(int i = 0; i < 4; i++) {
+        const char* sname = series[i];
+        int slen = strlen(sname);
+        matcher.add(sname, sname+slen);
+    }
     const char* json =
         " {                                        "
         "      \"sample\": { \"reservoir\": 1000 },"

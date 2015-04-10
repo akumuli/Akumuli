@@ -104,3 +104,14 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 
+add_executable(
+    perf_compression
+    perf_compression.cpp
+    perftest_tools.cpp
+    ../libakumuli/compression.cpp
+)
+
+target_link_libraries(
+    perf_compression
+    ${Boost_LIBRARIES}
+)

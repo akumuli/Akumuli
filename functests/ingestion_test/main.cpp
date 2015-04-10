@@ -17,9 +17,9 @@
 
 using namespace std;
 
-const int DB_SIZE = 8;
-const int NUM_ITERATIONS = 100*1000*1000;
-const int CHUNK_SIZE = 5000;
+int DB_SIZE = 8;
+uint64_t NUM_ITERATIONS = 100*1000*1000;
+int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
 const char* DB_PATH = "./test";
@@ -46,10 +46,10 @@ void delete_storage() {
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {42};
+    aku_ParamId params[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
-                                                  , 1
+                                                  , 16
                                                   , params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_Timestamp current_time = begin;
@@ -70,22 +70,17 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
                 return false;
             }
-            aku_ParamId id = current_time & 0xF;
+            aku_ParamId id = (current_time+1) & 0xF;
             if (paramids[i] != id) {
                 std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << paramids[i]  << std::endl;
                 return false;
             }
             double dvalue = pointers[i].float64;
-            double dexpected = (current_time + 2)*0.0001;
+            double dexpected = current_time + 1;
             if (dvalue - dexpected > 0.000001) {
                 std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
                 return false;
             }
-            //uint64_t const* pvalue = (uint64_t const*)pointers[i].ptr;
-            //if (*pvalue != current_time + 2) {
-            //    std::cout << "Error at " << cursor_ix << " expected value " << (current_time+2) << " acutal value " << *pvalue  << std::endl;
-            //    return false;
-            //}
             current_time++;
             counter++;
             if (counter % mod == 0) {
@@ -96,6 +91,12 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
         }
     }
     aku_close_cursor(cursor);
+    if (current_time != end) {
+        std::cout << "some values lost, actual timestamp: " << current_time << ", expected timestamp: " << end << std::endl;
+        throw std::runtime_error("values lost");
+    } else {
+        std::cout << "all data retrieved" << std::endl;
+    }
     if (cursor_ix > 1000) {
         std::cout << "cursor_ix = " << cursor_ix << std::endl;
     }
@@ -143,6 +144,17 @@ Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
     }
+    if (cnt == 2) {
+        DB_SIZE = 2;
+        NUM_ITERATIONS = 10*1000*1000;
+    } else if (cnt == 4) {
+        DB_SIZE        = boost::lexical_cast<int>(args[2]);
+        NUM_ITERATIONS = boost::lexical_cast<int>(args[3]);
+    } else {
+        if (std::string(args[1]) != "delete") {
+            throw std::runtime_error("Bad command line parameters");
+        }
+    }
     if (std::string(args[1]) == "create") {
         return CREATE;
     }
@@ -153,7 +165,7 @@ Mode read_cmd(int cnt, const char** args) {
         return DELETE;
     }
     std::cout << "Invalid command line" << std::endl;
-    std::terminate();
+    throw std::runtime_error("Bad command line parameters");
 }
 
 int main(int cnt, const char** args)
@@ -194,16 +206,12 @@ int main(int cnt, const char** args)
         uint64_t busy_count = 0;
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-            uint64_t k = i + 2;
-            double value = 0.0001*k;
-            aku_ParamId id = i & 0xF;
-            char series_name[0x200];
-            int slen = sprintf(series_name, "cpu host=%X ", unsigned(i) % 100000);
-            const char* series_begin = series_name;
-            const char* series_end = series_begin + slen;
-            aku_Status status = aku_write_double(db, series_begin, series_end, i, value);
+            double value = i + 1;
+            aku_ParamId id = (i + 1) & 0xF;
+            aku_Timestamp ts = i;
+            aku_Status status = aku_write_double_raw(db, id, ts, value);
             if (status == AKU_EBUSY) {
-                status = aku_write_double_raw(db, id, i, value);
+                status = aku_write_double_raw(db, id, ts, value);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;
@@ -230,12 +238,11 @@ int main(int cnt, const char** args)
 
         timer.restart();
 
-        if (!query_database_forward( db
-                           , std::numeric_limits<aku_Timestamp>::min()
-                           , std::numeric_limits<aku_Timestamp>::max()
-                           , counter
-                           , timer
-                           , 1000000))
+        if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
+                                    NUM_ITERATIONS,
+                                    counter,
+                                    timer,
+                                    1000000))
         {
             return 2;
         }

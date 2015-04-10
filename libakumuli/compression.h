@@ -103,6 +103,18 @@ struct CompressionUtil {
                             size_t numblocks,
                             std::vector<aku_ParamId> const& params,
                             std::vector<double> *output);
+
+    /** Convert from chunk order to time order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_chunk_order(const ChunkHeader &header, ChunkHeader* out);
+
+    /** Convert from time order to chunk order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_time_order(const ChunkHeader &header, ChunkHeader* out);
 };
 
 
@@ -419,22 +431,6 @@ struct RLEStreamReader {
     }
 };
 
-// Time stamps (sorted) -> Delta -> RLE -> Base128
-typedef Base128StreamWriter<aku_Timestamp> __Base128TSWriter;
-typedef RLEStreamWriter<__Base128TSWriter, aku_Timestamp> __RLETSWriter;
-typedef DeltaStreamWriter<__RLETSWriter, aku_Timestamp> DeltaRLETSWriter;
-
-// Base128 -> RLE -> Delta -> Timestamps
-typedef Base128StreamReader<aku_Timestamp, const unsigned char*> __Base128TSReader;
-typedef RLEStreamReader<__Base128TSReader, aku_Timestamp> __RLETSReader;
-typedef DeltaStreamReader<__RLETSReader, aku_Timestamp> DeltaRLETSReader;
-
-// ParamId -> Base128
-typedef Base128StreamWriter<aku_ParamId> Base128IdWriter;
-
-// Base128 -> ParamId
-typedef Base128StreamReader<aku_ParamId, const unsigned char*> Base128IdReader;
-
 // Length -> RLE -> Base128
 typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
 typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
@@ -443,19 +439,16 @@ typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
-// Offset -> Delta -> ZigZag -> RLE -> Base128
-typedef Base128StreamWriter<int64_t> __Base128OffWriter;                    // int64_t is used instead of uint32_t
-typedef RLEStreamWriter<__Base128OffWriter, int64_t> __RLEOffWriter;        // for a reason. Numbers is not always
-typedef ZigZagStreamWriter<__RLEOffWriter, int64_t> __ZigZagOffWriter;      // increasing here so we can get negatives
-typedef DeltaStreamWriter<__ZigZagOffWriter, int64_t> DeltaRLEOffWriter;    // after delta encoding (ZigZag coding
-                                                                            // solves this issue).
+// int64_t -> Delta -> ZigZag -> RLE -> Base128
+typedef Base128StreamWriter<int64_t> __Base128Writer;
+typedef RLEStreamWriter<__Base128Writer, int64_t> __RLEWriter;
+typedef ZigZagStreamWriter<__RLEWriter, int64_t> __ZigZagWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
 
-// Base128 -> RLE -> ZigZag -> Delta -> Offset
-//typedef Base128StreamReader<uint32_t, const unsigned char*> Base128OffReader;
-typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128OffReader;
-typedef RLEStreamReader<__Base128OffReader, int64_t> __RLEOffReader;
-typedef ZigZagStreamReader<__RLEOffReader, int64_t> __ZigZagOffReader;
-typedef DeltaStreamReader<__ZigZagOffReader, int64_t> DeltaRLEOffReader;
-
+// Base128 -> RLE -> ZigZag -> Delta -> int64_t
+typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128Reader;
+typedef RLEStreamReader<__Base128Reader, int64_t> __RLEReader;
+typedef ZigZagStreamReader<__RLEReader, int64_t> __ZigZagReader;
+typedef DeltaStreamReader<__ZigZagReader, int64_t> DeltaRLEReader;
 
 }

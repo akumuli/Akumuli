@@ -74,6 +74,9 @@ struct TimeSeriesValue {
 
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
+    //! Chunk order less then operator (id goes first, then goes timestamp)
+    friend bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
+
 } __attribute__((packed));
 
 
