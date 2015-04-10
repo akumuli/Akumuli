@@ -46,10 +46,10 @@ void delete_storage() {
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
     const unsigned int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {42};
+    aku_ParamId params[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
     aku_SelectQuery* query = aku_make_select_query( begin
                                                   , end
-                                                  , 1
+                                                  , 16
                                                   , params);
     aku_Cursor* cursor = aku_select(db, query);
     aku_Timestamp current_time = begin;
