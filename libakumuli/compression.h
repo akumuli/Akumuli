@@ -103,6 +103,18 @@ struct CompressionUtil {
                             size_t numblocks,
                             std::vector<aku_ParamId> const& params,
                             std::vector<double> *output);
+
+    /** Convert from chunk order to time order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_chunk_order(const ChunkHeader &header, ChunkHeader* out);
+
+    /** Convert from time order to chunk order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_time_order(const ChunkHeader &header, ChunkHeader* out);
 };
 
 

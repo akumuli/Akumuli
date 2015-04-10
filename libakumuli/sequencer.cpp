@@ -424,19 +424,6 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
-std::vector<int> index_chunk_header(ChunkHeader* header) {
-    std::vector<int> indexes;
-    for (auto i = 0u; i < header->timestamps.size(); i++) {
-        indexes.push_back(i);
-    }
-    std::stable_sort(indexes.begin(), indexes.end(), [header](int lhs, int rhs) {
-        auto lhstup = std::make_tuple(header->paramids[lhs], header->timestamps[lhs]);
-        auto rhstup = std::make_tuple(header->paramids[rhs], header->timestamps[rhs]);
-        return lhstup < rhstup;
-    });
-    return indexes;
-}
-
 aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
@@ -456,20 +443,11 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     ready_.clear();
 
-    std::vector<int> index = index_chunk_header(&chunk_header);
     ChunkHeader reindexed_header;
-    reindexed_header.lengths.reserve(index.size());
-    reindexed_header.offsets.reserve(index.size());
-    reindexed_header.paramids.reserve(index.size());
-    reindexed_header.timestamps.reserve(index.size());
-    reindexed_header.values.reserve(index.size());
-    for(auto ix: index) {
-        reindexed_header.lengths.push_back(chunk_header.lengths.at(ix));
-        reindexed_header.offsets.push_back(chunk_header.offsets.at(ix));
-        reindexed_header.paramids.push_back(chunk_header.paramids.at(ix));
-        reindexed_header.timestamps.push_back(chunk_header.timestamps.at(ix));
-        reindexed_header.values.push_back(chunk_header.values.at(ix));
+    if (!CompressionUtil::convert_from_time_order(chunk_header, &reindexed_header)) {
+        AKU_PANIC("Invalid chunk");
     }
+
     auto status = target->complete_chunk(reindexed_header);
     if (status != AKU_SUCCESS) {
         return status;

@@ -1,5 +1,6 @@
 #include "compression.h"
 #include <unordered_map>
+#include <algorithm>
 
 namespace Akumuli {
 
@@ -298,6 +299,51 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
         break;
     }
     return -1;
+}
+
+template<class Fn>
+bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const& f) {
+    auto len = header.timestamps.size();
+    if (len != header.offsets.size() || len != header.paramids.size() ||
+            len != header.lengths.size() || len != header.values.size()) {
+        return false;
+    }
+    std::vector<int> index;
+    for (auto i = 0u; i < header.timestamps.size(); i++) {
+        index.push_back(i);
+    }
+    std::stable_sort(index.begin(), index.end(), f);
+    out->lengths.reserve(index.size());
+    out->offsets.reserve(index.size());
+    out->paramids.reserve(index.size());
+    out->timestamps.reserve(index.size());
+    out->values.reserve(index.size());
+    for(auto ix: index) {
+        out->lengths.push_back(header.lengths.at(ix));
+        out->offsets.push_back(header.offsets.at(ix));
+        out->paramids.push_back(header.paramids.at(ix));
+        out->timestamps.push_back(header.timestamps.at(ix));
+        out->values.push_back(header.values.at(ix));
+    }
+    return true;
+}
+
+bool CompressionUtil::convert_from_chunk_order(ChunkHeader const& header, ChunkHeader* out) {
+    auto fn = [header](int lhs, int rhs) {
+        auto lhstup = std::make_tuple(header.timestamps[lhs], header.paramids[lhs]);
+        auto rhstup = std::make_tuple(header.timestamps[rhs], header.paramids[rhs]);
+        return lhstup < rhstup;
+    };
+    return reorder_chunk_header(header, out, fn);
+}
+
+bool CompressionUtil::convert_from_time_order(ChunkHeader const& header, ChunkHeader* out) {
+    auto fn = [header](int lhs, int rhs) {
+        auto lhstup = std::make_tuple(header.paramids[lhs], header.timestamps[lhs]);
+        auto rhstup = std::make_tuple(header.paramids[rhs], header.timestamps[rhs]);
+        return lhstup < rhstup;
+    };
+    return reorder_chunk_header(header, out, fn);
 }
 
 }

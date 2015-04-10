@@ -349,37 +349,6 @@ namespace {
     };
 }
 
-/** Conver from chunk to time order*/
-static bool convert_from_chunk_order(ChunkHeader* header, ChunkHeader* out) {
-    auto len = header->timestamps.size();
-    if (len != header->offsets.size() || len != header->paramids.size() ||
-            len != header->lengths.size() || len != header->values.size()) {
-        return false;
-    }
-    std::vector<int> index;
-    for (auto i = 0u; i < header->timestamps.size(); i++) {
-        index.push_back(i);
-    }
-    std::stable_sort(index.begin(), index.end(), [header](int lhs, int rhs) {
-        auto lhstup = std::make_tuple(header->timestamps[lhs], header->paramids[lhs]);
-        auto rhstup = std::make_tuple(header->timestamps[rhs], header->paramids[rhs]);
-        return lhstup < rhstup;
-    });
-    out->lengths.reserve(index.size());
-    out->offsets.reserve(index.size());
-    out->paramids.reserve(index.size());
-    out->timestamps.reserve(index.size());
-    out->values.reserve(index.size());
-    for(auto ix: index) {
-        out->lengths.push_back(header->lengths.at(ix));
-        out->offsets.push_back(header->offsets.at(ix));
-        out->paramids.push_back(header->paramids.at(ix));
-        out->timestamps.push_back(header->timestamps.at(ix));
-        out->values.push_back(header->values.at(ix));
-    }
-    return true;
-}
-
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     PageHeader const* page_;
@@ -565,7 +534,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         // in chunk order and only after that - convert results to time-order.
 
         // Convert from chunk order to time order
-        if (!convert_from_chunk_order(&chunk_header, &header)) {
+        if (!CompressionUtil::convert_from_chunk_order(chunk_header, &header)) {
             AKU_PANIC("Bad chunk");
         }
 
