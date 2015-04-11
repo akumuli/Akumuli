@@ -16,8 +16,8 @@ before_script:
    - mkdir build
    - cd build
    - cmake ..
-   - ./functests/storage_test
 
 script: 
    - make -j
    - make test
+   - ./functests/storage_test
