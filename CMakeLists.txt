@@ -37,6 +37,7 @@ include_directories(./include)
 add_subdirectory(libakumuli)
 add_subdirectory(akumulid)
 add_subdirectory(perftests)
+add_subdirectory(functests)
 
 enable_testing()
 add_subdirectory(unittests)
