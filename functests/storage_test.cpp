@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <boost/algorithm/string.hpp>
+
 #include "akumuli.h"
 
 const std::string DEFAULT_DIR = "/tmp";
@@ -23,6 +25,23 @@ bool check_path_exists(std::string path) {
     return false;
 }
 
+void delete_storage(std::string work_dir) {
+    std::string path = work_dir + "/test.akumuli";
+    aku_remove_database(path.c_str(), &aku_console_logger);
+}
+
+bool create_storage(std::string work_dir) {
+    uint32_t threshold = 10;
+    uint64_t windowsize = 100;
+    apr_status_t result = aku_create_database("test", work_dir.c_str(), work_dir.c_str(), 2,
+                                              threshold, windowsize, 0, nullptr);
+    if (result != APR_SUCCESS) {
+        return false;
+    }
+
+    return true;
+}
+
 int main(int argc, const char** argv) {
     std::string dir;
     if (argc == 1) {
@@ -38,5 +57,18 @@ int main(int argc, const char** argv) {
             std::cout << "Invalid path" << std::endl;
             return 2;
         }
+    }
+    if (boost::ends_with(dir, "/")) {
+        dir.pop_back();
+    }
+    std::cout << "Working directory: " << dir << std::endl;
+    aku_initialize(nullptr);
+
+    // Try to delete old storage
+    delete_storage(dir);
+
+    if (!create_storage(dir)) {
+        std::cout << "Can't create new storage" << std::endl;
+        return 3;
     }
 }
