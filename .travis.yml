@@ -20,5 +20,4 @@ before_script:
 script: 
    - make -j
    - make test
-   - ls functests
    - functests/storage_test /tmp
