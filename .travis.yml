@@ -20,4 +20,4 @@ before_script:
 script: 
    - make -j
    - make test
-   - ./functests/storage_test
+   - /root/workspace/src/github.com/akumuli/Akumuli/build/functests/storage_test
