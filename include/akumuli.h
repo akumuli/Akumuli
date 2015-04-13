@@ -160,6 +160,7 @@ AKU_EXPORT void aku_destroy(void* any);
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
  * @return APR errorcode or APR_SUCCESS
+ * TODO: move from apr_status_t to aku_Status
  */
 AKU_EXPORT apr_status_t aku_create_database
                                 ( const char     *file_name
