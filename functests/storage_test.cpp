@@ -170,4 +170,6 @@ int main(int argc, const char** argv) {
     storage.create_new();
 
     storage.open();
+    
+    return 0;
 }
