@@ -25,25 +25,125 @@ bool check_path_exists(std::string path) {
     return false;
 }
 
-void delete_storage(std::string work_dir) {
-    std::string path = work_dir + "/test.akumuli";
-    aku_remove_database(path.c_str(), &aku_console_logger);
-}
+/** Row iterator interface
+  */
+struct Cursor {
+    enum RecordType {
+        DOUBLE,
+        BLOB,
+    };
+    typedef std::tuple<RecordType, aku_Timestamp, aku_ParamId, double, std::string> RowT;
 
+    virtual ~Cursor() = default;
+
+    //! Check completion
+    virtual bool done() = 0;
+    //! Get next row
+    virtual RowT get_next_row() = 0;
+};
 
 /** Storage wrapper class. Allows to test seamlessly local libakumuli instance and akumulid daemon
   * deployed on AWS instance.
   */
 struct Storage {
+    virtual ~Storage() = default;
+    //! Create new storage (create file on disk without opening database)
     virtual void create_new() = 0;
+    //! Open storage
     virtual void open() = 0;
+    //! Close storage
+    virtual void close() = 0;
+    //! Delete files on disk (database should be closed)
     virtual void delete_all() = 0;
+    //! Write numeric value
     virtual void add(aku_Timestamp ts, aku_ParamId id, double value) = 0;
+    //! Write blob value
     virtual void add(aku_Timestamp ts, aku_ParamId id, std::vector<char> const& blob) = 0;
+    //! Query database
+    virtual std::unique_ptr<Cursor> query(aku_Timestamp begin,
+                                          aku_Timestamp end,
+                                          std::vector<aku_ParamId> ids) = 0;
 };
 
 
-struct LibAkumuli : Storage {
+struct LocalCursor : Cursor {
+    aku_Cursor* cursor_;
+    std::vector<aku_Timestamp> timestamps_;
+    std::vector<aku_ParamId>   paramids_;
+    std::vector<aku_PData>     payload_;
+    std::vector<uint32_t>      lengths_;
+    int rows_in_cache_;
+    int ix_row_;
+    const int CACHE_SIZE;
+
+    LocalCursor(aku_Cursor *cursor)
+        : cursor_(cursor)
+        , rows_in_cache_(0)
+        , ix_row_(0)
+        , CACHE_SIZE(100)
+    {
+        throw_if_error();
+        timestamps_.reserve(CACHE_SIZE);
+        paramids_.reserve(CACHE_SIZE);
+        payload_.reserve(CACHE_SIZE);
+        lengths_.reserve(CACHE_SIZE);
+    }
+
+    void throw_if_error() {
+        aku_Status status = AKU_SUCCESS;
+        if (aku_cursor_is_error(cursor_, &status)) {
+            throw std::runtime_error(aku_error_message(status));
+        }
+    }
+
+    virtual ~LocalCursor() {
+        aku_close_cursor(cursor_);
+    }
+
+    virtual bool done() {
+        throw_if_error();
+        return aku_cursor_is_done(cursor_);
+    }
+
+    virtual RowT get_next_row() {
+        if (rows_in_cache_ == ix_row_) {
+            rows_in_cache_ = aku_cursor_read_columns(cursor_,
+                                                     timestamps_.data(),
+                                                     paramids_.data(),
+                                                     payload_.data(),
+                                                     lengths_.data(),
+                                                     CACHE_SIZE);
+            ix_row_ = 0;
+            throw_if_error();
+        }
+        RowT result;
+        auto len = lengths_.at(ix_row_);
+        if (len == 0) {
+            result = std::make_tuple(
+                        DOUBLE,
+                        timestamps_.at(ix_row_),
+                        paramids_.at(ix_row_),
+                        payload_.at(ix_row_).float64,
+                        std::string());
+        } else {
+            aku_PData data = payload_.at(ix_row_);
+            auto begin = static_cast<const char*>(data.ptr);
+            auto end = begin + len;
+            std::string payload(begin, end);
+            result = std::make_tuple(
+                        BLOB,
+                        timestamps_.at(ix_row_),
+                        paramids_.at(ix_row_),
+                        NAN,
+                        payload);
+        }
+        ix_row_++;
+        return result;
+    }
+};
+
+
+struct LocalStorage : Storage {
     const std::string work_dir_;
     const uint32_t compression_threshold_;
     const uint64_t sliding_window_size_;
@@ -53,7 +153,7 @@ struct LibAkumuli : Storage {
     const char* DBNAME_;
     aku_Database *db_;
 
-    LibAkumuli(
+    LocalStorage(
             std::string work_dir,
             // Creation parameters, used only to create database
             uint32_t compression_threshold,
@@ -86,6 +186,10 @@ struct LibAkumuli : Storage {
     }
 
     // Storage interface
+    virtual void close() {
+        aku_close_database(db_);
+    }
+
     virtual void create_new()
     {
         apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
@@ -131,6 +235,17 @@ struct LibAkumuli : Storage {
         }
         throw_on_error(status);
     }
+
+    virtual std::unique_ptr<Cursor> query(aku_Timestamp begin,
+                                          aku_Timestamp end,
+                                          std::vector<aku_ParamId> ids)
+    {
+        aku_SelectQuery *query = aku_make_select_query(begin, end, (uint32_t)ids.size(), ids.data());
+        auto cur = aku_select(db_, query);
+        aku_destroy(query);
+        auto ptr = std::unique_ptr<LocalCursor>(new LocalCursor(cur));
+        return std::move(ptr);
+    }
 };
 
 
@@ -158,7 +273,7 @@ int main(int argc, const char** argv) {
 
     uint32_t compression_threshold = 5;
     uint64_t windowsize = 10;
-    LibAkumuli storage(dir, compression_threshold, windowsize, 2);
+    LocalStorage storage(dir, compression_threshold, windowsize, 2);
 
     // Try to delete old data if any
     try {
@@ -170,6 +285,10 @@ int main(int argc, const char** argv) {
     storage.create_new();
 
     storage.open();
+
+    storage.close();
+
+    storage.delete_all();
     
     return 0;
 }
