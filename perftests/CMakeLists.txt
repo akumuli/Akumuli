@@ -104,6 +104,7 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 
+# Compression perftest
 add_executable(
     perf_compression
     perf_compression.cpp
@@ -114,4 +115,56 @@ add_executable(
 target_link_libraries(
     perf_compression
     ${Boost_LIBRARIES}
+)
+
+# Ingestion perftest
+add_executable(perf_ingestion perf_ingestion.cpp)
+
+target_link_libraries(perf_ingestion
+    akumuli
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
+
+# Parallel ingestion perftest
+add_executable(perf_parallel_ingestion perf_parallel_ingestion.cpp)
+
+target_link_libraries(perf_parallel_ingestion
+    akumuli
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
+
+# Sequencer test
+add_executable(
+    perf_sequencer
+    perf_sequencer.cpp
+    ../libakumuli/storage.cpp
+    ../libakumuli/seriesparser.cpp
+    ../libakumuli/page.cpp
+    ../libakumuli/akumuli.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/sequencer.cpp
+    ../libakumuli/cursor.cpp
+    ../libakumuli/compression.cpp
+    ../libakumuli/metadatastorage.cpp
+    ../libakumuli/queryprocessor.cpp
+    ../libakumuli/stringpool.cpp
+    ../libakumuli/datetime.cpp
+)
+target_link_libraries(perf_sequencer
+    "${SQLITE3_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
 )

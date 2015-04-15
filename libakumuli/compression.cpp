@@ -337,10 +337,11 @@ bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const&
         out->values.push_back(values.at(ix));
     }
     // revert values proc
-    val_ix = 0;
+    std::swap(out->values, values);
+    out->values.clear();
     for(int i = 0u; i < header.lengths.size(); i++) {
         if (out->lengths.at(i) == 0) {
-            out->values.at(i) = values.at(val_ix++);
+            out->values.push_back(values.at(i));
         }
     }
     return true;
