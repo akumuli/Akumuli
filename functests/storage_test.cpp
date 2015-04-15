@@ -297,6 +297,64 @@ void fill_data(Storage *storage) {
     }
 }
 
+struct Query {
+    aku_Timestamp          begin;
+    aku_Timestamp            end;
+    std::vector<aku_ParamId> ids;
+};
+
+void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) {
+    std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
+    int ix = 0;
+    while(!cursor->done()) {
+        auto row = cursor->get_next_row();
+        DataPoint exp = expected.at(ix++);
+        if (std::get<1>(row) != exp.timestamp) {
+            std::cout << "Error at " << ix << std::endl;
+            std::cout << "bad timestamp, get " << std::get<1>(row)
+                      << ", expected " << exp.timestamp << std::endl;
+            throw std::runtime_error("Bad result");
+        }
+        if (std::get<2>(row) != exp.id) {
+            std::cout << "Error at " << ix << std::endl;
+            std::cout << "bad id, get " << std::get<2>(row)
+                      << ", expected " << exp.id << std::endl;
+            throw std::runtime_error("Bad result");
+        }
+        if (std::get<0>(row) == Cursor::BLOB) {
+            if (!exp.is_blob) {
+                std::cout << "Error at " << ix << std::endl;
+                std::cout << "blob expected"   << std::endl;
+                throw std::runtime_error("Bad result");
+            }
+            if (std::get<4>(row) != exp.blob_value) {
+                std::cout << "Error at " << ix << std::endl;
+                std::cout << "bad BLOB, get " << std::get<4>(row)
+                          << ", expected " << exp.blob_value << std::endl;
+                throw std::runtime_error("Bad result");
+            }
+        } else {
+            if (exp.is_blob) {
+                std::cout << "Error at " << ix << std::endl;
+                std::cout << "float expected"   << std::endl;
+                throw std::runtime_error("Bad result");
+            }
+            if (std::get<3>(row) != exp.float_value) {
+                std::cout << "Error at " << ix << std::endl;
+                std::cout << "bad float, get " << std::get<3>(row)
+                          << ", expected " << exp.float_value << std::endl;
+                throw std::runtime_error("Bad result");
+            }
+        }
+    }
+    if (ix != (int)expected.size()) {
+        std::cout << "Not enough data read" << std::endl;
+        std::cout << "expected " << expected.size() << " values but only "
+                  << ix << " was read from DB" << std::endl;
+        throw std::runtime_error("Not enough results");
+    }
+}
+
 
 int main(int argc, const char** argv) {
     std::string dir;
