@@ -58,7 +58,7 @@ struct Storage {
     //! Write numeric value
     virtual void add(aku_Timestamp ts, aku_ParamId id, double value) = 0;
     //! Write blob value
-    virtual void add(aku_Timestamp ts, aku_ParamId id, std::vector<char> const& blob) = 0;
+    virtual void add(aku_Timestamp ts, aku_ParamId id, std::string const& blob) = 0;
     //! Query database
     virtual std::unique_ptr<Cursor> query(aku_Timestamp begin,
                                           aku_Timestamp end,
@@ -227,7 +227,7 @@ struct LocalStorage : Storage {
         throw_on_error(status);
     }
 
-    virtual void add(aku_Timestamp ts, aku_ParamId id, std::vector<char> const& blob) {
+    virtual void add(aku_Timestamp ts, aku_ParamId id, std::string const& blob) {
         aku_Status status = AKU_EBUSY;
         aku_MemRange range = { (void*)blob.data(), (uint32_t)blob.size() };
         while(status == AKU_EBUSY) {
@@ -249,11 +249,59 @@ struct LocalStorage : Storage {
 };
 
 
+struct DataPoint {
+    aku_Timestamp timestamp;
+    aku_ParamId   id;
+    bool          is_blob;
+    double        float_value;
+    std::string   blob_value;
+};
+
+
+const DataPoint TEST_DATA[] = {
+    { 0ul, 0ul, false, 0.0, "" },
+    { 1ul, 1ul, true,  NAN, "blob at 1" },
+    { 2ul, 2ul, false, 2.2, "" },
+    { 3ul, 3ul, true,  NAN, "blob at 3" },
+    { 4ul, 4ul, false, 4.4, "" },
+    { 5ul, 0ul, true,  NAN, "blob at 5" },
+    { 6ul, 1ul, false, 6.6, "" },
+    { 7ul, 2ul, true,  NAN, "blob at 7" },
+    { 8ul, 3ul, false, 8.8, "" },
+    { 9ul, 4ul, true,  NAN, "blob at 9" },
+    {10ul, 0ul, false, 1.0, "" },
+    {11ul, 1ul, true,  NAN, "blob at 11"},
+    {12ul, 2ul, false, 1.2, "" },
+    {13ul, 3ul, true,  NAN, "blob at 13"},
+    {14ul, 4ul, false, 1.4, "" },
+    {15ul, 0ul, true,  NAN, "blob at 13"},
+    {16ul, 1ul, false, 1.6, "" },
+    {17ul, 2ul, true,  NAN, "blob at 17"},
+    {18ul, 3ul, false, 1.8, "" },
+    {19ul, 4ul, true,  NAN, "blob at 19"},
+};
+
+const int TEST_DATA_LEN = sizeof(TEST_DATA)/sizeof(DataPoint);
+
+
+void fill_data(Storage *storage) {
+    for(int i = 0; i < TEST_DATA_LEN; i++) {
+        auto td = TEST_DATA[i];
+        if (td.is_blob) {
+            storage->add(td.timestamp, td.id, td.blob_value);
+            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
+        } else {
+            storage->add(td.timestamp, td.id, td.float_value);
+            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
+        }
+    }
+}
+
+
 int main(int argc, const char** argv) {
     std::string dir;
     if (argc == 1) {
         dir = DEFAULT_DIR;
-        return 1;
     } else if (argc == 2) {
         dir = argv[1];
         if (dir == "--help") {
@@ -285,6 +333,8 @@ int main(int argc, const char** argv) {
     storage.create_new();
 
     storage.open();
+
+    fill_data(&storage);
 
     storage.close();
 
