@@ -39,7 +39,7 @@ struct Cursor {
     //! Check completion
     virtual bool done() = 0;
     //! Get next row
-    virtual RowT get_next_row() = 0;
+    virtual bool get_next_row(RowT& row) = 0;
 };
 
 /** Storage wrapper class. Allows to test seamlessly local libakumuli instance and akumulid daemon
@@ -68,25 +68,15 @@ struct Storage {
 
 struct LocalCursor : Cursor {
     aku_Cursor* cursor_;
-    std::vector<aku_Timestamp> timestamps_;
-    std::vector<aku_ParamId>   paramids_;
-    std::vector<aku_PData>     payload_;
-    std::vector<uint32_t>      lengths_;
-    int rows_in_cache_;
-    int ix_row_;
-    const int CACHE_SIZE;
+    aku_Timestamp timestamp_;
+    aku_ParamId   paramid_;
+    aku_PData     payload_;
+    uint32_t      length_;
 
     LocalCursor(aku_Cursor *cursor)
         : cursor_(cursor)
-        , rows_in_cache_(0)
-        , ix_row_(0)
-        , CACHE_SIZE(100)
     {
         throw_if_error();
-        timestamps_.reserve(CACHE_SIZE);
-        paramids_.reserve(CACHE_SIZE);
-        payload_.reserve(CACHE_SIZE);
-        lengths_.reserve(CACHE_SIZE);
     }
 
     void throw_if_error() {
@@ -100,45 +90,46 @@ struct LocalCursor : Cursor {
         aku_close_cursor(cursor_);
     }
 
-    virtual bool done() {
+    bool advance() {
+        auto n_results = aku_cursor_read_columns(cursor_,
+                                                 &timestamp_,
+                                                 &paramid_,
+                                                 &payload_,
+                                                 &length_,
+                                                 1);
         throw_if_error();
+        // Return true if cache is not empty
+        return n_results;
+    }
+
+    virtual bool done() {
         return aku_cursor_is_done(cursor_);
     }
 
-    virtual RowT get_next_row() {
-        if (rows_in_cache_ == ix_row_) {
-            rows_in_cache_ = aku_cursor_read_columns(cursor_,
-                                                     timestamps_.data(),
-                                                     paramids_.data(),
-                                                     payload_.data(),
-                                                     lengths_.data(),
-                                                     CACHE_SIZE);
-            ix_row_ = 0;
-            throw_if_error();
+    virtual bool get_next_row(RowT& result) {
+        if (advance()) {
+            auto len = length_;
+            if (len == 0) {
+                result = std::make_tuple(
+                            DOUBLE,
+                            timestamp_,
+                            paramid_,
+                            payload_.float64,
+                            std::string());
+            } else {
+                auto begin = static_cast<const char*>(payload_.ptr);
+                auto end = begin + len;
+                std::string payload(begin, end);
+                result = std::make_tuple(
+                            BLOB,
+                            timestamp_,
+                            paramid_,
+                            NAN,
+                            payload);
+            }
+            return true;
         }
-        RowT result;
-        auto len = lengths_.at(ix_row_);
-        if (len == 0) {
-            result = std::make_tuple(
-                        DOUBLE,
-                        timestamps_.at(ix_row_),
-                        paramids_.at(ix_row_),
-                        payload_.at(ix_row_).float64,
-                        std::string());
-        } else {
-            aku_PData data = payload_.at(ix_row_);
-            auto begin = static_cast<const char*>(data.ptr);
-            auto end = begin + len;
-            std::string payload(begin, end);
-            result = std::make_tuple(
-                        BLOB,
-                        timestamps_.at(ix_row_),
-                        paramids_.at(ix_row_),
-                        NAN,
-                        payload);
-        }
-        ix_row_++;
-        return result;
+        return false;
     }
 };
 
@@ -307,7 +298,10 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
     int ix = 0;
     while(!cursor->done()) {
-        auto row = cursor->get_next_row();
+        Cursor::RowT row;
+        if (!cursor->get_next_row(row)) {
+            continue;
+        }
         DataPoint exp = expected.at(ix++);
         if (std::get<1>(row) != exp.timestamp) {
             std::cout << "Error at " << ix << std::endl;
@@ -322,6 +316,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             throw std::runtime_error("Bad result");
         }
         if (std::get<0>(row) == Cursor::BLOB) {
+            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<4>(row) << std::endl;
             if (!exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "blob expected"   << std::endl;
@@ -334,6 +329,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
                 throw std::runtime_error("Bad result");
             }
         } else {
+            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<3>(row) << std::endl;
             if (exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "float expected"   << std::endl;
@@ -355,6 +351,25 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
+/** Query all elements.
+  * @param storage should point to opened storage instance
+  * @param invert should be set to true to query data in backward direction
+  * @param should_be_empty should be set to true if expected empty result
+  */
+void query_all(Storage* storage, bool invert=false, bool should_be_empty=false) {
+    std::vector<DataPoint> expected(TEST_DATA, TEST_DATA + TEST_DATA_LEN);
+    aku_Timestamp begin = 0ul, end = 20ul;
+    if (invert) {
+        auto tmp = begin;
+        begin = end; end = tmp;
+        std::reverse(expected.begin(), expected.end());
+    }
+    if (should_be_empty) {
+        expected.clear();
+    }
+    Query query = { begin, end, { 0ul, 1ul, 2ul, 3ul, 4ul }};
+    query_data(storage, query, expected);
+}
 
 int main(int argc, const char** argv) {
     std::string dir;
@@ -393,6 +408,12 @@ int main(int argc, const char** argv) {
     storage.open();
 
     fill_data(&storage);
+
+    // Read in forward direction, result-set should be empty because all data is cached
+    query_all(&storage, false, true);
+
+    // Read in backward direction, result-set shouldn't be empty because cache accessed in backward direction
+    query_all(&storage, true, false);
 
     storage.close();
 
