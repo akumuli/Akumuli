@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #include "akumuli.h"
 
@@ -178,7 +179,11 @@ struct LocalStorage : Storage {
 
     // Storage interface
     virtual void close() {
+        if (db_ == nullptr) {
+            throw std::logic_error("Database allready closed");
+        }
         aku_close_database(db_);
+        db_ = nullptr;
     }
 
     virtual void create_new()
@@ -402,22 +407,32 @@ int main(int argc, const char** argv) {
     } catch(std::runtime_error const&) {
         // No old data
     }
-
+    int retcode = 0;
     storage.create_new();
+    try {
+        storage.open();
 
-    storage.open();
+        fill_data(&storage);
 
-    fill_data(&storage);
+        // In this stage all data should be cached inside the the sequencer so only backward query should
+        // work fine.
 
-    // Read in forward direction, result-set should be empty because all data is cached
-    query_all(&storage, false, true);
+        // Read in forward direction, result-set should be empty because all data is cached
+        query_all(&storage, false, true);
+        // Read in backward direction, result-set shouldn't be empty because cache accessed in backward direction
+        query_all(&storage, true, false);
 
-    // Read in backward direction, result-set shouldn't be empty because cache accessed in backward direction
-    query_all(&storage, true, false);
+        storage.close();
 
-    storage.close();
+        // Database is reopened. At this stage everything should be readable in both directions.
 
+        storage.open();
+        query_all(&storage, false, false);
+        query_all(&storage, true,  false);
+    } catch (...) {
+        std::cout << boost::current_exception_diagnostic_information() << std::endl;
+        retcode = -1;
+    }
     storage.delete_all();
-    
-    return 0;
+    return retcode;
 }
