@@ -255,7 +255,7 @@ struct DataPoint {
 };
 
 
-const DataPoint TEST_DATA[] = {
+std::vector<DataPoint> TEST_DATA = {
     { 0ul, 0ul, false, 0.0, "" },
     { 1ul, 1ul, true,  NAN, "blob at 1" },
     { 2ul, 2ul, false, 2.2, "" },
@@ -278,19 +278,20 @@ const DataPoint TEST_DATA[] = {
     {19ul, 1ul, true,  NAN, "blob at 19"},
 };
 
-const int TEST_DATA_LEN = sizeof(TEST_DATA)/sizeof(DataPoint);
-
+void add_element(Storage *storage, DataPoint& td) {
+    if (td.is_blob) {
+        storage->add(td.timestamp, td.id, td.blob_value);
+        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
+    } else {
+        storage->add(td.timestamp, td.id, td.float_value);
+        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
+    }
+}
 
 void fill_data(Storage *storage) {
-    for(int i = 0; i < TEST_DATA_LEN; i++) {
+    for(int i = 0; i < (int)TEST_DATA.size(); i++) {
         auto td = TEST_DATA[i];
-        if (td.is_blob) {
-            storage->add(td.timestamp, td.id, td.blob_value);
-            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
-        } else {
-            storage->add(td.timestamp, td.id, td.float_value);
-            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
-        }
+        add_element(storage, td);
     }
 }
 
@@ -386,7 +387,7 @@ void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool
     assert(begin < end);
     std::set<aku_ParamId>  idsmap(ids.begin(), ids.end());
     std::vector<DataPoint> expected;
-    for (int i = 0; i < TEST_DATA_LEN; i++) {
+    for (int i = 0; i < (int)TEST_DATA.size(); i++) {
         auto point = TEST_DATA[i];
         if (idsmap.count(point.id) != 0 && point.timestamp >= begin && point.timestamp <= end) {
             expected.push_back(point);
@@ -479,6 +480,57 @@ int main(int argc, const char** argv) {
             // Filter out numeric values
             query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
             query_subset(&storage, 0ul, 20ul, false, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
+        {
+            storage.open();
+            // Add some data
+            DataPoint newpoints[] = {
+                {20ul, 2ul, false, 2.0, "" },
+                {21ul, 3ul, true,  NAN, "blob at 21"},
+                {22ul, 4ul, false, 2.2, "" },
+                {23ul, 5ul, true,  NAN, "blob at 23"},
+            };
+            for (int i = 0; i < 4; i++) {
+                TEST_DATA.push_back(newpoints[i]);
+                add_element(&storage, newpoints[i]);
+            }
+            // Read in forward direction, result-set should be empty because all new data is cached
+            query_subset(&storage, 20ul, 25ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Read in backward direction, result-set shouldn't be empty
+            // because cache accessed in backward direction
+            query_subset(&storage, 20ul, 25ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Query all in rev. direction, everything should be in place
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
+        {
+            storage.open();
+
+            // All new data should be readable
+            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter by timestamp
+            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 2ul, 4ul});
+
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, 0ul, 24ul, false, false, {1ul, 3ul, 5ul});
 
             storage.close();
         }
