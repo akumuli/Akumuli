@@ -1,10 +1,12 @@
 #include <iostream>
 #include <string>
+#include <set>
 
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #include "akumuli.h"
 
@@ -39,7 +41,7 @@ struct Cursor {
     //! Check completion
     virtual bool done() = 0;
     //! Get next row
-    virtual RowT get_next_row() = 0;
+    virtual bool get_next_row(RowT& row) = 0;
 };
 
 /** Storage wrapper class. Allows to test seamlessly local libakumuli instance and akumulid daemon
@@ -68,25 +70,15 @@ struct Storage {
 
 struct LocalCursor : Cursor {
     aku_Cursor* cursor_;
-    std::vector<aku_Timestamp> timestamps_;
-    std::vector<aku_ParamId>   paramids_;
-    std::vector<aku_PData>     payload_;
-    std::vector<uint32_t>      lengths_;
-    int rows_in_cache_;
-    int ix_row_;
-    const int CACHE_SIZE;
+    aku_Timestamp timestamp_;
+    aku_ParamId   paramid_;
+    aku_PData     payload_;
+    uint32_t      length_;
 
     LocalCursor(aku_Cursor *cursor)
         : cursor_(cursor)
-        , rows_in_cache_(0)
-        , ix_row_(0)
-        , CACHE_SIZE(100)
     {
         throw_if_error();
-        timestamps_.reserve(CACHE_SIZE);
-        paramids_.reserve(CACHE_SIZE);
-        payload_.reserve(CACHE_SIZE);
-        lengths_.reserve(CACHE_SIZE);
     }
 
     void throw_if_error() {
@@ -100,45 +92,46 @@ struct LocalCursor : Cursor {
         aku_close_cursor(cursor_);
     }
 
-    virtual bool done() {
+    bool advance() {
+        auto n_results = aku_cursor_read_columns(cursor_,
+                                                 &timestamp_,
+                                                 &paramid_,
+                                                 &payload_,
+                                                 &length_,
+                                                 1);
         throw_if_error();
+        // Return true if cache is not empty
+        return n_results;
+    }
+
+    virtual bool done() {
         return aku_cursor_is_done(cursor_);
     }
 
-    virtual RowT get_next_row() {
-        if (rows_in_cache_ == ix_row_) {
-            rows_in_cache_ = aku_cursor_read_columns(cursor_,
-                                                     timestamps_.data(),
-                                                     paramids_.data(),
-                                                     payload_.data(),
-                                                     lengths_.data(),
-                                                     CACHE_SIZE);
-            ix_row_ = 0;
-            throw_if_error();
+    virtual bool get_next_row(RowT& result) {
+        if (advance()) {
+            auto len = length_;
+            if (len == 0) {
+                result = std::make_tuple(
+                            DOUBLE,
+                            timestamp_,
+                            paramid_,
+                            payload_.float64,
+                            std::string());
+            } else {
+                auto begin = static_cast<const char*>(payload_.ptr);
+                auto end = begin + len;
+                std::string payload(begin, end);
+                result = std::make_tuple(
+                            BLOB,
+                            timestamp_,
+                            paramid_,
+                            NAN,
+                            payload);
+            }
+            return true;
         }
-        RowT result;
-        auto len = lengths_.at(ix_row_);
-        if (len == 0) {
-            result = std::make_tuple(
-                        DOUBLE,
-                        timestamps_.at(ix_row_),
-                        paramids_.at(ix_row_),
-                        payload_.at(ix_row_).float64,
-                        std::string());
-        } else {
-            aku_PData data = payload_.at(ix_row_);
-            auto begin = static_cast<const char*>(data.ptr);
-            auto end = begin + len;
-            std::string payload(begin, end);
-            result = std::make_tuple(
-                        BLOB,
-                        timestamps_.at(ix_row_),
-                        paramids_.at(ix_row_),
-                        NAN,
-                        payload);
-        }
-        ix_row_++;
-        return result;
+        return false;
     }
 };
 
@@ -187,7 +180,11 @@ struct LocalStorage : Storage {
 
     // Storage interface
     virtual void close() {
+        if (db_ == nullptr) {
+            throw std::logic_error("Database allready closed");
+        }
         aku_close_database(db_);
+        db_ = nullptr;
     }
 
     virtual void create_new()
@@ -258,42 +255,43 @@ struct DataPoint {
 };
 
 
-const DataPoint TEST_DATA[] = {
+std::vector<DataPoint> TEST_DATA = {
     { 0ul, 0ul, false, 0.0, "" },
     { 1ul, 1ul, true,  NAN, "blob at 1" },
     { 2ul, 2ul, false, 2.2, "" },
     { 3ul, 3ul, true,  NAN, "blob at 3" },
     { 4ul, 4ul, false, 4.4, "" },
-    { 5ul, 0ul, true,  NAN, "blob at 5" },
-    { 6ul, 1ul, false, 6.6, "" },
-    { 7ul, 2ul, true,  NAN, "blob at 7" },
-    { 8ul, 3ul, false, 8.8, "" },
-    { 9ul, 4ul, true,  NAN, "blob at 9" },
-    {10ul, 0ul, false, 1.0, "" },
-    {11ul, 1ul, true,  NAN, "blob at 11"},
-    {12ul, 2ul, false, 1.2, "" },
-    {13ul, 3ul, true,  NAN, "blob at 13"},
-    {14ul, 4ul, false, 1.4, "" },
-    {15ul, 0ul, true,  NAN, "blob at 13"},
-    {16ul, 1ul, false, 1.6, "" },
-    {17ul, 2ul, true,  NAN, "blob at 17"},
-    {18ul, 3ul, false, 1.8, "" },
-    {19ul, 4ul, true,  NAN, "blob at 19"},
+    { 5ul, 5ul, true,  NAN, "blob at 5" },
+    { 6ul, 0ul, false, 6.6, "" },
+    { 7ul, 1ul, true,  NAN, "blob at 7" },
+    { 8ul, 2ul, false, 8.8, "" },
+    { 9ul, 3ul, true,  NAN, "blob at 9" },
+    {10ul, 4ul, false, 1.0, "" },
+    {11ul, 5ul, true,  NAN, "blob at 11"},
+    {12ul, 0ul, false, 1.2, "" },
+    {13ul, 1ul, true,  NAN, "blob at 13"},
+    {14ul, 2ul, false, 1.4, "" },
+    {15ul, 3ul, true,  NAN, "blob at 15"},
+    {16ul, 4ul, false, 1.6, "" },
+    {17ul, 5ul, true,  NAN, "blob at 17"},
+    {18ul, 0ul, false, 1.8, "" },
+    {19ul, 1ul, true,  NAN, "blob at 19"},
 };
 
-const int TEST_DATA_LEN = sizeof(TEST_DATA)/sizeof(DataPoint);
-
+void add_element(Storage *storage, DataPoint& td) {
+    if (td.is_blob) {
+        storage->add(td.timestamp, td.id, td.blob_value);
+        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
+    } else {
+        storage->add(td.timestamp, td.id, td.float_value);
+        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
+    }
+}
 
 void fill_data(Storage *storage) {
-    for(int i = 0; i < TEST_DATA_LEN; i++) {
+    for(int i = 0; i < (int)TEST_DATA.size(); i++) {
         auto td = TEST_DATA[i];
-        if (td.is_blob) {
-            storage->add(td.timestamp, td.id, td.blob_value);
-            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
-        } else {
-            storage->add(td.timestamp, td.id, td.float_value);
-            std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
-        }
+        add_element(storage, td);
     }
 }
 
@@ -307,7 +305,10 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
     int ix = 0;
     while(!cursor->done()) {
-        auto row = cursor->get_next_row();
+        Cursor::RowT row;
+        if (!cursor->get_next_row(row)) {
+            continue;
+        }
         DataPoint exp = expected.at(ix++);
         if (std::get<1>(row) != exp.timestamp) {
             std::cout << "Error at " << ix << std::endl;
@@ -322,6 +323,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             throw std::runtime_error("Bad result");
         }
         if (std::get<0>(row) == Cursor::BLOB) {
+            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<4>(row) << std::endl;
             if (!exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "blob expected"   << std::endl;
@@ -334,6 +336,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
                 throw std::runtime_error("Bad result");
             }
         } else {
+            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<3>(row) << std::endl;
             if (exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "float expected"   << std::endl;
@@ -355,6 +358,52 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
+/** Query subset of the elements.
+  * @param storage should point to opened storage instance
+  * @param invert should be set to true to query data in backward direction
+  * @param expect_empty should be set to true if expected empty result
+  * @param begin beginning of the time-range (smallest timestamp)
+  * @param end end of the time-range (largest timestamp)
+  * @param ids should contain list of ids that we interested in
+  */
+void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool invert, bool expect_empty, std::vector<aku_ParamId> ids) {
+    std::cout << "===============" << std::endl;
+    std::cout << "   Query subset" << std::endl;
+    std::cout << "          begin = " << begin << std::endl;
+    std::cout << "            end = " << end << std::endl;
+    std::cout << "         invert = " << invert << std::endl;
+    std::cout << "   expect_empty = " << expect_empty << std::endl;
+    std::cout << "            ids = ";
+    bool firstid = true;
+    for(auto x: ids) {
+        if (!firstid) {
+            std::cout << ", ";
+        }
+        firstid = false;
+        std::cout << x;
+    }
+    std::cout << std::endl;
+    std::cout << "===============" << std::endl;
+    assert(begin < end);
+    std::set<aku_ParamId>  idsmap(ids.begin(), ids.end());
+    std::vector<DataPoint> expected;
+    for (int i = 0; i < (int)TEST_DATA.size(); i++) {
+        auto point = TEST_DATA[i];
+        if (idsmap.count(point.id) != 0 && point.timestamp >= begin && point.timestamp <= end) {
+            expected.push_back(point);
+        }
+    }
+    if (invert) {
+        auto tmp = begin;
+        begin = end; end = tmp;
+        std::reverse(expected.begin(), expected.end());
+    }
+    if (expect_empty) {
+        expected.clear();
+    }
+    Query query = { begin, end, ids };
+    query_data(storage, query, expected);
+}
 
 int main(int argc, const char** argv) {
     std::string dir;
@@ -387,16 +436,109 @@ int main(int argc, const char** argv) {
     } catch(std::runtime_error const&) {
         // No old data
     }
-
+    int retcode = 0;
     storage.create_new();
+    try {
+        storage.open();
+        fill_data(&storage);
 
-    storage.open();
+        {
+            // In this stage all data should be cached inside the the sequencer so only
+            // backward query should work fine.
 
-    fill_data(&storage);
+            // Read in forward direction, result-set should be empty because all data is cached
+            query_subset(&storage, 0ul, 20ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Read in backward direction, result-set shouldn't be empty
+            // because cache accessed in backward direction
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only half of the data-points in forward direction (should be empty)
+            query_subset(&storage, 5ul, 15ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only half of the data-points in backward direction
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only numeric value
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
+            // Try to read only BLOB values
+            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
 
-    storage.close();
+            storage.close();
+        }
 
+        {
+            // Database is reopened. At this stage everything should be readable in both directions.
+            storage.open();
+
+            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter by timestamp
+            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 2ul, 4ul});
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, 0ul, 20ul, false, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
+        {
+            storage.open();
+            // Add some data
+            DataPoint newpoints[] = {
+                {20ul, 2ul, false, 2.0, "" },
+                {21ul, 3ul, true,  NAN, "blob at 21"},
+                {22ul, 4ul, false, 2.2, "" },
+                {23ul, 5ul, true,  NAN, "blob at 23"},
+            };
+            for (int i = 0; i < 4; i++) {
+                TEST_DATA.push_back(newpoints[i]);
+                add_element(&storage, newpoints[i]);
+            }
+            // Read in forward direction, result-set should be empty because all new data is cached
+            query_subset(&storage, 20ul, 25ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Read in backward direction, result-set shouldn't be empty
+            // because cache accessed in backward direction
+            query_subset(&storage, 20ul, 25ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Query all in rev. direction, everything should be in place
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
+        {
+            storage.open();
+
+            // All new data should be readable
+            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter by timestamp
+            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 2ul, 4ul});
+
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, 0ul, 24ul, false, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
+    } catch (...) {
+        std::cout << boost::current_exception_diagnostic_information() << std::endl;
+        retcode = -1;
+    }
     storage.delete_all();
-    
-    return 0;
+    return retcode;
 }

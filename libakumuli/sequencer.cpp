@@ -150,6 +150,7 @@ int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
         vector<PSortedRun> new_runs;
         for (auto& sorted_run: runs_) {
             auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
+            // Check that compression threshold is reached
             if (it == sorted_run->begin()) {
                 // all timestamps are newer than old_top, do nothing
                 new_runs.push_back(move(sorted_run));
@@ -182,6 +183,11 @@ int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
             // If ready doesn't contains enough data compression wouldn't be efficient,
             //  we need to wait for more data to come
             flag = sequence_number_.fetch_add(1) + 1;
+            // We should make sorted runs in ready_ array searchable again
+            for (auto& sorted_run: ready_) {
+                runs_.push_back(sorted_run);
+            }
+            ready_.clear();
         }
     }
     return flag;

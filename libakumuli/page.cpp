@@ -538,18 +538,19 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             AKU_PANIC("Bad chunk");
         }
 
-        size_t start_pos = 0;
+        int start_pos = 0;
+        int value_start_pos = 0;
         if (IS_BACKWARD_) {
             start_pos = static_cast<int>(probe_length - 1);
+            value_start_pos = static_cast<int>(chunk_header.values.size() - 1);
         }
         bool probe_in_time_range = true;
 
         auto cursor = cursor_;
         auto& caller = caller_;
         auto page = page_;
-        auto ix_value = IS_BACKWARD_ ? static_cast<int>(start_pos) : 0;
-        int inc = IS_BACKWARD_ ? -1 : 1;
-        auto put_entry = [&header, cursor, &caller, page, &ix_value, inc] (uint32_t i) {
+        auto ix_value = IS_BACKWARD_ ? value_start_pos : 0;
+        auto put_entry = [&header, cursor, &caller, page, &ix_value] (uint32_t i) {
             auto len = header.lengths[i];
             CursorResult result = {
                 len,
@@ -557,10 +558,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header.paramids[i],
             };
             if (len == 0) {
-                result.data.float64 = header.values[ix_value];
-                ix_value += inc;
+                result.data.float64 = header.values.at(ix_value);
             } else {
-                result.data.ptr = page->read_entry_data(header.offsets[i]);
+                result.data.ptr = page->read_entry_data(header.offsets.at(i));
             }
             cursor->put(caller, result);
         };
@@ -577,9 +577,13 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                         break;
                     }
                 }
+                if (header.lengths.at(i) == 0) {
+                    ix_value--;
+                }
             }
         } else {
-            for (auto i = start_pos; i != probe_length; i++) {
+            // TODO: limit chunk size
+            for (auto i = start_pos; i != (int)probe_length; i++) {
                 probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
                                       query_.upperbound >= header.timestamps[i];
                 if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
@@ -589,6 +593,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     if (!probe_in_time_range) {
                         break;
                     }
+                }
+                if (header.lengths.at(i) == 0) {
+                    ix_value++;
                 }
             }
         }
