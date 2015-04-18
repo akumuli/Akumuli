@@ -550,8 +550,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto& caller = caller_;
         auto page = page_;
         auto ix_value = IS_BACKWARD_ ? value_start_pos : 0;
-        int inc = IS_BACKWARD_ ? -1 : 1;
-        auto put_entry = [&header, cursor, &caller, page, &ix_value, inc] (uint32_t i) {
+        auto put_entry = [&header, cursor, &caller, page, &ix_value] (uint32_t i) {
             auto len = header.lengths[i];
             CursorResult result = {
                 len,
@@ -560,7 +559,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             };
             if (len == 0) {
                 result.data.float64 = header.values.at(ix_value);
-                ix_value += inc;
             } else {
                 result.data.ptr = page->read_entry_data(header.offsets.at(i));
             }
@@ -579,6 +577,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                         break;
                     }
                 }
+                if (header.lengths.at(i) == 0) {
+                    ix_value--;
+                }
             }
         } else {
             // TODO: limit chunk size
@@ -592,6 +593,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     if (!probe_in_time_range) {
                         break;
                     }
+                }
+                if (header.lengths.at(i) == 0) {
+                    ix_value++;
                 }
             }
         }

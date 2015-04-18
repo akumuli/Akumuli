@@ -366,12 +366,13 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
   * @param ids should contain list of ids that we interested in
   */
 void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool invert, bool expect_empty, std::vector<aku_ParamId> ids) {
+    std::cout << "===============" << std::endl;
     std::cout << "   Query subset" << std::endl;
-    std::cout << "         begin=" << begin << std::endl;
-    std::cout << "           end=" << end << std::endl;
-    std::cout << "        invert=" << invert << std::endl;
-    std::cout << "  expect_empty=" << expect_empty << std::endl;
-    std::cout << "           ids=";
+    std::cout << "          begin = " << begin << std::endl;
+    std::cout << "            end = " << end << std::endl;
+    std::cout << "         invert = " << invert << std::endl;
+    std::cout << "   expect_empty = " << expect_empty << std::endl;
+    std::cout << "            ids = ";
     bool firstid = true;
     for(auto x: ids) {
         if (!firstid) {
@@ -381,6 +382,7 @@ void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool
         std::cout << x;
     }
     std::cout << std::endl;
+    std::cout << "===============" << std::endl;
     assert(begin < end);
     std::set<aku_ParamId>  idsmap(ids.begin(), ids.end());
     std::vector<DataPoint> expected;
@@ -437,7 +439,6 @@ int main(int argc, const char** argv) {
     storage.create_new();
     try {
         storage.open();
-
         fill_data(&storage);
 
         {
@@ -464,8 +465,10 @@ int main(int argc, const char** argv) {
         {
             // Database is reopened. At this stage everything should be readable in both directions.
             storage.open();
+
             query_subset(&storage, 0ul, 20ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
             query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+
             // Filter by timestamp
             query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
             query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
