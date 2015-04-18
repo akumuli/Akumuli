@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <set>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -260,21 +261,21 @@ const DataPoint TEST_DATA[] = {
     { 2ul, 2ul, false, 2.2, "" },
     { 3ul, 3ul, true,  NAN, "blob at 3" },
     { 4ul, 4ul, false, 4.4, "" },
-    { 5ul, 0ul, true,  NAN, "blob at 5" },
-    { 6ul, 1ul, false, 6.6, "" },
-    { 7ul, 2ul, true,  NAN, "blob at 7" },
-    { 8ul, 3ul, false, 8.8, "" },
-    { 9ul, 4ul, true,  NAN, "blob at 9" },
-    {10ul, 0ul, false, 1.0, "" },
-    {11ul, 1ul, true,  NAN, "blob at 11"},
-    {12ul, 2ul, false, 1.2, "" },
-    {13ul, 3ul, true,  NAN, "blob at 13"},
-    {14ul, 4ul, false, 1.4, "" },
-    {15ul, 0ul, true,  NAN, "blob at 13"},
-    {16ul, 1ul, false, 1.6, "" },
-    {17ul, 2ul, true,  NAN, "blob at 17"},
-    {18ul, 3ul, false, 1.8, "" },
-    {19ul, 4ul, true,  NAN, "blob at 19"},
+    { 5ul, 5ul, true,  NAN, "blob at 5" },
+    { 6ul, 0ul, false, 6.6, "" },
+    { 7ul, 1ul, true,  NAN, "blob at 7" },
+    { 8ul, 2ul, false, 8.8, "" },
+    { 9ul, 3ul, true,  NAN, "blob at 9" },
+    {10ul, 4ul, false, 1.0, "" },
+    {11ul, 5ul, true,  NAN, "blob at 11"},
+    {12ul, 0ul, false, 1.2, "" },
+    {13ul, 1ul, true,  NAN, "blob at 13"},
+    {14ul, 2ul, false, 1.4, "" },
+    {15ul, 3ul, true,  NAN, "blob at 15"},
+    {16ul, 4ul, false, 1.6, "" },
+    {17ul, 5ul, true,  NAN, "blob at 17"},
+    {18ul, 0ul, false, 1.8, "" },
+    {19ul, 1ul, true,  NAN, "blob at 19"},
 };
 
 const int TEST_DATA_LEN = sizeof(TEST_DATA)/sizeof(DataPoint);
@@ -356,23 +357,48 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
-/** Query all elements.
+/** Query subset of the elements.
   * @param storage should point to opened storage instance
   * @param invert should be set to true to query data in backward direction
-  * @param should_be_empty should be set to true if expected empty result
+  * @param expect_empty should be set to true if expected empty result
+  * @param begin beginning of the time-range (smallest timestamp)
+  * @param end end of the time-range (largest timestamp)
+  * @param ids should contain list of ids that we interested in
   */
-void query_all(Storage* storage, bool invert=false, bool should_be_empty=false) {
-    std::vector<DataPoint> expected(TEST_DATA, TEST_DATA + TEST_DATA_LEN);
-    aku_Timestamp begin = 0ul, end = 20ul;
+void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool invert, bool expect_empty, std::vector<aku_ParamId> ids) {
+    std::cout << "   Query subset" << std::endl;
+    std::cout << "         begin=" << begin << std::endl;
+    std::cout << "           end=" << end << std::endl;
+    std::cout << "        invert=" << invert << std::endl;
+    std::cout << "  expect_empty=" << expect_empty << std::endl;
+    std::cout << "           ids=";
+    bool firstid = true;
+    for(auto x: ids) {
+        if (!firstid) {
+            std::cout << ", ";
+        }
+        firstid = false;
+        std::cout << x;
+    }
+    std::cout << std::endl;
+    assert(begin < end);
+    std::set<aku_ParamId>  idsmap(ids.begin(), ids.end());
+    std::vector<DataPoint> expected;
+    for (int i = 0; i < TEST_DATA_LEN; i++) {
+        auto point = TEST_DATA[i];
+        if (idsmap.count(point.id) != 0 && point.timestamp >= begin && point.timestamp <= end) {
+            expected.push_back(point);
+        }
+    }
     if (invert) {
         auto tmp = begin;
         begin = end; end = tmp;
         std::reverse(expected.begin(), expected.end());
     }
-    if (should_be_empty) {
+    if (expect_empty) {
         expected.clear();
     }
-    Query query = { begin, end, { 0ul, 1ul, 2ul, 3ul, 4ul }};
+    Query query = { begin, end, ids };
     query_data(storage, query, expected);
 }
 
@@ -414,21 +440,46 @@ int main(int argc, const char** argv) {
 
         fill_data(&storage);
 
-        // In this stage all data should be cached inside the the sequencer so only backward query should
-        // work fine.
+        {
+            // In this stage all data should be cached inside the the sequencer so only
+            // backward query should work fine.
 
-        // Read in forward direction, result-set should be empty because all data is cached
-        query_all(&storage, false, true);
-        // Read in backward direction, result-set shouldn't be empty because cache accessed in backward direction
-        query_all(&storage, true, false);
+            // Read in forward direction, result-set should be empty because all data is cached
+            query_subset(&storage, 0ul, 20ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Read in backward direction, result-set shouldn't be empty
+            // because cache accessed in backward direction
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only half of the data-points in forward direction (should be empty)
+            query_subset(&storage, 5ul, 15ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only half of the data-points in backward direction
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Try to read only numeric value
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
+            // Try to read only BLOB values
+            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
 
-        storage.close();
+            storage.close();
+        }
 
-        // Database is reopened. At this stage everything should be readable in both directions.
+        {
+            // Database is reopened. At this stage everything should be readable in both directions.
+            storage.open();
+            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            // Filter by timestamp
+            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
 
-        storage.open();
-        query_all(&storage, false, false);
-        query_all(&storage, true,  false);
+            // Filter out BLOBs
+            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 2ul, 4ul});
+            // Filter out numeric values
+            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, 0ul, 20ul, false, false, {1ul, 3ul, 5ul});
+
+            storage.close();
+        }
+
     } catch (...) {
         std::cout << boost::current_exception_diagnostic_information() << std::endl;
         retcode = -1;
