@@ -75,7 +75,14 @@ struct SeriesMatcher {
       */
     void pull_new_names(std::vector<SeriesNameT> *buffer);
 
-    std::shared_ptr<QP::QueryProcessor> build_query_processor(const char* query, aku_logger_cb_t logger);
+    /** Create new query processor.
+      * @param query should point to 0-terminated query string
+      * @param terminal_node should contain valid pointer to terminal(final) node
+      * @param logger should contain valid pointer to logging function
+      */
+    std::shared_ptr<QP::QueryProcessor> build_query_processor(const char* query,
+                                                              std::shared_ptr<QP::Node> terminal_node,
+                                                              aku_logger_cb_t logger);
 };
 
 /** Namespace class to store all parsing related things.

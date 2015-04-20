@@ -143,6 +143,7 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
+
 struct GroupByNode :  std::enable_shared_from_this<GroupByNode>, Node {
     // Contains mapping from series_id to output_id
     // Expression `group by key` should match all
@@ -151,19 +152,41 @@ struct GroupByNode :  std::enable_shared_from_this<GroupByNode>, Node {
     // should match all series with the same key1 and
     // key2 combination to the same output_id.
 
+    // Input: list of data-points in time-order with different ids
+    // Output: list of data-points in time-order with replaced ids
+
+    typedef std::pair<aku_ParamId, aku_GroupId> IdPairT;
+
+    std::unordered_map<aku_ParamId, aku_GroupId> idmap_;
+    std::shared_ptr<Node> next_;
+
+    /** Create new node.
+      * @param ids should contain list of id pairs that maps real ids to group ids
+      */
+    GroupByNode(std::vector<IdPairT> ids, std::shared_ptr<Node> next)
+        : idmap_(ids.begin(), ids.end())
+        , next_(next)
+    {
+    }
 
     // Node interface
-    virtual void complete()
-    {
-        throw "Not implemented";
+    virtual void complete() {
+        if (!next_) {
+            NodeException err(Node::FilterById, "no next node");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        next_->complete();
     }
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value)
-    {
-        throw "Not implemented";
+
+    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
+        auto it = idmap_.find(id);
+        if (it != idmap_.end()) {
+            next_->put(ts, it->second, value);
+        }
     }
     virtual NodeType get_type() const
     {
-        throw "Not implemented";
+        return Node::GroupBy;
     }
 };
 
@@ -219,9 +242,18 @@ std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamI
     std::unordered_set<aku_ParamId> idset(ids.begin(), ids.end());
     Matcher fn = { idset };
     std::stringstream logfmt;
-    logfmt << "Creating id-list filter node (" << ids.size() << " nodes in a list)";
+    logfmt << "Creating id-list filter node (" << ids.size() << " ids in a list)";
     (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
     return std::make_shared<NodeT>(fn, next);
+}
+
+std::shared_ptr<Node> NodeBuilder::make_group_by(std::vector<std::pair<aku_ParamId, aku_GroupId>> ids,
+                                                 std::shared_ptr<Node> next,
+                                                 aku_logger_cb_t logger) {
+    std::stringstream logfmt;
+    logfmt << "Creating group-by node (" << ids.size() << " ids in a list)";
+    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
+    return std::make_shared<GroupByNode>(ids, next);
 }
 
 QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,

@@ -16,6 +16,23 @@ void logger(int errlvl, const char* msg) {
     }
 }
 
+struct NodeMock : Node {
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<aku_ParamId>   ids;
+    std::vector<double>        values;
+
+    // Bolt interface
+public:
+
+    NodeType get_type() const { return Node::Mock; }
+    void complete() {}
+    void put(aku_Timestamp ts, aku_ParamId id, double value) {
+        timestamps.push_back(ts);
+        ids.push_back(id);
+        values.push_back(value);
+    }
+};
+
 BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
     StringPool pool;
@@ -147,9 +164,14 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
         "                                 [1, 2, 3]"
         "                          }               "
         "                      }                   "
-        "                 ]                        "
+        "                 ],                       "
+        "       \"group_by\": {                    "
+        "          \"tag\": [\"host\",\"region\" ],"
+        "          \"metric\": [\"cpu\"],          "
+        "       }                                  "
         " }                                        ";
-    auto qproc = matcher.build_query_processor(json, &logger);
+    auto terminal = std::make_shared<NodeMock>();
+    auto qproc = matcher.build_query_processor(json, terminal, &logger);
     BOOST_REQUIRE(qproc->root_node->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics.size() == 2);
     auto m1 = qproc->metrics.at(0);

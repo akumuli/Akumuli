@@ -175,8 +175,38 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
     return ids;
 }
 
+/** Parse group-by clause.
+ * @example
+ *      "group_by": {
+ *          "key" : [ "key1", "key2" ]
+ *      }
+ */
+static void parse_group_by_clause(boost::property_tree::ptree const& ptree,
+                                  StringPool const& spool,
+                                  aku_logger_cb_t logger) {
+    AKU_UNUSED(logger);
+    AKU_UNUSED(spool);
+    // TODO: this func. should return group-id mapping and groups dictionary
+    std::vector<aku_ParamId> ids;
+    auto groupby = ptree.get_child("group_by");
+    for (auto child: groupby) {
+        auto pred = child.second;
+        auto items = pred.get_child_optional("tag"); // This should dict element
+        if (items) {                                 // "tag": [ "host",... ]
+            for (auto item: *items) {
+                std::string key = item.first;
+                auto value = item.second;
+                // Read idlist
+                for (auto name: value) {
+                    std::cout << name.first << std::endl;
+                }
+            }
+        }
+    }
+}
+
 std::shared_ptr<QP::QueryProcessor>
-SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
+SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node> terminal_node, aku_logger_cb_t logger) {
     static const std::shared_ptr<QP::QueryProcessor> NONE;
     /* Query format:
      * {
@@ -192,9 +222,10 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
      *          { "in" : { "key3": [1, 2, 3, "foo"]},
      *          { "not_in" : { "key4": [3, 4, 5]}
      *      ],
-     *      "group_by": [
-     *          "key" : [ "key1", "key2" ]
-     *      ]
+     *      "group_by": {
+     *          "tag" : [ "host", "region" ],
+     *          "metric" : [ "cpu", "memory" ]
+     *      }
      * }
      */
     namespace pt = boost::property_tree;
@@ -242,6 +273,10 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
             auto notin = parse_where_clause(ptree, metric, "not_in", pool, logger);
             std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
         }
+
+        // Read groupby clause
+        parse_group_by_clause(ptree, pool, logger);
+
 
         // Build topology
         auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
