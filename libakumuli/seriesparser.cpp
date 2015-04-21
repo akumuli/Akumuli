@@ -175,6 +175,33 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
     return ids;
 }
 
+/*
+static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
+    std::stringstream ss;
+    boost::property_tree::write_json(ss, ptree, pretty_print);
+    return ss.str();
+}
+*/
+
+/** Return list of ids for all possible metrics and tags permutations
+  */
+static std::vector<aku_ParamId> get_all_permutations(std::vector<std::string> const& metrics,
+                                                     std::vector<std::string> const& tags,
+                                                     StringPool const& spool,
+                                                     aku_logger_cb_t logger)
+{
+    for (auto metric: metrics) {
+        // Construct regullar expression
+        std::stringstream regex_builder;
+        regex_builder << "^" << metric << "(?:\\s\\w+=\\w+)*";
+        for (auto tag: tags) {
+            regex_builder << "\\s" << tag << '=' << "(?<" << tag << ">\\w+)";
+        }
+        std::cout << regex_builder.str() << std::endl;
+    }
+    throw "Not implemented";
+}
+
 /** Parse group-by clause.
  * @example
  *      "group_by": {
@@ -187,22 +214,33 @@ static void parse_group_by_clause(boost::property_tree::ptree const& ptree,
     AKU_UNUSED(logger);
     AKU_UNUSED(spool);
     // TODO: this func. should return group-id mapping and groups dictionary
-    std::vector<aku_ParamId> ids;
+    std::vector<std::string> tags;
+    std::vector<std::string> metrics;
     auto groupby = ptree.get_child("group_by");
     for (auto child: groupby) {
-        auto pred = child.second;
-        auto items = pred.get_child_optional("tag"); // This should dict element
-        if (items) {                                 // "tag": [ "host",... ]
-            for (auto item: *items) {
-                std::string key = item.first;
-                auto value = item.second;
-                // Read idlist
-                for (auto name: value) {
-                    std::cout << name.first << std::endl;
-                }
+        auto tname = child.first;
+        auto target = child.second;
+        for (auto item: target) {
+            auto value = item.second.get_value<std::string>();
+            if (tname == "tag") {
+                tags.push_back(value);
+            } else if (tname == "metric") {
+                metrics.push_back(value);
+            } else {
+                std::stringstream fmt;
+                fmt << "tag or metric expected, `" << tname << "` found";
+                QueryParserError error(fmt.str().c_str());
+                BOOST_THROW_EXCEPTION(error);
             }
         }
     }
+    if (tags.empty() && metrics.empty()) {
+        std::stringstream fmt;
+        fmt << "no tags or metrics specified in `groupb_by` clause";
+        QueryParserError error(fmt.str().c_str());
+        BOOST_THROW_EXCEPTION(error);
+    }
+    get_all_permutations(metrics, tags, spool, logger);
 }
 
 std::shared_ptr<QP::QueryProcessor>

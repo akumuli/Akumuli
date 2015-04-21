@@ -167,7 +167,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
         "                 ],                       "
         "       \"group_by\": {                    "
         "          \"tag\": [\"host\",\"region\" ],"
-        "          \"metric\": [\"cpu\"],          "
+        "          \"metric\": [\"cpu\"]           "
         "       }                                  "
         " }                                        ";
     auto terminal = std::make_shared<NodeMock>();
