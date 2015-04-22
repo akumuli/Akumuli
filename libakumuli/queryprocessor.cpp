@@ -247,6 +247,25 @@ std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamI
     return std::make_shared<NodeT>(fn, next);
 }
 
+std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
+                                                          std::shared_ptr<Node> next,
+                                                          aku_logger_cb_t logger) {
+    struct Matcher {
+        std::unordered_set<aku_ParamId> idset;
+
+        bool operator () (aku_ParamId id) {
+            return idset.count(id) == 0;
+        }
+    };
+    typedef FilterByIdNode<Matcher> NodeT;
+    std::unordered_set<aku_ParamId> idset(ids.begin(), ids.end());
+    Matcher fn = { idset };
+    std::stringstream logfmt;
+    logfmt << "Creating id-list filter out node (" << ids.size() << " ids in a list)";
+    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
+    return std::make_shared<NodeT>(fn, next);
+}
+
 std::shared_ptr<Node> NodeBuilder::make_group_by(std::vector<std::pair<aku_ParamId, aku_GroupId>> ids,
                                                  std::shared_ptr<Node> next,
                                                  aku_logger_cb_t logger) {
