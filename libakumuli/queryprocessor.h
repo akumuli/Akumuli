@@ -30,10 +30,10 @@ struct Node {
         // Samplers
         RandomSampler,
         Resampler,
-        // Joins
-        JoinByTimestamp,
         // Filtering
         FilterById,
+        // Group by
+        GroupBy,
         // Testing
         Mock,
     };
@@ -71,6 +71,15 @@ struct NodeBuilder {
     //! Create filtering node
     static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
                                                         aku_logger_cb_t logger);
+
+    //! Create filtering node
+    static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
+                                                            aku_logger_cb_t logger);
+
+    //! Create group_by node
+    std::shared_ptr<Node> make_group_by(std::vector<std::pair<aku_ParamId, aku_GroupId>> ids,
+                                        std::shared_ptr<Node> next,
+                                        aku_logger_cb_t logger);
 };
 
 

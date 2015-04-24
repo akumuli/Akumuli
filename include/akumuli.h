@@ -49,6 +49,7 @@ typedef union {
 
 typedef uint64_t    aku_Timestamp;    //< Timestamp
 typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
+typedef uint64_t    aku_GroupId;      //< Group id
 typedef int         aku_Status;       //< Status code of any operation
 
 
@@ -232,10 +233,10 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
   * @returns operation status
   */
 AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
-                                       const char* series_key_begin,
+                                       const char* series_key_begin,  // TODO: use simple 0-terminated string
                                        const char* series_key_end,
-                                       aku_Timestamp timestamp,
-                                       double value);
+                                       aku_Timestamp timestamp,  // TODO: replace parameter with string
+                                       double value);  // TODO: replace parameter with string
 
 //---------
 // Queries

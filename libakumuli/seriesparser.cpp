@@ -175,8 +175,14 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
     return ids;
 }
 
+static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
+    std::stringstream ss;
+    boost::property_tree::write_json(ss, ptree, pretty_print);
+    return ss.str();
+}
+
 std::shared_ptr<QP::QueryProcessor>
-SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) {
+SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node> terminal, aku_logger_cb_t logger) {
     static const std::shared_ptr<QP::QueryProcessor> NONE;
     /* Query format:
      * {
@@ -192,9 +198,10 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
      *          { "in" : { "key3": [1, 2, 3, "foo"]},
      *          { "not_in" : { "key4": [3, 4, 5]}
      *      ],
-     *      "group_by": [
-     *          "key" : [ "key1", "key2" ]
-     *      ]
+     *      "group_by": {
+     *          "tag" : [ "host", "region" ],
+     *          "metric" : [ "cpu", "memory" ]
+     *      }
      * }
      */
     namespace pt = boost::property_tree;
@@ -218,6 +225,9 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
         (*logger)(AKU_LOG_ERROR, e.what());
         return NONE;
     }
+
+    logger(AKU_LOG_INFO, "Parsing query:");
+    logger(AKU_LOG_INFO, to_json(ptree, true).c_str());
 
     try {
         // Read metric(s) name
@@ -243,11 +253,19 @@ SeriesMatcher::build_query_processor(const char* query, aku_logger_cb_t logger) 
             std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
         }
 
+
         // Build topology
+        std::shared_ptr<Node> next = terminal;
+        if (!ids_included.empty()) {
+            next = NodeBuilder::make_filter_by_id_list(ids_included, next, logger);
+        }
+        if (!ids_excluded.empty()) {
+            next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
+        }
         auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
                                                         sampling_params.second,
-                                                        std::shared_ptr<Node>(), // TODO: Create nodes correct
-                                                        logger);                 // order, pass correct value
+                                                        next,
+                                                        logger);
         // Build query processor
         auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);
         return qproc;
