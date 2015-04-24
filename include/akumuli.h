@@ -39,25 +39,81 @@
 // Data structures
 //-----------------
 
-//! Payload data
-typedef union {
-    const void *ptr;
-    double      float64;
-    uint64_t    uint64;
-} aku_PData;
-
-
 typedef uint64_t    aku_Timestamp;    //< Timestamp
 typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
-typedef uint64_t    aku_GroupId;      //< Group id
 typedef int         aku_Status;       //< Status code of any operation
-
 
 //! Structure represents memory region
 typedef struct {
     void* address;
     uint32_t length;
 } aku_MemRange;
+
+// Different bits of the aku_Value.mask bitfield that controls differnet
+// parts of the aku_Value struct.
+#define AKU_VALUE_MASK_SERIES_KEY_BIT 0
+#define AKU_VALUE_MASK_TIME_FIELD_BIT 1
+#define AKU_VALUE_MASK_VALUE_TYPE_BIT 2
+#define AKU_VALUE_MASK_FLOAT_REPR_BIT 3
+
+#define AKU_VALUE_MASK_IS_SERIES_KEY    (1 << AKU_VALUE_MASK_SERIES_KEY_BIT)
+#define AKU_VALUE_MASK_IS_ISO_TIMESTAMP (1 << AKU_VALUE_MASK_TIME_FIELD_BIT)
+#define AKU_VALUE_MASK_IS_BLOB          (1 << AKU_VALUE_MASK_VALUE_TYPE_BIT)
+#define AKU_VALUE_MASK_IS_NATIVE_FLOAT  (1 << AKU_VALUE_MASK_FLOAT_REPR_BIT)
+
+/** User supplied value.
+  * This is a variant datastructure. It doesn't uses unions and all fields are always present
+  * but only some of the fields can be used to store data, depending on the `mask` field.
+  *
+  * If AKU_VALUE_MASK_SERIES_KEY_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_SERIES_KEY != 0)
+  * then `series_key` field should be used instead of `param_id`. Field `series_key` should contain
+  * pointer to string with series name (metric with tags) and `param_id` should contain numeric
+  * value that identifies series.
+  *
+  * If AKU_VALUE_MASK_TIME_FIELD_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_ISO_TIMESTAMP != 0)
+  * then timestamp should be set using ISO 8601 formatted string in `iso_timestamp` field.
+  * Alternatively, this mask bit can be set to 0. In this case `timestamp` field should be used to
+  * provide numeric timestamp.
+  *
+  * If AKU_VALUE_MASK_VALUE_TYPE_BIT bit controls type of the value. If this bit is set to 1
+  * (value.mask & AKU_VALUE_MASK_IS_BLOB != 0), then value is a BLOB and one should use `blob_value` field.
+  * Otherwise value is float and one should use `str_value` or `value` fields.
+  *
+  * IF AKU_VALUE_MASK_FLOAT_REPR_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_NATIVE_FLOAT != 0) then
+  * user should provide native floating point value using `value` field of the struct, otherwise they should
+  * use `str_value` to pass textual representation of the floating point value. Note that
+  * AKU_VALUE_MASK_VALUE_TYPE_BIT bit should be set to 0 in this case!
+  */
+typedef struct {
+    //! This field controls content of all other fields
+    int mask;
+
+    //! Series key (metric name + tags), example: "cpu host=hostname region=europe"
+    const char* series_key;
+    //! Alternative numeric parameter id
+    aku_ParamId param_id;
+
+    //! ISO 8601 formatted timestamp (only basic format supported)
+    const char*   iso_timestamp;
+    //! Alternative numeric timestamp
+    aku_Timestamp timestamp;
+
+    //! String representation of the floating point value
+    const char* str_value;
+    //! Alternative native 64-bit float
+    double      value;
+
+    //! BLOB value
+    aku_MemRange blob_value;
+} aku_Value;
+
+
+//! Payload data
+typedef union {
+    const void *ptr;
+    double      float64;
+    uint64_t    uint64;
+} aku_PData;
 
 
 //! Database instance.
@@ -226,17 +282,10 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
 
 /** Write measurement to DB
   * @param db opened database instance
-  * @param series_key_begin should point to the begining of the string with series name
-  * @param series_key_end should point to the end of the string
-  * @param timestamp timestamp
-  * @param value parameter value
+  * @param value should point to initialized aku_Value struct
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double(aku_Database* db,
-                                       const char* series_key_begin,  // TODO: use simple 0-terminated string
-                                       const char* series_key_end,
-                                       aku_Timestamp timestamp,  // TODO: replace parameter with string
-                                       double value);  // TODO: replace parameter with string
+AKU_EXPORT aku_Status aku_write(aku_Database* db, aku_Value const* value);
 
 //---------
 // Queries
