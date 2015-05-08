@@ -52,10 +52,10 @@ void run_server(std::string path) {
     auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
                                                           false,
                                                           AkumuliConnection::MaxDurability);
-    TcpServer server(connection, 4);
-    server.start();
-    server.wait();
-    server.stop();
+    auto server = std::make_shared<TcpServer>(connection, 4);
+    server->start();
+    server->wait();
+    server->stop();
 }
 
 uint64_t str2unixtime(std::string t) {
@@ -74,6 +74,7 @@ uint64_t str2unixtime(std::string t) {
 }
 
 int main(int argc, char** argv) {
+    aku_initialize(nullptr);
     po::options_description desc("Akumuli options");
     desc.add_options()
             ("help", "Produce help message")
