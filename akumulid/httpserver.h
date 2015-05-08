@@ -61,6 +61,8 @@ struct HttpServer
 
     HttpServer(std::shared_ptr<QueryProcessor> qproc);
     HttpServer(std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl);
+    void start();
+    void stop();
 };
 
 }
