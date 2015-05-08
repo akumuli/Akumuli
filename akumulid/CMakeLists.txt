@@ -8,6 +8,7 @@ add_executable(akumulid
     protocol_consumer.h
     ingestion_pipeline.cpp ingestion_pipeline.h
     tcp_server.cpp tcp_server.h
+    httpserver.cpp httpserver.h
 )
 
 target_link_libraries(akumulid
@@ -16,6 +17,7 @@ target_link_libraries(akumulid
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    libmicrohttpd
     libboost_coroutine.a
     libboost_context.a
 )
