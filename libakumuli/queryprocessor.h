@@ -114,10 +114,15 @@ struct QueryProcessor {
                    aku_Timestamp begin,
                    aku_Timestamp end);
 
-    /** Match param_id. Return group id on success or
-      * negative value on error.
-      */
-    int match(uint64_t param_id);
+    //! Should be called before processing begins
+    void start();
+
+    //! Process value
+    void put(aku_Timestamp ts, aku_ParamId id, double value);
+    void put(aku_Timestamp ts, aku_ParamId id, aku_MemRange blob);
+
+    //! Should be called when processing completed
+    void stop();
 };
 
 }}  // namespaces

@@ -232,8 +232,19 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
 {
 }
 
-int QueryProcessor::match(uint64_t param_id) {
-    return -1;
+void QueryProcessor::start() {
+}
+
+void QueryProcessor::put(aku_Timestamp ts, aku_ParamId id, double value) {
+    root_node->put(ts, id, value);
+}
+
+void QueryProcessor::put(aku_Timestamp ts, aku_ParamId id, aku_MemRange blob) {
+    // TODO: implement
+}
+
+void QueryProcessor::stop() {
+    root_node->complete();
 }
 
 }}

@@ -186,4 +186,15 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
     BOOST_REQUIRE(qproc->lowerbound == DateTimeUtil::from_boost_ptime(first_ts));
     BOOST_REQUIRE(qproc->upperbound == DateTimeUtil::from_boost_ptime(second_ts));
+
+    qproc->start();
+    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123);  // should match
+    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234);  // should match
+    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345);  // shouldn't match
+
+    BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);
+    BOOST_REQUIRE_EQUAL(terminal->ids.at(0), 1);
+    BOOST_REQUIRE_EQUAL(terminal->values.at(0), 0.123);
+    BOOST_REQUIRE_EQUAL(terminal->ids.at(1), 2);
+    BOOST_REQUIRE_EQUAL(terminal->values.at(1), 0.234);
 }
