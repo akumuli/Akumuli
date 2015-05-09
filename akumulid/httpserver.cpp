@@ -22,42 +22,6 @@ static void free_callback(void *data) {
     delete cur;
 }
 
-
-struct PostProcessor {
-    MHD_PostProcessor* proc_;
-
-    static int post_data_iter (void *cls,
-                               enum MHD_ValueKind kind,
-                               const char *key,
-                               const char *filename,
-                               const char *content_type,
-                               const char *transfer_encoding,
-                               const char *data,
-                               uint64_t off,
-                               size_t size)
-    {
-        PostProcessor* self = static_cast<PostProcessor*>(cls);
-        // TODO: process data using `self`
-        AKU_UNUSED(self);
-        throw "Not implemented";
-    }
-
-    PostProcessor(MHD_Connection* con) {
-        proc_ = MHD_create_post_processor(con, 2048, &post_data_iter, this);
-        if (proc_ == nullptr) {
-            BOOST_THROW_EXCEPTION(std::runtime_error("can't create POST processor"));
-        }
-    }
-
-    ~PostProcessor() {
-        MHD_destroy_post_processor(proc_);
-    }
-
-    int process(const char* upload_data, size_t upload_data_size) {
-        return MHD_post_process(proc_, upload_data, upload_data_size);
-    }
-};
-
 static int accept_connection(void           *cls,
                              MHD_Connection *connection,
                              const char     *url,
@@ -67,25 +31,29 @@ static int accept_connection(void           *cls,
                              size_t         *upload_data_size,
                              void          **con_cls)
 {
-    PostProcessor* postproc = static_cast<PostProcessor*>(*con_cls);
+    if (strcmp(method, "POST") == 0) {
+        QueryProcessor *queryproc = static_cast<QueryProcessor*>(cls);
+        QueryCursor* cursor = static_cast<QueryCursor*>(*con_cls);
 
-    if (postproc == nullptr) {
-        postproc = new PostProcessor(connection);
-        *con_cls = postproc;
-        return MHD_YES;
-    }
-    if (*upload_data_size) {
-        auto ret = postproc->process(upload_data, *upload_data_size);
-        *upload_data_size = 0;
+        if (cursor == nullptr) {
+            cursor = queryproc->create();
+            *con_cls = cursor;
+            return MHD_YES;
+        }
+        if (*upload_data_size) {
+            cursor->append(upload_data, *upload_data_size);
+            *upload_data_size = 0;
+            return MHD_YES;
+        }
+        auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
+        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
         return ret;
+    } else {
+        // Unsupported method
+        // TODO: implement GET handler for simple queries (self diagnostics)
+        return MHD_NO;
     }
-    QueryProcessor *queryproc = static_cast<QueryProcessor*>(cls);
-    QueryCursor *cursor = queryproc->process(nullptr, 0);
-    auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
-    int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response);
-    delete postproc;
-    return ret;
 }
 }
 

@@ -34,11 +34,15 @@ struct QueryCursor;
 //! Query processor interface for HTTP server
 struct QueryProcessor {
     virtual ~QueryProcessor() = default;
-    virtual QueryCursor* process(const char* query, size_t query_size) = 0;
+    virtual QueryCursor* create() = 0;
 };
 
 struct QueryCursor {
     virtual ~QueryCursor() = default;
+
+    /** Append query data to cursor
+      */
+    virtual void append(const char* data, size_t data_size) = 0;
 
     /** Return error code or AKU_SUCCESS.
       * This error code represent result of the query parsing and initial processing. It can indicate
