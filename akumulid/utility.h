@@ -28,3 +28,6 @@
 #define AKU_UNLIKELY(x)     (x)
 #endif
 
+//! Macro to supress `variable unused` warnings for variables that is unused for a reason.
+#define AKU_UNUSED(x) (void)(x)
+

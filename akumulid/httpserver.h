@@ -28,6 +28,9 @@ namespace Http {
 
 struct AccessControlList {};  // TODO: implement ACL
 
+// Fwd decl
+struct QueryCursor;
+
 //! Query processor interface for HTTP server
 struct QueryProcessor {
     virtual ~QueryProcessor() = default;
@@ -57,10 +60,13 @@ struct QueryCursor {
 
 struct HttpServer
 {
-    AccessControlList acl_;
+    AccessControlList               acl_;
+    std::shared_ptr<QueryProcessor> proc_;
+    unsigned short                  port_;
+    MHD_Daemon                     *daemon_;
 
-    HttpServer(std::shared_ptr<QueryProcessor> qproc);
-    HttpServer(std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl);
+    HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc);
+    HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl);
     void start();
     void stop();
 };

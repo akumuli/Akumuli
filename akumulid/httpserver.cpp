@@ -1,5 +1,5 @@
 #include "httpserver.h"
-#include "util.h"
+#include "utility.h"
 
 namespace Akumuli {
 namespace Http {
@@ -38,6 +38,8 @@ struct PostProcessor {
     {
         PostProcessor* self = static_cast<PostProcessor*>(cls);
         // TODO: process data using `self`
+        AKU_UNUSED(self);
+        throw "Not implemented";
     }
 
     PostProcessor(MHD_Connection* con) {
@@ -65,10 +67,10 @@ static int accept_connection(void           *cls,
                              size_t         *upload_data_size,
                              void          **con_cls)
 {
-    PostProcessor* postproc = static_cast<PostProcessor>(*con_cls);
+    PostProcessor* postproc = static_cast<PostProcessor*>(*con_cls);
 
     if (postproc == nullptr) {
-        postproc = new PostProcessor(con);
+        postproc = new PostProcessor(connection);
         *con_cls = postproc;
         return MHD_YES;
     }
@@ -78,7 +80,7 @@ static int accept_connection(void           *cls,
         return ret;
     }
     QueryProcessor *queryproc = static_cast<QueryProcessor*>(cls);
-    QueryCursor *cursor = proc->process(nullptr, 0);
+    QueryCursor *cursor = queryproc->process(nullptr, 0);
     auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
     int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
@@ -87,13 +89,15 @@ static int accept_connection(void           *cls,
 }
 }
 
-HttpServer::HttpServer(std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl)
+HttpServer::HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl)
     : acl_(acl)
+    , proc_(qproc)
+    , port_(port)
 {
 }
 
-HttpServer::HttpServer(std::shared_ptr<QueryProcessor> qproc)
-    : HttpServer(AccessControlList())
+HttpServer::HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc)
+    : HttpServer(port, qproc, AccessControlList())
 {
 }
 
@@ -103,11 +107,15 @@ void HttpServer::start() {
                                NULL,
                                NULL,
                                &MHD::accept_connection,
-                               page_buffer.data(),
+                               proc_.get(),
                                MHD_OPTION_END);
     if (daemon_ == nullptr) {
         BOOST_THROW_EXCEPTION(std::runtime_error("can't start daemon"));
     }
+}
+
+void HttpServer::stop() {
+    MHD_stop_daemon(daemon_);
 }
 
 }  // namespace Http

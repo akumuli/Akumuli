@@ -17,7 +17,7 @@ target_link_libraries(akumulid
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libmicrohttpd
+    microhttpd
     libboost_coroutine.a
     libboost_context.a
 )
