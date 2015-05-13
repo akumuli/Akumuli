@@ -93,6 +93,13 @@
 #define AKU_CURSOR_DIR_FORWARD    0
 #define AKU_CURSOR_DIR_BACKWARD   1
 
+// Cursor indexes
+#define AKU_ROW_TIMESTAMP        -1
+#define AKU_ROW_PARAM_ID         -2
+#define AKU_ROW_SERIES_NAME      -3
+#define AKU_ROW_TYPE             -4
+#define AKU_ROW_LENGTH           -5
+
 
 // Different tune parameters
 #define AKU_INTERPOLATION_SEARCH_CUTOFF 0x00000100

@@ -49,70 +49,19 @@ typedef struct {
     uint32_t length;
 } aku_MemRange;
 
-// Different bits of the aku_Value.mask bitfield that controls differnet
-// parts of the aku_Value struct.
-#define AKU_VALUE_MASK_SERIES_KEY_BIT 0
-#define AKU_VALUE_MASK_TIME_FIELD_BIT 1
-#define AKU_VALUE_MASK_VALUE_TYPE_BIT 2
-#define AKU_VALUE_MASK_FLOAT_REPR_BIT 3
-
-#define AKU_VALUE_MASK_IS_SERIES_KEY    (1 << AKU_VALUE_MASK_SERIES_KEY_BIT)
-#define AKU_VALUE_MASK_IS_ISO_TIMESTAMP (1 << AKU_VALUE_MASK_TIME_FIELD_BIT)
-#define AKU_VALUE_MASK_IS_BLOB          (1 << AKU_VALUE_MASK_VALUE_TYPE_BIT)
-#define AKU_VALUE_MASK_IS_NATIVE_FLOAT  (1 << AKU_VALUE_MASK_FLOAT_REPR_BIT)
-
-/** User supplied value.
-  * This is a variant datastructure. It doesn't uses unions and all fields are always present
-  * but only some of the fields can be used to store data, depending on the `mask` field.
-  *
-  * If AKU_VALUE_MASK_SERIES_KEY_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_SERIES_KEY != 0)
-  * then `series_key` field should be used instead of `param_id`. Field `series_key` should contain
-  * pointer to string with series name (metric with tags) and `param_id` should contain numeric
-  * value that identifies series.
-  *
-  * If AKU_VALUE_MASK_TIME_FIELD_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_ISO_TIMESTAMP != 0)
-  * then timestamp should be set using ISO 8601 formatted string in `iso_timestamp` field.
-  * Alternatively, this mask bit can be set to 0. In this case `timestamp` field should be used to
-  * provide numeric timestamp.
-  *
-  * If AKU_VALUE_MASK_VALUE_TYPE_BIT bit controls type of the value. If this bit is set to 1
-  * (value.mask & AKU_VALUE_MASK_IS_BLOB != 0), then value is a BLOB and one should use `blob_value` field.
-  * Otherwise value is float and one should use `str_value` or `value` fields.
-  *
-  * IF AKU_VALUE_MASK_FLOAT_REPR_BIT is set to 1 (value.mask & AKU_VALUE_MASK_IS_NATIVE_FLOAT != 0) then
-  * user should provide native floating point value using `value` field of the struct, otherwise they should
-  * use `str_value` to pass textual representation of the floating point value. Note that
-  * AKU_VALUE_MASK_VALUE_TYPE_BIT bit should be set to 0 in this case!
-  */
-typedef struct {
-    //! This field controls content of all other fields
-    int mask;
-
-    //! Series key (metric name + tags), example: "cpu host=hostname region=europe"
-    const char* series_key;
-    //! Alternative numeric parameter id
-    aku_ParamId param_id;
-
-    //! ISO 8601 formatted timestamp (only basic format supported)
-    const char*   iso_timestamp;
-    //! Alternative numeric timestamp
-    aku_Timestamp timestamp;
-
-    //! String representation of the floating point value
-    const char* str_value;
-    //! Alternative native 64-bit float
-    double      value;
-
-    //! BLOB value
-    aku_MemRange blob_value;
-} aku_Value;
-
 
 //! Payload data
 typedef union {
-    const void *ptr;
-    double      float64;
-    uint64_t    uint64;
+    union {
+        const void     *begin;
+        const uint32_t  size;
+    } blob;
+    double        float64;
+    uint64_t      uint64;
+    int64_t       int64;
+    const char   *string;
+    // Obsolete stuff
+    const void   *ptr;
 } aku_PData;
 
 
@@ -120,20 +69,6 @@ typedef union {
 typedef struct {
     int padding;
 } aku_Database;
-
-/**
- * @brief Select search query.
- */
-typedef struct {
-    //! Begining of the search range
-    aku_Timestamp begin;
-    //! End of the search range
-    aku_Timestamp end;
-    //! Number of parameters to search
-    uint32_t n_params;
-    //! Array of parameters to search
-    aku_ParamId params[];
-} aku_SelectQuery;
 
 
 /**
@@ -262,79 +197,54 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 // Writing
 //---------
 
-/** Write binary blob
-  * @param db opened database instance
-  * @param param_id paramter id
-  * @param timestamp timestamp
-  * @param value BLOB memory range
-  * @returns operation status
-  */
-AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, aku_MemRange value);
-
 /** Write measurement to DB
   * @param db opened database instance
-  * @param param_id storage parameter id
-  * @param timestamp timestamp
-  * @param value parameter value
+  * @param type is a string that contains type descriptor of the tuple  
+  * @param tuple is an array of values
   * @returns operation status
+  * @note type descriptor is a string of the following format:
+  * 1. It should contain len(tuple) characters
+  * 2. Character at i'th position corresponds to tuple element at i'th position
+  * 3. Each character defines the type 'u' - unsigned long (64-bit), 'i' - signed
+  *    long (64-bit), 'b' - blob, 'f' - float (64-bit).
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value);
-
-/** Write measurement to DB
-  * @param db opened database instance
-  * @param value should point to initialized aku_Value struct
-  * @returns operation status
-  */
-AKU_EXPORT aku_Status aku_write(aku_Database* db, aku_Value const* value);
+AKU_EXPORT aku_Status aku_write(aku_Database* db, const char* type, const aku_PData* tuple);
 
 //---------
 // Queries
 //---------
 
 /**
- * @obsolete should be replaced with json query format
- * @brief Create select query with single parameter-id
- */
-AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId* params);
-
-/**
  * @brief Execute query
- * @param query data structure representing search query
+ * @param query string
  * @return cursor
  */
-AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, aku_SelectQuery* query);
-
-// TODO: AKU_EXPORT aku_Cursor* aku_selecct(aku_Database* db, const char* query);
+AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const char* query);
 
 /**
  * @brief Close cursor
  * @param pcursor pointer to cursor
  */
-AKU_EXPORT void aku_close_cursor(aku_Cursor* pcursor);
+AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
 
-/**
- * @brief Read data from storage in column-wise manner.
- * @param pcursor pointer to cursor
- * @param timestamps output buffer for storing timestamps
- * @param params output buffer for storing paramids
- * @param pointers output buffer for storing pointers to data
- * @param lengths output buffer for storing lengths of the data items
- * @param array_size specifies size of the all output buffers (it must be the same for all buffers)
- * @note every output parmeter can be null if we doesn't interested in it's value
- */
-AKU_EXPORT int aku_cursor_read_columns( aku_Cursor      *pcursor
-                                      , aku_Timestamp   *timestamps
-                                      , aku_ParamId     *params
-                                      , aku_PData       *pointers
-                                      , uint32_t        *lengths
-                                      , size_t           arrays_size );
+/** Read one of the values under cursor.
+  * Index 0 corresponds to timestamp, -2 - to parameter id value, -3 - to series name string,
+  * -4 - to row-type descriptor, -5 for tuple length.
+  * @param cursor should point to active cursor instance
+  * @param col_index should contain valid column index
+  * @param dest is an output parameter for requested value
+  * @returns error code
+  */
+AKU_EXPORT aku_Status aku_cursor_read_value(aku_Cursor* cursor, int col_index, aku_PData* dest);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.
-AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
+AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
-AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
+//! Move cursor one position forward.
+AKU_EXPORT aku_Status aku_cursor_next(aku_Cursor* pcursor);
 
 //--------------------
 // Stats and counters
