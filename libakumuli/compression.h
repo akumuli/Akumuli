@@ -34,12 +34,41 @@ namespace Akumuli {
 
 typedef std::vector<unsigned char> ByteVector;
 
+enum ChunkHeaderCellType {
+    NOT_SET = 0,
+    UINT,
+    INT,
+    FLOAT,
+    BLOB,
+};
+
+struct HeaderCell {
+    // Types
+    struct blob_t {
+            uint32_t offset;
+            uint32_t length;
+    };
+    union value_t {
+        uint64_t    uintval;
+        int64_t      intval;
+        double     floatval;
+        blob_t      blobval;
+    };
+    // Data
+    int      type;
+    value_t value;
+};
+
 struct ChunkHeader {
+    /** Index in `timestamps` and `paramids` arrays corresponds
+      * to individual row. Each element of the `values` array corresponds to
+      * specific column and row. Variable longest_row should contain
+      * longest row length inside the header.
+      */
     std::vector<aku_Timestamp>  timestamps;
     std::vector<aku_ParamId>    paramids;
-    std::vector<uint32_t>       offsets;
-    std::vector<uint32_t>       lengths;
-    std::vector<double>         values;
+    int                         longest_row;
+    std::vector<HeaderCell>     table[AKU_MAX_COLUMNS];
 };
 
 struct ChunkWriter {
@@ -89,7 +118,6 @@ struct CompressionUtil {
       */
     static
     size_t compress_doubles(std::vector<double> const& input,
-                            std::vector<aku_ParamId> const& params,
                             ByteVector *buffer);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
@@ -101,7 +129,6 @@ struct CompressionUtil {
     static
     void decompress_doubles(ByteVector& buffer,
                             size_t numblocks,
-                            std::vector<aku_ParamId> const& params,
                             std::vector<double> *output);
 
     /** Convert from chunk order to time order.

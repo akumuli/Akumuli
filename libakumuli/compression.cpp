@@ -44,13 +44,9 @@ struct HalfByteStream {
 };
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         std::vector<aku_ParamId> const& params,
                                          ByteVector *buffer)
 {
-    std::unordered_map<aku_ParamId, uint64_t> prev_in_series;
-    for (auto id: params) {
-        prev_in_series[id] = 0ul;
-    }
+    uint64_t prev_in_series = 0ul;
     HalfByteStream stream(buffer);
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
@@ -58,10 +54,8 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             uint64_t bits;
         } curr = {};
         curr.real = input.at(ix);
-        aku_ParamId id = params.at(ix);
-        uint64_t prev = prev_in_series.at(id);
-        uint64_t diff = curr.bits ^ prev;
-        prev_in_series.at(id) = curr.bits;
+        uint64_t diff = curr.bits ^ prev_in_series;
+        prev_in_series = curr.bits;
         int res = 64;
         if (diff != 0) {
             res = __builtin_clzl(diff);
@@ -82,18 +76,13 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
 
 void CompressionUtil::decompress_doubles(ByteVector& buffer,
                                          size_t numblocks,
-                                         std::vector<aku_ParamId> const& params,
                                          std::vector<double> *output)
 {
-    std::unordered_map<aku_ParamId, uint64_t> prev_in_series;
-    for (auto id: params) {
-        prev_in_series[id] = 0ul;
-    }
+    uint64_t prev_in_series = 0ul;
     HalfByteStream stream(&buffer, numblocks);
     size_t ix = 0;
     while(numblocks) {
         aku_ParamId id = params.at(ix);
-        uint64_t prev = prev_in_series.at(id);
         uint64_t diff = 0ul;
         int nsteps = stream.read4bits();
         for (int i = 0; i < (nsteps + 1); i++) {
@@ -105,9 +94,9 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
             uint64_t bits;
             double real;
         } curr = {};
-        curr.bits = prev ^ diff;
+        curr.bits = prev_in_series ^ diff;
         output->push_back(curr.real);
-        prev_in_series.at(id) = curr.bits;
+        prev_in_series = curr.bits;
         ix++;
     }
 }

@@ -167,7 +167,7 @@ bool chunk_order_LT (TimeSeriesValue<N> const& lhs, TimeSeriesValue<N> const& rh
   * all the remaining samples by timestamp and parameter id.
   */
 struct Sequencer {
-    typedef TimeSeriesValue<AKU_MAX_COLUMNS> TSValue;
+    typedef TimeSeriesValue                  TSValue;
     typedef std::vector<TSValue>             SortedRun;
     typedef std::shared_ptr<SortedRun>       PSortedRun;
     typedef std::mutex                       Mutex;
