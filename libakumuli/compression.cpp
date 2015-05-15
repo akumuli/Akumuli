@@ -82,7 +82,6 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
     HalfByteStream stream(&buffer, numblocks);
     size_t ix = 0;
     while(numblocks) {
-        aku_ParamId id = params.at(ix);
         uint64_t diff = 0ul;
         int nsteps = stream.read4bits();
         for (int i = 0; i < (nsteps + 1); i++) {
@@ -107,15 +106,29 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , ChunkWriter        *writer
                                         , const ChunkHeader&  data)
 {
-    // NOTE: it is possible to avoid copying and write directly to page
-    // instead of temporary byte vectors
-    ByteVector paramids;
-    ByteVector timestamps;
-    ByteVector offsets;
-    ByteVector lengths;
+    aku_MemRange available_space = writer->allocate();
+    const unsigned char* begin = (unsigned char*)available_space.address;
+    const unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
+    DeltaRLEWriter paramid_stream(begin, end);
+    for (auto id: data.paramids) {
+        auto status = paramid_stream.put(id);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+    }
+    paramid_stream.close();
 
-    DeltaRLEWriter paramid_stream(paramids);
-    DeltaRLEWriter timestamp_stream(timestamps);
+    // new stream writer should continue to use memory
+    // used by previous stream writer
+    DeltaRLEWriter timestamp_stream(paramid_stream);
+    for (auto ts: data.timestamps) {
+        auto status = timestamp_stream.put(ts);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+    }
+    timestamp_stream.close();
+
     DeltaRLEWriter offset_stream(offsets);
     RLELenWriter length_stream(lengths);
 
@@ -139,14 +152,6 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     timestamp_stream.close();
     offset_stream.close();
     length_stream.close();
-
-    uint32_t size_estimate =
-            static_cast<uint32_t>( paramid_stream.size()
-                                 + timestamp_stream.size()
-                                 + offset_stream.size()
-                                 + length_stream.size()
-                                 + sizeof(uint64_t)
-                                 );
 
     aku_Status status = AKU_SUCCESS;
 

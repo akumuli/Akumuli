@@ -72,8 +72,16 @@ struct ChunkHeader {
 };
 
 struct ChunkWriter {
-    virtual ~ChunkWriter() {}
-    virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) = 0;
+
+    virtual ~ChunkWriter() = default;
+
+    /** Allocate space for new data. Return mem range or
+      * empty range in a case of error.
+      */
+    virtual aku_MemRange allocate() = 0;
+
+    //! Revert previously allocated chunk
+    virtual aku_Status revert() = 0;
 };
 
 struct CompressionUtil {
@@ -160,8 +168,8 @@ public:
     }
 
     /** Read base 128 encoded integer from the binary stream
-    *  FwdIter - forward iterator
-    */
+      * FwdIter - forward iterator.
+      */
     template<class FwdIter>
     FwdIter get(FwdIter begin, FwdIter end) {
         assert(begin < end);
@@ -183,8 +191,8 @@ public:
     }
 
     /** Write base 128 encoded integer to the binary stream.
-    * @returns 'begin' on error, iterator to next free region otherwise
-    */
+      * @returns 'begin' on error, iterator to next free region otherwise
+      */
     template<class FwdIter>
     FwdIter put(FwdIter begin, FwdIter end) const {
         if (begin >= end) {
@@ -225,17 +233,29 @@ struct Base128StreamWriter {
     unsigned char* pos_;
 
     Base128StreamWriter(unsigned char* begin, const unsigned char* end) 
-        : begin_(begin), end_(end), pos_(begin) 
+        : begin_(begin)
+        , end_(end)
+        , pos_(begin)
+    {
+    }
+
+    Base128StreamWriter(Base128StreamWriter& other)
+        : begin_(other.begin_)
+        , end_(other.end_)
+        , pos_(other.pos_)
     {
     }
 
     /** Put value into stream.
      */
-    void put(TVal value) {
+    aku_Status put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char* p = val.put(pos_, end_);
-        // if pos_ == p: throw
+        if (pos_ == p) {
+            return AKU_EOVERFLOW;
+        }
         pos_ = p;
+        return AKU_SUCCESS;
     }
 
     //! Close stream
@@ -245,9 +265,9 @@ struct Base128StreamWriter {
         return pos_ - begin_;
     }
 
-    aku_MemRange get_memrange() const {
-        // FIXME: check for overflow
-        return { begin_, size() };
+    //! Return current position
+    const unsigned char* get_pos() const {
+        return pos_;
     }
 };
 
@@ -324,16 +344,24 @@ struct DeltaStreamWriter {
     Stream stream_;
     TVal prev_;
 
-    DeltaStreamWriter(ByteVector& container)
-        : stream_(container)
+    DeltaStreamWriter(unsigned char* begin, unsigned char* end)
+        : stream_(begin, end)
+        , prev_()
+    {
+    }
+
+    template<class OtherStream>
+    DeltaStreamWriter(OtherStream& stream)
+        : stream_(stream)
         , prev_()
     {
     }
 
     template<class InVal>
-    void put(InVal value) {
-        stream_.put(static_cast<TVal>(value) - prev_);
+    aku_Status put(InVal value) {
+        auto status = stream_.put(static_cast<TVal>(value) - prev_);
         prev_ = value;
+        return status;
     }
 
     size_t size() const {
