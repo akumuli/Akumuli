@@ -85,7 +85,7 @@ struct CompressionUtil {
       * @param data ChunkHeader to compress
       */
     static
-    aku_Status encode_chunk(uint32_t           *n_elements
+    aku_Status encode_chunk( uint32_t           *n_elements
                            , aku_Timestamp      *ts_begin
                            , aku_Timestamp      *ts_end
                            , ChunkWriter        *writer
@@ -210,25 +210,6 @@ public:
         return p;
     }
 
-    //! Write base 128 encoded integer to the binary stream (unchecked)
-    template<class Inserter>
-    void put(Inserter& p) const {
-        TVal value = value_;
-        byte_t result = 0;
-
-        while(true) {
-            result = value & 0x7F;
-            value >>= 7;
-            if (value != 0) {
-                result |= 0x80;
-                *p++ = result;
-            } else {
-                *p++ = result;
-                break;
-            }
-        }
-    }
-
     //! turn into integer
     operator TVal() const {
         return value_;
@@ -239,38 +220,44 @@ public:
 template<class TVal>
 struct Base128StreamWriter {
     // underlying memory region
-    ByteVector& data_;
+    const unsigned char* begin_;
+    const unsigned char* end_;
+    unsigned char* pos_;
 
-    Base128StreamWriter(ByteVector& data) : data_(data) {}
+    Base128StreamWriter(unsigned char* begin, const unsigned char* end) 
+        : begin_(begin), end_(end), pos_(begin) 
+    {
+    }
 
     /** Put value into stream.
      */
     void put(TVal value) {
         Base128Int<TVal> val(value);
-        auto it = std::back_inserter(data_);
-        val.put(it);
+        unsigned char* p = val.put(pos_, end_);
+        // if pos_ == p: throw
+        pos_ = p;
     }
 
     //! Close stream
     void close() {}
 
     size_t size() const {
-        return data_.size();
+        return pos_ - begin_;
     }
 
     aku_MemRange get_memrange() const {
         // FIXME: check for overflow
-        return { data_.data(), static_cast<uint32_t>(data_.size()) };
+        return { begin_, size() };
     }
 };
 
 //! Base128 decoder
-template<class TVal, class FwdIt>
+template<class TVal>
 struct Base128StreamReader {
-    FwdIt pos_;
-    FwdIt end_;
+    unsigned char* pos_;
+    const unsigned char* end_;
 
-    Base128StreamReader(FwdIt begin, FwdIt end)
+    Base128StreamReader(unsigned char* begin, const unsigned char* end)
         : pos_(begin)
         , end_(end)
     {
@@ -282,7 +269,7 @@ struct Base128StreamReader {
         return static_cast<TVal>(value);
     }
 
-    typedef FwdIt Iterator;
+    typedef unsigned char* Iterator;
 
     Iterator pos() const {
         return pos_;
@@ -294,7 +281,7 @@ struct ZigZagStreamWriter {
     Stream stream_;
 
     ZigZagStreamWriter(ByteVector& container)
-            : stream_(container) {
+        : stream_(container) {
     }
     void put(TVal value) {
         // TVal must be signed
@@ -463,7 +450,7 @@ typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
 typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 
 // Base128 -> RLE -> Length
-typedef Base128StreamReader<uint32_t, const unsigned char*> __Base128LenReader;
+typedef Base128StreamReader<uint32_t> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
@@ -473,7 +460,7 @@ typedef ZigZagStreamWriter<__RLEWriter, int64_t> __ZigZagWriter;
 typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
 
 // Base128 -> RLE -> ZigZag -> Delta -> int64_t
-typedef Base128StreamReader<uint64_t, const unsigned char*> __Base128Reader;
+typedef Base128StreamReader<uint64_t> __Base128Reader;
 typedef RLEStreamReader<__Base128Reader, int64_t> __RLEReader;
 typedef ZigZagStreamReader<__RLEReader, int64_t> __ZigZagReader;
 typedef DeltaStreamReader<__ZigZagReader, int64_t> DeltaRLEReader;
