@@ -97,6 +97,12 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     memset(&histogram, 0, sizeof(histogram));
 }
 
+aku_EntryOffset* PageHeader::page_index(int index) {
+    auto begin = cdata();
+    auto end = begin + length - sizeof(aku_EntryOffset);
+    return reinterpret_cast<aku_EntryOffset*>(end) - index;
+}
+
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
     if (index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);

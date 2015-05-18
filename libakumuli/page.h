@@ -180,13 +180,14 @@ struct PageHeader {
     PageBoundingBox bbox;       //< page data limits
     PageHistogram histogram;    //< histogram
     unsigned char payload[];    //< page payload
-    // TODO: this should be inverted and moved to the bottom aku_EntryOffset page_index[];   //< page index
 
     //! Convert entry index to entry offset
     std::pair<aku_EntryOffset, int> index_to_offset(uint32_t index) const;
 
     //! Get const pointer to the begining of the page
     const char* cdata() const;
+
+    aku_EntryOffset page_index(int index);
 
     //! Get pointer to the begining of the page
     char* data();
