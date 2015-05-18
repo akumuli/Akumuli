@@ -107,7 +107,7 @@ std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) cons
     if (index > count) {
         return std::make_pair(0u, AKU_EBAD_ARG);
     }
-    return std::make_pair(page_index[index], AKU_SUCCESS);
+    return std::make_pair(*page_index(index), AKU_SUCCESS);
 }
 
 int PageHeader::get_entries_count() const {
@@ -115,8 +115,8 @@ int PageHeader::get_entries_count() const {
 }
 
 size_t PageHeader::get_free_space() const {
-    auto begin = reinterpret_cast<const char*>(page_index + count);
-    const char* end = cdata();
+    auto end = reinterpret_cast<const char*>(page_index + count);
+    const char* begin = cdata();
     end += last_offset;
     assert(end >= begin);
     return end - begin;
@@ -176,14 +176,13 @@ int PageHeader::add_entry( const aku_ParamId param
         return AKU_WRITE_STATUS_OVERFLOW;
     }
     char* free_slot = data() + last_offset;
-    free_slot -= ENTRY_SIZE;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
     entry->param_id = param;
     entry->time = timestamp;
     entry->length = range.length;
     memcpy((void*)entry->value, range.address, range.length);
-    last_offset = free_slot - cdata();
-    page_index[count] = last_offset;
+    last_offset += ENTRY_SIZE;
+    *page_index(count) = last_offset;
     count++;
     update_bounding_box(param, timestamp);
     return AKU_WRITE_STATUS_SUCCESS;
@@ -197,9 +196,8 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
         return AKU_EOVERFLOW;
     }
     char* free_slot = data() + last_offset;
-    free_slot -= SPACE_NEEDED;
     memcpy((void*)free_slot, range.address, SPACE_NEEDED);
-    last_offset = free_slot - cdata();
+    last_offset += SPACE_NEEDED;
     return AKU_SUCCESS;
 }
 
@@ -221,13 +219,13 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
-    uint32_t end = 0u;
-    uint32_t begin = last_offset;
+    uint32_t begin = sizeof(PageHeader);
+    uint32_t end = last_offset;
     if (count == 0) {
         // This is a first chunk!
-        end = length - 1;
+        begin = length - 1;
     } else {
-        end = page_index[count-1];
+        end = *page_index(count-1);
     }
     checksum.process_block(cdata() + begin, cdata() + end);
     if (status != AKU_SUCCESS) {
@@ -236,8 +234,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     desc.checksum = checksum.checksum();
     desc.begin_offset = begin;
     desc.end_offset = end;
-    aku_MemRange head;
-    head = {&desc, sizeof(desc)};
+    aku_MemRange head = {&desc, sizeof(desc)};
     status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
     if (status != AKU_SUCCESS) {
         return status;

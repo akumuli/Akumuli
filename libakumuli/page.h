@@ -187,7 +187,7 @@ struct PageHeader {
     //! Get const pointer to the begining of the page
     const char* cdata() const;
 
-    aku_EntryOffset page_index(int index);
+    aku_EntryOffset* page_index(int index);
 
     //! Get pointer to the begining of the page
     char* data();
@@ -216,7 +216,9 @@ struct PageHeader {
      * @param entry entry
      * @returns operation status
      */
-    int add_entry(const aku_ParamId param, const aku_Timestamp timestamp, const aku_MemRange data);
+    int add_entry( const aku_ParamId param
+                 , const aku_Timestamp timestamp
+                 , const aku_MemRange range );
 
     /**
      * Add some data to last entry. (without length)
