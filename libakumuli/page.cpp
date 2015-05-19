@@ -89,9 +89,13 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
 }
 
 aku_EntryOffset* PageHeader::page_index(int index) {
-    auto begin = payload;
-    auto end = begin + length - sizeof(aku_EntryOffset);
-    return reinterpret_cast<aku_EntryOffset*>(end) - index;
+    auto ptr = payload + length - sizeof(aku_EntryOffset);
+    return reinterpret_cast<aku_EntryOffset*>(ptr) - index;
+}
+
+const aku_EntryOffset* PageHeader::page_index(int index) const {
+    auto ptr = payload + length - sizeof(aku_EntryOffset);
+    return reinterpret_cast<aku_EntryOffset const*>(ptr) - index;
 }
 
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
@@ -196,11 +200,21 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     Rand rand;
     aku_Timestamp first_ts;
     aku_Timestamp last_ts;
+
     struct Writer : ChunkWriter {
         PageHeader *header;
         Writer(PageHeader *h) : header(h) {}
-        virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) {
-            return header->add_chunk(range, size_estimate);
+        virtual aku_MemRange allocate() {
+            size_t bytes_free = header->get_free_space();
+            char* data = header->payload + header->last_offset;
+            return {(void*)data, (uint32_t)bytes_free};
+        }
+        virtual aku_Status commit(size_t bytes_written) {
+            if (bytes_written < header->get_free_space()) {
+                header->last_offset += bytes_written;
+                return AKU_SUCCESS;
+            }
+            return AKU_EOVERFLOW;
         }
     } writer(this);
 
@@ -209,13 +223,10 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
-    uint32_t begin = sizeof(PageHeader);
+    uint32_t begin = 0;
     uint32_t end = last_offset;
-    if (count == 0) {
-        // This is a first chunk!
-        begin = length - 1;
-    } else {
-        end = *page_index(count-1);
+    if (count != 0) {
+        begin = *page_index(count-1);
     }
     checksum.process_block(payload + begin, payload + end);
     if (status != AKU_SUCCESS) {
@@ -242,20 +253,20 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
 
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     if (index < count) {
-        auto offset = page_index[index];
+        auto offset = *page_index(index);
         return read_entry(offset);
     }
     return 0;
 }
 
 const aku_Entry *PageHeader::read_entry(aku_EntryOffset offset) const {
-    auto ptr = cdata() + offset;
+    auto ptr = payload + offset;
     auto entry_ptr = reinterpret_cast<const aku_Entry*>(ptr);
     return entry_ptr;
 }
 
 const void* PageHeader::read_entry_data(aku_EntryOffset offset) const {
-    return cdata() + offset;
+    return payload + offset;
 }
 
 int PageHeader::get_entry_length_at(int entry_index) const {
@@ -473,7 +484,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
             }
-            auto probe_offset = page_->page_index[probe_index];
+            auto probe_offset = *page_->page_index(probe_index);
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->time;
 
@@ -503,96 +514,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false)
     {
-        ChunkHeader chunk_header, header;
-
-        auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
-        auto pbegin = (const unsigned char*)(page_->cdata() + pdesc->begin_offset);
-        auto pend = (const unsigned char*)(page_->cdata() + pdesc->end_offset);
-        auto probe_length = pdesc->n_elements;
-
-        // TODO:checksum!
-        boost::crc_32_type checksum;
-        checksum.process_block(pbegin, pend);
-        if (checksum.checksum() != pdesc->checksum) {
-            AKU_PANIC("File damaged!");
-            // TODO: report error
-            return false;
-        }
-
-        CompressionUtil::decode_chunk(&chunk_header, &pbegin, pend, 0, 5, probe_length);
-
-        // TODO: depending on a query type we can use chunk order or convert back to time-order.
-        // If we extract evertyhing it is better to convert to time order. If we picking some
-        // parameter ids it is better to check if this ids present in a chunk and extract values
-        // in chunk order and only after that - convert results to time-order.
-
-        // Convert from chunk order to time order
-        if (!CompressionUtil::convert_from_chunk_order(chunk_header, &header)) {
-            AKU_PANIC("Bad chunk");
-        }
-
-        int start_pos = 0;
-        int value_start_pos = 0;
-        if (IS_BACKWARD_) {
-            start_pos = static_cast<int>(probe_length - 1);
-            value_start_pos = static_cast<int>(chunk_header.values.size() - 1);
-        }
-        bool probe_in_time_range = true;
-
-        auto cursor = cursor_;
-        auto& caller = caller_;
-        auto page = page_;
-        auto ix_value = IS_BACKWARD_ ? value_start_pos : 0;
-        auto put_entry = [&header, cursor, &caller, page, &ix_value] (uint32_t i) {
-            auto len = header.lengths[i];
-            CursorResult result = {
-                len,
-                header.timestamps[i],
-                header.paramids[i],
-            };
-            if (len == 0) {
-                result.data.float64 = header.values.at(ix_value);
-            } else {
-                result.data.ptr = page->read_entry_data(header.offsets.at(i));
-            }
-            cursor->put(caller, result);
-        };
-
-        if (IS_BACKWARD_) {
-            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
-                    put_entry(i);
-                } else {
-                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
-                    if (!probe_in_time_range) {
-                        break;
-                    }
-                }
-                if (header.lengths.at(i) == 0) {
-                    ix_value--;
-                }
-            }
-        } else {
-            // TODO: limit chunk size
-            for (auto i = start_pos; i != (int)probe_length; i++) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
-                    put_entry(i);
-                } else {
-                    probe_in_time_range = query_.upperbound >= header.timestamps[i];
-                    if (!probe_in_time_range) {
-                        break;
-                    }
-                }
-                if (header.lengths.at(i) == 0) {
-                    ix_value++;
-                }
-            }
-        }
-        return probe_in_time_range;
+        throw "Not implemented";
     }
 
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
@@ -605,7 +527,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         while (true) {
             auto current_index = probe_index;
             probe_index += index_increment;
-            auto probe_offset = page_->page_index[current_index];
+            auto probe_offset = *page_->page_index(current_index);
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool proceed = false;
@@ -693,8 +615,8 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 void PageHeader::_sort() {
     // This method is only for testing purposes.
     // Page invariants can break here.
-    auto begin = page_index + sync_count;
-    auto end = page_index + count;
+    auto begin = page_index(sync_count);
+    auto end = page_index(count);
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
         auto ea = read_entry(a);
         auto eb = read_entry(b);
@@ -712,7 +634,7 @@ void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool
             AKU_PANIC("sync_index out of range");
         }
         auto index = sync_count++;
-        page_index[index] = offset;
+        *page_index(index) = offset;
 
         if (histogram.size < AKU_HISTOGRAM_SIZE) {
             // first AKU_HISTOGRAM_SIZE samples

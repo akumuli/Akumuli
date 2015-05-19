@@ -125,6 +125,7 @@ struct SearchQuery {
     // Matcher f-n can return only MATCH and NO_MATCH. Search algorithms doesn't
     // need to rely on first two values of the enumeration (LT_ALL and GT_ALL).
     // This is just a hint to the search algorithm that can speedup search.
+    typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
 
     // search query
     aku_Timestamp lowerbound;     //< begining of the time interval (0 for -inf) to search
@@ -179,12 +180,14 @@ struct PageHeader {
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
     PageHistogram histogram;    //< histogram
-    unsigned char payload[];    //< page payload
+    char payload[];             //< page payload
 
     //! Convert entry index to entry offset
     std::pair<aku_EntryOffset, int> index_to_offset(uint32_t index) const;
 
     aku_EntryOffset* page_index(int index);
+
+    const aku_EntryOffset* page_index(int index) const;
 
     void update_bounding_box(aku_ParamId param, aku_Timestamp time);
 

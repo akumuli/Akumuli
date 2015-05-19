@@ -80,8 +80,8 @@ struct ChunkWriter {
       */
     virtual aku_MemRange allocate() = 0;
 
-    //! Revert previously allocated chunk
-    virtual aku_Status revert() = 0;
+    //! Commit changes
+    virtual aku_Status commit(size_t bytes_written) = 0;
 };
 
 struct CompressionUtil {
