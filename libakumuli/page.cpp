@@ -73,24 +73,15 @@ PageBoundingBox::PageBoundingBox()
     min_timestamp = AKU_MAX_TIMESTAMP;
 }
 
-
-const char* PageHeader::cdata() const {
-    return reinterpret_cast<const char*>(this);
-}
-
-char* PageHeader::data() {
-    return reinterpret_cast<char*>(this);
-}
-
 PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     : version(0)
     , count(count)
-    , last_offset(length - 1)
+    , last_offset(0)
     , sync_count(0)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
-    , length(length)
+    , length(length - sizeof(PageHeader))
     , bbox()
 {
     // zero out histogram
@@ -98,7 +89,7 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
 }
 
 aku_EntryOffset* PageHeader::page_index(int index) {
-    auto begin = cdata();
+    auto begin = payload;
     auto end = begin + length - sizeof(aku_EntryOffset);
     return reinterpret_cast<aku_EntryOffset*>(end) - index;
 }
@@ -115,10 +106,9 @@ int PageHeader::get_entries_count() const {
 }
 
 size_t PageHeader::get_free_space() const {
-    auto end = reinterpret_cast<const char*>(page_index + count);
-    const char* begin = cdata();
-    end += last_offset;
-    assert(end >= begin);
+    auto begin = payload + count;
+    auto end = (payload + length) - count*sizeof(aku_EntryOffset);
+    assert(end >= payload);
     return end - begin;
 }
 
@@ -149,7 +139,7 @@ void PageHeader::reuse() {
     checkpoint = 0;
     count = 0;
     open_count++;
-    last_offset = length - 1;
+    last_offset = 0;
     bbox = PageBoundingBox();
     histogram.size = 0;
 }
@@ -175,7 +165,7 @@ int PageHeader::add_entry( const aku_ParamId param
     if (SPACE_REQUIRED > get_free_space()) {
         return AKU_WRITE_STATUS_OVERFLOW;
     }
-    char* free_slot = data() + last_offset;
+    char* free_slot = payload + last_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
     entry->param_id = param;
     entry->time = timestamp;
@@ -195,7 +185,7 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     if (get_free_space() < SPACE_REQUIRED) {
         return AKU_EOVERFLOW;
     }
-    char* free_slot = data() + last_offset;
+    char* free_slot = payload + last_offset;
     memcpy((void*)free_slot, range.address, SPACE_NEEDED);
     last_offset += SPACE_NEEDED;
     return AKU_SUCCESS;
@@ -227,7 +217,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     } else {
         end = *page_index(count-1);
     }
-    checksum.process_block(cdata() + begin, cdata() + end);
+    checksum.process_block(payload + begin, payload + end);
     if (status != AKU_SUCCESS) {
         return status;
     }

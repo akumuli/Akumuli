@@ -169,13 +169,13 @@ struct PageHeader {
     // metadata
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
-    uint32_t last_offset;       //< offset of the last added record
+    uint32_t last_offset;       //< offset of the last added record in payload array
     uint32_t sync_count;        //< index of the last synchronized record
     uint32_t checkpoint;        //< page checkpoint index
     uint32_t open_count;        //< how many times page was open for write
     uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
-    uint64_t length;            //< page size
+    uint64_t length;            //< payload size
     // NOTE: maybe it is possible to get this data from page_index?
     PageBoundingBox bbox;       //< page data limits
     PageHistogram histogram;    //< histogram
@@ -184,13 +184,7 @@ struct PageHeader {
     //! Convert entry index to entry offset
     std::pair<aku_EntryOffset, int> index_to_offset(uint32_t index) const;
 
-    //! Get const pointer to the begining of the page
-    const char* cdata() const;
-
     aku_EntryOffset* page_index(int index);
-
-    //! Get pointer to the begining of the page
-    char* data();
 
     void update_bounding_box(aku_ParamId param, aku_Timestamp time);
 
