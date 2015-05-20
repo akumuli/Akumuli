@@ -100,6 +100,39 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
     }
 }
 
+/** NOTE:
+  * Data should be ordered by paramid and timestamp.
+  * ------------------------------------------------
+  * Chunk format:
+  * chunk size - uint32 - total number of bytes in the chunk
+  * nelements - uint32 - total number of elements in the chunk
+  * paramid stream:
+  *     stream size - uint32 - number of bytes in a stream
+  *     body - array
+  * timestamp stream:
+  *     stream size - uint32 - number of bytes in a stream
+  *     body - array
+  * payload stream:
+  *     ncolumns - number of columns stored
+  *     column[0]:
+  *         types stream:
+  *             stream size - uint32
+  *             bytes
+  *         int stream:  (note: gaps not stored)
+  *             stream size - uint32
+  *             bytes
+  *         double stream:
+  *             stream size - uint32
+  *             bytes:
+  *         lengths stream: (note: blob type)
+  *             stream size - uint32
+  *             bytes:
+  *         offsets stream: (note: blob type)
+  *             stream size - uint32
+  *             bytes:
+  *     optional columns 1-n with the same layout
+  */
+
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_Timestamp      *ts_begin
                                         , aku_Timestamp      *ts_end
@@ -109,25 +142,38 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     aku_MemRange available_space = writer->allocate();
     unsigned char* begin = (unsigned char*)available_space.address;
     unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
-    DeltaRLEWriter paramid_stream(begin, end);
+    Base128StreamWriter stream(begin, end);
+
+    // Total size of the chunk
+    uint32_t* total_size = stream.allocate<uint32_t>();
+
+    // Number of elements stored
+    uint32_t* cardinality = stream.allocate<uint32_t>();
+    *cardinality = (uint32_t)data.paramids.size();
+
+    // ParamId stream
+    uint32_t* paramid_stream_size = stream.allocate<uint32_t>();
+    DeltaRLEWriter paramid_stream(stream);
     for (auto id: data.paramids) {
         auto status = paramid_stream.put(id);
         if (status != AKU_SUCCESS) {
             return status;
         }
     }
-    paramid_stream.close();
+    paramid_stream.commit();
+    *paramid_stream_size = (uint32_t)paramid_stream.size();
 
-    // new stream writer should continue to use memory
-    // used by previous stream writer
-    DeltaRLEWriter timestamp_stream(paramid_stream);
+    // Timestamp stream
+    uint32_t* timestamp_stream_size = stream.allocate<uint32_t>();
+    DeltaRLEWriter timestamp_stream(stream);
     for (auto ts: data.timestamps) {
         auto status = timestamp_stream.put(ts);
         if (status != AKU_SUCCESS) {
             return status;
         }
     }
-    timestamp_stream.close();
+    timestamp_stream.commit();
+    *timestamp_stream_size = (uint32_t)timestamp_stream.size();
     // TODO: implement compression
     return AKU_ENOT_IMPLEMENTED;
 }

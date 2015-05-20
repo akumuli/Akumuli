@@ -57,7 +57,6 @@ typedef union {
         uint32_t    size;
     } blob;
     double        float64;
-    uint64_t      uint64;
     int64_t       int64;
     const char   *string;
     // Obsolete stuff

@@ -36,7 +36,6 @@ typedef std::vector<unsigned char> ByteVector;
 
 enum ChunkHeaderCellType {
     NOT_SET = 0,
-    UINT,
     INT,
     FLOAT,
     BLOB,
@@ -49,7 +48,6 @@ struct HeaderCell {
             uint32_t length;
     };
     union value_t {
-        uint64_t    uintval;
         int64_t      intval;
         double     floatval;
         blob_t      blobval;
@@ -224,7 +222,6 @@ public:
 };
 
 //! Base128 encoder
-template<class TVal>
 struct Base128StreamWriter {
     // underlying memory region
     const unsigned char* begin_;
@@ -247,6 +244,7 @@ struct Base128StreamWriter {
 
     /** Put value into stream.
      */
+    template<class TVal>
     aku_Status put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char* p = val.put(pos_, end_);
@@ -257,16 +255,29 @@ struct Base128StreamWriter {
         return AKU_SUCCESS;
     }
 
-    //! Close stream
-    void close() {}
+    //! Commit stream
+    void commit() {}
 
     size_t size() const {
         return pos_ - begin_;
     }
 
-    //! Return current position
-    const unsigned char* get_pos() const {
-        return pos_;
+    size_t space_left() const {
+        return end_ - pos_;
+    }
+
+    /** Try to allocate space inside a stream for future use (needed for size prefixes)
+      * @returns null on error (no space)
+      */
+    template<class T>
+    T* allocate() {
+        size_t sz = sizeof(T);
+        if (space_left() < sz) {
+            return nullptr;
+        }
+        T* result = reinterpret_cast<T*>(pos_);
+        pos_ += sz;
+        return result;
     }
 };
 
@@ -297,10 +308,12 @@ struct Base128StreamReader {
 
 template<class Stream, class TVal>
 struct ZigZagStreamWriter {
-    Stream stream_;
+    Stream& stream_;
+    size_t start_size_;
 
-    ZigZagStreamWriter(unsigned char* begin, unsigned char* end)
-        : stream_(begin, end)
+    ZigZagStreamWriter(Stream& stream)
+        : stream_(stream)
+        , start_size_(stream.size())
     {
     }
     aku_Status put(TVal value) {
@@ -310,13 +323,10 @@ struct ZigZagStreamWriter {
         return stream_.put(res);
     }
     size_t size() const {
-        return stream_.size();
+        return stream_.size() - start_size_;
     }
-    void close() {
-        stream_.close();
-    }
-    aku_MemRange get_memrange() const {
-        return stream_.get_memrange();
+    void commit() {
+        stream_.commit();
     }
 };
 
@@ -341,39 +351,29 @@ struct ZigZagStreamReader {
 
 template<class Stream, typename TVal>
 struct DeltaStreamWriter {
-    Stream stream_;
+    Stream& stream_;
     TVal prev_;
+    size_t start_size_;
 
-    DeltaStreamWriter(unsigned char* begin, unsigned char* end)
-        : stream_(begin, end)
-        , prev_()
-    {
-    }
-
-    template<class OtherStream>
-    DeltaStreamWriter(OtherStream& stream)
+    DeltaStreamWriter(Stream& stream)
         : stream_(stream)
         , prev_()
+        , start_size_(stream.size())
     {
     }
 
-    template<class InVal>
-    aku_Status put(InVal value) {
+    aku_Status put(TVal value) {
         auto status = stream_.put(static_cast<TVal>(value) - prev_);
         prev_ = value;
         return status;
     }
 
     size_t size() const {
-        return stream_.size();
+        return stream_.size() - start_size_;
     }
 
-    void close() {
-        stream_.close();
-    }
-
-    aku_MemRange get_memrange() const {
-        return stream_.get_memrange();
+    void commit() {
+        stream_.commit();
     }
 };
 
@@ -407,14 +407,16 @@ struct DeltaStreamReader {
 
 template<class Stream, typename TVal>
 struct RLEStreamWriter {
-    Stream stream_;
+    Stream& stream_;
     TVal prev_;
     TVal reps_;
+    size_t start_size_;
 
-    RLEStreamWriter(unsigned char* begin, unsigned char* end)
-        : stream_(begin, end)
+    RLEStreamWriter(Stream& stream)
+        : stream_(stream)
         , prev_()
         , reps_()
+        , start_size_(stream.size())
     {}
 
     aku_Status put(TVal value) {
@@ -440,12 +442,13 @@ struct RLEStreamWriter {
     }
 
     size_t size() const {
-        return stream_.size();
+        return stream_.size() - start_size_;
     }
 
-    void close() {
+    void commit() {
         stream_.put(reps_);
         stream_.put(prev_);
+        stream_.commit();
     }
 };
 
@@ -479,7 +482,7 @@ struct RLEStreamReader {
 };
 
 // Length -> RLE -> Base128
-typedef Base128StreamWriter<uint32_t> __Base128LenWriter;
+typedef Base128StreamWriter __Base128LenWriter;
 typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
 
 // Base128 -> RLE -> Length
@@ -487,7 +490,7 @@ typedef Base128StreamReader<uint32_t> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
-typedef Base128StreamWriter<int64_t> __Base128Writer;
+typedef Base128StreamWriter __Base128Writer;
 typedef RLEStreamWriter<__Base128Writer, int64_t> __RLEWriter;
 typedef ZigZagStreamWriter<__RLEWriter, int64_t> __ZigZagWriter;
 typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
