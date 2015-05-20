@@ -107,8 +107,8 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , const ChunkHeader&  data)
 {
     aku_MemRange available_space = writer->allocate();
-    const unsigned char* begin = (unsigned char*)available_space.address;
-    const unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
+    unsigned char* begin = (unsigned char*)available_space.address;
+    unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
     DeltaRLEWriter paramid_stream(begin, end);
     for (auto id: data.paramids) {
         auto status = paramid_stream.put(id);
@@ -128,90 +128,8 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         }
     }
     timestamp_stream.close();
-
-    DeltaRLEWriter offset_stream(offsets);
-    RLELenWriter length_stream(lengths);
-
-    std::vector<aku_ParamId> params_with_zlen;
-
-    for (auto i = 0ul; i < data.timestamps.size(); i++) {
-        auto pid = data.paramids.at(i);
-        auto offset = data.offsets.at(i);
-        auto len = data.lengths.at(i);
-        auto ts = data.timestamps.at(i);
-        paramid_stream.put(pid);
-        timestamp_stream.put(ts);
-        offset_stream.put(offset);
-        length_stream.put(len);
-        if (len == 0) {
-            params_with_zlen.push_back(pid);
-        }
-    }
-
-    paramid_stream.close();
-    timestamp_stream.close();
-    offset_stream.close();
-    length_stream.close();
-
-    aku_Status status = AKU_SUCCESS;
-
-    switch(status) {
-    case AKU_SUCCESS:
-        // Doubles
-        uint64_t nblocks = 0ul;
-        if (!data.values.empty()) {
-            ByteVector compressed;
-            nblocks = CompressionUtil::compress_doubles(data.values, params_with_zlen, &compressed);
-            size_estimate += static_cast<uint32_t>(compressed.size());
-            const aku_MemRange compressed_mrange = {
-                compressed.data(),
-                static_cast<uint32_t>(compressed.size())
-            };
-            status = writer->add_chunk(compressed_mrange, size_estimate);
-            if (status != AKU_SUCCESS) {
-                break;
-            }
-            size_estimate -= compressed.size();
-        }
-        aku_MemRange nblocks_mrange = {
-            &nblocks,
-            sizeof(nblocks),
-        };
-        // Doubles size
-        status = writer->add_chunk(nblocks_mrange, size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= sizeof(nblocks);
-        // Offsets
-        status = writer->add_chunk(offset_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= offset_stream.size();
-        // Lengths
-        status = writer->add_chunk(length_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        size_estimate -= length_stream.size();
-        // Timestamps
-        status = writer->add_chunk(timestamp_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        auto ts_stream_size = timestamp_stream.size();
-        size_estimate -= ts_stream_size;
-        // Param-Ids
-        status = writer->add_chunk(paramid_stream.get_memrange(), size_estimate);
-        if (status != AKU_SUCCESS) {
-            break;
-        }
-        *n_elements = static_cast<uint32_t>(data.lengths.size());
-        *ts_begin = data.timestamps.front();
-        *ts_end   = data.timestamps.back();
-    }
-    return status;
+    // TODO: implement compression
+    return AKU_ENOT_IMPLEMENTED;
 }
 
 int CompressionUtil::decode_chunk( ChunkHeader *header
@@ -221,124 +139,12 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
                                  , int steps
                                  , uint32_t probe_length)
 {
-    if (steps <= 0) {
-        return 0;
-    }
-    switch(stage) {
-    case 0: {
-        // read paramids
-        DeltaRLEReader pid_reader(*pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header->paramids.push_back(pid_reader.next());
-        }
-        *pbegin = pid_reader.pos();
-        if (--steps == 0) {
-            return 1;
-        }
-    }
-    case 1: {
-        // read timestamps
-        DeltaRLEReader tst_reader(*pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header->timestamps.push_back(tst_reader.next());
-        }
-        *pbegin = tst_reader.pos();
-        if (--steps == 0) {
-            return 2;
-        }
-    }
-    case 2: {
-        // read lengths
-        RLELenReader len_reader(*pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header->lengths.push_back(len_reader.next());
-        }
-        *pbegin = len_reader.pos();
-        if (--steps == 0) {
-            return 3;
-        }
-    }
-    case 3: {
-        // read offsets
-        DeltaRLEReader off_reader(*pbegin, pend);
-        for (auto i = 0u; i < probe_length; i++) {
-            header->offsets.push_back(off_reader.next());
-        }
-        *pbegin = off_reader.pos();
-        if (--steps == 0) {
-            return 4;
-        }
-    }
-    case 4: {
-        // read doubles
-        uint64_t nblocks = *reinterpret_cast<const uint64_t*>(*pbegin);
-        *pbegin += sizeof(uint64_t);
-        if (nblocks) {
-            std::vector<aku_ParamId> params;
-            for (size_t i = 0; i != header->paramids.size(); i++) {
-                if (header->lengths.at(i) == 0) {
-                    auto pid = header->paramids.at(i);
-                    params.push_back(pid);
-                }
-            }
-            ByteVector buffer(*pbegin, *pbegin + (nblocks/2 + 1));
-            CompressionUtil::decompress_doubles(buffer, nblocks, params, &header->values);
-            *pbegin += static_cast<uint32_t>(buffer.size());
-        }
-        if (--steps == 0) {
-            return 5;
-        }
-    }
-    default:
-        break;
-    }
-    return -1;
+    throw "Not implemented";
 }
 
 template<class Fn>
 bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const& f) {
-    auto len = header.timestamps.size();
-    if (len != header.offsets.size() || len != header.paramids.size() || len != header.lengths.size()) {
-        // `header.values.size()` can be less then `len`
-        return false;
-    }
-    // prepare values arr
-    std::vector<double> values;
-    int val_ix = 0;
-    for(int i = 0u; i < header.lengths.size(); i++) {
-        if (header.lengths.at(i) == 0) {
-            values.push_back(header.values.at(val_ix++));
-        } else {
-            values.push_back(0.0);
-        }
-    }
-    // prepare indexes
-    std::vector<int> index;
-    for (auto i = 0u; i < header.timestamps.size(); i++) {
-        index.push_back(i);
-    }
-    std::stable_sort(index.begin(), index.end(), f);
-    out->lengths.reserve(index.size());
-    out->offsets.reserve(index.size());
-    out->paramids.reserve(index.size());
-    out->timestamps.reserve(index.size());
-    out->values.reserve(index.size());
-    for(auto ix: index) {
-        out->lengths.push_back(header.lengths.at(ix));
-        out->offsets.push_back(header.offsets.at(ix));
-        out->paramids.push_back(header.paramids.at(ix));
-        out->timestamps.push_back(header.timestamps.at(ix));
-        out->values.push_back(values.at(ix));
-    }
-    // revert values proc
-    std::swap(out->values, values);
-    out->values.clear();
-    for(int i = 0u; i < header.lengths.size(); i++) {
-        if (out->lengths.at(i) == 0) {
-            out->values.push_back(values.at(i));
-        }
-    }
-    return true;
+    throw "Not implemented";
 }
 
 bool CompressionUtil::convert_from_chunk_order(ChunkHeader const& header, ChunkHeader* out) {

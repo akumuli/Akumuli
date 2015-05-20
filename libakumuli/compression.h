@@ -193,14 +193,13 @@ public:
     /** Write base 128 encoded integer to the binary stream.
       * @returns 'begin' on error, iterator to next free region otherwise
       */
-    template<class FwdIter>
-    FwdIter put(FwdIter begin, FwdIter end) const {
+    unsigned char* put(unsigned char* begin, const unsigned char* end) const {
         if (begin >= end) {
             return begin;
         }
 
         TVal value = value_;
-        FwdIter p = begin;
+        unsigned char* p = begin;
 
         while (true) {
             *p = value & 0x7F;
@@ -300,14 +299,15 @@ template<class Stream, class TVal>
 struct ZigZagStreamWriter {
     Stream stream_;
 
-    ZigZagStreamWriter(ByteVector& container)
-        : stream_(container) {
+    ZigZagStreamWriter(unsigned char* begin, unsigned char* end)
+        : stream_(begin, end)
+    {
     }
-    void put(TVal value) {
-        // TVal must be signed
+    aku_Status put(TVal value) {
+        // TVal should be signed
         const int shift_width = sizeof(TVal)*8 - 1;
         auto res = (value << 1) ^ (value >> shift_width);
-        stream_.put(res);  // implicit type cast
+        return stream_.put(res);
     }
     size_t size() const {
         return stream_.size();
@@ -324,15 +324,15 @@ template<class Stream, class TVal>
 struct ZigZagStreamReader {
     Stream stream_;
 
-    template<class FwdIt>
-    ZigZagStreamReader(FwdIt begin, FwdIt end)
-            : stream_(begin, end) {
+    ZigZagStreamReader(unsigned char* begin, unsigned char* end)
+        : stream_(begin, end) {
     }
 
     TVal next() {
         auto n = stream_.next();
         return (n >> 1) ^ (-(n & 1));
     }
+
     typedef typename Stream::Iterator Iterator;
     Iterator pos() const {
         return stream_.pos();
@@ -411,23 +411,32 @@ struct RLEStreamWriter {
     TVal prev_;
     TVal reps_;
 
-    RLEStreamWriter(ByteVector& container)
-        : stream_(container)
+    RLEStreamWriter(unsigned char* begin, unsigned char* end)
+        : stream_(begin, end)
         , prev_()
         , reps_()
     {}
 
-    void put(TVal value) {
+    aku_Status put(TVal value) {
+        aku_Status status = AKU_SUCCESS;
         if (value != prev_) {
             if (reps_) {
                 // commit changes
-                stream_.put(reps_);
-                stream_.put(prev_);
+                status = stream_.put(reps_);
+                if (status != AKU_SUCCESS) {
+                    goto END;
+                }
+                status = stream_.put(prev_);
+                if (status != AKU_SUCCESS) {
+                    goto END;
+                }
             }
             prev_ = value;
             reps_ = TVal();
         }
         reps_++;
+    END:
+        return status;
     }
 
     size_t size() const {
@@ -437,10 +446,6 @@ struct RLEStreamWriter {
     void close() {
         stream_.put(reps_);
         stream_.put(prev_);
-    }
-
-    aku_MemRange get_memrange() const {
-        return stream_.get_memrange();
     }
 };
 

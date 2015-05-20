@@ -53,8 +53,8 @@ typedef struct {
 //! Payload data
 typedef union {
     struct {
-        const void     *begin;
-        const uint32_t  size;
+        const void *begin;
+        uint32_t    size;
     } blob;
     double        float64;
     uint64_t      uint64;
