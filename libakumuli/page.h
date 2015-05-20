@@ -170,7 +170,7 @@ struct PageHeader {
     // metadata
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
-    uint32_t last_offset;       //< offset of the last added record in payload array
+    uint32_t next_offset;       //< offset of the last added record in payload array
     uint32_t sync_count;        //< index of the last synchronized record
     uint32_t checkpoint;        //< page checkpoint index
     uint32_t open_count;        //< how many times page was open for write

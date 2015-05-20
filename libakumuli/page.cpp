@@ -76,7 +76,7 @@ PageBoundingBox::PageBoundingBox()
 PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     : version(0)
     , count(count)
-    , last_offset(0)
+    , next_offset(0)
     , sync_count(0)
     , open_count(0)
     , close_count(0)
@@ -89,13 +89,17 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
 }
 
 aku_EntryOffset* PageHeader::page_index(int index) {
-    auto ptr = payload + length - sizeof(aku_EntryOffset);
-    return reinterpret_cast<aku_EntryOffset*>(ptr) - index;
+    char* ptr = payload + length - sizeof(aku_EntryOffset);
+    aku_EntryOffset* entry = reinterpret_cast<aku_EntryOffset*>(ptr);
+    entry -= index;
+    return entry;
 }
 
 const aku_EntryOffset* PageHeader::page_index(int index) const {
-    auto ptr = payload + length - sizeof(aku_EntryOffset);
-    return reinterpret_cast<aku_EntryOffset const*>(ptr) - index;
+    const char* ptr = payload + length - sizeof(aku_EntryOffset);
+    const aku_EntryOffset* entry = reinterpret_cast<const aku_EntryOffset*>(ptr);
+    entry -= index;
+    return entry;
 }
 
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
@@ -110,7 +114,7 @@ int PageHeader::get_entries_count() const {
 }
 
 size_t PageHeader::get_free_space() const {
-    auto begin = payload + count;
+    auto begin = payload + next_offset;
     auto end = (payload + length) - count*sizeof(aku_EntryOffset);
     assert(end >= payload);
     return end - begin;
@@ -143,7 +147,7 @@ void PageHeader::reuse() {
     checkpoint = 0;
     count = 0;
     open_count++;
-    last_offset = 0;
+    next_offset = 0;
     bbox = PageBoundingBox();
     histogram.size = 0;
 }
@@ -169,14 +173,14 @@ int PageHeader::add_entry( const aku_ParamId param
     if (SPACE_REQUIRED > get_free_space()) {
         return AKU_WRITE_STATUS_OVERFLOW;
     }
-    char* free_slot = payload + last_offset;
+    char* free_slot = payload + next_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
     entry->param_id = param;
     entry->time = timestamp;
     entry->length = range.length;
     memcpy((void*)entry->value, range.address, range.length);
-    last_offset += ENTRY_SIZE;
-    *page_index(count) = last_offset;
+    *page_index(count) = next_offset;
+    next_offset += ENTRY_SIZE;
     count++;
     update_bounding_box(param, timestamp);
     return AKU_WRITE_STATUS_SUCCESS;
@@ -189,9 +193,9 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     if (get_free_space() < SPACE_REQUIRED) {
         return AKU_EOVERFLOW;
     }
-    char* free_slot = payload + last_offset;
+    char* free_slot = payload + next_offset;
     memcpy((void*)free_slot, range.address, SPACE_NEEDED);
-    last_offset += SPACE_NEEDED;
+    next_offset += SPACE_NEEDED;
     return AKU_SUCCESS;
 }
 
@@ -206,12 +210,12 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
         Writer(PageHeader *h) : header(h) {}
         virtual aku_MemRange allocate() {
             size_t bytes_free = header->get_free_space();
-            char* data = header->payload + header->last_offset;
+            char* data = header->payload + header->next_offset;
             return {(void*)data, (uint32_t)bytes_free};
         }
         virtual aku_Status commit(size_t bytes_written) {
             if (bytes_written < header->get_free_space()) {
-                header->last_offset += bytes_written;
+                header->next_offset += bytes_written;
                 return AKU_SUCCESS;
             }
             return AKU_EOVERFLOW;
@@ -224,7 +228,7 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
     uint32_t begin = 0;
-    uint32_t end = last_offset;
+    uint32_t end = next_offset;
     if (count != 0) {
         begin = *page_index(count-1);
     }
@@ -240,12 +244,12 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     if (status != AKU_SUCCESS) {
         return status;
     }
-    sync_next_index(last_offset, rand(), false);
+    sync_next_index(next_offset, rand(), false);
     status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
     if (status != AKU_SUCCESS) {
         return status;
     }
-    sync_next_index(last_offset, rand(), false);
+    sync_next_index(next_offset, rand(), false);
     // Sort histogram
     sync_next_index(0, 0, true);
     return status;
@@ -615,14 +619,17 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 void PageHeader::_sort() {
     // This method is only for testing purposes.
     // Page invariants can break here.
-    auto begin = page_index(sync_count);
-    auto end = page_index(count);
+    if (count == 0 || sync_count == count) {
+        return;
+    }
+    aku_EntryOffset* begin = page_index(count-1);
+    aku_EntryOffset* end = page_index(sync_count-1);
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
         auto ea = read_entry(a);
         auto eb = read_entry(b);
         auto ta = std::tuple<aku_Timestamp, aku_ParamId>(ea->time, ea->param_id);
         auto tb = std::tuple<aku_Timestamp, aku_ParamId>(eb->time, eb->param_id);
-        return ta < tb;
+        return ta > tb;
     });
     sync_count = count;
 }

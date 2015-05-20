@@ -51,17 +51,18 @@ struct RecordingCursor : InternalCursor {
 
 AkumuliInitializer initializer;
 
-BOOST_AUTO_TEST_CASE(TestPaging1)
-{
+
+BOOST_AUTO_TEST_CASE(TestPaging1) {
+
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     BOOST_CHECK_EQUAL(0, page->get_entries_count());
+    BOOST_CHECK_EQUAL(4096, page->get_free_space());
 }
 
-/*
-BOOST_AUTO_TEST_CASE(TestPaging2)
-{
+BOOST_AUTO_TEST_CASE(TestPaging2) {
+
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
@@ -469,6 +470,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     }
 }
 
+/*
 void generic_compression_test
     ( aku_ParamId param_id
     , aku_Timestamp begin

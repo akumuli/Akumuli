@@ -419,7 +419,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
         int status = AKU_SUCCESS;
         if (ts_value.is_blob()) {
             status = active_page_->add_chunk(data, space_required);
-            ts_value.payload.blob.value = active_page_->last_offset;
+            ts_value.payload.blob.value = active_page_->next_offset;
         }
         switch (status) {
             case AKU_SUCCESS: {
@@ -475,7 +475,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
 
 //! write binary data
 aku_Status Storage::write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data) {
-    TimeSeriesValue ts_value(ts, param, active_page_->last_offset, data.length);
+    TimeSeriesValue ts_value(ts, param, active_page_->next_offset, data.length);
     return _write_impl(ts_value, data);
 }
 
