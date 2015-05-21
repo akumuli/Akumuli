@@ -175,6 +175,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     timestamp_stream.commit();
     *timestamp_stream_size = (uint32_t)timestamp_stream.size();
     // TODO: implement compression
+    *total_size = 0;
     return AKU_ENOT_IMPLEMENTED;
 }
 

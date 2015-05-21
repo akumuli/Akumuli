@@ -50,7 +50,7 @@ void test_stream_read(TStreamReader& reader) {
 BOOST_AUTO_TEST_CASE(Test_base128) {
     std::vector<unsigned char> data;
     data.resize(1000);
-    Base128StreamWriter<uint64_t> writer(data.data(), data.data() + data.size());
+    Base128StreamWriter writer(data.data(), data.data() + data.size());
     test_stream_write(writer);
 
     Base128StreamReader<uint64_t> reader(data.data(), data.data() + data.size());
@@ -60,7 +60,8 @@ BOOST_AUTO_TEST_CASE(Test_base128) {
 BOOST_AUTO_TEST_CASE(Test_delta) {
     std::vector<unsigned char> data;
     data.resize(1000);
-    DeltaStreamWriter<Base128StreamWriter<uint64_t>, uint64_t> delta_writer(data.data(), data.data() + data.size());
+    Base128StreamWriter stream(data.data(), data.data() + data.size());
+    DeltaStreamWriter<Base128StreamWriter, uint64_t> delta_writer(stream);
     test_stream_write(delta_writer);
 
     DeltaStreamReader<Base128StreamReader<uint64_t>, uint64_t> delta_reader(data.data(), data.data() + data.size());
@@ -69,8 +70,11 @@ BOOST_AUTO_TEST_CASE(Test_delta) {
 
 BOOST_AUTO_TEST_CASE(Test_rle) {
     std::vector<unsigned char> data;
+    data.resize(1000);
 
-    RLEStreamWriter<Base128StreamWriter<uint64_t>, uint64_t> rle_writer(data);
+    Base128StreamWriter stream(data.data(), data.data() + data.size());
+    RLEStreamWriter<uint64_t> rle_writer(stream);
+
     test_stream_write(rle_writer);
 
     RLEStreamReader<Base128StreamReader<uint64_t>, uint64_t> rle_reader(data.begin(), data.end());

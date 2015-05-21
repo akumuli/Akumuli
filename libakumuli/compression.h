@@ -308,10 +308,10 @@ struct Base128StreamReader {
 
 template<class Stream, class TVal>
 struct ZigZagStreamWriter {
-    Stream& stream_;
+    Stream stream_;
     size_t start_size_;
 
-    ZigZagStreamWriter(Stream& stream)
+    ZigZagStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
         , start_size_(stream.size())
     {
@@ -351,11 +351,11 @@ struct ZigZagStreamReader {
 
 template<class Stream, typename TVal>
 struct DeltaStreamWriter {
-    Stream& stream_;
+    Stream stream_;
     TVal prev_;
     size_t start_size_;
 
-    DeltaStreamWriter(Stream& stream)
+    DeltaStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
         , prev_()
         , start_size_(stream.size())
@@ -405,14 +405,14 @@ struct DeltaStreamReader {
 };
 
 
-template<class Stream, typename TVal>
+template<typename TVal>
 struct RLEStreamWriter {
-    Stream& stream_;
+    Base128StreamWriter& stream_;
     TVal prev_;
     TVal reps_;
     size_t start_size_;
 
-    RLEStreamWriter(Stream& stream)
+    RLEStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
         , prev_()
         , reps_()
@@ -482,16 +482,14 @@ struct RLEStreamReader {
 };
 
 // Length -> RLE -> Base128
-typedef Base128StreamWriter __Base128LenWriter;
-typedef RLEStreamWriter<__Base128LenWriter, uint32_t> RLELenWriter;
+typedef RLEStreamWriter<uint32_t> RLELenWriter;
 
 // Base128 -> RLE -> Length
 typedef Base128StreamReader<uint32_t> __Base128LenReader;
 typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
 
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
-typedef Base128StreamWriter __Base128Writer;
-typedef RLEStreamWriter<__Base128Writer, int64_t> __RLEWriter;
+typedef RLEStreamWriter<int64_t> __RLEWriter;
 typedef ZigZagStreamWriter<__RLEWriter, int64_t> __ZigZagWriter;
 typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
 
