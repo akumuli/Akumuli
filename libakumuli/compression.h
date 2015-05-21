@@ -168,15 +168,17 @@ public:
     /** Read base 128 encoded integer from the binary stream
       * FwdIter - forward iterator.
       */
-    template<class FwdIter>
-    FwdIter get(FwdIter begin, FwdIter end) {
+    unsigned char* get(unsigned char* begin, const unsigned char* end) {
         assert(begin < end);
 
         auto acc = TVal();
         auto cnt = TVal();
-        FwdIter p = begin;
+        unsigned char* p = begin;
 
         while (true) {
+            if (p == end) {
+                return begin;
+            }
             auto i = static_cast<byte_t>(*p & 0x7F);
             acc |= TVal(i) << cnt;
             if ((*p++ & 0x80) == 0) {
@@ -200,13 +202,13 @@ public:
         unsigned char* p = begin;
 
         while (true) {
+            if (p == end) {
+                return begin;
+            }
             *p = value & 0x7F;
             value >>= 7;
             if (value != 0) {
                 *p++ |= 0x80;
-                if (p == end) {
-                    return begin;
-                }
             } else {
                 p++;
                 break;
@@ -282,7 +284,6 @@ struct Base128StreamWriter {
 };
 
 //! Base128 decoder
-template<class TVal>
 struct Base128StreamReader {
     unsigned char* pos_;
     const unsigned char* end_;
@@ -293,15 +294,34 @@ struct Base128StreamReader {
     {
     }
 
+    template<class TVal>
     TVal next() {
         Base128Int<TVal> value;
-        pos_ = value.get(pos_, end_);
+        auto p = value.get(pos_, end_);
+        if (p == pos_) {
+            // report error
+        }
+        pos_ = p;
         return static_cast<TVal>(value);
     }
 
-    typedef unsigned char* Iterator;
+    //! Read uncompressed value from stream
+    template<class TVal>
+    TVal* read_raw() {
+        size_t sz = sizeof(TVal);
+        if (space_left() < sz) {
+            return nullptr;
+        }
+        TVal* val = *reinterpret_cast<TVal*>(pos_);
+        pos_ += sz;
+        return val;
+    }
 
-    Iterator pos() const {
+    size_t space_left() const {
+        return end_ - pos_;
+    }
+
+    unsigned char* pos() const {
         return pos_;
     }
 };
@@ -334,8 +354,8 @@ template<class Stream, class TVal>
 struct ZigZagStreamReader {
     Stream stream_;
 
-    ZigZagStreamReader(unsigned char* begin, unsigned char* end)
-        : stream_(begin, end) {
+    ZigZagStreamReader(Base128StreamReader& stream)
+        : stream_(stream) {
     }
 
     TVal next() {
@@ -343,8 +363,7 @@ struct ZigZagStreamReader {
         return (n >> 1) ^ (-(n & 1));
     }
 
-    typedef typename Stream::Iterator Iterator;
-    Iterator pos() const {
+    unsigned char* pos() const {
         return stream_.pos();
     }
 };
@@ -383,9 +402,8 @@ struct DeltaStreamReader {
     Stream stream_;
     TVal prev_;
 
-    template<class FwdIt>
-    DeltaStreamReader(FwdIt begin, FwdIt end)
-        : stream_(begin, end)
+    DeltaStreamReader(Base128StreamReader& stream)
+        : stream_(stream)
         , prev_()
     {
     }
@@ -397,9 +415,7 @@ struct DeltaStreamReader {
         return value;
     }
 
-    typedef typename Stream::Iterator Iterator;
-
-    Iterator pos() const {
+    unsigned char* pos() const {
         return stream_.pos();
     }
 };
@@ -452,31 +468,28 @@ struct RLEStreamWriter {
     }
 };
 
-template<class Stream, typename TVal>
+template<typename TVal>
 struct RLEStreamReader {
-    Stream stream_;
+    Base128StreamReader& stream_;
     TVal prev_;
     TVal reps_;
 
-    template<class FwdIt>
-    RLEStreamReader(FwdIt begin, FwdIt end)
-        : stream_(begin, end)
+    RLEStreamReader(Base128StreamReader& stream)
+        : stream_(stream)
         , prev_()
         , reps_()
     {}
 
     TVal next() {
         if (reps_ == 0) {
-            reps_ = stream_.next();
-            prev_ = stream_.next();
+            reps_ = stream_.next<TVal>();
+            prev_ = stream_.next<TVal>();
         }
         reps_--;
         return prev_;
     }
 
-    typedef typename Stream::Iterator Iterator;
-
-    Iterator pos() const {
+    unsigned char* pos() const {
         return stream_.pos();
     }
 };
@@ -485,8 +498,7 @@ struct RLEStreamReader {
 typedef RLEStreamWriter<uint32_t> RLELenWriter;
 
 // Base128 -> RLE -> Length
-typedef Base128StreamReader<uint32_t> __Base128LenReader;
-typedef RLEStreamReader<__Base128LenReader, uint32_t> RLELenReader;
+typedef RLEStreamReader<uint32_t> RLELenReader;
 
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
 typedef RLEStreamWriter<int64_t> __RLEWriter;
@@ -494,8 +506,7 @@ typedef ZigZagStreamWriter<__RLEWriter, int64_t> __ZigZagWriter;
 typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
 
 // Base128 -> RLE -> ZigZag -> Delta -> int64_t
-typedef Base128StreamReader<uint64_t> __Base128Reader;
-typedef RLEStreamReader<__Base128Reader, int64_t> __RLEReader;
+typedef RLEStreamReader<int64_t> __RLEReader;
 typedef ZigZagStreamReader<__RLEReader, int64_t> __ZigZagReader;
 typedef DeltaStreamReader<__ZigZagReader, int64_t> DeltaRLEReader;
 
