@@ -4,70 +4,94 @@
 
 namespace Akumuli {
 
-//! Stream that can be used to read/write data by 4-bits
-struct HalfByteStream {
-    ByteVector *data;
+//! Stream that can be used to write data by 4-bits
+struct HalfByteStreamWriter {
+    Base128StreamWriter& stream;
     size_t write_pos;
-    size_t read_pos;
     unsigned char tmp;
 
-    HalfByteStream(ByteVector *d, size_t numblocks=0u) :
-        data(d),
-        write_pos(numblocks),
-        read_pos(0),
-        tmp(0) {
+    HalfByteStreamWriter(Base128StreamWriter& stream, size_t numblocks=0u)
+        : stream(stream)
+        , write_pos(numblocks)
+        , tmp(0)
+    {
     }
 
-    void add4bits(unsigned char value) {
+    aku_Status add4bits(unsigned char value) {
         if (write_pos % 2 == 0) {
             tmp = value & 0xF;
         } else {
             tmp |= (value << 4);
-            data->push_back(tmp);
+            auto status = stream->put_byte(tmp);
+            if (status != AKU_SUCCESS) {
+                return status;
+            }
             tmp = 0;
         }
         write_pos++;
-    }
-
-    unsigned char read4bits() {
-        if (read_pos % 2 == 0) {
-            return data->at(read_pos++ / 2) & 0xF;
-        }
-        return data->at(read_pos++ / 2) >> 4;
+        return AKU_SUCCESS;
     }
 
     void close() {
         if (write_pos % 2 != 0) {
-            data->push_back(tmp);
+            auto status = stream->put_byte(tmp);
+            if (status != AKU_SUCCESS) {
+                return status;
+            }
         }
+        return AKU_SUCCESS;
     }
 };
 
-size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         ByteVector *buffer)
+//! Stream that can be used to write data by 4-bits
+struct HalfByteStreamReader {
+    Base128StreamReader& stream;
+    size_t read_pos;
+    unsigned char tmp;
+
+    HalfByteStreamReader(Base128StreamReader& stream, size_t numblocks=0u)
+        : stream(stream)
+        , read_pos(0)
+        , tmp(0)
+    {
+    }
+
+    unsigned char read4bits() {
+        if (read_pos % 2 == 0) {
+            //return data->at(read_pos++ / 2) & 0xF;
+        }
+        //return data->at(read_pos++ / 2) >> 4;
+        throw "Not implemented";
+    }
+};
+
+size_t CompressionUtil::compress_doubles(std::vector<HeaderCell> const& input,
+                                         Base128StreamWriter&           stream)
 {
     uint64_t prev_in_series = 0ul;
-    HalfByteStream stream(buffer);
+    HalfByteStreamWriter stream(stream);
     for (size_t ix = 0u; ix != input.size(); ix++) {
-        union {
-            double real;
-            uint64_t bits;
-        } curr = {};
-        curr.real = input.at(ix);
-        uint64_t diff = curr.bits ^ prev_in_series;
-        prev_in_series = curr.bits;
-        int res = 64;
-        if (diff != 0) {
-            res = __builtin_clzl(diff);
-        }
-        int nblocks = 0xF - res / 4;
-        if (nblocks < 0) {
-            nblocks = 0;
-        }
-        stream.add4bits(nblocks);
-        for (int i = (nblocks + 1); i --> 0;) {
-            stream.add4bits(diff & 0xF);
-            diff >>= 4;
+        if (input.at(ix).type == HeaderCell::FLOAT) {
+            union {
+                double real;
+                uint64_t bits;
+            } curr = {};
+            curr.real = input.at(ix);
+            uint64_t diff = curr.bits ^ prev_in_series;
+            prev_in_series = curr.bits;
+            int res = 64;
+            if (diff != 0) {
+                res = __builtin_clzl(diff);
+            }
+            int nblocks = 0xF - res / 4;
+            if (nblocks < 0) {
+                nblocks = 0;
+            }
+            stream.add4bits(nblocks);
+            for (int i = (nblocks + 1); i --> 0;) {
+                stream.add4bits(diff & 0xF);
+                diff >>= 4;
+            }
         }
     }
     stream.close();
@@ -183,7 +207,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         return AKU_EOVERFLOW;
     }
     *ncolumns = NCOLUMNS;
-    for (int col = 0; col < NCOLUMNS; col++) {
+    for (uint32_t col = 0; col < NCOLUMNS; col++) {
         // Save types stream
         uint32_t* types_stream_size = stream.allocate<uint32_t>();
         if (types_stream_size == nullptr) {
@@ -198,11 +222,11 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
             }
         }
         types_stream.commit();
-        *types_stream_size = (uint32_t)itypes_stream.size();
+        *types_stream_size = (uint32_t)types_stream.size();
 
         // Save int stream
+        DeltaRLEWriter ints_stream(stream);
         uint32_t* ints_stream_size = stream.allocate<uint32_t>();
-        DeltaRLEWriter<int64_t> ints_stream(stream);
         for (const auto& item: data.table[col]) {
             if (item.type == HeaderCell::INT) {
                 auto status = ints_stream.put(item.value.intval);
@@ -224,7 +248,6 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
          *             stream size - uint32
          *             bytes:
          */
-        ...
     }
 
     // Save metadata
