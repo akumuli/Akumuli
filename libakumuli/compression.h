@@ -34,14 +34,15 @@ namespace Akumuli {
 
 typedef std::vector<unsigned char> ByteVector;
 
-enum ChunkHeaderCellType {
-    NOT_SET = 0,
-    INT,
-    FLOAT,
-    BLOB,
-};
-
 struct HeaderCell {
+
+    enum ChunkHeaderCellType {
+        NOT_SET = 0,
+        INT,
+        FLOAT,
+        BLOB,
+    };
+
     // Types
     struct blob_t {
             uint32_t offset;
