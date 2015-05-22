@@ -160,3 +160,50 @@ BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
     };
     test_doubles_compression(input);
 }
+
+void test_chunk_header_compression() {
+    ChunkHeader header;
+
+    // Fill chunk header
+    // 0 - integer
+    // 1 - double, integer
+    // 2 - blob
+    for (int i = 0; i < 10; i++) {
+        header.paramids.push_back(0);
+        header.paramids.push_back(1);
+        header.paramids.push_back(2);
+    }
+    std::sort(header.paramids.begin(), header.paramids.end());
+
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 10; j++) {
+            header.timestamps.push_back(j);
+        }
+    }
+
+    for (int row = 0; row < 30; row++) {
+        HeaderCell cell;
+        if (row < 10) {
+            cell.type = HeaderCell::INT;
+            cell.value.intval = row;
+            header.table[0].at(row) = cell;
+        } else if (row < 20) {
+            cell.type = HeaderCell::FLOAT;
+            cell.value.floatval = double(row - 10);
+            header.table[0].at(row) = cell;
+            cell.type = HeaderCell::INT;
+            cell.value.intval = row - 10;
+            header.table[1].at(row) = cell;
+        } else if (row < 30) {
+            cell.type = HeaderCell::BLOB;
+            cell.value.blobval.length = row;
+            cell.value.blobval.offset = row - 20;
+            header.table[0].at(row) = cell;
+        }
+    }
+    header.longest_row = 2;
+
+    aku_Timestamp tsbegin = 0, tsend = 0;
+    uint32_t cardinality = 0;
+    CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, writer, header);
+}
