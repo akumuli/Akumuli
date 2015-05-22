@@ -205,5 +205,34 @@ void test_chunk_header_compression() {
 
     aku_Timestamp tsbegin = 0, tsend = 0;
     uint32_t cardinality = 0;
-    CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, writer, header);
+
+    struct Writer : ChunkWriter {
+        std::vector<char> buffer;
+
+        Writer(size_t size) {
+            buffer.resize(size);
+        }
+
+        virtual aku_MemRange allocate() {
+            return { (void*)buffer.data(), (uint32_t)buffer.size() };
+        }
+
+        virtual aku_Status commit(size_t bytes_written) {
+            if (bytes_written > buffer.size()) {
+                return AKU_EOVERFLOW;
+            }
+            buffer.resize(bytes_written);
+            return AKU_SUCCESS;
+        }
+
+    };
+
+    Writer writer(1000);
+
+    auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, header);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+
+    unsigned char* pbegin;
+    unsigned char* pend;
+    CompressionUtil::decode_chunk(header, &pbegin, &pend, 0, 0, 0);
 }

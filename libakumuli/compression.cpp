@@ -174,9 +174,62 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     }
     timestamp_stream.commit();
     *timestamp_stream_size = (uint32_t)timestamp_stream.size();
-    // TODO: implement compression
-    *total_size = 0;
-    return AKU_ENOT_IMPLEMENTED;
+
+    // Columns
+    const uint32_t NCOLUMNS = data.longest_row;
+    // Save number of columns
+    uint32_t* ncolumns = stream.allocate<uint32_t>();
+    if (ncolumns == nullptr) {
+        return AKU_EOVERFLOW;
+    }
+    *ncolumns = NCOLUMNS;
+    for (int col = 0; col < NCOLUMNS; col++) {
+        // Save types stream
+        uint32_t* types_stream_size = stream.allocate<uint32_t>();
+        if (types_stream_size == nullptr) {
+            return AKU_EOVERFLOW;
+        }
+        RLEStreamWriter<int> types_stream(stream);
+        for (const auto& item: data.table[col]) {
+            int t = item.type;
+            auto status = types_stream.put(t);
+            if (status != AKU_SUCCESS) {
+                return status;
+            }
+        }
+        types_stream.commit();
+        *types_stream_size = (uint32_t)itypes_stream.size();
+
+        // Save int stream
+        uint32_t* ints_stream_size = stream.allocate<uint32_t>();
+        DeltaRLEWriter<int64_t> ints_stream(stream);
+        for (const auto& item: data.table[col]) {
+            if (item.type == HeaderCell::INT) {
+                auto status = ints_stream.put(item.value.intval);
+                if (status != AKU_SUCCESS) {
+                    return status;
+                }
+            }
+        }
+        ints_stream.commit();
+        *ints_stream_size = (uint32_t)ints_stream.size();
+
+        /*         double stream:
+         *             stream size - uint32
+         *             bytes:
+         *         lengths stream: (note: blob type)
+         *             stream size - uint32
+         *             bytes:
+         *         offsets stream: (note: blob type)
+         *             stream size - uint32
+         *             bytes:
+         */
+        ...
+    }
+
+    // Save metadata
+    *total_size = stream.size();
+    return AKU_SUCCESS;
 }
 
 int CompressionUtil::decode_chunk( ChunkHeader *header
