@@ -124,8 +124,8 @@ struct CompressionUtil {
       * @param buffer resulting byte array
       */
     static
-    size_t compress_doubles(const std::vector<HeaderCell> &input,
-                            Base128StreamWriter &stream);  // TODO: maybe I should use plain old buffer here
+    aku_Status compress_doubles(const std::vector<HeaderCell> &input,
+                            Base128StreamWriter &stream, size_t *size);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
       * @param buffer input data

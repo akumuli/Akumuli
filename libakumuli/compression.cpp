@@ -65,8 +65,9 @@ struct HalfByteStreamReader {
     }
 };
 
-size_t CompressionUtil::compress_doubles(std::vector<HeaderCell> const& input,
-                                         Base128StreamWriter&           stream)
+aku_Status CompressionUtil::compress_doubles(std::vector<HeaderCell> const& input,
+                                             Base128StreamWriter&           stream,
+                                             size_t                        *size)
 {
     uint64_t prev_in_series = 0ul;
     HalfByteStreamWriter stream(stream);
@@ -87,15 +88,24 @@ size_t CompressionUtil::compress_doubles(std::vector<HeaderCell> const& input,
             if (nblocks < 0) {
                 nblocks = 0;
             }
-            stream.add4bits(nblocks);
-            for (int i = (nblocks + 1); i --> 0;) {
-                stream.add4bits(diff & 0xF);
-                diff >>= 4;
+            auto status = stream.add4bits(nblocks);
+            if (status == AKU_SUCCESS) {
+                for (int i = (nblocks + 1); i --> 0;) {
+                    status = stream.add4bits(diff & 0xF);
+                    if (status != AKU_SUCCESS) {
+                        break;
+                    }
+                    diff >>= 4;
+                }
+            }
+            if (status != AKU_SUCCESS) {
+                return status;
             }
         }
     }
     stream.close();
-    return stream.write_pos;
+    *size = stream.write_pos;
+    return AKU_SUCCESS;
 }
 
 void CompressionUtil::decompress_doubles(ByteVector& buffer,
@@ -137,12 +147,9 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
   *     stream size - uint32 - number of bytes in a stream
   *     body - array
   * payload stream:
-  *     ncolumns - number of columns stored
+  *     ncolumns - number of columns stored (for future use)
   *     column[0]:
   *         types stream:
-  *             stream size - uint32
-  *             bytes
-  *         int stream:  (note: gaps not stored)
   *             stream size - uint32
   *             bytes
   *         double stream:
@@ -154,7 +161,6 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
   *         offsets stream: (note: blob type)
   *             stream size - uint32
   *             bytes:
-  *     optional columns 1-n with the same layout
   */
 
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
@@ -200,7 +206,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     *timestamp_stream_size = (uint32_t)timestamp_stream.size();
 
     // Columns
-    const uint32_t NCOLUMNS = data.longest_row;
+    const uint32_t NCOLUMNS = 1;
     // Save number of columns
     uint32_t* ncolumns = stream.allocate<uint32_t>();
     if (ncolumns == nullptr) {
@@ -208,7 +214,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     }
     *ncolumns = NCOLUMNS;
     for (uint32_t col = 0; col < NCOLUMNS; col++) {
-        // Save types stream
+        // Types stream
         uint32_t* types_stream_size = stream.allocate<uint32_t>();
         if (types_stream_size == nullptr) {
             return AKU_EOVERFLOW;
@@ -224,30 +230,45 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         types_stream.commit();
         *types_stream_size = (uint32_t)types_stream.size();
 
-        // Save int stream
-        DeltaRLEWriter ints_stream(stream);
-        uint32_t* ints_stream_size = stream.allocate<uint32_t>();
+        // Doubles stream
+        uint32_t* doubles_stream_size = stream.allocate<uint32_t>();
+        if (doubles_stream_size == nullptr) {
+            return AKU_EOVERFLOW;
+        }
+        size_t ndobules = 0;
+        auto status = CompressionUtil::compress_doubles(data.table[col], stream, &ndoubles);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        *doubles_stream_size = (uint32_t)ndoubles;
+
+        // Blob lengths stream
+        uint32_t* lengths_stream_size = stream.allocate<uint32_t>();
+        if (lengths_stream_size == nullptr) {
+            return AKU_EOVERFLOW;
+        }
+        RLELenWriter len_steram(stream);
         for (const auto& item: data.table[col]) {
-            if (item.type == HeaderCell::INT) {
-                auto status = ints_stream.put(item.value.intval);
-                if (status != AKU_SUCCESS) {
-                    return status;
-                }
+            if (item.type == HeaderCell::BLOB) {
+                len_stream.put(item.value.blobval.length);
             }
         }
-        ints_stream.commit();
-        *ints_stream_size = (uint32_t)ints_stream.size();
+        len_stream.commit();
+        *lengths_stream_size = (uint32_t)len_stream.size();
 
-        /*         double stream:
-         *             stream size - uint32
-         *             bytes:
-         *         lengths stream: (note: blob type)
-         *             stream size - uint32
-         *             bytes:
-         *         offsets stream: (note: blob type)
-         *             stream size - uint32
-         *             bytes:
-         */
+        // Blob offsets stream
+        uint32_t* offset_stream_size = stream.allocate<uint32_t>();
+        if (offset_stream_size == nullptr) {
+            return AKU_EOVERFLOW;
+        }
+        DeltaRLEWriter offset_stream(stream);
+        for (const auto& item: data.table[col]) {
+            if (item.type == HeaderCell::BLOB) {
+                offset_stream.put(item.value.blobval.offset);
+            }
+        }
+        offset_stream.commit();
+        *offset_stream_size = (uint32_t)offset_stream.size();
     }
 
     // Save metadata
