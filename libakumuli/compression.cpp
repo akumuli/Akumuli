@@ -22,7 +22,7 @@ struct HalfByteStreamWriter {
             tmp = value & 0xF;
         } else {
             tmp |= (value << 4);
-            auto status = stream->put_byte(tmp);
+            auto status = stream.put(tmp);
             if (status != AKU_SUCCESS) {
                 return status;
             }
@@ -32,9 +32,9 @@ struct HalfByteStreamWriter {
         return AKU_SUCCESS;
     }
 
-    void close() {
+    aku_Status close() {
         if (write_pos % 2 != 0) {
-            auto status = stream->put_byte(tmp);
+            auto status = stream.put(tmp);
             if (status != AKU_SUCCESS) {
                 return status;
             }
@@ -56,28 +56,33 @@ struct HalfByteStreamReader {
     {
     }
 
-    unsigned char read4bits() {
+    std::tuple<aku_Status, unsigned char> read4bits() {
         if (read_pos % 2 == 0) {
-            //return data->at(read_pos++ / 2) & 0xF;
+            auto p = stream.read_raw<unsigned char>();
+            if (p == nullptr) {
+                return std::make_pair(AKU_EOVERFLOW, '\0');
+            }
+            read_pos++;
+            return std::make_tuple(AKU_SUCCESS, tmp & 0xF);
         }
-        //return data->at(read_pos++ / 2) >> 4;
-        throw "Not implemented";
+        read_pos++;
+        return std::make_tuple(AKU_SUCCESS, tmp >> 4);
     }
 };
 
 aku_Status CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
-                                             Base128StreamWriter&           stream,
+                                             Base128StreamWriter&           wstream,
                                              size_t                        *size)
 {
     uint64_t prev_in_series = 0ul;
-    HalfByteStreamWriter stream(stream);
+    HalfByteStreamWriter stream(wstream);
     for (size_t ix = 0u; ix != input.size(); ix++) {
         if (input.at(ix).type == ChunkValue::FLOAT) {
             union {
                 double real;
                 uint64_t bits;
             } curr = {};
-            curr.real = input.at(ix);
+            curr.real = input.at(ix).value.floatval;
             uint64_t diff = curr.bits ^ prev_in_series;
             prev_in_series = curr.bits;
             int res = 64;
@@ -108,18 +113,27 @@ aku_Status CompressionUtil::compress_doubles(std::vector<ChunkValue> const& inpu
     return AKU_SUCCESS;
 }
 
-void CompressionUtil::decompress_doubles(ByteVector& buffer,
-                                         size_t numblocks,
-                                         std::vector<double> *output)
+aku_Status CompressionUtil::decompress_doubles(Base128StreamReader& rstream,
+                                               size_t               numblocks,
+                                               std::vector<double> *output)
 {
+    aku_Status status = AKU_SUCCESS;
     uint64_t prev_in_series = 0ul;
-    HalfByteStream stream(&buffer, numblocks);
+    HalfByteStreamReader stream(rstream, numblocks);
     size_t ix = 0;
     while(numblocks) {
-        uint64_t diff = 0ul;
-        int nsteps = stream.read4bits();
+        uint64_t diff   = 0ul;
+        int      nsteps = 0;
+        std::tie(status, nsteps) = stream.read4bits();
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
         for (int i = 0; i < (nsteps + 1); i++) {
-            uint64_t delta = stream.read4bits();
+            uint64_t delta = 0ul;
+            std::tie(status, delta) = stream.read4bits();
+            if (status != AKU_SUCCESS) {
+                return status;
+            }
             diff |= delta << (i*4);
         }
         numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of 4bit blocks
@@ -132,6 +146,7 @@ void CompressionUtil::decompress_doubles(ByteVector& buffer,
         prev_in_series = curr.bits;
         ix++;
     }
+    return status;
 }
 
 /** NOTE:

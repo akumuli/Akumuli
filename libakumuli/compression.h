@@ -80,75 +80,6 @@ struct ChunkWriter {
     virtual aku_Status commit(size_t bytes_written) = 0;
 };
 
-struct CompressionUtil {
-
-    /** Compress and write ChunkHeader to memory stream.
-      * @param n_elements out parameter - number of written elements
-      * @param ts_begin out parameter - first timestamp
-      * @param ts_end out parameter - last timestamp
-      * @param data ChunkHeader to compress
-      */
-    static
-    aku_Status encode_chunk( uint32_t           *n_elements
-                           , aku_Timestamp      *ts_begin
-                           , aku_Timestamp      *ts_end
-                           , ChunkWriter        *writer
-                           , const ChunkHeader &data
-                           );
-
-    /** Decompress ChunkHeader.
-      * @brief Decode part of the ChunkHeader structure depending on stage and steps values.
-      * First goes list of timestamps, then all other values.
-      * @param header out header
-      * @param pbegin in - begining of the data, out - new begining of the data
-      * @param end end of the data
-      * @param stage current stage
-      * @param steps number of stages to do
-      * @param probe_length number of elements in header
-      * @return current stage number
-      */
-    static
-    int decode_chunk( ChunkHeader          *header
-                    , const unsigned char **pbegin
-                    , const unsigned char  *pend
-                    , int                   stage
-                    , int                   steps
-                    , uint32_t              probe_length);
-
-    /** Compress list of doubles.
-      * @param input array of doubles
-      * @param params array of parameter ids
-      * @param buffer resulting byte array
-      */
-    static
-    aku_Status compress_doubles(const std::vector<ChunkValue> &input,
-                            Base128StreamWriter &stream, size_t *size);  // TODO: maybe I should use plain old buffer here
-
-    /** Decompress list of doubles.
-      * @param buffer input data
-      * @param numbloks number of 4bit blocs inside buffer
-      * @param params list of parameter ids
-      * @param output resulting array
-      */
-    static
-    void decompress_doubles(ByteVector& buffer,
-                            size_t numblocks,
-                            std::vector<double> *output);
-
-    /** Convert from chunk order to time order.
-      * @note in chunk order all data elements ordered by series id first and then by timestamp,
-      * in time order everythin ordered by time first and by id second.
-      */
-    static bool convert_from_chunk_order(const ChunkHeader &header, ChunkHeader* out);
-
-    /** Convert from time order to chunk order.
-      * @note in chunk order all data elements ordered by series id first and then by timestamp,
-      * in time order everythin ordered by time first and by id second.
-      */
-    static bool convert_from_time_order(const ChunkHeader &header, ChunkHeader* out);
-};
-
-
 //! Base 128 encoded integer
 template<class TVal>
 class Base128Int {
@@ -499,6 +430,74 @@ struct RLEStreamReader {
     unsigned char* pos() const {
         return stream_.pos();
     }
+};
+
+struct CompressionUtil {
+
+    /** Compress and write ChunkHeader to memory stream.
+      * @param n_elements out parameter - number of written elements
+      * @param ts_begin out parameter - first timestamp
+      * @param ts_end out parameter - last timestamp
+      * @param data ChunkHeader to compress
+      */
+    static
+    aku_Status encode_chunk( uint32_t           *n_elements
+                           , aku_Timestamp      *ts_begin
+                           , aku_Timestamp      *ts_end
+                           , ChunkWriter        *writer
+                           , const ChunkHeader &data
+                           );
+
+    /** Decompress ChunkHeader.
+      * @brief Decode part of the ChunkHeader structure depending on stage and steps values.
+      * First goes list of timestamps, then all other values.
+      * @param header out header
+      * @param pbegin in - begining of the data, out - new begining of the data
+      * @param end end of the data
+      * @param stage current stage
+      * @param steps number of stages to do
+      * @param probe_length number of elements in header
+      * @return current stage number
+      */
+    static
+    int decode_chunk( ChunkHeader          *header
+                    , const unsigned char **pbegin
+                    , const unsigned char  *pend
+                    , int                   stage
+                    , int                   steps
+                    , uint32_t              probe_length);
+
+    /** Compress list of doubles.
+      * @param input array of doubles
+      * @param params array of parameter ids
+      * @param buffer resulting byte array
+      */
+    static
+    aku_Status compress_doubles(const std::vector<ChunkValue> &input,
+                                Base128StreamWriter &wstream, size_t *size);  // TODO: maybe I should use plain old buffer here
+
+    /** Decompress list of doubles.
+      * @param buffer input data
+      * @param numbloks number of 4bit blocs inside buffer
+      * @param params list of parameter ids
+      * @param output resulting array
+      */
+    static
+    aku_Status decompress_doubles(Base128StreamReader &rstream,
+                            size_t numblocks,
+                            std::vector<double> *output);
+
+    /** Convert from chunk order to time order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_chunk_order(const ChunkHeader &header, ChunkHeader* out);
+
+    /** Convert from time order to chunk order.
+      * @note in chunk order all data elements ordered by series id first and then by timestamp,
+      * in time order everythin ordered by time first and by id second.
+      */
+    static bool convert_from_time_order(const ChunkHeader &header, ChunkHeader* out);
 };
 
 // Length -> RLE -> Base128
