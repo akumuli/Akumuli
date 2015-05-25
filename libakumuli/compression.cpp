@@ -65,14 +65,14 @@ struct HalfByteStreamReader {
     }
 };
 
-aku_Status CompressionUtil::compress_doubles(std::vector<HeaderCell> const& input,
+aku_Status CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
                                              Base128StreamWriter&           stream,
                                              size_t                        *size)
 {
     uint64_t prev_in_series = 0ul;
     HalfByteStreamWriter stream(stream);
     for (size_t ix = 0u; ix != input.size(); ix++) {
-        if (input.at(ix).type == HeaderCell::FLOAT) {
+        if (input.at(ix).type == ChunkValue::FLOAT) {
             union {
                 double real;
                 uint64_t bits;
@@ -205,75 +205,77 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     timestamp_stream.commit();
     *timestamp_stream_size = (uint32_t)timestamp_stream.size();
 
-    // Columns
-    const uint32_t NCOLUMNS = 1;
-    // Save number of columns
+    // Save number of columns (always 1)
     uint32_t* ncolumns = stream.allocate<uint32_t>();
     if (ncolumns == nullptr) {
         return AKU_EOVERFLOW;
     }
-    *ncolumns = NCOLUMNS;
-    for (uint32_t col = 0; col < NCOLUMNS; col++) {
-        // Types stream
-        uint32_t* types_stream_size = stream.allocate<uint32_t>();
-        if (types_stream_size == nullptr) {
-            return AKU_EOVERFLOW;
+    *ncolumns = 1;
+    // Types stream
+    uint32_t* types_stream_size = stream.allocate<uint32_t>();
+    if (types_stream_size == nullptr) {
+        return AKU_EOVERFLOW;
+    }
+    RLEStreamWriter<int> types_stream(stream);
+    for (const auto& item: data.values[col]) {
+        int t = item.type;
+        auto status = types_stream.put(t);
+        if (status != AKU_SUCCESS) {
+            return status;
         }
-        RLEStreamWriter<int> types_stream(stream);
-        for (const auto& item: data.table[col]) {
-            int t = item.type;
-            auto status = types_stream.put(t);
+    }
+    types_stream.commit();
+    *types_stream_size = (uint32_t)types_stream.size();
+
+    // Doubles stream
+    uint32_t* doubles_stream_size = stream.allocate<uint32_t>();
+    if (doubles_stream_size == nullptr) {
+        return AKU_EOVERFLOW;
+    }
+    size_t ndobules = 0;
+    auto status = CompressionUtil::compress_doubles(data.values[col], stream, &ndoubles);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    *doubles_stream_size = (uint32_t)ndoubles;
+
+    // Blob lengths stream
+    uint32_t* lengths_stream_size = stream.allocate<uint32_t>();
+    if (lengths_stream_size == nullptr) {
+        return AKU_EOVERFLOW;
+    }
+    RLELenWriter len_steram(stream);
+    for (const auto& item: data.values[col]) {
+        if (item.type == ChunkValue::BLOB) {
+            auto status = len_stream.put(item.value.blobval.length);
             if (status != AKU_SUCCESS) {
                 return status;
             }
         }
-        types_stream.commit();
-        *types_stream_size = (uint32_t)types_stream.size();
-
-        // Doubles stream
-        uint32_t* doubles_stream_size = stream.allocate<uint32_t>();
-        if (doubles_stream_size == nullptr) {
-            return AKU_EOVERFLOW;
-        }
-        size_t ndobules = 0;
-        auto status = CompressionUtil::compress_doubles(data.table[col], stream, &ndoubles);
-        if (status != AKU_SUCCESS) {
-            return status;
-        }
-        *doubles_stream_size = (uint32_t)ndoubles;
-
-        // Blob lengths stream
-        uint32_t* lengths_stream_size = stream.allocate<uint32_t>();
-        if (lengths_stream_size == nullptr) {
-            return AKU_EOVERFLOW;
-        }
-        RLELenWriter len_steram(stream);
-        for (const auto& item: data.table[col]) {
-            if (item.type == HeaderCell::BLOB) {
-                len_stream.put(item.value.blobval.length);
-            }
-        }
-        len_stream.commit();
-        *lengths_stream_size = (uint32_t)len_stream.size();
-
-        // Blob offsets stream
-        uint32_t* offset_stream_size = stream.allocate<uint32_t>();
-        if (offset_stream_size == nullptr) {
-            return AKU_EOVERFLOW;
-        }
-        DeltaRLEWriter offset_stream(stream);
-        for (const auto& item: data.table[col]) {
-            if (item.type == HeaderCell::BLOB) {
-                offset_stream.put(item.value.blobval.offset);
-            }
-        }
-        offset_stream.commit();
-        *offset_stream_size = (uint32_t)offset_stream.size();
     }
+    len_stream.commit();
+    *lengths_stream_size = (uint32_t)len_stream.size();
+
+    // Blob offsets stream
+    uint32_t* offset_stream_size = stream.allocate<uint32_t>();
+    if (offset_stream_size == nullptr) {
+        return AKU_EOVERFLOW;
+    }
+    DeltaRLEWriter offset_stream(stream);
+    for (const auto& item: data.values[col]) {
+        if (item.type == ChunkValue::BLOB) {
+            auto status = offset_stream.put(item.value.blobval.offset);
+            if (status != AKU_SUCCESS) {
+                return status;
+            }
+        }
+    }
+    offset_stream.commit();
+    *offset_stream_size = (uint32_t)offset_stream.size();
 
     // Save metadata
     *total_size = stream.size();
-    return AKU_SUCCESS;
+    return writer->commit(stream.size());
 }
 
 int CompressionUtil::decode_chunk( ChunkHeader *header
@@ -283,6 +285,34 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
                                  , int steps
                                  , uint32_t probe_length)
 {
+    Base128StreamReader rstream(*pbegin, pend);
+    uint32_t bytes_total = rstream.read_raw<uint32_t>();
+    uint32_t nelements = rstream.read_raw<uint32_t>();
+   /*
+    * chunk size - uint32 - total number of bytes in the chunk
+    * nelements - uint32 - total number of elements in the chunk
+    * paramid stream:
+    *     stream size - uint32 - number of bytes in a stream
+    *     body - array
+    * timestamp stream:
+    *     stream size - uint32 - number of bytes in a stream
+    *     body - array
+    * payload stream:
+    *     ncolumns - number of columns stored (for future use)
+    *     column[0]:
+    *         types stream:
+    *             stream size - uint32
+    *             bytes
+    *         double stream:
+    *             stream size - uint32
+    *             bytes:
+    *         lengths stream: (note: blob type)
+    *             stream size - uint32
+    *             bytes:
+    *         offsets stream: (note: blob type)
+    *             stream size - uint32
+    *             bytes:
+    */
     throw "Not implemented";
 }
 

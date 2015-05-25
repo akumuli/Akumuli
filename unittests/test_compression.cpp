@@ -182,23 +182,23 @@ void test_chunk_header_compression() {
     }
 
     for (int row = 0; row < 30; row++) {
-        HeaderCell cell;
+        ChunkValue cell;
         if (row < 10) {
-            cell.type = HeaderCell::INT;
+            cell.type = ChunkValue::INT;
             cell.value.intval = row;
-            header.table[0].at(row) = cell;
+            header.values[0].at(row) = cell;
         } else if (row < 20) {
-            cell.type = HeaderCell::FLOAT;
+            cell.type = ChunkValue::FLOAT;
             cell.value.floatval = double(row - 10);
-            header.table[0].at(row) = cell;
-            cell.type = HeaderCell::INT;
+            header.values[0].at(row) = cell;
+            cell.type = ChunkValue::INT;
             cell.value.intval = row - 10;
-            header.table[1].at(row) = cell;
+            header.values[1].at(row) = cell;
         } else if (row < 30) {
-            cell.type = HeaderCell::BLOB;
+            cell.type = ChunkValue::BLOB;
             cell.value.blobval.length = row;
             cell.value.blobval.offset = row - 20;
-            header.table[0].at(row) = cell;
+            header.values[0].at(row) = cell;
         }
     }
     header.longest_row = 2;

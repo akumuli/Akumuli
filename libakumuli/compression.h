@@ -34,11 +34,10 @@ namespace Akumuli {
 
 typedef std::vector<unsigned char> ByteVector;
 
-struct HeaderCell {
+struct ChunkValue {
 
-    enum ChunkHeaderCellType {
+    enum ChunkValueType {
         NOT_SET = 0,
-        INT,
         FLOAT,
         BLOB,
     };
@@ -49,7 +48,6 @@ struct HeaderCell {
             uint32_t length;
     };
     union value_t {
-        int64_t      intval;
         double     floatval;
         blob_t      blobval;
     };
@@ -66,8 +64,7 @@ struct ChunkHeader {
       */
     std::vector<aku_Timestamp>  timestamps;
     std::vector<aku_ParamId>    paramids;
-    int                         longest_row;
-    std::vector<HeaderCell>     table[AKU_MAX_COLUMNS];
+    std::vector<ChunkValue>     values;
 };
 
 struct ChunkWriter {
@@ -124,7 +121,7 @@ struct CompressionUtil {
       * @param buffer resulting byte array
       */
     static
-    aku_Status compress_doubles(const std::vector<HeaderCell> &input,
+    aku_Status compress_doubles(const std::vector<ChunkValue> &input,
                             Base128StreamWriter &stream, size_t *size);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
