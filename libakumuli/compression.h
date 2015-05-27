@@ -477,9 +477,9 @@ struct CompressionUtil {
       * @param output resulting array
       */
     static
-    void decompress_doubles(Base128StreamReader &rstream,
-                            size_t numblocks,
-                            std::vector<double> *output);
+    void decompress_doubles(Base128StreamReader&     rstream,
+                            size_t                   nblocks,
+                            std::vector<ChunkValue> *output);
 
     /** Convert from chunk order to time order.
       * @note in chunk order all data elements ordered by series id first and then by timestamp,

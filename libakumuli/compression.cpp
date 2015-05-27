@@ -1,4 +1,6 @@
 #include "compression.h"
+#include "util.h"
+
 #include <unordered_map>
 #include <algorithm>
 
@@ -97,13 +99,14 @@ void CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
     *size = stream.write_pos;
 }
 
-void CompressionUtil::decompress_doubles(Base128StreamReader& rstream,
-                                         size_t               numblocks,
-                                         std::vector<double> *output)
+void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
+                                         size_t                   numblocks,
+                                         std::vector<ChunkValue> *output)
 {
     uint64_t prev_in_series = 0ul;
     HalfByteStreamReader stream(rstream, numblocks);
-    size_t ix = 0;
+    auto end = output->end();
+    auto it = output->begin();
     while(numblocks) {
         uint64_t diff   = 0ul;
         int nsteps = stream.read4bits();
@@ -117,9 +120,14 @@ void CompressionUtil::decompress_doubles(Base128StreamReader& rstream,
             double real;
         } curr = {};
         curr.bits = prev_in_series ^ diff;
-        output->push_back(curr.real);
         prev_in_series = curr.bits;
-        ix++;
+        // put
+        it = std::find(it, end, [](ChunkValue value) { return value.type == ChunkValue::FLOAT});
+        if (it < end) {
+            it->value.floatval = curr.real;
+        } else {
+            throw StreamOutOfBounds("can't decode doubles, not enough space inside the chunk");
+        }
     }
 }
 
@@ -168,13 +176,12 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , ChunkWriter        *writer
                                         , const ChunkHeader&  data)
 {
-    try {
-        aku_Status status = AKU_SUCCESS;
-        aku_MemRange available_space = writer->allocate();
-        unsigned char* begin = (unsigned char*)available_space.address;
-        unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
-        Base128StreamWriter stream(begin, end);
+    aku_MemRange available_space = writer->allocate();
+    unsigned char* begin = (unsigned char*)available_space.address;
+    unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
+    Base128StreamWriter stream(begin, end);
 
+    try {
         // Total size of the chunk
         uint32_t* total_size = stream.allocate<uint32_t>();
 
@@ -231,12 +238,13 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                 }
             }
         });
+        // Save metadata
+        *total_size = stream.size();
     } catch (StreamOutOfBounds const& e) {
         // TODO: add logging here
         return AKU_EOVERFLOW;
     }
-    // Save metadata
-    *total_size = stream.size();
+
     return writer->commit(stream.size());
 }
 
@@ -255,38 +263,62 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
                                  , uint32_t probe_length)
 {
     Base128StreamReader rstream(*pbegin, pend);
-    const uint32_t* bytes_total = rstream.read_raw<uint32_t>();
-    const uint32_t* nelements = rstream.read_raw<uint32_t>();
+    const uint32_t bytes_expected = rstream.read_raw<uint32_t>();
+    const uint32_t nelements = rstream.read_raw<uint32_t>();
+    AKU_UNUSED(bytes_expected);  // NOTE: this field needed only to be able to skip the chunk entirely
+                                 // without relying on volume's indirection vector
+
+    // Paramids
     read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
-        for (auto i = size; i --> 0;) {
+        for (auto i = nelements; i --> 0;) {
             auto paramid = reader.next();
             header->paramids.push_back(paramid);
         }
     });
-   /*
-    * paramid stream:
-    *     stream size - uint32 - number of bytes in a stream
-    *     body - array
-    * timestamp stream:
-    *     stream size - uint32 - number of bytes in a stream
-    *     body - array
-    * payload stream:
-    *     ncolumns - number of columns stored (for future use)
-    *     column[0]:
-    *         types stream:
-    *             stream size - uint32
-    *             bytes
-    *         double stream:
-    *             stream size - uint32
-    *             bytes:
-    *         lengths stream: (note: blob type)
-    *             stream size - uint32
-    *             bytes:
-    *         offsets stream: (note: blob type)
-    *             stream size - uint32
-    *             bytes:
-    */
-    throw "Not implemented";
+
+    // Timestamps
+    read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+        for (auto i = nelements; i--> 0;) {
+            auto timestamp = reader.next();
+            header->timestamps.push_back(timestamp);
+        }
+    });
+
+    // Payload
+    const uint32_t ncolumns = rstream.read_raw<uint32_t>();
+    AKU_UNUSED(ncolumns);
+
+    // Types stream
+    read_from_stream<RLEStreamReader<int>>(rstream, [&](RLEStreamReader& reader, uint32_t size) {
+        for (auto i = nelements; i --> 0;) {
+            ChunkValue value = { reader.next() };
+            header->values.push_back(value);
+        }
+    };
+
+    // Doubles stream
+    const uint32_t nblocks = rstream.read_raw<uint32_t>();
+    CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
+
+    // Lengths
+    read_from_stream<RLELenReader>(rstream, [&](RLELenReader& reader, uint32_t size) {
+        for (auto& item: header->values) {
+            if (item.type == ChunkValue::BLOB) {
+                auto len = reader.next();
+                item.value.blobval.length = len;
+            }
+        }
+    });
+
+    // Offsets
+    read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+        for (auto& item: header->values) {
+            if (item.type == ChunkValue::BLOB) {
+                auto offset = reader.next();
+                item.value.blobval.offset = offset;
+            }
+        }
+    });
 }
 
 template<class Fn>
