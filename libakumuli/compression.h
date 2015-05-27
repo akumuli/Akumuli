@@ -27,10 +27,15 @@
 #include <cstddef>
 #include <iterator>
 #include <vector>
+#include <stdexcept>
 
 #include "akumuli.h"
 
 namespace Akumuli {
+
+struct StreamOutOfBounds : std::runtime_error {
+    StreamOutOfBounds(const char* msg);
+};
 
 typedef std::vector<unsigned char> ByteVector;
 
@@ -97,12 +102,12 @@ public:
     /** Read base 128 encoded integer from the binary stream
       * FwdIter - forward iterator.
       */
-    unsigned char* get(unsigned char* begin, const unsigned char* end) {
+    const unsigned char* get(const unsigned char* begin, const unsigned char* end) {
         assert(begin < end);
 
         auto acc = TVal();
         auto cnt = TVal();
-        unsigned char* p = begin;
+        const unsigned char* p = begin;
 
         while (true) {
             if (p == end) {
@@ -155,9 +160,9 @@ public:
 //! Base128 encoder
 struct Base128StreamWriter {
     // underlying memory region
-    const unsigned char* begin_;
-    const unsigned char* end_;
-    unsigned char* pos_;
+    const unsigned char *begin_;
+    const unsigned char *end_;
+    unsigned char       *pos_;
 
     Base128StreamWriter(unsigned char* begin, const unsigned char* end) 
         : begin_(begin)
@@ -176,23 +181,20 @@ struct Base128StreamWriter {
     /** Put value into stream.
      */
     template<class TVal>
-    aku_Status put(TVal value) {
+    void put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char* p = val.put(pos_, end_);
         if (pos_ == p) {
-            return AKU_EOVERFLOW;
+            throw StreamOutOfBounds("can't write value, out of bounds");
         }
         pos_ = p;
-        return AKU_SUCCESS;
     }
 
-    aku_Status put(unsigned char value) {
+    void put(unsigned char value) {
         if (pos_ == end_) {
-            return AKU_EOVERFLOW;
+            throw StreamOutOfBounds("can't write value, out of bounds");
         }
         *pos_++ = value;
-        return AKU_SUCCESS;
-
     }
 
     //! Commit stream
@@ -206,14 +208,16 @@ struct Base128StreamWriter {
         return end_ - pos_;
     }
 
-    /** Try to allocate space inside a stream for future use (needed for size prefixes)
-      * @returns null on error (no space)
+    /** Try to allocate space inside a stream in current position without
+      * compression (needed for size prefixes).
+      * @returns pointer to the value inside the stream
+      * @throw StreamOutOfBounds if there is not enough space for value
       */
     template<class T>
     T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
-            return nullptr;
+            throw StreamOutOfBounds("can't allocate value, not enough space");
         }
         T* result = reinterpret_cast<T*>(pos_);
         pos_ += sz;
@@ -223,10 +227,10 @@ struct Base128StreamWriter {
 
 //! Base128 decoder
 struct Base128StreamReader {
-    unsigned char* pos_;
+    const unsigned char* pos_;
     const unsigned char* end_;
 
-    Base128StreamReader(unsigned char* begin, const unsigned char* end)
+    Base128StreamReader(const unsigned char* begin, const unsigned char* end)
         : pos_(begin)
         , end_(end)
     {
@@ -237,7 +241,7 @@ struct Base128StreamReader {
         Base128Int<TVal> value;
         auto p = value.get(pos_, end_);
         if (p == pos_) {
-            // report error
+            throw StreamOutOfBounds("can't read value, out of bounds");
         }
         pos_ = p;
         return static_cast<TVal>(value);
@@ -245,12 +249,12 @@ struct Base128StreamReader {
 
     //! Read uncompressed value from stream
     template<class TVal>
-    TVal* read_raw() {
+    TVal read_raw() {
         size_t sz = sizeof(TVal);
         if (space_left() < sz) {
-            return nullptr;
+            throw StreamOutOfBounds("can't read value, out of bounds");
         }
-        TVal* val = *reinterpret_cast<TVal*>(pos_);
+        auto val = *reinterpret_cast<const TVal*>(pos_);
         pos_ += sz;
         return val;
     }
@@ -259,7 +263,7 @@ struct Base128StreamReader {
         return end_ - pos_;
     }
 
-    unsigned char* pos() const {
+    const unsigned char* pos() const {
         return pos_;
     }
 };
@@ -274,11 +278,11 @@ struct ZigZagStreamWriter {
         , start_size_(stream.size())
     {
     }
-    aku_Status put(TVal value) {
+    void put(TVal value) {
         // TVal should be signed
         const int shift_width = sizeof(TVal)*8 - 1;
         auto res = (value << 1) ^ (value >> shift_width);
-        return stream_.put(res);
+        stream_.put(res);
     }
     size_t size() const {
         return stream_.size() - start_size_;
@@ -319,10 +323,9 @@ struct DeltaStreamWriter {
     {
     }
 
-    aku_Status put(TVal value) {
-        auto status = stream_.put(static_cast<TVal>(value) - prev_);
+    void put(TVal value) {
+        stream_.put(static_cast<TVal>(value) - prev_);
         prev_ = value;
-        return status;
     }
 
     size_t size() const {
@@ -373,26 +376,17 @@ struct RLEStreamWriter {
         , start_size_(stream.size())
     {}
 
-    aku_Status put(TVal value) {
-        aku_Status status = AKU_SUCCESS;
+    void put(TVal value) {
         if (value != prev_) {
             if (reps_) {
                 // commit changes
-                status = stream_.put(reps_);
-                if (status != AKU_SUCCESS) {
-                    goto END;
-                }
-                status = stream_.put(prev_);
-                if (status != AKU_SUCCESS) {
-                    goto END;
-                }
+                stream_.put(reps_);
+                stream_.put(prev_);
             }
             prev_ = value;
             reps_ = TVal();
         }
         reps_++;
-    END:
-        return status;
     }
 
     size_t size() const {
@@ -473,7 +467,7 @@ struct CompressionUtil {
       * @param buffer resulting byte array
       */
     static
-    aku_Status compress_doubles(const std::vector<ChunkValue> &input,
+    void compress_doubles(const std::vector<ChunkValue> &input,
                                 Base128StreamWriter &wstream, size_t *size);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
@@ -483,7 +477,7 @@ struct CompressionUtil {
       * @param output resulting array
       */
     static
-    aku_Status decompress_doubles(Base128StreamReader &rstream,
+    void decompress_doubles(Base128StreamReader &rstream,
                             size_t numblocks,
                             std::vector<double> *output);
 
