@@ -179,53 +179,49 @@ BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
     test_doubles_compression(input);
 }
 
-/*
 void test_chunk_header_compression() {
-    ChunkHeader header;
+
+    ChunkHeader expected;
+
+    const int NROWS = 10;  // number of rows in one series
+    const int NSER = 2;  // number of series
 
     // Fill chunk header
     // 1 - double
     // 2 - blob
-    for (int i = 0; i < 10; i++) {
-        header.paramids.push_back(0);
-        header.paramids.push_back(1);
-        header.paramids.push_back(2);
+    for (int i = 0; i < NROWS; i++) {
+        expected.paramids.push_back(0);
     }
-    std::sort(header.paramids.begin(), header.paramids.end());
+    for (int i = 0; i < NROWS; i++) {
+        expected.paramids.push_back(1);
+    }
 
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 10; j++) {
-            header.timestamps.push_back(j);
+    for (int i = 0; i < NSER; i++) {
+        for (int j = 0; j < NROWS; j++) {
+            expected.timestamps.push_back(j);
         }
     }
 
-    for (int row = 0; row < 30; row++) {
+    expected.values.resize(NROWS*NSER);
+    for (int row = 0; row < NROWS*NSER; row++) {
         ChunkValue cell;
         if (row < 10) {
-            cell.type = ChunkValue::INT;
-            cell.value.intval = row;
-            header.values[0].at(row) = cell;
-        } else if (row < 20) {
             cell.type = ChunkValue::FLOAT;
-            cell.value.floatval = double(row - 10);
-            header.values[0].at(row) = cell;
-            cell.type = ChunkValue::INT;
-            cell.value.intval = row - 10;
-            header.values[1].at(row) = cell;
-        } else if (row < 30) {
+            cell.value.floatval = double(row);
+            expected.values.at(row) = cell;
+        } else if (row < 20) {
             cell.type = ChunkValue::BLOB;
             cell.value.blobval.length = row;
-            cell.value.blobval.offset = row - 20;
-            header.values[0].at(row) = cell;
+            cell.value.blobval.offset = row - 10;
+            expected.values.at(row) = cell;
         }
     }
-    header.longest_row = 2;
 
     aku_Timestamp tsbegin = 0, tsend = 0;
     uint32_t cardinality = 0;
 
     struct Writer : ChunkWriter {
-        std::vector<char> buffer;
+        std::vector<unsigned char> buffer;
 
         Writer(size_t size) {
             buffer.resize(size);
@@ -242,16 +238,37 @@ void test_chunk_header_compression() {
             buffer.resize(bytes_written);
             return AKU_SUCCESS;
         }
-
     };
 
     Writer writer(1000);
 
-    auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, header);
+    auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, expected);
     BOOST_REQUIRE(status == AKU_SUCCESS);
 
-    unsigned char* pbegin;
-    unsigned char* pend;
-    CompressionUtil::decode_chunk(header, &pbegin, &pend, 0, 0, 0);
+    ChunkHeader actual;
+    const unsigned char* pbegin = writer.buffer.data();
+    const unsigned char* pend = writer.buffer.data() + writer.buffer.size();
+    CompressionUtil::decode_chunk(&actual, &pbegin, pend, 0, 0, 0);
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.paramids.begin(), expected.paramids.end(),
+                                    actual.paramids.begin(), actual.paramids.end());
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.timestamps.begin(), expected.timestamps.end(),
+                                    actual.timestamps.begin(), actual.timestamps.end());
+    for (int i = 0; i < NROWS*NSER; i++) {
+        BOOST_REQUIRE_EQUAL(expected.values.at(i).type,
+                            actual.values.at(i).type);
+        if (expected.values.at(i).type == ChunkValue::FLOAT) {
+            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.floatval,
+                                actual.values.at(i).value.floatval);
+        } else {
+            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.blobval.length,
+                                actual.values.at(i).value.blobval.length);
+            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.blobval.offset,
+                                actual.values.at(i).value.blobval.offset);
+        }
+    }
 }
-*/
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression) {
+    test_chunk_header_compression();
+}
