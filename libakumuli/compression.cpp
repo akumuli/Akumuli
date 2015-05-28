@@ -65,9 +65,8 @@ struct HalfByteStreamReader {
     }
 };
 
-void CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
-                                       Base128StreamWriter&           wstream,
-                                       size_t                        *size)
+size_t CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
+                                         Base128StreamWriter&           wstream)
 {
     uint64_t prev_in_series = 0ul;
     HalfByteStreamWriter stream(wstream);
@@ -96,7 +95,7 @@ void CompressionUtil::compress_doubles(std::vector<ChunkValue> const& input,
         }
     }
     stream.close();
-    *size = stream.write_pos;
+    return stream.write_pos;
 }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
@@ -122,7 +121,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         curr.bits = prev_in_series ^ diff;
         prev_in_series = curr.bits;
         // put
-        it = std::find(it, end, [](ChunkValue value) { return value.type == ChunkValue::FLOAT});
+        it = std::find_if(it, end, [](ChunkValue value) { return value.type == ChunkValue::FLOAT; });
         if (it < end) {
             it->value.floatval = curr.real;
         } else {
@@ -217,9 +216,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 
         // Doubles stream
         uint32_t* doubles_stream_size = stream.allocate<uint32_t>();
-        size_t ndoubles = 0;
-        CompressionUtil::compress_doubles(data.values, stream, &ndoubles);
-        *doubles_stream_size = (uint32_t)ndoubles;
+        *doubles_stream_size = (uint32_t)CompressionUtil::compress_doubles(data.values, stream);
 
         // Blob lengths stream
         write_to_stream<RLELenWriter>(stream, [&](RLELenWriter& len_stream) {
@@ -262,63 +259,68 @@ int CompressionUtil::decode_chunk( ChunkHeader *header
                                  , int steps
                                  , uint32_t probe_length)
 {
-    Base128StreamReader rstream(*pbegin, pend);
-    const uint32_t bytes_expected = rstream.read_raw<uint32_t>();
-    const uint32_t nelements = rstream.read_raw<uint32_t>();
-    AKU_UNUSED(bytes_expected);  // NOTE: this field needed only to be able to skip the chunk entirely
-                                 // without relying on volume's indirection vector
+    try {
+        Base128StreamReader rstream(*pbegin, pend);
+        const uint32_t bytes_expected = rstream.read_raw<uint32_t>();
+        const uint32_t nelements = rstream.read_raw<uint32_t>();
+        AKU_UNUSED(bytes_expected);  // NOTE: this field needed only to be able to skip the chunk entirely
+                                     // without relying on volume's indirection vector
 
-    // Paramids
-    read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
-        for (auto i = nelements; i --> 0;) {
-            auto paramid = reader.next();
-            header->paramids.push_back(paramid);
-        }
-    });
-
-    // Timestamps
-    read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
-        for (auto i = nelements; i--> 0;) {
-            auto timestamp = reader.next();
-            header->timestamps.push_back(timestamp);
-        }
-    });
-
-    // Payload
-    const uint32_t ncolumns = rstream.read_raw<uint32_t>();
-    AKU_UNUSED(ncolumns);
-
-    // Types stream
-    read_from_stream<RLEStreamReader<int>>(rstream, [&](RLEStreamReader& reader, uint32_t size) {
-        for (auto i = nelements; i --> 0;) {
-            ChunkValue value = { reader.next() };
-            header->values.push_back(value);
-        }
-    };
-
-    // Doubles stream
-    const uint32_t nblocks = rstream.read_raw<uint32_t>();
-    CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
-
-    // Lengths
-    read_from_stream<RLELenReader>(rstream, [&](RLELenReader& reader, uint32_t size) {
-        for (auto& item: header->values) {
-            if (item.type == ChunkValue::BLOB) {
-                auto len = reader.next();
-                item.value.blobval.length = len;
+        // Paramids
+        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+            for (auto i = nelements; i --> 0;) {
+                auto paramid = reader.next();
+                header->paramids.push_back(paramid);
             }
-        }
-    });
+        });
 
-    // Offsets
-    read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
-        for (auto& item: header->values) {
-            if (item.type == ChunkValue::BLOB) {
-                auto offset = reader.next();
-                item.value.blobval.offset = offset;
+        // Timestamps
+        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+            for (auto i = nelements; i--> 0;) {
+                auto timestamp = reader.next();
+                header->timestamps.push_back(timestamp);
             }
-        }
-    });
+        });
+
+        // Payload
+        const uint32_t ncolumns = rstream.read_raw<uint32_t>();
+        AKU_UNUSED(ncolumns);
+
+        // Types stream
+        read_from_stream<RLEStreamReader<int>>(rstream, [&](RLEStreamReader<int>& reader, uint32_t size) {
+            for (auto i = nelements; i --> 0;) {
+                ChunkValue value = { reader.next() };
+                header->values.push_back(value);
+            }
+        });
+
+        // Doubles stream
+        const uint32_t nblocks = rstream.read_raw<uint32_t>();
+        CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
+
+        // Lengths
+        read_from_stream<RLELenReader>(rstream, [&](RLELenReader& reader, uint32_t size) {
+            for (auto& item: header->values) {
+                if (item.type == ChunkValue::BLOB) {
+                    auto len = reader.next();
+                    item.value.blobval.length = len;
+                }
+            }
+        });
+
+        // Offsets
+        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+            for (auto& item: header->values) {
+                if (item.type == ChunkValue::BLOB) {
+                    auto offset = reader.next();
+                    item.value.blobval.offset = offset;
+                }
+            }
+        });
+    } catch (StreamOutOfBounds const&) {
+        return AKU_EBAD_DATA;
+    }
+    return AKU_SUCCESS;
 }
 
 template<class Fn>

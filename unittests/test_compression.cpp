@@ -130,43 +130,57 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
 }
 
-void test_doubles_compression(std::vector<double> input) {
+void test_doubles_compression(std::vector<ChunkValue> input) {
     ByteVector buffer;
-    size_t nblocks = CompressionUtil::compress_doubles(input,  &buffer);
-    std::vector<double> output;
-    CompressionUtil::decompress_doubles(buffer, nblocks, &output);
+    buffer.resize(input.size()*10);
+    Base128StreamWriter wstream(buffer.data(), buffer.data() + buffer.size());
+    size_t nblocks = CompressionUtil::compress_doubles(input, wstream);
+    std::vector<ChunkValue> output;
+    Base128StreamReader rstream(buffer.data(), buffer.data() + buffer.size());
+    CompressionUtil::decompress_doubles(rstream, nblocks, &output);
 
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(input.begin(), input.end(), output.begin(), output.end());
+    BOOST_REQUIRE_EQUAL(input.size(), output.size());
+    for(auto i = 0u; i < input.size(); i++) {
+        auto actual = input.at(i);
+        auto expected = output.at(i);
+        BOOST_REQUIRE_EQUAL(actual.type, expected.type);
+        BOOST_REQUIRE_EQUAL(actual.value.floatval, expected.value.floatval);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_doubles_compression_1_series) {
-    std::vector<double> input = {
-        100.1001,
-        100.0999,
-        100.0998,
-        100.0997,
-        100.0996
+    std::vector<ChunkValue> input = {
+        { ChunkValue::FLOAT, 100.1001 },
+        { ChunkValue::FLOAT, 100.0999 },
+        { ChunkValue::FLOAT, 100.0998 },
+        { ChunkValue::FLOAT, 100.0997 },
+        { ChunkValue::FLOAT, 100.0996 },
     };
     test_doubles_compression(input);
 }
 
 BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
-    std::vector<double> input = {
-        100.1001, 200.4999,
-        100.0999, 200.499,
-        100.0998, 200.49,
-        100.0997, 200.5,
-        100.0996, 200.5001
+    std::vector<ChunkValue> input = {
+        { ChunkValue::FLOAT, 100.1001},
+        { ChunkValue::FLOAT, 200.4999},
+        { ChunkValue::FLOAT, 100.0999},
+        { ChunkValue::FLOAT, 200.499},
+        { ChunkValue::FLOAT, 100.0998},
+        { ChunkValue::FLOAT, 200.49},
+        { ChunkValue::FLOAT, 100.0997},
+        { ChunkValue::FLOAT, 200.5},
+        { ChunkValue::FLOAT, 100.0996},
+        { ChunkValue::FLOAT, 200.5001},
     };
     test_doubles_compression(input);
 }
 
+/*
 void test_chunk_header_compression() {
     ChunkHeader header;
 
     // Fill chunk header
-    // 0 - integer
-    // 1 - double, integer
+    // 1 - double
     // 2 - blob
     for (int i = 0; i < 10; i++) {
         header.paramids.push_back(0);
@@ -236,3 +250,4 @@ void test_chunk_header_compression() {
     unsigned char* pend;
     CompressionUtil::decode_chunk(header, &pbegin, &pend, 0, 0, 0);
 }
+*/

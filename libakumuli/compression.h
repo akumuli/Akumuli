@@ -467,8 +467,8 @@ struct CompressionUtil {
       * @param buffer resulting byte array
       */
     static
-    void compress_doubles(const std::vector<ChunkValue> &input,
-                                Base128StreamWriter &wstream, size_t *size);  // TODO: maybe I should use plain old buffer here
+    size_t compress_doubles(const std::vector<ChunkValue> &input,
+                                Base128StreamWriter &wstream);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
       * @param buffer input data
