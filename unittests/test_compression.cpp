@@ -136,6 +136,10 @@ void test_doubles_compression(std::vector<ChunkValue> input) {
     Base128StreamWriter wstream(buffer.data(), buffer.data() + buffer.size());
     size_t nblocks = CompressionUtil::compress_doubles(input, wstream);
     std::vector<ChunkValue> output;
+    output.resize(input.size());
+    for (auto& item: output) {
+        item.type = ChunkValue::FLOAT;
+    }
     Base128StreamReader rstream(buffer.data(), buffer.data() + buffer.size());
     CompressionUtil::decompress_doubles(rstream, nblocks, &output);
 

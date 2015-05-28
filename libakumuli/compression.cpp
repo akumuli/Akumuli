@@ -124,6 +124,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         it = std::find_if(it, end, [](ChunkValue value) { return value.type == ChunkValue::FLOAT; });
         if (it < end) {
             it->value.floatval = curr.real;
+            it++;
         } else {
             throw StreamOutOfBounds("can't decode doubles, not enough space inside the chunk");
         }
