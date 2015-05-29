@@ -271,11 +271,9 @@ struct Base128StreamReader {
 template<class Stream, class TVal>
 struct ZigZagStreamWriter {
     Stream stream_;
-    size_t start_size_;
 
     ZigZagStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
-        , start_size_(stream.size())
     {
     }
     void put(TVal value) {
@@ -285,7 +283,7 @@ struct ZigZagStreamWriter {
         stream_.put(res);
     }
     size_t size() const {
-        return stream_.size() - start_size_;
+        return stream_.size();
     }
     void commit() {
         stream_.commit();
@@ -314,12 +312,10 @@ template<class Stream, typename TVal>
 struct DeltaStreamWriter {
     Stream stream_;
     TVal prev_;
-    size_t start_size_;
 
     DeltaStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
         , prev_()
-        , start_size_(stream.size())
     {
     }
 
@@ -329,7 +325,7 @@ struct DeltaStreamWriter {
     }
 
     size_t size() const {
-        return stream_.size() - start_size_;
+        return stream_.size();
     }
 
     void commit() {
