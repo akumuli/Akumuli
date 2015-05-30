@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
     aku_Timestamp inst = 1111L;
-    aku_MemRange range = {(void*)buffer, sizeof(uint32_t)*sizeof(buffer)};
+    aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
 
@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
     uint32_t buffer[] = {1, 2, 3, 4};
     aku_Timestamp inst = 1111L;
-    aku_MemRange range = {(void*)buffer, sizeof(buffer)*sizeof(uint32_t)};
+    aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
 
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
@@ -470,7 +470,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     }
 }
 
-/*
+
 void generic_compression_test
     ( aku_ParamId param_id
     , aku_Timestamp begin
@@ -488,13 +488,16 @@ void generic_compression_test
     for (int i = 1; true; i++) {
         pos++;
         begin += 1 + std::rand() % 50;
-        header.lengths.push_back(std::rand() % 10 + 1);
-        header.offsets.push_back(pos + std::rand() % 10);
+        ChunkValue value;
+        value.type = ChunkValue::BLOB;
+        value.value.blobval.length = std::rand() % 10 + 1;
+        value.value.blobval.offset = pos + std::rand() % 10;
+        header.values.push_back(value);
         header.paramids.push_back(param_id);
         header.timestamps.push_back(begin);
         char buffer[100];
         aku_MemRange range = {buffer, static_cast<uint32_t>(std::rand() % 99 + 1)};
-        auto status = page->add_chunk(range, header.lengths.size() * 33);
+        auto status = page->add_chunk(range, header.paramids.size() * 33);
         if (status != AKU_SUCCESS) {
             break;
         }
@@ -527,10 +530,10 @@ void generic_compression_test
         if (dir == AKU_CURSOR_DIR_FORWARD) {
             auto act_it = cur.results.begin();
             for (auto i = 0ul; i != cur.results.size(); i++) {
-                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
-                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
-                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
-                BOOST_REQUIRE_EQUAL(act_it->data.ptr, page->read_entry_data(exp_chunk.offsets[i]));
+                BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps.at(i));
+                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids.at(i));
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.values.at(i).value.blobval.length);
+                BOOST_REQUIRE_EQUAL(act_it->data.ptr, page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
                 act_it++;
             }
         } else {
@@ -538,8 +541,8 @@ void generic_compression_test
             for (auto i = 0ul; i != cur.results.size(); i++) {
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
                 BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
-                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.lengths[i]);
-                BOOST_REQUIRE_EQUAL(act_it->data.ptr, page->read_entry_data(exp_chunk.offsets[i]));
+                BOOST_REQUIRE_EQUAL(act_it->length, exp_chunk.values.at(i).value.blobval.length);
+                BOOST_REQUIRE_EQUAL(act_it->data.ptr, page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
                 act_it++;
             }
         }
@@ -581,4 +584,3 @@ BOOST_AUTO_TEST_CASE(Test_Compression_backward_0) {
 BOOST_AUTO_TEST_CASE(Test_Compression_backward_1) {
     generic_compression_test(1u, 0ul, AKU_CURSOR_DIR_BACKWARD, 100);
 }
-*/

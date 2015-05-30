@@ -178,7 +178,7 @@ int PageHeader::add_entry( const aku_ParamId param
     entry->param_id = param;
     entry->time = timestamp;
     entry->length = range.length;
-    memcpy((void*)entry->value, range.address, range.length);
+    memcpy((void*)&entry->value, range.address, range.length);
     *page_index(count) = next_offset;
     next_offset += ENTRY_SIZE;
     count++;
