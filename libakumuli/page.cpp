@@ -516,9 +516,95 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         bst.n_steps += steps;
     }
 
-    bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false)
-    {
-        throw "Not implemented";
+    bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false) {
+        aku_Status status = AKU_SUCCESS;
+        ChunkHeader chunk_header, header;
+
+        auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
+        auto pbegin = (const unsigned char*)(page_->payload + pdesc->begin_offset);
+        auto pend = (const unsigned char*)(page_->payload + pdesc->end_offset);
+        auto probe_length = pdesc->n_elements;
+
+        // TODO:checksum!
+        boost::crc_32_type checksum;
+        checksum.process_block(pbegin, pend);
+        if (checksum.checksum() != pdesc->checksum) {
+            AKU_PANIC("File damaged!");
+            // TODO: report error
+            return false;
+        }
+
+        status = CompressionUtil::decode_chunk(&chunk_header, pbegin, pend, probe_length);
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't decode chunk");
+        }
+
+        // TODO: depending on a query type we can use chunk order or convert back to time-order.
+        // If we extract evertyhing it is better to convert to time order. If we picking some
+        // parameter ids it is better to check if this ids present in a chunk and extract values
+        // in chunk order and only after that - convert results to time-order.
+
+        // Convert from chunk order to time order
+        if (!CompressionUtil::convert_from_chunk_order(chunk_header, &header)) {
+            AKU_PANIC("Bad chunk");
+        }
+
+        int start_pos = 0;
+        if (IS_BACKWARD_) {
+            start_pos = static_cast<int>(probe_length - 1);
+        }
+        bool probe_in_time_range = true;
+
+        auto cursor = cursor_;
+        auto& caller = caller_;
+        auto page = page_;
+
+        auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
+            aku_PData pdata;
+            if (header.values.at(i).type == ChunkValue::BLOB) {
+                pdata.type =  aku_PData::BLOB;
+                pdata.value.blob.begin = page->read_entry_data(header.values.at(i).value.blobval.offset);
+                pdata.value.blob.size = header.values.at(i).value.blobval.length;
+            } else if (header.values.at(i).type == ChunkValue::FLOAT) {
+                pdata.type = aku_PData::FLOAT;
+                pdata.value.float64 = header.values.at(i).value.floatval;
+            }
+            CursorResult result = {
+                header.timestamps.at(i),
+                header.paramids.at(i),
+                pdata,
+            };
+            cursor->put(caller, result);
+        };
+
+        if (IS_BACKWARD_) {
+            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (auto i = start_pos; i != (int)probe_length; i++) {
+                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
+                                      query_.upperbound >= header.timestamps[i];
+                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
+                    put_entry(i);
+                } else {
+                    probe_in_time_range = query_.upperbound >= header.timestamps[i];
+                    if (!probe_in_time_range) {
+                        break;
+                    }
+                }
+            }
+        }
+        return probe_in_time_range;
     }
 
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {

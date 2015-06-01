@@ -51,16 +51,22 @@ typedef struct {
 
 
 //! Payload data
-typedef union {
-    struct {
-        const void *begin;
-        uint32_t    size;
-    } blob;
-    double        float64;
-    int64_t       int64;
-    const char   *string;
-    // Obsolete stuff
-    const void   *ptr;
+typedef struct {
+    //! Value
+    union {
+        //! BLOB type
+        struct {
+            const void *begin;
+            uint32_t    size;
+        } blob;
+        //! Float type
+        double       float64;
+    } value;
+    //! Data element type
+    enum {
+        FLOAT,
+        BLOB
+    } type;
 } aku_PData;
 
 

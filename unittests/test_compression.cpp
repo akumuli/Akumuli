@@ -281,7 +281,8 @@ void test_chunk_header_compression() {
     ChunkHeader actual;
     const unsigned char* pbegin = writer.buffer.data();
     const unsigned char* pend = writer.buffer.data() + writer.buffer.size();
-    CompressionUtil::decode_chunk(&actual, &pbegin, pend, 0, 0, 0);
+    status = CompressionUtil::decode_chunk(&actual, pbegin, pend, cardinality);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.paramids.begin(), expected.paramids.end(),
                                     actual.paramids.begin(), actual.paramids.end());

@@ -435,7 +435,7 @@ struct CompressionUtil {
                            , aku_Timestamp      *ts_begin
                            , aku_Timestamp      *ts_end
                            , ChunkWriter        *writer
-                           , const ChunkHeader &data
+                           , const ChunkHeader&  data
                            );
 
     /** Decompress ChunkHeader.
@@ -450,12 +450,10 @@ struct CompressionUtil {
       * @return current stage number
       */
     static
-    int decode_chunk( ChunkHeader          *header
-                    , const unsigned char **pbegin
-                    , const unsigned char  *pend
-                    , int                   stage
-                    , int                   steps
-                    , uint32_t              probe_length);
+    aku_Status decode_chunk(ChunkHeader          *header
+                           , const unsigned char *pbegin
+                           , const unsigned char  *pend
+                           , uint32_t              nelements);
 
     /** Compress list of doubles.
       * @param input array of doubles

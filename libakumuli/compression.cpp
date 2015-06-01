@@ -182,13 +182,6 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
     Base128StreamWriter stream(begin, end);
 
     try {
-        // Total size of the chunk
-        uint32_t* total_size = stream.allocate<uint32_t>();
-
-        // Number of elements stored
-        uint32_t* cardinality = stream.allocate<uint32_t>();
-        *cardinality = (uint32_t)data.paramids.size();
-
         // ParamId stream
         write_to_stream<DeltaRLEWriter>(stream, [&](DeltaRLEWriter& paramid_stream) {
             for (auto id: data.paramids) {
@@ -198,9 +191,15 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 
         // Timestamp stream
         write_to_stream<DeltaRLEWriter>(stream, [&](DeltaRLEWriter& timestamp_stream) {
+            aku_Timestamp mints = AKU_MAX_TIMESTAMP,
+                          maxts = AKU_MIN_TIMESTAMP;
             for (auto ts: data.timestamps) {
+                mints = std::min(mints, ts);
+                maxts = std::max(maxts, ts);
                 timestamp_stream.put(ts);
             }
+            *ts_begin = mints;
+            *ts_end   = maxts;
         });
 
         // Save number of columns (always 1)
@@ -236,8 +235,6 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                 }
             }
         });
-        // Save metadata
-        *total_size = stream.size();
     } catch (StreamOutOfBounds const& e) {
         // TODO: add logging here
         return AKU_EOVERFLOW;
@@ -253,20 +250,13 @@ void read_from_stream(Base128StreamReader& reader, const Fn& func) {
     func(stream, size_prefix);
 }
 
-int CompressionUtil::decode_chunk( ChunkHeader *header
-                                 , const unsigned char **pbegin
-                                 , const unsigned char *pend
-                                 , int stage
-                                 , int steps
-                                 , uint32_t probe_length)
+aku_Status CompressionUtil::decode_chunk( ChunkHeader         *header
+                                        , const unsigned char *pbegin
+                                        , const unsigned char *pend
+                                        , uint32_t             nelements)
 {
     try {
-        Base128StreamReader rstream(*pbegin, pend);
-        const uint32_t bytes_expected = rstream.read_raw<uint32_t>();
-        const uint32_t nelements = rstream.read_raw<uint32_t>();
-        AKU_UNUSED(bytes_expected);  // NOTE: this field needed only to be able to skip the chunk entirely
-                                     // without relying on volume's indirection vector
-
+        Base128StreamReader rstream(pbegin, pend);
         // Paramids
         read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
             for (auto i = nelements; i --> 0;) {

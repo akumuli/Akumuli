@@ -37,7 +37,6 @@ typedef typename Coroutine::caller_type Caller;
 
 //! Cursor result
 struct CursorResult {
-    uint32_t          length;         //< entry data length
     aku_Timestamp     timestamp;      //< entry timestamp
     aku_ParamId       param_id;       //< entry param id
     aku_PData         data;           //< pointer to data
