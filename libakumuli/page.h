@@ -35,6 +35,21 @@ const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
 
 namespace Akumuli {
 
+namespace {
+    //! Get payload length
+    uint32_t get_pd_length(const aku_PData& pdata) {
+        assert(pdata.type == aku_PData::BLOB);
+        return pdata.value.blob.size;
+    }
+
+    //! Get payload pointer
+    template<class T>
+    const T* get_pd_pointer(const aku_PData& pdata) {
+        assert(pdata.type == aku_PData::BLOB);
+        return static_cast<const T*>(pdata.value.blob.begin);
+    }
+}
+
 typedef uint64_t aku_Duration;     //< Time duration
 // NOTE: Obsolete
 typedef uint32_t aku_EntryOffset;  //< Entry offset
@@ -171,7 +186,6 @@ struct PageHeader {
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
     uint32_t next_offset;       //< offset of the last added record in payload array
-    uint32_t sync_count;        //< index of the last synchronized record
     uint32_t checkpoint;        //< page checkpoint index
     uint32_t open_count;        //< how many times page was open for write
     uint32_t close_count;       //< how many times page was closed for write

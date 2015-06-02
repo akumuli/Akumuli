@@ -235,6 +235,8 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                 }
             }
         });
+
+        *n_elements = static_cast<uint32_t>(data.paramids.size());
     } catch (StreamOutOfBounds const& e) {
         // TODO: add logging here
         return AKU_EOVERFLOW;
@@ -316,7 +318,25 @@ aku_Status CompressionUtil::decode_chunk( ChunkHeader         *header
 
 template<class Fn>
 bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const& f) {
-    throw "Not implemented";
+    auto len = header.timestamps.size();
+    if (len != header.values.size() || len != header.paramids.size()) {
+        return false;
+    }
+    // prepare indexes
+    std::vector<int> index;
+    for (auto i = 0u; i < header.timestamps.size(); i++) {
+        index.push_back(i);
+    }
+    std::stable_sort(index.begin(), index.end(), f);
+    out->paramids.reserve(index.size());
+    out->timestamps.reserve(index.size());
+    out->values.reserve(index.size());
+    for(auto ix: index) {
+        out->paramids.push_back(header.paramids.at(ix));
+        out->timestamps.push_back(header.timestamps.at(ix));
+        out->values.push_back(header.values.at(ix));
+    }
+    return true;
 }
 
 bool CompressionUtil::convert_from_chunk_order(ChunkHeader const& header, ChunkHeader* out) {

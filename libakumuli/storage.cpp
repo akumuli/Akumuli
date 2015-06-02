@@ -114,7 +114,7 @@ void Volume::close() {
 
 void Volume::flush() {
     mmap_.flush();
-    page_->checkpoint = page_->sync_count;
+    page_->checkpoint = page_->count;
     mmap_.flush(0, sizeof(PageHeader));
 }
 
@@ -267,8 +267,8 @@ void Storage::select_active_page() {
 void Storage::prepopulate_cache(int64_t max_cache_size) {
     // All entries between sync_index (included) and count must
     // be cached.
-    if (active_page_->sync_count != active_page_->checkpoint) {
-        active_page_->sync_count = active_page_->checkpoint;
+    if (active_page_->count != active_page_->checkpoint) {
+        active_page_->count = active_page_->checkpoint;
         active_volume_->flush();
     }
 
