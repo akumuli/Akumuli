@@ -16,7 +16,7 @@ void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
+        for (aku_EntryIndexRecord i = 0u; i < (aku_EntryIndexRecord)n_iter; i++) {
             CursorResult r;
             r.data.ptr = reinterpret_cast<void*>(i);
             r.length = sizeof(i);
@@ -44,7 +44,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (aku_EntryOffset i = 0u; i < (aku_EntryOffset)n_iter; i++) {
+        for (aku_EntryIndexRecord i = 0u; i < (aku_EntryIndexRecord)n_iter; i++) {
             CursorResult r;
             r.data.ptr = reinterpret_cast<void*>(i);
             r.length = sizeof(i);

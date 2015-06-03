@@ -87,23 +87,23 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     memset(&histogram, 0, sizeof(histogram));
 }
 
-aku_EntryOffset* PageHeader::page_index(int index) {
-    char* ptr = payload + length - sizeof(aku_EntryOffset);
-    aku_EntryOffset* entry = reinterpret_cast<aku_EntryOffset*>(ptr);
+aku_EntryIndexRecord* PageHeader::page_index(int index) {
+    char* ptr = payload + length - sizeof(aku_EntryIndexRecord);
+    aku_EntryIndexRecord* entry = reinterpret_cast<aku_EntryIndexRecord*>(ptr);
     entry -= index;
     return entry;
 }
 
-const aku_EntryOffset* PageHeader::page_index(int index) const {
-    const char* ptr = payload + length - sizeof(aku_EntryOffset);
-    const aku_EntryOffset* entry = reinterpret_cast<const aku_EntryOffset*>(ptr);
+const aku_EntryIndexRecord* PageHeader::page_index(int index) const {
+    const char* ptr = payload + length - sizeof(aku_EntryIndexRecord);
+    const aku_EntryIndexRecord* entry = reinterpret_cast<const aku_EntryIndexRecord*>(ptr);
     entry -= index;
     return entry;
 }
 
-std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
+std::pair<aku_EntryIndexRecord, int> PageHeader::index_to_offset(uint32_t index) const {
     if (index > count) {
-        return std::make_pair(aku_EntryOffset(), AKU_EBAD_ARG);
+        return std::make_pair(aku_EntryIndexRecord(), AKU_EBAD_ARG);
     }
     return std::make_pair(*page_index(index), AKU_SUCCESS);
 }
@@ -114,7 +114,7 @@ int PageHeader::get_entries_count() const {
 
 size_t PageHeader::get_free_space() const {
     auto begin = payload + next_offset;
-    auto end = (payload + length) - count*sizeof(aku_EntryOffset);
+    auto end = (payload + length) - count*sizeof(aku_EntryIndexRecord);
     assert(end >= payload);
     return end - begin;
 }
@@ -163,7 +163,7 @@ int PageHeader::add_entry( const aku_ParamId param
 
     const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
                               + range.length              // data size (in bytes)
-                              + sizeof(aku_EntryOffset);  // offset inside page_index
+                              + sizeof(aku_EntryIndexRecord);  // offset inside page_index
 
     const auto ENTRY_SIZE = sizeof(aku_Entry) + range.length;
 
@@ -176,11 +176,10 @@ int PageHeader::add_entry( const aku_ParamId param
     char* free_slot = payload + next_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
     entry->param_id = param;
-    entry->time = timestamp;  // TODO: remove
     entry->length = range.length;
     memcpy((void*)&entry->value, range.address, range.length);
     page_index(count)->offset = next_offset;
-    // TODO: page_index(count)->timestamp = timestamp;
+    page_index(count)->timestamp = timestamp;
     next_offset += ENTRY_SIZE;
     count++;
     update_bounding_box(param, timestamp);
@@ -428,34 +427,13 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         return false;
     }
 
-    void histogram() {
-        auto const& h = page_->histogram;
-        auto pred = [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
-            return a.timestamp < b.timestamp;
-        };
-        PageHistogramEntry hkey = { key_, 0 };
-        auto begin = h.entries;
-        auto end = begin + h.size;
-        auto upper = std::upper_bound(begin, end, hkey, pred);
-        auto lower = std::lower_bound(begin, end, hkey, pred);
-        if (lower != end) {
-            if (lower != begin && lower->timestamp > hkey.timestamp) {
-                lower--;
-            }
-            range_.begin = lower->index;
-        }
-        if (upper != end) {
-            range_.end = upper->index;
-        }
-    }
-
     // Interpolation search supporting functions
     bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
-        const aku_Entry *entry = page_->read_entry_at(ix);
-        if (entry) {
-            *out_timestamp = entry->time;
+        if (ix < page_->count) {
+            *out_timestamp = page_->page_index(ix)->timestamp;
+            return true;
         }
-        return entry != nullptr;
+        return false;
     }
 
     bool is_small(SearchRange range) const {
@@ -478,6 +456,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     void binary_search() {
+        // TODO: use binary search from stdlib
         uint64_t steps = 0ul;
         if (range_.begin == range_.end) {
             return;
@@ -491,9 +470,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
             }
-            auto probe_offset = page_->page_index(probe_index)->offset;
-            auto probe_entry = page_->read_entry(probe_offset);
-            auto probe = probe_entry->time;
+
+            auto probe = page_->page_index(probe_index)->timestamp;
 
             if (probe == key_) {                         // found
                 break;
@@ -621,21 +599,22 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto current_index = probe_index;
             probe_index += index_increment;
             auto probe_offset = page_->page_index(current_index)->offset;
+            auto probe_time = page_->page_index(current_index)->timestamp;
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool proceed = false;
-            bool probe_in_time_range = query_.lowerbound <= probe_entry->time &&
-                                       query_.upperbound >= probe_entry->time;
+            bool probe_in_time_range = query_.lowerbound <= probe_time &&
+                                       query_.upperbound >= probe_time;
             if (probe < AKU_ID_COMPRESSED) {
                 if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
 #ifdef DEBUG
                     if (dbg_count) {
                         // check for backward direction
-                        auto is_ok = IS_BACKWARD_ ? (dbg_prev_ts >= probe_entry->time)
-                                                  : (dbg_prev_ts <= probe_entry->time);
+                        auto is_ok = IS_BACKWARD_ ? (dbg_prev_ts >= probe_time)
+                                                  : (dbg_prev_ts <= probe_time);
                         assert(is_ok);
                     }
-                    dbg_prev_ts = probe_entry->time;
+                    dbg_prev_ts = probe_time;
                     dbg_count++;
 #endif
                     aku_PData pdata;
@@ -643,7 +622,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
                     pdata.value.blob.size = probe_entry->length;
                     CursorResult result = {
-                        probe_entry->time,
+                        probe_time,
                         probe,  //id
                         pdata
                     };
@@ -651,16 +630,16 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                         break;
                     }
                 }
-                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
-                                       : query_.upperbound >= probe_entry->time;
+                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_time
+                                       : query_.upperbound >= probe_time;
             } else {
                 if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
                     proceed = scan_compressed_entries(probe_entry, false);
                 } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
                     proceed = scan_compressed_entries(probe_entry, false);
                 } else {
-                    proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_entry->time
-                                           : query_.upperbound >= probe_entry->time;
+                    proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_time
+                                           : query_.upperbound >= probe_time;
                 }
             }
             if (!proceed || probe_index >= MAX_INDEX_) {
@@ -699,30 +678,11 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
 {
     SearchAlgorithm search_alg(this, caller, cursor, query);
     if (search_alg.fast_path() == false) {
-        search_alg.histogram();
         if (search_alg.interpolation()) {
             search_alg.binary_search();
             search_alg.scan();
         }
     }
-}
-
-void PageHeader::_sort() {
-    // This method is only for testing purposes.
-    // Page invariants can break here.
-    if (count == 0 || count == count) {
-        return;
-    }
-    aku_EntryOffset* begin = page_index(count-1);
-    aku_EntryOffset* end = page_index(count-1);
-    std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
-        auto ea = read_entry(a.offset);
-        auto eb = read_entry(b.offset);
-        auto ta = std::tuple<aku_Timestamp, aku_ParamId>(ea->time, ea->param_id);
-        auto tb = std::tuple<aku_Timestamp, aku_ParamId>(eb->time, eb->param_id);
-        return ta > tb;
-    });
-    count = count;
 }
 
 void PageHeader::get_search_stats(aku_SearchStats* stats, bool reset) {

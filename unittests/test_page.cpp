@@ -71,7 +71,7 @@ BOOST_AUTO_TEST_CASE(TestPaging2) {
     auto result = page->add_entry(1, 2, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
     auto free_space_after = page->get_free_space();
-    BOOST_CHECK_EQUAL(free_space_before - free_space_after, sizeof(aku_Entry) + 128 + sizeof(aku_EntryOffset));
+    BOOST_CHECK_EQUAL(free_space_before - free_space_after, sizeof(aku_Entry) + 128 + sizeof(aku_EntryIndexRecord));
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging3)
@@ -155,8 +155,6 @@ static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_
         aku_ParamId id = 1;
         BOOST_CHECK(page->add_entry(id, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
-
-    page->_sort();
 
     return page;
 }
@@ -316,7 +314,6 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
         aku_MemRange range = {(void*)&i, sizeof(i)};
         BOOST_CHECK(page->add_entry(1, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
     }
-    page->_sort();
     return page;
 }
 
@@ -405,8 +402,6 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         // timestamp grows always
         time_stamp += 1 + rand_num % 100;
     }
-
-    page->_sort();
 
     for (int round = 0; round < 10; round++) {
         // select start timestamp

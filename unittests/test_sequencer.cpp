@@ -185,7 +185,7 @@ void test_sequencer_searching(int dir) {
     const int WINDOW = 10000;
 
     Sequencer seq(nullptr, {0u, WINDOW, 0u});
-    std::vector<aku_EntryOffset> offsets;
+    std::vector<aku_EntryIndexRecord> offsets;
 
     for (int i = 0; i < SZLOOP; i++) {
         int status;

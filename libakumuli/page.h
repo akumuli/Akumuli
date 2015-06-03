@@ -51,10 +51,12 @@ namespace {
 }
 
 typedef uint64_t aku_Duration;     //< Time duration
-// NOTE: Obsolete
-struct aku_EntryOffset {
-    uint32_t offset;
-};
+
+//! Entry index record
+struct aku_EntryIndexRecord {
+    aku_Timestamp   timestamp;
+    uint32_t        offset;
+} __attribute__((packed));
 
 struct ChunkDesc {
     uint32_t n_elements;        //< Number of elements in a chunk
@@ -75,7 +77,7 @@ struct aku_Config {
 };
 
 struct aku_Entry {
-    aku_Timestamp  time;      //< Entry timestamp
+    //aku_Timestamp  time;      //< Entry timestamp
     aku_ParamId    param_id;  //< Parameter ID
     uint32_t       length;    //< Entry length: constant + variable sized parts
     uint32_t       value[];   //< Data begining
@@ -199,11 +201,11 @@ struct PageHeader {
     char payload[];             //< page payload
 
     //! Convert entry index to entry offset
-    std::pair<aku_EntryOffset, int> index_to_offset(uint32_t index) const;
+    std::pair<aku_EntryIndexRecord, int> index_to_offset(uint32_t index) const;
 
-    aku_EntryOffset* page_index(int index);
+    aku_EntryIndexRecord* page_index(int index);
 
-    const aku_EntryOffset* page_index(int index) const;
+    const aku_EntryIndexRecord* page_index(int index) const;
 
     void update_bounding_box(aku_ParamId param, aku_Timestamp time);
 
@@ -308,9 +310,6 @@ struct PageHeader {
       * Execute search query. Results are sent to cursor.
       */
     void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
-
-    // Only for testing
-    void _sort();
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 };
