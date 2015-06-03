@@ -51,7 +51,6 @@ struct RecordingCursor : InternalCursor {
 
 AkumuliInitializer initializer;
 
-/*
 BOOST_AUTO_TEST_CASE(TestPaging1) {
 
     std::vector<char> page_mem;
@@ -166,7 +165,7 @@ struct ExpectedSearchResults {
     bool completed;
     int error_code;
     size_t ressize;
-    aku_EntryOffset skew;
+    uint32_t skew;
 };
 
 void generic_search_test
@@ -468,7 +467,6 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         BOOST_REQUIRE_EQUAL(match_index, matches.size());
     }
 }
-*/
 
 
 void generic_compression_test

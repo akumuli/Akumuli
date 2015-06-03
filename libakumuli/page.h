@@ -52,7 +52,9 @@ namespace {
 
 typedef uint64_t aku_Duration;     //< Time duration
 // NOTE: Obsolete
-typedef uint32_t aku_EntryOffset;  //< Entry offset
+struct aku_EntryOffset {
+    uint32_t offset;
+};
 
 struct ChunkDesc {
     uint32_t n_elements;        //< Number of elements in a chunk
@@ -258,7 +260,7 @@ struct PageHeader {
      * @param offset offset of the entry.
      * @returns 0 if index is out of range, entry length otherwise.
      */
-    int get_entry_length(aku_EntryOffset offset) const;
+    int get_entry_length(uint32_t offset) const;
 
     /**
      * Copy entry from page to receiving buffer using index.
@@ -278,7 +280,7 @@ struct PageHeader {
      * @returns 0 if index out of range, -1*entry[index].length
      * if buffer is to small, entry[index].length on success.
      */
-    int copy_entry(aku_EntryOffset offset, aku_Entry* receiver) const;
+    int copy_entry(uint32_t offset, aku_Entry* receiver) const;
 
     /**
      * Get pointer to entry without copying using index
@@ -292,7 +294,7 @@ struct PageHeader {
      * @param entry offset
      * @returns pointer to entry or NULL
      */
-    const aku_Entry* read_entry(aku_EntryOffset offset) const;
+    const aku_Entry* read_entry(uint32_t offset) const;
 
     /**
      * Get pointer to entry data without copying using
@@ -300,7 +302,7 @@ struct PageHeader {
      * @param data offset
      * @returns pointer to entry data or NULL
      */
-    const void* read_entry_data(aku_EntryOffset offset) const;
+    const void* read_entry_data(uint32_t offset) const;
 
     /**
       * Execute search query. Results are sent to cursor.
@@ -309,12 +311,6 @@ struct PageHeader {
 
     // Only for testing
     void _sort();
-
-    /** Update page index.
-      * @param offsets ordered offsets
-      * @param num_offsets number of values in buffer
-      */
-    void sync_next_index(aku_EntryOffset offsets, uint32_t rand_val, bool sort_histogram);
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 };

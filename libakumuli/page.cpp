@@ -103,7 +103,7 @@ const aku_EntryOffset* PageHeader::page_index(int index) const {
 
 std::pair<aku_EntryOffset, int> PageHeader::index_to_offset(uint32_t index) const {
     if (index > count) {
-        return std::make_pair(0u, AKU_EBAD_ARG);
+        return std::make_pair(aku_EntryOffset(), AKU_EBAD_ARG);
     }
     return std::make_pair(*page_index(index), AKU_SUCCESS);
 }
@@ -159,6 +159,7 @@ int PageHeader::add_entry( const aku_ParamId param
                          , const aku_Timestamp timestamp
                          , const aku_MemRange range )
 {
+    // TODO: enforce time order
 
     const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
                               + range.length              // data size (in bytes)
@@ -175,10 +176,11 @@ int PageHeader::add_entry( const aku_ParamId param
     char* free_slot = payload + next_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
     entry->param_id = param;
-    entry->time = timestamp;
+    entry->time = timestamp;  // TODO: remove
     entry->length = range.length;
     memcpy((void*)&entry->value, range.address, range.length);
-    *page_index(count) = next_offset;
+    page_index(count)->offset = next_offset;
+    // TODO: page_index(count)->timestamp = timestamp;
     next_offset += ENTRY_SIZE;
     count++;
     update_bounding_box(param, timestamp);
@@ -249,32 +251,28 @@ int PageHeader::complete_chunk(const ChunkHeader& data) {
     if (status != AKU_SUCCESS) {
         return status;
     }
-    sync_next_index(next_offset, rand(), false);
     status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
     if (status != AKU_SUCCESS) {
         return status;
     }
-    sync_next_index(next_offset, rand(), false);
-    // Sort histogram
-    sync_next_index(0, 0, true);
     return status;
 }
 
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     if (index < count) {
-        auto offset = *page_index(index);
+        auto offset = page_index(index)->offset;
         return read_entry(offset);
     }
     return 0;
 }
 
-const aku_Entry *PageHeader::read_entry(aku_EntryOffset offset) const {
+const aku_Entry *PageHeader::read_entry(uint32_t offset) const {
     auto ptr = payload + offset;
     auto entry_ptr = reinterpret_cast<const aku_Entry*>(ptr);
     return entry_ptr;
 }
 
-const void* PageHeader::read_entry_data(aku_EntryOffset offset) const {
+const void* PageHeader::read_entry_data(uint32_t offset) const {
     return payload + offset;
 }
 
@@ -286,7 +284,7 @@ int PageHeader::get_entry_length_at(int entry_index) const {
     return 0;
 }
 
-int PageHeader::get_entry_length(aku_EntryOffset offset) const {
+int PageHeader::get_entry_length(uint32_t offset) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         return entry_ptr->length;
@@ -307,7 +305,7 @@ int PageHeader::copy_entry_at(int index, aku_Entry *receiver) const {
     return 0;
 }
 
-int PageHeader::copy_entry(aku_EntryOffset offset, aku_Entry *receiver) const {
+int PageHeader::copy_entry(uint32_t offset, aku_Entry *receiver) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
@@ -493,7 +491,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
             }
-            auto probe_offset = *page_->page_index(probe_index);
+            auto probe_offset = page_->page_index(probe_index)->offset;
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->time;
 
@@ -622,7 +620,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         while (true) {
             auto current_index = probe_index;
             probe_index += index_increment;
-            auto probe_offset = *page_->page_index(current_index);
+            auto probe_offset = page_->page_index(current_index)->offset;
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool proceed = false;
@@ -640,10 +638,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     dbg_prev_ts = probe_entry->time;
                     dbg_count++;
 #endif
-                    auto offset = static_cast<aku_EntryOffset>(probe_offset + sizeof(aku_Entry));
                     aku_PData pdata;
                     pdata.type = aku_PData::BLOB;
-                    pdata.value.blob.begin = page_->read_entry_data(offset);
+                    pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
                     pdata.value.blob.size = probe_entry->length;
                     CursorResult result = {
                         probe_entry->time,
@@ -719,43 +716,13 @@ void PageHeader::_sort() {
     aku_EntryOffset* begin = page_index(count-1);
     aku_EntryOffset* end = page_index(count-1);
     std::sort(begin, end, [&](aku_EntryOffset a, aku_EntryOffset b) {
-        auto ea = read_entry(a);
-        auto eb = read_entry(b);
+        auto ea = read_entry(a.offset);
+        auto eb = read_entry(b.offset);
         auto ta = std::tuple<aku_Timestamp, aku_ParamId>(ea->time, ea->param_id);
         auto tb = std::tuple<aku_Timestamp, aku_ParamId>(eb->time, eb->param_id);
         return ta > tb;
     });
     count = count;
-}
-
-void PageHeader::sync_next_index(aku_EntryOffset offset, uint32_t rand_val, bool sort_histogram) {
-    // FIXME: race condition between the calls
-    if (!sort_histogram) {
-        auto index = count;
-        if (histogram.size < AKU_HISTOGRAM_SIZE) {
-            // first AKU_HISTOGRAM_SIZE samples
-            auto& h = histogram.entries[histogram.size++];
-            h.index = index;
-            h.timestamp = read_entry(offset)->time;
-        } else {
-            // NOTE: histogram storage is large enough to never hit this code (that is broken)
-            // but anyway need to revisit this later
-
-            // reservoir sampling
-            auto rindex = static_cast<uint32_t>(rand_val % count);
-            if (rindex < histogram.size) {
-                auto& h = histogram.entries[rindex];
-                h.index = index;
-                h.timestamp = read_entry(offset)->time;
-            }
-        }
-    } else {
-        gfx::timsort(histogram.entries, histogram.entries + histogram.size,
-                  [](PageHistogramEntry const& a, PageHistogramEntry const& b) {
-                        return a.timestamp < b.timestamp;
-                  }
-        );
-    }
 }
 
 void PageHeader::get_search_stats(aku_SearchStats* stats, bool reset) {
