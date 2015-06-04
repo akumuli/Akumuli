@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2015 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,81 @@ template<typename RunType>
 bool top_element_more(const RunType& x, const RunType& y)
 {
     return top_element_less(y, x);
+}
+
+TimeSeriesValue::TimeSeriesValue() {}
+
+TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, uint32_t value, uint32_t value_length)
+    : key_ts_(ts)
+    , key_id_(id)
+    , type_(BLOB)
+{
+    payload.blob.value = value;
+    payload.blob.value_length = value_length;
+}
+
+TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value)
+    : key_ts_(ts)
+    , key_id_(id)
+    , type_(DOUBLE)
+{
+    payload.value = value;
+}
+
+aku_Timestamp TimeSeriesValue::get_timestamp() const {
+    return key_ts_;
+}
+
+aku_ParamId TimeSeriesValue::get_paramid() const {
+    return key_id_;
+}
+
+CursorResult TimeSeriesValue::to_result(PageHeader const *page) const {
+    CursorResult res;
+    if (type_ == BLOB) {
+        res.data.type = aku_PData::BLOB;
+        res.data.value.blob.begin  = page->read_entry_data(payload.blob.value);
+        res.data.value.blob.size = payload.blob.value_length;
+    } else {
+        res.data.type = aku_PData::FLOAT;
+        res.data.value.float64 = payload.value;
+    }
+    res.param_id = key_id_;
+    res.timestamp = key_ts_;
+    return res;
+}
+
+void TimeSeriesValue::add_to_header(ChunkHeader *chunk_header) const {
+    chunk_header->timestamps.push_back(key_ts_);
+    chunk_header->paramids.push_back(key_id_);
+    if (type_ == BLOB) {
+        ChunkValue chnk;
+        chnk.type = ChunkValue::BLOB;
+        chnk.value.blobval.offset = payload.blob.value;
+        chnk.value.blobval.length = payload.blob.value_length;
+        chunk_header->values.push_back(chnk);
+    } else {
+        ChunkValue chnk;
+        chnk.type = ChunkValue::FLOAT;
+        chnk.value.floatval = payload.value;
+        chunk_header->values.push_back(chnk);
+    }
+}
+
+bool TimeSeriesValue::is_blob() const {
+    return type_ == BLOB;
+}
+
+bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
+    auto lhstup = std::make_tuple(lhs.key_ts_, lhs.key_id_);
+    auto rhstup = std::make_tuple(rhs.key_ts_, rhs.key_id_);
+    return lhstup < rhstup;
+}
+
+bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
+    auto lhstup = std::make_tuple(lhs.key_id_, lhs.key_ts_);
+    auto rhstup = std::make_tuple(rhs.key_id_, rhs.key_ts_);
+    return lhstup < rhstup;
 }
 
 // Sequencer

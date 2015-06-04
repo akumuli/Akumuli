@@ -381,13 +381,14 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
 {
     const int                   buf_len = 1024*1024*8;
     std::vector<char>           buffer(buf_len);
-    std::vector<uint64_t>       timestamps;
+    std::vector<aku_Timestamp>  timestamps;
     std::vector<aku_ParamId>    paramids;
-    int64_t                     time_stamp = 0L;
+    aku_Timestamp               time_stamp = 0L;
     PageHeader*                 page = nullptr;
 
     page = new (&buffer[0]) PageHeader(0, buf_len, 0);
 
+    auto max_timestamp = time_stamp;
     for(int i = 0; true; i++)
     {
         int rand_num = rand();
@@ -398,6 +399,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
             break;
         }
         timestamps.push_back(time_stamp);  // i-th timestamp
+        max_timestamp = std::max(time_stamp, max_timestamp);
         paramids.push_back(id);
         // timestamp grows always
         time_stamp += 1 + rand_num % 100;
@@ -411,11 +413,11 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         };
         int dir = directions[rand() & 1];
         double rnd_double = 0.001*((rand() + 1) % 200);
-        aku_Timestamp start_time = (uint64_t)(rnd_double*page->bbox.max_timestamp);
-        aku_Timestamp stop_time  = (uint64_t)((rnd_double + 0.6)*page->bbox.max_timestamp);
+        aku_Timestamp start_time = (uint64_t)(rnd_double*max_timestamp);
+        aku_Timestamp stop_time  = (uint64_t)((rnd_double + 0.6)*max_timestamp);
         aku_ParamId id2search = 1 + (rand() & 1);
-        BOOST_REQUIRE(start_time > 0 && start_time < page->bbox.max_timestamp);
-        BOOST_REQUIRE(stop_time > 0 && stop_time < page->bbox.max_timestamp);
+        BOOST_REQUIRE(start_time > 0 && start_time < max_timestamp);
+        BOOST_REQUIRE(stop_time > 0 && stop_time < max_timestamp);
         BOOST_REQUIRE(stop_time > start_time);
         SearchQuery query(id2search, start_time, stop_time, dir);
         Caller caller;

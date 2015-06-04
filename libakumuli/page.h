@@ -86,31 +86,9 @@ struct aku_Entry {
 //! PageHeader forward declaration
 struct PageHeader;
 
-
 /** Page bounding box.
  *  All data is two dimentional: param-timestamp.
  */
-struct PageBoundingBox {
-    aku_ParamId max_id;
-    aku_ParamId min_id;
-    aku_Timestamp max_timestamp;
-    aku_Timestamp min_timestamp;
-
-    PageBoundingBox();
-};
-
-
-struct PageHistogramEntry {
-    aku_Timestamp timestamp;
-    uint32_t index;
-};
-
-
-/** Page histogram for approximation search */
-struct PageHistogram {
-    uint32_t size;
-    PageHistogramEntry entries[AKU_HISTOGRAM_SIZE];
-};
 
 struct SearchStats {
     aku_SearchStats stats;
@@ -184,7 +162,7 @@ struct SearchQuery {
  * Entries placed in the bottom of the page.
  * This class must be nonvirtual.
  */
-struct PageHeader {
+class PageHeader {
     typedef std::tuple<aku_Timestamp, SearchQuery const&, uint32_t> CursorContext;
     // metadata
     const uint32_t version;     //< format version
@@ -195,10 +173,9 @@ struct PageHeader {
     uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
     uint64_t length;            //< payload size
-    // NOTE: maybe it is possible to get this data from page_index?
-    PageBoundingBox bbox;       //< page data limits
-    PageHistogram histogram;    //< histogram
     char payload[];             //< page payload
+
+public:
 
     //! Convert entry index to entry offset
     std::pair<aku_EntryIndexRecord, int> index_to_offset(uint32_t index) const;
@@ -206,8 +183,6 @@ struct PageHeader {
     aku_EntryIndexRecord* page_index(int index);
 
     const aku_EntryIndexRecord* page_index(int index) const;
-
-    void update_bounding_box(aku_ParamId param, aku_Timestamp time);
 
     //! C-tor
     PageHeader(uint32_t count, uint64_t length, uint32_t page_id);
@@ -219,7 +194,7 @@ struct PageHeader {
     void close();
 
     //! Return number of entries stored in page
-    int get_entries_count() const;
+    uint32_t get_entries_count() const;
 
     //! Returns amount of free space in bytes
     size_t get_free_space() const;
@@ -231,7 +206,7 @@ struct PageHeader {
      * @param entry entry
      * @returns operation status
      */
-    int add_entry( const aku_ParamId param
+    aku_Status add_entry( const aku_ParamId param
                  , const aku_Timestamp timestamp
                  , const aku_MemRange range );
 

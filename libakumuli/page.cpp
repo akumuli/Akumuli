@@ -65,13 +65,6 @@ SearchQuery::SearchQuery(MatcherFn matcher
 // Page
 // ----
 
-PageBoundingBox::PageBoundingBox()
-    : max_id(0)
-    , min_id(std::numeric_limits<uint32_t>::max())
-{
-    max_timestamp = AKU_MIN_TIMESTAMP;
-    min_timestamp = AKU_MAX_TIMESTAMP;
-}
 
 PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     : version(0)
@@ -81,10 +74,7 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
     , close_count(0)
     , page_id(page_id)
     , length(length - sizeof(PageHeader))
-    , bbox()
 {
-    // zero out histogram
-    memset(&histogram, 0, sizeof(histogram));
 }
 
 aku_EntryIndexRecord* PageHeader::page_index(int index) {
@@ -108,8 +98,8 @@ std::pair<aku_EntryIndexRecord, int> PageHeader::index_to_offset(uint32_t index)
     return std::make_pair(*page_index(index), AKU_SUCCESS);
 }
 
-int PageHeader::get_entries_count() const {
-    return (int)this->count;
+uint32_t PageHeader::get_entries_count() const {
+    return count;
 }
 
 size_t PageHeader::get_free_space() const {
@@ -119,50 +109,31 @@ size_t PageHeader::get_free_space() const {
     return end - begin;
 }
 
-void PageHeader::update_bounding_box(aku_ParamId param, aku_Timestamp time) {
-    if (param > bbox.max_id) {
-        bbox.max_id = param;
-    }
-    if (param < bbox.min_id) {
-        bbox.min_id = param;
-    }
-    if (time > bbox.max_timestamp) {
-        bbox.max_timestamp = time;
-    }
-    if (time < bbox.min_timestamp) {
-        bbox.min_timestamp = time;
-    }
-}
-
-bool PageHeader::inside_bbox(aku_ParamId param, aku_Timestamp time) const {
-    return time  <= bbox.max_timestamp
-        && time  >= bbox.min_timestamp
-        && param <= bbox.max_id
-        && param >= bbox.min_id;
-}
-
 void PageHeader::reuse() {
     count = 0;
     checkpoint = 0;
     count = 0;
     open_count++;
     next_offset = 0;
-    bbox = PageBoundingBox();
-    histogram.size = 0;
 }
 
 void PageHeader::close() {
     close_count++;
 }
 
-int PageHeader::add_entry( const aku_ParamId param
-                         , const aku_Timestamp timestamp
-                         , const aku_MemRange range )
+aku_Status PageHeader::add_entry( const aku_ParamId param
+                                , const aku_Timestamp timestamp
+                                , const aku_MemRange range )
 {
-    // TODO: enforce time order
+    if (count != 0) {
+        // Require >= timestamp
+        if (timestamp < page_index(count - 1)->timestamp) {
+            return AKU_EBAD_ARG;
+        }
+    }
 
-    const auto SPACE_REQUIRED = sizeof(aku_Entry)         // entry header
-                              + range.length              // data size (in bytes)
+    const auto SPACE_REQUIRED = sizeof(aku_Entry)              // entry header
+                              + range.length                   // data size (in bytes)
                               + sizeof(aku_EntryIndexRecord);  // offset inside page_index
 
     const auto ENTRY_SIZE = sizeof(aku_Entry) + range.length;
@@ -182,7 +153,6 @@ int PageHeader::add_entry( const aku_ParamId param
     page_index(count)->timestamp = timestamp;
     next_offset += ENTRY_SIZE;
     count++;
-    update_bounding_box(param, timestamp);
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
@@ -377,7 +347,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         , caller_(caller)
         , cursor_(cursor)
         , query_(query)
-        , MAX_INDEX_(page->count)
+        , MAX_INDEX_(page->get_entries_count())
         , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
     {
@@ -401,9 +371,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return true;
         }
 
-        if (key_ > page_->bbox.max_timestamp || key_ < page_->bbox.min_timestamp) {
+        if (key_ > page_->page_index(range_.end)->timestamp ||
+            key_ < page_->page_index(range_.begin)->timestamp)
+        {
             // Shortcut for corner cases
-            if (key_ > page_->bbox.max_timestamp) {
+            if (key_ > page_->page_index(range_.end)->timestamp) {
                 if (IS_BACKWARD_) {
                     range_.begin = range_.end;
                     return false;
@@ -413,7 +385,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return true;
                 }
             }
-            else if (key_ < page_->bbox.min_timestamp) {
+            else if (key_ < page_->page_index(range_.begin)->timestamp) {
                 if (!IS_BACKWARD_) {
                     range_.end = range_.begin;
                     return false;
@@ -429,7 +401,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     // Interpolation search supporting functions
     bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
-        if (ix < page_->count) {
+        if (ix < page_->get_entries_count()) {
             *out_timestamp = page_->page_index(ix)->timestamp;
             return true;
         }
@@ -501,9 +473,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         aku_Status status = AKU_SUCCESS;
         ChunkHeader chunk_header, header;
 
-        auto pdesc = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
-        auto pbegin = (const unsigned char*)(page_->payload + pdesc->begin_offset);
-        auto pend = (const unsigned char*)(page_->payload + pdesc->end_offset);
+        auto pdesc  = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
+        auto pbegin = (const unsigned char*)page_->read_entry_data(pdesc->begin_offset);
+        auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
         auto probe_length = pdesc->n_elements;
 
         // TODO:checksum!

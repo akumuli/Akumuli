@@ -3,7 +3,7 @@
  *
  * Data structures for main memory storage.
  *
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2015 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,108 +32,43 @@
 
 namespace Akumuli {
 
-namespace detail {
+struct TimeSeriesValue {
 
     // Type definitions
+    struct Blob {
+        uint32_t value;
+        uint32_t value_length;
+    };
+
     enum ValueType {
         BLOB,
         DOUBLE,
-        UINT,
-        INT,
     };
 
-    template<typename T>
-    void setter(ValueType* ptype, aku_PData* pvalue, T value);
-
-    template<typename T, typename... Args>
-    void setter(ValueType* ptype, aku_PData* pvalue, T value, Args... args) {
-        setter(ptype, pvalue, value);
-        setter(++ptype, ++pvalue, args...);
-    }
-
-    template<>
-    void setter<uint64_t>(ValueType* ptype, aku_PData* pvalue, uint64_t value) {
-        *ptype = UINT;
-        pvalue->uint64 = value;
-    }
-
-    template<>
-    void setter<int64_t>(ValueType* ptype, aku_PData* pvalue, int64_t value) {
-        *ptype = INT;
-        pvalue->int64 = value;
-    }
-
-    template<>
-    void setter<double>(ValueType* ptype, aku_PData* pvalue, double value) {
-        *ptype = DOUBLE;
-        pvalue->float64 = value;
-    }
-
-    template<>
-    void setter<aku_MemRange>(ValueType* ptype, aku_PData* pvalue, aku_MemRange value) {
-        *ptype = BLOB;
-        pvalue->blob.begin = value.address;
-        pvalue->blob.size = value.length;
-    }
-}
-
-template <int SizeClass>
-struct TimeSeriesValue {
-
     // Data members
-    aku_Timestamp                           key_ts_;            // Key value (time)
-    aku_ParamId                             key_id_;            // Key value (id)
-    detail::ValueType                       types_[SizeClass];   // Payload type
-    aku_PData                               values_[SizeClass];  // Payload
+    aku_Timestamp                           key_ts_;  // Key value (time)
+    aku_ParamId                             key_id_;  // Key value (id)
+    ValueType                               type_;    // Payload type
+    union {
+            Blob                            blob;     // Binary payload
+            double                          value;    // Numeric payload
+    } payload;
 
-    TimeSeriesValue() {}
+    TimeSeriesValue();
 
-    template<class... Args>
-    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, Args... args)
-        : key_ts_(ts)
-        , key_id_(id)
-    {
-        detail::setter(types_, values_, args...);
-    }
+    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, uint32_t offset, uint32_t value_length);
 
-    aku_Timestamp get_timestamp() const {
-        return key_ts_;
-    }
+    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value);
 
-    aku_ParamId get_paramid() const {
-        return key_id_;
-    }
+    aku_Timestamp get_timestamp() const;
 
-    CursorResult to_result(PageHeader const *page) const {
-        CursorResult res;
-        if (type_ == BLOB) {
-            res.data.ptr = page->read_entry_data(payload.blob.value);
-            res.length = payload.blob.value_length;
-        } else {
-            res.data.float64 = payload.value;
-            res.length = 0;  // Indicates that res contains double value
-        }
-        res.param_id = key_id_;
-        res.timestamp = key_ts_;
-        return res;
-    }
+    aku_ParamId get_paramid() const;
 
-    void add_to_header(ChunkHeader *chunk_header) const {
-        chunk_header->timestamps.push_back(key_ts_);
-        chunk_header->paramids.push_back(key_id_);
-        if (type_ == BLOB) {
-            chunk_header->offsets.push_back(payload.blob.value);
-            chunk_header->lengths.push_back(payload.blob.value_length);
-        } else {
-            chunk_header->offsets.push_back(0u);
-            chunk_header->lengths.push_back(0u);
-            chunk_header->values.push_back(payload.value);
-        }
-    }
+    CursorResult to_result(const PageHeader *page) const;
 
-    bool is_blob() const {
-        return type_ == BLOB;
-    }
+    void add_to_header(ChunkHeader *chunk_header) const;
+
+    bool is_blob() const;
 
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
@@ -143,23 +78,6 @@ struct TimeSeriesValue {
 } __attribute__((packed));
 
 
-
-
-template<int N>
-bool operator < (TimeSeriesValue<N> const& lhs, TimeSeriesValue<N> const& rhs) {
-    auto lhstup = std::make_tuple(lhs.key_ts_, lhs.key_id_);
-    auto rhstup = std::make_tuple(rhs.key_ts_, rhs.key_id_);
-    return lhstup < rhstup;
-}
-
-template<int N>
-bool chunk_order_LT (TimeSeriesValue<N> const& lhs, TimeSeriesValue<N> const& rhs) {
-    auto lhstup = std::make_tuple(lhs.key_id_, lhs.key_ts_);
-    auto rhstup = std::make_tuple(rhs.key_id_, rhs.key_ts_);
-    return lhstup < rhstup;
-}
-
-
 /** Time-series sequencer.
   * @brief Akumuli can accept unordered time-series (this is the case when
   * clocks of the different time-series sources are slightly out of sync).
@@ -167,11 +85,10 @@ bool chunk_order_LT (TimeSeriesValue<N> const& lhs, TimeSeriesValue<N> const& rh
   * all the remaining samples by timestamp and parameter id.
   */
 struct Sequencer {
-    typedef TimeSeriesValue                  TSValue;
-    typedef std::vector<TSValue>             SortedRun;
-    typedef std::shared_ptr<SortedRun>       PSortedRun;
-    typedef std::mutex                       Mutex;
-    typedef std::unique_lock<Mutex>          Lock;
+    typedef std::vector<TimeSeriesValue> SortedRun;
+    typedef std::shared_ptr<SortedRun>   PSortedRun;
+    typedef std::mutex                   Mutex;
+    typedef std::unique_lock<Mutex>      Lock;
 
     static const int RUN_LOCK_MAX_BACKOFF = 0x100;
     static const int RUN_LOCK_BUSY_COUNT = 0xFFF;
