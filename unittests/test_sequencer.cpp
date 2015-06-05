@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, i, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, i, 1u));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 == 1) {
             RecordingCursor rec;
@@ -146,12 +146,14 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
                 CursorResult res;
-                res.data.ptr = reinterpret_cast<void*>(j);
+                res.data.type = aku_PData::BLOB;
+                res.data.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
+                res.data.value.blob.size = 1;
                 exp.emplace_back(res);
             }
             BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
             for(auto k = 0u; k < exp.size(); k++) {
-                BOOST_REQUIRE_EQUAL(rec.results[k].data.ptr, exp[k].data.ptr);
+                BOOST_REQUIRE_EQUAL(rec.results[k].data.value.blob.begin, exp[k].data.value.blob.begin);
             }
             begin = end;
         }
@@ -169,12 +171,14 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
         CursorResult res;
-        res.data.ptr = reinterpret_cast<void*>(i);  // NOTE: this is a hack, page in sequencer is null but merge
-        exp.emplace_back(res);                      // wouldn't fail, it will return offset value as pointer
-    }                                               // because it will be added to `this` and `this` == null.
+        res.data.type = aku_PData::BLOB;
+        auto p = i + sizeof(PageHeader);
+        res.data.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge
+        exp.emplace_back(res);                                   // wouldn't fail, it will return offset value as pointer
+    }                                                            // because it will be added to `this` and `this` == null.
     BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
     for(auto k = 0u; k < exp.size(); k++) {
-        BOOST_REQUIRE_EQUAL(rec.results[k].data.ptr, exp[k].data.ptr);
+        BOOST_REQUIRE_EQUAL(rec.results[k].data.value.blob.begin, exp[k].data.value.blob.begin);
     }
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
@@ -185,13 +189,13 @@ void test_sequencer_searching(int dir) {
     const int WINDOW = 10000;
 
     Sequencer seq(nullptr, {0u, WINDOW, 0u});
-    std::vector<aku_EntryIndexRecord> offsets;
+    std::vector<uint32_t> offsets;
 
     for (int i = 0; i < SZLOOP; i++) {
         int status;
         int lock = 0;
         tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(42u + i), 42u, i, 0u));
-        offsets.push_back(i);
+        offsets.push_back(i + sizeof(PageHeader));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         BOOST_REQUIRE(lock % 2 == 0);  // because window is larger than number of iterations
     }
@@ -214,7 +218,7 @@ void test_sequencer_searching(int dir) {
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());
     for (auto i = 0u; i < cursor.results.size(); i++) {
-        auto offset = cursor.results[i].data.uint64;
+        auto offset = reinterpret_cast<size_t>(cursor.results[i].data.value.blob.begin);
         BOOST_REQUIRE_EQUAL(offset, offsets[i]);
     }
 }
