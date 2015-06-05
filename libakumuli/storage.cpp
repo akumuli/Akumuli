@@ -73,9 +73,9 @@ PageHeader* Volume::get_page() const {
 }
 
 std::shared_ptr<Volume> Volume::safe_realloc() {
-    uint32_t page_id = page_->page_id;
-    uint32_t open_count = page_->open_count;
-    uint32_t close_count = page_->close_count;
+    uint32_t page_id = page_->get_page_id();
+    uint32_t open_count = page_->get_open_count();
+    uint32_t close_count = page_->get_close_count();
 
     std::string new_file_name = file_path_;
                 new_file_name += ".tmp";
@@ -97,8 +97,8 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     }
 
     newvol.reset(new Volume(file_path_.c_str(), config_, huge_tlb_, logger_));
-    newvol->page_->open_count = open_count;
-    newvol->page_->close_count = close_count;
+    newvol->page_->set_open_count(open_count);
+    newvol->page_->set_close_count(close_count);
     return newvol;
 }
 
@@ -114,7 +114,7 @@ void Volume::close() {
 
 void Volume::flush() {
     mmap_.flush();
-    page_->checkpoint = page_->count;
+    page_->create_checkpoint();
     mmap_.flush(0, sizeof(PageHeader));
 }
 
@@ -246,18 +246,17 @@ void Storage::select_active_page() {
     int64_t max_overwrites = -1;
     for(int i = 0; i < (int)volumes_.size(); i++) {
         PageHeader* page = volumes_.at(i)->get_page();
-        if (static_cast<int64_t>(page->open_count) >= max_overwrites) {
-            max_overwrites = static_cast<int64_t>(page->open_count);
+        if (static_cast<int64_t>(page->get_open_count()) >= max_overwrites) {
+            max_overwrites = static_cast<int64_t>(page->get_open_count());
             max_index = i;
         }
-        prefetch_mem(page->histogram.entries, sizeof(page->histogram.entries));
     }
 
     active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();
 
-    if (active_page_->close_count == active_page_->open_count) {
+    if (active_page_->get_close_count() == active_page_->get_open_count()) {
         // Application was interrupted during volume
         // switching procedure
         advance_volume_(active_volume_index_.load());
@@ -267,8 +266,7 @@ void Storage::select_active_page() {
 void Storage::prepopulate_cache(int64_t max_cache_size) {
     // All entries between sync_index (included) and count must
     // be cached.
-    if (active_page_->count != active_page_->checkpoint) {
-        active_page_->count = active_page_->checkpoint;
+    if (active_page_->restore()) {
         active_volume_->flush();
     }
 
@@ -288,11 +286,11 @@ aku_Status Storage::get_open_error() const {
 void Storage::advance_volume_(int local_rev) {
     if (local_rev == active_volume_index_.load()) {
         log_message("advance volume, current:");
-        log_message("....page ID", active_volume_->page_->page_id);
-        log_message("....close count", active_volume_->page_->close_count);
-        log_message("....open count", active_volume_->page_->open_count);
+        log_message("....page ID", active_volume_->page_->get_page_id());
+        log_message("....close count", active_volume_->page_->get_close_count());
+        log_message("....open count", active_volume_->page_->get_open_count());
 
-        auto old_page_id = active_page_->page_id;
+        auto old_page_id = active_page_->get_page_id();
         AKU_UNUSED(old_page_id);
 
         int close_lock = active_volume_->cache_->reset();
@@ -310,14 +308,14 @@ void Storage::advance_volume_(int local_rev) {
         active_volume_->open();
         active_page_ = active_volume_->page_;
 
-        auto new_page_id = active_page_->page_id;
+        auto new_page_id = active_page_->get_page_id();
         AKU_UNUSED(new_page_id);
         assert(new_page_id != old_page_id);
 
         log_message("next volume opened");
-        log_message("....page ID", active_volume_->page_->page_id);
-        log_message("....close count", active_volume_->page_->close_count);
-        log_message("....open count", active_volume_->page_->open_count);
+        log_message("....page ID", active_volume_->page_->get_page_id());
+        log_message("....close count", active_volume_->page_->get_close_count());
+        log_message("....open count", active_volume_->page_->get_open_count());
     }
     // Or other thread already done all the switching
     // just redo all the things

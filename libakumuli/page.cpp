@@ -77,6 +77,38 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
 {
 }
 
+uint32_t PageHeader::get_page_id() const {
+    return page_id;
+}
+
+uint32_t PageHeader::get_open_count() const {
+    return open_count;
+}
+
+uint32_t PageHeader::get_close_count() const {
+    return close_count;
+}
+
+void PageHeader::set_open_count(uint32_t cnt) {
+    open_count = cnt;
+}
+
+void PageHeader::set_close_count(uint32_t cnt) {
+    close_count = cnt;
+}
+
+void PageHeader::create_checkpoint() {
+    checkpoint = count;
+}
+
+bool PageHeader::restore() {
+    if (count != checkpoint) {
+        count = checkpoint;
+        return true;
+    }
+    return false;
+}
+
 aku_EntryIndexRecord* PageHeader::page_index(int index) {
     char* ptr = payload + length - sizeof(aku_EntryIndexRecord);
     aku_EntryIndexRecord* entry = reinterpret_cast<aku_EntryIndexRecord*>(ptr);
@@ -655,6 +687,23 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
             search_alg.scan();
         }
     }
+}
+
+void PageHeader::get_stats(aku_StorageStats* rcv_stats) {
+    uint64_t used_space = 0,
+             free_space = 0,
+              n_entries = 0;
+
+    auto all = length;
+    auto free = get_free_space();
+    used_space = all - free;
+    free_space = free;
+    n_entries = vol->page_->count;
+
+    rcv_stats->free_space += free_space;
+    rcv_stats->used_space += used_space;
+    rcv_stats->n_entries += n_entries;
+    rcv_stats->n_volumes += 1;
 }
 
 void PageHeader::get_search_stats(aku_SearchStats* stats, bool reset) {

@@ -177,6 +177,30 @@ class PageHeader {
 
 public:
 
+    //! Get page ID
+    uint32_t get_page_id() const;
+
+    //! Number of times page was opened for writing
+    uint32_t get_open_count() const;
+
+    //! Number of times page was closed for writing
+    uint32_t get_close_count() const;
+
+    //! Set open count
+    void set_open_count(uint32_t cnt);
+
+    //! Set open count
+    void set_close_count(uint32_t cnt);
+
+    ///     Checkpoint and restore      ///
+
+    //! Create checkpoint. Flush should be performed twice, before and after call to this method
+    void create_checkpoint();
+
+    //! Restore, return true if flush needed
+    bool restore();
+
+
     //! Convert entry index to entry offset
     std::pair<aku_EntryIndexRecord, int> index_to_offset(uint32_t index) const;
 
@@ -287,6 +311,9 @@ public:
     void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
+
+    //! Get page status
+    void get_stats(aku_StorageStats* rcv_stats);
 };
 
 }  // namespaces
