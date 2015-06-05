@@ -16,10 +16,11 @@ void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (aku_EntryIndexRecord i = 0u; i < (aku_EntryIndexRecord)n_iter; i++) {
+        for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
             CursorResult r;
-            r.data.ptr = reinterpret_cast<void*>(i);
-            r.length = sizeof(i);
+            r.data.value.blob.begin = reinterpret_cast<void*>(i);
+            r.data.value.blob.size = sizeof(i);
+            r.data.type = aku_PData::BLOB;
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -35,8 +36,9 @@ void test_cursor(int n_iter, int buf_size) {
     cursor.close();
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data.ptr, actual.at(i).data.ptr);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data.value.blob.begin, actual.at(i).data.value.blob.begin);
     }
 }
 
@@ -44,10 +46,9 @@ void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (aku_EntryIndexRecord i = 0u; i < (aku_EntryIndexRecord)n_iter; i++) {
+        for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
             CursorResult r;
-            r.data.ptr = reinterpret_cast<void*>(i);
-            r.length = sizeof(i);
+            r.data.value.blob.begin = reinterpret_cast<void*>(i);
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -64,8 +65,9 @@ void test_cursor_error(int n_iter, int buf_size) {
     cursor.close();
 
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data.ptr, actual.at(i).data.ptr);
+        BOOST_REQUIRE_EQUAL(expected.at(i).data.value.blob.begin, actual.at(i).data.value.blob.begin);
     }
 }
 
@@ -173,22 +175,19 @@ struct PageWrapper {
     }
 
     void init() {
+        aku_Timestamp ts = rand() % 1000;
         while(true) {
             aku_MemRange load = {(void*)&page_id, sizeof(page_id)};
-            auto status = page->add_entry(rand() % 100, rand(), load);
+            auto status = page->add_entry(ts, rand(), load);
+            timestamps.push_back(ts);
+            ts += rand() % 100;
             if (status != AKU_SUCCESS) {
                 break;
             }
             count++;
         }
-        page->_sort();
-        for (auto ix = 0u; ix < page->count; ix++) {
-            auto entry = page->read_entry_at(ix);
-            timestamps.push_back(entry->time);
-        }
         SortPred pred = { AKU_CURSOR_DIR_FORWARD };
         pred.check_order(timestamps.begin(), timestamps.end());
-        std::sort(timestamps.begin(), timestamps.end());
     }
 };
 
@@ -233,8 +232,8 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     for(auto& pagewrapper: pages) {
         PageHeader* page = pagewrapper.page;
         for (auto i = 0u; i < pagewrapper.count; i++) {
-            const aku_Entry* entry = page->read_entry_at(i);
-            expected_results.push_back(entry->time);
+            const aku_Timestamp ts = page->page_index(i)->timestamp;
+            expected_results.push_back(ts);
         }
     }
     SortPred s = {dir};

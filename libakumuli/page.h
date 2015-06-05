@@ -240,7 +240,7 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    int add_chunk(const aku_MemRange data, const uint32_t free_space_required);
+    int add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.

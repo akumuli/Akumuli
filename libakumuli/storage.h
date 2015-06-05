@@ -154,7 +154,7 @@ struct Storage
     //! Write double.
     aku_Status write_double(const char* begin, const char* end, aku_Timestamp ts, double value);
 
-    aku_Status _write_impl(TimeSeriesValue &value, aku_MemRange data);
+    aku_Status _write_impl(TimeSeriesValue value, aku_MemRange data);
 
     /** Convert series name to parameter id
       * @param begin should point to series name

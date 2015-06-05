@@ -492,7 +492,8 @@ void generic_compression_test
         header.timestamps.push_back(begin);
         char buffer[100];
         aku_MemRange range = {buffer, static_cast<uint32_t>(std::rand() % 99 + 1)};
-        auto status = page->add_chunk(range, header.paramids.size() * 33);
+        uint32_t offset = 0u;
+        auto status = page->add_chunk(range, header.paramids.size() * 33, &offset);
         if (status != AKU_SUCCESS) {
             break;
         }

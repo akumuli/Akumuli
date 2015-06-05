@@ -233,14 +233,11 @@ AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const char* query);
 AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
 
 /** Read one of the values under cursor.
-  * Index 0 corresponds to timestamp, -2 - to parameter id value, -3 - to series name string,
-  * -4 - to row-type descriptor, -5 for tuple length.
   * @param cursor should point to active cursor instance
-  * @param col_index should contain valid column index
   * @param dest is an output parameter for requested value
   * @returns error code
   */
-AKU_EXPORT aku_Status aku_cursor_read_value(aku_Cursor* cursor, int col_index, aku_PData* dest);
+AKU_EXPORT aku_Status aku_cursor_read_value(aku_Cursor* cursor, aku_PData* dest);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);

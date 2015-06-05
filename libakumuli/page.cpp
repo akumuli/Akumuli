@@ -188,13 +188,14 @@ aku_Status PageHeader::add_entry( const aku_ParamId param
     return AKU_WRITE_STATUS_SUCCESS;
 }
 
-int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required) {
+int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
     const auto
         SPACE_REQUIRED = range.length + free_space_required,
         SPACE_NEEDED = range.length;
     if (get_free_space() < SPACE_REQUIRED) {
         return AKU_EOVERFLOW;
     }
+    *out_offset = next_offset;
     char* free_slot = payload + next_offset;
     memcpy((void*)free_slot, range.address, SPACE_NEEDED);
     next_offset += SPACE_NEEDED;
@@ -698,7 +699,7 @@ void PageHeader::get_stats(aku_StorageStats* rcv_stats) {
     auto free = get_free_space();
     used_space = all - free;
     free_space = free;
-    n_entries = vol->page_->count;
+    n_entries = count;
 
     rcv_stats->free_space += free_space;
     rcv_stats->used_space += used_space;

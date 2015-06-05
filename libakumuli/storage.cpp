@@ -391,33 +391,20 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
 }
 
 void Storage::get_stats(aku_StorageStats* rcv_stats) {
-    uint64_t used_space = 0,
-             free_space = 0,
-              n_entries = 0;
-
     for (PVolume const& vol: volumes_) {
-        auto all = vol->page_->length;
-        auto free = vol->page_->get_free_space();
-        used_space += all - free;
-        free_space += free;
-        n_entries += vol->page_->count;
+        vol->page_->get_stats(rcv_stats);
     }
-    rcv_stats->n_volumes = volumes_.size();
-    rcv_stats->free_space = free_space;
-    rcv_stats->used_space = used_space;
-    rcv_stats->n_entries = n_entries;
 }
 
 // Writing
 
-aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
+aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
         auto space_required = active_volume_->cache_->get_space_estimate();
         int status = AKU_SUCCESS;
         if (ts_value.is_blob()) {
-            status = active_page_->add_chunk(data, space_required);
-            ts_value.payload.blob.value = active_page_->next_offset;
+            status = active_page_->add_chunk(data, space_required, &ts_value.payload.blob.value);
         }
         switch (status) {
             case AKU_SUCCESS: {
@@ -473,7 +460,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue &ts_value, aku_MemRange data) {
 
 //! write binary data
 aku_Status Storage::write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data) {
-    TimeSeriesValue ts_value(ts, param, active_page_->next_offset, data.length);
+    TimeSeriesValue ts_value(ts, param, 0, data.length);
     return _write_impl(ts_value, data);
 }
 
