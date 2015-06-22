@@ -171,7 +171,7 @@ struct PageWrapper {
     }
 
     ~PageWrapper() {
-        delete buf;
+        delete[] buf;
     }
 
     void init() {
