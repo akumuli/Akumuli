@@ -373,16 +373,16 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
 
     // TODO: remove excessive copying
     // to do this I need to pass cur to fan_in_cursor somehow
-    const int results_len = 0x1000;
-    CursorResult results[results_len];
+    const size_t results_len = 0x1000;
+    aku_CursorResult results[results_len];
     while(!fan_in_cursor.is_done()) {
-        int s = fan_in_cursor.read(results, results_len);
+        size_t s = fan_in_cursor.read(results, results_len);
         int err_code = 0;
         if (fan_in_cursor.is_error(&err_code)) {
             cur->set_error(caller, err_code);
             return;
         }
-        for (int i = 0; i < s; i++) {
+        for (size_t i = 0; i < s; i++) {
             cur->put(caller, results[i]);
         }
     }

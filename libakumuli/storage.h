@@ -180,10 +180,10 @@ struct Storage
                                     const char     *metadata_path,
                                     const char     *volumes_path,
                                     int             num_pages,
-                                    uint32_t compression_threshold,
-                                    uint64_t window_size,
-                                    uint32_t max_cache_size,
-                                    aku_logger_cb_t    logger);
+                                    uint32_t        compression_threshold,
+                                    uint64_t        window_size,
+                                    uint32_t        max_cache_size,
+                                    aku_logger_cb_t logger);
 
     /** Remove all volumes
       * @param file_name
