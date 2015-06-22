@@ -555,7 +555,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 pdata.type = aku_PData::FLOAT;
                 pdata.value.float64 = header.values.at(i).value.floatval;
             }
-            CursorResult result = {
+            aku_CursorResult result = {
                 header.timestamps.at(i),
                 header.paramids.at(i),
                 pdata,
@@ -626,7 +626,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     pdata.type = aku_PData::BLOB;
                     pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
                     pdata.value.blob.size = probe_entry->length;
-                    CursorResult result = {
+                    aku_CursorResult result = {
                         probe_time,
                         probe,  //id
                         pdata

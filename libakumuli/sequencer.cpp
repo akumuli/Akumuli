@@ -71,17 +71,17 @@ aku_ParamId TimeSeriesValue::get_paramid() const {
     return key_id_;
 }
 
-CursorResult TimeSeriesValue::to_result(PageHeader const *page) const {
-    CursorResult res;
+aku_CursorResult TimeSeriesValue::to_result(PageHeader const *page) const {
+    aku_CursorResult res;
     if (type_ == BLOB) {
-        res.data.type = aku_PData::BLOB;
-        res.data.value.blob.begin  = page->read_entry_data(payload.blob.value);
-        res.data.value.blob.size = payload.blob.value_length;
+        res.payload.type                = aku_PData::BLOB;
+        res.payload.value.blob.begin    = page->read_entry_data(payload.blob.value);
+        res.payload.value.blob.size     = payload.blob.value_length;
     } else {
-        res.data.type = aku_PData::FLOAT;
-        res.data.value.float64 = payload.value;
+        res.payload.type                = aku_PData::FLOAT;
+        res.payload.value.float64       = payload.value;
     }
-    res.param_id = key_id_;
+    res.paramid   = key_id_;
     res.timestamp = key_ts_;
     return res;
 }
@@ -423,7 +423,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        CursorResult result = val.to_result(page);
+        aku_CursorResult result = val.to_result(page);
         return cur->put(caller, result);
     };
 
@@ -531,7 +531,7 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
 
     auto page = page_;
     auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        CursorResult result = val.to_result(page);
+        aku_CursorResult result = val.to_result(page);
         return cur->put(caller, result);
     };
 

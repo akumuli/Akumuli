@@ -47,7 +47,7 @@ CursorFSM::~CursorFSM() {
 #endif
 }
 
-void CursorFSM::update_buffer(CursorResult* buf, int buf_len) {
+void CursorFSM::update_buffer(aku_CursorResult* buf, size_t buf_len) {
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
     write_index_ = 0;
@@ -63,7 +63,7 @@ bool CursorFSM::can_put() const {
     return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
 }
 
-void CursorFSM::put(CursorResult const& result) {
+void CursorFSM::put(const aku_CursorResult &result) {
     usr_buffer_[write_index_++] = result;
 }
 
@@ -95,7 +95,7 @@ bool CursorFSM::get_error(int *error_code) const {
     return error_;
 }
 
-int CursorFSM::get_data_len() const {
+size_t CursorFSM::get_data_len() const {
     return write_index_;
 }
 
@@ -113,7 +113,7 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 
 // External cursor implementation
 
-int CoroCursor::read(CursorResult* buf, int buf_len) {
+size_t CoroCursor::read(aku_CursorResult *buf, size_t buf_len) {
     cursor_fsm_.update_buffer(buf, buf_len);
     coroutine_->operator()(this);
     return cursor_fsm_.get_data_len();
@@ -141,7 +141,7 @@ void CoroCursor::set_error(Caller& caller, int error_code) {
     caller();
 }
 
-bool CoroCursor::put(Caller& caller, CursorResult const& result) {
+bool CoroCursor::put(Caller& caller, aku_CursorResult const& result) {
     if (cursor_fsm_.is_done()) {
         return false;
     }
@@ -180,17 +180,17 @@ StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
         }
     }
 
-    const int BUF_LEN = 0x200;
-    CursorResult buffer[BUF_LEN];
+    const size_t BUF_LEN = 0x200;
+    aku_CursorResult buffer[BUF_LEN];
     for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
-            int nwrites = cursor->read(buffer, BUF_LEN);
+            size_t nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
                 set_error(error);
                 return;
             }
-            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+            for (size_t buf_ix = 0u; buf_ix < nwrites; buf_ix++) {
                 auto cur_count = nwrites - buf_ix;
                 auto key = std::make_tuple(buffer[buf_ix], cur_index, cur_count);
                 heap_.push_back(key);
@@ -205,24 +205,24 @@ void StacklessFanInCursorCombinator::read_impl_() {
     // Check preconditions
     int error = 0;
     bool proceed = true;
-    const int BUF_LEN = 0x200;
-    CursorResult buffer[BUF_LEN];
+    const size_t BUF_LEN = 0x200;
+    aku_CursorResult buffer[BUF_LEN];
     while(proceed && !heap_.empty()) {
         std::pop_heap(heap_.begin(), heap_.end(), pred_);
         auto item = heap_.back();
-        const CursorResult& cur_result = std::get<0>(item);
+        const aku_CursorResult& cur_result = std::get<0>(item);
         int cur_index = std::get<1>(item);
         int cur_count = std::get<2>(item);
         proceed = put(cur_result);
         heap_.pop_back();
         if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
-            int nwrites = cursor->read(buffer, BUF_LEN);
+            size_t nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
                 set_error(error);
                 return;
             }
-            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+            for (size_t buf_ix = 0u; buf_ix < nwrites; buf_ix++) {
                 auto key = std::make_tuple(buffer[buf_ix], cur_index, nwrites - buf_ix);
                 heap_.push_back(key);
                 std::push_heap(heap_.begin(), heap_.end(), pred_);
@@ -234,7 +234,7 @@ void StacklessFanInCursorCombinator::read_impl_() {
     }
 }
 
-int StacklessFanInCursorCombinator::read(CursorResult *buf, int buf_len) {
+size_t StacklessFanInCursorCombinator::read(aku_CursorResult *buf, size_t buf_len) {
     cursor_fsm_.update_buffer(buf, buf_len);
     read_impl_();
     return cursor_fsm_.get_data_len();
@@ -259,7 +259,7 @@ void StacklessFanInCursorCombinator::set_error(int error_code) {
     cursor_fsm_.set_error(error_code);
 }
 
-bool StacklessFanInCursorCombinator::put(CursorResult const& result) {
+bool StacklessFanInCursorCombinator::put(aku_CursorResult const& result) {
     if (cursor_fsm_.can_put()) {
         cursor_fsm_.put(result);
     }
@@ -283,7 +283,7 @@ FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size,
 
 void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
-    CursorResult dbg_prev_item;
+    aku_CursorResult dbg_prev_item;
     bool dbg_first_item = true;
     long dbg_counter = 0;
 #endif
@@ -300,17 +300,17 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     Heap heap;
     HeapPred pred = { direction_ };
 
-    const int BUF_LEN = 0x200;
-    CursorResult buffer[BUF_LEN];
+    const size_t BUF_LEN = 0x200;
+    aku_CursorResult buffer[BUF_LEN];
     for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
-            int nwrites = cursor->read(buffer, BUF_LEN);
+            size_t nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
                 out_cursor_.set_error(caller, error);
                 return;
             }
-            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+            for (size_t buf_ix = 0; buf_ix < nwrites; buf_ix++) {
                 auto cur_count = nwrites - buf_ix;
                 auto key = std::make_tuple(buffer[buf_ix], cur_index, cur_count);
                 heap.push_back(key);
@@ -323,12 +323,12 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     while(!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), pred);
         auto item = heap.back();
-        const CursorResult& cur_result = std::get<0>(item);
+        const aku_CursorResult& cur_result = std::get<0>(item);
         int cur_index = std::get<1>(item);
         int cur_count = std::get<2>(item);
 #ifdef DEBUG
         auto dbg_time_stamp = cur_result.timestamp;
-        auto dbg_param_id = cur_result.param_id;
+        auto dbg_param_id = cur_result.paramid;
         AKU_UNUSED(dbg_time_stamp);
         AKU_UNUSED(dbg_param_id);
         if (!dbg_first_item) {
@@ -348,12 +348,12 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
         heap.pop_back();
         if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
-            int nwrites = cursor->read(buffer, BUF_LEN);
+            size_t nwrites = cursor->read(buffer, BUF_LEN);
             if (cursor->is_error(&error)) {
                 out_cursor_.set_error(caller, error);
                 return;
             }
-            for (int buf_ix = 0; buf_ix < nwrites; buf_ix++) {
+            for (size_t buf_ix = 0u; buf_ix < nwrites; buf_ix++) {
                 auto key = std::make_tuple(buffer[buf_ix], cur_index, nwrites - buf_ix);
                 heap.push_back(key);
                 std::push_heap(heap.begin(), heap.end(), pred);
@@ -363,7 +363,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     out_cursor_.complete(caller);
 }
 
-int FanInCursorCombinator::read(CursorResult *buf, int buf_len)
+size_t FanInCursorCombinator::read(aku_CursorResult *buf, size_t buf_len)
 {
     return out_cursor_.read(buf, buf_len);
 }

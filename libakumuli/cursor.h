@@ -31,33 +31,33 @@
 
 namespace Akumuli {
 
-std::ostream& operator << (std::ostream& st, CursorResult res);
+std::ostream& operator << (std::ostream& st, aku_CursorResult res);
 
 class CursorFSM {
     // user data
-    CursorResult*   usr_buffer_;        //! User owned buffer for output
-    int             usr_buffer_len_;    //! Size of the user owned buffer
+    aku_CursorResult *usr_buffer_;        //! User owned buffer for output
+    size_t            usr_buffer_len_;    //! Size of the user owned buffer
     // cursor state
-    int             write_index_;       //! Current write position in usr_buffer_
-    bool            error_;             //! Error flag
-    int             error_code_;        //! Error code
-    bool            complete_;          //! Is complete
-    bool            closed_;            //! Used to check that close method was called
+    size_t            write_index_;       //! Current write position in usr_buffer_
+    bool              error_;             //! Error flag
+    int               error_code_;        //! Error code
+    bool              complete_;          //! Is complete
+    bool              closed_;            //! Used to check that close method was called
 public:
     CursorFSM();
     ~CursorFSM();
     // modifiers
-    void put(CursorResult const& result);
+    void put(aku_CursorResult const& result);
     void complete();
     void set_error(int error_code);
-    void update_buffer(CursorResult* buf, int buf_len);
+    void update_buffer(aku_CursorResult* buf, size_t buf_len);
     void update_buffer(CursorFSM *other_fsm);
     bool close();
     // accessors
     bool can_put() const;
     bool is_done() const;
     bool get_error(int *error_code) const;
-    int get_data_len() const;
+    size_t get_data_len() const;
 };
 
 
@@ -66,7 +66,7 @@ public:
  */
 struct ExternalCursor {
     //! Read portion of the data to the buffer
-    virtual int read(CursorResult* buf, int buf_len) = 0;
+    virtual size_t read(aku_CursorResult* buf, size_t buf_len) = 0;
     //! Check is everything done
     virtual bool is_done() const = 0;
     //! Check is error occured and (optionally) get the error code
@@ -93,7 +93,7 @@ struct CoroCursor : Cursor {
 
     // External cursor implementation
 
-    virtual int read(CursorResult* buf, int buf_len);
+    virtual size_t read(aku_CursorResult* buf, size_t buf_len);
 
     virtual bool is_done() const;
 
@@ -105,7 +105,7 @@ struct CoroCursor : Cursor {
 
     void set_error(Caller& caller, int error_code);
 
-    bool put(Caller& caller, CursorResult const& result);
+    bool put(Caller& caller, aku_CursorResult const& result);
 
     void complete(Caller& caller);
 
@@ -147,16 +147,16 @@ struct CoroCursor : Cursor {
     }
 };
 
-typedef std::tuple<CursorResult, int, int> HeapItem;
+typedef std::tuple<aku_CursorResult, int, int> HeapItem;
 
 struct HeapPred {
     int dir;
     bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
         bool result = false;
-        const CursorResult& lres = std::get<0>(lhs);
-        const CursorResult& rres = std::get<0>(rhs);
-        const auto lkey = std::make_tuple(lres.timestamp, lres.param_id);
-        const auto rkey = std::make_tuple(rres.timestamp, rres.param_id);
+        const aku_CursorResult& lres = std::get<0>(lhs);
+        const aku_CursorResult& rres = std::get<0>(rhs);
+        const auto lkey = std::make_tuple(lres.timestamp, lres.paramid);
+        const auto rkey = std::make_tuple(rres.timestamp, rres.paramid);
         if (dir == AKU_CURSOR_DIR_BACKWARD) {
             // Min heap is used
             result = lkey < rkey;
@@ -185,7 +185,7 @@ class StacklessFanInCursorCombinator : ExternalCursor {
 
     void read_impl_();
     void set_error(int error_code);
-    bool put(CursorResult const& result);
+    bool put(aku_CursorResult const& result);
     void complete();
 public:
     /**
@@ -200,7 +200,7 @@ public:
 
     // ExternalCursor interface
 public:
-    virtual int read(CursorResult *buf, int buf_len);
+    virtual size_t read(aku_CursorResult *buf, size_t buf_len);
     virtual bool is_done() const;
     virtual bool is_error(int *out_error_code_or_null) const;
     virtual void close();
@@ -231,7 +231,7 @@ public:
 
     // ExternalCursor interface
 public:
-    virtual int read(CursorResult *buf, int buf_len);
+    virtual size_t read(aku_CursorResult *buf, size_t buf_len);
     virtual bool is_done() const;
     virtual bool is_error(int *out_error_code_or_null) const;
     virtual void close();

@@ -14,22 +14,22 @@ using namespace Akumuli;
 
 void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<CursorResult> expected;
+    std::vector<aku_CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
-            CursorResult r;
-            r.data.value.blob.begin = reinterpret_cast<void*>(i);
-            r.data.value.blob.size = sizeof(i);
-            r.data.type = aku_PData::BLOB;
+            aku_CursorResult r;
+            r.payload.value.blob.begin = reinterpret_cast<void*>(i);
+            r.payload.value.blob.size = sizeof(i);
+            r.payload.type = aku_PData::BLOB;
             cursor.put(caller, r);
             expected.push_back(r);
         }
         cursor.complete(caller);
     };
-    std::vector<CursorResult> actual;
+    std::vector<aku_CursorResult> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        CursorResult results[buf_size];
+        aku_CursorResult results[buf_size];
         int n_read = cursor.read(results, buf_size);
         std::copy(results, results + n_read, std::back_inserter(actual));
     }
@@ -38,26 +38,26 @@ void test_cursor(int n_iter, int buf_size) {
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
 
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data.value.blob.begin, actual.at(i).data.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(expected.at(i).payload.value.blob.begin, actual.at(i).payload.value.blob.begin);
     }
 }
 
 void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<CursorResult> expected;
+    std::vector<aku_CursorResult> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
-            CursorResult r;
-            r.data.value.blob.begin = reinterpret_cast<void*>(i);
+            aku_CursorResult r;
+            r.payload.value.blob.begin = reinterpret_cast<void*>(i);
             cursor.put(caller, r);
             expected.push_back(r);
         }
         cursor.set_error(caller, -1);
     };
-    std::vector<CursorResult> actual;
+    std::vector<aku_CursorResult> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        CursorResult results[buf_size];
+        aku_CursorResult results[buf_size];
         int n_read = cursor.read(results, buf_size);
         std::copy(results, results + n_read, std::back_inserter(actual));
     }
@@ -67,7 +67,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
 
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).data.value.blob.begin, actual.at(i).data.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(expected.at(i).payload.value.blob.begin, actual.at(i).payload.value.blob.begin);
     }
 }
 
@@ -216,7 +216,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
 
     FanInCursor cursor(&ecur[0], n_cursors, (int)dir);
 
-    CursorResult results[0x100];
+    aku_CursorResult results[0x100];
     int count = 0;
     std::vector<int64_t> actual_results;  // must be sorted
     while(!cursor.is_done()) {

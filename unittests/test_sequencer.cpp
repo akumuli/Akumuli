@@ -26,14 +26,14 @@ namespace {
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<CursorResult> results;
+    std::vector<aku_CursorResult> results;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual bool put(Caller&, CursorResult const& result) {
+    virtual bool put(Caller&, aku_CursorResult const& result) {
         results.push_back(result);
         return true;
     }
@@ -142,18 +142,18 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             num_checkpoints++;
 
             // check order of the sorted run
-            vector<CursorResult> exp;
+            vector<aku_CursorResult> exp;
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
-                CursorResult res;
-                res.data.type = aku_PData::BLOB;
-                res.data.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
-                res.data.value.blob.size = 1;
+                aku_CursorResult res;
+                res.payload.type = aku_PData::BLOB;
+                res.payload.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
+                res.payload.value.blob.size = 1;
                 exp.emplace_back(res);
             }
             BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
             for(auto k = 0u; k < exp.size(); k++) {
-                BOOST_REQUIRE_EQUAL(rec.results[k].data.value.blob.begin, exp[k].data.value.blob.begin);
+                BOOST_REQUIRE_EQUAL(rec.results[k].payload.value.blob.begin, exp[k].payload.value.blob.begin);
             }
             begin = end;
         }
@@ -167,18 +167,18 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     num_checkpoints++;
 
     // check order of the sorted run
-    vector<CursorResult> exp;
+    vector<aku_CursorResult> exp;
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
-        CursorResult res;
-        res.data.type = aku_PData::BLOB;
+        aku_CursorResult res;
+        res.payload.type = aku_PData::BLOB;
         auto p = i + sizeof(PageHeader);
-        res.data.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge
-        exp.emplace_back(res);                                   // wouldn't fail, it will return offset value as pointer
-    }                                                            // because it will be added to `this` and `this` == null.
+        res.payload.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge
+        exp.emplace_back(res);                                      // wouldn't fail, it will return offset value as pointer
+    }                                                               // because it will be added to `this` and `this` == null.
     BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
     for(auto k = 0u; k < exp.size(); k++) {
-        BOOST_REQUIRE_EQUAL(rec.results[k].data.value.blob.begin, exp[k].data.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(rec.results[k].payload.value.blob.begin, exp[k].payload.value.blob.begin);
     }
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
@@ -218,7 +218,7 @@ void test_sequencer_searching(int dir) {
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());
     for (auto i = 0u; i < cursor.results.size(); i++) {
-        auto offset = reinterpret_cast<size_t>(cursor.results[i].data.value.blob.begin);
+        auto offset = reinterpret_cast<size_t>(cursor.results[i].payload.value.blob.begin);
         BOOST_REQUIRE_EQUAL(offset, offsets[i]);
     }
 }

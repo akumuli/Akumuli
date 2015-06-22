@@ -64,7 +64,7 @@ struct TimeSeriesValue {
 
     aku_ParamId get_paramid() const;
 
-    CursorResult to_result(const PageHeader *page) const;
+    aku_CursorResult to_result(const PageHeader *page) const;
 
     void add_to_header(ChunkHeader *chunk_header) const;
 

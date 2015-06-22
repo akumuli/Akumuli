@@ -26,14 +26,14 @@ namespace {
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<CursorResult> results;
+    std::vector<aku_CursorResult> results;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual bool put(Caller&, CursorResult const& result) {
+    virtual bool put(Caller&, aku_CursorResult const& result) {
         results.push_back(result);
         return true;
     }
@@ -194,7 +194,7 @@ void generic_search_test
 
     for(size_t i = 0; i < cursor.results.size(); i++) {
         auto t = cursor.results[i].timestamp;
-        auto value = get_pd_pointer<uint32_t>(cursor.results[i].data);
+        auto value = get_pd_pointer<uint32_t>(cursor.results[i].payload);
         if (direction == AKU_CURSOR_DIR_BACKWARD) {
             BOOST_CHECK_EQUAL(value[0], expectations.skew - i);
         } else {
@@ -425,9 +425,9 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         std::vector<uint32_t> matches;
         page->search(caller, &cursor, query);
         for(size_t i = 0; i < cursor.results.size(); i++) {
-            const uint32_t* value = get_pd_pointer<uint32_t>(cursor.results.at(i).data);
+            const uint32_t* value = get_pd_pointer<uint32_t>(cursor.results.at(i).payload);
             auto t = cursor.results.at(i).timestamp;
-            auto id = cursor.results.at(i).param_id;
+            auto id = cursor.results.at(i).paramid;
             auto index = value[0];
             matches.push_back(index);
             BOOST_REQUIRE_EQUAL(t, timestamps[index]);
@@ -527,18 +527,18 @@ void generic_compression_test
             auto act_it = cur.results.begin();
             for (auto i = 0ul; i != cur.results.size(); i++) {
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps.at(i));
-                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids.at(i));
-                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->data), exp_chunk.values.at(i).value.blobval.length);
-                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->data), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
+                BOOST_REQUIRE_EQUAL(act_it->paramid, exp_chunk.paramids.at(i));
+                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->payload), exp_chunk.values.at(i).value.blobval.length);
+                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->payload), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
                 act_it++;
             }
         } else {
             auto act_it = cur.results.rbegin();
             for (auto i = 0ul; i != cur.results.size(); i++) {
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
-                BOOST_REQUIRE_EQUAL(act_it->param_id, exp_chunk.paramids[i]);
-                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->data), exp_chunk.values.at(i).value.blobval.length);
-                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->data), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
+                BOOST_REQUIRE_EQUAL(act_it->paramid, exp_chunk.paramids[i]);
+                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->payload), exp_chunk.values.at(i).value.blobval.length);
+                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->payload), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
                 act_it++;
             }
         }

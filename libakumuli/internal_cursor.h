@@ -35,19 +35,12 @@ typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
 // NOTE: obsolete
 typedef typename Coroutine::caller_type Caller;
 
-//! Cursor result
-struct CursorResult {
-    aku_Timestamp     timestamp;      //< entry timestamp
-    aku_ParamId       param_id;       //< entry param id
-    aku_PData         data;           //< pointer to data
-};
-
 /** Interface used by different search procedures
  *  in akumuli. Must be used only inside library.
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual bool put(Caller&, CursorResult const& offset) = 0;
+    virtual bool put(Caller&, aku_CursorResult const& offset) = 0;
     virtual void complete(Caller&) = 0;
     //! Set error and stop execution
     virtual void set_error(Caller&, int error_code) = 0;

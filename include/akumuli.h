@@ -70,6 +70,14 @@ typedef struct {
 } aku_PData;
 
 
+//! Cursor result type
+typedef struct {
+    aku_Timestamp timestamp;
+    aku_ParamId     paramid;
+    aku_PData       payload;
+} aku_CursorResult;
+
+
 //! Database instance.
 typedef struct {
     int padding;
@@ -232,21 +240,21 @@ AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const char* query);
  */
 AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
 
-/** Read one of the values under cursor.
+/** Read the values under cursor.
   * @param cursor should point to active cursor instance
-  * @param dest is an output parameter for requested value
+  * @param dest is an output buffer
+  * @param dest_size is an output buffer size
   * @returns error code
   */
-AKU_EXPORT aku_Status aku_cursor_read_value(aku_Cursor* cursor, aku_PData* dest);
+AKU_EXPORT aku_Status aku_cursor_read( aku_Cursor       *cursor
+                                     , aku_CursorResult *dest
+                                     , size_t            dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
-
-//! Move cursor one position forward.
-AKU_EXPORT aku_Status aku_cursor_next(aku_Cursor* pcursor);
 
 //--------------------
 // Stats and counters

@@ -121,32 +121,10 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read_columns( aku_Timestamp   *timestamps
-                    , aku_ParamId     *params
-                    , aku_PData       *pointers
-                    , uint32_t        *lengths
-                    , size_t           arrays_size )
+    int read_values( aku_CursorResult     *values
+                   , size_t           values_size )
     {
-        // TODO: track PageHeader::open_count here
-        std::vector<CursorResult> results;
-        results.resize(arrays_size);  // TODO: pass all pointers to storage directly
-        int n_results = cursor_->read(results.data(), results.size());
-        for (int i = 0; i < n_results; i++) {
-            const CursorResult& result = results[i];
-            if (timestamps) {
-                timestamps[i] = result.timestamp;
-            }
-            if (params) {
-                params[i] = result.param_id;
-            }
-            if (pointers) {
-                pointers[i] = result.data;
-            }
-            if (lengths) {
-                lengths[i] = result.length;
-            }
-        }
-        return n_results;
+        return cursor_->read(values, values_size);
     }
 };
 
