@@ -191,6 +191,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123);  // should match
     qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234);  // should match
     qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345);  // shouldn't match
+    qproc->stop();
 
     BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);
     BOOST_REQUIRE_EQUAL(terminal->ids.at(0), 1);
