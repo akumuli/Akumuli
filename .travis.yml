@@ -19,6 +19,6 @@ before_script:
    - cmake ..
 
 script: 
-   - make -j
+   - make -j4
    - make test
    - functests/storage_test /tmp
