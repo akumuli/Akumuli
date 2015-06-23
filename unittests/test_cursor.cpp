@@ -14,10 +14,10 @@ using namespace Akumuli;
 
 void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<aku_CursorResult> expected;
+    std::vector<aku_Sample> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
-            aku_CursorResult r;
+            aku_Sample r;
             r.payload.value.blob.begin = reinterpret_cast<void*>(i);
             r.payload.value.blob.size = sizeof(i);
             r.payload.type = aku_PData::BLOB;
@@ -26,10 +26,10 @@ void test_cursor(int n_iter, int buf_size) {
         }
         cursor.complete(caller);
     };
-    std::vector<aku_CursorResult> actual;
+    std::vector<aku_Sample> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        aku_CursorResult results[buf_size];
+        aku_Sample results[buf_size];
         int n_read = cursor.read(results, buf_size);
         std::copy(results, results + n_read, std::back_inserter(actual));
     }
@@ -44,20 +44,20 @@ void test_cursor(int n_iter, int buf_size) {
 
 void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
-    std::vector<aku_CursorResult> expected;
+    std::vector<aku_Sample> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
-            aku_CursorResult r;
+            aku_Sample r;
             r.payload.value.blob.begin = reinterpret_cast<void*>(i);
             cursor.put(caller, r);
             expected.push_back(r);
         }
         cursor.set_error(caller, -1);
     };
-    std::vector<aku_CursorResult> actual;
+    std::vector<aku_Sample> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
-        aku_CursorResult results[buf_size];
+        aku_Sample results[buf_size];
         int n_read = cursor.read(results, buf_size);
         std::copy(results, results + n_read, std::back_inserter(actual));
     }
@@ -216,7 +216,7 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
 
     FanInCursor cursor(&ecur[0], n_cursors, (int)dir);
 
-    aku_CursorResult results[0x100];
+    aku_Sample results[0x100];
     int count = 0;
     std::vector<int64_t> actual_results;  // must be sorted
     while(!cursor.is_done()) {

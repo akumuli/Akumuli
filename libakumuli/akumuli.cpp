@@ -82,7 +82,7 @@ void aku_console_logger(int tag, const char* msg) {
 
 struct MatchPred {
     std::vector<aku_ParamId> params_;
-    MatchPred(aku_ParamId* begin, uint32_t n)
+    MatchPred(aku_ParamId const* begin, uint32_t n)
         : params_(begin, begin + n)
     {
     }
@@ -121,7 +121,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read_values( aku_CursorResult     *values
+    int read_values( aku_Sample     *values
                    , size_t           values_size )
     {
         return cursor_->read(values, values_size);
@@ -151,7 +151,7 @@ struct DatabaseImpl : public aku_Database
         storage_.close();
     }
 
-    CursorImpl* select(aku_SelectQuery* query) {
+    CursorImpl* select(aku_SelectQuery const* query) {
         uint32_t scan_dir;
         aku_Timestamp begin, end;
         if (query->begin < query->end) {
@@ -178,8 +178,19 @@ struct DatabaseImpl : public aku_Database
         return storage_.write_double(param_id, ts, value);
     }
 
-    aku_Status generic_add(aku_Value const* value) {
-        throw "Not implemented";
+    aku_Status add_sample(aku_Sample const* sample) {
+        aku_Status status = AKU_EBAD_ARG;
+        if (sample->payload.type == aku_PData::FLOAT) {
+            status = add_double(sample->paramid, sample->timestamp, sample->payload.value.float64);
+        } else if (sample->payload.type == aku_PData::BLOB) {
+            aku_PData data = sample->payload;
+            const aku_MemRange mrange = {
+                data.value.blob.begin,
+                data.value.blob.size
+            };
+            status = add_blob(sample->paramid, sample->timestamp, mrange);
+        }
+        return status;
     }
 
     // Stats
@@ -230,10 +241,9 @@ aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Time
     return dbi->add_double(param_id, timestamp, value);
 }
 
-aku_Status aku_write(aku_Database* db, aku_Value const* value)
-{
+aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->generic_add(value);
+    return dbi->add_sample(sample);
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
@@ -282,26 +292,23 @@ void aku_destroy(void* any) {
     free(any);
 }
 
-aku_Cursor* aku_select(aku_Database *db, aku_SelectQuery* query) {
+aku_Cursor* aku_select(aku_Database *db, const aku_SelectQuery* query) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->select(query);
 }
 
-void aku_close_cursor(aku_Cursor* pcursor) {
+void aku_cursor_close(aku_Cursor* pcursor) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
     delete pimpl;
 }
 
-int aku_cursor_read_columns( aku_Cursor      *pcursor
-                           , aku_Timestamp   *timestamps
-                           , aku_ParamId     *params
-                           , aku_PData       *pointers
-                           , uint32_t        *lengths
-                           , size_t           arrays_size )
+aku_Status aku_cursor_read( aku_Cursor       *cursor
+                          , aku_Sample       *dest
+                          , size_t            dest_size)
 {
     // read columns from data store
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return pimpl->read_columns(timestamps, params, pointers, lengths, arrays_size);
+    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(cursor);
+    return pimpl->read_values(dest, dest_size);
 }
 
 int aku_cursor_is_done(aku_Cursor* pcursor) {

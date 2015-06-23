@@ -45,8 +45,8 @@ typedef int         aku_Status;       //< Status code of any operation
 
 //! Structure represents memory region
 typedef struct {
-    void* address;
-    uint32_t length;
+    const void* address;
+    uint32_t    length;
 } aku_MemRange;
 
 
@@ -75,13 +75,28 @@ typedef struct {
     aku_Timestamp timestamp;
     aku_ParamId     paramid;
     aku_PData       payload;
-} aku_CursorResult;
+} aku_Sample;
 
 
 //! Database instance.
 typedef struct {
     int padding;
 } aku_Database;
+
+
+/**
+ * @brief Select search query.
+ */
+typedef struct {
+    //! Begining of the search range
+    aku_Timestamp begin;
+    //! End of the search range
+    aku_Timestamp end;
+    //! Number of parameters to search
+    uint32_t n_params;
+    //! Array of parameters to search
+    aku_ParamId params[];
+} aku_SelectQuery;
 
 
 /**
@@ -210,29 +225,49 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 // Writing
 //---------
 
+/** Write binary blob
+  * @param db opened database instance
+  * @param param_id paramter id
+  * @param timestamp timestamp
+  * @param value BLOB memory range
+  * @returns operation status
+  */
+AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, aku_MemRange value);
+
 /** Write measurement to DB
   * @param db opened database instance
-  * @param type is a string that contains type descriptor of the tuple  
-  * @param tuple is an array of values
+  * @param param_id storage parameter id
+  * @param timestamp timestamp
+  * @param value parameter value
   * @returns operation status
-  * @note type descriptor is a string of the following format:
-  * 1. It should contain len(tuple) characters
-  * 2. Character at i'th position corresponds to tuple element at i'th position
-  * 3. Each character defines the type 'u' - unsigned long (64-bit), 'i' - signed
-  *    long (64-bit), 'b' - blob, 'f' - float (64-bit).
   */
-AKU_EXPORT aku_Status aku_write(aku_Database* db, const char* type, const aku_PData* tuple);
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value);
+
+/** Write measurement to DB
+  * @param db opened database instance
+  * @param sample should contain valid measurement value
+  * @returns operation status
+  */
+AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
+
 
 //---------
 // Queries
 //---------
 
 /**
+ * @obsolete should be replaced with json query format
+ * @brief Create select query with single parameter-id
+ */
+AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId* params);
+
+
+/**
  * @brief Execute query
- * @param query string
+ * @param query value
  * @return cursor
  */
-AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const char* query);
+AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const aku_SelectQuery *query);
 
 /**
  * @brief Close cursor
@@ -247,7 +282,7 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @returns error code
   */
 AKU_EXPORT aku_Status aku_cursor_read( aku_Cursor       *cursor
-                                     , aku_CursorResult *dest
+                                     , aku_Sample       *dest
                                      , size_t            dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.

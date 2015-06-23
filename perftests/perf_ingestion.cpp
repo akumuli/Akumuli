@@ -60,22 +60,20 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
             std::cout << aku_error_message(err) << std::endl;
             return false;
         }
-        aku_Timestamp timestamps[NUM_ELEMENTS];
-        aku_ParamId paramids[NUM_ELEMENTS];
-        aku_PData pointers[NUM_ELEMENTS];
-        uint32_t lengths[NUM_ELEMENTS];
-        int n_entries = aku_cursor_read_columns(cursor, timestamps, paramids, pointers, lengths, NUM_ELEMENTS);
+        aku_Sample samples[NUM_ELEMENTS];
+        int n_entries = aku_cursor_read(cursor, samples, NUM_ELEMENTS);
         for (int i = 0; i < n_entries; i++) {
-            if (timestamps[i] != current_time) {
-                std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << timestamps[i]  << std::endl;
+
+            if (samples[i].timestamp != current_time) {
+                std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << samples[i].timestamp  << std::endl;
                 return false;
             }
             aku_ParamId id = (current_time+1) & 0xF;
-            if (paramids[i] != id) {
-                std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << paramids[i]  << std::endl;
+            if (samples[i].paramid != id) {
+                std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << samples[i].paramid  << std::endl;
                 return false;
             }
-            double dvalue = pointers[i].float64;
+            double dvalue = samples[i].payload.value.float64;
             double dexpected = current_time + 1;
             if (dvalue - dexpected > 0.000001) {
                 std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
@@ -90,7 +88,7 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
             cursor_ix++;
         }
     }
-    aku_close_cursor(cursor);
+    aku_cursor_close(cursor);
     if (current_time != end) {
         std::cout << "some values lost, actual timestamp: " << current_time << ", expected timestamp: " << end << std::endl;
         throw std::runtime_error("values lost");

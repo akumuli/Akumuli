@@ -26,14 +26,14 @@ namespace {
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<aku_CursorResult> results;
+    std::vector<aku_Sample> results;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual bool put(Caller&, aku_CursorResult const& result) {
+    virtual bool put(Caller&, aku_Sample const& result) {
         results.push_back(result);
         return true;
     }
@@ -142,10 +142,10 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             num_checkpoints++;
 
             // check order of the sorted run
-            vector<aku_CursorResult> exp;
+            vector<aku_Sample> exp;
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
-                aku_CursorResult res;
+                aku_Sample res;
                 res.payload.type = aku_PData::BLOB;
                 res.payload.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
                 res.payload.value.blob.size = 1;
@@ -167,10 +167,10 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     num_checkpoints++;
 
     // check order of the sorted run
-    vector<aku_CursorResult> exp;
+    vector<aku_Sample> exp;
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
-        aku_CursorResult res;
+        aku_Sample res;
         res.payload.type = aku_PData::BLOB;
         auto p = i + sizeof(PageHeader);
         res.payload.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge

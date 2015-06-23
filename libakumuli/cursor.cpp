@@ -47,7 +47,7 @@ CursorFSM::~CursorFSM() {
 #endif
 }
 
-void CursorFSM::update_buffer(aku_CursorResult* buf, size_t buf_len) {
+void CursorFSM::update_buffer(aku_Sample* buf, size_t buf_len) {
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
     write_index_ = 0;
@@ -63,7 +63,7 @@ bool CursorFSM::can_put() const {
     return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
 }
 
-void CursorFSM::put(const aku_CursorResult &result) {
+void CursorFSM::put(const aku_Sample &result) {
     usr_buffer_[write_index_++] = result;
 }
 
@@ -113,7 +113,7 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 
 // External cursor implementation
 
-size_t CoroCursor::read(aku_CursorResult *buf, size_t buf_len) {
+size_t CoroCursor::read(aku_Sample *buf, size_t buf_len) {
     cursor_fsm_.update_buffer(buf, buf_len);
     coroutine_->operator()(this);
     return cursor_fsm_.get_data_len();
@@ -141,7 +141,7 @@ void CoroCursor::set_error(Caller& caller, int error_code) {
     caller();
 }
 
-bool CoroCursor::put(Caller& caller, aku_CursorResult const& result) {
+bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
     if (cursor_fsm_.is_done()) {
         return false;
     }
@@ -181,7 +181,7 @@ StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
     }
 
     const size_t BUF_LEN = 0x200;
-    aku_CursorResult buffer[BUF_LEN];
+    aku_Sample buffer[BUF_LEN];
     for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
@@ -206,11 +206,11 @@ void StacklessFanInCursorCombinator::read_impl_() {
     int error = 0;
     bool proceed = true;
     const size_t BUF_LEN = 0x200;
-    aku_CursorResult buffer[BUF_LEN];
+    aku_Sample buffer[BUF_LEN];
     while(proceed && !heap_.empty()) {
         std::pop_heap(heap_.begin(), heap_.end(), pred_);
         auto item = heap_.back();
-        const aku_CursorResult& cur_result = std::get<0>(item);
+        const aku_Sample& cur_result = std::get<0>(item);
         int cur_index = std::get<1>(item);
         int cur_count = std::get<2>(item);
         proceed = put(cur_result);
@@ -234,7 +234,7 @@ void StacklessFanInCursorCombinator::read_impl_() {
     }
 }
 
-size_t StacklessFanInCursorCombinator::read(aku_CursorResult *buf, size_t buf_len) {
+size_t StacklessFanInCursorCombinator::read(aku_Sample *buf, size_t buf_len) {
     cursor_fsm_.update_buffer(buf, buf_len);
     read_impl_();
     return cursor_fsm_.get_data_len();
@@ -259,7 +259,7 @@ void StacklessFanInCursorCombinator::set_error(int error_code) {
     cursor_fsm_.set_error(error_code);
 }
 
-bool StacklessFanInCursorCombinator::put(aku_CursorResult const& result) {
+bool StacklessFanInCursorCombinator::put(aku_Sample const& result) {
     if (cursor_fsm_.can_put()) {
         cursor_fsm_.put(result);
     }
@@ -283,7 +283,7 @@ FanInCursorCombinator::FanInCursorCombinator(ExternalCursor **cursors, int size,
 
 void FanInCursorCombinator::read_impl_(Caller& caller) {
 #ifdef DEBUG
-    aku_CursorResult dbg_prev_item;
+    aku_Sample dbg_prev_item;
     bool dbg_first_item = true;
     long dbg_counter = 0;
 #endif
@@ -301,7 +301,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     HeapPred pred = { direction_ };
 
     const size_t BUF_LEN = 0x200;
-    aku_CursorResult buffer[BUF_LEN];
+    aku_Sample buffer[BUF_LEN];
     for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
         if (!in_cursors_[cur_index]->is_done()) {
             ExternalCursor* cursor = in_cursors_[cur_index];
@@ -323,7 +323,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     while(!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), pred);
         auto item = heap.back();
-        const aku_CursorResult& cur_result = std::get<0>(item);
+        const aku_Sample& cur_result = std::get<0>(item);
         int cur_index = std::get<1>(item);
         int cur_count = std::get<2>(item);
 #ifdef DEBUG
@@ -363,7 +363,7 @@ void FanInCursorCombinator::read_impl_(Caller& caller) {
     out_cursor_.complete(caller);
 }
 
-size_t FanInCursorCombinator::read(aku_CursorResult *buf, size_t buf_len)
+size_t FanInCursorCombinator::read(aku_Sample *buf, size_t buf_len)
 {
     return out_cursor_.read(buf, buf_len);
 }

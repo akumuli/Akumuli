@@ -26,13 +26,15 @@ int main() {
                 c--;
             }
             header.timestamps.push_back(ts + c);
-            header.values.push_back(id + ts);
-            header.lengths.push_back(0);
-            header.offsets.push_back(0);
+            ChunkValue cvalue;
+            cvalue.type = ChunkValue::FLOAT;
+            cvalue.value.floatval = id + ts;
+            header.values.push_back(cvalue);
         }
     }
 
     ByteVector out;
+    out.resize(N_PARAMS*N_TIMESTAMPS*24);
 
     const size_t UNCOMPRESSED_SIZE = header.paramids.size()*8    // Didn't count lengths and offsets
                                    + header.timestamps.size()*8  // because because this arrays contains
@@ -42,16 +44,17 @@ int main() {
     struct Writer : ChunkWriter {
         ByteVector *out;
         Writer(ByteVector *out) : out(out) {}
-        virtual aku_Status add_chunk(aku_MemRange range, size_t size_estimate) {
-            const char* p = (const char*)range.address;
-            ByteVector tmp;
-            for(uint32_t i = 0; i < range.length; i++) {
-                tmp.push_back(p[i]);
-            }
-            std::swap(*out, tmp);
-            for(auto val: tmp) {
-                out->push_back(val);
-            }
+
+        virtual aku_MemRange allocate() {
+            aku_MemRange range = {
+                out->data(),
+                static_cast<uint32_t>(out->size())
+            };
+            return range;
+        }
+
+        //! Commit changes
+        virtual aku_Status commit(size_t bytes_written) {
             return AKU_SUCCESS;
         }
     } writer(&out);
@@ -74,7 +77,7 @@ int main() {
     ChunkHeader decomp;
     const unsigned char* pbegin = out.data();
     const unsigned char* pend = pbegin + out.size();
-    CompressionUtil::decode_chunk(&decomp, &pbegin, pend, 0, 5, header.timestamps.size());
+    CompressionUtil::decode_chunk(&decomp, pbegin, pend, header.timestamps.size());
 
     for (auto i = 0u; i < header.timestamps.size(); i++) {
         if (header.timestamps.at(i) != decomp.timestamps.at(i)) {
@@ -83,11 +86,23 @@ int main() {
         if (header.paramids.at(i) != decomp.paramids.at(i)) {
             std::cout << "Error, bad paramid at " << i << std::endl;
         }
-        if (header.lengths.at(i) != decomp.lengths.at(i)) {
-            std::cout << "Error, bad length at " << i << std::endl;
-        }
-        if (header.offsets.at(i) != decomp.offsets.at(i)) {
-            std::cout << "Error, bad offset at " << i << std::endl;
+        ChunkValue origvalue = header.values.at(i);
+        ChunkValue decvalue = decomp.values.at(i);
+        if (origvalue.type != decvalue.type) {
+            std::cout << "Error, bad type at " << i << std::endl;
+        } else {
+            if (origvalue.type == ChunkValue::FLOAT) {
+                if (origvalue.value.floatval != decvalue.value.floatval) {
+                    std::cout << "Error, bad value at " << i << std::endl;
+                }
+            } else {
+                if (origvalue.value.blobval.length != decvalue.value.blobval.length) {
+                    std::cout << "Error, bad length at " << i << std::endl;
+                }
+                if (origvalue.value.blobval.offset != decvalue.value.blobval.offset) {
+                    std::cout << "Error, bad offset at " << i << std::endl;
+                }
+            }
         }
     }
 }

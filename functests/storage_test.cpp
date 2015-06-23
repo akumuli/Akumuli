@@ -70,10 +70,7 @@ struct Storage {
 
 struct LocalCursor : Cursor {
     aku_Cursor* cursor_;
-    aku_Timestamp timestamp_;
-    aku_ParamId   paramid_;
-    aku_PData     payload_;
-    uint32_t      length_;
+    aku_Sample  sample_;
 
     LocalCursor(aku_Cursor *cursor)
         : cursor_(cursor)
@@ -89,16 +86,11 @@ struct LocalCursor : Cursor {
     }
 
     virtual ~LocalCursor() {
-        aku_close_cursor(cursor_);
+        aku_cursor_close(cursor_);
     }
 
     bool advance() {
-        auto n_results = aku_cursor_read_columns(cursor_,
-                                                 &timestamp_,
-                                                 &paramid_,
-                                                 &payload_,
-                                                 &length_,
-                                                 1);
+        auto n_results = aku_cursor_read(cursor_, &sample_, 1);
         throw_if_error();
         // Return true if cache is not empty
         return n_results;
@@ -110,22 +102,21 @@ struct LocalCursor : Cursor {
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
-            auto len = length_;
-            if (len == 0) {
+            if (sample_.payload.type == aku_PData::FLOAT) {
                 result = std::make_tuple(
                             DOUBLE,
-                            timestamp_,
-                            paramid_,
-                            payload_.float64,
+                            sample_.timestamp,
+                            sample_.paramid,
+                            sample_.payload.value.float64,
                             std::string());
             } else {
-                auto begin = static_cast<const char*>(payload_.ptr);
-                auto end = begin + len;
+                auto begin = (const char*)sample_.payload.value.blob.begin;
+                auto end = begin + sample_.payload.value.blob.size;
                 std::string payload(begin, end);
                 result = std::make_tuple(
                             BLOB,
-                            timestamp_,
-                            paramid_,
+                            sample_.timestamp,
+                            sample_.paramid,
                             NAN,
                             payload);
             }

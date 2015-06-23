@@ -32,7 +32,15 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
 }
 
 aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-    return aku_write_double_raw(db_, param, ts, data);
+    aku_PData payload;
+    payload.type = aku_PData::FLOAT;
+    payload.value.float64 = data;
+    aku_Sample sample = {
+        param,
+        ts,
+        payload,
+    };
+    return aku_write(db_, &sample);
 }
 
 // Pipeline spout

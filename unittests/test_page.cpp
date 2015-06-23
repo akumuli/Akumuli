@@ -26,14 +26,14 @@ namespace {
   * Stores all values in std::vector.
   */
 struct RecordingCursor : InternalCursor {
-    std::vector<aku_CursorResult> results;
+    std::vector<aku_Sample> results;
     bool completed = false;
     enum ErrorCodes {
         NO_ERROR = -1
     };
     int error_code = NO_ERROR;
 
-    virtual bool put(Caller&, aku_CursorResult const& result) {
+    virtual bool put(Caller&, aku_Sample const& result) {
         results.push_back(result);
         return true;
     }

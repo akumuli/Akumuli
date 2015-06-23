@@ -40,7 +40,7 @@ typedef typename Coroutine::caller_type Caller;
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual bool put(Caller&, aku_CursorResult const& offset) = 0;
+    virtual bool put(Caller&, aku_Sample const& offset) = 0;
     virtual void complete(Caller&) = 0;
     //! Set error and stop execution
     virtual void set_error(Caller&, int error_code) = 0;

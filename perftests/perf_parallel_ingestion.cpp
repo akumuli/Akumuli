@@ -75,7 +75,7 @@ aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
-            aku_close_cursor(cursor);
+            aku_cursor_close(cursor);
             if (err == AKU_EBUSY) { // OK
                 reader_n_busy++;
                 return last;
@@ -84,40 +84,40 @@ aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku
                 throw std::runtime_error(aku_error_message(err));
             }
         }
-        aku_Timestamp timestamps[NUM_ELEMENTS];
-        aku_ParamId paramids[NUM_ELEMENTS];
-        aku_PData pointers[NUM_ELEMENTS];
-        uint32_t lengths[NUM_ELEMENTS];
-        int n_entries = aku_cursor_read_columns(cursor, timestamps, paramids, pointers, lengths, NUM_ELEMENTS);
+        aku_Sample samples[NUM_ELEMENTS];
+        int n_entries = aku_cursor_read(cursor, samples, NUM_ELEMENTS);
         for (int i = 0; i < n_entries; i++) {
             if (last_initialized) {
-                if (timestamps[i] != current_time) {
-                    std::cout << "(BW) Bad ts at " << current_time << " expected " << current_time << " acutal " << timestamps[i] << std::endl;
-                    aku_close_cursor(cursor);
+                if (samples[i].timestamp != current_time) {
+                    std::cout << "(BW) Bad ts at " << current_time << " expected " << current_time
+                              << " acutal " << samples[i].timestamp << std::endl;
+                    aku_cursor_close(cursor);
                     return last;
                 }
-                if (paramids[i] != 42) {
-                    std::cout << "(BW) Bad id at " << current_time << " expected " << 42 << " acutal " << paramids[i] << std::endl;
-                    aku_close_cursor(cursor);
-                    return last;
-
-                }
-                if (lengths[i] != 8) {
-                    std::cout << "(BW) Bad len at " << current_time << " expected 8 acutal " << lengths[i] << std::endl;
-                    aku_close_cursor(cursor);
+                if (samples[i].paramid != 42) {
+                    std::cout << "(BW) Bad id at " << current_time << " expected " << 42
+                              << " acutal " << samples[i].paramid << std::endl;
+                    aku_cursor_close(cursor);
                     return last;
 
                 }
-                uint64_t pvalue = *(uint64_t*)pointers[i].ptr;
+                aku_PData pdata = samples[i].payload;
+                if (pdata.value.blob.size != 8) {
+                    std::cout << "(BW) Bad len at " << current_time << " expected 8 acutal " << pdata.value.blob.size << std::endl;
+                    aku_cursor_close(cursor);
+                    return last;
+
+                }
+                uint64_t pvalue = *(uint64_t*)pdata.value.blob.begin;
                 if (pvalue != (current_time << 2)) {
                     std::cout << "(BW) Bad value at " << current_time << " expected " << (current_time << 2) << " acutal " << pvalue << std::endl;
-                    aku_close_cursor(cursor);
+                    aku_cursor_close(cursor);
                     return last;
 
                 }
             }
             if (!last_initialized) {
-                last = timestamps[i];
+                last = samples[i].timestamp;
                 current_time = last;
                 last_initialized = true;
             }
@@ -129,7 +129,7 @@ aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku
             }
         }
     }
-    aku_close_cursor(cursor);
+    aku_cursor_close(cursor);
     return last;
 }
 
@@ -145,7 +145,7 @@ aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
-            aku_close_cursor(cursor);
+            aku_cursor_close(cursor);
             if (err == AKU_EBUSY) { // OK
                 reader_n_busy++;
                 return last;
@@ -154,38 +154,39 @@ aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_
                 throw std::runtime_error(aku_error_message(err));
             }
         }
-        aku_Timestamp timestamps[NUM_ELEMENTS];
-        aku_ParamId paramids[NUM_ELEMENTS];
-        aku_PData pointers[NUM_ELEMENTS];
-        uint32_t lengths[NUM_ELEMENTS];
-        int n_entries = aku_cursor_read_columns(cursor, timestamps, paramids, pointers, lengths, NUM_ELEMENTS);
+        aku_Sample samples[NUM_ELEMENTS];
+        int n_entries = aku_cursor_read(cursor, samples, NUM_ELEMENTS);
         for (int i = 0; i < n_entries; i++) {
-            if (timestamps[i] != current_time) {
-                std::cout << "(FW) Bad ts at " << current_time << " expected " << current_time << " acutal " << timestamps[i] << std::endl;
-                aku_close_cursor(cursor);
+            if (samples[i].timestamp != current_time) {
+                std::cout << "(FW) Bad ts at " << current_time << " expected " << current_time
+                          << " acutal " << samples[i].timestamp << std::endl;
+                aku_cursor_close(cursor);
                 return last;
             }
-            if (paramids[i] != 42) {
-                std::cout << "(FW) Bad id at " << current_time << " expected " << 42 << " acutal " << paramids[i] << std::endl;
-                aku_close_cursor(cursor);
-                return last;
-
-            }
-            if (lengths[i] != 8) {
-                std::cout << "(FW) Bad len at " << current_time << " expected 8 acutal " << lengths[i] << std::endl;
-                aku_close_cursor(cursor);
+            if (samples[i].paramid != 42) {
+                std::cout << "(FW) Bad id at " << current_time << " expected " << 42
+                          << " acutal " << samples[i].paramid << std::endl;
+                aku_cursor_close(cursor);
                 return last;
 
             }
-            uint64_t pvalue = *(uint64_t*)pointers[i].ptr;
+            aku_PData pdata = samples[i].payload;
+            if (pdata.value.blob.size != 8) {
+                std::cout << "(FW) Bad len at " << current_time << " expected 8 acutal " << pdata.value.blob.size << std::endl;
+                aku_cursor_close(cursor);
+                return last;
+
+            }
+            uint64_t pvalue = *(uint64_t*)pdata.value.blob.begin;
             if (pvalue != (current_time << 2)) {
                 std::cout << "(FW) Bad value at " << current_time << " expected " << (current_time << 2) << " acutal " << pvalue << std::endl;
-                aku_close_cursor(cursor);
+                aku_cursor_close(cursor);
                 return last;
 
             }
+
             current_time++;
-            last = timestamps[i];
+            last = samples[i].timestamp;
             counter++;
             if (counter % mod == 0) {
                 std::cout << counter << "..." << timer.elapsed() << "s (fw)" << std::endl;
@@ -193,7 +194,7 @@ aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_
             }
         }
     }
-    aku_close_cursor(cursor);
+    aku_cursor_close(cursor);
     return last;
 }
 

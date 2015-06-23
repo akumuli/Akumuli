@@ -374,7 +374,7 @@ void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &que
     // TODO: remove excessive copying
     // to do this I need to pass cur to fan_in_cursor somehow
     const size_t results_len = 0x1000;
-    aku_CursorResult results[results_len];
+    aku_Sample results[results_len];
     while(!fan_in_cursor.is_done()) {
         size_t s = fan_in_cursor.read(results, results_len);
         int err_code = 0;
