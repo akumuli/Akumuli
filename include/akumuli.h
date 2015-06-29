@@ -264,10 +264,18 @@ AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Times
 
 /**
  * @brief Execute query
+ * @note Obsolete
  * @param query value
  * @return cursor
  */
 AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const aku_SelectQuery *query);
+
+/** @brief Query database
+  * @param db should point to opened database instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_query(aku_Database* db, const char* query);
 
 /**
  * @brief Close cursor

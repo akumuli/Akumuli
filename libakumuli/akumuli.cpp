@@ -151,6 +151,12 @@ struct DatabaseImpl : public aku_Database
         storage_.close();
     }
 
+    CursorImpl* query(const char* query) {
+        //storage_.search();
+        throw "Not implemented";
+    }
+
+    // TODO: remove obsolete
     CursorImpl* select(aku_SelectQuery const* query) {
         uint32_t scan_dir;
         aku_Timestamp begin, end;
@@ -295,6 +301,11 @@ void aku_destroy(void* any) {
 aku_Cursor* aku_select(aku_Database *db, const aku_SelectQuery* query) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->select(query);
+}
+
+aku_Cursor* aku_query(aku_Database* db, const char* query) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->query(query);
 }
 
 void aku_cursor_close(aku_Cursor* pcursor) {

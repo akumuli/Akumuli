@@ -548,4 +548,9 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
         cur->complete(caller);
     }
 }
+
+void Sequencer::search(Caller& caller, InternalCursor* cur, std::shared_ptr<QP::QueryProcessor> query, int sequence_number) const {
+    throw "Not implemented";
+}
+
 }  // namespace Akumuli

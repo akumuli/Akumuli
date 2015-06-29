@@ -36,6 +36,8 @@ struct Node {
         GroupBy,
         // Testing
         Mock,
+        // Cursor node
+        Cursor,
     };
 
     virtual ~Node() = default;

@@ -338,6 +338,52 @@ void Storage::log_message(const char* message, uint64_t value) {
 
 // Reading
 
+struct TerminalNode : QP::Node {
+
+    Caller &caller;
+    InternalCursor* cursor;
+
+    TerminalNode(Caller& ca, InternalCursor* cur) : caller(ca), cursor(cur) {
+    }
+
+    // Node interface
+
+    void complete() {
+        cursor->complete(caller);
+    }
+
+    void put(aku_Timestamp ts, aku_ParamId id, double value) {
+        aku_Sample sample;
+        sample.paramid = id;
+        sample.timestamp = ts;
+        sample.payload.type = aku_PData::FLOAT;
+        sample.payload.value.float64 = value;
+        cursor->put(caller, sample);
+    }
+
+    NodeType get_type() const {
+        return Node::Cursor;
+    }
+};
+
+void Storage::query(Caller &caller, InternalCursor* cur, const char* query) const {
+    using namespace std;
+
+    // Parse query
+    auto terminal_node = std::shared_ptr<TerminalNode>(caller, cur);
+    auto query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+
+    // Fan out query
+    //
+    //         -> Volume
+    //       /            \
+    // Query  --> Volume --+--> Cursor
+    //       \            /
+    //         -> Volume
+
+
+}
+
 void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
     using namespace std;
     // Find pages
