@@ -123,6 +123,8 @@ add_executable(
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
+    ../libakumuli/queryprocessor.cpp
+    ../libakumuli/stringpool.cpp
 )
 
 target_link_libraries(
@@ -147,6 +149,8 @@ add_executable(
     ../libakumuli/page.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
+    ../libakumuli/queryprocessor.cpp
+    ../libakumuli/stringpool.cpp
 )
 
 target_link_libraries(

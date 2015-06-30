@@ -352,13 +352,12 @@ struct TerminalNode : QP::Node {
         cursor->complete(caller);
     }
 
-    void put(aku_Timestamp ts, aku_ParamId id, double value) {
-        aku_Sample sample;
-        sample.paramid = id;
-        sample.timestamp = ts;
-        sample.payload.type = aku_PData::FLOAT;
-        sample.payload.value.float64 = value;
-        cursor->put(caller, sample);
+    bool put(const aku_Sample& sample) {
+        return cursor->put(caller, sample);
+    }
+
+    void set_error(aku_Status status) {
+        cursor->set_error(caller, status);
     }
 
     NodeType get_type() const {
@@ -366,20 +365,22 @@ struct TerminalNode : QP::Node {
     }
 };
 
+
 void Storage::query(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
     // Parse query
-    auto terminal_node = std::shared_ptr<TerminalNode>(caller, cur);
+    auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
     auto query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
 
-    // Fan out query
-    //
-    //         -> Volume
-    //       /            \
-    // Query  --> Volume --+--> Cursor
-    //       \            /
-    //         -> Volume
+    /* Fan out query
+     *
+     *         -> Volume
+     *       /            \
+     * Query  --> Volume --+--> Cursor
+     *       \            /
+     *         -> Volume
+     */
 
 
 }

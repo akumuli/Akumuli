@@ -38,9 +38,7 @@ Node::NodeType NodeException::get_type() const {
 
 struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, Node {
     const uint32_t                      buffer_size_;
-    std::vector<aku_Timestamp>          timestamps_;
-    std::vector<aku_ParamId>            paramids_;
-    std::vector<double>                 values_;
+    std::vector<aku_Sample>             samples_;
     Rand                                random_;
     std::shared_ptr<Node>               next_;
 
@@ -48,6 +46,7 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
         : buffer_size_(buffer_size)
         , next_(next)
     {
+        samples_.reserve(buffer_size);
     }
 
     // Bolt interface
@@ -57,49 +56,47 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
 
     virtual void complete() {
         if (!next_) {
-            NodeException err(Node::RandomSampler, "next not set");
-            BOOST_THROW_EXCEPTION(err);
+            AKU_PANIC("bad query processor node, next not set");
         }
 
         // Do the actual job
-        auto& tsarray = timestamps_;
-        auto predicate = [&tsarray](uint32_t lhs, uint32_t rhs) {
-            return tsarray.at(lhs) < tsarray.at(rhs);
+        auto predicate = [](aku_Sample const& lhs, aku_Sample const& rhs) {
+            auto l = std::make_tuple(lhs.timestamp, lhs.paramid);
+            auto r = std::make_tuple(rhs.timestamp, rhs.paramid);
+            return l < r;
         };
 
-        std::vector<uint32_t> indexes;
-        uint32_t gencnt = 0u;
-        std::generate_n(std::back_inserter(indexes), timestamps_.size(), [&gencnt]() { return gencnt++; });
-        std::stable_sort(indexes.begin(), indexes.end(), predicate);
+        std::stable_sort(samples_.begin(), samples_.end(), predicate);
 
-        for(auto ix: indexes) {
-            next_->put(timestamps_.at(ix),
-                       paramids_.at(ix),
-                       values_.at(ix));
+        for(auto const& sample: samples_) {
+            next_->put(sample);
         }
 
         next_->complete();
     }
 
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
+    virtual bool put(const aku_Sample& sample) {
         if (!next_) {
-            NodeException err(Node::RandomSampler, "next not set");
-            BOOST_THROW_EXCEPTION(err);
+            AKU_PANIC("bad query processor node, next not set");
         }
-        if (timestamps_.size() < buffer_size_) {
+        if (samples_.size() < buffer_size_) {
             // Just append new values
-            timestamps_.push_back(ts);
-            paramids_.push_back(id);
-            values_.push_back(value);
+            samples_.push_back(sample);
         } else {
             // Flip a coin
-            uint32_t ix = random_() % timestamps_.size();
+            uint32_t ix = random_() % samples_.size();
             if (ix < buffer_size_) {
-                timestamps_.at(ix) =    ts;
-                paramids_.at(ix)   =    id;
-                values_.at(ix)     = value;
+                samples_.at(ix) = sample;
             }
         }
+        return true;
+    }
+
+    void set_error(aku_Status status) {
+        if (!next_) {
+            AKU_PANIC("bad query processor node, next not set");
+        }
+        next_->set_error(status);
     }
 };
 
@@ -122,20 +119,23 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     // Bolt interface
     virtual void complete() {
         if (!next_) {
-            NodeException err(Node::FilterById, "no next node");
-            BOOST_THROW_EXCEPTION(err);
+            AKU_PANIC("bad query processor node, next not set");
         }
         next_->complete();
     }
 
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) {
+    virtual bool put(const aku_Sample& sample) {
         if (!next_) {
-            NodeException err(Node::FilterById, "no next node");
-            BOOST_THROW_EXCEPTION(err);
+            AKU_PANIC("bad query processor node, next not set");
         }
-        if (op_(id)) {
-            next_->put(ts, id, value);
+        return op_(sample.paramid) ? next_->put(sample) : true;
+    }
+
+    void set_error(aku_Status status) {
+        if (!next_) {
+            AKU_PANIC("bad query processor node, next not set");
         }
+        next_->set_error(status);
     }
 
     virtual NodeType get_type() const {
@@ -225,7 +225,7 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
                aku_Timestamp end)
     : lowerbound(std::min(begin, end))
     , upperbound(std::max(begin, end))
-    , direction(begin > end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD)
+    , direction(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
     , metrics(metrics)
     , namesofinterest(StringTools::create_table(0x1000))
     , root_node(root)
@@ -235,12 +235,8 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
 void QueryProcessor::start() {
 }
 
-void QueryProcessor::put(aku_Timestamp ts, aku_ParamId id, double value) {
-    root_node->put(ts, id, value);
-}
-
-void QueryProcessor::put(aku_Timestamp ts, aku_ParamId id, aku_MemRange blob) {
-    // TODO: implement
+void QueryProcessor::put(const aku_Sample &sample) {
+    root_node->put(sample);
 }
 
 void QueryProcessor::stop() {

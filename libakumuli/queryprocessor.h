@@ -43,8 +43,11 @@ struct Node {
     virtual ~Node() = default;
     //! Complete adding values
     virtual void complete() = 0;
-    //! Process value
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) = 0;
+
+    //! Process value, return false to interrupt process
+    virtual bool put(aku_Sample const& sample) = 0;
+
+    virtual void set_error(aku_Status status) = 0;
 
     // Introspections
 
@@ -120,8 +123,7 @@ struct QueryProcessor {
     void start();
 
     //! Process value
-    void put(aku_Timestamp ts, aku_ParamId id, double value);
-    void put(aku_Timestamp ts, aku_ParamId id, aku_MemRange blob);
+    void put(const aku_Sample& sample);
 
     //! Should be called when processing completed
     void stop();

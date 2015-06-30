@@ -365,24 +365,24 @@ namespace {
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     PageHeader const* page_;
-    Caller& caller_;
-    InternalCursor* cursor_;
-    SearchQuery query_;
+    std::shared_ptr<QP::QueryProcessor> query_;
 
-    const uint32_t MAX_INDEX_;
-    const bool IS_BACKWARD_;
+    const uint32_t      MAX_INDEX_;
+    const bool          IS_BACKWARD_;
     const aku_Timestamp key_;
+    const aku_Timestamp lowerbound_;
+    const aku_Timestamp upperbound_;
 
     SearchRange range_;
 
-    SearchAlgorithm(PageHeader const* page, Caller& caller, InternalCursor* cursor, SearchQuery query)
+    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::QueryProcessor> query)
         : page_(page)
         , caller_(caller)
         , cursor_(cursor)
         , query_(query)
         , MAX_INDEX_(page->get_entries_count())
-        , IS_BACKWARD_(query.direction == AKU_CURSOR_DIR_BACKWARD)
-        , key_(IS_BACKWARD_ ? query.upperbound : query.lowerbound)
+        , IS_BACKWARD_(query->direction == AKU_CURSOR_DIR_BACKWARD)
+        , key_(IS_BACKWARD_ ? query->upperbound : query->lowerbound)
     {
         if (MAX_INDEX_) {
             range_.begin = 0u;
@@ -395,12 +395,12 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool fast_path() {
         if (!MAX_INDEX_) {
-            cursor_->complete(caller_);
+            query_->stop();
             return true;
         }
 
         if (!validate_query(query_)) {
-            cursor_->set_error(caller_, AKU_SEARCH_EBAD_ARG);
+            query_->set_error(AKU_SEARCH_EBAD_ARG);
             return true;
         }
 
@@ -414,7 +414,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    cursor_->complete(caller_);
+                    query_->complete();
                     return true;
                 }
             }
@@ -424,7 +424,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    cursor_->complete(caller_);
+                    query_->complete();
                     return true;
                 }
             }
@@ -454,7 +454,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool interpolation() {
         if (!run(key_, &range_)) {
-            cursor_->set_error(caller_, AKU_ENOT_FOUND);
+            query_->set_error(AKU_ENOT_FOUND);
             return false;
         }
         return true;
@@ -471,7 +471,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
             if (probe_index >= MAX_INDEX_) {
-                cursor_->set_error(caller_, AKU_EOVERFLOW);
+                query_->set_error(caller_, AKU_EOVERFLOW);
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
             }
@@ -541,11 +541,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
         bool probe_in_time_range = true;
 
-        auto cursor = cursor_;
-        auto& caller = caller_;
+        auto queryproc = query_;
         auto page = page_;
 
-        auto put_entry = [&header, cursor, &caller, page] (uint32_t i) {
+        auto put_entry = [&header, queryproc, page] (uint32_t i) {
             aku_PData pdata;
             if (header.values.at(i).type == ChunkValue::BLOB) {
                 pdata.type =  aku_PData::BLOB;
@@ -560,17 +559,17 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header.paramids.at(i),
                 pdata,
             };
-            cursor->put(caller, result);
+            queryproc->put(result);
         };
 
         if (IS_BACKWARD_) {
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
+                probe_in_time_range = lowerbound_ <= header.timestamps[i] &&
+                                      upperbound_ >= header.timestamps[i];
+                if (probe_in_time_range) {
                     put_entry(i);
                 } else {
-                    probe_in_time_range = query_.lowerbound <= header.timestamps[i];
+                    probe_in_time_range = lowerbound_ <= header.timestamps[i];
                     if (!probe_in_time_range) {
                         break;
                     }
@@ -578,12 +577,12 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             }
         } else {
             for (auto i = start_pos; i != (int)probe_length; i++) {
-                probe_in_time_range = query_.lowerbound <= header.timestamps[i] &&
-                                      query_.upperbound >= header.timestamps[i];
-                if (probe_in_time_range && query_.param_pred(header.paramids[i]) == SearchQuery::MATCH) {
+                probe_in_time_range = lowerbound_ <= header.timestamps[i] &&
+                                      upperbound_ >= header.timestamps[i];
+                if (probe_in_time_range) {
                     put_entry(i);
                 } else {
-                    probe_in_time_range = query_.upperbound >= header.timestamps[i];
+                    probe_in_time_range = upperbound_ >= header.timestamps[i];
                     if (!probe_in_time_range) {
                         break;
                     }
@@ -608,10 +607,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool proceed = false;
-            bool probe_in_time_range = query_.lowerbound <= probe_time &&
-                                       query_.upperbound >= probe_time;
+            bool probe_in_time_range = lowerbound_ <= probe_time &&
+                                       upperbound_ >= probe_time;
             if (probe < AKU_ID_COMPRESSED) {
-                if (query_.param_pred(probe) == SearchQuery::MATCH && probe_in_time_range) {
+                if (probe_in_time_range) {
 #ifdef DEBUG
                     if (dbg_count) {
                         // check for backward direction
@@ -631,20 +630,20 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                         probe,  //id
                         pdata
                     };
-                    if (!cursor_->put(caller_, result)) {
+                    if (!query_->put(result)) {
                         break;
                     }
                 }
-                proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_time
-                                       : query_.upperbound >= probe_time;
+                proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
+                                       : upperbound_ >= probe_time;
             } else {
                 if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
                     proceed = scan_compressed_entries(probe_entry, false);
                 } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
                     proceed = scan_compressed_entries(probe_entry, false);
                 } else {
-                    proceed = IS_BACKWARD_ ? query_.lowerbound <= probe_time
-                                           : query_.upperbound >= probe_time;
+                    proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
+                                           : upperbound_ >= probe_time;
                 }
             }
             if (!proceed || probe_index >= MAX_INDEX_) {
@@ -659,11 +658,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     void scan() {
         if (range_.begin != range_.end) {
-            cursor_->set_error(caller_, AKU_EGENERAL);
+            query_->set_error(AKU_EGENERAL);
             return;
         }
         if (range_.begin >= MAX_INDEX_) {
-            cursor_->set_error(caller_, AKU_EOVERFLOW);
+            query_->set_error(AKU_EOVERFLOW);
             return;
         }
 
@@ -675,13 +674,17 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             stats.stats.scan.fwd_bytes += std::get<0>(sums);
             stats.stats.scan.bwd_bytes += std::get<1>(sums);
         }
-        cursor_->complete(caller_);
+        query_->complete();
     }
 };
 
 void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
 {
-    SearchAlgorithm search_alg(this, caller, cursor, query);
+    throw "depricated";
+}
+
+void PageHeader::searchV2(std::shared_ptr<QP::QueryProcessor> query) const {
+    SearchAlgorithm search_alg(this, query);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {
             search_alg.binary_search();

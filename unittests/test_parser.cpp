@@ -26,12 +26,22 @@ public:
 
     NodeType get_type() const { return Node::Mock; }
     void complete() {}
-    void put(aku_Timestamp ts, aku_ParamId id, double value) {
-        timestamps.push_back(ts);
-        ids.push_back(id);
-        values.push_back(value);
+    bool put(aku_Sample const& s) {
+        ids.push_back(s.paramid);
+        timestamps.push_back(s.timestamp);
+        values.push_back(s.payload.value.float64);
+        return true;
     }
 };
+
+aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
+    aku_Sample s;
+    s.paramid = id;
+    s.timestamp = t;
+    s.payload.type = aku_PData::FLOAT;
+    s.payload.value.float64 = value;
+    return s;
+}
 
 BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
@@ -188,9 +198,9 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     BOOST_REQUIRE(qproc->upperbound == DateTimeUtil::from_boost_ptime(second_ts));
 
     qproc->start();
-    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123);  // should match
-    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234);  // should match
-    qproc->put(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345);  // shouldn't match
+    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
+    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
+    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345));  // shouldn't match
     qproc->stop();
 
     BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);

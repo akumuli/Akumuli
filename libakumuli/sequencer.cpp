@@ -549,8 +549,58 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
     }
 }
 
-void Sequencer::search(Caller& caller, InternalCursor* cur, std::shared_ptr<QP::QueryProcessor> query, int sequence_number) const {
-    throw "Not implemented";
+void Sequencer::filterV2(PSortedRun run, std::shared_ptr<QP::QueryProcessor> q, std::vector<PSortedRun>* results) const {
+    if (run->empty()) {
+        return;
+    }
+    PSortedRun result(new SortedRun);
+    auto lkey = TimeSeriesValue(q->lowerbound, 0u, 0u, 0u);
+    auto rkey = TimeSeriesValue(q->upperbound, ~0u, 0u, 0u);
+    auto begin = std::lower_bound(run->begin(), run->end(), lkey);
+    auto end = std::upper_bound(run->begin(), run->end(), rkey);
+    std::copy(begin, end, std::back_inserter(*result));
+    results->push_back(move(result));
+}
+
+void Sequencer::searchV2(Caller& caller, InternalCursor* cur, std::shared_ptr<QP::QueryProcessor> query, int sequence_number) const {
+    int seq_id = sequence_number_.load();
+    if (seq_id % 2 != 0 || sequence_number != seq_id) {
+        cur->set_error(caller, AKU_EBUSY);
+        return;
+    }
+    std::vector<PSortedRun> filtered;
+    std::vector<PSortedRun> pruns;
+    Lock runs_guard(runs_resize_lock_);
+    pruns = runs_;
+    runs_guard.unlock();
+    int run_ix = 0;
+    for (auto const& run: pruns) {
+        auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
+        auto& rwlock = run_locks_.at(ix);
+        rwlock.rdlock();
+        filterV2(run, query, &filtered);
+        rwlock.unlock();
+        run_ix++;
+    }
+
+    auto page = page_;
+    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+        aku_Sample result = val.to_result(page);
+        return cur->put(caller, result);
+    };
+
+    if (query->direction == AKU_CURSOR_DIR_FORWARD) {
+        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
+    } else {
+        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
+    }
+
+    if (seq_id != sequence_number_.load()) {
+        cur->set_error(caller, AKU_EBUSY);
+        return;
+    } else {
+        cur->complete(caller);
+    }
 }
 
 }  // namespace Akumuli
