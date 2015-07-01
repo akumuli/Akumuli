@@ -199,6 +199,10 @@ struct Node : QP::Node {
         return sample.paramid == 42u ? cursor.put(caller, sample) : true;
     }
 
+    void set_error(aku_Status status) {
+        cursor.set_error(caller, status);
+    }
+
     NodeType get_type() const {
         return Node::Cursor;
     }
@@ -238,7 +242,7 @@ void test_sequencer_searching(int dir) {
     aku_Timestamp window;
     int seq_id;
     std::tie(window, seq_id) = seq.get_window();
-    seq.searchV2(caller, &cursor, qproc, seq_id);
+    seq.searchV2(qproc, seq_id);
 
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());

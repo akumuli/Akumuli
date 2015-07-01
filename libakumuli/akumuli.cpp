@@ -96,13 +96,13 @@ struct MatchPred {
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
     int status_;
-    std::unique_ptr<SearchQuery> query_;
+    std::string query_;
 
-    CursorImpl(Storage& storage, std::unique_ptr<SearchQuery> query)
-        : query_(std::move(query))
+    CursorImpl(Storage& storage, const char* query)
+        : query_(query)
     {
         status_ = AKU_SUCCESS;
-        cursor_ = CoroCursor::make(&Storage::search, &storage, *query_);
+        cursor_ = CoroCursor::make(&Storage::searchV2, &storage, query_.data());
     }
 
     ~CursorImpl() {
@@ -152,28 +152,13 @@ struct DatabaseImpl : public aku_Database
     }
 
     CursorImpl* query(const char* query) {
-        //storage_.search();
-        throw "Not implemented";
+        auto pcur = new CursorImpl(storage_, std::move(query));
+        return pcur;
     }
 
     // TODO: remove obsolete
     CursorImpl* select(aku_SelectQuery const* query) {
-        uint32_t scan_dir;
-        aku_Timestamp begin, end;
-        if (query->begin < query->end) {
-            begin = query->begin;
-            end = query->end;
-            scan_dir = AKU_CURSOR_DIR_FORWARD;
-        } else {
-            end = query->begin;
-            begin = query->end;
-            scan_dir = AKU_CURSOR_DIR_BACKWARD;
-        }
-        MatchPred pred(query->params, query->n_params);
-        std::unique_ptr<SearchQuery> search_query;
-        search_query.reset(new SearchQuery(pred, {begin}, {end}, scan_dir));
-        auto pcur = new CursorImpl(storage_, std::move(search_query));
-        return pcur;
+        throw "depricated";
     }
 
     aku_Status add_blob(aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {

@@ -171,7 +171,7 @@ struct Storage
     void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const;
 
     //! Search storage using cursor
-    void query(Caller &caller, InternalCursor* cur, const char* query) const;
+    void searchV2(Caller &caller, InternalCursor* cur, const char* query) const;
 
     // Static interface
 

@@ -549,23 +549,23 @@ void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, i
     }
 }
 
-void Sequencer::filterV2(PSortedRun run, std::shared_ptr<QP::QueryProcessor> q, std::vector<PSortedRun>* results) const {
+void Sequencer::filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, std::vector<PSortedRun>* results) const {
     if (run->empty()) {
         return;
     }
     PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q->lowerbound, 0u, 0u, 0u);
-    auto rkey = TimeSeriesValue(q->upperbound, ~0u, 0u, 0u);
+    auto lkey = TimeSeriesValue(q->lowerbound(), 0u, 0u, 0u);
+    auto rkey = TimeSeriesValue(q->upperbound(), ~0u, 0u, 0u);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     std::copy(begin, end, std::back_inserter(*result));
     results->push_back(move(result));
 }
 
-void Sequencer::searchV2(Caller& caller, InternalCursor* cur, std::shared_ptr<QP::QueryProcessor> query, int sequence_number) const {
+void Sequencer::searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const {
     int seq_id = sequence_number_.load();
     if (seq_id % 2 != 0 || sequence_number != seq_id) {
-        cur->set_error(caller, AKU_EBUSY);
+        query->set_error(AKU_EBUSY);
         return;
     }
     std::vector<PSortedRun> filtered;
@@ -584,22 +584,22 @@ void Sequencer::searchV2(Caller& caller, InternalCursor* cur, std::shared_ptr<QP
     }
 
     auto page = page_;
-    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
+    auto consumer = [query, page](TimeSeriesValue const& val) {
         aku_Sample result = val.to_result(page);
-        return cur->put(caller, result);
+        return query->put(result);
     };
 
-    if (query->direction == AKU_CURSOR_DIR_FORWARD) {
+    if (query->direction() == AKU_CURSOR_DIR_FORWARD) {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
     }
 
     if (seq_id != sequence_number_.load()) {
-        cur->set_error(caller, AKU_EBUSY);
+        query->set_error(AKU_EBUSY);
         return;
     } else {
-        cur->complete(caller);
+        query->stop();
     }
 }
 

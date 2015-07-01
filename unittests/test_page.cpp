@@ -11,6 +11,7 @@
 #include "akumuli_def.h"
 #include "cursor.h"
 #include "page.h"
+#include "queryprocessor.h"
 
 using namespace Akumuli;
 
@@ -46,6 +47,45 @@ struct RecordingCursor : InternalCursor {
         this->error_code = error_code;
     }
 };
+
+struct Recorder : QP::Node {
+
+    Caller caller;
+    RecordingCursor cursor;
+    aku_ParamId expected_id;
+
+    Recorder(aku_ParamId expected) : expected_id(expected) {}
+
+    void complete() {
+        cursor.complete(caller);
+    }
+
+    bool put(const aku_Sample &sample) {
+        return sample.paramid == expected_id ? cursor.put(caller, sample) : true;
+    }
+
+    void set_error(aku_Status status) {
+        cursor.set_error(caller, status);
+    }
+
+    NodeType get_type() const {
+        return Node::Cursor;
+    }
+};
+
+// Make query processor
+std::shared_ptr<QP::IQueryProcessor> make_proc(std::shared_ptr<QP::Node> root, aku_Timestamp begin, aku_Timestamp end, int dir) {
+    std::vector<std::string> m;
+    aku_Timestamp b, e;
+    if (dir == AKU_CURSOR_DIR_BACKWARD) {
+        b = std::max(begin, end);
+        e = std::min(begin, end);
+    } else {
+        b = std::min(begin, end);
+        e = std::max(begin, end);
+    }
+    return std::make_shared<QP::QueryProcessor>(root, m, b, e);
+}
 
 }  // namespace
 
@@ -177,13 +217,15 @@ void generic_search_test
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 0x10000);
     auto page = init_search_range_test(page_mem.data(), page_mem.size(), 100);
-    SearchQuery query(param_id, begin, end, direction);
-    RecordingCursor cursor;
-    Caller caller;
 
-    page->search(caller, &cursor, query);
+    auto recorder = std::make_shared<Recorder>(param_id);
+    auto qproc = make_proc(recorder, begin, end, direction);
 
-    BOOST_CHECK_EQUAL(cursor.completed, expectations.completed);
+    page->searchV2(qproc);
+
+    auto cursor = recorder->cursor;
+
+    BOOST_CHECK_EQUAL(cursor.completed,  expectations.completed);
     BOOST_CHECK_EQUAL(cursor.error_code, expectations.error_code);
 
     if (expectations.error_code != RecordingCursor::NO_ERROR) {
@@ -329,11 +371,12 @@ void generic_search_test_with_skew
     page_mem.resize(sizeof(PageHeader) + 0x10000);
     auto page = init_search_range_test_with_skew(page_mem.data(), page_mem.size(), 1000, 2);
 
-    SearchQuery query(param_id, begin, end, direction);
-    RecordingCursor cursor;
-    Caller caller;
+    auto recorder = std::make_shared<Recorder>(param_id);
+    auto qproc = make_proc(recorder, begin, end, direction);
 
-    page->search(caller, &cursor, query);
+    page->searchV2(qproc);
+
+    auto cursor = recorder->cursor;
 
     BOOST_CHECK_EQUAL(cursor.completed, expectations.completed);
     BOOST_CHECK_EQUAL(cursor.error_code, expectations.error_code);
@@ -419,11 +462,15 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         BOOST_REQUIRE(start_time > 0 && start_time < max_timestamp);
         BOOST_REQUIRE(stop_time > 0 && stop_time < max_timestamp);
         BOOST_REQUIRE(stop_time > start_time);
-        SearchQuery query(id2search, start_time, stop_time, dir);
-        Caller caller;
-        RecordingCursor cursor;
+
+        auto recorder = std::make_shared<Recorder>(id2search);
+        auto qproc = make_proc(recorder, start_time, stop_time, dir);
         std::vector<uint32_t> matches;
-        page->search(caller, &cursor, query);
+
+        page->searchV2(qproc);
+
+        auto cursor = recorder->cursor;
+
         for(size_t i = 0; i < cursor.results.size(); i++) {
             const uint32_t* value = get_pd_pointer<uint32_t>(cursor.results.at(i).payload);
             auto t = cursor.results.at(i).timestamp;
@@ -508,18 +555,19 @@ void generic_compression_test
         }
     }
 
-    //page->_sort();
-
     BOOST_REQUIRE_NE(expected.size(), 0ul);
 
     // Test sequential access
     for(const auto& exp_chunk: expected) {
         auto ts_begin = exp_chunk.timestamps.front();
         auto ts_end = exp_chunk.timestamps.back();
-        SearchQuery query(param_id, ts_begin, ts_end, dir);
-        Caller caller;
-        RecordingCursor cur;
-        page->search(caller, &cur, query);
+
+        auto recorder = std::make_shared<Recorder>(param_id);
+        auto qproc = make_proc(recorder, ts_begin, ts_end, dir);
+
+        page->searchV2(qproc);
+
+        auto cur = recorder->cursor;
 
         BOOST_REQUIRE_EQUAL(cur.results.size(), exp_chunk.timestamps.size());
 
@@ -549,10 +597,13 @@ void generic_compression_test
         auto ix = std::rand() % (exp_chunk.timestamps.size() - 2);
         auto ts_begin = exp_chunk.timestamps[ix];
         auto ts_end = exp_chunk.timestamps[ix + 1];
-        SearchQuery query(param_id, ts_begin, ts_end, dir);
-        Caller caller;
-        RecordingCursor cur;
-        page->search(caller, &cur, query);
+
+        auto recorder = std::make_shared<Recorder>(param_id);
+        auto qproc = make_proc(recorder, ts_begin, ts_end, dir);
+
+        page->searchV2(qproc);
+
+        auto cur = recorder->cursor;
 
         BOOST_REQUIRE_EQUAL(cur.results.size(), 2u);
         if (dir == AKU_CURSOR_DIR_FORWARD) {

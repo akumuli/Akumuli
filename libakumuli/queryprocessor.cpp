@@ -223,24 +223,40 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
                std::vector<std::string> metrics,
                aku_Timestamp begin,
                aku_Timestamp end)
-    : lowerbound(std::min(begin, end))
-    , upperbound(std::max(begin, end))
-    , direction(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
-    , metrics(metrics)
-    , namesofinterest(StringTools::create_table(0x1000))
-    , root_node(root)
+    : lowerbound_(std::min(begin, end))
+    , upperbound_(std::max(begin, end))
+    , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
+    , metrics_(metrics)
+    , namesofinterest_(StringTools::create_table(0x1000))
+    , root_node_(root)
 {
 }
 
 void QueryProcessor::start() {
 }
 
-void QueryProcessor::put(const aku_Sample &sample) {
-    root_node->put(sample);
+bool QueryProcessor::put(const aku_Sample &sample) {
+    return root_node_->put(sample);
 }
 
 void QueryProcessor::stop() {
-    root_node->complete();
+    root_node_->complete();
 }
 
-}}
+void QueryProcessor::set_error(aku_Status error) {
+    root_node_->set_error(error);
+}
+
+aku_Timestamp QueryProcessor::lowerbound() const {
+    return lowerbound_;
+}
+
+aku_Timestamp QueryProcessor::upperbound() const {
+    return upperbound_;
+}
+
+int QueryProcessor::direction() const {
+    return direction_;
+}
+
+}} // namespace

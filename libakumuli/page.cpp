@@ -320,19 +320,6 @@ int PageHeader::copy_entry(uint32_t offset, aku_Entry *receiver) const {
 }
 
 
-/** Return false if query is ill-formed.
-  * Status and error code fields will be changed accordignly.
-  */
-static bool validate_query(SearchQuery const& query) {
-    // Cursor validation
-    if ((query.direction != AKU_CURSOR_DIR_BACKWARD && query.direction != AKU_CURSOR_DIR_FORWARD) ||
-         query.upperbound < query.lowerbound)
-    {
-        return false;
-    }
-    return true;
-}
-
 SearchStats& get_global_search_stats() {
     static SearchStats stats;
     return stats;
@@ -364,8 +351,8 @@ namespace {
 
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
-    PageHeader const* page_;
-    std::shared_ptr<QP::QueryProcessor> query_;
+    const PageHeader *page_;
+    std::shared_ptr<QP::IQueryProcessor> query_;
 
     const uint32_t      MAX_INDEX_;
     const bool          IS_BACKWARD_;
@@ -375,14 +362,14 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     SearchRange range_;
 
-    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::QueryProcessor> query)
+    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query)
         : page_(page)
-        , caller_(caller)
-        , cursor_(cursor)
         , query_(query)
         , MAX_INDEX_(page->get_entries_count())
-        , IS_BACKWARD_(query->direction == AKU_CURSOR_DIR_BACKWARD)
-        , key_(IS_BACKWARD_ ? query->upperbound : query->lowerbound)
+        , IS_BACKWARD_(query->direction() == AKU_CURSOR_DIR_BACKWARD)
+        , key_(IS_BACKWARD_ ? query->upperbound() : query->lowerbound())
+        , lowerbound_(query->lowerbound())
+        , upperbound_(query->upperbound())
     {
         if (MAX_INDEX_) {
             range_.begin = 0u;
@@ -399,11 +386,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return true;
         }
 
-        if (!validate_query(query_)) {
-            query_->set_error(AKU_SEARCH_EBAD_ARG);
-            return true;
-        }
-
         if (key_ > page_->page_index(range_.end)->timestamp ||
             key_ < page_->page_index(range_.begin)->timestamp)
         {
@@ -414,7 +396,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    query_->complete();
+                    query_->stop();
                     return true;
                 }
             }
@@ -424,7 +406,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    query_->complete();
+                    query_->stop();
                     return true;
                 }
             }
@@ -471,7 +453,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
             if (probe_index >= MAX_INDEX_) {
-                query_->set_error(caller_, AKU_EOVERFLOW);
+                query_->set_error(AKU_EOVERFLOW);
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
             }
@@ -674,7 +656,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             stats.stats.scan.fwd_bytes += std::get<0>(sums);
             stats.stats.scan.bwd_bytes += std::get<1>(sums);
         }
-        query_->complete();
+        query_->stop();
     }
 };
 
@@ -683,7 +665,7 @@ void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery quer
     throw "depricated";
 }
 
-void PageHeader::searchV2(std::shared_ptr<QP::QueryProcessor> query) const {
+void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query) const {
     SearchAlgorithm search_alg(this, query);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {

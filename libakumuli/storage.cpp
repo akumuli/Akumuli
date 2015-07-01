@@ -342,13 +342,24 @@ struct TerminalNode : QP::Node {
 
     Caller &caller;
     InternalCursor* cursor;
+    bool error;
+    int times_completed;
 
-    TerminalNode(Caller& ca, InternalCursor* cur) : caller(ca), cursor(cur) {
+    TerminalNode(Caller& ca, InternalCursor* cur)
+        : caller(ca)
+        , cursor(cur)
+        , error(false)
+        , times_completed(0)
+    {
     }
 
     // Node interface
 
     void complete() {
+        times_completed++;
+    }
+
+    void complete_query() {
         cursor->complete(caller);
     }
 
@@ -357,6 +368,7 @@ struct TerminalNode : QP::Node {
     }
 
     void set_error(aku_Status status) {
+        error = true;
         cursor->set_error(caller, status);
     }
 
@@ -366,7 +378,7 @@ struct TerminalNode : QP::Node {
 };
 
 
-void Storage::query(Caller &caller, InternalCursor* cur, const char* query) const {
+void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
     // Parse query
@@ -382,7 +394,25 @@ void Storage::query(Caller &caller, InternalCursor* cur, const char* query) cons
      *         -> Volume
      */
 
+    uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+    aku_Timestamp window;
+    int seq_id;
+    tie(window, seq_id) = active_volume_->cache_->get_window();
+    active_volume_->cache_->searchV2(query_processor, seq_id);
 
+    // TODO: restart on error or if starting_ix was changed
+
+    if (!terminal_node->error) {
+        for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+            volumes_.at(ix % volumes_.size())->get_page()->searchV2(query_processor);
+            if (terminal_node->error) {
+                break;
+            }
+        }
+    }
+    if (!terminal_node->error) {
+        terminal_node->complete_query();
+    }
 }
 
 void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {

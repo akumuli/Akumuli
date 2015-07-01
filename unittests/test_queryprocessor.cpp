@@ -25,6 +25,9 @@ public:
 
     NodeType get_type() const { return Node::Mock; }
     void complete() {}
+    void set_error(aku_Status status) {
+        BOOST_FAIL("set_error shouldn't be called");
+    }
     bool put(aku_Sample const& s) {
         ids.push_back(s.paramid);
         timestamps.push_back(s.timestamp);

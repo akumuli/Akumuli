@@ -153,8 +153,6 @@ struct Sequencer {
     void search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const;
 
     /** Search in sequencer data.
-      * @param caller represents caller
-      * @param cur search cursor
       * @param query represents search query
       * @param sequence_number sequence number obtained with get_window function
       * @note search method follows common pattern used by all methods except sequence_number
@@ -164,7 +162,7 @@ struct Sequencer {
       * will be aborted and AKU_EBUSY.error code will be returned If merge occures during search -
       * search will be aborted and AKU_EBUSY error code will be returned.
       */
-    void searchV2(Caller& caller, InternalCursor* cur, std::shared_ptr<QP::QueryProcessor> query, int sequence_number) const;
+    void searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const;
 
     std::tuple<aku_Timestamp, int> get_window() const;
 
@@ -191,6 +189,6 @@ private:
 
     void filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
 
-    void filterV2(PSortedRun run, std::shared_ptr<QP::QueryProcessor> query, std::vector<PSortedRun>* results) const;
+    void filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
 };
 }
