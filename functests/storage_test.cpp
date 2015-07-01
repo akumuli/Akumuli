@@ -210,16 +210,26 @@ struct LocalStorage : Storage {
     virtual void add(aku_Timestamp ts, aku_ParamId id, double value) {
         aku_Status status = AKU_EBUSY;
         while(status == AKU_EBUSY) {
-            status = aku_write_double_raw(db_, id, ts, value);
+            aku_Sample sample;
+            sample.paramid = id;
+            sample.timestamp = ts;
+            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.value.float64 = value;
+            status = aku_write(db_, &sample);
         }
         throw_on_error(status);
     }
 
     virtual void add(aku_Timestamp ts, aku_ParamId id, std::string const& blob) {
         aku_Status status = AKU_EBUSY;
-        aku_MemRange range = { (void*)blob.data(), (uint32_t)blob.size() };
         while(status == AKU_EBUSY) {
-            status = aku_write_blob(db_, id, ts, range);
+            aku_Sample sample;
+            sample.paramid = id;
+            sample.timestamp = ts;
+            sample.payload.type = aku_PData::BLOB;
+            sample.payload.value.blob.begin = blob.data();
+            sample.payload.value.blob.size = blob.size();
+            status = aku_write(db_, &sample);
         }
         throw_on_error(status);
     }
@@ -229,7 +239,7 @@ struct LocalStorage : Storage {
                                           std::vector<aku_ParamId> ids)
     {
         aku_SelectQuery *query = aku_make_select_query(begin, end, (uint32_t)ids.size(), ids.data());
-        auto cur = aku_select(db_, query);
+        auto cur = aku_select(db_, query);  // TODO: move to aku_query
         aku_destroy(query);
         auto ptr = std::unique_ptr<LocalCursor>(new LocalCursor(cur));
         return std::move(ptr);
