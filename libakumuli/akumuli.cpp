@@ -237,6 +237,14 @@ aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
     return dbi->add_sample(sample);
 }
 
+aku_Status aku_parse_timestamp(const char* begin, const char* end, aku_Sample* sample) {
+    throw "Not implemented";
+}
+
+aku_Status aku_series_name_to_id(const char* begin, const char* end, aku_Sample* sample) {
+    throw "Not implemented";
+}
+
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
 {
     if (config.logger == nullptr) {

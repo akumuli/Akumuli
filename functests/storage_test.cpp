@@ -238,6 +238,27 @@ struct LocalStorage : Storage {
                                           aku_Timestamp end,
                                           std::vector<aku_ParamId> ids)
     {
+        /* Query format:
+         * {
+         *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
+         *      "metric": "cpu",
+         *      // or
+         *      "metric": ["cpu", "mem"],
+         *      "range": {
+         *          "from": "20150101T000000", // "#123456789",
+         *          "to"  : "20150102T000000"
+         *      },
+         *      "where": [
+         *          { "in" : { "key3": [1, 2, 3, "foo"]},
+         *          { "not_in" : { "key4": [3, 4, 5]}
+         *      ],
+         *      "group_by": {
+         *          "tag" : [ "host", "region" ],
+         *          "metric" : [ "cpu", "memory" ]
+         *      }
+         * }
+         */
+        std::stringstream query;
         aku_SelectQuery *query = aku_make_select_query(begin, end, (uint32_t)ids.size(), ids.data());
         auto cur = aku_select(db_, query);  // TODO: move to aku_query
         aku_destroy(query);

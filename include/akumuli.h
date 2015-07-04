@@ -250,6 +250,21 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
   */
 AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
 
+/** Try to parse timestamp.
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, AKU_ENOT_FOUND otherwise
+  */
+AKU_EXPORT aku_Status aku_parse_timestamp(const char* begin, const char* end, aku_Sample* sample);
+
+/** Convert series name to id.
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, AKU_ENOT_FOUND otherwise
+  */
+AKU_EXPORT aku_Status aku_series_name_to_id(const char* begin, const char* end, aku_Sample* sample);
 
 //---------
 // Queries
