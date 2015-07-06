@@ -251,20 +251,20 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
 AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
 
 /** Try to parse timestamp.
-  * @param begin should point to the begining of the string
-  * @param end should point to the next after end character of the string
+  * @param iso_str should point to the begining of the string
   * @param sample is an output parameter
-  * @returns AKU_SUCCESS on success, AKU_ENOT_FOUND otherwise
+  * @returns AKU_SUCCESS on success, AKU_EBAD_ARG otherwise
   */
-AKU_EXPORT aku_Status aku_parse_timestamp(const char* begin, const char* end, aku_Sample* sample);
+AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample);
 
-/** Convert series name to id.
+/** Convert series name to id. Assign new id to series name on first encounter.
+  * @param db opened database instance
   * @param begin should point to the begining of the string
   * @param end should point to the next after end character of the string
   * @param sample is an output parameter
-  * @returns AKU_SUCCESS on success, AKU_ENOT_FOUND otherwise
+  * @returns AKU_SUCCESS on success, error code otherwise
   */
-AKU_EXPORT aku_Status aku_series_name_to_id(const char* begin, const char* end, aku_Sample* sample);
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample);
 
 //---------
 // Queries
@@ -313,6 +313,18 @@ AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+
+//! Convert timestamp to string if possible, return string length
+AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size);
+
+/** Convert param-id to series name
+  * @param db opened database
+  * @param id valid param id
+  * @param buffer is a destination buffer
+  * @param buffer_size is a destination buffer size
+  * @return string length on success, zero if no such id found, -1*required_buffer_size if buffer is too small
+  */
+AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_PData id, char* buffer, size_t buffer_size);
 
 //--------------------
 // Stats and counters

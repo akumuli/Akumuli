@@ -25,6 +25,7 @@
 
 #include "akumuli.h"
 #include "storage.h"
+#include "datetime.h"
 
 using namespace Akumuli;
 
@@ -143,6 +144,10 @@ struct DatabaseImpl : public aku_Database
     {
     }
 
+    aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
+        return storage_.series_to_param_id(begin, end, &out_sample->paramid);
+    }
+
     aku_Status get_open_error() const {
         return storage_.get_open_error();
     }
@@ -237,12 +242,18 @@ aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
     return dbi->add_sample(sample);
 }
 
-aku_Status aku_parse_timestamp(const char* begin, const char* end, aku_Sample* sample) {
-    throw "Not implemented";
+aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
+    try {
+        sample->timestamp = DateTimeUtil::from_iso_string(iso_str);
+        return AKU_SUCCESS;
+    } catch (...) {
+        return AKU_EBAD_ARG;
+    }
 }
 
-aku_Status aku_series_name_to_id(const char* begin, const char* end, aku_Sample* sample) {
-    throw "Not implemented";
+aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->series_to_param_id(begin, end, sample);
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
@@ -323,6 +334,14 @@ int aku_cursor_is_done(aku_Cursor* pcursor) {
 int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
     return static_cast<int>(pimpl->is_error(out_error_code_or_null));
+}
+
+int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size) {
+    throw "not implemented";
+}
+
+int aku_param_id_to_series(aku_Database* db, aku_PData id, char* buffer, size_t buffer_size) {
+    throw "not implemented";
 }
 
 //--------------------------------

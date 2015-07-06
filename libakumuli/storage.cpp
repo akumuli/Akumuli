@@ -548,18 +548,7 @@ aku_Status Storage::write_double(aku_ParamId param, aku_Timestamp ts, double val
     return _write_impl(ts_value, m);
 }
 
-aku_Status Storage::write_double(const char* begin, const char* end, aku_Timestamp ts, double value) {
-    aku_ParamId id;
-    auto status = _series_to_param_id(begin, end, &id);
-    if (status == AKU_SUCCESS) {
-        aku_MemRange m = {};
-        TimeSeriesValue ts_value(ts, id, value);
-        status = _write_impl(ts_value, m);
-    }
-    return status;
-}
-
-aku_Status Storage::_series_to_param_id(const char* begin, const char* end, uint64_t *value) {
+aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint64_t *value) {
     char buffer[AKU_LIMITS_MAX_SNAME];
     const char* keystr_begin = nullptr;
     const char* keystr_end = nullptr;

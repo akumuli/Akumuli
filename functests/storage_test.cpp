@@ -34,7 +34,7 @@ struct Cursor {
         DOUBLE,
         BLOB,
     };
-    typedef std::tuple<RecordType, aku_Timestamp, aku_ParamId, double, std::string> RowT;
+    typedef std::tuple<RecordType, std::string, std::string, double, std::string> RowT;
 
     virtual ~Cursor() = default;
 
@@ -58,13 +58,13 @@ struct Storage {
     //! Delete files on disk (database should be closed)
     virtual void delete_all() = 0;
     //! Write numeric value
-    virtual void add(aku_Timestamp ts, aku_ParamId id, double value) = 0;
+    virtual void add(std::string ts, std::string id, double value) = 0;
     //! Write blob value
-    virtual void add(aku_Timestamp ts, aku_ParamId id, std::string const& blob) = 0;
+    virtual void add(std::string ts, std::string id, std::string const& blob) = 0;
     //! Query database
-    virtual std::unique_ptr<Cursor> query(aku_Timestamp begin,
-                                          aku_Timestamp end,
-                                          std::vector<aku_ParamId> ids) = 0;
+    virtual std::unique_ptr<Cursor> query(std::string begin,
+                                          std::string end,
+                                          std::vector<std::string> ids) = 0;
 };
 
 
@@ -102,6 +102,7 @@ struct LocalCursor : Cursor {
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
+            // TODO: convert timestamp and paramid to strings
             if (sample_.payload.type == aku_PData::FLOAT) {
                 result = std::make_tuple(
                             DOUBLE,
@@ -207,12 +208,16 @@ struct LocalStorage : Storage {
         throw_on_error(status);
     }
 
-    virtual void add(aku_Timestamp ts, aku_ParamId id, double value) {
+    virtual void add(std::string ts, std::string id, double value) {
         aku_Status status = AKU_EBUSY;
         while(status == AKU_EBUSY) {
             aku_Sample sample;
-            sample.paramid = id;
-            sample.timestamp = ts;
+            if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
+                throw std::runtime_error("invalid timestamp");
+            }
+            if (aku_series_name_to_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+                throw std::runtime_error("invalid series name");
+            }
             sample.payload.type = aku_PData::FLOAT;
             sample.payload.value.float64 = value;
             status = aku_write(db_, &sample);
@@ -220,12 +225,16 @@ struct LocalStorage : Storage {
         throw_on_error(status);
     }
 
-    virtual void add(aku_Timestamp ts, aku_ParamId id, std::string const& blob) {
+    virtual void add(std::string ts, std::string id, std::string const& blob) {
         aku_Status status = AKU_EBUSY;
         while(status == AKU_EBUSY) {
             aku_Sample sample;
-            sample.paramid = id;
-            sample.timestamp = ts;
+            if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
+                throw std::runtime_error("invalid timestamp");
+            }
+            if (aku_series_name_to_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+                throw std::runtime_error("invalid series name");
+            }
             sample.payload.type = aku_PData::BLOB;
             sample.payload.value.blob.begin = blob.data();
             sample.payload.value.blob.size = blob.size();
@@ -234,9 +243,9 @@ struct LocalStorage : Storage {
         throw_on_error(status);
     }
 
-    virtual std::unique_ptr<Cursor> query(aku_Timestamp begin,
-                                          aku_Timestamp end,
-                                          std::vector<aku_ParamId> ids)
+    virtual std::unique_ptr<Cursor> query(std::string begin,
+                                          std::string end,
+                                          std::vector<std::string> ids)
     {
         /* Query format:
          * {
@@ -259,18 +268,20 @@ struct LocalStorage : Storage {
          * }
          */
         std::stringstream query;
-        aku_SelectQuery *query = aku_make_select_query(begin, end, (uint32_t)ids.size(), ids.data());
-        auto cur = aku_select(db_, query);  // TODO: move to aku_query
-        aku_destroy(query);
-        auto ptr = std::unique_ptr<LocalCursor>(new LocalCursor(cur));
-        return std::move(ptr);
+        query <<
+                 R"({
+                    "sample": "all",
+               )";
+        //auto ptr = std::unique_ptr<LocalCursor>(new LocalCursor(cur));
+        //return std::move(ptr);
+        throw "not implemented";
     }
 };
 
 
 struct DataPoint {
-    aku_Timestamp timestamp;
-    aku_ParamId   id;
+    std::string   timestamp;
+    std::string   id;
     bool          is_blob;
     double        float_value;
     std::string   blob_value;
@@ -278,26 +289,26 @@ struct DataPoint {
 
 
 std::vector<DataPoint> TEST_DATA = {
-    { 0ul, 0ul, false, 0.0, "" },
-    { 1ul, 1ul, true,  NAN, "blob at 1" },
-    { 2ul, 2ul, false, 2.2, "" },
-    { 3ul, 3ul, true,  NAN, "blob at 3" },
-    { 4ul, 4ul, false, 4.4, "" },
-    { 5ul, 5ul, true,  NAN, "blob at 5" },
-    { 6ul, 0ul, false, 6.6, "" },
-    { 7ul, 1ul, true,  NAN, "blob at 7" },
-    { 8ul, 2ul, false, 8.8, "" },
-    { 9ul, 3ul, true,  NAN, "blob at 9" },
-    {10ul, 4ul, false, 1.0, "" },
-    {11ul, 5ul, true,  NAN, "blob at 11"},
-    {12ul, 0ul, false, 1.2, "" },
-    {13ul, 1ul, true,  NAN, "blob at 13"},
-    {14ul, 2ul, false, 1.4, "" },
-    {15ul, 3ul, true,  NAN, "blob at 15"},
-    {16ul, 4ul, false, 1.6, "" },
-    {17ul, 5ul, true,  NAN, "blob at 17"},
-    {18ul, 0ul, false, 1.8, "" },
-    {19ul, 1ul, true,  NAN, "blob at 19"},
+    { "20150101T000000", "cpu key=0", false, 0.0,          "" },
+    { "20150101T000001", "cpu key=1",  true, NAN, "blob at 1" },
+    { "20150101T000002", "cpu key=2", false, 2.2,          "" },
+    { "20150101T000003", "cpu key=3",  true, NAN, "blob at 3" },
+    { "20150101T000004", "cpu key=4", false, 4.4,          "" },
+    { "20150101T000005", "cpu key=5",  true, NAN, "blob at 5" },
+    { "20150101T000006", "cpu key=0", false, 6.6,          "" },
+    { "20150101T000007", "cpu key=1",  true, NAN, "blob at 7" },
+    { "20150101T000008", "cpu key=2", false, 8.8,          "" },
+    { "20150101T000009", "cpu key=3",  true, NAN, "blob at 9" },
+    { "20150101T000010", "cpu key=4", false, 1.0,          "" },
+    { "20150101T000011", "cpu key=5",  true, NAN, "blob at 11"},
+    { "20150101T000012", "cpu key=0", false, 1.2,          "" },
+    { "20150101T000013", "cpu key=1",  true, NAN, "blob at 13"},
+    { "20150101T000014", "cpu key=2", false, 1.4,          "" },
+    { "20150101T000015", "cpu key=3",  true, NAN, "blob at 15"},
+    { "20150101T000016", "cpu key=4", false, 1.6,          "" },
+    { "20150101T000017", "cpu key=5",  true, NAN, "blob at 17"},
+    { "20150101T000018", "cpu key=0", false, 1.8,          "" },
+    { "20150101T000019", "cpu key=1",  true, NAN, "blob at 19"},
 };
 
 void add_element(Storage *storage, DataPoint& td) {
@@ -318,9 +329,9 @@ void fill_data(Storage *storage) {
 }
 
 struct Query {
-    aku_Timestamp          begin;
-    aku_Timestamp            end;
-    std::vector<aku_ParamId> ids;
+    std::string            begin;
+    std::string              end;
+    std::vector<std::string> ids;
 };
 
 void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) {
