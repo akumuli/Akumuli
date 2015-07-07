@@ -314,7 +314,9 @@ AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
-//! Convert timestamp to string if possible, return string length
+/** Convert timestamp to string if possible, return string length
+  * @return 0 on bad string, -LEN if buffer is too small, LEN on success
+  */
 AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size);
 
 /** Convert param-id to series name
@@ -322,9 +324,9 @@ AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffe
   * @param id valid param id
   * @param buffer is a destination buffer
   * @param buffer_size is a destination buffer size
-  * @return string length on success, zero if no such id found, -1*required_buffer_size if buffer is too small
+  * @return 0 if no such id, -LEN if buffer is too small, LEN on success
   */
-AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_PData id, char* buffer, size_t buffer_size);
+AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer, size_t buffer_size);
 
 //--------------------
 // Stats and counters

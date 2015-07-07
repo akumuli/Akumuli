@@ -161,6 +161,10 @@ struct Storage
       */
     aku_Status series_to_param_id(const char* begin, const char* end, uint64_t *value);
 
+    /** Convert parameter id to series name.
+      */
+    int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const;
+
     // Reading
 
     // TODO: remove depricated method

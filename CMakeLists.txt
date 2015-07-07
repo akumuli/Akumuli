@@ -16,6 +16,7 @@ find_package(Boost 1.53.0
     coroutine
     context
     regex
+    date_time
     REQUIRED
 )
 

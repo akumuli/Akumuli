@@ -148,6 +148,10 @@ struct DatabaseImpl : public aku_Database
         return storage_.series_to_param_id(begin, end, &out_sample->paramid);
     }
 
+    int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
+        return storage_.param_id_to_series(id, buffer, size);
+    }
+
     aku_Status get_open_error() const {
         return storage_.get_open_error();
     }
@@ -336,12 +340,13 @@ int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
     return static_cast<int>(pimpl->is_error(out_error_code_or_null));
 }
 
-int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size) {
-    throw "not implemented";
+int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
+    return DateTimeUtil::to_iso_string(ts, buffer, buffer_size);
 }
 
-int aku_param_id_to_series(aku_Database* db, aku_PData id, char* buffer, size_t buffer_size) {
-    throw "not implemented";
+int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer, size_t buffer_size) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    return dbi->param_id_to_series(id, buffer, buffer_size);
 }
 
 //--------------------------------

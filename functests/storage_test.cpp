@@ -34,6 +34,8 @@ struct Cursor {
         DOUBLE,
         BLOB,
     };
+
+    //                 typeid      timestmap    seriesname   value   blob
     typedef std::tuple<RecordType, std::string, std::string, double, std::string> RowT;
 
     virtual ~Cursor() = default;
@@ -69,11 +71,13 @@ struct Storage {
 
 
 struct LocalCursor : Cursor {
+    aku_Database*   db_;
     aku_Cursor* cursor_;
     aku_Sample  sample_;
 
-    LocalCursor(aku_Cursor *cursor)
-        : cursor_(cursor)
+    LocalCursor(aku_Database *db, aku_Cursor *cursor)
+        : db_(db)
+        , cursor_(cursor)
     {
         throw_if_error();
     }
@@ -102,12 +106,26 @@ struct LocalCursor : Cursor {
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
-            // TODO: convert timestamp and paramid to strings
+            const int buffer_size = AKU_LIMITS_MAX_SNAME;
+            char buffer[buffer_size];
+            // Convert id
+            auto len = aku_param_id_to_series(db_, sample_.paramid, buffer, buffer_size);
+            if (len <= 0) {
+                throw std::runtime_error("no such id");
+            }
+            std::string paramid(buffer, buffer + len);
+            // Convert timestamp
+            len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
+            if (len <= 0) {
+                throw std::runtime_error("bad timestamp");
+            }
+            std::string timestamp(buffer, buffer + len);
+            // Convert payload
             if (sample_.payload.type == aku_PData::FLOAT) {
                 result = std::make_tuple(
                             DOUBLE,
-                            sample_.timestamp,
-                            sample_.paramid,
+                            timestamp,
+                            paramid,
                             sample_.payload.value.float64,
                             std::string());
             } else {
@@ -116,8 +134,8 @@ struct LocalCursor : Cursor {
                 std::string payload(begin, end);
                 result = std::make_tuple(
                             BLOB,
-                            sample_.timestamp,
-                            sample_.paramid,
+                            timestamp,
+                            paramid,
                             NAN,
                             payload);
             }
@@ -215,7 +233,7 @@ struct LocalStorage : Storage {
             if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
                 throw std::runtime_error("invalid timestamp");
             }
-            if (aku_series_name_to_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+            if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
                 throw std::runtime_error("invalid series name");
             }
             sample.payload.type = aku_PData::FLOAT;
@@ -232,7 +250,7 @@ struct LocalStorage : Storage {
             if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
                 throw std::runtime_error("invalid timestamp");
             }
-            if (aku_series_name_to_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+            if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
                 throw std::runtime_error("invalid series name");
             }
             sample.payload.type = aku_PData::BLOB;
@@ -391,6 +409,24 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
+aku_Timestamp to_timestamp(std::string ts) {
+    aku_Sample s;
+    if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
+        throw std::runtime_error("bad timestamp string");
+    }
+    return s.timestamp;
+}
+
+std::string to_string(aku_Timestamp ts) {
+    const int bufsz = 0x100;
+    char buf[bufsz];
+    int len = aku_timestamp_to_string(ts, buf, bufsz);
+    if (len <= 0) {
+        throw std::runtime_error("bad timestamp");
+    }
+    return std::string(buf, buf + bufsz);
+}
+
 /** Query subset of the elements.
   * @param storage should point to opened storage instance
   * @param invert should be set to true to query data in backward direction
@@ -399,7 +435,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
   * @param end end of the time-range (largest timestamp)
   * @param ids should contain list of ids that we interested in
   */
-void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool invert, bool expect_empty, std::vector<aku_ParamId> ids) {
+void query_subset(Storage* storage, std::string begin, std::string end, bool invert, bool expect_empty, std::vector<std::string> ids) {
     std::cout << "===============" << std::endl;
     std::cout << "   Query subset" << std::endl;
     std::cout << "          begin = " << begin << std::endl;
@@ -418,11 +454,14 @@ void query_subset(Storage* storage, aku_Timestamp begin, aku_Timestamp end, bool
     std::cout << std::endl;
     std::cout << "===============" << std::endl;
     assert(begin < end);
-    std::set<aku_ParamId>  idsmap(ids.begin(), ids.end());
+    std::set<std::string>  idsmap(ids.begin(), ids.end());
     std::vector<DataPoint> expected;
     for (int i = 0; i < (int)TEST_DATA.size(); i++) {
         auto point = TEST_DATA[i];
-        if (idsmap.count(point.id) != 0 && point.timestamp >= begin && point.timestamp <= end) {
+        if (idsmap.count(point.id) != 0 &&
+            to_timestamp(point.timestamp) >= to_timestamp(begin) &&
+            to_timestamp(point.timestamp) <= to_timestamp(end))
+        {
             expected.push_back(point);
         }
     }

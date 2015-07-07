@@ -48,6 +48,9 @@ struct StringTools {
                                decltype(&StringTools::hash),
                                decltype(&StringTools::equal)> TableT;
 
+    //! Inverted table type (id to string mapping)
+    typedef std::unordered_map<uint64_t, StringT> InvT;
+
     static TableT create_table(size_t size);
 };
 

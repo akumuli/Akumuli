@@ -41,6 +41,8 @@ struct DateTimeUtil {
 
     static aku_Timestamp from_boost_ptime(boost::posix_time::ptime timestamp);
 
+    static boost::posix_time::ptime to_boost_ptime(aku_Timestamp timestamp);
+
     /** Convert ISO formatter timestamp to aku_Timestamp value.
       * @note This function implements ISO 8601 partially compatible parser. Most of the standard is not
       * supported yet - extended formatting (only basic format is supported), fractions on minutes or hours (
@@ -48,6 +50,9 @@ struct DateTimeUtil {
       */
     static aku_Timestamp from_iso_string(const char* iso_str);
 
+    /** Convert timestamp to string.
+      */
+    static aku_Status to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size);
 };
 
 }

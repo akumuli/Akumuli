@@ -566,6 +566,19 @@ aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint6
     return status;
 }
 
+int Storage::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const {
+    auto str = matcher_->id2str(id);
+    if (str.first == nullptr) {
+        return 0;
+    }
+    if (str.second >= (int)buffer_size) {
+        // buffer is too small
+        return -1*(str.second + 1);
+    }
+    memcpy(buffer, str.first, str.second);
+    buffer[str.second] = '\0';
+    return str.second + 1;
+}
 
 // Standalone functions //
 
