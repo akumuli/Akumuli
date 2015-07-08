@@ -7,6 +7,8 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 #include "akumuli.h"
 
@@ -85,7 +87,8 @@ struct LocalCursor : Cursor {
     void throw_if_error() {
         aku_Status status = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor_, &status)) {
-            throw std::runtime_error(aku_error_message(status));
+            std::runtime_error err(aku_error_message(status));
+            BOOST_THROW_EXCEPTION(err);
         }
     }
 
@@ -111,13 +114,15 @@ struct LocalCursor : Cursor {
             // Convert id
             auto len = aku_param_id_to_series(db_, sample_.paramid, buffer, buffer_size);
             if (len <= 0) {
-                throw std::runtime_error("no such id");
+                std::runtime_error err("no such id");
+                BOOST_THROW_EXCEPTION(err);
             }
             std::string paramid(buffer, buffer + len);
             // Convert timestamp
             len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
             if (len <= 0) {
-                throw std::runtime_error("bad timestamp");
+                std::runtime_error err("bad timestamp");
+                BOOST_THROW_EXCEPTION(err);
             }
             std::string timestamp(buffer, buffer + len);
             // Convert payload
@@ -179,7 +184,8 @@ struct LocalStorage : Storage {
 
     void throw_on_error(aku_Status status) const {
         if (status != AKU_SUCCESS) {
-            throw std::runtime_error(aku_error_message(status));
+            std::runtime_error err(aku_error_message(status));
+            BOOST_THROW_EXCEPTION(err);
         }
     }
 
@@ -191,7 +197,8 @@ struct LocalStorage : Storage {
     // Storage interface
     virtual void close() {
         if (db_ == nullptr) {
-            throw std::logic_error("Database allready closed");
+            std::logic_error err("Database allready closed");
+            BOOST_THROW_EXCEPTION(err);
         }
         aku_close_database(db_);
         db_ = nullptr;
@@ -207,7 +214,8 @@ struct LocalStorage : Storage {
     virtual void open()
     {
         if (db_ != nullptr) {
-            throw std::logic_error("Database allready opened");
+            std::logic_error err("Database allready opened");
+            BOOST_THROW_EXCEPTION(err);
         }
         aku_FineTuneParams params;
         params.durability = durability_;
@@ -231,10 +239,12 @@ struct LocalStorage : Storage {
         while(status == AKU_EBUSY) {
             aku_Sample sample;
             if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
-                throw std::runtime_error("invalid timestamp");
+                std::runtime_error err("invalid timestamp");
+                BOOST_THROW_EXCEPTION(err);
             }
             if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
-                throw std::runtime_error("invalid series name");
+                std::runtime_error err("invalid series name");
+                BOOST_THROW_EXCEPTION(err);
             }
             sample.payload.type = aku_PData::FLOAT;
             sample.payload.value.float64 = value;
@@ -248,10 +258,12 @@ struct LocalStorage : Storage {
         while(status == AKU_EBUSY) {
             aku_Sample sample;
             if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
-                throw std::runtime_error("invalid timestamp");
+                std::runtime_error err("invalid timestamp");
+                BOOST_THROW_EXCEPTION(err);
             }
             if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
-                throw std::runtime_error("invalid series name");
+                std::runtime_error err("invalid series name");
+                BOOST_THROW_EXCEPTION(err);
             }
             sample.payload.type = aku_PData::BLOB;
             sample.payload.value.blob.begin = blob.data();
@@ -285,14 +297,34 @@ struct LocalStorage : Storage {
          *      }
          * }
          */
-        std::stringstream query;
-        query <<
-                 R"({
-                    "sample": "all",
-               )";
-        //auto ptr = std::unique_ptr<LocalCursor>(new LocalCursor(cur));
-        //return std::move(ptr);
-        throw "not implemented";
+        boost::property_tree::ptree query;
+        // No (re)sampling
+        query.add("sample", "all");
+        // Add metric name
+        query.add("metric", "cpu");
+        // Add time constraints
+        boost::property_tree::ptree range;
+        range.add("from", begin);
+        range.add("to", end);
+        query.add_child("range", range);
+        // Where clause
+        boost::property_tree::ptree where;
+        boost::property_tree::ptree array;
+        for (auto series: ids) {
+            auto val = series.substr(8, 1);
+            boost::property_tree::ptree elem;
+            elem.put("", val);
+            array.push_back(std::make_pair("", elem));
+        }
+        where.add_child("key", array);
+        query.add_child("where", where);
+        std::stringstream stream;
+        boost::property_tree::json_parser::write_json(stream, query, true);
+        std::string query_text = stream.str();
+
+        auto cursor = aku_query(db_, query_text.c_str());
+        std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+        return std::move(ptr);
     }
 };
 
@@ -365,39 +397,45 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad timestamp, get " << std::get<1>(row)
                       << ", expected " << exp.timestamp << std::endl;
-            throw std::runtime_error("Bad result");
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
         }
         if (std::get<2>(row) != exp.id) {
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad id, get " << std::get<2>(row)
                       << ", expected " << exp.id << std::endl;
-            throw std::runtime_error("Bad result");
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
         }
         if (std::get<0>(row) == Cursor::BLOB) {
             std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<4>(row) << std::endl;
             if (!exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "blob expected"   << std::endl;
-                throw std::runtime_error("Bad result");
+                std::runtime_error err("Bad result");
+                BOOST_THROW_EXCEPTION(err);
             }
             if (std::get<4>(row) != exp.blob_value) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "bad BLOB, get " << std::get<4>(row)
                           << ", expected " << exp.blob_value << std::endl;
-                throw std::runtime_error("Bad result");
+                std::runtime_error err("Bad result");
+                BOOST_THROW_EXCEPTION(err);
             }
         } else {
             std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<3>(row) << std::endl;
             if (exp.is_blob) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "float expected"   << std::endl;
-                throw std::runtime_error("Bad result");
+                std::runtime_error err("Bad result");
+                BOOST_THROW_EXCEPTION(err);
             }
             if (std::get<3>(row) != exp.float_value) {
                 std::cout << "Error at " << ix << std::endl;
                 std::cout << "bad float, get " << std::get<3>(row)
                           << ", expected " << exp.float_value << std::endl;
-                throw std::runtime_error("Bad result");
+                std::runtime_error err("Bad result");
+                BOOST_THROW_EXCEPTION(err);
             }
         }
     }
@@ -405,14 +443,16 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
         std::cout << "Not enough data read" << std::endl;
         std::cout << "expected " << expected.size() << " values but only "
                   << ix << " was read from DB" << std::endl;
-        throw std::runtime_error("Not enough results");
+        std::runtime_error err("Not enough results");
+        BOOST_THROW_EXCEPTION(err);
     }
 }
 
 aku_Timestamp to_timestamp(std::string ts) {
     aku_Sample s;
     if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
-        throw std::runtime_error("bad timestamp string");
+        std::runtime_error err("bad timestamp string");
+        BOOST_THROW_EXCEPTION(err);
     }
     return s.timestamp;
 }
@@ -422,7 +462,8 @@ std::string to_string(aku_Timestamp ts) {
     char buf[bufsz];
     int len = aku_timestamp_to_string(ts, buf, bufsz);
     if (len <= 0) {
-        throw std::runtime_error("bad timestamp");
+        std::runtime_error err("bad timestamp");
+        BOOST_THROW_EXCEPTION(err);
     }
     return std::string(buf, buf + bufsz);
 }
@@ -453,7 +494,7 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     }
     std::cout << std::endl;
     std::cout << "===============" << std::endl;
-    assert(begin < end);
+    assert(to_timestamp(begin) < to_timestamp(end));
     std::set<std::string>  idsmap(ids.begin(), ids.end());
     std::vector<DataPoint> expected;
     for (int i = 0; i < (int)TEST_DATA.size(); i++) {
@@ -514,23 +555,44 @@ int main(int argc, const char** argv) {
         storage.open();
         fill_data(&storage);
 
+        const std::vector<std::string> allseries = {
+            "cpu key=0",
+            "cpu key=1",
+            "cpu key=2",
+            "cpu key=3",
+            "cpu key=4",
+            "cpu key=5",
+        };
+
+        const std::vector<std::string> evenseries = {
+            "cpu key=0",
+            "cpu key=2",
+            "cpu key=4",
+        };
+
+        const std::vector<std::string> oddseries = {
+            "cpu key=1",
+            "cpu key=3",
+            "cpu key=5",
+        };
+
         {
             // In this stage all data should be cached inside the the sequencer so only
             // backward query should work fine.
 
             // Read in forward direction, result-set should be empty because all data is cached
-            query_subset(&storage, 0ul, 20ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", false, true, allseries);
             // Read in backward direction, result-set shouldn't be empty
             // because cache accessed in backward direction
-            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
             // Try to read only half of the data-points in forward direction (should be empty)
-            query_subset(&storage, 5ul, 15ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000005", "20150101T000015", false, true, allseries);
             // Try to read only half of the data-points in backward direction
-            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000005", "20150101T000015", true, false, allseries);
             // Try to read only numeric value
-            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, evenseries);
             // Try to read only BLOB values
-            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, oddseries);
 
             storage.close();
         }
@@ -539,19 +601,19 @@ int main(int argc, const char** argv) {
             // Database is reopened. At this stage everything should be readable in both directions.
             storage.open();
 
-            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
-            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false,  allseries);
 
             // Filter by timestamp
-            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
-            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
+            query_subset(&storage, "20150101T000005", "20150101T000015", true, false,  allseries);
 
             // Filter out BLOBs
-            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 2ul, 4ul});
-            query_subset(&storage, 0ul, 20ul, false, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false,  evenseries);
+            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, evenseries);
             // Filter out numeric values
-            query_subset(&storage, 0ul, 20ul, true, false, {1ul, 3ul, 5ul});
-            query_subset(&storage, 0ul, 20ul, false, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false,  oddseries);
+            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, oddseries);
 
             storage.close();
         }
@@ -560,27 +622,27 @@ int main(int argc, const char** argv) {
             storage.open();
             // Add some data
             DataPoint newpoints[] = {
-                {20ul, 2ul, false, 2.0, "" },
-                {21ul, 3ul, true,  NAN, "blob at 21"},
-                {22ul, 4ul, false, 2.2, "" },
-                {23ul, 5ul, true,  NAN, "blob at 23"},
+                { "20150101T000020", "cpu key=2",  false, 2.0, ""},
+                { "20150101T000021", "cpu key=3",  true, NAN, "blob at 21"},
+                { "20150101T000022", "cpu key=4",  false, 2.2, ""},
+                { "20150101T000023", "cpu key=5",  true, NAN, "blob at 23"},
             };
             for (int i = 0; i < 4; i++) {
                 TEST_DATA.push_back(newpoints[i]);
                 add_element(&storage, newpoints[i]);
             }
             // Read in forward direction, result-set should be empty because all new data is cached
-            query_subset(&storage, 20ul, 25ul, false, true, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000020", "20150101T000025", false, true, allseries);
             // Read in backward direction, result-set shouldn't be empty
             // because cache accessed in backward direction
-            query_subset(&storage, 20ul, 25ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000020", "20150101T000025", true, false, allseries);
             // Query all in rev. direction, everything should be in place
-            query_subset(&storage, 0ul, 20ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
 
             // Filter out BLOBs
-            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, "20150101T000000", "20150101T000024", true, false, evenseries);
             // Filter out numeric values
-            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000024", true, false, oddseries);
 
             storage.close();
         }
@@ -589,20 +651,20 @@ int main(int argc, const char** argv) {
             storage.open();
 
             // All new data should be readable
-            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
-            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000024", false, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000024", true, false,  allseries);
 
             // Filter by timestamp
-            query_subset(&storage, 5ul, 15ul, false, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
-            query_subset(&storage, 5ul, 15ul, true, false, {0ul, 1ul, 2ul, 3ul, 4ul, 5ul});
+            query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
+            query_subset(&storage, "20150101T000005", "20150101T000015", true, false,  allseries);
 
             // Filter out BLOBs
-            query_subset(&storage, 0ul, 24ul, true, false, {0ul, 2ul, 4ul});
-            query_subset(&storage, 0ul, 24ul, false, false, {0ul, 2ul, 4ul});
+            query_subset(&storage, "20150101T000000", "20150101T000024", true, false,  evenseries);
+            query_subset(&storage, "20150101T000000", "20150101T000024", false, false, evenseries);
 
             // Filter out numeric values
-            query_subset(&storage, 0ul, 24ul, true, false, {1ul, 3ul, 5ul});
-            query_subset(&storage, 0ul, 24ul, false, false, {1ul, 3ul, 5ul});
+            query_subset(&storage, "20150101T000000", "20150101T000024", true, false,  oddseries);
+            query_subset(&storage, "20150101T000000", "20150101T000024", false, false, oddseries);
 
             storage.close();
         }

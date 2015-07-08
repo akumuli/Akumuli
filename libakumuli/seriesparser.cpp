@@ -96,6 +96,10 @@ static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree
                                                             aku_logger_cb_t logger) {
     auto sample = ptree.get_child("sample");
     if (sample.empty()) {
+        auto res = sample.get<std::string>("sample", "");
+        if (res == "all") {
+            return std::make_pair("all", 0);
+        }
         (*logger)(AKU_LOG_ERROR, "No `sample` tag");
         auto rte = std::runtime_error("`sample` expected");
         BOOST_THROW_EXCEPTION(rte);
