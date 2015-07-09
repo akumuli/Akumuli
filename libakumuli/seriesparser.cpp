@@ -96,7 +96,7 @@ static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree
                                                             aku_logger_cb_t logger) {
     auto sample = ptree.get_child("sample");
     if (sample.empty()) {
-        auto res = sample.get<std::string>("sample", "");
+        auto res = sample.get_value<std::string>("");
         if (res == "all") {
             return std::make_pair("all", 0);
         }
@@ -277,13 +277,15 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         if (!ids_excluded.empty()) {
             next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
         }
-        auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
-                                                        sampling_params.second,
-                                                        next,
-                                                        logger);
+        if (sampling_params.first != "all") {
+            next = NodeBuilder::make_random_sampler(sampling_params.first,
+                                                            sampling_params.second,
+                                                            next,
+                                                            logger);
+        }
+
         // Build query processor
-        auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);
-        return qproc;
+        return std::make_shared<QueryProcessor>(next, metrics, ts_begin, ts_end);
 
     } catch(std::exception const& e) {
         (*logger)(AKU_LOG_ERROR, e.what());

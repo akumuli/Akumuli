@@ -117,14 +117,14 @@ struct LocalCursor : Cursor {
                 std::runtime_error err("no such id");
                 BOOST_THROW_EXCEPTION(err);
             }
-            std::string paramid(buffer, buffer + len);
+            std::string paramid(buffer, buffer + len - 1);
             // Convert timestamp
             len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
             if (len <= 0) {
                 std::runtime_error err("bad timestamp");
                 BOOST_THROW_EXCEPTION(err);
             }
-            std::string timestamp(buffer, buffer + len);
+            std::string timestamp(buffer, buffer + len - 1);
             // Convert payload
             if (sample_.payload.type == aku_PData::FLOAT) {
                 result = std::make_tuple(
@@ -277,26 +277,6 @@ struct LocalStorage : Storage {
                                           std::string end,
                                           std::vector<std::string> ids)
     {
-        /* Query format:
-         * {
-         *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
-         *      "metric": "cpu",
-         *      // or
-         *      "metric": ["cpu", "mem"],
-         *      "range": {
-         *          "from": "20150101T000000", // "#123456789",
-         *          "to"  : "20150102T000000"
-         *      },
-         *      "where": [
-         *          { "in" : { "key3": [1, 2, 3, "foo"]},
-         *          { "not_in" : { "key4": [3, 4, 5]}
-         *      ],
-         *      "group_by": {
-         *          "tag" : [ "host", "region" ],
-         *          "metric" : [ "cpu", "memory" ]
-         *      }
-         * }
-         */
         boost::property_tree::ptree query;
         // No (re)sampling
         query.add("sample", "all");
@@ -308,7 +288,10 @@ struct LocalStorage : Storage {
         range.add("to", end);
         query.add_child("range", range);
         // Where clause
+        // Where clause
         boost::property_tree::ptree where;
+        boost::property_tree::ptree key;
+        boost::property_tree::ptree in;
         boost::property_tree::ptree array;
         for (auto series: ids) {
             auto val = series.substr(8, 1);
@@ -316,7 +299,9 @@ struct LocalStorage : Storage {
             elem.put("", val);
             array.push_back(std::make_pair("", elem));
         }
-        where.add_child("key", array);
+        key.add_child("key", array);
+        in.add_child("in", key);
+        where.push_back(std::make_pair("", in));
         query.add_child("where", where);
         std::stringstream stream;
         boost::property_tree::json_parser::write_json(stream, query, true);
@@ -484,6 +469,8 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     std::cout << "         invert = " << invert << std::endl;
     std::cout << "   expect_empty = " << expect_empty << std::endl;
     std::cout << "            ids = ";
+    auto begin_ts = to_timestamp(begin);
+    auto end_ts = to_timestamp(end);
     bool firstid = true;
     for(auto x: ids) {
         if (!firstid) {
@@ -499,9 +486,11 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     std::vector<DataPoint> expected;
     for (int i = 0; i < (int)TEST_DATA.size(); i++) {
         auto point = TEST_DATA[i];
-        if (idsmap.count(point.id) != 0 &&
-            to_timestamp(point.timestamp) >= to_timestamp(begin) &&
-            to_timestamp(point.timestamp) <= to_timestamp(end))
+        auto id_match = idsmap.count(point.id);
+        auto point_ts = to_timestamp(point.timestamp);
+        if (id_match &&
+            point_ts >= begin_ts &&
+            point_ts <= end_ts)
         {
             expected.push_back(point);
         }
@@ -668,6 +657,8 @@ int main(int argc, const char** argv) {
 
             storage.close();
         }
+
+        std::cout << "OK!" << std::endl;
 
     } catch (...) {
         std::cout << boost::current_exception_diagnostic_information() << std::endl;

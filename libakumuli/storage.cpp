@@ -238,6 +238,12 @@ void Storage::close() {
         return;
     }
     active_volume_->flush();
+    // Update metadata store
+    std::vector<SeriesMatcher::SeriesNameT> names;
+    matcher_->pull_new_names(&names);
+    if (!names.empty()) {
+        metadata_->insert_new_names(names);
+    }
 }
 
 void Storage::select_active_page() {
@@ -321,15 +327,15 @@ void Storage::advance_volume_(int local_rev) {
     // just redo all the things
 }
 
-void Storage::log_message(const char* message) {
+void Storage::log_message(const char* message) const {
     (*logger_)(AKU_LOG_INFO, message);
 }
 
-void Storage::log_error(const char* message) {
+void Storage::log_error(const char* message) const {
     (*logger_)(AKU_LOG_ERROR, message);
 }
 
-void Storage::log_message(const char* message, uint64_t value) {
+void Storage::log_message(const char* message, uint64_t value) const {
     using namespace std;
     stringstream fmt;
     fmt << message << ", " << value;
@@ -395,16 +401,21 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
      */
 
     uint32_t starting_ix = active_volume_->get_page()->get_page_id();
-    aku_Timestamp window;
-    int seq_id;
-    tie(window, seq_id) = active_volume_->cache_->get_window();
-    active_volume_->cache_->searchV2(query_processor, seq_id);
+    if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+        log_message("query sequencer");
+        aku_Timestamp window;
+        int seq_id;
+        tie(window, seq_id) = active_volume_->cache_->get_window();
+        active_volume_->cache_->searchV2(query_processor, seq_id);
+    }
 
     // TODO: restart on error or if starting_ix was changed
 
     if (!terminal_node->error) {
         for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-            volumes_.at(ix % volumes_.size())->get_page()->searchV2(query_processor);
+            uint32_t index = ix % volumes_.size();
+            volumes_.at(index)->get_page()->searchV2(query_processor);
+            log_message("query volume", index);
             if (terminal_node->error) {
                 break;
             }
