@@ -20,36 +20,10 @@
 
 #include "akumuli.h"
 #include "stringpool.h"
+#include "queryprocessor_fwd.h"
 
 namespace Akumuli {
 namespace QP {
-
-struct Node {
-
-    enum NodeType {
-        // Samplers
-        RandomSampler,
-        Resampler,
-        // Filtering
-        FilterById,
-        // Group by
-        GroupBy,
-        // Testing
-        Mock,
-    };
-
-    virtual ~Node() = default;
-    //! Complete adding values
-    virtual void complete() = 0;
-    //! Process value
-    virtual void put(aku_Timestamp ts, aku_ParamId id, double value) = 0;
-
-    // Introspections
-
-    //! Get node type
-    virtual NodeType get_type() const = 0;
-};
-
 
 struct NodeException : std::runtime_error {
     Node::NodeType type_;
@@ -83,24 +57,24 @@ struct NodeBuilder {
   * Should be used by both sequencer and page to match parameters
   * and group them together.
   */
-struct QueryProcessor {
+struct QueryProcessor : IQueryProcessor {
 
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
 
     //! Lowerbound
-    const aku_Timestamp                lowerbound;
+    const aku_Timestamp                lowerbound_;
     //! Upperbound
-    const aku_Timestamp                upperbound;
+    const aku_Timestamp                upperbound_;
     //! Scan direction
-    const int                          direction;
+    const int                          direction_;
     //! List of metrics of interest
-    const std::vector<std::string>     metrics;
+    const std::vector<std::string>     metrics_;
     //! Name to id mapping
-    TableT                             namesofinterest;
+    TableT                             namesofinterest_;
 
     //! Root of the processing topology
-    std::shared_ptr<Node>              root_node;
+    std::shared_ptr<Node>              root_node_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -114,15 +88,26 @@ struct QueryProcessor {
                    aku_Timestamp begin,
                    aku_Timestamp end);
 
+    //! Lowerbound
+    aku_Timestamp lowerbound() const;
+
+    //! Upperbound
+    aku_Timestamp upperbound() const;
+
+    //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
+    int direction() const;
+
     //! Should be called before processing begins
     void start();
 
     //! Process value
-    void put(aku_Timestamp ts, aku_ParamId id, double value);
-    void put(aku_Timestamp ts, aku_ParamId id, aku_MemRange blob);
+    bool put(const aku_Sample& sample);
 
     //! Should be called when processing completed
     void stop();
+
+    //! Set execution error
+    void set_error(aku_Status error);
 };
 
 }}  // namespaces

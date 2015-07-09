@@ -23,6 +23,7 @@
 #pragma once
 #include "page.h"
 #include "cursor.h"
+#include "queryprocessor.h"
 
 #include <tuple>
 #include <vector>
@@ -151,6 +152,18 @@ struct Sequencer {
       */
     void search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const;
 
+    /** Search in sequencer data.
+      * @param query represents search query
+      * @param sequence_number sequence number obtained with get_window function
+      * @note search method follows common pattern used by all methods except sequence_number
+      * parameter. This parameter is used to organize optimistic concurrency control. User must
+      * call get_window fn and get current window and seq-number. This seq-number then passed to
+      * search method. If seq-number is changed between calls to get_window and search - search
+      * will be aborted and AKU_EBUSY.error code will be returned If merge occures during search -
+      * search will be aborted and AKU_EBUSY error code will be returned.
+      */
+    void searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const;
+
     std::tuple<aku_Timestamp, int> get_window() const;
 
     /** Returns number of bytes needed to store all data from the checkpoint
@@ -175,5 +188,7 @@ private:
     std::tuple<int, int> check_timestamp_(aku_Timestamp ts);
 
     void filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun> *results) const;
+
+    void filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
 };
 }

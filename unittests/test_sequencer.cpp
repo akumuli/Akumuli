@@ -184,6 +184,30 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
 }
 
+struct Node : QP::Node {
+
+    Caller& caller;
+    RecordingCursor& cursor;
+
+    Node(Caller& caller, RecordingCursor& cur) : caller(caller), cursor(cur) {}
+
+    void complete() {
+        cursor.complete(caller);
+    }
+
+    bool put(const aku_Sample &sample) {
+        return sample.paramid == 42u ? cursor.put(caller, sample) : true;
+    }
+
+    void set_error(aku_Status status) {
+        cursor.set_error(caller, status);
+    }
+
+    NodeType get_type() const {
+        return Node::Cursor;
+    }
+};
+
 void test_sequencer_searching(int dir) {
     const int SZLOOP = 1000;
     const int WINDOW = 10000;
@@ -205,15 +229,20 @@ void test_sequencer_searching(int dir) {
 
     if (dir == AKU_CURSOR_DIR_BACKWARD) {
         std::reverse(offsets.begin(), offsets.end());
+        begin = AKU_MAX_TIMESTAMP;
+        end   = AKU_MIN_TIMESTAMP;
     }
 
     Caller caller;
     RecordingCursor cursor;
-    SearchQuery query(42u, begin, end, dir);
+    auto node = std::make_shared<Node>(caller, cursor);
+    std::vector<std::string> metrics;
+    auto qproc = std::make_shared<QP::QueryProcessor>(node, metrics, begin, end);
+
     aku_Timestamp window;
     int seq_id;
     std::tie(window, seq_id) = seq.get_window();
-    seq.search(caller, &cursor, query, seq_id);
+    seq.searchV2(qproc, seq_id);
 
     // Check that everything is there
     BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());

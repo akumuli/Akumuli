@@ -32,6 +32,8 @@ namespace Akumuli {
 //      Series Matcher      //
 //                          //
 
+static const SeriesMatcher::StringT EMPTY = std::make_pair(nullptr, 0);
+
 SeriesMatcher::SeriesMatcher(uint64_t starting_id)
     : table(StringTools::create_table(0x1000))
     , series_id(starting_id)
@@ -46,6 +48,7 @@ uint64_t SeriesMatcher::add(const char* begin, const char* end) {
     StringT pstr = pool.add(begin, end, id);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
     table[pstr] = id;
+    inv_table[id] = pstr;
     names.push_back(tup);
     return id;
 }
@@ -58,7 +61,7 @@ void SeriesMatcher::_add(std::string series, uint64_t id) {
     const char* end = begin + series.size();
     StringT pstr = pool.add(begin, end, id);
     table[pstr] = id;
-
+    inv_table[id] = pstr;
 }
 
 uint64_t SeriesMatcher::match(const char* begin, const char* end) {
@@ -69,6 +72,14 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     auto it = table.find(str);
     if (it == table.end()) {
         return 0ul;
+    }
+    return it->second;
+}
+
+SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) {
+    auto it = inv_table.find(tokenid);
+    if (it == inv_table.end()) {
+        return EMPTY;
     }
     return it->second;
 }
@@ -85,6 +96,10 @@ static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree
                                                             aku_logger_cb_t logger) {
     auto sample = ptree.get_child("sample");
     if (sample.empty()) {
+        auto res = sample.get_value<std::string>("");
+        if (res == "all") {
+            return std::make_pair("all", 0);
+        }
         (*logger)(AKU_LOG_ERROR, "No `sample` tag");
         auto rte = std::runtime_error("`sample` expected");
         BOOST_THROW_EXCEPTION(rte);
@@ -262,13 +277,15 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         if (!ids_excluded.empty()) {
             next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
         }
-        auto sampler = NodeBuilder::make_random_sampler(sampling_params.first,
-                                                        sampling_params.second,
-                                                        next,
-                                                        logger);
+        if (sampling_params.first != "all") {
+            next = NodeBuilder::make_random_sampler(sampling_params.first,
+                                                            sampling_params.second,
+                                                            next,
+                                                            logger);
+        }
+
         // Build query processor
-        auto qproc = std::make_shared<QueryProcessor>(sampler, metrics, ts_begin, ts_end);
-        return qproc;
+        return std::make_shared<QueryProcessor>(next, metrics, ts_begin, ts_end);
 
     } catch(std::exception const& e) {
         (*logger)(AKU_LOG_ERROR, e.what());

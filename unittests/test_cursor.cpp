@@ -191,22 +191,43 @@ struct PageWrapper {
     }
 };
 
+static const int COROUTINE_LIMIT = 10000;
+
+static void coroutine(Caller& caller, InternalCursor* cursor, bool backward) {
+    if (!backward) {
+        int next = 0;
+        for (int i = 0; i < COROUTINE_LIMIT; i++) {
+            aku_Sample sample;
+            sample.paramid = next & 3;
+            sample.timestamp = next;
+            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.value.float64 = 0.0;
+            cursor->put(caller, sample);
+            next += std::rand() % 100;
+        }
+    } else {
+        int next = std::numeric_limits<int>::max();
+        for (int i = 0; i < COROUTINE_LIMIT; i++) {
+            aku_Sample sample;
+            sample.paramid = next & 3;
+            sample.timestamp = next;
+            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.value.float64 = 0.0;
+            cursor->put(caller, sample);
+            next -= std::rand() % 100;
+        }
+
+    }
+    cursor->complete(caller);
+}
+
 template<class FanInCursor>
 void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
-    std::vector<PageWrapper> pages;
-    pages.reserve(n_cursors);
-    for (int i = 0; i < n_cursors; i++) {
-        pages.emplace_back(page_size, (uint32_t)i);
-    }
-
-    auto match_all = [](aku_ParamId) { return SearchQuery::MATCH; };
-    SearchQuery q(match_all, AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP, dir);
 
     std::vector<CoroCursor> cursors(n_cursors);
     for (int i = 0; i < n_cursors; i++) {
-        PageHeader* page = pages[i].page;
         CoroCursor* cursor = &cursors[i];
-        cursor->start(std::bind(&PageHeader::search, page, std::placeholders::_1, cursor, q));
+        cursor->start(std::bind(&coroutine, std::placeholders::_1, cursor, dir == AKU_CURSOR_DIR_BACKWARD));
     }
 
     std::vector<ExternalCursor*> ecur;
@@ -219,70 +240,23 @@ void test_fan_in_cursor(uint32_t dir, int n_cursors, int page_size) {
     aku_Sample results[0x100];
     int count = 0;
     std::vector<int64_t> actual_results;  // must be sorted
+    std::vector<int64_t> expected_results;
     while(!cursor.is_done()) {
         int n_read = cursor.read(results, 0x100);
         count += n_read;
         for (int i = 0; i < n_read; i++) {
             actual_results.push_back(results[i].timestamp);
+            expected_results.push_back(results[i].timestamp);
         }
     }
     cursor.close();
 
-    std::vector<int64_t> expected_results;
-    for(auto& pagewrapper: pages) {
-        PageHeader* page = pagewrapper.page;
-        for (auto i = 0u; i < pagewrapper.count; i++) {
-            const aku_Timestamp ts = page->page_index(i)->timestamp;
-            expected_results.push_back(ts);
-        }
-    }
     SortPred s = {dir};
     std::sort(expected_results.begin(), expected_results.end(), s);
+
     s.check_order(actual_results.begin(), actual_results.end());
     BOOST_REQUIRE_EQUAL_COLLECTIONS(actual_results.begin(), actual_results.end(), expected_results.begin(), expected_results.end());
 }
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_f)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_FORWARD, 1, 1000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_f)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_FORWARD, 10, 1000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_f)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_FORWARD, 1, 100000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_f)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_FORWARD, 10, 100000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_1_b)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_BACKWARD, 1, 1000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_2_b)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_BACKWARD, 10, 1000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_3_b)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_BACKWARD, 1, 100000 + sizeof(PageHeader));
-}
-
-BOOST_AUTO_TEST_CASE(Test_fan_in_cursor_4_b)
-{
-    test_fan_in_cursor<FanInCursorCombinator>(AKU_CURSOR_DIR_BACKWARD, 10, 100000 + sizeof(PageHeader));
-}
-
-// Stackless fan-in cursor
 
 BOOST_AUTO_TEST_CASE(Test_stackless_fan_in_cursor_1_f)
 {

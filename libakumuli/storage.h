@@ -129,11 +129,11 @@ struct Storage
     //! Prepopulate cache
     void prepopulate_cache(int64_t max_cache_size);
 
-    void log_message(const char* message);
+    void log_message(const char* message) const;
 
-    void log_error(const char* message);
+    void log_error(const char* message) const;
 
-    void log_message(const char* message, uint64_t value);
+    void log_message(const char* message, uint64_t value) const;
 
     // Writing
 
@@ -151,9 +151,6 @@ struct Storage
     //! Write double.
     aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double value);
 
-    //! Write double.
-    aku_Status write_double(const char* begin, const char* end, aku_Timestamp ts, double value);
-
     aku_Status _write_impl(TimeSeriesValue value, aku_MemRange data);
 
     /** Convert series name to parameter id
@@ -162,12 +159,20 @@ struct Storage
       * @param value is a pointer to output parameter
       * @returns status code
       */
-    aku_Status _series_to_param_id(const char* begin, const char* end, uint64_t *value);
+    aku_Status series_to_param_id(const char* begin, const char* end, uint64_t *value);
+
+    /** Convert parameter id to series name.
+      */
+    int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const;
 
     // Reading
 
+    // TODO: remove depricated method
     //! Search storage using cursor
     void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const;
+
+    //! Search storage using cursor
+    void searchV2(Caller &caller, InternalCursor* cur, const char* query) const;
 
     // Static interface
 

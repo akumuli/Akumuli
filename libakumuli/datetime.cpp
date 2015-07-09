@@ -39,6 +39,11 @@ aku_Timestamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp)
     return ns;
 }
 
+boost::posix_time::ptime DateTimeUtil::to_boost_ptime(aku_Timestamp timestamp) {
+    boost::posix_time::ptime ptime = EPOCH + boost::posix_time::nanoseconds(timestamp);
+    return ptime;
+}
+
 // parse N digits from string
 static int parse_n_digits(const char* p, int n, const char* error_message = "can't parse digit") {
     int value = 0;
@@ -109,6 +114,18 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     auto time = boost::posix_time::time_duration(hour, minute, second, nanoseconds);
     auto pt = boost::posix_time::ptime(gregorian_date, time);
     return DateTimeUtil::from_boost_ptime(pt);
+}
+
+aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
+    // TODO: can be optimized
+    boost::posix_time::ptime ptime = to_boost_ptime(ts);
+    std::string str = boost::posix_time::to_iso_string(ptime);
+    if (str.size() < buffer_size) {
+        // OK
+        strcpy(buffer, str.c_str());
+        return 1 + (int)str.size();
+    }
+    return -1*static_cast<int>(str.size());
 }
 
 }

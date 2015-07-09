@@ -250,6 +250,21 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
   */
 AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
 
+/** Try to parse timestamp.
+  * @param iso_str should point to the begining of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, AKU_EBAD_ARG otherwise
+  */
+AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample);
+
+/** Convert series name to id. Assign new id to series name on first encounter.
+  * @param db opened database instance
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, error code otherwise
+  */
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample);
 
 //---------
 // Queries
@@ -264,10 +279,18 @@ AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Times
 
 /**
  * @brief Execute query
+ * @note Obsolete
  * @param query value
  * @return cursor
  */
 AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const aku_SelectQuery *query);
+
+/** @brief Query database
+  * @param db should point to opened database instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_query(aku_Database* db, const char* query);
 
 /**
  * @brief Close cursor
@@ -290,6 +313,20 @@ AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+
+/** Convert timestamp to string if possible, return string length
+  * @return 0 on bad string, -LEN if buffer is too small, LEN on success
+  */
+AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size);
+
+/** Convert param-id to series name
+  * @param db opened database
+  * @param id valid param id
+  * @param buffer is a destination buffer
+  * @param buffer_size is a destination buffer size
+  * @return 0 if no such id, -LEN if buffer is too small, LEN on success
+  */
+AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer, size_t buffer_size);
 
 //--------------------
 // Stats and counters

@@ -39,17 +39,18 @@ struct QueryParserError;
   */
 struct SeriesMatcher {
     // TODO: add LRU cache
-
     //! Pooled string
     typedef StringTools::StringT StringT;
     //! Series name descriptor - pointer to string, length, series id.
     typedef std::tuple<const char*, int, uint64_t> SeriesNameT;
 
     typedef StringTools::TableT TableT;
+    typedef StringTools::InvT   InvT;
 
     // Variables
     StringPool               pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
+    InvT                     inv_table;  //! Ids table (id to name mapping)
     uint64_t                 series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
     std::mutex               mutex;      //! Mutex for shared data
@@ -69,6 +70,9 @@ struct SeriesMatcher {
     /** Match string and return it's id. If string is new return 0.
       */
     uint64_t match(const char* begin, const char* end);
+
+    //! Convert id to string
+    StringT id2str(uint64_t tokenid);
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements

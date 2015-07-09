@@ -238,6 +238,12 @@ void Storage::close() {
         return;
     }
     active_volume_->flush();
+    // Update metadata store
+    std::vector<SeriesMatcher::SeriesNameT> names;
+    matcher_->pull_new_names(&names);
+    if (!names.empty()) {
+        metadata_->insert_new_names(names);
+    }
 }
 
 void Storage::select_active_page() {
@@ -321,15 +327,15 @@ void Storage::advance_volume_(int local_rev) {
     // just redo all the things
 }
 
-void Storage::log_message(const char* message) {
+void Storage::log_message(const char* message) const {
     (*logger_)(AKU_LOG_INFO, message);
 }
 
-void Storage::log_error(const char* message) {
+void Storage::log_error(const char* message) const {
     (*logger_)(AKU_LOG_ERROR, message);
 }
 
-void Storage::log_message(const char* message, uint64_t value) {
+void Storage::log_message(const char* message, uint64_t value) const {
     using namespace std;
     stringstream fmt;
     fmt << message << ", " << value;
@@ -337,6 +343,88 @@ void Storage::log_message(const char* message, uint64_t value) {
 }
 
 // Reading
+
+struct TerminalNode : QP::Node {
+
+    Caller &caller;
+    InternalCursor* cursor;
+    bool error;
+    int times_completed;
+
+    TerminalNode(Caller& ca, InternalCursor* cur)
+        : caller(ca)
+        , cursor(cur)
+        , error(false)
+        , times_completed(0)
+    {
+    }
+
+    // Node interface
+
+    void complete() {
+        times_completed++;
+    }
+
+    void complete_query() {
+        cursor->complete(caller);
+    }
+
+    bool put(const aku_Sample& sample) {
+        return cursor->put(caller, sample);
+    }
+
+    void set_error(aku_Status status) {
+        error = true;
+        cursor->set_error(caller, status);
+    }
+
+    NodeType get_type() const {
+        return Node::Cursor;
+    }
+};
+
+
+void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
+    using namespace std;
+
+    // Parse query
+    auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+    auto query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+
+    /* Fan out query
+     *
+     *         -> Volume
+     *       /            \
+     * Query  --> Volume --+--> Cursor
+     *       \            /
+     *         -> Volume
+     */
+
+    uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+    if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+        log_message("query sequencer");
+        aku_Timestamp window;
+        int seq_id;
+        tie(window, seq_id) = active_volume_->cache_->get_window();
+        active_volume_->cache_->searchV2(query_processor, seq_id);
+    }
+
+    // TODO: restart on error or if starting_ix was changed
+
+    if (!terminal_node->error) {
+        for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+            uint32_t index = ix % volumes_.size();
+            volumes_.at(index)->get_page()->searchV2(query_processor);
+            log_message("query volume", index);
+            if (terminal_node->error) {
+                break;
+            }
+        }
+    }
+    if (!terminal_node->error) {
+        terminal_node->complete_query();
+    }
+}
 
 void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
     using namespace std;
@@ -471,18 +559,7 @@ aku_Status Storage::write_double(aku_ParamId param, aku_Timestamp ts, double val
     return _write_impl(ts_value, m);
 }
 
-aku_Status Storage::write_double(const char* begin, const char* end, aku_Timestamp ts, double value) {
-    aku_ParamId id;
-    auto status = _series_to_param_id(begin, end, &id);
-    if (status == AKU_SUCCESS) {
-        aku_MemRange m = {};
-        TimeSeriesValue ts_value(ts, id, value);
-        status = _write_impl(ts_value, m);
-    }
-    return status;
-}
-
-aku_Status Storage::_series_to_param_id(const char* begin, const char* end, uint64_t *value) {
+aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint64_t *value) {
     char buffer[AKU_LIMITS_MAX_SNAME];
     const char* keystr_begin = nullptr;
     const char* keystr_end = nullptr;
@@ -500,6 +577,19 @@ aku_Status Storage::_series_to_param_id(const char* begin, const char* end, uint
     return status;
 }
 
+int Storage::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const {
+    auto str = matcher_->id2str(id);
+    if (str.first == nullptr) {
+        return 0;
+    }
+    if (str.second >= (int)buffer_size) {
+        // buffer is too small
+        return -1*(str.second + 1);
+    }
+    memcpy(buffer, str.first, str.second);
+    buffer[str.second] = '\0';
+    return str.second + 1;
+}
 
 // Standalone functions //
 

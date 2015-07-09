@@ -29,6 +29,7 @@
 #include "util.h"
 #include "internal_cursor.h"
 #include "compression.h"
+#include "queryprocessor_fwd.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
 const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
@@ -309,6 +310,11 @@ public:
       * Execute search query. Results are sent to cursor.
       */
     void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
+
+    /**
+      * @brief Search matches inside the volume
+      */
+    void searchV2(std::shared_ptr<QP::IQueryProcessor> query) const;
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 

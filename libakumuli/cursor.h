@@ -206,35 +206,4 @@ public:
     virtual void close();
 };
 
-/**
- * @brief Fan in cursor.
- * Takes list of cursors and pages and merges
- * results from this cursors in one ordered
- * sequence of events.
- */
-class FanInCursorCombinator : ExternalCursor {
-    const std::vector<ExternalCursor*>  in_cursors_;
-    const int                           direction_;
-    CoroCursor                          out_cursor_;
-
-    void read_impl_(Caller& caller);
-public:
-    /**
-     * @brief C-tor
-     * @param cursors array of pointer to cursors
-     * @param size size of the cursors array
-     * @param direction direction of the cursor (forward or backward)
-     */
-    FanInCursorCombinator( ExternalCursor** in_cursors
-                         , int size
-                         , int direction);
-
-    // ExternalCursor interface
-public:
-    virtual size_t read(aku_Sample *buf, size_t buf_len);
-    virtual bool is_done() const;
-    virtual bool is_error(int *out_error_code_or_null) const;
-    virtual void close();
-};
-
 }  // namespace
