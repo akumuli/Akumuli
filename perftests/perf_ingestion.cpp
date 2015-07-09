@@ -195,7 +195,7 @@ int main(int cnt, const char** args)
 
     aku_FineTuneParams params = {};
     params.debug_mode = 0;
-    params.durability = AKU_MAX_WRITE_SPEED;
+    params.durability = AKU_MAX_DURABILITY;
     params.enable_huge_tlb = 0;
     auto db = aku_open_database(DB_META_FILE, params);
     Timer timer;
@@ -204,12 +204,17 @@ int main(int cnt, const char** args)
         uint64_t busy_count = 0;
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-            double value = i + 1;
-            aku_ParamId id = (i + 1) & 0xF;
-            aku_Timestamp ts = i;
-            aku_Status status = aku_write_double_raw(db, id, ts, value);
+
+            aku_Sample sample;
+            sample.paramid = (i + 1) & 0xF;
+            sample.timestamp = i;
+            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.value.float64 = i + 1;
+
+            aku_Status status = aku_write(db, &sample);
+
             if (status == AKU_EBUSY) {
-                status = aku_write_double_raw(db, id, ts, value);
+                status = aku_write(db, &sample);
                 busy_count++;
                 if (status != AKU_SUCCESS) {
                     std::cout << "add error at " << i << std::endl;

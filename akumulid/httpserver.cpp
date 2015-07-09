@@ -1,5 +1,6 @@
 #include "httpserver.h"
 #include "utility.h"
+#include <cstring>
 
 namespace Akumuli {
 namespace Http {
