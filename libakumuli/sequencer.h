@@ -96,21 +96,21 @@ struct Sequencer {
     static const int RUN_LOCK_FLAGS_MASK = 0x0FF;
     static const int RUN_LOCK_FLAGS_SIZE = 0x100;
 
-    std::vector<PSortedRun>      runs_;           //< Active sorted runs
-    std::vector<PSortedRun>      ready_;          //< Ready to merge
+    std::vector<PSortedRun>      runs_;             //< Active sorted runs
+    std::vector<PSortedRun>      ready_;            //< Ready to merge
     PSortedRun                   key_;
     const aku_Duration           window_size_;
     const PageHeader* const      page_;
-    aku_Timestamp                top_timestamp_;  //< Largest timestamp ever seen
-    uint32_t                     checkpoint_;     //< Last checkpoint timestamp
-    mutable std::atomic_int      sequence_number_;   //< Flag indicates that merge operation is in progress and
-                                                  //< search will return inaccurate results.
-                                                  //< If progress_flag_ is odd - merge is in progress if it is
-                                                  //< even - there is no merge and search will work correctly.
+    aku_Timestamp                top_timestamp_;    //< Largest timestamp ever seen
+    aku_Timestamp                checkpoint_;       //< Last checkpoint timestamp
+    mutable std::atomic_int      sequence_number_;  //< Flag indicates that merge operation is in progress and
+                                                    //< search will return inaccurate results.
+                                                    //< If progress_flag_ is odd - merge is in progress if it is
+                                                    //< even - there is no merge and search will work correctly.
     mutable Mutex                runs_resize_lock_;
     mutable std::vector<RWLock>  run_locks_;
-    uint32_t                     space_estimate_; //< Space estimate for storing all data
-    const size_t                 c_threshold_;    //< Compression threshold
+    uint32_t                     space_estimate_;   //< Space estimate for storing all data
+    const size_t                 c_threshold_;      //< Compression threshold
 
     Sequencer(PageHeader const* page, aku_Config config);
 
@@ -174,13 +174,13 @@ struct Sequencer {
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
-    uint32_t get_checkpoint_(aku_Timestamp ts) const;
+    aku_Timestamp get_checkpoint_(aku_Timestamp ts) const;
 
     //! Convert checkpoint id to timestamp
-    aku_Timestamp get_timestamp_(uint32_t cp) const;
+    aku_Timestamp get_timestamp_(aku_Timestamp cp) const;
 
     // move sorted runs to ready_ collection
-    int make_checkpoint_(uint32_t new_checkpoint);
+    int make_checkpoint_(aku_Timestamp new_checkpoint);
 
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created

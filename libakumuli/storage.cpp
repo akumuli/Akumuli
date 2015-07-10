@@ -401,24 +401,19 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
      */
 
     uint32_t starting_ix = active_volume_->get_page()->get_page_id();
-    if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
-        log_message("query sequencer");
-        aku_Timestamp window;
-        int seq_id;
-        tie(window, seq_id) = active_volume_->cache_->get_window();
-        active_volume_->cache_->searchV2(query_processor, seq_id);
-    }
-
-    // TODO: restart on error or if starting_ix was changed
 
     if (!terminal_node->error) {
         for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
             uint32_t index = ix % volumes_.size();
-            volumes_.at(index)->get_page()->searchV2(query_processor);
+            PVolume volume = volumes_.at(index);
+            volume->get_page()->searchV2(query_processor);
             log_message("query volume", index);
-            if (terminal_node->error) {
-                break;
-            }
+            if (terminal_node->error) { break; }
+            log_message("query sequencer", index);
+            aku_Timestamp window;
+            int seq_id;
+            tie(window, seq_id) = volume->cache_->get_window();
+            volume->cache_->searchV2(query_processor, seq_id);
         }
     }
     if (!terminal_node->error) {

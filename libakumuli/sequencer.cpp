@@ -136,18 +136,18 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
-uint32_t Sequencer::get_checkpoint_(aku_Timestamp ts) const {
+aku_Timestamp Sequencer::get_checkpoint_(aku_Timestamp ts) const {
     // TODO: use fast integer division (libdivision or else)
     return ts / window_size_;
 }
 
 //! Convert checkpoint id to timestamp
-aku_Timestamp Sequencer::get_timestamp_(uint32_t cp) const {
+aku_Timestamp Sequencer::get_timestamp_(aku_Timestamp cp) const {
     return cp*window_size_;
 }
 
 // move sorted runs to ready_ collection
-int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
+int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
     int flag = sequence_number_.fetch_add(1) + 1;
     if (flag % 2 != 0) {
         auto old_top = get_timestamp_(checkpoint_);
