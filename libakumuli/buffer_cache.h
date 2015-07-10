@@ -3,7 +3,9 @@
 #include "compression.h"
 
 #include <map>
+#include <list>
 #include <memory>
+#include <mutex>
 
 namespace Akumuli {
 
@@ -12,14 +14,22 @@ struct BufferCache
 {
     //! Volume id + entry index
     typedef std::tuple<int, int> KeyT;
+    typedef std::tuple<KeyT, size_t> QueueItemT;
+    typedef std::shared_ptr<ChunkHeader> ItemT;
 
-    std::map<KeyT, std::shared_ptr<ChunkHeader>> cache_;
+    std::map<KeyT, ItemT> cache_;
+    std::list<QueueItemT> fifo_;
+    size_t                total_size_;
+    mutable std::mutex    mutex_;
+    const size_t          size_limit_;
+
+    BufferCache(size_t limit);
 
     bool contains(KeyT key) const;
 
-    bool try_get(KeyT key, ChunkHeader *dest);
+    ItemT get(KeyT key);
 
-    void save(KeyT key, std::unique_ptr<ChunkHeader>&& header);
+    void put(KeyT key, const std::shared_ptr<ChunkHeader>& header);
 };
 
 }
