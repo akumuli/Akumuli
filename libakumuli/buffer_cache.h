@@ -29,8 +29,6 @@ struct ChunkCache
     ItemT get(KeyT key);
 
     void put(KeyT key, const std::shared_ptr<UncompressedChunk>& header);
-
-    static ChunkCache *get_instance();
 };
 
 }

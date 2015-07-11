@@ -194,7 +194,7 @@ apr_status_t aku_create_database( const char     *file_name
                                 // optional args
                                 , uint32_t  compression_threshold
                                 , uint64_t  window_size
-                                , uint32_t  max_cache_size
+                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {

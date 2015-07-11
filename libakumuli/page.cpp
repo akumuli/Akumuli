@@ -331,6 +331,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     const PageHeader *page_;
     std::shared_ptr<QP::IQueryProcessor> query_;
+    std::shared_ptr<ChunkCache> cache_;
 
     const uint32_t      MAX_INDEX_;
     const bool          IS_BACKWARD_;
@@ -340,9 +341,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     SearchRange range_;
 
-    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query)
+    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache)
         : page_(page)
         , query_(query)
+        , cache_(cache)
         , MAX_INDEX_(page->get_entries_count())
         , IS_BACKWARD_(query->direction() == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query->upperbound() : query->lowerbound())
@@ -466,17 +468,15 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         aku_Status status = AKU_SUCCESS;
         std::shared_ptr<UncompressedChunk> chunk_header, header;
 
-        ChunkCache* cache = ChunkCache::get_instance();
-
         auto npages = page_->get_numpages();    // This needed to prevent key collision
         auto nopens = page_->get_open_count();  // between old and new page data, when
         auto pageid = page_->get_page_id();     // page is reallocated.
 
         auto key = std::make_tuple(npages*nopens + pageid, current_index);
 
-        if (cache->contains(key)) {
+        if (cache_ && cache_->contains(key)) {
             // Fast path
-            header = cache->get(key);
+            header = cache_->get(key);
         } else {
             chunk_header.reset(new UncompressedChunk());
             header.reset(new UncompressedChunk());
@@ -509,7 +509,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 AKU_PANIC("Bad chunk");
             }
 
-            cache->put(key, header);
+            if (cache_) {
+                cache_->put(key, header);
+            }
         }
 
         int start_pos = 0;
@@ -657,8 +659,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 };
 
 
-void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query) const {
-    SearchAlgorithm search_alg(this, query);
+void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache) const {
+    SearchAlgorithm search_alg(this, query, cache);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {
             search_alg.binary_search();

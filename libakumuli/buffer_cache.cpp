@@ -49,10 +49,5 @@ void ChunkCache::put(KeyT key, const std::shared_ptr<UncompressedChunk>& header)
     cache_[key] = header;
 }
 
-ChunkCache* ChunkCache::get_instance() {
-    static ChunkCache cache(500*1024*1024);
-    return &cache;
-}
-
 }
 

@@ -149,7 +149,7 @@ void MetadataStorage::init_config(uint32_t compression_threshold,
 }
 
 void MetadataStorage::get_configs(uint32_t *compression_threshold,
-                                  uint32_t *max_cache_size,
+                                  uint64_t *max_cache_size,
                                   uint64_t *window_size,
                                   std::string *creation_datetime)
 {

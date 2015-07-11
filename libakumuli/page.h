@@ -30,6 +30,7 @@
 #include "internal_cursor.h"
 #include "compression.h"
 #include "queryprocessor_fwd.h"
+#include "buffer_cache.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
 const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
@@ -74,7 +75,7 @@ struct aku_Config {
     uint64_t window_size;
 
     //! Maximum cache size in bytes
-    uint32_t max_cache_size;
+    uint64_t max_cache_size;
 };
 
 struct aku_Entry {
@@ -259,7 +260,7 @@ public:
     /**
       * @brief Search matches inside the volume
       */
-    void searchV2(std::shared_ptr<QP::IQueryProcessor> query) const;
+    void searchV2(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache = std::shared_ptr<ChunkCache>()) const;
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 

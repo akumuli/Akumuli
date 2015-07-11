@@ -123,7 +123,7 @@ void Volume::flush() {
 
 struct VolumeIterator {
     uint32_t                 compression_threshold;
-    uint32_t                 max_cache_size;
+    uint64_t                 max_cache_size;
     uint64_t                 window_size;
     std::vector<std::string> volume_names;
     aku_Status               error_code;
@@ -211,10 +211,12 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     }
 
     config_.compression_threshold = v_iter.compression_threshold;
-    // TODO: convert conf.max_cache_size from bytes
     config_.max_cache_size = v_iter.max_cache_size;
     config_.window_size = v_iter.window_size;
     ttl_ = v_iter.window_size;
+
+    // init cache
+    cache_.reset(new ChunkCache(config_.max_cache_size));
 
     // create volumes list
     for(auto path: v_iter.volume_names) {
@@ -402,7 +404,7 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
         for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
             uint32_t index = ix % volumes_.size();
             PVolume volume = volumes_.at(index);
-            volume->get_page()->searchV2(query_processor);
+            volume->get_page()->searchV2(query_processor, cache_);
             log_message("query volume", index);
             if (terminal_node->error) { break; }
             log_message("query sequencer", index);

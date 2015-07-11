@@ -90,10 +90,11 @@ struct Volume : std::enable_shared_from_this<Volume>
  */
 struct Storage
 {
-    typedef std::mutex      LockType;
-    typedef std::shared_ptr<Volume> PVolume;
-    typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
-    typedef std::shared_ptr<SeriesMatcher> PSeriesMatcher;
+    typedef std::mutex                          LockType;
+    typedef std::shared_ptr<Volume>             PVolume;
+    typedef std::shared_ptr<MetadataStorage>    PMetadataStorage;
+    typedef std::shared_ptr<SeriesMatcher>      PSeriesMatcher;
+    typedef std::shared_ptr<ChunkCache>         PCache;
 
     // Active volume state
     aku_Config                config_;
@@ -114,6 +115,7 @@ struct Storage
     Rand                      rand_;
     const uint32_t            durability_;                //< Copy of the durability parameter
     const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
+    PCache                    cache_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file
