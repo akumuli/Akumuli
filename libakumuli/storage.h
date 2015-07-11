@@ -84,9 +84,6 @@ struct Volume : std::enable_shared_from_this<Volume>
 
     //! Flush page
     void flush();
-
-    //! Search volume page (not cache)
-    void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 };
 
 /** Interface to page manager
@@ -166,10 +163,6 @@ struct Storage
     int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const;
 
     // Reading
-
-    // TODO: remove depricated method
-    //! Search storage using cursor
-    void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const;
 
     //! Search storage using cursor
     void searchV2(Caller &caller, InternalCursor* cur, const char* query) const;

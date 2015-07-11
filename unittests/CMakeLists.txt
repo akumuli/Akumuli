@@ -120,6 +120,7 @@ add_executable(
     test_page
     test_page.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
@@ -147,6 +148,7 @@ add_executable(
     ../libakumuli/sequencer.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
@@ -172,6 +174,7 @@ add_executable(
     test_cursor.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
 )
@@ -227,6 +230,7 @@ add_executable(
     ../libakumuli/storage.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/cursor.cpp

@@ -49,5 +49,10 @@ void BufferCache::put(KeyT key, const std::shared_ptr<ChunkHeader>& header) {
     cache_[key] = header;
 }
 
+BufferCache* BufferCache::get_instance() {
+    static BufferCache cache(500*1024*1024);
+    return &cache;
+}
+
 }
 

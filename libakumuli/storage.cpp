@@ -39,7 +39,7 @@
 
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger);
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger);
 
 //----------------------------------Volume----------------------------------------------
 
@@ -76,6 +76,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     uint32_t page_id = page_->get_page_id();
     uint32_t open_count = page_->get_open_count();
     uint32_t close_count = page_->get_close_count();
+    uint32_t npages = page_->get_numpages();
 
     std::string new_file_name = file_path_;
                 new_file_name += ".tmp";
@@ -87,7 +88,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     is_temporary_.store(true);
 
     std::shared_ptr<Volume> newvol;
-    auto status = create_page_file(file_path_.c_str(), page_id, logger_);
+    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_);
     if (status != AKU_SUCCESS) {
         (*logger_)(AKU_LOG_ERROR, "Failed to create new volume");
         // Try to restore previous state on disk
@@ -116,10 +117,6 @@ void Volume::flush() {
     mmap_.flush();
     page_->create_checkpoint();
     mmap_.flush(0, sizeof(PageHeader));
-}
-
-void Volume::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const {
-    page_->search(caller, cursor, query);
 }
 
 //----------------------------------Storage---------------------------------------------
@@ -383,7 +380,6 @@ struct TerminalNode : QP::Node {
     }
 };
 
-
 void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
@@ -421,57 +417,6 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
     }
 }
 
-void Storage::search(Caller &caller, InternalCursor *cur, const SearchQuery &query) const {
-    using namespace std;
-    // Find pages
-    // at this stage of development - simply get all pages :)
-    vector<unique_ptr<ExternalCursor>> cursors;
-    for(auto vol: volumes_) {
-        // Search cache (optional, only for active page)
-        if (vol == this->active_volume_) {
-            aku_Timestamp window;
-            int seq_id;
-            tie(window, seq_id) = active_volume_->cache_->get_window();
-            if (query.direction == AKU_CURSOR_DIR_BACKWARD &&              // Cache searched only if cursor
-               (query.lowerbound > window || query.upperbound > window))    // direction is backward.
-            {
-                auto ccur = CoroCursor::make(&Sequencer::search,            // Cache has optimistic concurrency
-                                             active_volume_->cache_.get(),  // control and can easily return
-                                             query, seq_id);                // AKU_EBUSY, because of that it
-                cursors.push_back(move(ccur));                              // must be searched in a first place.
-            }
-        }
-        // Search pages
-        auto pcur = CoroCursor::make(&Volume::search, vol, query);
-        cursors.push_back(move(pcur));
-    }
-
-    vector<ExternalCursor*> pcursors;
-    transform( cursors.begin(), cursors.end()
-             , back_inserter(pcursors)
-             , [](unique_ptr<ExternalCursor>& v) { return v.get(); });
-
-    assert(pcursors.size());
-    StacklessFanInCursorCombinator fan_in_cursor(&pcursors[0], pcursors.size(), query.direction);
-
-    // TODO: remove excessive copying
-    // to do this I need to pass cur to fan_in_cursor somehow
-    const size_t results_len = 0x1000;
-    aku_Sample results[results_len];
-    while(!fan_in_cursor.is_done()) {
-        size_t s = fan_in_cursor.read(results, results_len);
-        int err_code = 0;
-        if (fan_in_cursor.is_error(&err_code)) {
-            cur->set_error(caller, err_code);
-            return;
-        }
-        for (size_t i = 0; i < s; i++) {
-            cur->put(caller, results[i]);
-        }
-    }
-    fan_in_cursor.close();
-    cur->complete(caller);
-}
 
 void Storage::get_stats(aku_StorageStats* rcv_stats) {
     for (PVolume const& vol: volumes_) {
@@ -639,7 +584,7 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, aku_logger_cb_t logger) {
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger) {
     using namespace std;
     apr_status_t status;
     int64_t size = AKU_MAX_PAGE_SIZE;
@@ -658,7 +603,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
     // Create index page
     auto index_ptr = mfile.get_pointer();
-    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index);
+    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index, npages);
 
     // Activate the first page
     if (page_index == 0) {
@@ -672,7 +617,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), ix, logger);
+        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger);
         results[ix] = res;
     }
     return results;

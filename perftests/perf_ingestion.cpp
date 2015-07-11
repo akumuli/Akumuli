@@ -250,14 +250,14 @@ int main(int cnt, const char** args)
         std::cout << "!busy count = " << busy_count << std::endl;
     }
 
-    aku_StorageStats storage_stats;
+    aku_StorageStats storage_stats = {0};
     aku_global_storage_stats(db, &storage_stats);
     print_storage_stats(storage_stats);
 
     if (mode != CREATE) {
         // Search
         std::cout << "Sequential access" << std::endl;
-        aku_SearchStats search_stats;
+        aku_SearchStats search_stats = {0};
         uint64_t counter = 0;
 
         timer.restart();

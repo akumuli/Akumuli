@@ -103,59 +103,6 @@ struct SearchStats {
 SearchStats& get_global_search_stats();
 
 
-/** Search query
-  * @obsolete would be replaced with query processor
-  */
-struct SearchQuery {
-
-    // ParamId match type
-    enum ParamMatch {
-        LT_ALL,         //< This value is less then all values of interest
-        GT_ALL,         //< This value is greather than all values of interest
-        NO_MATCH,       //< This valued doesn't match but it nither greather nither less than all values of interest
-        MATCH           //< This value matches
-    };
-
-    // Matcher function must compare paramId with values of interest and return
-    // LT_ALL if all values of interest is greather than paramId, GT_ALL if all
-    // values of interest is less than paramId, MATCH - if paramId matches one
-    // or NO_MATCH in all other cases.
-    // Matcher f-n can return only MATCH and NO_MATCH. Search algorithms doesn't
-    // need to rely on first two values of the enumeration (LT_ALL and GT_ALL).
-    // This is just a hint to the search algorithm that can speedup search.
-    typedef std::function<ParamMatch(aku_ParamId)> MatcherFn;
-
-    // search query
-    aku_Timestamp lowerbound;     //< begining of the time interval (0 for -inf) to search
-    aku_Timestamp upperbound;     //< end of the time interval (0 for inf) to search
-    MatcherFn     param_pred;     //< parmeter search predicate
-    int            direction;     //< scan direction
-
-    /** Query c-tor for single parameter searching
-     *  @param pid parameter id
-     *  @param low time lowerbound (0 for -inf)
-     *  @param upp time upperbound (MAX_TIMESTAMP for inf)
-     *  @param scan_dir scan direction
-     */
-    SearchQuery( aku_ParamId      param_id
-               , aku_Timestamp    low
-               , aku_Timestamp    upp
-               , int              scan_dir);
-
-
-    /** Query c-tor
-     *  @param matcher parameter matcher
-     *  @param low time lowerbound (0 for -inf)
-     *  @param upp time upperbound (MAX_TIMESTAMP for inf)
-     *  @param scan_dir scan direction
-     */
-    SearchQuery( MatcherFn     matcher
-               , aku_Timestamp low
-               , aku_Timestamp upp
-               , int           scan_dir);
-};
-
-
 /**
  * In-memory page representation.
  * PageHeader represents begining of the page.
@@ -164,7 +111,6 @@ struct SearchQuery {
  * This class must be nonvirtual.
  */
 class PageHeader {
-    typedef std::tuple<aku_Timestamp, SearchQuery const&, uint32_t> CursorContext;
     // metadata
     const uint32_t version;     //< format version
     uint32_t count;             //< number of elements stored
@@ -173,6 +119,7 @@ class PageHeader {
     uint32_t open_count;        //< how many times page was open for write
     uint32_t close_count;       //< how many times page was closed for write
     uint32_t page_id;           //< page index in storage
+    uint32_t numpages;          //< total number or pages
     uint64_t length;            //< payload size
     char payload[];             //< page payload
 
@@ -180,6 +127,9 @@ public:
 
     //! Get page ID
     uint32_t get_page_id() const;
+
+    //! Get number of pages
+    uint32_t get_numpages() const;
 
     //! Number of times page was opened for writing
     uint32_t get_open_count() const;
@@ -210,7 +160,7 @@ public:
     const aku_EntryIndexRecord* page_index(int index) const;
 
     //! C-tor
-    PageHeader(uint32_t count, uint64_t length, uint32_t page_id);
+    PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32_t numpages);
 
     //! Clear all page conent (open_count += 1)
     void reuse();
@@ -305,11 +255,6 @@ public:
      * @returns pointer to entry data or NULL
      */
     const void* read_entry_data(uint32_t offset) const;
-
-    /**
-      * Execute search query. Results are sent to cursor.
-      */
-    void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 
     /**
       * @brief Search matches inside the volume

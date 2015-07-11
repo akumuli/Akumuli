@@ -82,19 +82,6 @@ void aku_console_logger(int tag, const char* msg) {
 }
 
 
-struct MatchPred {
-    std::vector<aku_ParamId> params_;
-    MatchPred(aku_ParamId const* begin, uint32_t n)
-        : params_(begin, begin + n)
-    {
-    }
-
-    SearchQuery::ParamMatch operator () (aku_ParamId id) const {
-        return std::binary_search(params_.begin(), params_.end(), id) ? SearchQuery::MATCH : SearchQuery::NO_MATCH;
-    }
-};
-
-
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
     int status_;

@@ -162,11 +162,11 @@ struct PageWrapper {
     size_t count;
     std::vector<int64_t> timestamps;
 
-    PageWrapper(int page_size, uint32_t id) {
+    PageWrapper(int page_size, uint32_t id, uint32_t npages) {
         count = 0;
         page_id = id;
         buf = new char[page_size];
-        page = new (buf) PageHeader(0, page_size, (int)page_id);
+        page = new (buf) PageHeader(0, page_size, (int)page_id, npages);
         init();
     }
 

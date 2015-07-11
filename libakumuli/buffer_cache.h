@@ -30,6 +30,8 @@ struct BufferCache
     ItemT get(KeyT key);
 
     void put(KeyT key, const std::shared_ptr<ChunkHeader>& header);
+
+    static BufferCache *get_instance();
 };
 
 }
