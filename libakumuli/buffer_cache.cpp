@@ -2,18 +2,18 @@
 
 namespace Akumuli {
 
-BufferCache::BufferCache(size_t limit)
+ChunkCache::ChunkCache(size_t limit)
     : total_size_(0ul)
     , size_limit_(limit)
 {
 }
 
-bool BufferCache::contains(KeyT key) const {
+bool ChunkCache::contains(KeyT key) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return cache_.count(key) > 0;
 }
 
-BufferCache::ItemT BufferCache::get(KeyT key) {
+ChunkCache::ItemT ChunkCache::get(KeyT key) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(key);
     if (it == cache_.end()) {
@@ -22,13 +22,13 @@ BufferCache::ItemT BufferCache::get(KeyT key) {
     return it->second;
 }
 
-static size_t get_size(const std::shared_ptr<ChunkHeader>& header) {
+static size_t get_size(const std::shared_ptr<UncompressedChunk>& header) {
     return header->paramids.size()   * sizeof(aku_ParamId) +
            header->timestamps.size() * sizeof(aku_Timestamp) +
            header->values.size()     * sizeof(ChunkValue);
 }
 
-void BufferCache::put(KeyT key, const std::shared_ptr<ChunkHeader>& header) {
+void ChunkCache::put(KeyT key, const std::shared_ptr<UncompressedChunk>& header) {
     auto szdelta = get_size(header);
     std::lock_guard<std::mutex> lock(mutex_);
     if (total_size_ + szdelta > size_limit_) {
@@ -49,8 +49,8 @@ void BufferCache::put(KeyT key, const std::shared_ptr<ChunkHeader>& header) {
     cache_[key] = header;
 }
 
-BufferCache* BufferCache::get_instance() {
-    static BufferCache cache(500*1024*1024);
+ChunkCache* ChunkCache::get_instance() {
+    static ChunkCache cache(500*1024*1024);
     return &cache;
 }
 

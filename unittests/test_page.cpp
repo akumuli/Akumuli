@@ -524,8 +524,8 @@ void generic_compression_test
     page_mem.resize(sizeof(PageHeader) + 0x10000);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
 
-    ChunkHeader header;
-    std::vector<ChunkHeader> expected;
+    UncompressedChunk header;
+    std::vector<UncompressedChunk> expected;
     uint32_t pos = 0u;
     for (int i = 1; true; i++) {
         pos++;
@@ -551,7 +551,7 @@ void generic_compression_test
             }
             // set expected
             expected.push_back(header);
-            header = ChunkHeader();
+            header = UncompressedChunk();
         }
     }
 

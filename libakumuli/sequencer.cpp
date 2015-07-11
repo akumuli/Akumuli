@@ -86,7 +86,7 @@ aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     return res;
 }
 
-void TimeSeriesValue::add_to_header(ChunkHeader *chunk_header) const {
+void TimeSeriesValue::add_to_header(UncompressedChunk *chunk_header) const {
     chunk_header->timestamps.push_back(key_ts_);
     chunk_header->paramids.push_back(key_id_);
     if (type_ == BLOB) {
@@ -444,7 +444,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
         return AKU_ENO_DATA;
     }
 
-    ChunkHeader chunk_header;
+    UncompressedChunk chunk_header;
 
     auto consumer = [&](TimeSeriesValue const& val) {
         val.add_to_header(&chunk_header);
@@ -454,7 +454,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     ready_.clear();
 
-    ChunkHeader reindexed_header;
+    UncompressedChunk reindexed_header;
     if (!CompressionUtil::convert_from_time_order(chunk_header, &reindexed_header)) {
         AKU_PANIC("Invalid chunk");
     }

@@ -9,13 +9,12 @@
 
 namespace Akumuli {
 
-struct BufferCache
-        // FIXME: naming BufferCache that caches ChunkHeaders that actually an uncompressed chunk representations
+struct ChunkCache
 {
     //! Volume id + entry index
     typedef std::tuple<int, int> KeyT;
     typedef std::tuple<KeyT, size_t> QueueItemT;
-    typedef std::shared_ptr<ChunkHeader> ItemT;
+    typedef std::shared_ptr<UncompressedChunk> ItemT;
 
     std::map<KeyT, ItemT> cache_;
     std::list<QueueItemT> fifo_;
@@ -23,15 +22,15 @@ struct BufferCache
     mutable std::mutex    mutex_;
     const size_t          size_limit_;
 
-    BufferCache(size_t limit);
+    ChunkCache(size_t limit);
 
     bool contains(KeyT key) const;
 
     ItemT get(KeyT key);
 
-    void put(KeyT key, const std::shared_ptr<ChunkHeader>& header);
+    void put(KeyT key, const std::shared_ptr<UncompressedChunk>& header);
 
-    static BufferCache *get_instance();
+    static ChunkCache *get_instance();
 };
 
 }

@@ -180,8 +180,8 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     return AKU_SUCCESS;
 }
 
-int PageHeader::complete_chunk(const ChunkHeader& data) {
-    ChunkDesc desc;
+int PageHeader::complete_chunk(const UncompressedChunk& data) {
+    CompressedChunkDesc desc;
     Rand rand;
     aku_Timestamp first_ts;
     aku_Timestamp last_ts;
@@ -305,8 +305,8 @@ SearchStats& get_global_search_stats() {
 
 namespace {
     struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
-        ChunkHeader const& header;
-        ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
+        UncompressedChunk const& header;
+        ChunkHeaderSearcher(UncompressedChunk const& h) : header(h) {}
 
         // Interpolation search supporting functions
         bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
@@ -464,18 +464,23 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool scan_compressed_entries(uint32_t current_index, aku_Entry const* probe_entry, bool binary_search=false) {
         aku_Status status = AKU_SUCCESS;
-        std::shared_ptr<ChunkHeader> chunk_header, header;
+        std::shared_ptr<UncompressedChunk> chunk_header, header;
 
-        BufferCache* cache = BufferCache::get_instance();
+        ChunkCache* cache = ChunkCache::get_instance();
 
-        auto key = std::make_tuple(page_->get_page_id(), current_index);
+        auto npages = page_->get_numpages();    // This needed to prevent key collision
+        auto nopens = page_->get_open_count();  // between old and new page data, when
+        auto pageid = page_->get_page_id();     // page is reallocated.
+
+        auto key = std::make_tuple(npages*nopens + pageid, current_index);
+
         if (cache->contains(key)) {
             // Fast path
             header = cache->get(key);
         } else {
-            chunk_header.reset(new ChunkHeader());
-            header.reset(new ChunkHeader());
-            auto pdesc  = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
+            chunk_header.reset(new UncompressedChunk());
+            header.reset(new UncompressedChunk());
+            auto pdesc  = reinterpret_cast<CompressedChunkDesc const*>(&probe_entry->value[0]);
             auto pbegin = (const unsigned char*)page_->read_entry_data(pdesc->begin_offset);
             auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
             auto probe_length = pdesc->n_elements;

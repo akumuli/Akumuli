@@ -59,7 +59,7 @@ struct aku_EntryIndexRecord {
     uint32_t        offset;
 } __attribute__((packed));
 
-struct ChunkDesc {
+struct CompressedChunkDesc {
     uint32_t n_elements;        //< Number of elements in a chunk
     uint32_t begin_offset;      //< Data begin offset
     uint32_t end_offset;        //< Data end offset
@@ -198,7 +198,7 @@ public:
      * @param data chunk header data (list of sorted timestamps, param ids, offsets and lengths
      * @returns operation status
      */
-    int complete_chunk(const ChunkHeader& data);
+    int complete_chunk(const UncompressedChunk& data);
 
     /**
      * Get length of the entry.

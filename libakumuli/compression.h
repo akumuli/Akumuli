@@ -61,7 +61,7 @@ struct ChunkValue {
     value_t value;
 };
 
-struct ChunkHeader {
+struct UncompressedChunk {
     /** Index in `timestamps` and `paramids` arrays corresponds
       * to individual row. Each element of the `values` array corresponds to
       * specific column and row. Variable longest_row should contain
@@ -435,7 +435,7 @@ struct CompressionUtil {
                            , aku_Timestamp      *ts_begin
                            , aku_Timestamp      *ts_end
                            , ChunkWriter        *writer
-                           , const ChunkHeader&  data
+                           , const UncompressedChunk&  data
                            );
 
     /** Decompress ChunkHeader.
@@ -450,7 +450,7 @@ struct CompressionUtil {
       * @return current stage number
       */
     static
-    aku_Status decode_chunk(ChunkHeader          *header
+    aku_Status decode_chunk(UncompressedChunk          *header
                            , const unsigned char *pbegin
                            , const unsigned char  *pend
                            , uint32_t              nelements);
@@ -479,13 +479,13 @@ struct CompressionUtil {
       * @note in chunk order all data elements ordered by series id first and then by timestamp,
       * in time order everythin ordered by time first and by id second.
       */
-    static bool convert_from_chunk_order(const ChunkHeader &header, ChunkHeader* out);
+    static bool convert_from_chunk_order(const UncompressedChunk &header, UncompressedChunk* out);
 
     /** Convert from time order to chunk order.
       * @note in chunk order all data elements ordered by series id first and then by timestamp,
       * in time order everythin ordered by time first and by id second.
       */
-    static bool convert_from_time_order(const ChunkHeader &header, ChunkHeader* out);
+    static bool convert_from_time_order(const UncompressedChunk &header, UncompressedChunk* out);
 };
 
 // Length -> RLE -> Base128

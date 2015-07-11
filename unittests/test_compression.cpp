@@ -201,7 +201,7 @@ struct RandomWalk {
 
 void test_chunk_header_compression() {
 
-    ChunkHeader expected;
+    UncompressedChunk expected;
 
     const int NROWS = 10000;  // number of rows in one series
     const int NSER = 2;  // number of series
@@ -278,7 +278,7 @@ void test_chunk_header_compression() {
     double compression_ratio = double(total_bytes)/double(compressed_bytes);
     BOOST_REQUIRE(compression_ratio > 1.0);
 
-    ChunkHeader actual;
+    UncompressedChunk actual;
     const unsigned char* pbegin = writer.buffer.data();
     const unsigned char* pend = writer.buffer.data() + writer.buffer.size();
     status = CompressionUtil::decode_chunk(&actual, pbegin, pend, cardinality);

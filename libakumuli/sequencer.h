@@ -67,7 +67,7 @@ struct TimeSeriesValue {
 
     aku_Sample to_result(const PageHeader *page) const;
 
-    void add_to_header(ChunkHeader *chunk_header) const;
+    void add_to_header(UncompressedChunk *chunk_header) const;
 
     bool is_blob() const;
 
