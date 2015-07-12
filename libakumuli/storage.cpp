@@ -401,17 +401,39 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
     uint32_t starting_ix = active_volume_->get_page()->get_page_id();
 
     if (!terminal_node->error) {
-        for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-            uint32_t index = ix % volumes_.size();
-            PVolume volume = volumes_.at(index);
-            volume->get_page()->searchV2(query_processor, cache_);
-            log_message("query volume", index);
-            if (terminal_node->error) { break; }
-            log_message("query sequencer", index);
-            aku_Timestamp window;
-            int seq_id;
-            tie(window, seq_id) = volume->cache_->get_window();
-            volume->cache_->searchV2(query_processor, seq_id);
+        if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
+            for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                uint32_t index = ix % volumes_.size();
+                PVolume volume = volumes_.at(index);
+
+                log_message("query volume", index);
+                volume->get_page()->searchV2(query_processor, cache_);
+                if (terminal_node->error) { break; }
+
+                log_message("query sequencer", index);
+                aku_Timestamp window;
+                int seq_id;
+                tie(window, seq_id) = volume->cache_->get_window();
+                volume->cache_->searchV2(query_processor, seq_id);
+            }
+        } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+            for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
+                PVolume volume = volumes_.at(index);
+
+                log_message("query sequencer", index);
+                aku_Timestamp window;
+                int seq_id;
+                tie(window, seq_id) = volume->cache_->get_window();
+                volume->cache_->searchV2(query_processor, seq_id);
+                if (terminal_node->error) { break; }
+
+                log_message("query volume", index);
+                volume->get_page()->searchV2(query_processor, cache_);
+            }
+
+        } else {
+            AKU_PANIC("data corruption in query processor");
         }
     }
     if (!terminal_node->error) {
