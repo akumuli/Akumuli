@@ -40,6 +40,10 @@ struct QueryProcessor {
 struct QueryCursor {
     virtual ~QueryCursor() = default;
 
+    /** Start query execution
+      */
+    virtual void start() = 0;
+
     /** Append query data to cursor
       */
     virtual void append(const char* data, size_t data_size) = 0;

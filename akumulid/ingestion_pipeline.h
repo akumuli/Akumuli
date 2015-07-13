@@ -31,9 +31,30 @@
 
 namespace Akumuli {
 
+//! Abstraction layer above aku_Cursor
+struct DbCursor {
+    //! Read data from cursor
+    virtual aku_Status read( aku_Sample       *dest
+                           , size_t            dest_size) = 0;
+
+    //! Check is cursor is done reading
+    virtual int is_done() = 0;
+
+    //! Check for error condition
+    virtual aku_Status is_error(int* out_error_code_or_null) = 0;
+
+    //! Close cursor
+    virtual void close() = 0;
+};
+
+//! Abstraction layer above aku_Database
 struct DbConnection {
+
     virtual ~DbConnection() {}
-    virtual aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) = 0;
+
+    virtual aku_Status write(const aku_Sample &sample) = 0;
+
+    virtual std::shared_ptr<DbCursor> search(std::string query) = 0;
 };
 
 
@@ -52,9 +73,9 @@ private:
 public:
     AkumuliConnection(const char* path, bool hugetlb, Durability durability);
 
-    // ProtocolConsumer interface
-public:
-    virtual aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data);
+    virtual aku_Status write(const aku_Sample &sample);
+
+    virtual std::shared_ptr<DbCursor> search(std::string query);
 };
 
 using boost::lockfree::queue;

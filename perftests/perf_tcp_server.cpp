@@ -13,7 +13,7 @@ struct DbMock : DbConnection {
     PerfTimer tm;
     Logger logger_ = Logger("dbmock", 100);
 
-    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
+    aku_Status write(aku_Sample const&) {
         static const int N = 1000000;
         if (nrec++ % N == 0) {
             double elapsed = tm.elapsed();
@@ -22,6 +22,11 @@ struct DbMock : DbConnection {
             tm.restart();
         }
         return AKU_SUCCESS;
+    }
+
+    virtual std::shared_ptr<DbCursor> search(std::string query)
+    {
+        throw "not implemented";
     }
 };
 

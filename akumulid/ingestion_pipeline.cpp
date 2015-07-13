@@ -15,6 +15,29 @@ static void db_logger(int tag, const char *msg) {
     db_logger_.error() << "(" << tag << ") " << msg;
 }
 
+//! Abstraction layer above aku_Cursor
+struct AkumuliCursor : DbCursor {
+    aku_Cursor* cursor_;
+
+    AkumuliCursor(aku_Cursor* cur) : cursor_(cur) { }
+
+    virtual aku_Status read(aku_Sample *dest, size_t dest_size) {
+        return aku_cursor_read(cursor_, dest, dest_size);
+    }
+
+    virtual int is_done() {
+        return aku_cursor_is_done(cursor_);
+    }
+
+    virtual aku_Status is_error(int *out_error_code_or_null) {
+        return aku_cursor_is_error(cursor_, out_error_code_or_null);
+    }
+
+    virtual void close() {
+        aku_cursor_close(cursor_);
+    }
+};
+
 AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability durability)
     : dbpath_(path)
 {
@@ -31,16 +54,13 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
-aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-    aku_PData payload;
-    payload.type = aku_PData::FLOAT;
-    payload.value.float64 = data;
-    aku_Sample sample = {
-        param,
-        ts,
-        payload,
-    };
+aku_Status AkumuliConnection::write_double(aku_Sample const& sample) {
     return aku_write(db_, &sample);
+}
+
+std::shared_ptr<DbCursor> AkumuliConnection::search(std::string query) {
+    aku_Cursor* cursor = aku_query(db_, query.c_str());
+    return std::make_shared<AkumuliCursor>(cursor);
 }
 
 // Pipeline spout
