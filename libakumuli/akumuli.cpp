@@ -110,7 +110,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read_values( aku_Sample     *values
+    size_t read_values( aku_Sample     *values
                    , size_t           values_size )
     {
         return cursor_->read(values, values_size);
@@ -309,9 +309,9 @@ void aku_cursor_close(aku_Cursor* pcursor) {
     delete pimpl;
 }
 
-aku_Status aku_cursor_read( aku_Cursor       *cursor
-                          , aku_Sample       *dest
-                          , size_t            dest_size)
+size_t aku_cursor_read( aku_Cursor       *cursor
+                      , aku_Sample       *dest
+                      , size_t            dest_size)
 {
     // read columns from data store
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(cursor);

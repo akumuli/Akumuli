@@ -34,8 +34,8 @@ namespace Akumuli {
 //! Abstraction layer above aku_Cursor
 struct DbCursor {
     //! Read data from cursor
-    virtual aku_Status read( aku_Sample       *dest
-                           , size_t            dest_size) = 0;
+    virtual int read( aku_Sample       *dest
+                    , size_t            dest_size) = 0;
 
     //! Check is cursor is done reading
     virtual int is_done() = 0;
@@ -52,9 +52,14 @@ struct DbConnection {
 
     virtual ~DbConnection() {}
 
+    //! Write value to DB
     virtual aku_Status write(const aku_Sample &sample) = 0;
 
+    //! Execute search query
     virtual std::shared_ptr<DbCursor> search(std::string query) = 0;
+
+    //! Convert paramid to series name
+    virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
 };
 
 
@@ -76,6 +81,8 @@ public:
     virtual aku_Status write(const aku_Sample &sample);
 
     virtual std::shared_ptr<DbCursor> search(std::string query);
+
+    virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size);
 };
 
 using boost::lockfree::queue;

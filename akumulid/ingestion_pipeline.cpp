@@ -54,13 +54,17 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
-aku_Status AkumuliConnection::write_double(aku_Sample const& sample) {
+aku_Status AkumuliConnection::write(aku_Sample const& sample) {
     return aku_write(db_, &sample);
 }
 
 std::shared_ptr<DbCursor> AkumuliConnection::search(std::string query) {
     aku_Cursor* cursor = aku_query(db_, query.c_str());
     return std::make_shared<AkumuliCursor>(cursor);
+}
+
+int AkumuliConnection::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) {
+    return aku_param_id_to_series(db_, id, buffer, buffer_size);
 }
 
 // Pipeline spout
@@ -176,7 +180,12 @@ void IngestionPipeline::start() {
                             return;
                         }
                     } else {
-                        auto error = self->con_->write_double(val->id, val->ts, val->value);
+                        aku_Sample sample;
+                        sample.paramid = val->id;
+                        sample.timestamp = val->ts;
+                        sample.payload.type = aku_PData::FLOAT;
+                        sample.payload.value.float64 = val->value;
+                        auto error = self->con_->write(sample);
                         (*val->cnt)++;
                         if (AKU_UNLIKELY(error != AKU_SUCCESS)) {
                             (*val->on_error)(error, *val->cnt);

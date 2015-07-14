@@ -107,6 +107,28 @@ target_link_libraries(test_tcp_server
 )
 add_test(tcp-server test_tcp_server)
 
+# QueryCursor
+
+# Pipeline test
+add_executable(
+    test_querycursor
+    test_querycursor.cpp
+    ../akumulid/query_cursor.cpp
+    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/logger.cpp
+)
+target_link_libraries(
+    test_querycursor
+    jemalloc
+    akumuli
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
+add_test(querycursor test_querycursor)
 
 
 ##########################################
