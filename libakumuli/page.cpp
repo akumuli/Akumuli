@@ -25,6 +25,7 @@
 #include "compression.h"
 #include "akumuli_def.h"
 #include "search.h"
+#include "buffer_cache.h"
 
 #include <random>
 #include <iostream>
@@ -33,52 +34,29 @@
 
 namespace Akumuli {
 
-static SearchQuery::ParamMatch single_param_matcher(aku_ParamId a, aku_ParamId b) {
-    if (a == b) {
-        return SearchQuery::MATCH;
-    }
-    return SearchQuery::NO_MATCH;
-}
-
-SearchQuery::SearchQuery( aku_ParamId   param_id
-                        , aku_Timestamp low
-                        , aku_Timestamp upp
-                        , int           scan_dir)
-    : lowerbound(low)
-    , upperbound(upp)
-    , param_pred(std::bind(&single_param_matcher, param_id, std::placeholders::_1))
-    , direction(scan_dir)
-{
-}
-
-SearchQuery::SearchQuery(MatcherFn matcher
-                        , aku_Timestamp low
-                        , aku_Timestamp upp
-                        , int scan_dir)
-    : lowerbound(low)
-    , upperbound(upp)
-    , param_pred(matcher)
-    , direction(scan_dir)
-{
-}
 
 // Page
 // ----
 
 
-PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id)
+PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32_t numpages)
     : version(0)
     , count(0)
     , next_offset(0)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
+    , numpages(numpages)
     , length(length - sizeof(PageHeader))
 {
 }
 
 uint32_t PageHeader::get_page_id() const {
     return page_id;
+}
+
+uint32_t PageHeader::get_numpages() const {
+    return numpages;
 }
 
 uint32_t PageHeader::get_open_count() const {
@@ -202,8 +180,8 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     return AKU_SUCCESS;
 }
 
-int PageHeader::complete_chunk(const ChunkHeader& data) {
-    ChunkDesc desc;
+int PageHeader::complete_chunk(const UncompressedChunk& data) {
+    CompressedChunkDesc desc;
     Rand rand;
     aku_Timestamp first_ts;
     aku_Timestamp last_ts;
@@ -327,8 +305,8 @@ SearchStats& get_global_search_stats() {
 
 namespace {
     struct ChunkHeaderSearcher : InterpolationSearch<ChunkHeaderSearcher> {
-        ChunkHeader const& header;
-        ChunkHeaderSearcher(ChunkHeader const& h) : header(h) {}
+        UncompressedChunk const& header;
+        ChunkHeaderSearcher(UncompressedChunk const& h) : header(h) {}
 
         // Interpolation search supporting functions
         bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
@@ -353,6 +331,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     const PageHeader *page_;
     std::shared_ptr<QP::IQueryProcessor> query_;
+    std::shared_ptr<ChunkCache> cache_;
 
     const uint32_t      MAX_INDEX_;
     const bool          IS_BACKWARD_;
@@ -362,9 +341,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     SearchRange range_;
 
-    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query)
+    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache)
         : page_(page)
         , query_(query)
+        , cache_(cache)
         , MAX_INDEX_(page->get_entries_count())
         , IS_BACKWARD_(query->direction() == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query->upperbound() : query->lowerbound())
@@ -484,42 +464,59 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         bst.n_steps += steps;
     }
 
-    bool scan_compressed_entries(aku_Entry const* probe_entry, bool binary_search=false) {
+    bool scan_compressed_entries(uint32_t current_index, aku_Entry const* probe_entry, bool binary_search=false) {
         aku_Status status = AKU_SUCCESS;
-        ChunkHeader chunk_header, header;
+        std::shared_ptr<UncompressedChunk> chunk_header, header;
 
-        auto pdesc  = reinterpret_cast<ChunkDesc const*>(&probe_entry->value[0]);
-        auto pbegin = (const unsigned char*)page_->read_entry_data(pdesc->begin_offset);
-        auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
-        auto probe_length = pdesc->n_elements;
+        auto npages = page_->get_numpages();    // This needed to prevent key collision
+        auto nopens = page_->get_open_count();  // between old and new page data, when
+        auto pageid = page_->get_page_id();     // page is reallocated.
 
-        // TODO:checksum!
-        boost::crc_32_type checksum;
-        checksum.process_block(pbegin, pend);
-        if (checksum.checksum() != pdesc->checksum) {
-            AKU_PANIC("File damaged!");
-            // TODO: report error
-            return false;
-        }
+        auto key = std::make_tuple(npages*nopens + pageid, current_index);
 
-        status = CompressionUtil::decode_chunk(&chunk_header, pbegin, pend, probe_length);
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't decode chunk");
-        }
+        if (cache_ && cache_->contains(key)) {
+            // Fast path
+            header = cache_->get(key);
+        } else {
+            chunk_header.reset(new UncompressedChunk());
+            header.reset(new UncompressedChunk());
+            auto pdesc  = reinterpret_cast<CompressedChunkDesc const*>(&probe_entry->value[0]);
+            auto pbegin = (const unsigned char*)page_->read_entry_data(pdesc->begin_offset);
+            auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
+            auto probe_length = pdesc->n_elements;
 
-        // TODO: depending on a query type we can use chunk order or convert back to time-order.
-        // If we extract evertyhing it is better to convert to time order. If we picking some
-        // parameter ids it is better to check if this ids present in a chunk and extract values
-        // in chunk order and only after that - convert results to time-order.
+            // TODO:checksum!
+            boost::crc_32_type checksum;
+            checksum.process_block(pbegin, pend);
+            if (checksum.checksum() != pdesc->checksum) {
+                AKU_PANIC("File damaged!");
+                // TODO: report error
+                return false;
+            }
 
-        // Convert from chunk order to time order
-        if (!CompressionUtil::convert_from_chunk_order(chunk_header, &header)) {
-            AKU_PANIC("Bad chunk");
+            status = CompressionUtil::decode_chunk(chunk_header.get(), pbegin, pend, probe_length);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Can't decode chunk");
+            }
+
+            // TODO: depending on a query type we can use chunk order or convert back to time-order.
+            // If we extract evertyhing it is better to convert to time order. If we picking some
+            // parameter ids it is better to check if this ids present in a chunk and extract values
+            // in chunk order and only after that - convert results to time-order.
+
+            // Convert from chunk order to time order
+            if (!CompressionUtil::convert_from_chunk_order(*chunk_header, header.get())) {
+                AKU_PANIC("Bad chunk");
+            }
+
+            if (cache_) {
+                cache_->put(key, header);
+            }
         }
 
         int start_pos = 0;
         if (IS_BACKWARD_) {
-            start_pos = static_cast<int>(probe_length - 1);
+            start_pos = static_cast<int>(header->timestamps.size() - 1);
         }
         bool probe_in_time_range = true;
 
@@ -528,17 +525,17 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
             aku_PData pdata;
-            if (header.values.at(i).type == ChunkValue::BLOB) {
+            if (header->values.at(i).type == ChunkValue::BLOB) {
                 pdata.type =  aku_PData::BLOB;
-                pdata.value.blob.begin = page->read_entry_data(header.values.at(i).value.blobval.offset);
-                pdata.value.blob.size = header.values.at(i).value.blobval.length;
-            } else if (header.values.at(i).type == ChunkValue::FLOAT) {
+                pdata.value.blob.begin = page->read_entry_data(header->values.at(i).value.blobval.offset);
+                pdata.value.blob.size = header->values.at(i).value.blobval.length;
+            } else if (header->values.at(i).type == ChunkValue::FLOAT) {
                 pdata.type = aku_PData::FLOAT;
-                pdata.value.float64 = header.values.at(i).value.floatval;
+                pdata.value.float64 = header->values.at(i).value.floatval;
             }
             aku_Sample result = {
-                header.timestamps.at(i),
-                header.paramids.at(i),
+                header->timestamps.at(i),
+                header->paramids.at(i),
                 pdata,
             };
             queryproc->put(result);
@@ -546,25 +543,26 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
         if (IS_BACKWARD_) {
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                probe_in_time_range = lowerbound_ <= header.timestamps[i] &&
-                                      upperbound_ >= header.timestamps[i];
+                probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
+                                      upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
                     put_entry(i);
                 } else {
-                    probe_in_time_range = lowerbound_ <= header.timestamps[i];
+                    probe_in_time_range = lowerbound_ <= header->timestamps[i];
                     if (!probe_in_time_range) {
                         break;
                     }
                 }
             }
         } else {
-            for (auto i = start_pos; i != (int)probe_length; i++) {
-                probe_in_time_range = lowerbound_ <= header.timestamps[i] &&
-                                      upperbound_ >= header.timestamps[i];
+            auto end_pos = (int)header->timestamps.size();
+            for (auto i = start_pos; i != end_pos; i++) {
+                probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
+                                      upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
                     put_entry(i);
                 } else {
-                    probe_in_time_range = upperbound_ >= header.timestamps[i];
+                    probe_in_time_range = upperbound_ >= header->timestamps[i];
                     if (!probe_in_time_range) {
                         break;
                     }
@@ -620,9 +618,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                                        : upperbound_ >= probe_time;
             } else {
                 if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                    proceed = scan_compressed_entries(probe_entry, false);
+                    proceed = scan_compressed_entries(current_index, probe_entry, false);
                 } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                    proceed = scan_compressed_entries(probe_entry, false);
+                    proceed = scan_compressed_entries(current_index, probe_entry, false);
                 } else {
                     proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
                                            : upperbound_ >= probe_time;
@@ -660,13 +658,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 };
 
-void PageHeader::search(Caller& caller, InternalCursor* cursor, SearchQuery query) const
-{
-    throw "depricated";
-}
 
-void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query) const {
-    SearchAlgorithm search_alg(this, query);
+void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache) const {
+    SearchAlgorithm search_alg(this, query, cache);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {
             search_alg.binary_search();

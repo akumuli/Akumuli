@@ -15,6 +15,29 @@ static void db_logger(int tag, const char *msg) {
     db_logger_.error() << "(" << tag << ") " << msg;
 }
 
+//! Abstraction layer above aku_Cursor
+struct AkumuliCursor : DbCursor {
+    aku_Cursor* cursor_;
+
+    AkumuliCursor(aku_Cursor* cur) : cursor_(cur) { }
+
+    virtual aku_Status read(aku_Sample *dest, size_t dest_size) {
+        return aku_cursor_read(cursor_, dest, dest_size);
+    }
+
+    virtual int is_done() {
+        return aku_cursor_is_done(cursor_);
+    }
+
+    virtual aku_Status is_error(int *out_error_code_or_null) {
+        return aku_cursor_is_error(cursor_, out_error_code_or_null);
+    }
+
+    virtual void close() {
+        aku_cursor_close(cursor_);
+    }
+};
+
 AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability durability)
     : dbpath_(path)
 {
@@ -31,26 +54,32 @@ AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability 
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
-aku_Status AkumuliConnection::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-    aku_PData payload;
-    payload.type = aku_PData::FLOAT;
-    payload.value.float64 = data;
-    aku_Sample sample = {
-        param,
-        ts,
-        payload,
-    };
+aku_Status AkumuliConnection::write(aku_Sample const& sample) {
     return aku_write(db_, &sample);
 }
 
+std::shared_ptr<DbCursor> AkumuliConnection::search(std::string query) {
+    aku_Cursor* cursor = aku_query(db_, query.c_str());
+    return std::make_shared<AkumuliCursor>(cursor);
+}
+
+int AkumuliConnection::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) {
+    return aku_param_id_to_series(db_, id, buffer, buffer_size);
+}
+
+aku_Status AkumuliConnection::series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+    return aku_series_to_param_id(db_, name, name + size, sample);
+}
+
 // Pipeline spout
-PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp)
+PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp, std::shared_ptr<DbConnection> con)
     : created_{0}
     , deleted_{0}
     , pool_()
     , queue_(q)
     , backoff_(bp)
     , logger_("pipeline-spout", 32)
+    , db_(con)
 {
     pool_.resize(POOL_SIZE);
     for(int ix = POOL_SIZE; ix --> 0;) {
@@ -65,7 +94,7 @@ void PipelineSpout::set_error_cb(PipelineErrorCb cb) {
     on_error_ = cb;
 }
 
-void PipelineSpout::write_double(aku_ParamId param, aku_Timestamp ts, double data) {
+void PipelineSpout::write(const aku_Sample& sample) {
     int ix = get_index_of_empty_slot();
     while (AKU_UNLIKELY(ix < 0)) {
         ix = get_index_of_empty_slot();
@@ -80,9 +109,7 @@ void PipelineSpout::write_double(aku_ParamId param, aku_Timestamp ts, double dat
 
     auto pvalue = pool_.at(ix).get();
 
-    pvalue->id       =      param;
-    pvalue->ts       =         ts;
-    pvalue->value    =       data;
+    pvalue->sample   =     sample;
     pvalue->cnt      =  &deleted_;
     pvalue->on_error = &on_error_;
 
@@ -91,8 +118,13 @@ void PipelineSpout::write_double(aku_ParamId param, aku_Timestamp ts, double dat
     }
 }
 
+aku_Status PipelineSpout::series_to_param_id(const char *str, size_t strlen, aku_Sample *sample) {
+    return db_->series_to_param_id(str, strlen, sample);
+}
+
 void PipelineSpout::add_bulk_string(const Byte *buffer, size_t n) {
     // Shouldn't be implemented
+    throw std::runtime_error("not implemented");
 }
 
 int PipelineSpout::get_index_of_empty_slot() {
@@ -156,7 +188,7 @@ void IngestionPipeline::start() {
                             return;
                         }
                     } else {
-                        auto error = self->con_->write_double(val->id, val->ts, val->value);
+                        auto error = self->con_->write(val->sample);
                         (*val->cnt)++;
                         if (AKU_UNLIKELY(error != AKU_SUCCESS)) {
                             (*val->on_error)(error, *val->cnt);
@@ -191,10 +223,11 @@ void IngestionPipeline::start() {
 
 std::shared_ptr<PipelineSpout> IngestionPipeline::make_spout() {
     ixmake_++;
-    return std::make_shared<PipelineSpout>(queues_.at(ixmake_ % N_QUEUES), backoff_);
+    return std::make_shared<PipelineSpout>(queues_.at(ixmake_ % N_QUEUES), backoff_, con_);
 }
 
-PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{0, 0, 0, nullptr};
+PipelineSpout::TVal* IngestionPipeline::POISON = new PipelineSpout::TVal{{}, nullptr, nullptr};
+
 int IngestionPipeline::TIMEOUT = 15000;  // 15 seconds
 
 void IngestionPipeline::stop() {

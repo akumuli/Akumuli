@@ -117,15 +117,17 @@ static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
                                              aku_logger_cb_t logger) {
     std::vector<std::string> metrics;
-    auto metric = ptree.get_child("metric");
-    auto single = metric.get_value<std::string>();
-    if (single.empty()) {
-        for(auto child: metric) {
-            auto metric_name = child.second.get_value<std::string>();
-            metrics.push_back(metric_name);
+    auto metric = ptree.get_child_optional("metric");
+    if (metric) {
+        auto single = metric->get_value<std::string>();
+        if (single.empty()) {
+            for(auto child: *metric) {
+                auto metric_name = child.second.get_value<std::string>();
+                metrics.push_back(metric_name);
+            }
+        } else {
+            metrics.push_back(single);
         }
-    } else {
-        metrics.push_back(single);
     }
     return metrics;
 }

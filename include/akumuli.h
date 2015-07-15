@@ -190,7 +190,7 @@ AKU_EXPORT apr_status_t aku_create_database
                                 // optional args
                                 , uint32_t  compression_threshold
                                 , uint64_t  window_size
-                                , uint32_t  max_cache_size
+                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger
                                 );
 
@@ -270,21 +270,6 @@ AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin
 // Queries
 //---------
 
-/**
- * @obsolete should be replaced with json query format
- * @brief Create select query with single parameter-id
- */
-AKU_EXPORT aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId* params);
-
-
-/**
- * @brief Execute query
- * @note Obsolete
- * @param query value
- * @return cursor
- */
-AKU_EXPORT aku_Cursor* aku_select(aku_Database* db, const aku_SelectQuery *query);
-
 /** @brief Query database
   * @param db should point to opened database instance
   * @param query should contain valid query
@@ -302,14 +287,14 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @param cursor should point to active cursor instance
   * @param dest is an output buffer
   * @param dest_size is an output buffer size
-  * @returns error code
+  * @returns number of overwriten elements
   */
-AKU_EXPORT aku_Status aku_cursor_read( aku_Cursor       *cursor
-                                     , aku_Sample       *dest
-                                     , size_t            dest_size);
+AKU_EXPORT size_t aku_cursor_read( aku_Cursor       *cursor
+                                 , aku_Sample       *dest
+                                 , size_t            dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.
-AKU_EXPORT aku_Status aku_cursor_is_done(aku_Cursor* pcursor);
+AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);

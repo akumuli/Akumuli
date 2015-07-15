@@ -15,14 +15,18 @@ struct ConsumerMock : ProtocolConsumer {
     std::vector<double>          data_;
     std::vector<std::string>     bulk_;
 
-    void write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-        param_.push_back(param);
-        ts_.push_back(ts);
-        data_.push_back(data);
+    void write(const aku_Sample& sample) {
+        param_.push_back(sample.paramid);
+        ts_.push_back(sample.timestamp);
+        data_.push_back(sample.payload.value.float64);
     }
 
     void add_bulk_string(const Byte *buffer, size_t n) {
         bulk_.push_back(std::string(buffer, buffer + n));
+    }
+
+    aku_Status series_to_param_id(const char *str, size_t strlen, aku_Sample *sample) {
+        throw "not implemented";
     }
 };
 
@@ -41,11 +45,12 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
         29,
         0u
     };
-    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
     ProtocolParser parser(cons);
     parser.start();
     parser.parse_next(pdu);
     parser.close();
+
     BOOST_REQUIRE_EQUAL(cons->param_[0], 1);
     BOOST_REQUIRE_EQUAL(cons->param_[1], 6);
     BOOST_REQUIRE_EQUAL(cons->ts_[0], 2);

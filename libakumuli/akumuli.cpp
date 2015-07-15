@@ -69,6 +69,7 @@ const char* aku_error_message(int error_code) {
 }
 
 void aku_console_logger(int tag, const char* msg) {
+    return;
     apr_time_t now = apr_time_now();
     char ts[APR_RFC822_DATE_LEN];
     if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
@@ -79,19 +80,6 @@ void aku_console_logger(int tag, const char* msg) {
     snprintf(tagstr, 9, "%08X", tag);  // because this can break formatting in host application.
     std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
 }
-
-
-struct MatchPred {
-    std::vector<aku_ParamId> params_;
-    MatchPred(aku_ParamId const* begin, uint32_t n)
-        : params_(begin, begin + n)
-    {
-    }
-
-    SearchQuery::ParamMatch operator () (aku_ParamId id) const {
-        return std::binary_search(params_.begin(), params_.end(), id) ? SearchQuery::MATCH : SearchQuery::NO_MATCH;
-    }
-};
 
 
 struct CursorImpl : aku_Cursor {
@@ -122,7 +110,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    int read_values( aku_Sample     *values
+    size_t read_values( aku_Sample     *values
                    , size_t           values_size )
     {
         return cursor_->read(values, values_size);
@@ -206,7 +194,7 @@ apr_status_t aku_create_database( const char     *file_name
                                 // optional args
                                 , uint32_t  compression_threshold
                                 , uint64_t  window_size
-                                , uint32_t  max_cache_size
+                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
@@ -321,9 +309,9 @@ void aku_cursor_close(aku_Cursor* pcursor) {
     delete pimpl;
 }
 
-aku_Status aku_cursor_read( aku_Cursor       *cursor
-                          , aku_Sample       *dest
-                          , size_t            dest_size)
+size_t aku_cursor_read( aku_Cursor       *cursor
+                      , aku_Sample       *dest
+                      , size_t            dest_size)
 {
     // read columns from data store
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(cursor);

@@ -174,7 +174,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_Timestamp      *ts_begin
                                         , aku_Timestamp      *ts_end
                                         , ChunkWriter        *writer
-                                        , const ChunkHeader&  data)
+                                        , const UncompressedChunk&  data)
 {
     aku_MemRange available_space = writer->allocate();
     unsigned char* begin = (unsigned char*)available_space.address;
@@ -252,7 +252,7 @@ void read_from_stream(Base128StreamReader& reader, const Fn& func) {
     func(stream, size_prefix);
 }
 
-aku_Status CompressionUtil::decode_chunk( ChunkHeader         *header
+aku_Status CompressionUtil::decode_chunk( UncompressedChunk         *header
                                         , const unsigned char *pbegin
                                         , const unsigned char *pend
                                         , uint32_t             nelements)
@@ -317,7 +317,7 @@ aku_Status CompressionUtil::decode_chunk( ChunkHeader         *header
 }
 
 template<class Fn>
-bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const& f) {
+bool reorder_chunk_header(UncompressedChunk const& header, UncompressedChunk* out, Fn const& f) {
     auto len = header.timestamps.size();
     if (len != header.values.size() || len != header.paramids.size()) {
         return false;
@@ -339,8 +339,8 @@ bool reorder_chunk_header(ChunkHeader const& header, ChunkHeader* out, Fn const&
     return true;
 }
 
-bool CompressionUtil::convert_from_chunk_order(ChunkHeader const& header, ChunkHeader* out) {
-    auto fn = [header](int lhs, int rhs) {
+bool CompressionUtil::convert_from_chunk_order(UncompressedChunk const& header, UncompressedChunk* out) {
+    auto fn = [&header](int lhs, int rhs) {
         auto lhstup = std::make_tuple(header.timestamps[lhs], header.paramids[lhs]);
         auto rhstup = std::make_tuple(header.timestamps[rhs], header.paramids[rhs]);
         return lhstup < rhstup;
@@ -348,8 +348,8 @@ bool CompressionUtil::convert_from_chunk_order(ChunkHeader const& header, ChunkH
     return reorder_chunk_header(header, out, fn);
 }
 
-bool CompressionUtil::convert_from_time_order(ChunkHeader const& header, ChunkHeader* out) {
-    auto fn = [header](int lhs, int rhs) {
+bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, UncompressedChunk* out) {
+    auto fn = [&header](int lhs, int rhs) {
         auto lhstup = std::make_tuple(header.paramids[lhs], header.timestamps[lhs]);
         auto rhstup = std::make_tuple(header.paramids[rhs], header.timestamps[rhs]);
         return lhstup < rhstup;

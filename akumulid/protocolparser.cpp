@@ -36,11 +36,8 @@ void ProtocolParser::worker(Caller& caller) {
     Byte          buffer[buffer_len] = {};
     int           bytes_read         = 0;
     // Data to read
-    aku_ParamId   id                 = 0;
     std::string   sid;
-    bool          integer_id         = false;
-    aku_Timestamp ts                 = 0;
-    double        value              =.0;
+    aku_Sample    sample;
     //
     try {
         RESPStream stream(this);
@@ -49,13 +46,11 @@ void ProtocolParser::worker(Caller& caller) {
             auto next = stream.next_type();
             switch(next) {
             case RESPStream::INTEGER:
-                id = stream.read_int();
-                integer_id = true;
+                sample.paramid = stream.read_int();
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
-                sid = std::string(buffer, buffer + bytes_read);
-                integer_id = false;
+                consumer_->series_to_param_id(buffer, bytes_read, &sample);
                 break;
             case RESPStream::BULK_STR:
                 // Compressed chunk of data
@@ -76,19 +71,15 @@ void ProtocolParser::worker(Caller& caller) {
             next = stream.next_type();
             switch(next) {
             case RESPStream::INTEGER:
-                ts = stream.read_int();
+                sample.timestamp = stream.read_int();
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
-                // TODO: parse date-time
-                {
-                    std::string msg;
-                    size_t pos;
-                    std::tie(msg, pos) = get_error_context("not implemented");
-                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                buffer[bytes_read] = '\0';
+                if (aku_parse_timestamp(buffer, &sample) == AKU_SUCCESS) {
+                    break;
                 }
             default:
-                // Bad frame
                 {
                     std::string msg;
                     size_t pos;
@@ -101,11 +92,12 @@ void ProtocolParser::worker(Caller& caller) {
             next = stream.next_type();
             switch(next) {
             case RESPStream::INTEGER:
-                value = stream.read_int();
+                sample.payload.type = aku_PData::FLOAT;
+                sample.payload.value.float64 = stream.read_int();
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
-                value = strtod(buffer, nullptr);
+                sample.payload.value.float64 = strtod(buffer, nullptr);
                 memset(buffer, 0, bytes_read);
                 break;
             default:
@@ -118,12 +110,7 @@ void ProtocolParser::worker(Caller& caller) {
                 }
             };
 
-            if (integer_id) {
-                consumer_->write_double(id, ts, value);
-            } else {
-                // TODO: write blob
-                BOOST_THROW_EXCEPTION(std::runtime_error("not implemented"));
-            }
+            consumer_->write(sample);
         }
     } catch(EStopIteration const&) {
         logger_.info() << "EStopIteration";

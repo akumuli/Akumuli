@@ -8,21 +8,33 @@
 
 #include "ingestion_pipeline.h"
 
-struct ConnectionMock : Akumuli::DbConnection {
+using namespace Akumuli;
+
+struct ConnectionMock : DbConnection {
     int cntp;
     int cntt;
-    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-        if (ts == 1) {
+    aku_Status write(const aku_Sample &sample) {
+        if (sample.timestamp == 1) {
             cntt += 1;
-            cntp += (int)param;
+            cntp += (int)sample.paramid;
         } else {
             BOOST_ERROR("Invalid value!");
         }
         return AKU_SUCCESS;
     }
-};
 
-using namespace Akumuli;
+    std::shared_ptr<DbCursor> search(std::string query) {
+        throw "not implemented";
+    }
+
+    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+        throw "not implemented";
+    }
+
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+        throw "not implemented";
+    }
+};
 
 BOOST_AUTO_TEST_CASE(Test_spout_in_single_thread) {
 
@@ -37,7 +49,8 @@ BOOST_AUTO_TEST_CASE(Test_spout_in_single_thread) {
         for (int i = 0; i < 10000; i++) {
             sump += i;
             sumt += 1;
-            spout->write_double(i, 1, 0.0);
+            aku_Sample sample = { 1ul, (aku_ParamId)i };
+            spout->write(sample);
         }
         pipeline->stop();
         BOOST_REQUIRE_EQUAL(con->cntt, sumt);

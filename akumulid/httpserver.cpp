@@ -1,5 +1,6 @@
 #include "httpserver.h"
 #include "utility.h"
+#include <cstring>
 
 namespace Akumuli {
 namespace Http {
@@ -45,6 +46,10 @@ static int accept_connection(void           *cls,
             *upload_data_size = 0;
             return MHD_YES;
         }
+
+        // Should be called once
+        cursor->start();
+
         auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
         int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
         MHD_destroy_response(response);

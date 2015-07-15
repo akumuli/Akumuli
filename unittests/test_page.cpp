@@ -95,7 +95,7 @@ BOOST_AUTO_TEST_CASE(TestPaging1) {
 
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     BOOST_CHECK_EQUAL(0, page->get_entries_count());
     BOOST_CHECK_EQUAL(4096, page->get_free_space());
 }
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(TestPaging2) {
 
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     auto free_space_before = page->get_free_space();
     char buffer[128];
     aku_MemRange range = {buffer, 128};
@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_CASE(TestPaging3)
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     aku_MemRange range = {nullptr, static_cast<uint32_t>(page_mem.size())};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_OVERFLOW);
@@ -128,7 +128,7 @@ BOOST_AUTO_TEST_CASE(TestPaging4)
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     aku_MemRange range = {nullptr, 0};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_BAD_DATA);
@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     char buffer[222];
     aku_MemRange range = {buffer, 222};
     auto result = page->add_entry(0, 1, range);
@@ -151,7 +151,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
     aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
@@ -171,7 +171,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     uint32_t buffer[] = {1, 2, 3, 4};
     aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
@@ -186,7 +186,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
 
 
 static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_values) {
-    auto page = new (page_ptr) PageHeader(0, page_len, 0);
+    auto page = new (page_ptr) PageHeader(0, page_len, 0, 1);
 
     for(uint32_t i = 0u; i < (uint32_t)num_values; i++) {
         aku_Timestamp inst = 1000L + i;
@@ -350,7 +350,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
 }
 
 static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len, int num_values, int time_skew) {
-    auto page = new (page_ptr) PageHeader(0, page_len, 0);
+    auto page = new (page_ptr) PageHeader(0, page_len, 0, 1);
     for(int i = 0; i < num_values; i++) {
         aku_Timestamp inst = 1000L + i*time_skew;
         aku_MemRange range = {(void*)&i, sizeof(i)};
@@ -429,7 +429,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
     aku_Timestamp               time_stamp = 0L;
     PageHeader*                 page = nullptr;
 
-    page = new (&buffer[0]) PageHeader(0, buf_len, 0);
+    page = new (&buffer[0]) PageHeader(0, buf_len, 0, 1);
 
     auto max_timestamp = time_stamp;
     for(int i = 0; true; i++)
@@ -522,10 +522,10 @@ void generic_compression_test
 {
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 0x10000);
-    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0);
+    auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
 
-    ChunkHeader header;
-    std::vector<ChunkHeader> expected;
+    UncompressedChunk header;
+    std::vector<UncompressedChunk> expected;
     uint32_t pos = 0u;
     for (int i = 1; true; i++) {
         pos++;
@@ -551,7 +551,7 @@ void generic_compression_test
             }
             // set expected
             expected.push_back(header);
-            header = ChunkHeader();
+            header = UncompressedChunk();
         }
     }
 

@@ -89,7 +89,7 @@ struct MetadataStorage {
     std::vector<VolumeDesc> get_volumes() const;
 
     void get_configs(uint32_t *compression_threshold,
-                     uint32_t *max_cache_size,
+                     uint64_t *max_cache_size,
                      uint64_t *window_size, std::string *creation_datetime);
 
     /** Read larges series id */

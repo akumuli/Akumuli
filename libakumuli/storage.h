@@ -84,19 +84,17 @@ struct Volume : std::enable_shared_from_this<Volume>
 
     //! Flush page
     void flush();
-
-    //! Search volume page (not cache)
-    void search(Caller& caller, InternalCursor* cursor, SearchQuery query) const;
 };
 
 /** Interface to page manager
  */
 struct Storage
 {
-    typedef std::mutex      LockType;
-    typedef std::shared_ptr<Volume> PVolume;
-    typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
-    typedef std::shared_ptr<SeriesMatcher> PSeriesMatcher;
+    typedef std::mutex                          LockType;
+    typedef std::shared_ptr<Volume>             PVolume;
+    typedef std::shared_ptr<MetadataStorage>    PMetadataStorage;
+    typedef std::shared_ptr<SeriesMatcher>      PSeriesMatcher;
+    typedef std::shared_ptr<ChunkCache>         PCache;
 
     // Active volume state
     aku_Config                config_;
@@ -117,6 +115,7 @@ struct Storage
     Rand                      rand_;
     const uint32_t            durability_;                //< Copy of the durability parameter
     const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
+    PCache                    cache_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file
@@ -166,10 +165,6 @@ struct Storage
     int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const;
 
     // Reading
-
-    // TODO: remove depricated method
-    //! Search storage using cursor
-    void search(Caller &caller, InternalCursor *cur, SearchQuery const& query) const;
 
     //! Search storage using cursor
     void searchV2(Caller &caller, InternalCursor* cur, const char* query) const;

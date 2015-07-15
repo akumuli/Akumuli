@@ -53,6 +53,10 @@ void create_db(const char* name,
 struct QueryCursorMock : Http::QueryCursor {
     int quota = 20;
     std::string data_;
+    virtual void start() {
+        std::cout << "QueryCursorMock started" << std::endl;
+    }
+
     virtual aku_Status get_error() {
         return AKU_SUCCESS;
     }
@@ -83,9 +87,9 @@ struct QueryProcMock : Http::QueryProcessor {
 
 void run_server(std::string path) {
     AKU_UNUSED(path);
-    //auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
-    //                                                      false,
-    //                                                      AkumuliConnection::MaxDurability);
+    auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
+                                                          false,
+                                                          AkumuliConnection::MaxDurability);
     //auto tcp_server = std::make_shared<TcpServer>(connection, 4);
     auto query_mock = std::shared_ptr<Http::QueryProcessor>(new QueryProcMock());
     auto httpserver = std::make_shared<Http::HttpServer>(8888, query_mock);

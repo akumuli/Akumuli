@@ -150,6 +150,7 @@ add_executable(
     ../libakumuli/storage.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/akumuli.cpp
     ../libakumuli/util.cpp
     ../libakumuli/sequencer.cpp

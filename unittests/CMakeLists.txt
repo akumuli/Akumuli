@@ -57,6 +57,8 @@ add_executable(
 )
 target_link_libraries(
     test_protocolparser
+    akumuli
+    gcc
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
     libboost_coroutine.a
@@ -107,6 +109,28 @@ target_link_libraries(test_tcp_server
 )
 add_test(tcp-server test_tcp_server)
 
+# QueryCursor
+
+# Pipeline test
+add_executable(
+    test_querycursor
+    test_querycursor.cpp
+    ../akumulid/query_cursor.cpp
+    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/logger.cpp
+)
+target_link_libraries(
+    test_querycursor
+    jemalloc
+    akumuli
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    ${Boost_LIBRARIES}
+    libboost_coroutine.a
+    libboost_context.a
+)
+add_test(querycursor test_querycursor)
 
 
 ##########################################
@@ -120,6 +144,7 @@ add_executable(
     test_page
     test_page.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
@@ -147,6 +172,7 @@ add_executable(
     ../libakumuli/sequencer.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
@@ -172,6 +198,7 @@ add_executable(
     test_cursor.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
 )
@@ -227,6 +254,7 @@ add_executable(
     ../libakumuli/storage.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/page.cpp
+    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/cursor.cpp

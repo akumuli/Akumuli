@@ -26,6 +26,7 @@ add_library(akumuli SHARED
     queryprocessor.cpp
     stringpool.cpp
     datetime.cpp
+    buffer_cache.cpp
 )
 
 # libakumuli

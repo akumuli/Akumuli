@@ -17,8 +17,8 @@
 
 using namespace std;
 
-int DB_SIZE = 8;
-uint64_t NUM_ITERATIONS = 100*1000*1000;
+int DB_SIZE = 2;
+uint64_t NUM_ITERATIONS = 10*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -40,19 +40,37 @@ private:
     timeval _start_time;
 };
 
+int format_timestamp(uint64_t ts, char* buffer) {
+    auto fractional = static_cast<int>(ts %  1000000000);  // up to 9 decimal digits
+    auto seconds = static_cast<int>(ts / 1000000000);      // two seconds digits
+    return sprintf(buffer, "20150102T0304%02d.%09d", seconds, fractional);
+}
+
+std::string ts2str(uint64_t ts) {
+    char buffer[0x100];
+    auto len = format_timestamp(ts, buffer);
+    return std::string(buffer, buffer+len);
+}
+
+std::string build_query(uint64_t begin, uint64_t end) {
+    std::stringstream str;
+    str << R"({ "sample": "all", )";
+    str << R"("range": { "from": ")" << ts2str(begin)
+        << R"(", "to": ")" << ts2str(end)
+        << R"("}})";
+    return str.str();
+}
+
 void delete_storage() {
     aku_remove_database(DB_META_FILE, &aku_console_logger);
 }
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
+    const aku_Timestamp EPOCH = 1420167840000000000;
     const unsigned int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
-    aku_SelectQuery* query = aku_make_select_query( begin
-                                                  , end
-                                                  , 16
-                                                  , params);
-    aku_Cursor* cursor = aku_select(db, query);
-    aku_Timestamp current_time = begin;
+    std::string query = build_query(begin, end);
+    aku_Cursor* cursor = aku_query(db, query.c_str());
+    aku_Timestamp current_time = EPOCH + begin;
     size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
         int err = AKU_SUCCESS;
@@ -66,18 +84,14 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
 
             if (samples[i].timestamp != current_time) {
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << samples[i].timestamp  << std::endl;
-                return false;
-            }
-            aku_ParamId id = (current_time+1) & 0xF;
-            if (samples[i].paramid != id) {
-                std::cout << "Error at " << cursor_ix << " expected id " << id << " acutal id " << samples[i].paramid  << std::endl;
-                return false;
-            }
-            double dvalue = samples[i].payload.value.float64;
-            double dexpected = current_time + 1;
-            if (dvalue - dexpected > 0.000001) {
-                std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
-                return false;
+                current_time = samples[i].timestamp;
+            } else {
+                double dvalue = samples[i].payload.value.float64;
+                double dexpected = (current_time - EPOCH) + 1;
+                if (dvalue - dexpected > 0.000001) {
+                    std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
+                    return false;
+                }
             }
             current_time++;
             counter++;
@@ -89,11 +103,10 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
         }
     }
     aku_cursor_close(cursor);
-    if (current_time != end) {
-        std::cout << "some values lost, actual timestamp: " << current_time << ", expected timestamp: " << end << std::endl;
+    auto last_ts = EPOCH + end + 1;
+    if (current_time != last_ts) {
+        std::cout << "some values lost (1), actual timestamp: " << current_time << ", expected timestamp: " << last_ts << std::endl;
         throw std::runtime_error("values lost");
-    } else {
-        std::cout << "all data retrieved" << std::endl;
     }
     if (cursor_ix > 1000) {
         std::cout << "cursor_ix = " << cursor_ix << std::endl;
@@ -142,14 +155,12 @@ Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
     }
-    if (cnt == 2) {
-        DB_SIZE = 2;
-        NUM_ITERATIONS = 10*1000*1000;
-    } else if (cnt == 4) {
+    if (cnt == 4) {
         DB_SIZE        = boost::lexical_cast<int>(args[2]);
         NUM_ITERATIONS = boost::lexical_cast<int>(args[3]);
-    } else {
-        if (std::string(args[1]) != "delete") {
+
+        if (NUM_ITERATIONS >= 10000000000) {
+            std::cout << "NUM_ITERATIONS set too large" << std::endl;
             throw std::runtime_error("Bad command line parameters");
         }
     }
@@ -164,6 +175,12 @@ Mode read_cmd(int cnt, const char** args) {
     }
     std::cout << "Invalid command line" << std::endl;
     throw std::runtime_error("Bad command line parameters");
+}
+
+void logger_(int level, const char * msg) {
+    if (level == AKU_LOG_ERROR) {
+        //aku_console_logger(level, msg);
+    }
 }
 
 int main(int cnt, const char** args)
@@ -183,10 +200,11 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        uint32_t threshold = 1000;
+        uint32_t threshold  =   1000;
         uint64_t windowsize = 100000;
+        uint64_t cachesize =  10*1024*1024;  // 10Mb
         apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
-                                                  threshold, windowsize, 0, nullptr);
+                                                  threshold, windowsize, cachesize, &logger_);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;
@@ -204,17 +222,26 @@ int main(int cnt, const char** args)
         uint64_t busy_count = 0;
         // Fill in data
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-            double value = i + 1;
-            aku_ParamId id = (i + 1) & 0xF;
-            aku_Timestamp ts = i;
-            aku_Status status = aku_write_double_raw(db, id, ts, value);
-            if (status == AKU_EBUSY) {
-                status = aku_write_double_raw(db, id, ts, value);
+            aku_Sample sample;
+            char buffer[100];
+
+            // =series=
+            int nchars = sprintf(buffer, "cpu = key=%d", ((int)i + 1) & 0xF);
+            aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
+
+            // =timestamp=
+            nchars = format_timestamp(i, buffer);
+            aku_parse_timestamp(buffer, &sample);
+
+            // =payload=
+            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.value.float64 = i + 1;
+
+            aku_Status status = aku_write(db, &sample);
+
+            while (status == AKU_EBUSY) {
+                status = aku_write(db, &sample);
                 busy_count++;
-                if (status != AKU_SUCCESS) {
-                    std::cout << "add error at " << i << std::endl;
-                    return 1;
-                }
             }
             if (i % 1000000 == 0) {
                 std::cout << i << " " << timer.elapsed() << "s" << std::endl;
@@ -224,20 +251,20 @@ int main(int cnt, const char** args)
         std::cout << "!busy count = " << busy_count << std::endl;
     }
 
-    aku_StorageStats storage_stats;
+    aku_StorageStats storage_stats = {0};
     aku_global_storage_stats(db, &storage_stats);
     print_storage_stats(storage_stats);
 
     if (mode != CREATE) {
         // Search
         std::cout << "Sequential access" << std::endl;
-        aku_SearchStats search_stats;
+        aku_SearchStats search_stats = {0};
         uint64_t counter = 0;
 
         timer.restart();
 
         if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
-                                    NUM_ITERATIONS,
+                                    NUM_ITERATIONS-1,
                                     counter,
                                     timer,
                                     1000000))
@@ -267,7 +294,7 @@ int main(int cnt, const char** args)
         counter = 0;
         timer.restart();
         for(auto range: ranges) {
-            if (!query_database_forward(db, range.first, range.second, counter, timer, 10000)) {
+            if (!query_database_forward(db, range.first, range.second, counter, timer, 1000)) {
                 return 3;
             }
         }

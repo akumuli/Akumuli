@@ -61,14 +61,31 @@ void print_search_stats(aku_SearchStats& ss) {
               << ss.scan.fwd_bytes << " bytes read in forward direction" << std::endl;
 }
 
+int format_timestamp(uint64_t ts, char* buffer) {
+    auto fractional = static_cast<int>(ts %  1000000000);  // up to 9 decimal digits
+    auto seconds = static_cast<int>(ts / 1000000000);      // two seconds digits
+    return sprintf(buffer, "20150102T0304%02d.%09d", seconds, fractional);
+}
+
+std::string ts2str(uint64_t ts) {
+    char buffer[0x100];
+    auto len = format_timestamp(ts, buffer);
+    return std::string(buffer, buffer+len);
+}
+
+std::string build_query(uint64_t begin, uint64_t end) {
+    std::stringstream str;
+    str << R"({ "sample": "all", )";
+    str << R"("range": { "from": ")" << ts2str(begin)
+        << R"(", "to": ")" << ts2str(end)
+        << R"("}})";
+    return str.str();
+}
+
 aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {42};
-    aku_SelectQuery* query = aku_make_select_query( end
-                                                  , begin
-                                                  , 1
-                                                  , params);
-    aku_Cursor* cursor = aku_select(db, query);
+    std::string query = build_query(begin, end);
+    aku_Cursor* cursor = aku_query(db, query.c_str());
     aku_Timestamp current_time = end;
     aku_Timestamp last = begin;
     bool last_initialized = false;
@@ -135,11 +152,8 @@ aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku
 
 aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, boost::timer& timer, uint64_t mod) {
     const int NUM_ELEMENTS = 1000;
-    aku_ParamId params[] = {42};
-    aku_SelectQuery* query = aku_make_select_query( begin
-                                                  , end
-                                                  , 1, params);
-    aku_Cursor* cursor = aku_select(db, query);
+    std::string query = build_query(end, begin);
+    aku_Cursor* cursor = aku_query(db, query.c_str());
     aku_Timestamp current_time = begin;
     aku_Timestamp last = begin;
     while(!aku_cursor_is_done(cursor)) {

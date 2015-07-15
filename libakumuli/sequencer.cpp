@@ -86,7 +86,7 @@ aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     return res;
 }
 
-void TimeSeriesValue::add_to_header(ChunkHeader *chunk_header) const {
+void TimeSeriesValue::add_to_header(UncompressedChunk *chunk_header) const {
     chunk_header->timestamps.push_back(key_ts_);
     chunk_header->paramids.push_back(key_id_);
     if (type_ == BLOB) {
@@ -136,18 +136,18 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
-uint32_t Sequencer::get_checkpoint_(aku_Timestamp ts) const {
+aku_Timestamp Sequencer::get_checkpoint_(aku_Timestamp ts) const {
     // TODO: use fast integer division (libdivision or else)
     return ts / window_size_;
 }
 
 //! Convert checkpoint id to timestamp
-aku_Timestamp Sequencer::get_timestamp_(uint32_t cp) const {
+aku_Timestamp Sequencer::get_timestamp_(aku_Timestamp cp) const {
     return cp*window_size_;
 }
 
 // move sorted runs to ready_ collection
-int Sequencer::make_checkpoint_(uint32_t new_checkpoint) {
+int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
     int flag = sequence_number_.fetch_add(1) + 1;
     if (flag % 2 != 0) {
         auto old_top = get_timestamp_(checkpoint_);
@@ -444,7 +444,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
         return AKU_ENO_DATA;
     }
 
-    ChunkHeader chunk_header;
+    UncompressedChunk chunk_header;
 
     auto consumer = [&](TimeSeriesValue const& val) {
         val.add_to_header(&chunk_header);
@@ -454,7 +454,7 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
     ready_.clear();
 
-    ChunkHeader reindexed_header;
+    UncompressedChunk reindexed_header;
     if (!CompressionUtil::convert_from_time_order(chunk_header, &reindexed_header)) {
         AKU_PANIC("Invalid chunk");
     }
@@ -476,77 +476,6 @@ std::tuple<aku_Timestamp, int> Sequencer::get_window() const {
 uint32_t Sequencer::get_space_estimate() const {
     // ready_ must be empty here
     return space_estimate_ + SPACE_PER_ELEMENT;
-}
-
-struct SearchPredicate {
-    SearchQuery const& query;
-    SearchPredicate(SearchQuery const& q) : query(q) {}
-
-    bool operator () (TimeSeriesValue const& value) const {
-        if (query.lowerbound <= value.get_timestamp() &&
-            query.upperbound >= value.get_timestamp())
-        {
-            if (query.param_pred(value.get_paramid()) == SearchQuery::MATCH) {
-                return true;
-            }
-        }
-        return false;
-    }
-};
-
-void Sequencer::filter(PSortedRun run, SearchQuery const& q, std::vector<PSortedRun>* results) const {
-    if (run->empty()) {
-        return;
-    }
-    SearchPredicate search_pred(q);
-    PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q.lowerbound, 0u, 0u, 0u);
-    auto rkey = TimeSeriesValue(q.upperbound, ~0u, 0u, 0u);
-    auto begin = std::lower_bound(run->begin(), run->end(), lkey);
-    auto end = std::upper_bound(run->begin(), run->end(), rkey);
-    copy_if(begin, end, std::back_inserter(*result), search_pred);
-    results->push_back(move(result));
-}
-
-void Sequencer::search(Caller& caller, InternalCursor* cur, SearchQuery query, int sequence_number) const {
-    int seq_id = sequence_number_.load();
-    if (seq_id % 2 != 0 || sequence_number != seq_id) {
-        cur->set_error(caller, AKU_EBUSY);
-        return;
-    }
-    std::vector<PSortedRun> filtered;
-    std::vector<PSortedRun> pruns;
-    Lock runs_guard(runs_resize_lock_);
-    pruns = runs_;
-    runs_guard.unlock();
-    int run_ix = 0;
-    for (auto const& run: pruns) {
-        auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
-        auto& rwlock = run_locks_.at(ix);
-        rwlock.rdlock();
-        filter(run, query, &filtered);
-        rwlock.unlock();
-        run_ix++;
-    }
-
-    auto page = page_;
-    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        aku_Sample result = val.to_result(page);
-        return cur->put(caller, result);
-    };
-
-    if (query.direction == AKU_CURSOR_DIR_FORWARD) {
-        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
-    } else {
-        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
-    }
-
-    if (seq_id != sequence_number_.load()) {
-        cur->set_error(caller, AKU_EBUSY);
-        return;
-    } else {
-        cur->complete(caller);
-    }
 }
 
 void Sequencer::filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, std::vector<PSortedRun>* results) const {

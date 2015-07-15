@@ -10,7 +10,7 @@ using namespace Akumuli;
 int main() {
     const uint64_t N_TIMESTAMPS = 100;
     const uint64_t N_PARAMS = 100;
-    ChunkHeader header;
+    UncompressedChunk header;
     std::cout << "Testing timestamp sequence" << std::endl;
     int c = 100;
     std::vector<aku_ParamId> ids;
@@ -74,7 +74,7 @@ int main() {
               << std::endl;
 
     // Try to decompress
-    ChunkHeader decomp;
+    UncompressedChunk decomp;
     const unsigned char* pbegin = out.data();
     const unsigned char* pend = pbegin + out.size();
     CompressionUtil::decode_chunk(&decomp, pbegin, pend, header.timestamps.size());
