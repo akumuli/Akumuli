@@ -185,5 +185,15 @@ void QueryCursor::close() {
     cursor_->close();
 }
 
+QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
+    : con_(con)
+    , rdbufsize_(rdbuf)
+{
+}
+
+Http::QueryCursor* QueryProcessor::create() {
+    return new QueryCursor(con_, rdbufsize_);
+}
+
 }  // namespace
 

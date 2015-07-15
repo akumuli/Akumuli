@@ -36,10 +36,12 @@ struct QueryCursor : Http::QueryCursor {
 
 struct QueryProcessor : Http::QueryProcessor
 {
-    virtual Http::QueryCursor *create()
-    {
-        throw "not impelented";
-    }
+    std::shared_ptr<DbConnection> con_;
+    int rdbufsize_;
+
+    QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf);
+
+    virtual Http::QueryCursor *create();
 };
 
 }  // namespace

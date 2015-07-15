@@ -1,6 +1,7 @@
 #include "tcp_server.h"
 #include "httpserver.h"
 #include "utility.h"
+#include "query_cursor.h"
 
 #include <iostream>
 #include <regex>
@@ -50,54 +51,21 @@ void create_db(const char* name,
     }
 }
 
-struct QueryCursorMock : Http::QueryCursor {
-    int quota = 20;
-    std::string data_;
-    virtual void start() {
-        std::cout << "QueryCursorMock started" << std::endl;
-    }
-
-    virtual aku_Status get_error() {
-        return AKU_SUCCESS;
-    }
-    virtual void append(const char *data, size_t data_size) {
-        data_ = data_ + std::string(data, data + data_size);
-    }
-
-    virtual size_t read_some(char *buf, size_t buf_size) {
-        if (quota > 0) {
-            sleep(1);
-            quota--;
-            size_t s = data_.size();
-            size_t m = std::min(buf_size, s);
-            memcpy(buf, data_.data(), m);
-            return m;
-        }
-        return 0;
-    }
-    virtual void close() {
-    }
-};
-
-struct QueryProcMock : Http::QueryProcessor {
-    virtual Http::QueryCursor *create() {
-        return new QueryCursorMock();
-    }
-};
-
 void run_server(std::string path) {
     AKU_UNUSED(path);
     auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
                                                           false,
                                                           AkumuliConnection::MaxDurability);
-    //auto tcp_server = std::make_shared<TcpServer>(connection, 4);
-    auto query_mock = std::shared_ptr<Http::QueryProcessor>(new QueryProcMock());
-    auto httpserver = std::make_shared<Http::HttpServer>(8888, query_mock);
-    //tcp_server->start();
+    auto tcp_server = std::make_shared<TcpServer>(connection, 4);
+
+    auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
+
+    auto httpserver = std::make_shared<Http::HttpServer>(8888, qproc);
+
+    tcp_server->start();
     httpserver->start();
-    //tcp_server->wait();
-    sleep(1000);
-    //tcp_server->stop();
+    tcp_server->wait();
+    tcp_server->stop();
     httpserver->stop();
 }
 
