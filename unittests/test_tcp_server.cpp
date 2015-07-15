@@ -20,10 +20,19 @@ struct DbMock : DbConnection {
     typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
     std::vector<ValueT> results;
 
-    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-        logger_.trace() << "write_double(" << param << ", " << ts << ", " << data << ")";
-        results.push_back(std::make_tuple(param, ts, data));
+    aku_Status write(const aku_Sample &sample) {
+        logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.value.float64 << ")";
+        results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.value.float64));
         return AKU_SUCCESS;
+    }
+    std::shared_ptr<DbCursor> search(std::string query) {
+        throw "not implemented";
+    }
+    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+        throw "not implemented";
+    }
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+        throw "not implemented";
     }
 };
 
@@ -31,8 +40,18 @@ struct DbMock : DbConnection {
 template<aku_Status ERR>
 struct DbErrMock : DbConnection {
     aku_Status err = ERR;
-    aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
+
+    aku_Status write(const aku_Sample &sample) {
         return err;
+    }
+    std::shared_ptr<DbCursor> search(std::string query) {
+        throw "not implemented";
+    }
+    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+        throw "not implemented";
+    }
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+        throw "not implemented";
     }
 };
 

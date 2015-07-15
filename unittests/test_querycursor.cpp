@@ -74,6 +74,10 @@ struct ConnectionMock : DbConnection
         }
         return -1*strid.size();
     }
+
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+        throw "not implemented";
+    }
 };
 
 using namespace Akumuli;

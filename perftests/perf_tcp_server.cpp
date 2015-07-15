@@ -24,8 +24,15 @@ struct DbMock : DbConnection {
         return AKU_SUCCESS;
     }
 
-    virtual std::shared_ptr<DbCursor> search(std::string query)
-    {
+    virtual std::shared_ptr<DbCursor> search(std::string query) {
+        throw "not implemented";
+    }
+
+    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+        throw "not implemented";
+    }
+
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
         throw "not implemented";
     }
 };

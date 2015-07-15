@@ -57,6 +57,8 @@ add_executable(
 )
 target_link_libraries(
     test_protocolparser
+    akumuli
+    gcc
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
     libboost_coroutine.a

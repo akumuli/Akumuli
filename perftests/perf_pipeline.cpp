@@ -36,8 +36,8 @@ namespace detail {
     const static int TAG = 111222333;
     struct ConnectionMock : Akumuli::DbConnection {
         int cnt;
-        aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double data) {
-            if (AKU_LIKELY(param == TAG)) {
+        aku_Status write(const aku_Sample &sample) {
+            if (AKU_LIKELY(sample.paramid == TAG)) {
                 cnt++;
             } else {
                 if (!err_shown) {
@@ -47,6 +47,15 @@ namespace detail {
                 return AKU_EBAD_ARG;
             }
             return AKU_SUCCESS;
+        }
+        std::shared_ptr<DbCursor> search(std::string query) {
+            throw "not implemented";
+        }
+        int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+            throw "not implemented";
+        }
+        aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+            throw "not implemented";
         }
     };
 };
@@ -102,7 +111,7 @@ struct SpoutTest {
         auto worker = [&]() {
             auto spout = pipeline->make_spout();
             for (int i = N_ITERS/2; i --> 0;) {
-                spout->write_double(detail::TAG, i, 0.0);
+                spout->write({(aku_Timestamp)i, (aku_ParamId)detail::TAG});
             }
         };
         PerfTimer tm;

@@ -60,6 +60,8 @@ struct DbConnection {
 
     //! Convert paramid to series name
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
+
+    virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample) = 0;
 };
 
 
@@ -83,6 +85,8 @@ public:
     virtual std::shared_ptr<DbCursor> search(std::string query);
 
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size);
+
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample);
 };
 
 using boost::lockfree::queue;
@@ -121,15 +125,14 @@ struct PipelineSpout : ProtocolConsumer {
     typedef struct { char emptybits[64]; }       Padding;        //< Padding
     typedef std::atomic<uint64_t>                SpoutCounter;   //< Shared counter
     typedef struct {
-        aku_ParamId            id;                               //< Measurement ID
-        aku_Timestamp          ts;                               //< Measurement timestamp
-        double                 value;                            //< Value (TODO: should be variant type)
+        aku_Sample             sample;                           //< Value
         SpoutCounter          *cnt;                              //< Pointer to spout's shared counter
         PipelineErrorCb       *on_error;                         //< On error callback
     }                                            TVal;           //< Value
     typedef std::shared_ptr<TVal>                PVal;           //< Pointer to value
     typedef queue<TVal*>                         Queue;          //< Queue class
     typedef std::shared_ptr<Queue>               PQueue;         //< Pointer to queue
+    typedef std::shared_ptr<DbConnection>        PDatabase;      //< Database "connection"
 
     // Data
     SpoutCounter        created_;                                //< Created elements counter
@@ -141,15 +144,16 @@ struct PipelineSpout : ProtocolConsumer {
     const BackoffPolicy backoff_;
     Logger              logger_;                                 //< Logger instance
     PipelineErrorCb     on_error_;                               //< Session callback
+    PDatabase           db_;
 
     // C-tor
-    PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp);
+    PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp, std::shared_ptr<DbConnection> con);
    ~PipelineSpout();
 
     void set_error_cb(PipelineErrorCb cb);
 
     // ProtocolConsumer
-    virtual void write_double(aku_ParamId param, aku_Timestamp ts, double data);
+    virtual void write(const aku_Sample& sample);
     virtual void add_bulk_string(const Byte *buffer, size_t n);
 
     // Utility
@@ -160,6 +164,8 @@ struct PipelineSpout : ProtocolConsumer {
       * @param ostr stream to write
       */
     void get_error(std::ostream& ostr);
+
+    aku_Status series_to_param_id(const char *str, size_t strlen, aku_Sample *sample);
 };
 
 class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
