@@ -438,6 +438,7 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
     }
     if (!terminal_node->error) {
         terminal_node->complete_query();
+        cur->complete(caller);
     }
 }
 
