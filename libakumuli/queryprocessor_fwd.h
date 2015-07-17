@@ -39,6 +39,8 @@ struct Node {
 //! Query processor interface
 struct IQueryProcessor {
 
+    // Query information
+
     //! Lowerbound
     virtual aku_Timestamp lowerbound() const = 0;
 
@@ -48,16 +50,22 @@ struct IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const = 0;
 
-    //! Should be called before processing begins
-    virtual void start() = 0;
+    // Execution control
 
-    //! Process value
+    /** Will be called before query execution starts.
+      * If result already obtained - return False.
+      * In this case `stop` method shouldn't be called
+      * at the end.
+      */
+    virtual bool start() = 0;
+
+    //! Get new value
     virtual bool put(const aku_Sample& sample) = 0;
 
-    //! Should be called when processing completed
+    //! Will be called when processing completed without errors
     virtual void stop() = 0;
 
-    //! Set execution error
+    //! Will be called on error
     virtual void set_error(aku_Status error) = 0;
 };
 

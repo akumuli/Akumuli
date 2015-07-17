@@ -232,7 +232,8 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
 {
 }
 
-void ScanQueryProcessor::start() {
+bool ScanQueryProcessor::start() {
+    return false;
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
@@ -257,6 +258,35 @@ aku_Timestamp ScanQueryProcessor::upperbound() const {
 
 int ScanQueryProcessor::direction() const {
     return direction_;
+}
+
+MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<SeriesMatcher> m) : matcher_(m) {}
+
+aku_Timestamp MetadataQueryProcessor::lowerbound() const {
+    return AKU_MAX_TIMESTAMP;
+}
+
+aku_Timestamp MetadataQueryProcessor::upperbound() const {
+    return AKU_MAX_TIMESTAMP;
+}
+
+int MetadataQueryProcessor::direction() const {
+    return AKU_CURSOR_DIR_FORWARD;
+}
+
+bool MetadataQueryProcessor::start() {
+    // Do all work here
+    return true;
+}
+
+bool MetadataQueryProcessor::put(const aku_Sample &sample) {
+    return false;
+}
+
+void MetadataQueryProcessor::stop() {
+}
+
+void MetadataQueryProcessor::set_error(aku_Status error) {
 }
 
 }} // namespace

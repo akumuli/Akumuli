@@ -395,35 +395,35 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
             return;
         }
 
-        query_processor->start();
+        if (query_processor->start()) {
 
-        uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+            uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+            if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
+                for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                    int seq_id;
+                    aku_Timestamp window;
+                    uint32_t index = ix % volumes_.size();
+                    PVolume volume = volumes_.at(index);
+                    tie(window, seq_id) = volume->cache_->get_window();
+                    volume->get_page()->searchV2(query_processor, cache_);
+                    volume->cache_->searchV2(query_processor, seq_id);
+                }
+            } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+                for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                    int seq_id;
+                    aku_Timestamp window;
+                    uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
+                    PVolume volume = volumes_.at(index);
+                    tie(window, seq_id) = volume->cache_->get_window();
+                    volume->cache_->searchV2(query_processor, seq_id);
+                    volume->get_page()->searchV2(query_processor, cache_);
+                }
+            } else {
+                AKU_PANIC("data corruption in query processor");
+            }
 
-        if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
-            for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-                int seq_id;
-                aku_Timestamp window;
-                uint32_t index = ix % volumes_.size();
-                PVolume volume = volumes_.at(index);
-                tie(window, seq_id) = volume->cache_->get_window();
-                volume->get_page()->searchV2(query_processor, cache_);
-                volume->cache_->searchV2(query_processor, seq_id);
-            }
-        } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
-            for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
-                int seq_id;
-                aku_Timestamp window;
-                uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
-                PVolume volume = volumes_.at(index);
-                tie(window, seq_id) = volume->cache_->get_window();
-                volume->cache_->searchV2(query_processor, seq_id);
-                volume->get_page()->searchV2(query_processor, cache_);
-            }
-        } else {
-            AKU_PANIC("data corruption in query processor");
+            query_processor->stop();
         }
-
-        query_processor->stop();
     }
     catch (const SearchError& err) {
         log_error(err.what());

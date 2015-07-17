@@ -21,6 +21,7 @@
 #include "akumuli.h"
 #include "stringpool.h"
 #include "queryprocessor_fwd.h"
+#include "seriesparser.h"
 
 namespace Akumuli {
 namespace QP {
@@ -49,38 +50,6 @@ struct NodeBuilder {
     //! Create filtering node
     static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
                                                             aku_logger_cb_t logger);
-};
-
-
-struct MetadataQueryProcessor : IQueryProcessor {
-
-
-    aku_Timestamp lowerbound() const
-    {
-        return AKU_MAX_TIMESTAMP;
-    }
-    aku_Timestamp upperbound() const
-    {
-        return AKU_MAX_TIMESTAMP;
-    }
-    int direction() const
-    {
-        return AKU_CURSOR_DIR_FORWARD;
-    }
-    void start()
-    {
-        // Do all work here
-    }
-    bool put(const aku_Sample &sample)
-    {
-        return false;
-    }
-    void stop()
-    {
-    }
-    void set_error(aku_Status error)
-    {
-    }
 };
 
 
@@ -127,8 +96,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     int direction() const;
 
-    //! Should be called before processing begins
-    void start();
+    bool start();
 
     //! Process value
     bool put(const aku_Sample& sample);
@@ -137,6 +105,22 @@ struct ScanQueryProcessor : IQueryProcessor {
     void stop();
 
     //! Set execution error
+    void set_error(aku_Status error);
+};
+
+
+struct MetadataQueryProcessor : IQueryProcessor {
+
+    std::shared_ptr<SeriesMatcher> matcher_;
+
+    MetadataQueryProcessor(std::shared_ptr<SeriesMatcher> m);
+
+    aku_Timestamp lowerbound() const;
+    aku_Timestamp upperbound() const;
+    int direction() const;
+    bool start();
+    bool put(const aku_Sample &sample);
+    void stop();
     void set_error(aku_Status error);
 };
 
