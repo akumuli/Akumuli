@@ -84,7 +84,7 @@ std::shared_ptr<QP::IQueryProcessor> make_proc(std::shared_ptr<QP::Node> root, a
         b = std::min(begin, end);
         e = std::max(begin, end);
     }
-    return std::make_shared<QP::QueryProcessor>(root, m, b, e);
+    return std::make_shared<QP::ScanQueryProcessor>(root, m, b, e);
 }
 
 }  // namespace

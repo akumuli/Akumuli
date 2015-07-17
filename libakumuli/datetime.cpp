@@ -125,17 +125,19 @@ aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t bu
     time_duration time = ptime.time_of_day();
     gregorian_calendar::ymd_type ymd = gregorian_calendar::from_day_number(date.day_number());
 
-    int len = snprintf(buffer, buffer_size, "%04d%02d%02dT%02d%02d%02d.%011d",
+    auto fracsec = time.fractional_seconds();
+
+    int len = snprintf(buffer, buffer_size, "%04d%02d%02dT%02d%02d%02d.%09d",
              // date part
              (int)ymd.year, (int)ymd.month, (int)ymd.day,
              // time part
-             (int)time.hours(), (int)time.minutes(), (int)time.seconds(), (int)time.fractional_seconds()
+             (int)time.hours(), (int)time.minutes(), (int)time.seconds(), (int)fracsec
              );
 
     if (len < 0 || len == (int)buffer_size) {
         return -26;
     }
-    return len;
+    return len + 1;
 }
 
 }

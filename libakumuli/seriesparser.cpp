@@ -88,10 +88,6 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
-struct QueryParserError : std::runtime_error {
-    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
-};
-
 static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
                                                             aku_logger_cb_t logger) {
     auto sample = ptree.get_child("sample");
@@ -198,29 +194,8 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
     return ss.str();
 }
 
-std::shared_ptr<QP::QueryProcessor>
+std::shared_ptr<QP::IQueryProcessor>
 SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node> terminal, aku_logger_cb_t logger) {
-    static const std::shared_ptr<QP::QueryProcessor> NONE;
-    /* Query format:
-     * {
-     *      "sample": "all", // { "step": "5sec" } or { "random": 1000 }
-     *      "metric": "cpu",
-     *      // or
-     *      "metric": ["cpu", "mem"],
-     *      "range": {
-     *          "from": "20150101T000000",
-     *          "to"  : "20150102T000000"
-     *      },
-     *      "where": [
-     *          { "in" : { "key3": [1, 2, 3, "foo"]},
-     *          { "not_in" : { "key4": [3, 4, 5]}
-     *      ],
-     *      "group_by": {
-     *          "tag" : [ "host", "region" ],
-     *          "metric" : [ "cpu", "memory" ]
-     *      }
-     * }
-     */
     namespace pt = boost::property_tree;
     using namespace QP;
 
@@ -240,7 +215,7 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
     } catch (pt::json_parser_error& e) {
         // Error, bad query
         (*logger)(AKU_LOG_ERROR, e.what());
-        return NONE;
+        throw QueryParserError(e.what());
     }
 
     logger(AKU_LOG_INFO, "Parsing query:");
@@ -287,11 +262,11 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         }
 
         // Build query processor
-        return std::make_shared<QueryProcessor>(next, metrics, ts_begin, ts_end);
+        return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
 
     } catch(std::exception const& e) {
         (*logger)(AKU_LOG_ERROR, e.what());
-        return NONE;
+        throw QueryParserError(e.what());
     }
 }
 

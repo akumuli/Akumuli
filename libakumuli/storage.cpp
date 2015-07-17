@@ -343,28 +343,26 @@ void Storage::log_message(const char* message, uint64_t value) const {
 
 // Reading
 
+struct SearchError : std::runtime_error
+{
+    aku_Status error_code;
+    SearchError(const char* msg, aku_Status err) : std::runtime_error(msg), error_code(err) {}
+};
+
 struct TerminalNode : QP::Node {
 
     Caller &caller;
     InternalCursor* cursor;
-    bool error;
-    int times_completed;
 
     TerminalNode(Caller& ca, InternalCursor* cur)
         : caller(ca)
         , cursor(cur)
-        , error(false)
-        , times_completed(0)
     {
     }
 
     // Node interface
 
     void complete() {
-        times_completed++;
-    }
-
-    void complete_query() {
         cursor->complete(caller);
     }
 
@@ -373,8 +371,8 @@ struct TerminalNode : QP::Node {
     }
 
     void set_error(aku_Status status) {
-        error = true;
         cursor->set_error(caller, status);
+        throw SearchError("search error detected", status);
     }
 
     NodeType get_type() const {
@@ -385,60 +383,49 @@ struct TerminalNode : QP::Node {
 void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
-    // Parse query
-    auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
-    auto query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+    try {
+        // Parse query
+        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+        std::shared_ptr<QP::IQueryProcessor> query_processor;
+        try {
+            query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+        } catch (const QueryParserError& qpe) {
+            log_error(qpe.what());
+            cur->set_error(caller, AKU_EBAD_DATA);
+            return;
+        }
 
-    /* Fan out query
-     *
-     *         -> Volume
-     *       /            \
-     * Query  --> Volume --+--> Cursor
-     *       \            /
-     *         -> Volume
-     */
+        query_processor->start();
 
-    uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+        uint32_t starting_ix = active_volume_->get_page()->get_page_id();
 
-    if (!terminal_node->error) {
         if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
             for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                int seq_id;
+                aku_Timestamp window;
                 uint32_t index = ix % volumes_.size();
                 PVolume volume = volumes_.at(index);
-
-                log_message("query volume", index);
-                volume->get_page()->searchV2(query_processor, cache_);
-                if (terminal_node->error) { break; }
-
-                log_message("query sequencer", index);
-                aku_Timestamp window;
-                int seq_id;
                 tie(window, seq_id) = volume->cache_->get_window();
+                volume->get_page()->searchV2(query_processor, cache_);
                 volume->cache_->searchV2(query_processor, seq_id);
             }
         } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
             for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                int seq_id;
+                aku_Timestamp window;
                 uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                 PVolume volume = volumes_.at(index);
-
-                log_message("query sequencer", index);
-                aku_Timestamp window;
-                int seq_id;
                 tie(window, seq_id) = volume->cache_->get_window();
                 volume->cache_->searchV2(query_processor, seq_id);
-                if (terminal_node->error) { break; }
-
-                log_message("query volume", index);
                 volume->get_page()->searchV2(query_processor, cache_);
             }
-
         } else {
             AKU_PANIC("data corruption in query processor");
         }
+        query_processor->stop();
     }
-    if (!terminal_node->error) {
-        terminal_node->complete_query();
-        cur->complete(caller);
+    catch (const SearchError& err) {
+        log_error(err.what());
     }
 }
 

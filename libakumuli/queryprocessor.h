@@ -52,12 +52,42 @@ struct NodeBuilder {
 };
 
 
-/** Query processor.
-  * Should be built from textual representation (json at first).
-  * Should be used by both sequencer and page to match parameters
-  * and group them together.
+struct MetadataQueryProcessor : IQueryProcessor {
+
+
+    aku_Timestamp lowerbound() const
+    {
+        return AKU_MAX_TIMESTAMP;
+    }
+    aku_Timestamp upperbound() const
+    {
+        return AKU_MAX_TIMESTAMP;
+    }
+    int direction() const
+    {
+        return AKU_CURSOR_DIR_FORWARD;
+    }
+    void start()
+    {
+        // Do all work here
+    }
+    bool put(const aku_Sample &sample)
+    {
+        return false;
+    }
+    void stop()
+    {
+    }
+    void set_error(aku_Status error)
+    {
+    }
+};
+
+
+/** Numeric data query processor. Can be used to return raw data
+  * from HDD or derivatives (Depending on the list of processing nodes).
   */
-struct QueryProcessor : IQueryProcessor {
+struct ScanQueryProcessor : IQueryProcessor {
 
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
@@ -83,7 +113,7 @@ struct QueryProcessor : IQueryProcessor {
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
-    QueryProcessor(std::shared_ptr<Node> root,
+    ScanQueryProcessor(std::shared_ptr<Node> root,
                    std::vector<std::string> metrics,
                    aku_Timestamp begin,
                    aku_Timestamp end);

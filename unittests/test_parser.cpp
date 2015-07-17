@@ -183,7 +183,8 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
             }
     )";
     auto terminal = std::make_shared<NodeMock>();
-    auto qproc = matcher.build_query_processor(json, terminal, &logger);
+    auto iproc = matcher.build_query_processor(json, terminal, &logger);
+    auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
     BOOST_REQUIRE(qproc->root_node_->get_type() == Node::RandomSampler);
     BOOST_REQUIRE(qproc->metrics_.size() == 2);
     auto m1 = qproc->metrics_.at(0);
