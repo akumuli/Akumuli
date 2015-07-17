@@ -40,7 +40,10 @@ void QueryCursor::append(const char *data, size_t data_size) {
 
 aku_Status QueryCursor::get_error() {
     aku_Status err = AKU_SUCCESS;
-    return cursor_->is_error(&err);
+    if (cursor_->is_error(&err)) {
+        return err;
+    }
+    return AKU_SUCCESS;
 }
 
 size_t QueryCursor::read_some(char *buf, size_t buf_size) {
@@ -49,6 +52,15 @@ size_t QueryCursor::read_some(char *buf, size_t buf_size) {
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
         rdbuf_pos_ = 0u;
+        aku_Status status = AKU_SUCCESS;
+        if (cursor_->is_error(&status)) {
+            // Some error occured, put error message to the outgoing buffer and return
+            int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
+            if (len > 0) {
+                return len;
+            }
+            return 0;
+        }
     }
 
     // format output

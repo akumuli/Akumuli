@@ -391,7 +391,7 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
             query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
         } catch (const QueryParserError& qpe) {
             log_error(qpe.what());
-            cur->set_error(caller, AKU_EBAD_DATA);
+            cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);
             return;
         }
 
@@ -422,6 +422,7 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
         } else {
             AKU_PANIC("data corruption in query processor");
         }
+
         query_processor->stop();
     }
     catch (const SearchError& err) {

@@ -10,12 +10,11 @@ namespace MHD {
 static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
     QueryCursor* cur = (QueryCursor*)data;
-    size_t sz = cur->read_some(buf, max);
     auto status = cur->get_error();
     if (status) {
-        // TODO: report error
-        std::cout << "Error detected" << std::endl;
+        return MHD_CONTENT_READER_END_OF_STREAM;
     }
+    size_t sz = cur->read_some(buf, max);
     if (sz == 0) {
         return MHD_CONTENT_READER_END_OF_STREAM;
     }
@@ -59,7 +58,9 @@ static int accept_connection(void           *cls,
         auto err = cursor->get_error();
         if (err != AKU_SUCCESS) {
             const char* error_msg = aku_error_message(err);
-            auto response = MHD_create_response_from_buffer(strlen(error_msg), const_cast<char*>(error_msg), MHD_RESPMEM_MUST_COPY);
+            char buffer[0x200];
+            int len = snprintf(buffer, 0x200, "-%s\r\n", error_msg);
+            auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
             int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
             MHD_destroy_response(response);
             return ret;

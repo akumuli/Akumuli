@@ -297,7 +297,7 @@ AKU_EXPORT size_t aku_cursor_read( aku_Cursor       *cursor
 AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
-AKU_EXPORT aku_Status aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
 
 /** Convert timestamp to string if possible, return string length
   * @return 0 on bad string, -LEN if buffer is too small, LEN on success
