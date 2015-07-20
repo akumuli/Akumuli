@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "seriesparser.h"
+#include "queryprocessor.h"
 #include "datetime.h"
 
 using namespace Akumuli;

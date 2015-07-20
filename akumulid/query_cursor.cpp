@@ -119,50 +119,51 @@ char* QueryCursor::format(char* begin, char* end, const aku_Sample& sample) {
     begin += 2;
     size  -= 2;
 
-    // Timestamp
-    begin[0] = '+';
-    begin++;
-    size--;
-    if (size < 0) {
-        return nullptr;
-    }
-    len = aku_timestamp_to_string(sample.timestamp, begin, size) - 1;  // -1 is for '\0' character
-    if (len == -1) {
-        // Invalid timestamp, format as number
-        len = snprintf(begin, size, "ts=%lu", sample.timestamp);
-        if (len < 0 || len == size) {
-            // Not enough space inside the buffer
+    if (sample.payload.type != aku_PData::NONE) {
+        // Timestamp
+        begin[0] = '+';
+        begin++;
+        size--;
+        if (size < 0) {
             return nullptr;
         }
-    } else if (len < -1) {
-        return nullptr;
-    }
-    begin += len;
-    size  -= len;
-    // Add trailing \r\n to the end
-    if (size < 2) {
-        return nullptr;
-    }
-    begin[0] = '\r';
-    begin[1] = '\n';
-    begin += 2;
-    size  -= 2;
-
-    // Payload
-    if (size < 0) {
-        return nullptr;
-    }
-    if (sample.payload.type == aku_PData::FLOAT) {
-        // Floating-point
-        len = snprintf(begin, size, "+%G\r\n", sample.payload.value.float64);
-        if (len == size || len < 0) {
+        len = aku_timestamp_to_string(sample.timestamp, begin, size) - 1;  // -1 is for '\0' character
+        if (len == -1) {
+            // Invalid timestamp, format as number
+            len = snprintf(begin, size, "ts=%lu", sample.timestamp);
+            if (len < 0 || len == size) {
+                // Not enough space inside the buffer
+                return nullptr;
+            }
+        } else if (len < -1) {
             return nullptr;
         }
         begin += len;
         size  -= len;
-    } else if (sample.payload.type == aku_PData::BLOB) {
-        // BLOB
-        int blobsize = (int)sample.payload.value.blob.size;
+        // Add trailing \r\n to the end
+        if (size < 2) {
+            return nullptr;
+        }
+        begin[0] = '\r';
+        begin[1] = '\n';
+        begin += 2;
+        size  -= 2;
+
+        // Payload
+        if (size < 0) {
+            return nullptr;
+        }
+        if (sample.payload.type == aku_PData::FLOAT) {
+            // Floating-point
+            len = snprintf(begin, size, "+%G\r\n", sample.payload.value.float64);
+            if (len == size || len < 0) {
+                return nullptr;
+            }
+            begin += len;
+            size  -= len;
+        } else if (sample.payload.type == aku_PData::BLOB) {
+            // BLOB
+            int blobsize = (int)sample.payload.value.blob.size;
         if (blobsize < size) {
             // write length prefix - "$X\r\n"
             len = snprintf(begin, size, "$%d\r\n", blobsize);
@@ -188,6 +189,7 @@ char* QueryCursor::format(char* begin, char* end, const aku_Sample& sample) {
     } else {
         // Something went wrong
         return pskip;
+    }
     }
     return begin;
 }

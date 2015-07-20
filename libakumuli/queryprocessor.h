@@ -111,9 +111,10 @@ struct ScanQueryProcessor : IQueryProcessor {
 
 struct MetadataQueryProcessor : IQueryProcessor {
 
-    std::shared_ptr<SeriesMatcher> matcher_;
+    std::vector<aku_ParamId> ids_;
+    std::shared_ptr<Node>    root_;
 
-    MetadataQueryProcessor(std::shared_ptr<SeriesMatcher> m);
+    MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node);
 
     aku_Timestamp lowerbound() const;
     aku_Timestamp upperbound() const;

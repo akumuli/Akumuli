@@ -260,7 +260,11 @@ int ScanQueryProcessor::direction() const {
     return direction_;
 }
 
-MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<SeriesMatcher> m) : matcher_(m) {}
+MetadataQueryProcessor::MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node)
+    : ids_(ids)
+    , root_(node)
+{
+}
 
 aku_Timestamp MetadataQueryProcessor::lowerbound() const {
     return AKU_MAX_TIMESTAMP;
@@ -275,18 +279,29 @@ int MetadataQueryProcessor::direction() const {
 }
 
 bool MetadataQueryProcessor::start() {
-    // Do all work here
+    for (aku_ParamId id: ids_) {
+        aku_Sample s;
+        s.paramid = id;
+        s.timestamp = 0;
+        s.payload.type = aku_PData::NONE;
+        if (!root_->put(s)) {
+            return false;
+        }
+    }
     return true;
 }
 
 bool MetadataQueryProcessor::put(const aku_Sample &sample) {
+    // no-op
     return false;
 }
 
 void MetadataQueryProcessor::stop() {
+    root_->complete();
 }
 
 void MetadataQueryProcessor::set_error(aku_Status error) {
+    root_->set_error(error);
 }
 
 }} // namespace

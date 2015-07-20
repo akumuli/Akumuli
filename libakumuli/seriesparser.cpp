@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "queryprocessor.h"
 #include "seriesparser.h"
 #include "util.h"
 #include "datetime.h"
@@ -88,26 +89,46 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
-static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
-                                                            aku_logger_cb_t logger) {
-    auto sample = ptree.get_child("sample");
-    if (sample.empty()) {
-        auto res = sample.get_value<std::string>("");
-        if (res == "all") {
-            return std::make_pair("all", 0);
+static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    auto select = ptree.get_child_optional("select");
+    if (select && select->empty()) {
+        // simple select query
+        auto str = select->get_value<std::string>("");
+        if (str == "names") {
+            // the only supported select query for now
+            return str;
         }
-        (*logger)(AKU_LOG_ERROR, "No `sample` tag");
-        auto rte = std::runtime_error("`sample` expected");
+        (*logger)(AKU_LOG_ERROR, "Invalid `select` query");
+        auto rte = std::runtime_error("Invalid `select` query");
         BOOST_THROW_EXCEPTION(rte);
     }
-    std::string sample_type;
-    size_t sampling_buffer_size;
-    for (auto child: sample) {
-        sample_type = child.first;
-        sampling_buffer_size = child.second.get_value<size_t>();
-        break;
+    return boost::optional<std::string>();
+}
+
+static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
+                                                            aku_logger_cb_t logger) {
+    auto sample = ptree.get_child_optional("sample");
+    if (sample) {
+        if (sample->empty()) {
+            auto res = sample->get_value<std::string>("");
+            if (res == "all") {
+                return std::make_pair("all", 0);
+            }
+            (*logger)(AKU_LOG_ERROR, "No `sample` tag");
+            auto rte = std::runtime_error("`sample` expected");
+            BOOST_THROW_EXCEPTION(rte);
+        }
+        std::string sample_type;
+        size_t sampling_buffer_size;
+        for (auto child: *sample) {
+            sample_type = child.first;
+            sampling_buffer_size = child.second.get_value<size_t>();
+            break;
+        }
+        return std::make_pair(sample_type, sampling_buffer_size);
+    } else {
+        return std::make_pair("", 0);
     }
-    return std::make_pair(sample_type, sampling_buffer_size);
 }
 
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
@@ -199,6 +220,8 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
     namespace pt = boost::property_tree;
     using namespace QP;
 
+    const auto NOSAMPLE = std::make_pair<std::string, size_t>("", 0u);
+
     //! C-string to streambuf adapter
     struct MemStreambuf : std::streambuf {
         MemStreambuf(const char* buf) {
@@ -225,12 +248,11 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         // Read metric(s) name
         auto metrics = parse_metric(ptree, logger);
 
+        // Read select statment
+        auto select = parse_select_stmt(ptree, logger);
+
         // Read sampling method
         auto sampling_params = parse_sampling_params(ptree, logger);
-
-        // Read timestamps
-        auto ts_begin = parse_range_timestamp(ptree, "from", logger);
-        auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
         // Read where clause
         std::vector<aku_ParamId> ids_included;
@@ -245,24 +267,52 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
         }
 
-
         // Build topology
+        if (sampling_params != NOSAMPLE && select) {
+            (*logger)(AKU_LOG_ERROR, "Can't combine select and sample statements together");
+            auto rte = std::runtime_error("`sample` and `select` can't be used together");
+            BOOST_THROW_EXCEPTION(rte);
+        }
+
         std::shared_ptr<Node> next = terminal;
-        if (!ids_included.empty()) {
-            next = NodeBuilder::make_filter_by_id_list(ids_included, next, logger);
+        if (!select) {
+            // Read timestamps
+            auto ts_begin = parse_range_timestamp(ptree, "from", logger);
+            auto ts_end = parse_range_timestamp(ptree, "to", logger);
+
+            if (!ids_included.empty()) {
+                next = NodeBuilder::make_filter_by_id_list(ids_included, next, logger);
+            }
+            if (!ids_excluded.empty()) {
+                next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
+            }
+            if (sampling_params != NOSAMPLE && sampling_params.first != "all") {
+                next = NodeBuilder::make_random_sampler(sampling_params.first,
+                                                                sampling_params.second,
+                                                                next,
+                                                                logger);
+            }
+            // Build query processor
+            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
+        }
+
+        if (ids_included.empty()) {
+            // list all
+            for (auto val: table) {
+                auto id = val.second;
+                ids_included.push_back(id);
+            }
         }
         if (!ids_excluded.empty()) {
-            next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
+            std::sort(ids_included.begin(), ids_included.end());
+            std::sort(ids_excluded.begin(), ids_excluded.end());
+            std::vector<aku_ParamId> tmp;
+            std::set_difference(ids_included.begin(), ids_included.end(),
+                                ids_excluded.begin(), ids_excluded.end(),
+                                std::back_inserter(tmp));
+            std::swap(tmp, ids_included);
         }
-        if (sampling_params.first != "all") {
-            next = NodeBuilder::make_random_sampler(sampling_params.first,
-                                                            sampling_params.second,
-                                                            next,
-                                                            logger);
-        }
-
-        // Build query processor
-        return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
+        return std::make_shared<MetadataQueryProcessor>(ids_included, next);
 
     } catch(std::exception const& e) {
         (*logger)(AKU_LOG_ERROR, e.what());

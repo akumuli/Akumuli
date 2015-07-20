@@ -65,7 +65,8 @@ typedef struct {
     //! Data element type
     enum {
         FLOAT,
-        BLOB
+        BLOB,
+        NONE
     } type;
 } aku_PData;
 
