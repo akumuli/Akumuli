@@ -204,6 +204,19 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                     }
                 }
             }
+        } else {
+            if (pred == "in") {
+                // there is no "in" predicate so we need to include all
+                // series from this metric
+                std::stringstream series_regexp;
+                series_regexp << "" << metric << R"((\s\w+=\w+)*)";
+                std::string regex = series_regexp.str();
+                auto results = pool.regex_match(regex.c_str());
+                for(auto res: results) {
+                    aku_ParamId id = extract_id_from_pool(res);
+                    ids.push_back(id);
+                }
+            }
         }
     }
     return ids;
