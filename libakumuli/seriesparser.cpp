@@ -182,40 +182,48 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                                                    aku_logger_cb_t logger)
 {
     std::vector<aku_ParamId> ids;
-    auto where = ptree.get_child("where");
-    for (auto child: where) {
-        auto predicate = child.second;
-        auto items = predicate.get_child_optional(pred);
-        if (items) {
-            for (auto item: *items) {
-                std::string tag = item.first;
-                auto idslist = item.second;
-                // Read idlist
-                for (auto idnode: idslist) {
-                    std::string value = idnode.second.get_value<std::string>();
-                    std::stringstream series_regexp;
-                    series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
-                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
-                    std::string regex = series_regexp.str();
-                    auto results = pool.regex_match(regex.c_str());
-                    for(auto res: results) {
-                        aku_ParamId id = extract_id_from_pool(res);
-                        ids.push_back(id);
+    bool not_set = false;
+    auto where = ptree.get_child_optional("where");
+    if (where) {
+        for (auto child: *where) {
+            auto predicate = child.second;
+            auto items = predicate.get_child_optional(pred);
+            if (items) {
+                for (auto item: *items) {
+                    std::string tag = item.first;
+                    auto idslist = item.second;
+                    // Read idlist
+                    for (auto idnode: idslist) {
+                        std::string value = idnode.second.get_value<std::string>();
+                        std::stringstream series_regexp;
+                        series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                                      << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                        std::string regex = series_regexp.str();
+                        auto results = pool.regex_match(regex.c_str());
+                        for(auto res: results) {
+                            aku_ParamId id = extract_id_from_pool(res);
+                            ids.push_back(id);
+                        }
                     }
                 }
+            } else {
+                not_set = true;
             }
-        } else {
-            if (pred == "in") {
-                // there is no "in" predicate so we need to include all
-                // series from this metric
-                std::stringstream series_regexp;
-                series_regexp << "" << metric << R"((\s\w+=\w+)*)";
-                std::string regex = series_regexp.str();
-                auto results = pool.regex_match(regex.c_str());
-                for(auto res: results) {
-                    aku_ParamId id = extract_id_from_pool(res);
-                    ids.push_back(id);
-                }
+        }
+    } else {
+        not_set = true;
+    }
+    if (not_set) {
+        if (pred == "in") {
+            // there is no "in" predicate so we need to include all
+            // series from this metric
+            std::stringstream series_regexp;
+            series_regexp << "" << metric << R"((\s\w+=\w+)*)";
+            std::string regex = series_regexp.str();
+            auto results = pool.regex_match(regex.c_str());
+            for(auto res: results) {
+                aku_ParamId id = extract_id_from_pool(res);
+                ids.push_back(id);
             }
         }
     }
@@ -309,7 +317,7 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
         }
 
-        if (ids_included.empty()) {
+        if (ids_included.empty() && metrics.empty()) {
             // list all
             for (auto val: table) {
                 auto id = val.second;

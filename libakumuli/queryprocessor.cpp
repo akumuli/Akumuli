@@ -233,7 +233,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
 }
 
 bool ScanQueryProcessor::start() {
-    return false;
+    return true;
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {

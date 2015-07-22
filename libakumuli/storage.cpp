@@ -36,6 +36,7 @@
 #include <boost/bind.hpp>
 #include <boost/scoped_array.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/filesystem.hpp>
 
 namespace Akumuli {
 
@@ -735,6 +736,12 @@ apr_status_t Storage::new_storage(const char  *file_name,
     if (status != APR_SUCCESS)
         return status;
 
+    // get absolute volumes and metadata path
+    boost::filesystem::path volpath(volumes_path);
+    boost::filesystem::path metpath(metadata_path);
+    volpath = boost::filesystem::canonical(volpath);
+    metpath = boost::filesystem::canonical(metpath);
+
     // calculate list of page-file names
     std::vector<std::string> page_names;
     for (int ix = 0; ix < num_pages; ix++) {
@@ -742,7 +749,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         stream << file_name << "_" << ix << ".volume";
         char* path = nullptr;
         std::string volume_file_name = stream.str();
-        status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+        status = apr_filepath_merge(&path, volpath.c_str(), volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
         if (status != APR_SUCCESS) {
             auto error_message = apr_error_message(status);
             std::stringstream err;
@@ -756,11 +763,11 @@ apr_status_t Storage::new_storage(const char  *file_name,
 
     apr_pool_clear(mempool);
 
-    status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
+    status = apr_dir_make(metpath.c_str(), APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
         (*logger)(AKU_LOG_INFO, "Metadata dir already exists");
     }
-    status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
+    status = apr_dir_make(volpath.c_str(), APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
         (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
@@ -779,7 +786,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
     stream << file_name << ".akumuli";
     char* path = nullptr;
     std::string metadata_file_name = stream.str();
-    status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+    status = apr_filepath_merge(&path, metpath.c_str(), metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
     if (status != APR_SUCCESS) {
         auto error_message = apr_error_message(status);
         std::stringstream err;

@@ -73,9 +73,12 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) cons
         auto end = boost::cregex_iterator();
         for(boost::cregex_iterator i = begin; i != end; i++) {
             boost::cmatch match = *i;
-            const char* p = match[0].first;
-            size_t sz = match[0].second - match[0].first;
-            results.push_back(std::make_pair(p, sz));
+            if (match[0].matched) {
+                const char* b = match[0].first;
+                const char* e = match[0].second;
+                size_t sz = e - b;
+                results.push_back(std::make_pair(b, sz));
+            }
         }
     }
     return results;
