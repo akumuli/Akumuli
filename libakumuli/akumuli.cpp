@@ -71,7 +71,6 @@ const char* aku_error_message(int error_code) {
 }
 
 void aku_console_logger(int tag, const char* msg) {
-    return;
     apr_time_t now = apr_time_now();
     char ts[APR_RFC822_DATE_LEN];
     if (apr_rfc822_date(ts, now) != APR_SUCCESS) {

@@ -131,9 +131,9 @@ void PageHeader::close() {
     close_count++;
 }
 
-aku_Status PageHeader::add_entry( const aku_ParamId param
+aku_Status PageHeader::add_entry(const aku_ParamId param
                                 , const aku_Timestamp timestamp
-                                , const aku_MemRange range )
+                                , const aku_MemRange &range )
 {
     if (count != 0) {
         // Require >= timestamp
