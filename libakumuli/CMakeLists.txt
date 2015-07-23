@@ -29,6 +29,9 @@ add_library(akumuli SHARED
     buffer_cache.cpp
 )
 
+include(CppcheckTargets)
+add_cppcheck(akumuli UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)
+
 # libakumuli
 
 install(

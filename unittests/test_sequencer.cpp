@@ -237,7 +237,7 @@ void test_sequencer_searching(int dir) {
     RecordingCursor cursor;
     auto node = std::make_shared<Node>(caller, cursor);
     std::vector<std::string> metrics;
-    auto qproc = std::make_shared<QP::QueryProcessor>(node, metrics, begin, end);
+    auto qproc = std::make_shared<QP::ScanQueryProcessor>(node, metrics, begin, end);
 
     aku_Timestamp window;
     int seq_id;

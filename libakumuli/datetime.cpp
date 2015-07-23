@@ -15,6 +15,7 @@
  */
 
 #include "datetime.h"
+#include <cstdio>
 
 namespace Akumuli {
 
@@ -117,15 +118,26 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
 }
 
 aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
-    // TODO: can be optimized
-    boost::posix_time::ptime ptime = to_boost_ptime(ts);
-    std::string str = boost::posix_time::to_iso_string(ptime);
-    if (str.size() < buffer_size) {
-        // OK
-        strcpy(buffer, str.c_str());
-        return 1 + (int)str.size();
+    using namespace boost::gregorian;
+    using namespace boost::posix_time;
+    ptime ptime = to_boost_ptime(ts);
+    date date = ptime.date();
+    time_duration time = ptime.time_of_day();
+    gregorian_calendar::ymd_type ymd = gregorian_calendar::from_day_number(date.day_number());
+
+    auto fracsec = time.fractional_seconds();
+
+    int len = snprintf(buffer, buffer_size, "%04d%02d%02dT%02d%02d%02d.%09d",
+             // date part
+             (int)ymd.year, (int)ymd.month, (int)ymd.day,
+             // time part
+             (int)time.hours(), (int)time.minutes(), (int)time.seconds(), (int)fracsec
+             );
+
+    if (len < 0 || len == (int)buffer_size) {
+        return -26;
     }
-    return -1*static_cast<int>(str.size());
+    return len + 1;
 }
 
 }

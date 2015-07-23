@@ -46,11 +46,11 @@ struct CursorMock : DbCursor {
         return isdone_;
     }
 
-    aku_Status is_error(int *out_error_code_or_null) {
+    bool is_error(int *out_error_code_or_null) {
         if (out_error_code_or_null) {
             *out_error_code_or_null = AKU_SUCCESS;
         }
-        return AKU_SUCCESS;
+        return false;
     }
 
     void close() {}

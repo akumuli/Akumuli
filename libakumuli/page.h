@@ -183,8 +183,8 @@ public:
      * @returns operation status
      */
     aku_Status add_entry( const aku_ParamId param
-                 , const aku_Timestamp timestamp
-                 , const aku_MemRange range );
+                        , const aku_Timestamp timestamp
+                        , const aku_MemRange& range );
 
     /**
      * Add some data to last entry. (without length)

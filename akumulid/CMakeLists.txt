@@ -23,3 +23,5 @@ target_link_libraries(akumulid
     libboost_context.a
 )
 
+include(CppcheckTargets)
+add_cppcheck(akumulid UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)

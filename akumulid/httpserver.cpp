@@ -10,6 +10,10 @@ namespace MHD {
 static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
     QueryCursor* cur = (QueryCursor*)data;
+    auto status = cur->get_error();
+    if (status) {
+        return MHD_CONTENT_READER_END_OF_STREAM;
+    }
     size_t sz = cur->read_some(buf, max);
     if (sz == 0) {
         return MHD_CONTENT_READER_END_OF_STREAM;
@@ -50,10 +54,22 @@ static int accept_connection(void           *cls,
         // Should be called once
         cursor->start();
 
-        auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
-        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-        MHD_destroy_response(response);
-        return ret;
+        // Check for error
+        auto err = cursor->get_error();
+        if (err != AKU_SUCCESS) {
+            const char* error_msg = aku_error_message(err);
+            char buffer[0x200];
+            int len = snprintf(buffer, 0x200, "-%s\r\n", error_msg);
+            auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
+            int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+            MHD_destroy_response(response);
+            return ret;
+        } else {
+            auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
+            int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
+        }
     } else {
         // Unsupported method
         // TODO: implement GET handler for simple queries (self diagnostics)

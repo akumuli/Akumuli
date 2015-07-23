@@ -527,8 +527,6 @@ void Sequencer::searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequenc
     if (seq_id != sequence_number_.load()) {
         query->set_error(AKU_EBUSY);
         return;
-    } else {
-        query->stop();
     }
 }
 

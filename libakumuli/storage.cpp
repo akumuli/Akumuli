@@ -36,6 +36,7 @@
 #include <boost/bind.hpp>
 #include <boost/scoped_array.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/filesystem.hpp>
 
 namespace Akumuli {
 
@@ -343,28 +344,26 @@ void Storage::log_message(const char* message, uint64_t value) const {
 
 // Reading
 
+struct SearchError : std::runtime_error
+{
+    aku_Status error_code;
+    SearchError(const char* msg, aku_Status err) : std::runtime_error(msg), error_code(err) {}
+};
+
 struct TerminalNode : QP::Node {
 
     Caller &caller;
     InternalCursor* cursor;
-    bool error;
-    int times_completed;
 
     TerminalNode(Caller& ca, InternalCursor* cur)
         : caller(ca)
         , cursor(cur)
-        , error(false)
-        , times_completed(0)
     {
     }
 
     // Node interface
 
     void complete() {
-        times_completed++;
-    }
-
-    void complete_query() {
         cursor->complete(caller);
     }
 
@@ -373,8 +372,8 @@ struct TerminalNode : QP::Node {
     }
 
     void set_error(aku_Status status) {
-        error = true;
         cursor->set_error(caller, status);
+        throw SearchError("search error detected", status);
     }
 
     NodeType get_type() const {
@@ -385,59 +384,50 @@ struct TerminalNode : QP::Node {
 void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
-    // Parse query
-    auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
-    auto query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+    try {
+        // Parse query
+        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+        std::shared_ptr<QP::IQueryProcessor> query_processor;
+        try {
+            query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+        } catch (const QueryParserError& qpe) {
+            log_error(qpe.what());
+            cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);
+            return;
+        }
 
-    /* Fan out query
-     *
-     *         -> Volume
-     *       /            \
-     * Query  --> Volume --+--> Cursor
-     *       \            /
-     *         -> Volume
-     */
+        if (query_processor->start()) {
 
-    uint32_t starting_ix = active_volume_->get_page()->get_page_id();
-
-    if (!terminal_node->error) {
-        if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
-            for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-                uint32_t index = ix % volumes_.size();
-                PVolume volume = volumes_.at(index);
-
-                log_message("query volume", index);
-                volume->get_page()->searchV2(query_processor, cache_);
-                if (terminal_node->error) { break; }
-
-                log_message("query sequencer", index);
-                aku_Timestamp window;
-                int seq_id;
-                tie(window, seq_id) = volume->cache_->get_window();
-                volume->cache_->searchV2(query_processor, seq_id);
-            }
-        } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
-            for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
-                uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
-                PVolume volume = volumes_.at(index);
-
-                log_message("query sequencer", index);
-                aku_Timestamp window;
-                int seq_id;
-                tie(window, seq_id) = volume->cache_->get_window();
-                volume->cache_->searchV2(query_processor, seq_id);
-                if (terminal_node->error) { break; }
-
-                log_message("query volume", index);
-                volume->get_page()->searchV2(query_processor, cache_);
+            uint32_t starting_ix = active_volume_->get_page()->get_page_id();
+            if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
+                for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                    int seq_id;
+                    aku_Timestamp window;
+                    uint32_t index = ix % volumes_.size();
+                    PVolume volume = volumes_.at(index);
+                    tie(window, seq_id) = volume->cache_->get_window();
+                    volume->get_page()->searchV2(query_processor, cache_);
+                    volume->cache_->searchV2(query_processor, seq_id);
+                }
+            } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+                for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                    int seq_id;
+                    aku_Timestamp window;
+                    uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
+                    PVolume volume = volumes_.at(index);
+                    tie(window, seq_id) = volume->cache_->get_window();
+                    volume->cache_->searchV2(query_processor, seq_id);
+                    volume->get_page()->searchV2(query_processor, cache_);
+                }
+            } else {
+                AKU_PANIC("data corruption in query processor");
             }
 
-        } else {
-            AKU_PANIC("data corruption in query processor");
+            query_processor->stop();
         }
     }
-    if (!terminal_node->error) {
-        terminal_node->complete_query();
+    catch (const SearchError& err) {
+        log_error(err.what());
     }
 }
 
@@ -746,6 +736,12 @@ apr_status_t Storage::new_storage(const char  *file_name,
     if (status != APR_SUCCESS)
         return status;
 
+    // get absolute volumes and metadata path
+    boost::filesystem::path volpath(volumes_path);
+    boost::filesystem::path metpath(metadata_path);
+    volpath = boost::filesystem::canonical(volpath);
+    metpath = boost::filesystem::canonical(metpath);
+
     // calculate list of page-file names
     std::vector<std::string> page_names;
     for (int ix = 0; ix < num_pages; ix++) {
@@ -753,7 +749,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         stream << file_name << "_" << ix << ".volume";
         char* path = nullptr;
         std::string volume_file_name = stream.str();
-        status = apr_filepath_merge(&path, volumes_path, volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+        status = apr_filepath_merge(&path, volpath.c_str(), volume_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
         if (status != APR_SUCCESS) {
             auto error_message = apr_error_message(status);
             std::stringstream err;
@@ -767,11 +763,11 @@ apr_status_t Storage::new_storage(const char  *file_name,
 
     apr_pool_clear(mempool);
 
-    status = apr_dir_make(metadata_path, APR_OS_DEFAULT, mempool);
+    status = apr_dir_make(metpath.c_str(), APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
         (*logger)(AKU_LOG_INFO, "Metadata dir already exists");
     }
-    status = apr_dir_make(volumes_path, APR_OS_DEFAULT, mempool);
+    status = apr_dir_make(volpath.c_str(), APR_OS_DEFAULT, mempool);
     if (status == APR_EEXIST) {
         (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
@@ -790,7 +786,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
     stream << file_name << ".akumuli";
     char* path = nullptr;
     std::string metadata_file_name = stream.str();
-    status = apr_filepath_merge(&path, metadata_path, metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
+    status = apr_filepath_merge(&path, metpath.c_str(), metadata_file_name.c_str(), APR_FILEPATH_NATIVE, mempool);
     if (status != APR_SUCCESS) {
         auto error_message = apr_error_message(status);
         std::stringstream err;

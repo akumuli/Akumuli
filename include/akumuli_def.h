@@ -63,8 +63,9 @@
 #define AKU_ELATE_WRITE           9
 //! Not implemented error
 #define AKU_ENOT_IMPLEMENTED     10
-
-#define AKU_EMAX_ERROR            9
+//! Invalid query
+#define AKU_EQUERY_PARSING_ERROR 11
+#define AKU_EMAX_ERROR           12
 
 
 // Search error codes

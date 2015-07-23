@@ -29,7 +29,7 @@ struct AkumuliCursor : DbCursor {
         return aku_cursor_is_done(cursor_);
     }
 
-    virtual aku_Status is_error(int *out_error_code_or_null) {
+    virtual bool is_error(int *out_error_code_or_null) {
         return aku_cursor_is_error(cursor_, out_error_code_or_null);
     }
 

@@ -21,6 +21,7 @@
 #include "akumuli.h"
 #include "stringpool.h"
 #include "queryprocessor_fwd.h"
+#include "seriesparser.h"
 
 namespace Akumuli {
 namespace QP {
@@ -52,12 +53,10 @@ struct NodeBuilder {
 };
 
 
-/** Query processor.
-  * Should be built from textual representation (json at first).
-  * Should be used by both sequencer and page to match parameters
-  * and group them together.
+/** Numeric data query processor. Can be used to return raw data
+  * from HDD or derivatives (Depending on the list of processing nodes).
   */
-struct QueryProcessor : IQueryProcessor {
+struct ScanQueryProcessor : IQueryProcessor {
 
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
@@ -83,7 +82,7 @@ struct QueryProcessor : IQueryProcessor {
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
-    QueryProcessor(std::shared_ptr<Node> root,
+    ScanQueryProcessor(std::shared_ptr<Node> root,
                    std::vector<std::string> metrics,
                    aku_Timestamp begin,
                    aku_Timestamp end);
@@ -97,8 +96,7 @@ struct QueryProcessor : IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     int direction() const;
 
-    //! Should be called before processing begins
-    void start();
+    bool start();
 
     //! Process value
     bool put(const aku_Sample& sample);
@@ -107,6 +105,23 @@ struct QueryProcessor : IQueryProcessor {
     void stop();
 
     //! Set execution error
+    void set_error(aku_Status error);
+};
+
+
+struct MetadataQueryProcessor : IQueryProcessor {
+
+    std::vector<aku_ParamId> ids_;
+    std::shared_ptr<Node>    root_;
+
+    MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node);
+
+    aku_Timestamp lowerbound() const;
+    aku_Timestamp upperbound() const;
+    int direction() const;
+    bool start();
+    bool put(const aku_Sample &sample);
+    void stop();
     void set_error(aku_Status error);
 };
 

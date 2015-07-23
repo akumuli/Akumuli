@@ -16,7 +16,7 @@
 
 #pragma once
 #include "akumuli_def.h"
-#include "queryprocessor.h"
+#include "queryprocessor_fwd.h"
 #include "stringpool.h"
 
 #include <stdint.h>
@@ -31,7 +31,9 @@
 namespace Akumuli {
 
 //! Exception triggered by query parser
-struct QueryParserError;
+struct QueryParserError : std::runtime_error {
+    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
+};
 
 
 /** Series matcher. Table that maps series names to series
@@ -84,7 +86,7 @@ struct SeriesMatcher {
       * @param terminal_node should contain valid pointer to terminal(final) node
       * @param logger should contain valid pointer to logging function
       */
-    std::shared_ptr<QP::QueryProcessor> build_query_processor(const char* query,
+    std::shared_ptr<QP::IQueryProcessor> build_query_processor(const char* query,
                                                               std::shared_ptr<QP::Node> terminal_node,
                                                               aku_logger_cb_t logger);
 };

@@ -58,18 +58,19 @@ static const char* g_error_messages[] = {
     "Invalid data",
     "Error, no details available",
     "Late write",
+    "Not implemented",
+    "Query parsing error",
     "Unknown error code"
 };
 
 const char* aku_error_message(int error_code) {
-    if (error_code >= 0 && error_code < 10) {
+    if (error_code >= 0 && error_code < AKU_EMAX_ERROR) {
         return g_error_messages[error_code];
     }
-    return g_error_messages[10];
+    return g_error_messages[AKU_EMAX_ERROR];
 }
 
 void aku_console_logger(int tag, const char* msg) {
-    return;
     apr_time_t now = apr_time_now();
     char ts[APR_RFC822_DATE_LEN];
     if (apr_rfc822_date(ts, now) != APR_SUCCESS) {

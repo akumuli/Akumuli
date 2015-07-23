@@ -4,9 +4,11 @@
 #include "query_cursor.h"
 
 #include <iostream>
+#include <fstream>
 #include <regex>
 
 #include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 #include <apr_errno.h>
 
 namespace po=boost::program_options;
@@ -52,15 +54,16 @@ void create_db(const char* name,
 }
 
 void run_server(std::string path) {
-    AKU_UNUSED(path);
+
     auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
                                                           false,
                                                           AkumuliConnection::MaxDurability);
+
     auto tcp_server = std::make_shared<TcpServer>(connection, 4);
 
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
 
-    auto httpserver = std::make_shared<Http::HttpServer>(8888, qproc);
+    auto httpserver = std::make_shared<Http::HttpServer>(8877, qproc);
 
     tcp_server->start();
     httpserver->start();
@@ -86,32 +89,41 @@ uint64_t str2unixtime(std::string t) {
 
 int main(int argc, char** argv) {
     aku_initialize(nullptr);
-    po::options_description desc("Akumuli options");
-    desc.add_options()
-            ("help", "Produce help message")
-            ("path", po::value<std::string>(), "Path to database files")
-            ("create", "Create database")
-            ("name", po::value<std::string>(), "Database name (create)")
-            ("nvolumes", po::value<int32_t>(), "Number of volumes to create (create)")
-            ("window", po::value<std::string>(), "Window size (create)")
+
+    po::options_description cli_only_options;
+    cli_only_options.add_options()
+            ("help",                                "Produce help message")
+            ("create",                              "Create database")
+            ("name", po::value<std::string>(),      "Database name (create)")
+            ("nvolumes", po::value<int32_t>(),      "Number of volumes to create (create)")
+            ("window", po::value<std::string>(),    "Window size (create)")
             ;
+
+    po::options_description generic_options;
+    generic_options.add_options()
+            ("path", po::value<std::string>(),      "Path to database files")
+            ;
+
     po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
+    auto path2cfg = boost::filesystem::path(getenv("HOME"));
+    path2cfg /= ".akumulid";
+    std::fstream config_file(path2cfg.c_str());
+    po::store(po::parse_config_file(config_file, generic_options, true), vm);  // allow_unregistered=true
     po::notify(vm);
     if (vm.count("help")) {
-        std::cout << desc << std::endl;
+        std::cout << cli_only_options << std::endl;
         return 0;
     }
     if (!vm.count("path")) {
-        std::cout << desc << std::endl;
+        std::cout << "Incomplete configuration, path required" << std::endl;
+        std::cout << generic_options << std::endl;
         return -1;
     }
     std::string path = vm["path"].as<std::string>();
-    if (vm.count("create") == 0) {
-        run_server(path);
-    } else {
+    if (vm.count("create") != 0) {
         if (vm.count("nvolumes") == 0 || vm.count("name") == 0 || vm.count("window") == 0) {
-            std::cout << desc << std::endl;
+            std::cout << cli_only_options << std::endl;
             return -1;
         }
         std::string name = vm["name"].as<std::string>();
@@ -119,6 +131,8 @@ int main(int argc, char** argv) {
         std::string window = vm["window"].as<std::string>();
         create_db(name.c_str(), path.c_str(), nvol, 10000, str2unixtime(window), 100000);  // TODO: use correct numbers
     }
+
+    run_server(path);
 
     return 0;
 }

@@ -219,7 +219,7 @@ std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_Pa
     return std::make_shared<NodeT>(fn, next);
 }
 
-QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
+ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
                std::vector<std::string> metrics,
                aku_Timestamp begin,
                aku_Timestamp end)
@@ -232,31 +232,76 @@ QueryProcessor::QueryProcessor(std::shared_ptr<Node> root,
 {
 }
 
-void QueryProcessor::start() {
+bool ScanQueryProcessor::start() {
+    return true;
 }
 
-bool QueryProcessor::put(const aku_Sample &sample) {
+bool ScanQueryProcessor::put(const aku_Sample &sample) {
     return root_node_->put(sample);
 }
 
-void QueryProcessor::stop() {
+void ScanQueryProcessor::stop() {
     root_node_->complete();
 }
 
-void QueryProcessor::set_error(aku_Status error) {
+void ScanQueryProcessor::set_error(aku_Status error) {
     root_node_->set_error(error);
 }
 
-aku_Timestamp QueryProcessor::lowerbound() const {
+aku_Timestamp ScanQueryProcessor::lowerbound() const {
     return lowerbound_;
 }
 
-aku_Timestamp QueryProcessor::upperbound() const {
+aku_Timestamp ScanQueryProcessor::upperbound() const {
     return upperbound_;
 }
 
-int QueryProcessor::direction() const {
+int ScanQueryProcessor::direction() const {
     return direction_;
+}
+
+MetadataQueryProcessor::MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node)
+    : ids_(ids)
+    , root_(node)
+{
+}
+
+aku_Timestamp MetadataQueryProcessor::lowerbound() const {
+    return AKU_MAX_TIMESTAMP;
+}
+
+aku_Timestamp MetadataQueryProcessor::upperbound() const {
+    return AKU_MAX_TIMESTAMP;
+}
+
+int MetadataQueryProcessor::direction() const {
+    return AKU_CURSOR_DIR_FORWARD;
+}
+
+bool MetadataQueryProcessor::start() {
+    for (aku_ParamId id: ids_) {
+        aku_Sample s;
+        s.paramid = id;
+        s.timestamp = 0;
+        s.payload.type = aku_PData::NONE;
+        if (!root_->put(s)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool MetadataQueryProcessor::put(const aku_Sample &sample) {
+    // no-op
+    return false;
+}
+
+void MetadataQueryProcessor::stop() {
+    root_->complete();
+}
+
+void MetadataQueryProcessor::set_error(aku_Status error) {
+    root_->set_error(error);
 }
 
 }} // namespace

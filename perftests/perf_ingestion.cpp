@@ -226,7 +226,7 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int nchars = sprintf(buffer, "cpu = key=%d", ((int)i + 1) & 0xF);
+            int nchars = sprintf(buffer, "cpu key=%d", ((int)i + 1) & 0xF);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=
