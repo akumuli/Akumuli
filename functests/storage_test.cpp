@@ -69,8 +69,26 @@ struct Storage {
     virtual std::unique_ptr<Cursor> query(std::string begin,
                                           std::string end,
                                           std::vector<std::string> ids) = 0;
+    //! Query series names
+    virtual std::unique_ptr<Cursor> metadata_query(std::string metric,
+                                                   std::string where_clause) = 0;
 };
 
+boost::property_tree::ptree from_json(std::string json) {
+    //! C-string to streambuf adapter
+    struct MemStreambuf : std::streambuf {
+        MemStreambuf(const char* buf) {
+            char* p = const_cast<char*>(buf);
+            setg(p, p, p+strlen(p));
+        }
+    };
+
+    boost::property_tree::ptree ptree;
+    MemStreambuf strbuf(query);
+    std::istream stream(&strbuf);
+    boost::property_tree::json_parser::read_json(stream, ptree);
+    return ptree;
+}
 
 struct LocalCursor : Cursor {
     aku_Database*   db_;
@@ -311,6 +329,24 @@ struct LocalStorage : Storage {
         std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
         return std::move(ptr);
     }
+
+    virtual std::unique_ptr<Cursor> metadata_query(std::string metric, std::string where_clause) {
+        boost::property_tree::ptree query;
+        // No (re)sampling
+        query.add("select", "names");
+        // Add metric name
+        query.add("metric", metric);
+        // Where clause
+        boost::property_tree::ptree where = from_json(where_clause);
+        query.add_child("where", where);
+        std::stringstream stream;
+        boost::property_tree::json_parser::write_json(stream, query, true);
+        std::string query_text = stream.str();
+
+        auto cursor = aku_query(db_, query_text.c_str());
+        std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+        return std::move(ptr);
+    }
 };
 
 
@@ -505,6 +541,26 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     }
     Query query = { begin, end, ids };
     query_data(storage, query, expected);
+}
+
+void query_metadata(Storage* storage, std::string metric, std::string where_clause, std::vector<std::string> expected) {
+    std::unique_ptr<Cursor> cursor = storage->metadata_query(metric, where_clause);
+    std::vector<std::string> actual;
+    while(!cursor->done()) {
+        Cursor::RowT row;
+        if(!cursor->get_next_row(&row)) {
+            continue;
+        }
+        actual.push_back(std::get<2>(row) != exp.id);
+    }
+    cursor.reset();
+    std::sort(expected.begin(), expected.end());
+    std::sort(actual.begin(), actual.end());
+
+    if (actual.size() != expected.size()) {
+        std::runtime_error err("actual.size() != expected.size()");
+        BOOST_THROW_EXCEPTION(err);
+    }
 }
 
 int main(int argc, const char** argv) {
