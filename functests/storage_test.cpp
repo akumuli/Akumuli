@@ -324,26 +324,26 @@ struct DataPoint {
 
 
 std::vector<DataPoint> TEST_DATA = {
-    { "20150101T000000", "cpu key=0", false, 0.0,          "" },
-    { "20150101T000001", "cpu key=1",  true, NAN, "blob at 1" },
-    { "20150101T000002", "cpu key=2", false, 2.2,          "" },
-    { "20150101T000003", "cpu key=3",  true, NAN, "blob at 3" },
-    { "20150101T000004", "cpu key=4", false, 4.4,          "" },
-    { "20150101T000005", "cpu key=5",  true, NAN, "blob at 5" },
-    { "20150101T000006", "cpu key=0", false, 6.6,          "" },
-    { "20150101T000007", "cpu key=1",  true, NAN, "blob at 7" },
-    { "20150101T000008", "cpu key=2", false, 8.8,          "" },
-    { "20150101T000009", "cpu key=3",  true, NAN, "blob at 9" },
-    { "20150101T000010", "cpu key=4", false, 1.0,          "" },
-    { "20150101T000011", "cpu key=5",  true, NAN, "blob at 11"},
-    { "20150101T000012", "cpu key=0", false, 1.2,          "" },
-    { "20150101T000013", "cpu key=1",  true, NAN, "blob at 13"},
-    { "20150101T000014", "cpu key=2", false, 1.4,          "" },
-    { "20150101T000015", "cpu key=3",  true, NAN, "blob at 15"},
-    { "20150101T000016", "cpu key=4", false, 1.6,          "" },
-    { "20150101T000017", "cpu key=5",  true, NAN, "blob at 17"},
-    { "20150101T000018", "cpu key=0", false, 1.8,          "" },
-    { "20150101T000019", "cpu key=1",  true, NAN, "blob at 19"},
+    { "20150101T000000.000000000", "cpu key=0", false, 0.0,          "" },
+    { "20150101T000001.000000000", "cpu key=1",  true, NAN, "blob at 1" },
+    { "20150101T000002.000000000", "cpu key=2", false, 2.2,          "" },
+    { "20150101T000003.000000000", "cpu key=3",  true, NAN, "blob at 3" },
+    { "20150101T000004.000000000", "cpu key=4", false, 4.4,          "" },
+    { "20150101T000005.000000000", "cpu key=5",  true, NAN, "blob at 5" },
+    { "20150101T000006.000000000", "cpu key=0", false, 6.6,          "" },
+    { "20150101T000007.000000000", "cpu key=1",  true, NAN, "blob at 7" },
+    { "20150101T000008.000000000", "cpu key=2", false, 8.8,          "" },
+    { "20150101T000009.000000000", "cpu key=3",  true, NAN, "blob at 9" },
+    { "20150101T000010.000000000", "cpu key=4", false, 1.0,          "" },
+    { "20150101T000011.000000000", "cpu key=5",  true, NAN, "blob at 11"},
+    { "20150101T000012.000000000", "cpu key=0", false, 1.2,          "" },
+    { "20150101T000013.000000000", "cpu key=1",  true, NAN, "blob at 13"},
+    { "20150101T000014.000000000", "cpu key=2", false, 1.4,          "" },
+    { "20150101T000015.000000000", "cpu key=3",  true, NAN, "blob at 15"},
+    { "20150101T000016.000000000", "cpu key=4", false, 1.6,          "" },
+    { "20150101T000017.000000000", "cpu key=5",  true, NAN, "blob at 17"},
+    { "20150101T000018.000000000", "cpu key=0", false, 1.8,          "" },
+    { "20150101T000019.000000000", "cpu key=1",  true, NAN, "blob at 19"},
 };
 
 void add_element(Storage *storage, DataPoint& td) {
@@ -382,9 +382,8 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad timestamp, get " << std::get<1>(row)
                       << ", expected " << exp.timestamp << std::endl;
-            //std::runtime_error err("Bad result");
-            //BOOST_THROW_EXCEPTION(err);
-            continue;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
         }
         if (std::get<2>(row) != exp.id) {
             std::cout << "Error at " << ix << std::endl;
@@ -612,10 +611,10 @@ int main(int argc, const char** argv) {
             storage.open();
             // Add some data
             DataPoint newpoints[] = {
-                { "20150101T000020", "cpu key=2",  false, 2.0, ""},
-                { "20150101T000021", "cpu key=3",  true, NAN, "blob at 21"},
-                { "20150101T000022", "cpu key=4",  false, 2.2, ""},
-                { "20150101T000023", "cpu key=5",  true, NAN, "blob at 23"},
+                { "20150101T000020.000000000", "cpu key=2",  false, 2.0, ""},
+                { "20150101T000021.000000000", "cpu key=3",  true, NAN, "blob at 21"},
+                { "20150101T000022.000000000", "cpu key=4",  false, 2.2, ""},
+                { "20150101T000023.000000000", "cpu key=5",  true, NAN, "blob at 23"},
             };
             for (int i = 0; i < 4; i++) {
                 TEST_DATA.push_back(newpoints[i]);

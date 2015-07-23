@@ -362,7 +362,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool fast_path() {
         if (!MAX_INDEX_) {
-            query_->stop();
             return true;
         }
 
@@ -376,7 +375,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    query_->stop();
                     return true;
                 }
             }
@@ -386,7 +384,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     return false;
                 } else {
                     // return empty result
-                    query_->stop();
                     return true;
                 }
             }
@@ -654,7 +651,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             stats.stats.scan.fwd_bytes += std::get<0>(sums);
             stats.stats.scan.bwd_bytes += std::get<1>(sums);
         }
-        query_->stop();
     }
 };
 
