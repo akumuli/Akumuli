@@ -250,7 +250,7 @@ void generic_search_test
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 60;
     expectations.skew = 59;
@@ -261,7 +261,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_0)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_1)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 50;
     expectations.skew = 59;
@@ -271,7 +271,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_1)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 100;
     expectations.skew = 99;
@@ -281,7 +281,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_2)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
@@ -291,7 +291,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_3)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
@@ -302,7 +302,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_4)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_0)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 70;
     expectations.skew = 0;
@@ -312,7 +312,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_0)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_1)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 60;
     expectations.skew = 10;
@@ -322,7 +322,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_1)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 100;
     expectations.skew = 0;
@@ -332,7 +332,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_2)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
@@ -342,7 +342,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_3)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_4)
 {
     ExpectedSearchResults expectations;
-    expectations.completed = true;
+    expectations.completed = false;
     expectations.error_code = RecordingCursor::NO_ERROR;
     expectations.ressize = 0;
     expectations.skew = 0;
@@ -404,7 +404,7 @@ void generic_search_test_with_skew
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
 {
     ExpectedSearchResults e;
-    e.completed = true;
+    e.completed = false;
     e.error_code = RecordingCursor::NO_ERROR;
     e.ressize = 500;
     generic_search_test_with_skew(1, {1010L}, {2008L}, AKU_CURSOR_DIR_FORWARD, e);
@@ -413,7 +413,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_forward_with_skew_0)
 BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_backward_with_skew_0)
 {
     ExpectedSearchResults e;
-    e.completed = true;
+    e.completed = false;
     e.error_code = RecordingCursor::NO_ERROR;
     e.ressize = 500;
     generic_search_test_with_skew(1, {1010L}, {2008L}, AKU_CURSOR_DIR_BACKWARD, e);
