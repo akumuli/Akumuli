@@ -49,6 +49,9 @@ aku_Status QueryCursor::get_error() {
 size_t QueryCursor::read_some(char *buf, size_t buf_size) {
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
+        if (cursor_->is_done()) {
+            return 0;
+        }
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
         rdbuf_pos_ = 0u;
