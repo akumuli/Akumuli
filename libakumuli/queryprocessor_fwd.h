@@ -9,6 +9,7 @@ struct Node {
     enum NodeType {
         // Samplers
         RandomSampler,
+        MovingAverage,
         Resampler,
         // Filtering
         FilterById,

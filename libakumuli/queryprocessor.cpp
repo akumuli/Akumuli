@@ -143,6 +143,70 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
+struct MovingAverage : Node {
+    struct MACounter {
+        double acc;
+        size_t num;
+    };
+
+    aku_Timestamp const step_;
+    aku_Timestamp ts_;
+    std::shared_ptr<Node> next_;
+
+    MovingAverage(aku_Timestamp step, aku_Timestamp ts, std::shared_ptr<Node> next)
+        : step_(step)
+        , ts_(ts)
+        , next_(next)
+    {
+
+    }
+
+    std::unordered_map<aku_ParamId, MACounter> counters_;
+
+    virtual void complete() {
+        next_->complete();
+    }
+
+    virtual bool put(const aku_Sample &sample) {
+        // ignore BLOBs
+        if (sample.payload.type == aku_PData::FLOAT) {
+            aku_ParamId id = sample.paramid;
+            aku_Timestamp ts = sample.timestamp;
+            double value = sample.payload.value.float64;
+            if (ts < ts_) {
+                auto& cnt = counters_[id];
+                cnt.acc += value;
+                cnt.num += 1;
+            } else {
+                for (auto& cnt: counters_) {
+                    aku_Sample sample;
+                    sample.paramid = cnt.first;
+                    sample.payload.value.float64 = 0.0;
+                    if (cnt.second.num) {
+                        sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
+                    }
+                    sample.payload.type = aku_PData::FLOAT;
+                    sample.timestamp = ts_;
+                    cnt.second = {};
+                    if (!next_->put(sample)) {
+                        return false;
+                    }
+                }
+                ts_ += step_;
+            }
+        }
+        return true;
+    }
+
+    virtual void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    virtual NodeType get_type() const {
+        return Node::MovingAverage;
+    }
+};
+
 //                                   //
 //         Factory methods           //
 //                                   //
