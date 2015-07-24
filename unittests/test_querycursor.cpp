@@ -8,7 +8,7 @@
 #include <vector>
 #include <thread>
 
-#include "query_cursor.h"
+#include "query_results_pooler.h"
 
 using namespace Akumuli;
 
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(Test_query_cursor) {
     std::shared_ptr<DbConnection> con;
     con.reset(new ConnectionMock());
     char buffer[0x1000];
-    QueryCursor cursor(con, 1000);
+    QueryResultsPooler cursor(con, 1000);
     cursor.start();
     size_t len = cursor.read_some(buffer, 0x1000);
     BOOST_REQUIRE(len > 0);

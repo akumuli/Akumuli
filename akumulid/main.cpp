@@ -1,7 +1,7 @@
 #include "tcp_server.h"
 #include "httpserver.h"
 #include "utility.h"
-#include "query_cursor.h"
+#include "query_results_pooler.h"
 
 #include <iostream>
 #include <fstream>

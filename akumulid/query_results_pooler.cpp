@@ -1,9 +1,9 @@
-#include "query_cursor.h"
+#include "query_results_pooler.h"
 #include <cstdio>
 
 namespace Akumuli {
 
-QueryCursor::QueryCursor(std::shared_ptr<DbConnection> con, int readbufsize)
+QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize)
     : connection_(con)
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
@@ -16,29 +16,29 @@ QueryCursor::QueryCursor(std::shared_ptr<DbConnection> con, int readbufsize)
     }
 }
 
-void QueryCursor::throw_if_started() const {
+void QueryResultsPooler::throw_if_started() const {
     if (cursor_) {
         BOOST_THROW_EXCEPTION(std::runtime_error("allready started"));
     }
 }
 
-void QueryCursor::throw_if_not_started() const {
+void QueryResultsPooler::throw_if_not_started() const {
     if (!cursor_) {
         BOOST_THROW_EXCEPTION(std::runtime_error("not started"));
     }
 }
 
-void QueryCursor::start() {
+void QueryResultsPooler::start() {
     throw_if_started();
     cursor_ = connection_->search(query_text_);
 }
 
-void QueryCursor::append(const char *data, size_t data_size) {
+void QueryResultsPooler::append(const char *data, size_t data_size) {
     throw_if_started();
     query_text_ += std::string(data, data + data_size);
 }
 
-aku_Status QueryCursor::get_error() {
+aku_Status QueryResultsPooler::get_error() {
     aku_Status err = AKU_SUCCESS;
     if (cursor_->is_error(&err)) {
         return err;
@@ -46,7 +46,7 @@ aku_Status QueryCursor::get_error() {
     return AKU_SUCCESS;
 }
 
-size_t QueryCursor::read_some(char *buf, size_t buf_size) {
+size_t QueryResultsPooler::read_some(char *buf, size_t buf_size) {
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
         if (cursor_->is_done()) {
@@ -82,7 +82,7 @@ size_t QueryCursor::read_some(char *buf, size_t buf_size) {
 }
 
 //! Try to format sample
-char* QueryCursor::format(char* begin, char* end, const aku_Sample& sample) {
+char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sample) {
     // TODO: output formatting in query
     // RESP formatted output: +series name\r\n+timestamp\r\n+value\r\n (for double or $value for blob)
 
@@ -197,7 +197,7 @@ char* QueryCursor::format(char* begin, char* end, const aku_Sample& sample) {
     return begin;
 }
 
-void QueryCursor::close() {
+void QueryResultsPooler::close() {
     throw_if_not_started();
     cursor_->close();
 }
@@ -208,8 +208,8 @@ QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
 {
 }
 
-Http::QueryCursor* QueryProcessor::create() {
-    return new QueryCursor(con_, rdbufsize_);
+Http::QueryResultsPooler* QueryProcessor::create() {
+    return new QueryResultsPooler(con_, rdbufsize_);
 }
 
 }  // namespace

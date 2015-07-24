@@ -9,7 +9,7 @@ namespace Http {
 namespace MHD {
 static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
-    QueryCursor* cur = (QueryCursor*)data;
+    QueryResultsPooler* cur = (QueryResultsPooler*)data;
     auto status = cur->get_error();
     if (status) {
         return MHD_CONTENT_READER_END_OF_STREAM;
@@ -22,7 +22,7 @@ static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
 }
 
 static void free_callback(void *data) {
-    QueryCursor* cur = (QueryCursor*)data;
+    QueryResultsPooler* cur = (QueryResultsPooler*)data;
     cur->close();
     delete cur;
 }
@@ -38,7 +38,7 @@ static int accept_connection(void           *cls,
 {
     if (strcmp(method, "POST") == 0) {
         QueryProcessor *queryproc = static_cast<QueryProcessor*>(cls);
-        QueryCursor* cursor = static_cast<QueryCursor*>(*con_cls);
+        QueryResultsPooler* cursor = static_cast<QueryResultsPooler*>(*con_cls);
 
         if (cursor == nullptr) {
             cursor = queryproc->create();

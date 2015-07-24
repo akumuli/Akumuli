@@ -115,7 +115,7 @@ add_test(tcp-server test_tcp_server)
 add_executable(
     test_querycursor
     test_querycursor.cpp
-    ../akumulid/query_cursor.cpp
+    ../akumulid/query_results_pooler.cpp
     ../akumulid/ingestion_pipeline.cpp
     ../akumulid/logger.cpp
 )
