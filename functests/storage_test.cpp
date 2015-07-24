@@ -35,6 +35,7 @@ struct Cursor {
     enum RecordType {
         DOUBLE,
         BLOB,
+        NONE,
     };
 
     //                 typeid      timestmap    seriesname   value   blob
@@ -84,7 +85,7 @@ boost::property_tree::ptree from_json(std::string json) {
     };
 
     boost::property_tree::ptree ptree;
-    MemStreambuf strbuf(query);
+    MemStreambuf strbuf(json.c_str());
     std::istream stream(&strbuf);
     boost::property_tree::json_parser::read_json(stream, ptree);
     return ptree;
@@ -136,13 +137,17 @@ struct LocalCursor : Cursor {
                 BOOST_THROW_EXCEPTION(err);
             }
             std::string paramid(buffer, buffer + len - 1);
-            // Convert timestamp
-            len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
-            if (len <= 0) {
-                std::runtime_error err("bad timestamp");
-                BOOST_THROW_EXCEPTION(err);
+
+            std::string timestamp;
+            if (sample_.payload.type != aku_PData::NONE) {
+                // Convert timestamp
+                len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
+                if (len <= 0) {
+                    std::runtime_error err("bad timestamp");
+                    BOOST_THROW_EXCEPTION(err);
+                }
+                timestamp = std::string(buffer, buffer + len - 1);
             }
-            std::string timestamp(buffer, buffer + len - 1);
             // Convert payload
             if (sample_.payload.type == aku_PData::FLOAT) {
                 result = std::make_tuple(
@@ -151,7 +156,7 @@ struct LocalCursor : Cursor {
                             paramid,
                             sample_.payload.value.float64,
                             std::string());
-            } else {
+            } else if (sample_.payload.type == aku_PData::BLOB){
                 auto begin = (const char*)sample_.payload.value.blob.begin;
                 auto end = begin + sample_.payload.value.blob.size;
                 std::string payload(begin, end);
@@ -161,6 +166,13 @@ struct LocalCursor : Cursor {
                             paramid,
                             NAN,
                             payload);
+            } else {
+                result = std::make_tuple(
+                            NONE,
+                            std::string(),
+                            paramid,
+                            NAN,
+                            std::string());
             }
             return true;
         }
@@ -332,13 +344,21 @@ struct LocalStorage : Storage {
 
     virtual std::unique_ptr<Cursor> metadata_query(std::string metric, std::string where_clause) {
         boost::property_tree::ptree query;
+
         // No (re)sampling
         query.add("select", "names");
+
         // Add metric name
-        query.add("metric", metric);
+        if (!metric.empty()) {
+            query.add("metric", metric);
+        }
+
         // Where clause
-        boost::property_tree::ptree where = from_json(where_clause);
-        query.add_child("where", where);
+        if (!where_clause.empty()) {
+            boost::property_tree::ptree where = from_json(where_clause);
+            query.add_child("where", where);
+        }
+
         std::stringstream stream;
         boost::property_tree::json_parser::write_json(stream, query, true);
         std::string query_text = stream.str();
@@ -548,10 +568,10 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
     std::vector<std::string> actual;
     while(!cursor->done()) {
         Cursor::RowT row;
-        if(!cursor->get_next_row(&row)) {
+        if(!cursor->get_next_row(row)) {
             continue;
         }
-        actual.push_back(std::get<2>(row) != exp.id);
+        actual.push_back(std::get<2>(row));
     }
     cursor.reset();
     std::sort(expected.begin(), expected.end());
@@ -559,6 +579,19 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
 
     if (actual.size() != expected.size()) {
         std::runtime_error err("actual.size() != expected.size()");
+        BOOST_THROW_EXCEPTION(err);
+    }
+
+    bool has_error = false;
+    for (auto i = 0u; i < actual.size(); i++) {
+        if (actual.at(i) != expected.at(i)) {
+            has_error = true;
+            std::cout << "Error at (" << i << "), expected: " << expected.at(i)
+                                                << "actual: " << actual.at(i) << std::endl;
+        }
+    }
+    if (has_error) {
+        std::runtime_error err("bad metadata query results");
         BOOST_THROW_EXCEPTION(err);
     }
 }
@@ -621,14 +654,30 @@ int main(int argc, const char** argv) {
             "cpu key=5",
         };
 
-        {
-            // In this stage all data should be cached inside the the sequencer so only
-            // backward query should work fine.
+        const std::vector<std::string> noseries;
 
-            // Read in forward direction, result-set should be empty because all data is cached
-            //query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
+        const char* include_odd  = R"( [{"in":     {"key": [1, 3, 5] } }] )";
+        const char* exclude_odd  = R"( [{"not_in": {"key": [1, 3, 5] } }] )";
+        const char* include_even = R"( [{"in":     {"key": [0, 2, 4] } }] )";
+        const char* exclude_even = R"( [{"not_in": {"key": [0, 2, 4] } }] )";
+
+        {
+            // In this stage all data should be cached inside the the sequencer
+
+            // Query all metadata
+            query_metadata(&storage, "", "", allseries);
+            // Query by metric
+            query_metadata(&storage, "mem", "",             noseries);
+            query_metadata(&storage, "cpu", "",             allseries);
+            // Query by metric and key
+            query_metadata(&storage, "cpu", include_odd,    oddseries);
+            query_metadata(&storage, "cpu", include_even,   evenseries);
+            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
+            query_metadata(&storage, "cpu", exclude_even,   oddseries);
+
+            // Read in forward direction
+            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
-            // because cache accessed in backward direction
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
             // Try to read only half of the data-points in forward direction (should be empty)
             query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
@@ -645,6 +694,17 @@ int main(int argc, const char** argv) {
         {
             // Database is reopened. At this stage everything should be readable in both directions.
             storage.open();
+
+            // Query all metadata
+            query_metadata(&storage, "", "", allseries);
+            // Query by metric
+            query_metadata(&storage, "mem", "",             noseries);
+            query_metadata(&storage, "cpu", "",             allseries);
+            // Query by metric and key
+            query_metadata(&storage, "cpu", include_odd,    oddseries);
+            query_metadata(&storage, "cpu", include_even,   evenseries);
+            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
+            query_metadata(&storage, "cpu", exclude_even,   oddseries);
 
             query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false,  allseries);
@@ -676,6 +736,7 @@ int main(int argc, const char** argv) {
                 TEST_DATA.push_back(newpoints[i]);
                 add_element(&storage, newpoints[i]);
             }
+
             // Read in forward direction, result-set should be empty because all new data is cached
             query_subset(&storage, "20150101T000020", "20150101T000025", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
@@ -710,6 +771,40 @@ int main(int argc, const char** argv) {
             // Filter out numeric values
             query_subset(&storage, "20150101T000000", "20150101T000024", true, false,  oddseries);
             query_subset(&storage, "20150101T000000", "20150101T000024", false, false, oddseries);
+
+            // Add new series name
+            DataPoint newpoint = { "20150101T000023.000000000", "cpu key=5 xxx=1",  true, NAN, "blob at 23"};
+            add_element(&storage, newpoint);
+
+            const std::vector<std::string> newodds = {
+                "cpu key=1",
+                "cpu key=3",
+                "cpu key=5",
+                "cpu key=5 xxx=1",
+            };
+
+            // Query by metric and key
+            query_metadata(&storage, "cpu", include_odd, newodds);
+
+            storage.close();
+        }
+
+        {
+            storage.open();
+
+            // new metadata should be readable
+            const std::vector<std::string> newodds = {
+                "cpu key=1",
+                "cpu key=3",
+                "cpu key=5",
+                "cpu key=5 xxx=1",
+            };
+
+            // Query by metric and key
+            query_metadata(&storage, "cpu", include_odd,    newodds);
+            query_metadata(&storage, "cpu", include_even,   evenseries);
+            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
+            query_metadata(&storage, "cpu", exclude_even,   newodds);
 
             storage.close();
         }
