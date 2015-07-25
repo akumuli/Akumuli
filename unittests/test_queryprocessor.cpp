@@ -104,3 +104,40 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
         BOOST_REQUIRE(mock->ids[i-1] < mock->ids[i]);
     }
 }
+
+BOOST_AUTO_TEST_CASE(Test_moving_average_1) {
+    auto mock = std::make_shared<NodeMock>();
+    auto ma = NodeBuilder::make_moving_average(mock, 10, 0, &logger_stub);
+
+    // two parameters
+    std::vector<double> p1, p2;
+    const int END = 1000;  // 100 steps
+    for (int i = 0; i < END; i++) {
+        p1.push_back(1.0);
+        p2.push_back(2.0);
+    }
+    aku_Sample sample;
+    sample.payload.type = aku_PData::FLOAT;
+    for (int i = 0; i < END; i++) {
+        sample.paramid = 0;
+        sample.timestamp = i;
+        sample.payload.value.float64 = p1.at(i);
+        BOOST_REQUIRE(ma->put(sample));
+        sample.paramid = 1;
+        sample.timestamp = i;
+        sample.payload.value.float64 = p2.at(i);
+        BOOST_REQUIRE(ma->put(sample));
+    }
+    ma->complete();
+    const size_t EXPECTED_SIZE = 200;
+    BOOST_REQUIRE_EQUAL(mock->timestamps.size(), EXPECTED_SIZE);
+    for (size_t i = 0; i < EXPECTED_SIZE; i++) {
+        if (i % 2 == 0) {
+            BOOST_REQUIRE_CLOSE(mock->values.at(i), 1.0, 0.00001);
+        } else {
+            BOOST_REQUIRE_CLOSE(mock->values.at(i), 2.0, 0.00001);
+        }
+        BOOST_REQUIRE_EQUAL(mock->ids.at(i), i % 2);
+        BOOST_REQUIRE_EQUAL(mock->timestamps.at(i), 10 + (i/2 * 10));
+    }
+}

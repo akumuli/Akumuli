@@ -163,7 +163,26 @@ struct MovingAverage : Node {
 
     std::unordered_map<aku_ParamId, MACounter> counters_;
 
+    bool average_samples() {
+        for (auto& cnt: counters_) {
+            aku_Sample sample;
+            sample.paramid = cnt.first;
+            sample.payload.value.float64 = 0.0;
+            if (cnt.second.num) {
+                sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
+            }
+            sample.payload.type = aku_PData::FLOAT;
+            sample.timestamp = ts_;
+            cnt.second = {};
+            if (!next_->put(sample)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     virtual void complete() {
+        average_samples();
         next_->complete();
     }
 
@@ -178,19 +197,8 @@ struct MovingAverage : Node {
                 cnt.acc += value;
                 cnt.num += 1;
             } else {
-                for (auto& cnt: counters_) {
-                    aku_Sample sample;
-                    sample.paramid = cnt.first;
-                    sample.payload.value.float64 = 0.0;
-                    if (cnt.second.num) {
-                        sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
-                    }
-                    sample.payload.type = aku_PData::FLOAT;
-                    sample.timestamp = ts_;
-                    cnt.second = {};
-                    if (!next_->put(sample)) {
-                        return false;
-                    }
+                if (!average_samples()) {
+                    return false;
                 }
                 ts_ += step_;
             }
@@ -265,8 +273,9 @@ std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamI
 }
 
 std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
-                                                          std::shared_ptr<Node> next,
-                                                          aku_logger_cb_t logger) {
+                                                              std::shared_ptr<Node> next,
+                                                              aku_logger_cb_t logger)
+{
     struct Matcher {
         std::unordered_set<aku_ParamId> idset;
 
@@ -282,6 +291,15 @@ std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_Pa
     (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
     return std::make_shared<NodeT>(fn, next);
 }
+
+std::shared_ptr<Node> NodeBuilder::make_moving_average(std::shared_ptr<Node> next,
+                                                       aku_Timestamp step,
+                                                       aku_Timestamp threshold,
+                                                       aku_logger_cb_t logger)
+{
+    return std::make_shared<MovingAverage>(step, threshold, next);
+}
+
 
 ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
                std::vector<std::string> metrics,
