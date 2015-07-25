@@ -54,7 +54,6 @@ struct NodeBuilder {
     //! Create moving average
     static std::shared_ptr<Node> make_moving_average(std::shared_ptr<Node> next,
                                                      aku_Timestamp step,
-                                                     aku_Timestamp threshold,
                                                      aku_logger_cb_t logger);
 };
 

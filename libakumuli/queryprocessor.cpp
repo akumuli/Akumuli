@@ -150,13 +150,15 @@ struct MovingAverage : Node {
     };
 
     aku_Timestamp const step_;
+    bool first_hit_;
     aku_Timestamp lowerbound_, upperbound_;
     std::shared_ptr<Node> next_;
 
-    MovingAverage(aku_Timestamp step, aku_Timestamp ts, std::shared_ptr<Node> next)
+    MovingAverage(aku_Timestamp step, std::shared_ptr<Node> next)
         : step_(step)
-        , lowerbound_(ts)
-        , upperbound_(ts + step)
+        , first_hit_(true)
+        , lowerbound_(AKU_MIN_TIMESTAMP)
+        , upperbound_(AKU_MIN_TIMESTAMP)
         , next_(next)
     {
     }
@@ -191,6 +193,13 @@ struct MovingAverage : Node {
         if (sample.payload.type == aku_PData::FLOAT) {
             aku_ParamId id = sample.paramid;
             aku_Timestamp ts = sample.timestamp;
+            if (AKU_UNLIKELY(first_hit_ == true)) {
+                first_hit_ = false;
+                aku_Timestamp aligned = ts / step_ * step_;
+                // aligned <= ts
+                lowerbound_ = aligned;
+                upperbound_ = aligned + step_;
+            }
             double value = sample.payload.value.float64;
             if (ts > upperbound_) {
                 // Forward direction
@@ -303,10 +312,9 @@ std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_Pa
 
 std::shared_ptr<Node> NodeBuilder::make_moving_average(std::shared_ptr<Node> next,
                                                        aku_Timestamp step,
-                                                       aku_Timestamp threshold,
                                                        aku_logger_cb_t logger)
 {
-    return std::make_shared<MovingAverage>(step, threshold, next);
+    return std::make_shared<MovingAverage>(step, next);
 }
 
 

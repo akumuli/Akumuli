@@ -107,7 +107,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_moving_average(mock, 10, 0, &logger_stub);
+    auto ma = NodeBuilder::make_moving_average(mock, 10, &logger_stub);
 
     // two parameters
     std::vector<double> p1, p2;
@@ -141,7 +141,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_moving_average(mock, 10, 1000, &logger_stub);
+    auto ma = NodeBuilder::make_moving_average(mock, 10, &logger_stub);
 
     // two parameters
     std::vector<double> p1, p2;

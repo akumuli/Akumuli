@@ -308,10 +308,16 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
                 next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
             }
             if (sampling_params != NOSAMPLE && sampling_params.first != "all") {
-                next = NodeBuilder::make_random_sampler(sampling_params.first,
-                                                                sampling_params.second,
-                                                                next,
-                                                                logger);
+                if (sampling_params.first == "reservoir") {
+                    next = NodeBuilder::make_random_sampler(sampling_params.first,
+                                                            sampling_params.second,
+                                                            next,
+                                                            logger);
+                } else if (sampling_params.first == "moving_average") {
+                    next = NodeBuilder::make_moving_average(next,
+                                                            sampling_params.second,
+                                                            logger);
+                }
             }
             // Build query processor
             return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
