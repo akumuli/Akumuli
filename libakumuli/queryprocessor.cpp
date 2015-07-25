@@ -150,15 +150,15 @@ struct MovingAverage : Node {
     };
 
     aku_Timestamp const step_;
-    aku_Timestamp ts_;
+    aku_Timestamp lowerbound_, upperbound_;
     std::shared_ptr<Node> next_;
 
     MovingAverage(aku_Timestamp step, aku_Timestamp ts, std::shared_ptr<Node> next)
         : step_(step)
-        , ts_(ts)
+        , lowerbound_(ts)
+        , upperbound_(ts + step)
         , next_(next)
     {
-
     }
 
     std::unordered_map<aku_ParamId, MACounter> counters_;
@@ -172,7 +172,7 @@ struct MovingAverage : Node {
                 sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
             }
             sample.payload.type = aku_PData::FLOAT;
-            sample.timestamp = ts_;
+            sample.timestamp = upperbound_;
             cnt.second = {};
             if (!next_->put(sample)) {
                 return false;
@@ -192,15 +192,24 @@ struct MovingAverage : Node {
             aku_ParamId id = sample.paramid;
             aku_Timestamp ts = sample.timestamp;
             double value = sample.payload.value.float64;
-            if (ts < ts_) {
-                auto& cnt = counters_[id];
-                cnt.acc += value;
-                cnt.num += 1;
-            } else {
+            if (ts > upperbound_) {
+                // Forward direction
                 if (!average_samples()) {
                     return false;
                 }
-                ts_ += step_;
+                lowerbound_ += step_;
+                upperbound_ += step_;
+            } else if (ts < lowerbound_) {
+                // Backward direction
+                if (!average_samples()) {
+                    return false;
+                }
+                lowerbound_ -= step_;
+                upperbound_ -= step_;
+            } else {
+                auto& cnt = counters_[id];
+                cnt.acc += value;
+                cnt.num += 1;
             }
         }
         return true;
