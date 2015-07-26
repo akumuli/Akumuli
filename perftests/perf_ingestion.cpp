@@ -22,8 +22,8 @@ uint64_t NUM_ITERATIONS = 10*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
-const char* DB_PATH = "./test";
-const char* DB_META_FILE = "./test/test.akumuli";
+const char* DB_PATH = "test";
+const char* DB_META_FILE = "test/test.akumuli";
 
 class Timer
 {
