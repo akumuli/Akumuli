@@ -48,7 +48,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_random_sampler("reservoir", 5, mock, &logger_stub);
+    auto sampler = NodeBuilder::make_sampler("reservoir", 5, mock, &logger_stub);
 
 
     sampler->put(make(1ul, 1ul, 1.0));
@@ -73,7 +73,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_random_sampler("reservoir", 10, mock, &logger_stub);
+    auto sampler = NodeBuilder::make_sampler("reservoir", 10, mock, &logger_stub);
 
     for (uint64_t u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_random_sampler("reservoir", 1000, mock, &logger_stub);
+    auto sampler = NodeBuilder::make_sampler("reservoir", 1000, mock, &logger_stub);
 
     for (uint64_t u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));

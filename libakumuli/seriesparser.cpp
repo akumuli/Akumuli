@@ -105,30 +105,8 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
-static std::pair<std::string, size_t> parse_sampling_params(boost::property_tree::ptree const& ptree,
-                                                            aku_logger_cb_t logger) {
-    auto sample = ptree.get_child_optional("sample");
-    if (sample) {
-        if (sample->empty()) {
-            auto res = sample->get_value<std::string>("");
-            if (res == "all") {
-                return std::make_pair("all", 0);
-            }
-            (*logger)(AKU_LOG_ERROR, "No `sample` tag");
-            auto rte = std::runtime_error("`sample` expected");
-            BOOST_THROW_EXCEPTION(rte);
-        }
-        std::string sample_type;
-        size_t sampling_buffer_size;
-        for (auto child: *sample) {
-            sample_type = child.first;
-            sampling_buffer_size = child.second.get_value<size_t>();
-            break;
-        }
-        return std::make_pair(sample_type, sampling_buffer_size);
-    } else {
-        return std::make_pair("", 0);
-    }
+static boost::optional<const boost::property_tree::ptree&> parse_sampling_params(boost::property_tree::ptree const& ptree) {
+    return ptree.get_child_optional("sample");
 }
 
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
@@ -273,7 +251,7 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         auto select = parse_select_stmt(ptree, logger);
 
         // Read sampling method
-        auto sampling_params = parse_sampling_params(ptree, logger);
+        auto sampling_params = parse_sampling_params(ptree);
 
         // Read where clause
         std::vector<aku_ParamId> ids_included;
@@ -288,13 +266,13 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
         }
 
-        // Build topology
-        if (sampling_params != NOSAMPLE && select) {
+        if (sampling_params && select) {
             (*logger)(AKU_LOG_ERROR, "Can't combine select and sample statements together");
             auto rte = std::runtime_error("`sample` and `select` can't be used together");
             BOOST_THROW_EXCEPTION(rte);
         }
 
+        // Build topology
         std::shared_ptr<Node> next = terminal;
         if (!select) {
             // Read timestamps
@@ -307,17 +285,10 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             if (!ids_excluded.empty()) {
                 next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
             }
-            if (sampling_params != NOSAMPLE && sampling_params.first != "all") {
-                if (sampling_params.first == "reservoir") {
-                    next = NodeBuilder::make_random_sampler(sampling_params.first,
-                                                            sampling_params.second,
-                                                            next,
-                                                            logger);
-                } else if (sampling_params.first == "moving_average") {
-                    next = NodeBuilder::make_moving_average(next,
-                                                            sampling_params.second,
-                                                            logger);
-                }
+            if (sampling_params) {
+                    next = NodeBuilder::make_sampler(*sampling_params,
+                                                     next,
+                                                     logger);
             }
             // Build query processor
             return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);

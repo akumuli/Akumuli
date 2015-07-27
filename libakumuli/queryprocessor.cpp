@@ -22,6 +22,7 @@
 #include <unordered_set>
 
 #include <boost/lexical_cast.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace Akumuli {
 namespace QP {
@@ -236,23 +237,38 @@ struct MovingAverage : Node {
 //         Factory methods           //
 //                                   //
 
-std::shared_ptr<Node> NodeBuilder::make_random_sampler(std::string type,
-                                                       size_t buffer_size,
+std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
                                                        std::shared_ptr<Node> next,
                                                        aku_logger_cb_t logger)
 {
-    {
-        std::stringstream logfmt;
-        logfmt << "Creating random sampler of type " << type << " with buffer size " << buffer_size;
-        (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-    }
-    // only reservoir sampling is supported
-    if (type != "reservoir") {
-        NodeException except(Node::RandomSampler, "unsupported sampler type");
+    // ptree = { "algorithm": "reservoir", "size": "1000" }
+    std::string algorithm;
+    std::string size;
+    size_t nsize = 0;
+    try {
+        algorithm = ptree.get<std::string>("algorithm");
+        size = ptree.get<std::string>("size");
+        nsize = boost::lexical_cast<size_t>(nsize);
+        if (algorithm != "reservoir") {
+            // only this one is implemented
+            NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
+            BOOST_THROW_EXCEPTION(except);
+        }
+    } catch (const boost::property_tree::ptree_error&) {
+        NodeException except(Node::RandomSampler, "invalid sampler description");
+        BOOST_THROW_EXCEPTION(except);
+    } catch (const boost::bad_lexical_cast&) {
+        NodeException except(Node::RandomSampler, "invalid sampler description, size parameter should be an integer");
         BOOST_THROW_EXCEPTION(except);
     }
+    
+    // parse property tree
+    std::stringstream logfmt;
+    logfmt << "Creating " << algorithm << " sampler with buffer size " << nsize;
+    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
+
     // Build object
-    return std::make_shared<RandomSamplingNode>(buffer_size, next);
+    return std::make_shared<RandomSamplingNode>(nsize, next);
 }
 
 std::shared_ptr<Node> NodeBuilder::make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next, aku_logger_cb_t logger) {
