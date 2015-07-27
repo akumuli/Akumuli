@@ -167,17 +167,16 @@ struct MovingAverage : Node {
 
     bool average_samples() {
         for (auto& cnt: counters_) {
-            aku_Sample sample;
-            sample.paramid = cnt.first;
-            sample.payload.value.float64 = 0.0;
             if (cnt.second.num) {
+                aku_Sample sample;
+                sample.paramid = cnt.first;
                 sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
-            }
-            sample.payload.type = aku_PData::FLOAT;
-            sample.timestamp = upperbound_;
-            cnt.second = {};
-            if (!next_->put(sample)) {
-                return false;
+                sample.payload.type = aku_PData::FLOAT;
+                sample.timestamp = upperbound_;
+                cnt.second = {};
+                if (!next_->put(sample)) {
+                    return false;
+                }
             }
         }
         return true;

@@ -83,7 +83,6 @@ size_t QueryResultsPooler::read_some(char *buf, size_t buf_size) {
 
 //! Try to format sample
 char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sample) {
-    // TODO: output formatting in query
     // RESP formatted output: +series name\r\n+timestamp\r\n+value\r\n (for double or $value for blob)
 
     char* pskip = begin;  // return this pointer to skip sample
@@ -101,16 +100,19 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
 
     // Series name
     int len = connection_->param_id_to_series(sample.paramid, begin, size);
+    // '\0' character is counted in len
     if (len == 0) { // Error, no such Id
         len = snprintf(begin, size, "id=%lu", sample.paramid);
         if (len < 0 || len == size) {
             // Not enough space inside the buffer
             return nullptr;
         }
+        len += 1;  // for terminating '\0' character
     } else if (len < 0) {
         // Not enough space
         return nullptr;
     }
+    len--;  // terminating '\0' character should be rewritten
     begin += len;
     size  -= len;
     // Add trailing \r\n to the end
@@ -158,7 +160,7 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
         }
         if (sample.payload.type == aku_PData::FLOAT) {
             // Floating-point
-            len = snprintf(begin, size, "+%G\r\n", sample.payload.value.float64);
+            len = snprintf(begin, size, "+%e\r\n", sample.payload.value.float64);
             if (len == size || len < 0) {
                 return nullptr;
             }
@@ -167,32 +169,32 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
         } else if (sample.payload.type == aku_PData::BLOB) {
             // BLOB
             int blobsize = (int)sample.payload.value.blob.size;
-        if (blobsize < size) {
-            // write length prefix - "$X\r\n"
-            len = snprintf(begin, size, "$%d\r\n", blobsize);
-            if (len < 0 || len == size) {
-                return nullptr;
+            if (blobsize < size) {
+                // write length prefix - "$X\r\n"
+                len = snprintf(begin, size, "$%d\r\n", blobsize);
+                if (len < 0 || len == size) {
+                    return nullptr;
+                }
+                begin += len;
+                size  -= len;
+                if (blobsize > size) {
+                    return nullptr;
+                }
+                memcpy(begin, sample.payload.value.blob.begin, blobsize);
+                begin += blobsize;
+                size  -= blobsize;
+                if (size < 2) {
+                    return nullptr;
+                }
+                begin[0] = '\r';
+                begin[1] = '\n';
+                begin += 2;
+                size  -= 2;
             }
-            begin += len;
-            size  -= len;
-            if (blobsize > size) {
-                return nullptr;
-            }
-            memcpy(begin, sample.payload.value.blob.begin, blobsize);
-            begin += blobsize;
-            size  -= blobsize;
-            if (size < 2) {
-                return nullptr;
-            }
-            begin[0] = '\r';
-            begin[1] = '\n';
-            begin += 2;
-            size  -= 2;
+        } else {
+            // Something went wrong
+            return pskip;
         }
-    } else {
-        // Something went wrong
-        return pskip;
-    }
     }
     return begin;
 }

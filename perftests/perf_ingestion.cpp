@@ -226,7 +226,7 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int nchars = sprintf(buffer, "cpu key=%d", ((int)i + 1) & 0xF);
+            int nchars = sprintf(buffer, "cpu key=%d", ((int)i + 1) & 0xffff);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=
@@ -235,7 +235,7 @@ int main(int cnt, const char** args)
 
             // =payload=
             sample.payload.type = aku_PData::FLOAT;
-            sample.payload.value.float64 = i + 1;
+            sample.payload.value.float64 = i + 0.1;
 
             aku_Status status = aku_write(db, &sample);
 
