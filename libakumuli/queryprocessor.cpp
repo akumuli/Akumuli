@@ -22,6 +22,7 @@
 #include <unordered_set>
 
 #include <boost/lexical_cast.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace Akumuli {
 namespace QP {
@@ -143,27 +144,131 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
+struct MovingAverage : Node {
+    struct MACounter {
+        double acc;
+        size_t num;
+    };
+
+    aku_Timestamp const step_;
+    bool first_hit_;
+    aku_Timestamp lowerbound_, upperbound_;
+    std::shared_ptr<Node> next_;
+
+    MovingAverage(aku_Timestamp step, std::shared_ptr<Node> next)
+        : step_(step)
+        , first_hit_(true)
+        , lowerbound_(AKU_MIN_TIMESTAMP)
+        , upperbound_(AKU_MIN_TIMESTAMP)
+        , next_(next)
+    {
+    }
+
+    std::unordered_map<aku_ParamId, MACounter> counters_;
+
+    bool average_samples() {
+        for (auto& cnt: counters_) {
+            if (cnt.second.num) {
+                aku_Sample sample;
+                sample.paramid = cnt.first;
+                sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
+                sample.payload.type = aku_PData::FLOAT;
+                sample.timestamp = upperbound_;
+                cnt.second = {};
+                if (!next_->put(sample)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    virtual void complete() {
+        average_samples();
+        next_->complete();
+    }
+
+    virtual bool put(const aku_Sample &sample) {
+        // ignore BLOBs
+        if (sample.payload.type == aku_PData::FLOAT) {
+            aku_ParamId id = sample.paramid;
+            aku_Timestamp ts = sample.timestamp;
+            if (AKU_UNLIKELY(first_hit_ == true)) {
+                first_hit_ = false;
+                aku_Timestamp aligned = ts / step_ * step_;
+                // aligned <= ts
+                lowerbound_ = aligned;
+                upperbound_ = aligned + step_;
+            }
+            double value = sample.payload.value.float64;
+            if (ts > upperbound_) {
+                // Forward direction
+                if (!average_samples()) {
+                    return false;
+                }
+                lowerbound_ += step_;
+                upperbound_ += step_;
+            } else if (ts < lowerbound_) {
+                // Backward direction
+                if (!average_samples()) {
+                    return false;
+                }
+                lowerbound_ -= step_;
+                upperbound_ -= step_;
+            } else {
+                auto& cnt = counters_[id];
+                cnt.acc += value;
+                cnt.num += 1;
+            }
+        }
+        return true;
+    }
+
+    virtual void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    virtual NodeType get_type() const {
+        return Node::MovingAverage;
+    }
+};
+
 //                                   //
 //         Factory methods           //
 //                                   //
 
-std::shared_ptr<Node> NodeBuilder::make_random_sampler(std::string type,
-                                                       size_t buffer_size,
-                                                       std::shared_ptr<Node> next,
-                                                       aku_logger_cb_t logger)
+std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
+                                                std::shared_ptr<Node> next,
+                                                aku_logger_cb_t logger)
 {
-    {
-        std::stringstream logfmt;
-        logfmt << "Creating random sampler of type " << type << " with buffer size " << buffer_size;
-        (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-    }
-    // only reservoir sampling is supported
-    if (type != "reservoir") {
-        NodeException except(Node::RandomSampler, "unsupported sampler type");
+    // ptree = { "algorithm": "reservoir", "size": "1000" }
+    // or
+    // ptree = { "algorithm": "ma", "window": "100" }
+    try {
+        std::string algorithm;
+        algorithm = ptree.get<std::string>("algorithm");
+        if (algorithm == "reservoir") {
+            // Reservoir sampling
+            std::string size = ptree.get<std::string>("size");
+            uint32_t nsize = boost::lexical_cast<uint32_t>(size);
+            return std::make_shared<RandomSamplingNode>(nsize, next);
+        } else if (algorithm == "ma") {
+            // Moving average
+            std::string width = ptree.get<std::string>("window");  // sliding window width
+            aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
+            return std::make_shared<MovingAverage>(nwidth, next);
+        } else {
+            // only this one is implemented
+            NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
+            BOOST_THROW_EXCEPTION(except);
+        }
+    } catch (const boost::property_tree::ptree_error&) {
+        NodeException except(Node::RandomSampler, "invalid sampler description");
+        BOOST_THROW_EXCEPTION(except);
+    } catch (const boost::bad_lexical_cast&) {
+        NodeException except(Node::RandomSampler, "invalid sampler description, valid integer expected");
         BOOST_THROW_EXCEPTION(except);
     }
-    // Build object
-    return std::make_shared<RandomSamplingNode>(buffer_size, next);
 }
 
 std::shared_ptr<Node> NodeBuilder::make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next, aku_logger_cb_t logger) {
@@ -201,8 +306,9 @@ std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamI
 }
 
 std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
-                                                          std::shared_ptr<Node> next,
-                                                          aku_logger_cb_t logger) {
+                                                              std::shared_ptr<Node> next,
+                                                              aku_logger_cb_t logger)
+{
     struct Matcher {
         std::unordered_set<aku_ParamId> idset;
 

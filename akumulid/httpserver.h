@@ -29,16 +29,16 @@ namespace Http {
 struct AccessControlList {};  // TODO: implement ACL
 
 // Fwd decl
-struct QueryCursor;
+struct QueryResultsPooler;
 
 //! Query processor interface for HTTP server
 struct QueryProcessor {
     virtual ~QueryProcessor() = default;
-    virtual QueryCursor* create() = 0;
+    virtual QueryResultsPooler* create() = 0;
 };
 
-struct QueryCursor {
-    virtual ~QueryCursor() = default;
+struct QueryResultsPooler {
+    virtual ~QueryResultsPooler() = default;
 
     /** Start query execution
       */

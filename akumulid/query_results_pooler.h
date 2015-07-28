@@ -4,7 +4,7 @@
 
 namespace Akumuli {
 
-struct QueryCursor : Http::QueryCursor {
+struct QueryResultsPooler : Http::QueryResultsPooler {
 
     std::string query_text_;
     std::shared_ptr<DbConnection> connection_;
@@ -14,7 +14,7 @@ struct QueryCursor : Http::QueryCursor {
     size_t rdbuf_top_;
     static const size_t DEFAULT_RDBUF_SIZE_ = 1000u;
 
-    QueryCursor(std::shared_ptr<DbConnection> con, int readbufsize);
+    QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize);
 
     void throw_if_started() const;
 
@@ -41,7 +41,7 @@ struct QueryProcessor : Http::QueryProcessor
 
     QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf);
 
-    virtual Http::QueryCursor *create();
+    virtual Http::QueryResultsPooler *create();
 };
 
 }  // namespace

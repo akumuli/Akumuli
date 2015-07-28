@@ -9,7 +9,7 @@ add_executable(akumulid
     ingestion_pipeline.cpp ingestion_pipeline.h
     tcp_server.cpp tcp_server.h
     httpserver.cpp httpserver.h
-    query_cursor.cpp query_cursor.h
+    query_results_pooler.cpp query_results_pooler.h
 )
 
 target_link_libraries(akumulid

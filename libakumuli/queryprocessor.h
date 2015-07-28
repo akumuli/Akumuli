@@ -23,6 +23,8 @@
 #include "queryprocessor_fwd.h"
 #include "seriesparser.h"
 
+#include <boost/property_tree/ptree_fwd.hpp>
+
 namespace Akumuli {
 namespace QP {
 
@@ -35,8 +37,8 @@ struct NodeException : std::runtime_error {
 
 struct NodeBuilder {
     //! Create random sampling node
-    static std::shared_ptr<Node> make_random_sampler(std::string type,
-                                                     size_t buffer_size, std::shared_ptr<Node> next,
+    static std::shared_ptr<Node> make_sampler(const boost::property_tree::ptree &ptree,
+                                                     std::shared_ptr<Node> next,
                                                      aku_logger_cb_t logger);
 
     //! Create filtering node

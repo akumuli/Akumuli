@@ -739,8 +739,8 @@ apr_status_t Storage::new_storage(const char  *file_name,
     // get absolute volumes and metadata path
     boost::filesystem::path volpath(volumes_path);
     boost::filesystem::path metpath(metadata_path);
-    volpath = boost::filesystem::canonical(volpath);
-    metpath = boost::filesystem::canonical(metpath);
+    volpath = boost::filesystem::absolute(volpath);
+    metpath = boost::filesystem::absolute(metpath);
 
     // calculate list of page-file names
     std::vector<std::string> page_names;
