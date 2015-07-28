@@ -70,7 +70,8 @@ struct ConnectionMock : DbConnection
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {
             memcpy(buffer, strid.data(), strid.size());
-            return strid.size();
+            buffer[strid.size()] = 0;
+            return strid.size() + 1;
         }
         return -1*strid.size();
     }
@@ -84,7 +85,7 @@ using namespace Akumuli;
 
 BOOST_AUTO_TEST_CASE(Test_query_cursor) {
 
-    std::string expected = "+33\r\n+20141210T074243.111999000\r\n+3.1415\r\n+44\r\n+20141210T122434.999111000\r\n$10\r\nteststring\r\n";
+    std::string expected = "+33\r\n+20141210T074243.111999000\r\n+3.141500e+00\r\n+44\r\n+20141210T122434.999111000\r\n$10\r\nteststring\r\n";
     std::shared_ptr<DbConnection> con;
     con.reset(new ConnectionMock());
     char buffer[0x1000];

@@ -166,7 +166,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     }
     const char* json = R"(
             {
-                "sample": { "reservoir": 1000 },
+                "sample": { "algorithm": "reservoir", "size": 1000 },
                 "metric": ["cpu", "mem"],
                 "range" : {
                     "from": "20150101T000000",

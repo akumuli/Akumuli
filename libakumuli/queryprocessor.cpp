@@ -238,18 +238,26 @@ struct MovingAverage : Node {
 //                                   //
 
 std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
-                                                       std::shared_ptr<Node> next,
-                                                       aku_logger_cb_t logger)
+                                                std::shared_ptr<Node> next,
+                                                aku_logger_cb_t logger)
 {
     // ptree = { "algorithm": "reservoir", "size": "1000" }
-    std::string algorithm;
-    std::string size;
-    size_t nsize = 0;
+    // or
+    // ptree = { "algorithm": "ma", "window": "100" }
     try {
+        std::string algorithm;
         algorithm = ptree.get<std::string>("algorithm");
-        size = ptree.get<std::string>("size");
-        nsize = boost::lexical_cast<size_t>(nsize);
-        if (algorithm != "reservoir") {
+        if (algorithm == "reservoir") {
+            // Reservoir sampling
+            std::string size = ptree.get<std::string>("size");
+            uint32_t nsize = boost::lexical_cast<uint32_t>(size);
+            return std::make_shared<RandomSamplingNode>(nsize, next);
+        } else if (algorithm == "ma") {
+            // Moving average
+            std::string width = ptree.get<std::string>("window");  // sliding window width
+            aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
+            return std::make_shared<MovingAverage>(nwidth, next);
+        } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
             BOOST_THROW_EXCEPTION(except);
@@ -258,17 +266,9 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
         NodeException except(Node::RandomSampler, "invalid sampler description");
         BOOST_THROW_EXCEPTION(except);
     } catch (const boost::bad_lexical_cast&) {
-        NodeException except(Node::RandomSampler, "invalid sampler description, size parameter should be an integer");
+        NodeException except(Node::RandomSampler, "invalid sampler description, valid integer expected");
         BOOST_THROW_EXCEPTION(except);
     }
-    
-    // parse property tree
-    std::stringstream logfmt;
-    logfmt << "Creating " << algorithm << " sampler with buffer size " << nsize;
-    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-
-    // Build object
-    return std::make_shared<RandomSamplingNode>(nsize, next);
 }
 
 std::shared_ptr<Node> NodeBuilder::make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next, aku_logger_cb_t logger) {
@@ -324,14 +324,6 @@ std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_Pa
     (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
     return std::make_shared<NodeT>(fn, next);
 }
-
-std::shared_ptr<Node> NodeBuilder::make_moving_average(std::shared_ptr<Node> next,
-                                                       aku_Timestamp step,
-                                                       aku_logger_cb_t logger)
-{
-    return std::make_shared<MovingAverage>(step, next);
-}
-
 
 ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
                std::vector<std::string> metrics,

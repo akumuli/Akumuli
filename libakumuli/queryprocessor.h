@@ -52,11 +52,6 @@ struct NodeBuilder {
     //! Create filtering node
     static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
                                                             aku_logger_cb_t logger);
-
-    //! Create moving average
-    static std::shared_ptr<Node> make_moving_average(std::shared_ptr<Node> next,
-                                                     aku_Timestamp step,
-                                                     aku_logger_cb_t logger);
 };
 
 
