@@ -23,6 +23,7 @@
 
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 namespace Akumuli {
 namespace QP {
@@ -144,18 +145,17 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
-struct MovingAverage : Node {
-    struct MACounter {
-        double acc;
-        size_t num;
-    };
+// Generic sliding window
 
+template<class State>
+struct SlidingWindow : Node {
     aku_Timestamp const step_;
     bool first_hit_;
     aku_Timestamp lowerbound_, upperbound_;
     std::shared_ptr<Node> next_;
+    std::unordered_map<aku_ParamId, State> counters_;
 
-    MovingAverage(aku_Timestamp step, std::shared_ptr<Node> next)
+    SlidingWindow(aku_Timestamp step, std::shared_ptr<Node> next)
         : step_(step)
         , first_hit_(true)
         , lowerbound_(AKU_MIN_TIMESTAMP)
@@ -164,17 +164,16 @@ struct MovingAverage : Node {
     {
     }
 
-    std::unordered_map<aku_ParamId, MACounter> counters_;
-
     bool average_samples() {
-        for (auto& cnt: counters_) {
-            if (cnt.second.num) {
+        for (auto& pair: counters_) {
+            State& state = pair.second;
+            if (state.ready()) {
                 aku_Sample sample;
-                sample.paramid = cnt.first;
-                sample.payload.value.float64 = cnt.second.acc / cnt.second.num;
+                sample.paramid = pair.first;
+                sample.payload.value.float64 = state.value();
                 sample.payload.type = aku_PData::FLOAT;
                 sample.timestamp = upperbound_;
-                cnt.second = {};
+                state.reset();
                 if (!next_->put(sample)) {
                     return false;
                 }
@@ -216,9 +215,8 @@ struct MovingAverage : Node {
                 lowerbound_ -= step_;
                 upperbound_ -= step_;
             } else {
-                auto& cnt = counters_[id];
-                cnt.acc += value;
-                cnt.num += 1;
+                auto& state = counters_[id];
+                state.add(value);
             }
         }
         return true;
@@ -229,6 +227,41 @@ struct MovingAverage : Node {
     }
 
     virtual NodeType get_type() const {
+        return Node::Resampler;
+    }
+};
+
+struct MovingAverageCounter {
+    double acc = 0;
+    size_t num = 0;
+
+    void reset() {
+        acc = 0;
+        num = 0;
+    }
+
+    double value() const {
+        return acc/num;
+    }
+
+    bool ready() const {
+        return num != 0;
+    }
+
+    void add(double value) {
+        acc += value;
+        num++;
+    }
+};
+
+struct MovingAverage : SlidingWindow<MovingAverageCounter> {
+
+    MovingAverage(aku_Timestamp step, std::shared_ptr<Node> next)
+        : SlidingWindow<MovingAverageCounter>(step, next)
+    {
+    }
+
+    virtual NodeType get_type() const override {
         return Node::MovingAverage;
     }
 };

@@ -105,10 +105,6 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
-static boost::optional<const boost::property_tree::ptree&> parse_sampling_params(boost::property_tree::ptree const& ptree) {
-    return ptree.get_child_optional("sample");
-}
-
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
                                              aku_logger_cb_t logger) {
     std::vector<std::string> metrics;
@@ -251,7 +247,7 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
         auto select = parse_select_stmt(ptree, logger);
 
         // Read sampling method
-        auto sampling_params = parse_sampling_params(ptree);
+        auto sampling_params = ptree.get_child_optional("sample");
 
         // Read where clause
         std::vector<aku_ParamId> ids_included;
@@ -285,8 +281,8 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             if (!ids_excluded.empty()) {
                 next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
             }
-            if (sampling_params) {
-                    next = NodeBuilder::make_sampler(*sampling_params,
+            for (const auto& subquery: *sampling_params) {
+                    next = NodeBuilder::make_sampler(subquery.second,
                                                      next,
                                                      logger);
             }
