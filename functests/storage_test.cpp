@@ -308,8 +308,6 @@ struct LocalStorage : Storage {
                                           std::vector<std::string> ids)
     {
         boost::property_tree::ptree query;
-        // No (re)sampling
-        query.add("sample", "all");
         // Add metric name
         query.add("metric", "cpu");
         // Add time constraints
