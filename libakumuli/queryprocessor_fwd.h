@@ -12,6 +12,8 @@ struct Node {
         MovingAverage,
         MovingMedian,
         Resampler,
+        // Tok-K elements
+        SpaceSaver,
         // Filtering
         FilterById,
         // Group by

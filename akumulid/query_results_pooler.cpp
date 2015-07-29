@@ -124,7 +124,10 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
     begin += 2;
     size  -= 2;
 
-    if (sample.payload.type != aku_PData::NONE) {
+    if (sample.payload.type != aku_PData::NONE &&
+        sample.payload.type != aku_PData::NO_TIMESTAMP_BLOB &&
+        sample.payload.type != aku_PData::NO_TIMESTAMP_FLOAT)
+    {
         // Timestamp
         begin[0] = '+';
         begin++;
@@ -153,12 +156,14 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
         begin[1] = '\n';
         begin += 2;
         size  -= 2;
+    }
 
+    if (sample.payload.type != aku_PData::NONE) {
         // Payload
         if (size < 0) {
             return nullptr;
         }
-        if (sample.payload.type == aku_PData::FLOAT) {
+        if (sample.payload.type & aku_PData::FLOAT) {
             // Floating-point
             len = snprintf(begin, size, "+%e\r\n", sample.payload.value.float64);
             if (len == size || len < 0) {
@@ -166,7 +171,7 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
             }
             begin += len;
             size  -= len;
-        } else if (sample.payload.type == aku_PData::BLOB) {
+        } else if (sample.payload.type & aku_PData::BLOB) {
             // BLOB
             int blobsize = (int)sample.payload.value.blob.size;
             if (blobsize < size) {

@@ -199,7 +199,6 @@ struct SlidingWindow : Node {
                 lowerbound_ = aligned;
                 upperbound_ = aligned + step_;
             }
-            double value = sample.payload.value.float64;
             if (ts > upperbound_) {
                 // Forward direction
                 if (!average_samples()) {
@@ -216,7 +215,7 @@ struct SlidingWindow : Node {
                 upperbound_ -= step_;
             } else {
                 auto& state = counters_[id];
-                state.add(value);
+                state.add(sample);
             }
         }
         return true;
@@ -248,8 +247,8 @@ struct MovingAverageCounter {
         return num != 0;
     }
 
-    void add(double value) {
-        acc += value;
+    void add(aku_Sample const& value) {
+        acc += value.payload.value.float64;
         num++;
     }
 };
@@ -292,8 +291,8 @@ struct MovingMedianCounter {
         return !acc.empty();
     }
 
-    void add(double value) {
-        acc.push_back(value);
+    void add(aku_Sample const& value) {
+        acc.push_back(value.payload.value.float64);
     }
 };
 
@@ -309,6 +308,74 @@ struct MovingMedian : SlidingWindow<MovingMedianCounter> {
     }
 };
 
+
+struct SpaceSaver : Node {
+    std::shared_ptr<Node> next_;
+    std::unordered_map<aku_ParamId, size_t> counters_;
+    const size_t N;
+
+    SpaceSaver(const size_t n, std::shared_ptr<Node> next)
+        : next_(next)
+        , N(n)
+    {
+    }
+
+    virtual void complete() {
+        std::vector<aku_Sample> samples;
+        for (auto it: counters_) {
+            aku_Sample s;
+            s.paramid = it.first;
+            s.payload.type = aku_PData::NO_TIMESTAMP_FLOAT;
+            s.payload.value.float64 = it.second;
+            samples.push_back(s);
+        }
+        std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
+            return lhs.payload.value.float64 > rhs.payload.value.float64;
+        });
+        for (const auto& s: samples) {
+            if (!next_->put(s)) {
+                break;
+            }
+        }
+        next_->complete();
+    }
+
+    virtual bool put(const aku_Sample &sample) {
+        auto id = sample.paramid;
+        auto it = counters_.find(id);
+        if (it == counters_.end()) {
+            // new element
+            if (counters_.size() == N) {
+                // remove element with smallest count
+                size_t min = std::numeric_limits<size_t>::max();
+                auto min_iter = it;
+                for (auto i = counters_.begin(); i != counters_.end(); i++) {
+                    if (i->second < min) {
+                        min_iter = i;
+                        min = i->second;
+                    }
+                }
+                counters_.erase(min_iter);
+            }
+            counters_[id] = 1u;
+        } else {
+            // increment
+            it->second++;
+        }
+        return true;
+    }
+
+    virtual void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    virtual NodeType get_type() const {
+        return Node::SpaceSaver;
+    }
+};
+
+
+
 //                                   //
 //         Factory methods           //
 //                                   //
@@ -322,6 +389,8 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
     // ptree = { "algorithm": "ma", "window": "100" }
     // or
     // ptree = { "algorithm": "mm", "window": "100" }
+    // or
+    // ptree = { "algorithm": "top-k", "N": "10" }
     try {
         std::string algorithm;
         algorithm = ptree.get<std::string>("algorithm");
@@ -340,6 +409,11 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string width = ptree.get<std::string>("window");  // sliding window width
             aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
             return std::make_shared<MovingMedian>(nwidth, next);
+        } else if (algorithm == "top-k") {
+            // SpaceSaver algorithm
+            std::string N = ptree.get<std::string>("N");
+            size_t n = boost::lexical_cast<size_t>(N);
+            return std::make_shared<SpaceSaver>(n, next);
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");

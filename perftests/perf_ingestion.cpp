@@ -18,7 +18,7 @@
 using namespace std;
 
 int DB_SIZE = 2;
-uint64_t NUM_ITERATIONS = 10*1000*1000;
+uint64_t NUM_ITERATIONS = 100*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -151,6 +151,23 @@ enum Mode {
     READ
 };
 
+//! Generate time-series from random walk
+struct RandomGen {
+    std::random_device                  randdev;
+    std::mt19937                        generator;
+    std::normal_distribution<double>  distribution;
+
+    RandomGen(double mean, double stddev)
+        : generator(randdev())
+        , distribution(mean, stddev)
+    {
+    }
+
+    int generate() {
+        return (int)abs(distribution(generator));
+    }
+};
+
 Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
@@ -221,12 +238,14 @@ int main(int cnt, const char** args)
     if (mode != READ) {
         uint64_t busy_count = 0;
         // Fill in data
+        RandomGen gen(0, 100);
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             aku_Sample sample;
             char buffer[100];
 
             // =series=
-            int nchars = sprintf(buffer, "cpu key=%d", ((int)i + 1) & 0xffff);
+            int id = gen.generate();
+            int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=

@@ -64,9 +64,11 @@ typedef struct {
     } value;
     //! Data element type
     enum {
-        FLOAT,
-        BLOB,
-        NONE
+        FLOAT=0x1,
+        BLOB=0x2,
+        NONE=0x0,
+        NO_TIMESTAMP_FLOAT=0x11,
+        NO_TIMESTAMP_BLOB=0x12,
     } type;
 } aku_PData;
 
