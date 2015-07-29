@@ -10,6 +10,7 @@ struct Node {
         // Samplers
         RandomSampler,
         MovingAverage,
+        MovingMedian,
         Resampler,
         // Filtering
         FilterById,

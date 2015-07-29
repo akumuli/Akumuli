@@ -266,6 +266,49 @@ struct MovingAverage : SlidingWindow<MovingAverageCounter> {
     }
 };
 
+struct MovingMedianCounter {
+    // NOTE: median-of-medians or some approx. estimation method can be used here
+    mutable std::vector<double> acc;
+
+    void reset() {
+        std::vector<double> tmp;
+        std::swap(tmp, acc);
+    }
+
+    double value() const {
+        if (acc.empty()) {
+            AKU_PANIC("`ready` should be called first");
+        }
+        if (acc.size() < 2) {
+            return acc.at(0);
+        }
+        auto middle = acc.begin();
+        std::advance(middle, acc.size() / 2);
+        std::partial_sort(acc.begin(), middle, acc.end());
+        return *middle;
+    }
+
+    bool ready() const {
+        return !acc.empty();
+    }
+
+    void add(double value) {
+        acc.push_back(value);
+    }
+};
+
+struct MovingMedian : SlidingWindow<MovingMedianCounter> {
+
+    MovingMedian(aku_Timestamp step, std::shared_ptr<Node> next)
+        : SlidingWindow<MovingMedianCounter>(step, next)
+    {
+    }
+
+    virtual NodeType get_type() const override {
+        return Node::MovingMedian;
+    }
+};
+
 //                                   //
 //         Factory methods           //
 //                                   //
@@ -277,6 +320,8 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
     // ptree = { "algorithm": "reservoir", "size": "1000" }
     // or
     // ptree = { "algorithm": "ma", "window": "100" }
+    // or
+    // ptree = { "algorithm": "mm", "window": "100" }
     try {
         std::string algorithm;
         algorithm = ptree.get<std::string>("algorithm");
@@ -290,6 +335,11 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string width = ptree.get<std::string>("window");  // sliding window width
             aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
             return std::make_shared<MovingAverage>(nwidth, next);
+        } else if (algorithm == "mm") {
+            // Moving median
+            std::string width = ptree.get<std::string>("window");  // sliding window width
+            aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
+            return std::make_shared<MovingMedian>(nwidth, next);
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
