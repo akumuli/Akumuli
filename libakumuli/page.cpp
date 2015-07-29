@@ -535,7 +535,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header->paramids.at(i),
                 pdata,
             };
-            queryproc->put(result);
+            return queryproc->put(result);
         };
 
         if (IS_BACKWARD_) {
@@ -543,7 +543,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
                                       upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
-                    put_entry(i);
+                    if (!put_entry(i)) {
+                        probe_in_time_range = false;
+                        break;
+                    }
                 } else {
                     probe_in_time_range = lowerbound_ <= header->timestamps[i];
                     if (!probe_in_time_range) {
@@ -557,7 +560,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
                                       upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
-                    put_entry(i);
+                    if (!put_entry(i)) {
+                        probe_in_time_range = false;
+                        break;
+                    }
                 } else {
                     probe_in_time_range = upperbound_ >= header->timestamps[i];
                     if (!probe_in_time_range) {
