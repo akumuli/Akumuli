@@ -28,3 +28,51 @@ BOOST_AUTO_TEST_CASE(Test_string_iso_to_timestamp_conversion) {
     BOOST_REQUIRE_EQUAL(std::string(buffer), std::string(timestamp_str));
 
 }
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_seconds) {
+
+    const char* test_case = "10s";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 3u);
+    aku_Duration expected = 10000000000ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_nanos) {
+
+    const char* test_case = "111n";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 4u);
+    aku_Duration expected = 111ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_nanos2) {
+
+    const char* test_case = "111";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 3u);
+    aku_Duration expected = 111ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_us) {
+
+    const char* test_case = "111us";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 5u);
+    aku_Duration expected = 111000ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_ms) {
+
+    const char* test_case = "111ms";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 5u);
+    aku_Duration expected = 111000000ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}
+
+BOOST_AUTO_TEST_CASE(Test_string_to_duration_minutes) {
+
+    const char* test_case = "111m";
+    aku_Duration actual = DateTimeUtil::parse_duration(test_case, 4u);
+    aku_Duration expected = 111*60*1000000000ul;
+    BOOST_REQUIRE_EQUAL(actual, expected);
+}

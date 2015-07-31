@@ -26,6 +26,8 @@
 
 namespace Akumuli {
 
+using aku_Duration = aku_Timestamp;
+
 /** aku_TimeStamp is a main datatype to represent date-time values.
   * It stores number of nanoseconds since epoch so it can fit uint64_t and doesn't prone to year 2038
   * problem.
@@ -53,6 +55,11 @@ struct DateTimeUtil {
     /** Convert timestamp to string.
       */
     static aku_Status to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size);
+
+    /** Parse time-duration from string
+      * @throw BadDateTimeFormat on error
+      */
+    static aku_Duration parse_duration(const char* str, size_t size);
 };
 
 }

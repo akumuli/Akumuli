@@ -16,6 +16,7 @@
 
 #include "queryprocessor.h"
 #include "util.h"
+#include "datetime.h"
 
 #include <random>
 #include <algorithm>
@@ -402,12 +403,12 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
         } else if (algorithm == "ma") {
             // Moving average
             std::string width = ptree.get<std::string>("window");  // sliding window width
-            aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
+            auto nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingAverage>(nwidth, next);
         } else if (algorithm == "mm") {
             // Moving median
             std::string width = ptree.get<std::string>("window");  // sliding window width
-            aku_Timestamp nwidth = boost::lexical_cast<aku_Timestamp>(width);  // TODO: use conversion f-n from datetime.h
+            aku_Timestamp nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingMedian>(nwidth, next);
         } else if (algorithm == "top-k") {
             // SpaceSaver algorithm

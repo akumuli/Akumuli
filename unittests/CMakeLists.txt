@@ -150,6 +150,7 @@ add_executable(
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/stringpool.cpp
+    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(
@@ -177,6 +178,7 @@ add_executable(
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/stringpool.cpp
+    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(

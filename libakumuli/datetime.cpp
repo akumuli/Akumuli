@@ -16,6 +16,7 @@
 
 #include "datetime.h"
 #include <cstdio>
+#include <boost/regex.hpp>
 
 namespace Akumuli {
 
@@ -139,6 +140,55 @@ aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t bu
     }
     return len + 1;
 }
+
+aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
+    static const char* exp = R"(^(\d+)(n|us|s|min|ms|m|h)?$)";
+    static boost::regex regex(exp, boost::regex_constants::optimize);
+    boost::cmatch m;
+    if (!boost::regex_match(str, m, regex)) {
+        BadDateTimeFormat bad_duration("bad duration");
+        BOOST_THROW_EXCEPTION(bad_duration);
+    }
+    auto num = m[1];
+    auto unit = m[2].first;
+    auto unitlen = m[2].second - m[2].first;
+    auto K = 0ul;
+    if (unitlen > 0) {
+        switch(unit[0]) {
+        case 'n':  // nanosecond
+            K = 1ul;
+            break;
+        case 'u':  // microsecond
+            K = 1000ul;
+            break;
+        case 's':  // second
+            K = 1000000000ul;
+            break;
+        case 'm':
+            switch(unitlen) {
+            case 1:
+            case 3:  // minute
+                K = 60*1000000000ul;
+                break;
+            case 2:  // milisecond
+                K = 1000000ul;
+                break;
+            }
+            break;
+        case 'h':  // hour
+            K = 60*60*1000000000ul;
+            break;
+        }
+        if (K == 0ul) {
+            BadDateTimeFormat err("unknown time duration unit");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    } else {
+        K = 1ul;
+    }
+    return K*atoll(num.first);
+}
+
 
 }
 
