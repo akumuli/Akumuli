@@ -64,13 +64,16 @@ typedef struct {
     } value;
     //! Data element type
     enum {
-        FLOAT=0x1,
-        BLOB=0x2,
-        NONE=0x0,
-        NO_TIMESTAMP_FLOAT=0x11,
-        NO_TIMESTAMP_BLOB=0x12,
-    } type;
+        PARAMID_BIT     = 0x1,
+        TIMESTAMP_BIT   = 0x2,
+        BLOB_BIT        = 0x4,
+        FLOAT_BIT       = 0x8,
+    };
+    uint32_t type;
 } aku_PData;
+
+#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)
+#define AKU_PAYLOAD_BLOB (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::BLOB_BIT)
 
 
 //! Cursor result type

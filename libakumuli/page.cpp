@@ -523,11 +523,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
             aku_PData pdata;
             if (header->values.at(i).type == ChunkValue::BLOB) {
-                pdata.type =  aku_PData::BLOB;
+                pdata.type = AKU_PAYLOAD_BLOB;
                 pdata.value.blob.begin = page->read_entry_data(header->values.at(i).value.blobval.offset);
                 pdata.value.blob.size = header->values.at(i).value.blobval.length;
             } else if (header->values.at(i).type == ChunkValue::FLOAT) {
-                pdata.type = aku_PData::FLOAT;
+                pdata.type = AKU_PAYLOAD_FLOAT;
                 pdata.value.float64 = header->values.at(i).value.floatval;
             }
             aku_Sample result = {
@@ -605,7 +605,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     dbg_count++;
 #endif
                     aku_PData pdata;
-                    pdata.type = aku_PData::BLOB;
+                    pdata.type = AKU_PAYLOAD_BLOB;
                     pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
                     pdata.value.blob.size = probe_entry->length;
                     aku_Sample result = {

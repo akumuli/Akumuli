@@ -42,7 +42,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     aku_Sample s;
     s.paramid = id;
     s.timestamp = t;
-    s.payload.type = aku_PData::FLOAT;
+    s.payload.type = AKU_PAYLOAD_FLOAT;
     s.payload.value.float64 = value;
     return s;
 }

@@ -74,11 +74,11 @@ aku_ParamId TimeSeriesValue::get_paramid() const {
 aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     aku_Sample res;
     if (type_ == BLOB) {
-        res.payload.type                = aku_PData::BLOB;
+        res.payload.type                = AKU_PAYLOAD_BLOB;
         res.payload.value.blob.begin    = page->read_entry_data(payload.blob.value);
         res.payload.value.blob.size     = payload.blob.value_length;
     } else {
-        res.payload.type                = aku_PData::FLOAT;
+        res.payload.type                = AKU_PAYLOAD_FLOAT;
         res.payload.value.float64       = payload.value;
     }
     res.paramid   = key_id_;

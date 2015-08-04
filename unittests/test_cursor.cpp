@@ -20,7 +20,7 @@ void test_cursor(int n_iter, int buf_size) {
             aku_Sample r;
             r.payload.value.blob.begin = reinterpret_cast<void*>(i);
             r.payload.value.blob.size = sizeof(i);
-            r.payload.type = aku_PData::BLOB;
+            r.payload.type = AKU_PAYLOAD_BLOB;
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -200,7 +200,7 @@ static void coroutine(Caller& caller, InternalCursor* cursor, bool backward) {
             aku_Sample sample;
             sample.paramid = next & 3;
             sample.timestamp = next;
-            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = 0.0;
             cursor->put(caller, sample);
             next += std::rand() % 100;
@@ -211,7 +211,7 @@ static void coroutine(Caller& caller, InternalCursor* cursor, bool backward) {
             aku_Sample sample;
             sample.paramid = next & 3;
             sample.timestamp = next;
-            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = 0.0;
             cursor->put(caller, sample);
             next -= std::rand() % 100;

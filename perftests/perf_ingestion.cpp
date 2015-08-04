@@ -253,7 +253,7 @@ int main(int cnt, const char** args)
             aku_parse_timestamp(buffer, &sample);
 
             // =payload=
-            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = i + 0.1;
 
             aku_Status status = aku_write(db, &sample);

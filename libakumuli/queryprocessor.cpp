@@ -172,7 +172,7 @@ struct SlidingWindow : Node {
                 aku_Sample sample;
                 sample.paramid = pair.first;
                 sample.payload.value.float64 = state.value();
-                sample.payload.type = aku_PData::FLOAT;
+                sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.timestamp = upperbound_;
                 state.reset();
                 if (!next_->put(sample)) {
@@ -190,7 +190,7 @@ struct SlidingWindow : Node {
 
     virtual bool put(const aku_Sample &sample) {
         // ignore BLOBs
-        if (sample.payload.type == aku_PData::FLOAT) {
+        if (sample.payload.type == AKU_PAYLOAD_FLOAT) {
             aku_ParamId id = sample.paramid;
             aku_Timestamp ts = sample.timestamp;
             if (AKU_UNLIKELY(first_hit_ == true)) {
@@ -326,7 +326,7 @@ struct SpaceSaver : Node {
         for (auto it: counters_) {
             aku_Sample s;
             s.paramid = it.first;
-            s.payload.type = aku_PData::NO_TIMESTAMP_FLOAT;
+            s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
             s.payload.value.float64 = it.second;
             samples.push_back(s);
         }
@@ -547,7 +547,7 @@ bool MetadataQueryProcessor::start() {
         aku_Sample s;
         s.paramid = id;
         s.timestamp = 0;
-        s.payload.type = aku_PData::NONE;
+        s.payload.type = aku_PData::PARAMID_BIT;
         if (!root_->put(s)) {
             return false;
         }

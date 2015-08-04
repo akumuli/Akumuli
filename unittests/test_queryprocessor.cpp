@@ -58,7 +58,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     aku_Sample s;
     s.paramid = id;
     s.timestamp = t;
-    s.payload.type = aku_PData::FLOAT;
+    s.payload.type = AKU_PAYLOAD_FLOAT;
     s.payload.value.float64 = value;
     return s;
 }
@@ -143,7 +143,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
         p2.push_back(2.0);
     }
     aku_Sample sample;
-    sample.payload.type = aku_PData::FLOAT;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
     for (int i = 0; i < END; i++) {
         sample.paramid = 0;
         sample.timestamp = i;
@@ -179,7 +179,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
         p2.push_back(2.0);
     }
     aku_Sample sample;
-    sample.payload.type = aku_PData::FLOAT;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
     for (int i = END; i --> 0;) {
         sample.paramid = 0;
         sample.timestamp = i;

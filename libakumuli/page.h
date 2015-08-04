@@ -40,14 +40,14 @@ namespace Akumuli {
 namespace {
     //! Get payload length
     uint32_t get_pd_length(const aku_PData& pdata) {
-        assert(pdata.type == aku_PData::BLOB);
+        assert(pdata.type & aku_PData::BLOB_BIT);
         return pdata.value.blob.size;
     }
 
     //! Get payload pointer
     template<class T>
     const T* get_pd_pointer(const aku_PData& pdata) {
-        assert(pdata.type == aku_PData::BLOB);
+        assert(pdata.type & aku_PData::BLOB_BIT);
         return static_cast<const T*>(pdata.value.blob.begin);
     }
 }

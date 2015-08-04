@@ -146,7 +146,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
                 aku_Sample res;
-                res.payload.type = aku_PData::BLOB;
+                res.payload.type = AKU_PAYLOAD_BLOB;
                 res.payload.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
                 res.payload.value.blob.size = 1;
                 exp.emplace_back(res);
@@ -171,7 +171,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
         aku_Sample res;
-        res.payload.type = aku_PData::BLOB;
+        res.payload.type = AKU_PAYLOAD_BLOB;
         auto p = i + sizeof(PageHeader);
         res.payload.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge
         exp.emplace_back(res);                                      // wouldn't fail, it will return offset value as pointer
