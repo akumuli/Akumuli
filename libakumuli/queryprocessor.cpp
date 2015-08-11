@@ -346,6 +346,7 @@ struct SpaceSaver : Node {
         auto it = counters_.find(id);
         if (it == counters_.end()) {
             // new element
+            size_t count = 1u;
             if (counters_.size() == N) {
                 // remove element with smallest count
                 size_t min = std::numeric_limits<size_t>::max();
@@ -357,8 +358,9 @@ struct SpaceSaver : Node {
                     }
                 }
                 counters_.erase(min_iter);
+                count = min;
             }
-            counters_[id] = 1u;
+            counters_[id] = count;
         } else {
             // increment
             it->second++;
@@ -387,11 +389,11 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
 {
     // ptree = { "algorithm": "reservoir", "size": "1000" }
     // or
-    // ptree = { "algorithm": "ma", "window": "100" }
+    // ptree = { "algorithm": "moving-average", "window": "100" }
     // or
-    // ptree = { "algorithm": "mm", "window": "100" }
+    // ptree = { "algorithm": "moving-median", "window": "100" }
     // or
-    // ptree = { "algorithm": "top-k", "N": "10" }
+    // ptree = { "algorithm": "space-saving", "N": "10" }
     try {
         std::string algorithm;
         algorithm = ptree.get<std::string>("algorithm");
@@ -400,17 +402,17 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string size = ptree.get<std::string>("size");
             uint32_t nsize = boost::lexical_cast<uint32_t>(size);
             return std::make_shared<RandomSamplingNode>(nsize, next);
-        } else if (algorithm == "ma") {
+        } else if (algorithm == "moving-average") {
             // Moving average
             std::string width = ptree.get<std::string>("window");  // sliding window width
             auto nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingAverage>(nwidth, next);
-        } else if (algorithm == "mm") {
+        } else if (algorithm == "moving-median") {
             // Moving median
             std::string width = ptree.get<std::string>("window");  // sliding window width
             aku_Timestamp nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingMedian>(nwidth, next);
-        } else if (algorithm == "top-k") {
+        } else if (algorithm == "space-saving") {
             // SpaceSaver algorithm
             std::string N = ptree.get<std::string>("N");
             size_t n = boost::lexical_cast<size_t>(N);
