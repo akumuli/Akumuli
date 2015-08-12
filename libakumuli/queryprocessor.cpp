@@ -312,7 +312,13 @@ struct MovingMedian : SlidingWindow<MovingMedianCounter> {
 
 struct SpaceSaver : Node {
     std::shared_ptr<Node> next_;
-    std::unordered_map<aku_ParamId, size_t> counters_;
+
+    struct Counter {
+        size_t count;
+        size_t error;
+    };
+
+    std::unordered_map<aku_ParamId, Counter> counters_;
     const size_t N;
 
     SpaceSaver(const size_t n, std::shared_ptr<Node> next)
@@ -327,7 +333,7 @@ struct SpaceSaver : Node {
             aku_Sample s;
             s.paramid = it.first;
             s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
-            s.payload.value.float64 = it.second;
+            s.payload.value.float64 = it.second.count;
             samples.push_back(s);
         }
         std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
@@ -347,23 +353,25 @@ struct SpaceSaver : Node {
         if (it == counters_.end()) {
             // new element
             size_t count = 1u;
+            size_t error = 0u;
             if (counters_.size() == N) {
                 // remove element with smallest count
                 size_t min = std::numeric_limits<size_t>::max();
                 auto min_iter = it;
                 for (auto i = counters_.begin(); i != counters_.end(); i++) {
-                    if (i->second < min) {
+                    if (i->second.count < min) {
                         min_iter = i;
-                        min = i->second;
+                        min = i->second.count;
                     }
                 }
                 counters_.erase(min_iter);
-                count = min;
+                count = min + 1;
+                error = min;
             }
-            counters_[id] = count;
+            counters_[id] = { count, error };
         } else {
             // increment
-            it->second++;
+            it->second.count++;
         }
         return true;
     }
@@ -418,6 +426,7 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             size_t n = boost::lexical_cast<size_t>(N);
             return std::make_shared<SpaceSaver>(n, next);
         } else if (algorithm == "change-detector") {
+            throw "not implemented";
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
