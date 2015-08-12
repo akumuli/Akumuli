@@ -417,6 +417,7 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string N = ptree.get<std::string>("N");
             size_t n = boost::lexical_cast<size_t>(N);
             return std::make_shared<SpaceSaver>(n, next);
+        } else if (algorithm == "change-detector") {
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
