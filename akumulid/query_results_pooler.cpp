@@ -135,9 +135,13 @@ char* QueryResultsPooler::format(char* begin, char* end, const aku_Sample& sampl
         if (size < 0) {
             return nullptr;
         }
-        len = aku_timestamp_to_string(sample.timestamp, begin, size) - 1;  // -1 is for '\0' character
+        if ((sample.payload.type&aku_PData::CUSTOM_TIMESTAMP) == 0) {
+            len = aku_timestamp_to_string(sample.timestamp, begin, size) - 1;  // -1 is for '\0' character
+        } else {
+            len = -1;
+        }
         if (len == -1) {
-            // Invalid timestamp, format as number
+            // Invalid or custom timestamp, format as number
             len = snprintf(begin, size, "ts=%lu", sample.timestamp);
             if (len < 0 || len == size) {
                 // Not enough space inside the buffer

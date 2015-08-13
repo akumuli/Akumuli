@@ -244,7 +244,12 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int id = gen.generate();
+            int id = i & 0xFFFFF;  //gen.generate();
+            if (id % 2 == 0) {
+                id = 0;
+            } else if (id % 3 == 0) {
+                id = 1;
+            }
             int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 

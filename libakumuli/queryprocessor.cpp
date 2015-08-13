@@ -309,32 +309,49 @@ struct MovingMedian : SlidingWindow<MovingMedianCounter> {
     }
 };
 
-
+template<bool weighted>
 struct SpaceSaver : Node {
     std::shared_ptr<Node> next_;
 
-    struct Counter {
-        size_t count;
-        size_t error;
+    struct Item {
+        double count;
+        double error;
     };
 
-    std::unordered_map<aku_ParamId, Counter> counters_;
-    const size_t N;
+    std::unordered_map<aku_ParamId, Item> counters_;
+    //! Capacity
+    double N;
+    const size_t M;
+    const double P;
 
-    SpaceSaver(const size_t n, std::shared_ptr<Node> next)
+    /** C-tor.
+      * @param error is a allowed error value between 0 and 1
+      * @param portion is a frequency (or weight) portion that we interested in
+      * Object should report all items wich frequencies is greater then (portion-error)*N
+      * where N is a number of elements (or total weight of all items in a stream).
+      */
+    SpaceSaver(double error, double portion, std::shared_ptr<Node> next)
         : next_(next)
-        , N(n)
+        , N(0)
+        , M(ceil(1.0/error))
+        , P(portion)  // between 0 and 1
     {
+        assert(P >= 0.0);
+        assert(P <= 1.0);
     }
 
     virtual void complete() {
         std::vector<aku_Sample> samples;
+        auto support = N*P;
         for (auto it: counters_) {
-            aku_Sample s;
-            s.paramid = it.first;
-            s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
-            s.payload.value.float64 = it.second.count;
-            samples.push_back(s);
+            auto estimate = it.second.count - it.second.error;
+            if (support < estimate) {
+                aku_Sample s;
+                s.paramid = it.first;
+                s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
+                s.payload.value.float64 = it.second.count;
+                samples.push_back(s);
+            }
         }
         std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
             return lhs.payload.value.float64 > rhs.payload.value.float64;
@@ -348,13 +365,19 @@ struct SpaceSaver : Node {
     }
 
     virtual bool put(const aku_Sample &sample) {
+        if (weighted) {
+            if ((sample.payload.type&aku_PData::FLOAT_BIT) == 0) {
+                return true;
+            }
+        }
         auto id = sample.paramid;
+        auto weight = weighted ? sample.payload.value.float64 : 1.0;
         auto it = counters_.find(id);
         if (it == counters_.end()) {
             // new element
-            size_t count = 1u;
-            size_t error = 0u;
-            if (counters_.size() == N) {
+            double count = weight;
+            double error = 0;
+            if (counters_.size() == M) {
                 // remove element with smallest count
                 size_t min = std::numeric_limits<size_t>::max();
                 auto min_iter = it;
@@ -365,14 +388,15 @@ struct SpaceSaver : Node {
                     }
                 }
                 counters_.erase(min_iter);
-                count = min + 1;
-                error = min;
+                count += min;
+                error  = min;
             }
             counters_[id] = { count, error };
         } else {
             // increment
-            it->second.count++;
+            it->second.count += weight;
         }
+        N += weight;
         return true;
     }
 
@@ -401,31 +425,38 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
     // or
     // ptree = { "algorithm": "moving-median", "window": "100" }
     // or
-    // ptree = { "algorithm": "space-saving", "N": "10" }
+    // ptree = { "algorithm": "frequent-items", "capacity": "1000" }
     try {
-        std::string algorithm;
-        algorithm = ptree.get<std::string>("algorithm");
-        if (algorithm == "reservoir") {
+        std::string name;
+        name = ptree.get<std::string>("name");
+        if (name == "reservoir") {
             // Reservoir sampling
             std::string size = ptree.get<std::string>("size");
             uint32_t nsize = boost::lexical_cast<uint32_t>(size);
             return std::make_shared<RandomSamplingNode>(nsize, next);
-        } else if (algorithm == "moving-average") {
+        } else if (name == "moving-average") {
             // Moving average
             std::string width = ptree.get<std::string>("window");  // sliding window width
             auto nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingAverage>(nwidth, next);
-        } else if (algorithm == "moving-median") {
+        } else if (name == "moving-median") {
             // Moving median
             std::string width = ptree.get<std::string>("window");  // sliding window width
             aku_Timestamp nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
             return std::make_shared<MovingMedian>(nwidth, next);
-        } else if (algorithm == "space-saving") {
-            // SpaceSaver algorithm
-            std::string N = ptree.get<std::string>("N");
-            size_t n = boost::lexical_cast<size_t>(N);
-            return std::make_shared<SpaceSaver>(n, next);
-        } else if (algorithm == "change-detector") {
+        } else if (name == "frequent-items") {
+            std::string serror = ptree.get<std::string>("error");
+            std::string sportion = ptree.get<std::string>("portion");
+            double error = boost::lexical_cast<double>(serror);
+            double portion = boost::lexical_cast<double>(sportion);
+            return std::make_shared<SpaceSaver<false>>(error, portion, next);
+        } else if (name == "heavy-hitters") {
+            std::string serror = ptree.get<std::string>("error");
+            std::string sportion = ptree.get<std::string>("portion");
+            double error = boost::lexical_cast<double>(serror);
+            double portion = boost::lexical_cast<double>(sportion);
+            return std::make_shared<SpaceSaver<true>>(error, portion, next);
+        } else if (name == "change-detector") {
             throw "not implemented";
         } else {
             // only this one is implemented

@@ -64,10 +64,11 @@ typedef struct {
     } value;
     //! Data element type
     enum {
-        PARAMID_BIT     = 0x1,
-        TIMESTAMP_BIT   = 0x2,
-        BLOB_BIT        = 0x4,
-        FLOAT_BIT       = 0x8,
+        PARAMID_BIT          = 1,
+        TIMESTAMP_BIT        = 1 << 1,
+        CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
+        BLOB_BIT             = 1 << 3,
+        FLOAT_BIT            = 1 << 4,
     };
     uint32_t type;
 } aku_PData;
