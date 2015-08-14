@@ -61,7 +61,7 @@ uint32_t HashFnFamily::hash(int ix, uint64_t key) const {
 }
 
 // SketchWindow
-SketchWindow::SketchWindow(HashFnFamily const& hf)
+CountingSketch::CountingSketch(HashFnFamily const& hf)
     : hashes_(hf)
     , N(hf.N)
     , K(hf.K)
@@ -74,7 +74,7 @@ SketchWindow::SketchWindow(HashFnFamily const& hf)
     }
 }
 
-void SketchWindow::add(uint64_t id, double value) {
+void CountingSketch::add(uint64_t id, double value) {
     sum_ += value;
     for (uint32_t i = 0; i < N; i++) {
         // calculate hash from id to K
@@ -83,7 +83,7 @@ void SketchWindow::add(uint64_t id, double value) {
     }
 }
 
-double SketchWindow::estimate(uint64_t id) const {
+double CountingSketch::estimate(uint64_t id) const {
     std::vector<double> results;
     for (uint32_t i = 0u; i < N; i++) {
         uint32_t hash = hashes_.hash(i, id);
@@ -95,7 +95,7 @@ double SketchWindow::estimate(uint64_t id) const {
     return results[N/2];
 }
 
-double SketchWindow::estimateF2() const {
+double CountingSketch::estimateF2() const {
     std::vector<double> results;
     auto f = 1./(K - 1);
     for (uint32_t i = 0u; i < N; i++) {
@@ -109,7 +109,7 @@ double SketchWindow::estimateF2() const {
     return results[N/2];
 }
 
-double& SketchWindow::at(int row, int col) {
+double& CountingSketch::at(int row, int col) {
     return tables_[row][col];
 }
 

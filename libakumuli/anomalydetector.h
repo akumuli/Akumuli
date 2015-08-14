@@ -3,6 +3,7 @@
 #include <vector>
 #include <deque>
 #include <memory>
+#include <math.h>
 
 namespace Akumuli {
 namespace QP {
@@ -24,14 +25,14 @@ private:
     uint32_t hash32(int ix, uint32_t key) const;
 };
 
-struct SketchWindow {
+struct CountingSketch {
     HashFnFamily const& hashes_;
     const uint32_t N;
     const uint32_t K;
     double sum_;
     std::vector<std::vector<double>> tables_;
 
-    SketchWindow(HashFnFamily const& hf);
+    CountingSketch(HashFnFamily const& hf);
 
     void add(uint64_t id, double value);
 
@@ -46,22 +47,25 @@ struct SketchWindow {
 
 
 // TODO: algorithm should be parametrized (SMA used now for simplicity)
-struct AnomalyDetector {
+struct CountingSketchProcessor {
     HashFnFamily hashes_;
     const uint32_t N;
     const uint32_t K;
     const uint32_t DEPTH;
-    typedef std::unique_ptr<SketchWindow> PSketchWindow;
+    typedef std::unique_ptr<CountingSketch> PSketchWindow;
     PSketchWindow window_;
     std::deque<PSketchWindow> old_;
-    std::deque<PSketchWindow> forecast_;
-    std::deque<PSketchWindow> error_;
+    PSketchWindow error_;
+    double F2_;
+    double threshold_;
 
-    AnomalyDetector(uint32_t N, uint32_t K)
+    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold)
         : hashes_(N, K)
         , N(N)
         , K(K)
         , DEPTH(5)
+        , F2_(0.0)
+        , threshold_(threshold)
     {
     }
 
@@ -69,23 +73,28 @@ struct AnomalyDetector {
         window_->add(id, value);
     }
 
-    void move_sliding_window() noexcept {
+    //! Returns true if series is anomalous (approx)
+    bool is_anomaly_candidate(uint64_t id) const {
+        if (error_) {
+            double estimate = error_->estimate(id);
+            return estimate > F2_;
+        }
+        return false;
+    }
+
+    void move_sliding_window() {
         PSketchWindow forecast = std::move(SMA());
         if (forecast) {
-            PSketchWindow diff = std::move(calculate_error(forecast, window_));
-            // INVARIANT: foreacast_ and error_ always updated together
-            forecast_.push_back(std::move(forecast));
-            error_.push_back(std::move(diff));
+            PSketchWindow error = std::move(calculate_error(forecast, window_));
+            error_ = std::move(error);
+            F2_ = sqrt(error_->estimateF2())*threshold_;
         }
+
         old_.push_back(std::move(window_));
-        window_.reset(new SketchWindow(hashes_));
+        window_.reset(new CountingSketch(hashes_));
 
         if (old_.size() > DEPTH) {
             old_.pop_front();
-        }
-        if (forecast_.size() > DEPTH) {
-            forecast_.pop_front();
-            error_.pop_front();
         }
     }
 
@@ -95,7 +104,7 @@ struct AnomalyDetector {
             // return empty response
             return std::move(res);
         }
-        res.reset(new SketchWindow(hashes_));
+        res.reset(new CountingSketch(hashes_));
         for (auto it = old_.size() - DEPTH; it < old_.size(); it++) {
             for (auto row = 0u; row < N; row++) {
                 for (auto col = 0u; col < K; col++) {
@@ -113,7 +122,7 @@ struct AnomalyDetector {
 
     PSketchWindow calculate_error(const PSketchWindow& forecast, const PSketchWindow& error) {
         PSketchWindow res;
-        res.reset(new SketchWindow(hashes_));
+        res.reset(new CountingSketch(hashes_));
 
         for (auto row = 0u; row < N; row++) {
             for (auto col = 0u; col < K; col++) {

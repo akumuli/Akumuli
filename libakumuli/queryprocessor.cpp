@@ -17,6 +17,7 @@
 #include "queryprocessor.h"
 #include "util.h"
 #include "datetime.h"
+#include "anomalydetector.h"
 
 #include <random>
 #include <algorithm>
@@ -57,12 +58,7 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
         return Node::RandomSampler;
     }
 
-    virtual void complete() {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
-        }
-
-        // Do the actual job
+    bool flush() {
         auto predicate = [](aku_Sample const& lhs, aku_Sample const& rhs) {
             auto l = std::make_tuple(lhs.timestamp, lhs.paramid);
             auto r = std::make_tuple(rhs.timestamp, rhs.paramid);
@@ -72,33 +68,37 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
         std::stable_sort(samples_.begin(), samples_.end(), predicate);
 
         for(auto const& sample: samples_) {
-            next_->put(sample);
+            if (next_->put(sample) == false) {
+                return false;
+            }
         }
+        return true;
+    }
 
+    virtual void complete() {
+        flush();
         next_->complete();
     }
 
     virtual bool put(const aku_Sample& sample) {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
-        }
-        if (samples_.size() < buffer_size_) {
-            // Just append new values
-            samples_.push_back(sample);
+        if (sample.payload.type == aku_PData::EMPTY) {
+            return flush();
         } else {
-            // Flip a coin
-            uint32_t ix = random_() % samples_.size();
-            if (ix < buffer_size_) {
-                samples_.at(ix) = sample;
+            if (samples_.size() < buffer_size_) {
+                // Just append new values
+                samples_.push_back(sample);
+            } else {
+                // Flip a coin
+                uint32_t ix = random_() % samples_.size();
+                if (ix < buffer_size_) {
+                    samples_.at(ix) = sample;
+                }
             }
         }
         return true;
     }
 
     void set_error(aku_Status status) {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
-        }
         next_->set_error(status);
     }
 };
@@ -121,15 +121,12 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
 
     // Bolt interface
     virtual void complete() {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
-        }
         next_->complete();
     }
 
     virtual bool put(const aku_Sample& sample) {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
+        if (sample.payload.type == aku_PData::EMPTY) {
+            return next_->put(sample);
         }
         return op_(sample.paramid) ? next_->put(sample) : true;
     }
@@ -147,6 +144,7 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
 };
 
 // Generic sliding window
+static aku_Sample EMPTY_SAMPLE = {};
 
 template<class State>
 struct SlidingWindow : Node {
@@ -207,6 +205,9 @@ struct SlidingWindow : Node {
                 }
                 lowerbound_ += step_;
                 upperbound_ += step_;
+                if (!next_->put(EMPTY_SAMPLE)) {
+                    return false;
+                }
             } else if (ts < lowerbound_) {
                 // Backward direction
                 if (!average_samples()) {
@@ -214,6 +215,9 @@ struct SlidingWindow : Node {
                 }
                 lowerbound_ -= step_;
                 upperbound_ -= step_;
+                if (!next_->put(EMPTY_SAMPLE)) {
+                    return false;
+                }
             } else {
                 auto& state = counters_[id];
                 state.add(sample);
@@ -340,7 +344,7 @@ struct SpaceSaver : Node {
         assert(P <= 1.0);
     }
 
-    virtual void complete() {
+    bool count() {
         std::vector<aku_Sample> samples;
         auto support = N*P;
         for (auto it: counters_) {
@@ -358,13 +362,21 @@ struct SpaceSaver : Node {
         });
         for (const auto& s: samples) {
             if (!next_->put(s)) {
-                break;
+                return false;
             }
         }
+        return true;
+    }
+
+    virtual void complete() {
+        count();
         next_->complete();
     }
 
     virtual bool put(const aku_Sample &sample) {
+        if (sample.payload.type == aku_PData::EMPTY) {
+            return count();
+        }
         if (weighted) {
             if ((sample.payload.type&aku_PData::FLOAT_BIT) == 0) {
                 return true;
@@ -406,6 +418,45 @@ struct SpaceSaver : Node {
 
     virtual NodeType get_type() const {
         return Node::SpaceSaver;
+    }
+};
+
+
+struct AnomalyDetector : Node {
+    std::shared_ptr<Node> next_;
+    CountingSketchProcessor detector_;
+
+    AnomalyDetector(std::shared_ptr<Node> next)
+        : next_(next)
+        , detector_(3, 0x10000, 0.4)
+    {
+        // TODO: parametrize algorithm
+    }
+
+    virtual void complete() {
+        next_->complete();
+    }
+
+    virtual bool put(const aku_Sample &sample) {
+        if (sample.payload.type == aku_PData::EMPTY) {
+            detector_.move_sliding_window();
+            return next_->put(sample);
+        } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
+            detector_.add(sample.paramid, sample.payload.value.float64);
+            if (detector_.is_anomaly_candidate(sample.paramid)) {
+                return next_->put(sample);
+            }
+        }
+        // Ignore BLOBs
+        return true;
+    }
+
+    virtual void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    virtual NodeType get_type() const {
+        return Node::AnomalyDetector;
     }
 };
 

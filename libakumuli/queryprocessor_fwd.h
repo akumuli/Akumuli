@@ -11,6 +11,7 @@ struct Node {
         RandomSampler,
         MovingAverage,
         MovingMedian,
+        AnomalyDetector,
         Resampler,
         // Tok-K elements
         SpaceSaver,
@@ -29,7 +30,9 @@ struct Node {
     //! Complete adding values
     virtual void complete() = 0;
 
-    //! Process value, return false to interrupt process
+    /** Process value, return false to interrupt process.
+      * Empty sample can be sent to flush all updates.
+      */
     virtual bool put(aku_Sample const& sample) = 0;
 
     virtual void set_error(aku_Status status) = 0;

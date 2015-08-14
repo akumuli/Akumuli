@@ -64,6 +64,7 @@ typedef struct {
     } value;
     //! Data element type
     enum {
+        EMPTY                = 0,
         PARAMID_BIT          = 1,
         TIMESTAMP_BIT        = 1 << 1,
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
