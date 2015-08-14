@@ -80,6 +80,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/anomalydetector.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
 )
@@ -158,6 +159,7 @@ add_executable(
     ../libakumuli/compression.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
 )

@@ -30,6 +30,8 @@
 namespace Akumuli {
 namespace QP {
 
+static aku_Sample EMPTY_SAMPLE = {};
+
 NodeException::NodeException(Node::NodeType type, const char* msg)
     : std::runtime_error(msg)
     , type_(type)
@@ -72,6 +74,7 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
                 return false;
             }
         }
+        samples_.clear();
         return true;
     }
 
@@ -144,7 +147,6 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
 };
 
 // Generic sliding window
-static aku_Sample EMPTY_SAMPLE = {};
 
 template<class State>
 struct SlidingWindow : Node {
@@ -178,6 +180,9 @@ struct SlidingWindow : Node {
                 }
             }
         }
+        if (!next_->put(EMPTY_SAMPLE)) {
+            return false;
+        }
         return true;
     }
 
@@ -205,9 +210,6 @@ struct SlidingWindow : Node {
                 }
                 lowerbound_ += step_;
                 upperbound_ += step_;
-                if (!next_->put(EMPTY_SAMPLE)) {
-                    return false;
-                }
             } else if (ts < lowerbound_) {
                 // Backward direction
                 if (!average_samples()) {
@@ -215,9 +217,6 @@ struct SlidingWindow : Node {
                 }
                 lowerbound_ -= step_;
                 upperbound_ -= step_;
-                if (!next_->put(EMPTY_SAMPLE)) {
-                    return false;
-                }
             } else {
                 auto& state = counters_[id];
                 state.add(sample);
@@ -365,6 +364,7 @@ struct SpaceSaver : Node {
                 return false;
             }
         }
+        counters_.clear();
         return true;
     }
 
@@ -507,8 +507,8 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             double error = boost::lexical_cast<double>(serror);
             double portion = boost::lexical_cast<double>(sportion);
             return std::make_shared<SpaceSaver<true>>(error, portion, next);
-        } else if (name == "change-detector") {
-            throw "not implemented";
+        } else if (name == "anomaly-detector") {
+            return std::make_shared<AnomalyDetector>(next);
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");

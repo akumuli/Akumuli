@@ -244,12 +244,7 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int id = i & 0xFFFFF;  //gen.generate();
-            if (id % 2 == 0) {
-                id = 0;
-            } else if (id % 3 == 0) {
-                id = 1;
-            }
+            int id = i % 1000;  //gen.generate();
             int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
@@ -259,7 +254,11 @@ int main(int cnt, const char** args)
 
             // =payload=
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = i + 0.1;
+            sample.payload.value.float64 = 1.0;
+            if (i == 8000000) {
+                // Add anomalous value
+                sample.payload.value.float64 = 8.0;
+            }
 
             aku_Status status = aku_write(db, &sample);
 

@@ -48,11 +48,12 @@ struct CountingSketch {
 
 // TODO: algorithm should be parametrized (SMA used now for simplicity)
 struct CountingSketchProcessor {
+    typedef std::unique_ptr<CountingSketch> PSketchWindow;
+
     HashFnFamily hashes_;
     const uint32_t N;
     const uint32_t K;
     const uint32_t DEPTH;
-    typedef std::unique_ptr<CountingSketch> PSketchWindow;
     PSketchWindow window_;
     std::deque<PSketchWindow> old_;
     PSketchWindow error_;
@@ -67,6 +68,7 @@ struct CountingSketchProcessor {
         , F2_(0.0)
         , threshold_(threshold)
     {
+        window_.reset(new CountingSketch(hashes_));
     }
 
     void add(uint64_t id, double value) {

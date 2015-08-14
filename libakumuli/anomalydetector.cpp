@@ -53,9 +53,9 @@ uint32_t HashFnFamily::hash(int ix, uint64_t key) const {
     auto lo32 = key & 0xFFFFFFFF;
     auto hilo = combine(hi32, lo32);
 
-    auto hi32hash = hash(ix, hi32);
-    auto lo32hash = hash(ix, lo32);
-    auto hilohash = hash(ix, hilo);
+    auto hi32hash = hash32(ix, hi32);
+    auto lo32hash = hash32(ix, lo32);
+    auto hilohash = hash32(ix, hilo);
 
     return hi32hash ^ lo32hash ^ hilohash;
 }
