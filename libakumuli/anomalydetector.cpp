@@ -83,6 +83,13 @@ void CountingSketch::add(uint64_t id, double value) {
     }
 }
 
+void CountingSketch::recalculate_internal_state() {
+    sum_ = 0.0;
+    for (auto val: tables_[0]) {
+        sum_ += val;
+    }
+}
+
 double CountingSketch::estimate(uint64_t id) const {
     std::vector<double> results;
     for (uint32_t i = 0u; i < N; i++) {

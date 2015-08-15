@@ -34,6 +34,9 @@ struct CountingSketch {
 
     CountingSketch(HashFnFamily const& hf);
 
+    //! This method should be called after any changes using `at` method
+    void recalculate_internal_state();
+
     void add(uint64_t id, double value);
 
     //! Unbiased value estimator
@@ -89,6 +92,7 @@ struct CountingSketchProcessor {
         if (forecast) {
             PSketchWindow error = std::move(calculate_error(forecast, window_));
             error_ = std::move(error);
+            error_->recalculate_internal_state();
             F2_ = sqrt(error_->estimateF2())*threshold_;
         }
 
@@ -122,13 +126,13 @@ struct CountingSketchProcessor {
         return std::move(res);
     }
 
-    PSketchWindow calculate_error(const PSketchWindow& forecast, const PSketchWindow& error) {
+    PSketchWindow calculate_error(const PSketchWindow& forecast, const PSketchWindow& actual) {
         PSketchWindow res;
         res.reset(new CountingSketch(hashes_));
 
         for (auto row = 0u; row < N; row++) {
             for (auto col = 0u; col < K; col++) {
-                res->at(row, col) = forecast->at(row, col) - error->at(row, col);
+                res->at(row, col) = forecast->at(row, col) - actual->at(row, col);
             }
         }
 

@@ -428,7 +428,7 @@ struct AnomalyDetector : Node {
 
     AnomalyDetector(std::shared_ptr<Node> next)
         : next_(next)
-        , detector_(3, 0x10000, 0.4)
+        , detector_(3, 0x10000, 1.0)
     {
         // TODO: parametrize algorithm
     }

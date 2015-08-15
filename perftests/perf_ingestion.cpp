@@ -18,7 +18,7 @@
 using namespace std;
 
 int DB_SIZE = 2;
-uint64_t NUM_ITERATIONS = 100*1000*1000;
+uint64_t NUM_ITERATIONS = 10*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -244,7 +244,7 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int id = i % 1000;  //gen.generate();
+            int id = i & 0xFF;  //gen.generate();
             int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
@@ -255,9 +255,9 @@ int main(int cnt, const char** args)
             // =payload=
             sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = 1.0;
-            if (i == 8000000) {
+            if (i == 1000) {
                 // Add anomalous value
-                sample.payload.value.float64 = 8.0;
+                sample.payload.value.float64 = 10.0;
             }
 
             aku_Status status = aku_write(db, &sample);
