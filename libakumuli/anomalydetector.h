@@ -34,8 +34,9 @@ struct CountingSketch {
 
     CountingSketch(HashFnFamily const& hf);
 
-    //! This method should be called after any changes using `at` method
-    void recalculate_internal_state();
+    CountingSketch(CountingSketch const& cs);
+
+    void _update_sum();
 
     void add(uint64_t id, double value);
 
@@ -45,7 +46,17 @@ struct CountingSketch {
     //! Second moment estimator
     double estimateF2() const;
 
-    double& at(int row, int col);
+    //! current sketch <- difference between two arguments
+    void diff(CountingSketch const& lhs, CountingSketch const& rhs);
+
+    //! Add sketch
+    void add(CountingSketch const& val);
+
+    //! Substract sketch
+    void sub(CountingSketch const& val);
+
+    //! Multiply sketch by value
+    void mul(double value);
 };
 
 
@@ -53,25 +64,29 @@ struct CountingSketch {
 struct CountingSketchProcessor {
     typedef std::unique_ptr<CountingSketch> PSketchWindow;
 
-    HashFnFamily hashes_;
-    const uint32_t N;
-    const uint32_t K;
-    const uint32_t DEPTH;
-    PSketchWindow window_;
-    std::deque<PSketchWindow> old_;
-    PSketchWindow error_;
-    double F2_;
-    double threshold_;
+    HashFnFamily                hashes_;
+    const uint32_t              N;
+    const uint32_t              K;
+    const uint32_t              DEPTH;
+    PSketchWindow               window_;
+    PSketchWindow               sma_;
+    uint32_t                    items_stored_in_sma_;
+    std::deque<PSketchWindow>   old_;
+    PSketchWindow               error_;
+    double                      F2_;
+    double                      threshold_;
 
     CountingSketchProcessor(uint32_t N, uint32_t K, double threshold)
         : hashes_(N, K)
         , N(N)
         , K(K)
-        , DEPTH(5)
+        , DEPTH(5u)
+        , items_stored_in_sma_(0u)
         , F2_(0.0)
         , threshold_(threshold)
     {
         window_.reset(new CountingSketch(hashes_));
+        sma_.reset(new CountingSketch(hashes_));
     }
 
     void add(uint64_t id, double value) {
@@ -92,15 +107,17 @@ struct CountingSketchProcessor {
         if (forecast) {
             PSketchWindow error = std::move(calculate_error(forecast, window_));
             error_ = std::move(error);
-            error_->recalculate_internal_state();
             F2_ = sqrt(error_->estimateF2())*threshold_;
         }
 
+        sma_->add(*window_);
         old_.push_back(std::move(window_));
         window_.reset(new CountingSketch(hashes_));
 
         if (old_.size() > DEPTH) {
+            auto removed = std::move(old_.front());
             old_.pop_front();
+            sma_->sub(*removed);
         }
     }
 
@@ -110,32 +127,16 @@ struct CountingSketchProcessor {
             // return empty response
             return std::move(res);
         }
-        res.reset(new CountingSketch(hashes_));
-        for (auto it = old_.size() - DEPTH; it < old_.size(); it++) {
-            for (auto row = 0u; row < N; row++) {
-                for (auto col = 0u; col < K; col++) {
-                    res->at(row, col) += old_[it]->at(row, col);
-                }
-            }
-        }
-        for (auto row = 0u; row < N; row++) {
-            for (auto col = 0u; col < K; col++) {
-                res->at(row, col) /= double(DEPTH);
-            }
-        }
+        // Copy sma sketch
+        res.reset(new CountingSketch(*sma_));
+        res->mul(1.0/DEPTH);
         return std::move(res);
     }
 
     PSketchWindow calculate_error(const PSketchWindow& forecast, const PSketchWindow& actual) {
         PSketchWindow res;
         res.reset(new CountingSketch(hashes_));
-
-        for (auto row = 0u; row < N; row++) {
-            for (auto col = 0u; col < K; col++) {
-                res->at(row, col) = forecast->at(row, col) - actual->at(row, col);
-            }
-        }
-
+        res->diff(*forecast, *actual);
         return std::move(res);
     }
 };

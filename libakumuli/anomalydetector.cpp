@@ -74,6 +74,23 @@ CountingSketch::CountingSketch(HashFnFamily const& hf)
     }
 }
 
+CountingSketch::CountingSketch(CountingSketch const& cs)
+    : hashes_(cs.hashes_)
+    , N(cs.N)
+    , K(cs.K)
+    , sum_(cs.sum_)
+{
+    for (auto ixrow = 0u; ixrow < N; ixrow++) {
+        std::vector<double> row;
+        row.resize(K, 0.0);
+        std::vector<double> const& rcs = cs.tables_[ixrow];
+        for (auto col = 0u; col < K; col++) {
+            row[col] = rcs[col];
+        }
+        tables_.push_back(std::move(row));
+    }
+}
+
 void CountingSketch::add(uint64_t id, double value) {
     sum_ += value;
     for (uint32_t i = 0; i < N; i++) {
@@ -83,11 +100,55 @@ void CountingSketch::add(uint64_t id, double value) {
     }
 }
 
-void CountingSketch::recalculate_internal_state() {
+void CountingSketch::_update_sum() {
     sum_ = 0.0;
     for (auto val: tables_[0]) {
         sum_ += val;
     }
+}
+
+void CountingSketch::diff(CountingSketch const& lhs, CountingSketch const& rhs) {
+    for (auto ixrow = 0u; ixrow < N; ixrow++) {
+        std::vector<double>& row = tables_[ixrow];
+        std::vector<double> const& lrow = lhs.tables_[ixrow];
+        std::vector<double> const& rrow = rhs.tables_[ixrow];
+        for (auto col = 0u; col < K; col++) {
+            row[col] = lrow[col] - rrow[col];
+        }
+    }
+    _update_sum();
+}
+
+void CountingSketch::add(CountingSketch const& val) {
+    for (auto ixrow = 0u; ixrow < N; ixrow++) {
+        std::vector<double>& row = tables_[ixrow];
+        std::vector<double> const& rval = val.tables_[ixrow];
+        for (auto col = 0u; col < K; col++) {
+            row[col] = row[col] + rval[col];
+        }
+    }
+    _update_sum();
+}
+
+void CountingSketch::sub(CountingSketch const& val) {
+    for (auto ixrow = 0u; ixrow < N; ixrow++) {
+        std::vector<double>& row = tables_[ixrow];
+        std::vector<double> const& rval = val.tables_[ixrow];
+        for (auto col = 0u; col < K; col++) {
+            row[col] = row[col] - rval[col];
+        }
+    }
+    _update_sum();
+}
+
+void CountingSketch::mul(double value) {
+    for (auto ixrow = 0u; ixrow < N; ixrow++) {
+        std::vector<double>& row = tables_[ixrow];
+        for (auto col = 0u; col < K; col++) {
+            row[col] *= value;
+        }
+    }
+    _update_sum();
 }
 
 double CountingSketch::estimate(uint64_t id) const {
@@ -114,10 +175,6 @@ double CountingSketch::estimateF2() const {
     }
     std::sort(results.begin(), results.end());
     return results[N/2];
-}
-
-double& CountingSketch::at(int row, int col) {
-    return tables_[row][col];
 }
 
 }
