@@ -18,7 +18,7 @@
 using namespace std;
 
 int DB_SIZE = 2;
-uint64_t NUM_ITERATIONS = 10*1000*1000;
+uint64_t NUM_ITERATIONS = 100*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -217,8 +217,8 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        uint32_t threshold  =   1000;
-        uint64_t windowsize = 100000;
+        uint32_t threshold  = 1000;
+        uint64_t windowsize = 2;
         uint64_t cachesize =  10*1024*1024;  // 10Mb
         apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
                                                   threshold, windowsize, cachesize, &logger_);
@@ -244,18 +244,18 @@ int main(int cnt, const char** args)
             char buffer[100];
 
             // =series=
-            int id = i & 0xFF;  //gen.generate();
+            int id = i % 10000;  //gen.generate();
             int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=
-            nchars = format_timestamp(i, buffer);
+            nchars = format_timestamp(i/10000, buffer);
             aku_parse_timestamp(buffer, &sample);
 
             // =payload=
             sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = 1.0;
-            if (i == 1000) {
+            if (i == 1000000) {
                 // Add anomalous value
                 sample.payload.value.float64 = 10.0;
             }

@@ -203,7 +203,7 @@ struct SlidingWindow : Node {
                 lowerbound_ = aligned;
                 upperbound_ = aligned + step_;
             }
-            if (ts > upperbound_) {
+            if (ts >= upperbound_) {
                 // Forward direction
                 if (!average_samples()) {
                     return false;
@@ -217,10 +217,9 @@ struct SlidingWindow : Node {
                 }
                 lowerbound_ -= step_;
                 upperbound_ -= step_;
-            } else {
-                auto& state = counters_[id];
-                state.add(sample);
             }
+            auto& state = counters_[id];
+            state.add(sample);
         }
         return true;
     }
@@ -426,9 +425,9 @@ struct AnomalyDetector : Node {
     std::shared_ptr<Node> next_;
     CountingSketchProcessor detector_;
 
-    AnomalyDetector(std::shared_ptr<Node> next)
+    AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, uint32_t sma_window_depth, std::shared_ptr<Node> next)
         : next_(next)
-        , detector_(3, 0x10000, 1.0)
+        , detector_(nhashes, 1 << bits, threshold, sma_window_depth)
     {
         // TODO: parametrize algorithm
     }
@@ -508,7 +507,15 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             double portion = boost::lexical_cast<double>(sportion);
             return std::make_shared<SpaceSaver<true>>(error, portion, next);
         } else if (name == "anomaly-detector") {
-            return std::make_shared<AnomalyDetector>(next);
+            std::string sbits = ptree.get<std::string>("bits", "16");
+            std::string shash = ptree.get<std::string>("hashes", "3");
+            std::string sthreshold = ptree.get<std::string>("threshold");
+            std::string swindow = ptree.get<std::string>("window");
+            uint32_t bits = boost::lexical_cast<uint32_t>(sbits);
+            uint32_t window = boost::lexical_cast<uint32_t>(swindow);
+            uint32_t hashes = boost::lexical_cast<uint32_t>(shash);
+            double threshold = boost::lexical_cast<double>(sthreshold);
+            return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, next);
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");

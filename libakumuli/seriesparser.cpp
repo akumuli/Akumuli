@@ -275,16 +275,18 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
             auto ts_begin = parse_range_timestamp(ptree, "from", logger);
             auto ts_end = parse_range_timestamp(ptree, "to", logger);
 
+            if (sampling_params) {
+                for (auto i = sampling_params->rbegin(); i != sampling_params->rend(); i++) {
+                        next = NodeBuilder::make_sampler(i->second,
+                                                         next,
+                                                         logger);
+                }
+            }
             if (!ids_included.empty()) {
                 next = NodeBuilder::make_filter_by_id_list(ids_included, next, logger);
             }
             if (!ids_excluded.empty()) {
                 next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
-            }
-            for (const auto& subquery: *sampling_params) {
-                    next = NodeBuilder::make_sampler(subquery.second,
-                                                     next,
-                                                     logger);
             }
             // Build query processor
             return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);

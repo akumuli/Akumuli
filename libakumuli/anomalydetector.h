@@ -76,11 +76,11 @@ struct CountingSketchProcessor {
     double                      F2_;
     double                      threshold_;
 
-    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold)
+    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, uint32_t sma_window_depth)
         : hashes_(N, K)
         , N(N)
         , K(K)
-        , DEPTH(5u)
+        , DEPTH(sma_window_depth)
         , items_stored_in_sma_(0u)
         , F2_(0.0)
         , threshold_(threshold)
