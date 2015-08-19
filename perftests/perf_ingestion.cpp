@@ -168,6 +168,32 @@ struct RandomGen {
     }
 };
 
+//! Generate time-series from random walk
+struct RandomWalk {
+    std::random_device                  randdev;
+    std::mt19937                        generator;
+    std::normal_distribution<double>    distribution;
+    size_t                              N;
+    std::vector<double>                 values;
+
+    RandomWalk(double start, double mean, double stddev, size_t N)
+        : generator(randdev())
+        , distribution(mean, stddev)
+        , N(N)
+    {
+        values.resize(N, start);
+    }
+
+    double generate(aku_ParamId id) {
+        values.at(id) += distribution(generator);
+        return values.at(id);
+    }
+
+    void add_anomaly(aku_ParamId id, double value) {
+        values.at(id) += value;
+    }
+};
+
 Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
@@ -238,13 +264,13 @@ int main(int cnt, const char** args)
     if (mode != READ) {
         uint64_t busy_count = 0;
         // Fill in data
-        RandomGen gen(0, 100);
+        RandomWalk rwalk(10.0, 0.0, 0.02, 10000);
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             aku_Sample sample;
             char buffer[100];
 
             // =series=
-            int id = i % 10000;  //gen.generate();
+            int id = i % 10000;
             int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
@@ -253,12 +279,12 @@ int main(int cnt, const char** args)
             aku_parse_timestamp(buffer, &sample);
 
             // =payload=
-            sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = 1.0;
             if (i == 1000000) {
                 // Add anomalous value
-                sample.payload.value.float64 = 10.0;
+                rwalk.add_anomaly(id, 100.0);
             }
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.value.float64 = rwalk.generate(id);
 
             aku_Status status = aku_write(db, &sample);
 

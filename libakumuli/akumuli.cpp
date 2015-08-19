@@ -60,6 +60,7 @@ static const char* g_error_messages[] = {
     "Late write",
     "Not implemented",
     "Query parsing error",
+    "Anomaly detector can't work with negative values",
     "Unknown error code"
 };
 

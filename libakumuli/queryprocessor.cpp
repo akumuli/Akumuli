@@ -422,14 +422,18 @@ struct SpaceSaver : Node {
 
 
 struct AnomalyDetector : Node {
+    typedef std::unique_ptr<SMASlidingWindow>           PSlidingWindow;
+    typedef CountingSketchProcessor<SMASlidingWindow>   Detector;
+    typedef std::unique_ptr<Detector>                   PDetector;
+
     std::shared_ptr<Node> next_;
-    CountingSketchProcessor detector_;
+    PDetector detector_;
 
     AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, uint32_t sma_window_depth, std::shared_ptr<Node> next)
         : next_(next)
-        , detector_(nhashes, 1 << bits, threshold, sma_window_depth)
     {
-        // TODO: parametrize algorithm
+        PSlidingWindow window(new SMASlidingWindow(sma_window_depth));
+        detector_.reset(new Detector(nhashes, 1 << bits, threshold, std::move(window)));
     }
 
     virtual void complete() {
@@ -438,11 +442,15 @@ struct AnomalyDetector : Node {
 
     virtual bool put(const aku_Sample &sample) {
         if (sample.payload.type == aku_PData::EMPTY) {
-            detector_.move_sliding_window();
+            detector_->move_sliding_window();
             return next_->put(sample);
         } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
-            detector_.add(sample.paramid, sample.payload.value.float64);
-            if (detector_.is_anomaly_candidate(sample.paramid)) {
+            if (sample.payload.value.float64 < 0.0) {
+                set_error(AKU_EANOMALY_NEG_VAL);
+                return false;
+            }
+            detector_->add(sample.paramid, sample.payload.value.float64);
+            if (detector_->is_anomaly_candidate(sample.paramid)) {
                 return next_->put(sample);
             }
         }

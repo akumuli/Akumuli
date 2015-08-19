@@ -46,7 +46,7 @@ struct CountingSketch {
     //! Second moment estimator
     double estimateF2() const;
 
-    //! current sketch <- difference between two arguments
+    //! current sketch <- absolute difference between two arguments
     void diff(CountingSketch const& lhs, CountingSketch const& rhs);
 
     //! Add sketch
@@ -59,38 +59,76 @@ struct CountingSketch {
     void mul(double value);
 };
 
+//! Simple moving average implementation
+struct SMASlidingWindow {
+    typedef std::unique_ptr<CountingSketch> PSketch;
+
+    PSketch             sma_;
+    const uint32_t      depth_;
+    const double        mul_;
+    std::deque<PSketch> queue_;
+
+    SMASlidingWindow(uint32_t depth)
+        : depth_(depth)
+        , mul_(1.0/depth)
+    {
+    }
+
+    void add(PSketch sketch) {
+        if (!sma_) {
+            sma_.reset(new CountingSketch(*sketch));
+        } else {
+            sma_->add(*sketch);
+            queue_.push_back(std::move(sketch));
+            if (queue_.size() > depth_) {
+                auto removed = std::move(queue_.front());
+                queue_.pop_front();
+                sma_->sub(*removed);
+            }
+        }
+    }
+
+    PSketch forecast() const {
+        PSketch res;
+        if (queue_.size() < depth_) {
+            // return empty response
+            return std::move(res);
+        }
+        res.reset(new CountingSketch(*sma_));
+        res->mul(mul_);
+        return std::move(res);
+    }
+};
+
 
 // TODO: algorithm should be parametrized (SMA used now for simplicity)
+template<class SlidingWindow>
 struct CountingSketchProcessor {
-    typedef std::unique_ptr<CountingSketch> PSketchWindow;
+    typedef std::unique_ptr<CountingSketch> PSketch;
+    typedef std::unique_ptr<SlidingWindow>  PSlidingWindow;
 
     HashFnFamily                hashes_;
     const uint32_t              N;
     const uint32_t              K;
-    const uint32_t              DEPTH;
-    PSketchWindow               window_;
-    PSketchWindow               sma_;
-    uint32_t                    items_stored_in_sma_;
-    std::deque<PSketchWindow>   old_;
-    PSketchWindow               error_;
+    PSketch                     current_;
+    PSketch                     error_;
     double                      F2_;
     double                      threshold_;
+    PSlidingWindow              sliding_window_;
 
-    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, uint32_t sma_window_depth)
+    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, std::unique_ptr<SlidingWindow> swindow)
         : hashes_(N, K)
         , N(N)
         , K(K)
-        , DEPTH(sma_window_depth)
-        , items_stored_in_sma_(0u)
         , F2_(0.0)
         , threshold_(threshold)
+        , sliding_window_(std::move(swindow))
     {
-        window_.reset(new CountingSketch(hashes_));
-        sma_.reset(new CountingSketch(hashes_));
+        current_.reset(new CountingSketch(hashes_));
     }
 
     void add(uint64_t id, double value) {
-        window_->add(id, value);
+        current_->add(id, value);
     }
 
     //! Returns true if series is anomalous (approx)
@@ -103,38 +141,17 @@ struct CountingSketchProcessor {
     }
 
     void move_sliding_window() {
-        PSketchWindow forecast = std::move(SMA());
+        PSketch forecast = std::move(sliding_window_->forecast());
         if (forecast) {
-            PSketchWindow error = std::move(calculate_error(forecast, window_));
-            error_ = std::move(error);
+            error_ = std::move(calculate_error(forecast, current_));
             F2_ = sqrt(error_->estimateF2())*threshold_;
         }
-
-        sma_->add(*window_);
-        old_.push_back(std::move(window_));
-        window_.reset(new CountingSketch(hashes_));
-
-        if (old_.size() > DEPTH) {
-            auto removed = std::move(old_.front());
-            old_.pop_front();
-            sma_->sub(*removed);
-        }
+        sliding_window_->add(std::move(current_));
+        current_.reset(new CountingSketch(hashes_));
     }
 
-    PSketchWindow SMA() const {
-        PSketchWindow res;
-        if (old_.size() < DEPTH) {
-            // return empty response
-            return std::move(res);
-        }
-        // Copy sma sketch
-        res.reset(new CountingSketch(*sma_));
-        res->mul(1.0/DEPTH);
-        return std::move(res);
-    }
-
-    PSketchWindow calculate_error(const PSketchWindow& forecast, const PSketchWindow& actual) {
-        PSketchWindow res;
+    PSketch calculate_error(const PSketch& forecast, const PSketch& actual) {
+        PSketch res;
         res.reset(new CountingSketch(hashes_));
         res->diff(*forecast, *actual);
         return std::move(res);

@@ -65,7 +65,9 @@
 #define AKU_ENOT_IMPLEMENTED     10
 //! Invalid query
 #define AKU_EQUERY_PARSING_ERROR 11
-#define AKU_EMAX_ERROR           12
+//! Anomaly detector doesn't supports negative values (now)
+#define AKU_EANOMALY_NEG_VAL     12
+#define AKU_EMAX_ERROR           13
 
 
 // Search error codes

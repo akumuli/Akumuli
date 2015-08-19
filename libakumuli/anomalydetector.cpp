@@ -113,7 +113,7 @@ void CountingSketch::diff(CountingSketch const& lhs, CountingSketch const& rhs) 
         std::vector<double> const& lrow = lhs.tables_[ixrow];
         std::vector<double> const& rrow = rhs.tables_[ixrow];
         for (auto col = 0u; col < K; col++) {
-            row[col] = lrow[col] - rrow[col];
+            row[col] = abs(lrow[col] - rrow[col]);
         }
     }
     _update_sum();
