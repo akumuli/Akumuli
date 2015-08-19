@@ -77,6 +77,7 @@ struct SMASlidingWindow {
     void add(PSketch sketch) {
         if (!sma_) {
             sma_.reset(new CountingSketch(*sketch));
+            queue_.push_back(std::move(sketch));
         } else {
             sma_->add(*sketch);
             queue_.push_back(std::move(sketch));
@@ -100,8 +101,48 @@ struct SMASlidingWindow {
     }
 };
 
+//! Exponentialy weighted moving average implementation
+struct EWMASlidingWindow {
+    typedef std::unique_ptr<CountingSketch> PSketch;
 
-// TODO: algorithm should be parametrized (SMA used now for simplicity)
+    PSketch              ewma_;
+    const double         decay_;
+    int                  counter_;
+
+    EWMASlidingWindow(uint32_t depth)
+        : decay_(1.0/(double(depth) + 1.0))
+        , counter_(0.0)
+    {
+    }
+
+    void add(PSketch sketch) {
+        if (!ewma_) {
+            ewma_.reset(new CountingSketch(*sketch));
+            counter_ = 1;
+        } else if (counter_ < 10) {
+            ewma_->add(*sketch);
+            counter_++;
+            if (counter_ == 10) {
+                ewma_->mul(0.1);
+            }
+        } else {
+            sketch->mul(decay_);
+            ewma_->mul(1.0 - decay_);
+            ewma_->add(*sketch);
+        }
+    }
+
+    PSketch forecast() const {
+        PSketch res;
+        if (counter_ < 10) {
+            // return empty response
+            return std::move(res);
+        }
+        res.reset(new CountingSketch(*ewma_));
+        return std::move(res);
+    }
+};
+
 template<class SlidingWindow>
 struct CountingSketchProcessor {
     typedef std::unique_ptr<CountingSketch> PSketch;
