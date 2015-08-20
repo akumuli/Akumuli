@@ -464,8 +464,6 @@ struct AnomalyDetector : Node {
             if (detector_->is_anomaly_candidate(sample.paramid)) {
                 aku_Sample anomaly = sample;
                 anomaly.payload.type |= aku_PData::URGENT;
-                std::cerr << "||";
-                std::cout << "anomaly" << std::endl;
                 return next_->put(anomaly);
             }
         }
