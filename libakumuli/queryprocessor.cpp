@@ -422,18 +422,29 @@ struct SpaceSaver : Node {
 
 
 struct AnomalyDetector : Node {
-    typedef std::unique_ptr<SMASlidingWindow>           PSlidingWindow;
-    typedef CountingSketchProcessor<SMASlidingWindow>   Detector;
-    typedef std::unique_ptr<Detector>                   PDetector;
+    typedef std::unique_ptr<ForecastingMethod>          PSlidingWindow;
+    typedef std::unique_ptr<CountingSketchProcessor>    PDetector;
+
+    enum FcastMethod {
+        SMA,
+        EWMA
+    };
 
     std::shared_ptr<Node> next_;
     PDetector detector_;
 
-    AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, uint32_t sma_window_depth, std::shared_ptr<Node> next)
+    AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, uint32_t window_depth, FcastMethod method, std::shared_ptr<Node> next)
         : next_(next)
     {
-        PSlidingWindow window(new SMASlidingWindow(sma_window_depth));
-        detector_.reset(new Detector(nhashes, 1 << bits, threshold, std::move(window)));
+        PSlidingWindow window;
+        if (method == SMA) {
+            window.reset(new SMASlidingWindow(window_depth));
+        } else if (method == EWMA) {
+            window.reset(new EWMASlidingWindow(window_depth));
+        } else {
+            AKU_PANIC("Unknown forecasting method");
+        }
+        detector_.reset(new CountingSketchProcessor(nhashes, 1 << bits, threshold, std::move(window)));
     }
 
     virtual void complete() {
@@ -451,7 +462,11 @@ struct AnomalyDetector : Node {
             }
             detector_->add(sample.paramid, sample.payload.value.float64);
             if (detector_->is_anomaly_candidate(sample.paramid)) {
-                return next_->put(sample);
+                aku_Sample anomaly = sample;
+                anomaly.payload.type |= aku_PData::URGENT;
+                std::cerr << "||";
+                std::cout << "anomaly" << std::endl;
+                return next_->put(anomaly);
             }
         }
         // Ignore BLOBs
@@ -519,11 +534,21 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string shash = ptree.get<std::string>("hashes", "3");
             std::string sthreshold = ptree.get<std::string>("threshold");
             std::string swindow = ptree.get<std::string>("window");
+            std::string smethod = ptree.get<std::string>("method");
             uint32_t bits = boost::lexical_cast<uint32_t>(sbits);
             uint32_t window = boost::lexical_cast<uint32_t>(swindow);
             uint32_t hashes = boost::lexical_cast<uint32_t>(shash);
             double threshold = boost::lexical_cast<double>(sthreshold);
-            return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, next);
+            AnomalyDetector::FcastMethod method;
+            if (smethod == "ewma") {
+                method = AnomalyDetector::EWMA;
+            } else if (smethod == "sma") {
+                method = AnomalyDetector::SMA;
+            } else {
+                QueryParserError err("Unknown forecasting method");
+                BOOST_THROW_EXCEPTION(err);
+            }
+            return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
         } else {
             // only this one is implemented
             NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");

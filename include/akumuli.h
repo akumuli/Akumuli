@@ -65,6 +65,7 @@ typedef struct {
     //! Data element type
     enum {
         EMPTY                = 0,
+        URGENT               = 1 << 8,  /** urgent flag (anomaly or error) */
         PARAMID_BIT          = 1,
         TIMESTAMP_BIT        = 1 << 1,
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */

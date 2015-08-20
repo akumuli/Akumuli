@@ -177,6 +177,52 @@ double CountingSketch::estimateF2() const {
     return results[N/2];
 }
 
+// CountingSketchProcessor //
+
+
+CountingSketchProcessor::CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, std::unique_ptr<ForecastingMethod> swindow)
+    : hashes_(N, K)
+    , N(N)
+    , K(K)
+    , F2_(0.0)
+    , threshold_(threshold)
+    , sliding_window_(std::move(swindow))
+{
+    current_.reset(new CountingSketch(hashes_));
+}
+
+void CountingSketchProcessor::add(uint64_t id, double value) {
+    current_->add(id, value);
+}
+
+//! Returns true if series is anomalous (approx)
+bool CountingSketchProcessor::is_anomaly_candidate(uint64_t id) const {
+    if (error_) {
+        double estimate = error_->estimate(id);
+        return estimate > F2_;
+    }
+    return false;
+}
+
+void CountingSketchProcessor::move_sliding_window() {
+    PSketch forecast = std::move(sliding_window_->forecast());
+    if (forecast) {
+        error_ = std::move(calculate_error(forecast, current_));
+        F2_ = sqrt(error_->estimateF2())*threshold_;
+    }
+    sliding_window_->add(std::move(current_));
+    current_.reset(new CountingSketch(hashes_));
+}
+
+CountingSketchProcessor::PSketch CountingSketchProcessor::calculate_error(const CountingSketchProcessor::PSketch& forecast,
+                                                                          const CountingSketchProcessor::PSketch& actual)
+{
+    PSketch res;
+    res.reset(new CountingSketch(hashes_));
+    res->diff(*forecast, *actual);
+    return std::move(res);
+}
+
 }
 }
 

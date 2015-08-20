@@ -59,9 +59,16 @@ struct CountingSketch {
     void mul(double value);
 };
 
-//! Simple moving average implementation
-struct SMASlidingWindow {
+struct ForecastingMethod {
     typedef std::unique_ptr<CountingSketch> PSketch;
+
+    virtual void add(PSketch sketch) = 0;
+
+    virtual PSketch forecast() const = 0;
+};
+
+//! Simple moving average implementation
+struct SMASlidingWindow : ForecastingMethod {
 
     PSketch             sma_;
     const uint32_t      depth_;
@@ -102,8 +109,7 @@ struct SMASlidingWindow {
 };
 
 //! Exponentialy weighted moving average implementation
-struct EWMASlidingWindow {
-    typedef std::unique_ptr<CountingSketch> PSketch;
+struct EWMASlidingWindow : ForecastingMethod {
 
     PSketch              ewma_;
     const double         decay_;
@@ -143,10 +149,9 @@ struct EWMASlidingWindow {
     }
 };
 
-template<class SlidingWindow>
 struct CountingSketchProcessor {
     typedef std::unique_ptr<CountingSketch> PSketch;
-    typedef std::unique_ptr<SlidingWindow>  PSlidingWindow;
+    typedef std::unique_ptr<ForecastingMethod>  PSlidingWindow;
 
     HashFnFamily                hashes_;
     const uint32_t              N;
@@ -157,46 +162,16 @@ struct CountingSketchProcessor {
     double                      threshold_;
     PSlidingWindow              sliding_window_;
 
-    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, std::unique_ptr<SlidingWindow> swindow)
-        : hashes_(N, K)
-        , N(N)
-        , K(K)
-        , F2_(0.0)
-        , threshold_(threshold)
-        , sliding_window_(std::move(swindow))
-    {
-        current_.reset(new CountingSketch(hashes_));
-    }
+    CountingSketchProcessor(uint32_t N, uint32_t K, double threshold, std::unique_ptr<ForecastingMethod> swindow);
 
-    void add(uint64_t id, double value) {
-        current_->add(id, value);
-    }
+    void add(uint64_t id, double value);
 
     //! Returns true if series is anomalous (approx)
-    bool is_anomaly_candidate(uint64_t id) const {
-        if (error_) {
-            double estimate = error_->estimate(id);
-            return estimate > F2_;
-        }
-        return false;
-    }
+    bool is_anomaly_candidate(uint64_t id) const;
 
-    void move_sliding_window() {
-        PSketch forecast = std::move(sliding_window_->forecast());
-        if (forecast) {
-            error_ = std::move(calculate_error(forecast, current_));
-            F2_ = sqrt(error_->estimateF2())*threshold_;
-        }
-        sliding_window_->add(std::move(current_));
-        current_.reset(new CountingSketch(hashes_));
-    }
+    void move_sliding_window();
 
-    PSketch calculate_error(const PSketch& forecast, const PSketch& actual) {
-        PSketch res;
-        res.reset(new CountingSketch(hashes_));
-        res->diff(*forecast, *actual);
-        return std::move(res);
-    }
+    PSketch calculate_error(const PSketch& forecast, const PSketch& actual);
 };
 
 }

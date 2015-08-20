@@ -113,7 +113,7 @@ struct CursorImpl : aku_Cursor {
     }
 
     size_t read_values( aku_Sample     *values
-                   , size_t           values_size )
+                      , size_t          values_size )
     {
         return cursor_->read(values, values_size);
     }

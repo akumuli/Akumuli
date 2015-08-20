@@ -116,6 +116,12 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 size_t CoroCursor::read(aku_Sample *buf, size_t buf_len) {
     cursor_fsm_.update_buffer(buf, buf_len);
     coroutine_->operator()(this);
+    for (size_t i = 0u; i < buf_len; i++) {
+        if ((buf[i].payload.type & aku_PData::URGENT) != 0) {
+            std::cout << "CoroCursor::read -> URGENT" << std::endl;
+            break;
+        }
+    }
     return cursor_fsm_.get_data_len();
 }
 
@@ -153,6 +159,9 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
         return false;
     }
     cursor_fsm_.put(result);
+    if (result.payload.type&aku_PData::URGENT) {
+        caller();
+    }
     return true;
 }
 
