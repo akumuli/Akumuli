@@ -2,6 +2,7 @@
 #include <cinttypes>
 #include <vector>
 #include <deque>
+#include <unordered_map>
 #include <memory>
 #include <math.h>
 
@@ -58,6 +59,38 @@ struct CountingSketch {
     //! Multiply sketch by value
     void mul(double value);
 };
+
+struct ExactCounter {
+    std::unordered_map<uint64_t, double> table_;
+
+    //! C-tor. Parameter `hf` is unused for the sake of interface unification.
+    ExactCounter(HashFnFamily const& hf);
+
+    ExactCounter(ExactCounter const& cs);
+
+    void _update_sum();
+
+    void add(uint64_t id, double value);
+
+    //! Unbiased value estimator
+    double estimate(uint64_t id) const;
+
+    //! Second moment estimator
+    double estimateF2() const;
+
+    //! current sketch <- absolute difference between two arguments
+    void diff(ExactCounter const& lhs, ExactCounter const& rhs);
+
+    //! Add sketch
+    void add(ExactCounter const& val);
+
+    //! Substract sketch
+    void sub(ExactCounter const& val);
+
+    //! Multiply sketch by value
+    void mul(double value);
+};
+
 
 struct ForecastingMethod {
     typedef std::unique_ptr<CountingSketch> PSketch;

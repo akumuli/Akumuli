@@ -177,6 +177,71 @@ double CountingSketch::estimateF2() const {
     return results[N/2];
 }
 
+// ExactCounter //
+
+ExactCounter::ExactCounter(HashFnFamily const& hf) {
+}
+
+ExactCounter::ExactCounter(ExactCounter const& cs)
+    : table_(cs.table_)
+{
+}
+
+void ExactCounter::add(uint64_t id, double value) {
+    table_[id] += value;
+}
+
+//! Unbiased value estimator
+double ExactCounter::estimate(uint64_t id) const {
+    auto it = table_.find(id);
+    if (it != table_.end()) {
+        return it->second;
+    }
+    return 0.;
+}
+
+//! Second moment estimator
+double ExactCounter::estimateF2() const {
+    double sum = std::accumulate(table_.begin(), table_.end(), 0.0,
+                                 [](double acc, std::pair<uint64_t, double> pval) {
+        return acc + pval.second*pval.second;
+    });
+    return sqrt(sum);
+}
+
+//! current sketch <- absolute difference between two arguments
+void ExactCounter::diff(ExactCounter const& lhs, ExactCounter const& rhs) {
+    for(auto it = lhs.table_.begin(); it != lhs.table_.end(); it++) {
+        auto itrhs = rhs.table_.find(it->first);
+        double rhsval = 0.;
+        if (itrhs == rhs.table_.end()) {
+            rhsval = itrhs->second;
+        }
+        table_[it->first] = it->second + rhsval;
+    }
+}
+
+//! Add sketch
+void ExactCounter::add(ExactCounter const& val) {
+    for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
+        table_[it->first] += it->second;
+    }
+}
+
+//! Substract sketch
+void ExactCounter::sub(ExactCounter const& val) {
+    for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
+        table_[it->first] -= it->second;
+    }
+}
+
+//! Multiply sketch by value
+void ExactCounter::mul(double value) {
+    for(auto it = table_.begin(); it != table_.end(); it++) {
+        it->second *= value;
+    }
+}
+
 // CountingSketchProcessor //
 
 
