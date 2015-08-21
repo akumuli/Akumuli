@@ -47,9 +47,11 @@ public:
         BOOST_FAIL("set_error shouldn't be called");
     }
     bool put(aku_Sample const& s) {
-        ids.push_back(s.paramid);
-        timestamps.push_back(s.timestamp);
-        values.push_back(s.payload.value.float64);
+        if (s.payload.type != aku_PData::EMPTY) {
+            ids.push_back(s.paramid);
+            timestamps.push_back(s.timestamp);
+            values.push_back(s.payload.value.float64);
+        }
         return true;
     }
 };
@@ -66,7 +68,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "5"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "5"})"),
                                              mock,
                                              &logger_stub);
 
@@ -93,7 +95,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "10"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "10"})"),
                                              mock,
                                              &logger_stub);
 
@@ -112,7 +114,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "100"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "100"})"),
                                              mock,
                                              &logger_stub);
 
@@ -131,7 +133,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"algorithm": "ma", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average", "window": "10"})"),
                                         mock,
                                         &logger_stub);
 
@@ -167,7 +169,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"algorithm": "ma", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average", "window": "10"})"),
                                         mock,
                                         &logger_stub);
 

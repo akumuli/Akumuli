@@ -166,7 +166,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     }
     const char* json = R"(
             {
-                "sample": [{ "algorithm": "reservoir", "size": 1000 }],
+                "sample": [{ "name": "reservoir", "size": 1000 }],
                 "metric": ["cpu", "mem"],
                 "range" : {
                     "from": "20150101T000000",
@@ -176,17 +176,13 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
                     {"in":
                         {"key3": [1, 2, 3] }
                     }
-                ],
-                "group_by": {
-                    "tag": ["host","region" ],
-                    "metric": ["cpu"]
-                }
+                ]
             }
     )";
     auto terminal = std::make_shared<NodeMock>();
     auto iproc = matcher.build_query_processor(json, terminal, &logger);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->root_node_->get_type() == Node::RandomSampler);
+    BOOST_REQUIRE(qproc->root_node_->get_type() == Node::FilterById);
     BOOST_REQUIRE(qproc->metrics_.size() == 2);
     auto m1 = qproc->metrics_.at(0);
     auto m2 = qproc->metrics_.at(1);

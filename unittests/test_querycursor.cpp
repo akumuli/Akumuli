@@ -34,7 +34,7 @@ struct CursorMock : DbCursor {
         // second value
         dest[1].paramid = 44;
         aku_parse_timestamp("20141210T122434.999111", &dest[1]);
-        dest[1].payload.type = AKU_PAYLOAD_FLOAT;
+        dest[1].payload.type = AKU_PAYLOAD_BLOB;
         dest[1].payload.value.blob.begin = strval;
         dest[1].payload.value.blob.size = strlen(strval);
 
