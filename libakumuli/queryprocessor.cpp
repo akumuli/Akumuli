@@ -147,25 +147,17 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
 };
 
 // Generic sliding window
-
 template<class State>
 struct SlidingWindow : Node {
-    aku_Timestamp const step_;
-    bool first_hit_;
-    aku_Timestamp lowerbound_, upperbound_;
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
-    SlidingWindow(aku_Timestamp step, std::shared_ptr<Node> next)
-        : step_(step)
-        , first_hit_(true)
-        , lowerbound_(AKU_MIN_TIMESTAMP)
-        , upperbound_(AKU_MIN_TIMESTAMP)
-        , next_(next)
+    SlidingWindow(std::shared_ptr<Node> next)
+        : next_(next)
     {
     }
 
-    bool average_samples() {
+    bool average_samples(aku_Timestamp ts) {
         for (auto& pair: counters_) {
             State& state = pair.second;
             if (state.ready()) {
@@ -173,7 +165,7 @@ struct SlidingWindow : Node {
                 sample.paramid = pair.first;
                 sample.payload.value.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.timestamp = upperbound_;
+                sample.timestamp = ts;
                 state.reset();
                 if (!next_->put(sample)) {
                     return false;
@@ -187,38 +179,17 @@ struct SlidingWindow : Node {
     }
 
     virtual void complete() {
-        average_samples();
         next_->complete();
     }
 
     virtual bool put(const aku_Sample &sample) {
         // ignore BLOBs
-        if (sample.payload.type == AKU_PAYLOAD_FLOAT) {
-            aku_ParamId id = sample.paramid;
-            aku_Timestamp ts = sample.timestamp;
-            if (AKU_UNLIKELY(first_hit_ == true)) {
-                first_hit_ = false;
-                aku_Timestamp aligned = ts / step_ * step_;
-                // aligned <= ts
-                lowerbound_ = aligned;
-                upperbound_ = aligned + step_;
+        if (sample.payload.type == aku_PData::EMPTY) {
+            if (!average_samples(sample.timestamp)) {
+                return false;
             }
-            if (ts >= upperbound_) {
-                // Forward direction
-                if (!average_samples()) {
-                    return false;
-                }
-                lowerbound_ += step_;
-                upperbound_ += step_;
-            } else if (ts < lowerbound_) {
-                // Backward direction
-                if (!average_samples()) {
-                    return false;
-                }
-                lowerbound_ -= step_;
-                upperbound_ -= step_;
-            }
-            auto& state = counters_[id];
+        } else {
+            auto& state = counters_[sample.paramid];
             state.add(sample);
         }
         return true;
@@ -258,8 +229,8 @@ struct MovingAverageCounter {
 
 struct MovingAverage : SlidingWindow<MovingAverageCounter> {
 
-    MovingAverage(aku_Timestamp step, std::shared_ptr<Node> next)
-        : SlidingWindow<MovingAverageCounter>(step, next)
+    MovingAverage(std::shared_ptr<Node> next)
+        : SlidingWindow<MovingAverageCounter>(next)
     {
     }
 
@@ -301,8 +272,8 @@ struct MovingMedianCounter {
 
 struct MovingMedian : SlidingWindow<MovingMedianCounter> {
 
-    MovingMedian(aku_Timestamp step, std::shared_ptr<Node> next)
-        : SlidingWindow<MovingMedianCounter>(step, next)
+    MovingMedian(std::shared_ptr<Node> next)
+        : SlidingWindow<MovingMedianCounter>(next)
     {
     }
 
@@ -507,14 +478,10 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             return std::make_shared<RandomSamplingNode>(nsize, next);
         } else if (name == "moving-average") {
             // Moving average
-            std::string width = ptree.get<std::string>("window");  // sliding window width
-            auto nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
-            return std::make_shared<MovingAverage>(nwidth, next);
+            return std::make_shared<MovingAverage>(next);
         } else if (name == "moving-median") {
             // Moving median
-            std::string width = ptree.get<std::string>("window");  // sliding window width
-            aku_Timestamp nwidth = DateTimeUtil::parse_duration(width.data(), width.size());
-            return std::make_shared<MovingMedian>(nwidth, next);
+            return std::make_shared<MovingMedian>(next);
         } else if (name == "frequent-items") {
             std::string serror = ptree.get<std::string>("error");
             std::string sportion = ptree.get<std::string>("portion");
@@ -615,15 +582,82 @@ std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_Pa
     return std::make_shared<NodeT>(fn, next);
 }
 
+
+GroupByStatement::GroupByStatement()
+    : step_(0)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
+}
+
+GroupByStatement::GroupByStatement(aku_Timestamp step)
+    : step_(step)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
+}
+
+GroupByStatement::GroupByStatement(const GroupByStatement& other)
+    : step_(other.step_)
+    , first_hit_(other.first_hit_)
+    , lowerbound_(other.lowerbound_)
+    , upperbound_(other.upperbound_)
+{
+}
+
+GroupByStatement& GroupByStatement::operator = (const GroupByStatement& other) {
+    step_ = other.step_;
+    first_hit_ = other.first_hit_;
+    lowerbound_ = other.lowerbound_;
+    upperbound_ = other.upperbound_;
+    return *this;
+}
+
+bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
+    if (step_) {
+        aku_Timestamp ts = sample.timestamp;
+        if (AKU_UNLIKELY(first_hit_ == true)) {
+            first_hit_ = false;
+            aku_Timestamp aligned = ts / step_ * step_;
+            lowerbound_ = aligned;
+            upperbound_ = aligned + step_;
+        }
+        if (ts >= upperbound_) {
+            // Forward direction
+            aku_Sample empty = EMPTY_SAMPLE;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ += step_;
+            upperbound_ += step_;
+        } else if (ts < lowerbound_) {
+            // Backward direction
+            aku_Sample empty = EMPTY_SAMPLE;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ -= step_;
+            upperbound_ -= step_;
+        }
+    }
+    return next.put(sample);
+}
+
 ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
-               std::vector<std::string> metrics,
-               aku_Timestamp begin,
-               aku_Timestamp end)
+                                       std::vector<std::string> metrics,
+                                       aku_Timestamp begin,
+                                       aku_Timestamp end,
+                                       GroupByStatement groupby)
     : lowerbound_(std::min(begin, end))
     , upperbound_(std::max(begin, end))
     , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
     , metrics_(metrics)
     , namesofinterest_(StringTools::create_table(0x1000))
+    , groupby_(groupby)
     , root_node_(root)
 {
 }
@@ -633,7 +667,7 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
-    return root_node_->put(sample);
+    return groupby_.put(sample, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {

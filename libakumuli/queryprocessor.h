@@ -55,6 +55,25 @@ struct NodeBuilder {
 };
 
 
+/** Group-by statement processor */
+struct GroupByStatement {
+    aku_Timestamp   step_;
+    bool            first_hit_;
+    aku_Timestamp   lowerbound_;
+    aku_Timestamp   upperbound_;
+
+    GroupByStatement();
+
+    GroupByStatement(aku_Timestamp step);
+
+    GroupByStatement(const GroupByStatement& other);
+
+    GroupByStatement& operator = (const GroupByStatement& other);
+
+    bool put(aku_Sample const& sample, Node& next);
+};
+
+
 /** Numeric data query processor. Can be used to return raw data
   * from HDD or derivatives (Depending on the list of processing nodes).
   */
@@ -74,6 +93,9 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Name to id mapping
     TableT                             namesofinterest_;
 
+    //! Group-by statement
+    GroupByStatement                   groupby_;
+
     //! Root of the processing topology
     std::shared_ptr<Node>              root_node_;
 
@@ -85,9 +107,10 @@ struct ScanQueryProcessor : IQueryProcessor {
       *        (depending on a scan direction can be greater or smaller then lo)
       */
     ScanQueryProcessor(std::shared_ptr<Node> root,
-                   std::vector<std::string> metrics,
-                   aku_Timestamp begin,
-                   aku_Timestamp end);
+                       std::vector<std::string> metrics,
+                       aku_Timestamp begin,
+                       aku_Timestamp end,
+                       GroupByStatement groupby = GroupByStatement());
 
     //! Lowerbound
     aku_Timestamp lowerbound() const;

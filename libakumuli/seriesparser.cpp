@@ -105,6 +105,21 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
+static QP::GroupByStatement parse_groupby(boost::property_tree::ptree const& ptree,
+                                          aku_logger_cb_t logger) {
+    aku_Timestamp duration = 0u;
+    auto groupby = ptree.get_child_optional("group-by");
+    if (groupby) {
+        for(auto child: *groupby) {
+            if (child.first == "time") {
+                std::string str = child.second.get_value<std::string>();
+                duration = DateTimeUtil::parse_duration(str.c_str(), str.size());
+            }
+        }
+    }
+    return QP::GroupByStatement(duration);
+}
+
 static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
                                              aku_logger_cb_t logger) {
     std::vector<std::string> metrics;
@@ -240,6 +255,9 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
     logger(AKU_LOG_INFO, to_json(ptree, true).c_str());
 
     try {
+        // Read groupby statement
+        auto groupby = parse_groupby(ptree, logger);
+
         // Read metric(s) name
         auto metrics = parse_metric(ptree, logger);
 
@@ -289,7 +307,7 @@ SeriesMatcher::build_query_processor(const char* query, std::shared_ptr<QP::Node
                 next = NodeBuilder::make_filter_out_by_id_list(ids_excluded, next, logger);
             }
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end);
+            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end, groupby);
         }
 
         if (ids_included.empty() && metrics.empty()) {
