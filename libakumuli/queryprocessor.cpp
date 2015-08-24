@@ -393,12 +393,13 @@ struct SpaceSaver : Node {
 
 
 struct AnomalyDetector : Node {
-    typedef std::unique_ptr<ForecastingMethod>          PSlidingWindow;
-    typedef std::unique_ptr<CountingSketchProcessor>    PDetector;
+    typedef std::unique_ptr<AnomalyDetectorIface> PDetector;
 
     enum FcastMethod {
         SMA,
-        EWMA
+        EWMA,
+        SMA_SKETCH,
+        EWMA_SKETCH
     };
 
     std::shared_ptr<Node> next_;
@@ -407,15 +408,20 @@ struct AnomalyDetector : Node {
     AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, uint32_t window_depth, FcastMethod method, std::shared_ptr<Node> next)
         : next_(next)
     {
-        PSlidingWindow window;
-        if (method == SMA) {
-            window.reset(new SMASlidingWindow(window_depth));
-        } else if (method == EWMA) {
-            window.reset(new EWMASlidingWindow(window_depth));
-        } else {
-            AKU_PANIC("Unknown forecasting method");
+        switch(method) {
+        case SMA:
+            detector_ = AnomalyDetectorUtil::create_sma(nhashes, 1 << bits, threshold, window_depth, false);
+            break;
+        case EWMA:
+            detector_ = AnomalyDetectorUtil::create_ewma(nhashes, 1 << bits, threshold, window_depth, false);
+            break;
+        case SMA_SKETCH:
+            detector_ = AnomalyDetectorUtil::create_sma(nhashes, 1 << bits, threshold, window_depth, true);
+            break;
+        case EWMA_SKETCH:
+            detector_ = AnomalyDetectorUtil::create_ewma(nhashes, 1 << bits, threshold, window_depth, true);
+            break;
         }
-        detector_.reset(new CountingSketchProcessor(nhashes, 1 << bits, threshold, std::move(window)));
     }
 
     virtual void complete() {
@@ -500,15 +506,16 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             std::string sthreshold = ptree.get<std::string>("threshold");
             std::string swindow = ptree.get<std::string>("window");
             std::string smethod = ptree.get<std::string>("method");
+            bool approx = ptree.get<bool>("approx");
             uint32_t bits = boost::lexical_cast<uint32_t>(sbits);
             uint32_t window = boost::lexical_cast<uint32_t>(swindow);
             uint32_t hashes = boost::lexical_cast<uint32_t>(shash);
             double threshold = boost::lexical_cast<double>(sthreshold);
             AnomalyDetector::FcastMethod method;
             if (smethod == "ewma") {
-                method = AnomalyDetector::EWMA;
+                method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
             } else if (smethod == "sma") {
-                method = AnomalyDetector::SMA;
+                method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
             } else {
                 QueryParserError err("Unknown forecasting method");
                 BOOST_THROW_EXCEPTION(err);
