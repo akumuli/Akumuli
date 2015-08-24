@@ -254,10 +254,10 @@ struct ExactCounter {
         for(auto it = lhs.table_.begin(); it != lhs.table_.end(); it++) {
             auto itrhs = rhs.table_.find(it->first);
             double rhsval = 0.;
-            if (itrhs == rhs.table_.end()) {
+            if (itrhs != rhs.table_.end()) {
                 rhsval = itrhs->second;
             }
-            table_[it->first] = it->second + rhsval;
+            table_[it->first] = abs(it->second - rhsval);
         }
     }
 
