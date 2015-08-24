@@ -212,17 +212,17 @@ struct CountingSketch {
 
 
 //                          //
-//      ExactCounter        //
+//      PreciseCounter      //
 //                          //
 
-struct ExactCounter {
+struct PreciseCounter {
     std::unordered_map<uint64_t, double> table_;
 
     //! C-tor. Parameter `hf` is unused for the sake of interface unification.
-    ExactCounter(HashFnFamily const& hf) {
+    PreciseCounter(HashFnFamily const& hf) {
     }
 
-    ExactCounter(ExactCounter const& cs)
+    PreciseCounter(PreciseCounter const& cs)
         : table_(cs.table_)
     {
     }
@@ -250,7 +250,7 @@ struct ExactCounter {
     }
 
     //! current sketch <- absolute difference between two arguments
-    void diff(ExactCounter const& lhs, ExactCounter const& rhs) {
+    void diff(PreciseCounter const& lhs, PreciseCounter const& rhs) {
         for(auto it = lhs.table_.begin(); it != lhs.table_.end(); it++) {
             auto itrhs = rhs.table_.find(it->first);
             double rhsval = 0.;
@@ -262,14 +262,14 @@ struct ExactCounter {
     }
 
     //! Add sketch
-    void add(ExactCounter const& val) {
+    void add(PreciseCounter const& val) {
         for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
             table_[it->first] += it->second;
         }
     }
 
     //! Substract sketch
-    void sub(ExactCounter const& val) {
+    void sub(PreciseCounter const& val) {
         for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
             table_[it->first] -= it->second;
         }
@@ -462,8 +462,8 @@ std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_sma(uint32_t N
                                                                       uint32_t window_size,
                                                                       bool approx)
 {
-    typedef AnomalyDetectorPipeline<ExactCounter, SMASlidingWindow>     ExactSMADetector;
-    typedef SMASlidingWindow<ExactCounter>                              ExactSMAWindow;
+    typedef AnomalyDetectorPipeline<PreciseCounter, SMASlidingWindow>   PreciseSMADetector;
+    typedef SMASlidingWindow<PreciseCounter>                            PreciseSMAWindow;
     typedef AnomalyDetectorPipeline<CountingSketch, SMASlidingWindow>   SketchSMADetector;
     typedef SMASlidingWindow<CountingSketch>                            SketchSMAWindow;
 
@@ -473,7 +473,7 @@ std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_sma(uint32_t N
         result = create_detector<SketchSMAWindow, SketchSMADetector>(N, K, threshold, window_size);
         return std::move(result);
     } else {
-        result = create_detector<ExactSMAWindow, ExactSMADetector>(N, K, threshold, window_size);
+        result = create_detector<PreciseSMAWindow, PreciseSMADetector>(N, K, threshold, window_size);
         return std::move(result);
     }
 }
@@ -484,8 +484,8 @@ std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_ewma(uint32_t 
                                                                       uint32_t window_size,
                                                                       bool approx)
 {
-    typedef AnomalyDetectorPipeline<ExactCounter, EWMASlidingWindow>    ExactEWMADetector;
-    typedef EWMASlidingWindow<ExactCounter>                             ExactEWMAWindow;
+    typedef AnomalyDetectorPipeline<PreciseCounter, EWMASlidingWindow>  PreciseEWMADetector;
+    typedef EWMASlidingWindow<PreciseCounter>                           PreciseEWMAWindow;
     typedef AnomalyDetectorPipeline<CountingSketch, EWMASlidingWindow>  SketchEWMADetector;
     typedef EWMASlidingWindow<CountingSketch>                           SketchEWMAWindow;
 
@@ -495,7 +495,7 @@ std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_ewma(uint32_t 
         result = create_detector<SketchEWMAWindow, SketchEWMADetector>(N, K, threshold, window_size);
         return std::move(result);
     } else {
-        result = create_detector<ExactEWMAWindow, ExactEWMADetector>(N, K, threshold, window_size);
+        result = create_detector<PreciseEWMAWindow, PreciseEWMADetector>(N, K, threshold, window_size);
         return std::move(result);
     }
 }
