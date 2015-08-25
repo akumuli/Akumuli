@@ -63,6 +63,17 @@ static int parse_n_digits(const char* p, int n, const char* error_message = "can
 
 aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     size_t len = std::strlen(iso_str);
+    if (len < 15 || iso_str[8] != 'T') {
+        // Raw timestamp
+        aku_Timestamp ts;
+        char* end;
+        ts = strtoull(iso_str, &end, 10);
+        if (errno) {
+            BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
+            BOOST_THROW_EXCEPTION(error);
+        }
+        return ts;
+    }
     if (len < 15) {
         BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
         BOOST_THROW_EXCEPTION(error);
