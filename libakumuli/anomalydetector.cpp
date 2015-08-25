@@ -251,13 +251,23 @@ struct PreciseCounter {
 
     //! current sketch <- absolute difference between two arguments
     void diff(PreciseCounter const& lhs, PreciseCounter const& rhs) {
-        for(auto it = lhs.table_.begin(); it != lhs.table_.end(); it++) {
-            auto itrhs = rhs.table_.find(it->first);
-            double rhsval = 0.;
-            if (itrhs != rhs.table_.end()) {
-                rhsval = itrhs->second;
+        const std::unordered_map<uint64_t, double> *small, *large;
+        if (lhs.table_.size() < rhs.table_.size()) {
+            small = &lhs.table_;
+            large = &rhs.table_;
+        } else {
+            small = &rhs.table_;
+            large = &lhs.table_;
+        }
+        table_.clear();
+        // Scan largest
+        for (auto it = large->begin(); it != large->end(); it++) {
+            auto small_it = small->find(it->first);
+            double val = 0.;
+            if (small_it != small->end()) {
+                val = small_it->second;
             }
-            table_[it->first] = abs(it->second - rhsval);
+            table_[it->first] = abs(it->second - val);
         }
     }
 
