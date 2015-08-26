@@ -17,19 +17,37 @@ struct AnomalyDetectorIface {
 };
 
 struct AnomalyDetectorUtil {
-    //! Create anomaly detector based on simple moving-average smothing
-    static std::unique_ptr<AnomalyDetectorIface>  create_sma(uint32_t N,
-                                                             uint32_t K,
-                                                             double threshold,
-                                                             uint32_t window_size,
-                                                             bool approx);
 
-    //! Create anomaly detector based on exponentially weighted moving-average smothing
-    static std::unique_ptr<AnomalyDetectorIface> create_ewma(uint32_t N,
-                                                             uint32_t K,
-                                                             double threshold,
-                                                             uint32_t window_size,
-                                                             bool approx);
+    //! Create approximate anomaly detector based on simple moving-average smothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                          create_approx_sma (uint32_t N,
+                                             uint32_t K,
+                                             double threshold,
+                                             uint32_t window_size);
+
+    //! Create precise anomaly detector based on simple moving-average smothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_precise_sma (double threshold,
+                                             uint32_t window_size);
+
+    //! Create approximate anomaly detector based on EWMA smoothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_approx_ewma (uint32_t N,
+                                             uint32_t K,
+                                             double threshold,
+                                             uint32_t window_size);
+
+    //! Create precise anomaly detector based on EWMA smoothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_precise_ewma(double threshold,
+                                             uint32_t window_size);
+
+    //! Create precise anomaly detector based on double Holt-Winters smoothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_precise_double_holt_winters(
+                                             double threshold,
+                                             double alpha,
+                                             double beta);
 };
 
 }

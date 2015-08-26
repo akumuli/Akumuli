@@ -22,6 +22,7 @@
 #include <random>
 #include <algorithm>
 #include <unordered_set>
+#include <set>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -399,7 +400,9 @@ struct AnomalyDetector : Node {
         SMA,
         EWMA,
         SMA_SKETCH,
-        EWMA_SKETCH
+        EWMA_SKETCH,
+        DOUBLE_HOLT_WINTERS,
+        DOUBLE_HOLT_WINTERS_SKETCH,
     };
 
     std::shared_ptr<Node> next_;
@@ -410,17 +413,37 @@ struct AnomalyDetector : Node {
     {
         switch(method) {
         case SMA:
-            detector_ = AnomalyDetectorUtil::create_sma(nhashes, 1 << bits, threshold, window_depth, false);
+            detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, window_depth);
             break;
         case EWMA:
-            detector_ = AnomalyDetectorUtil::create_ewma(nhashes, 1 << bits, threshold, window_depth, false);
+            detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, window_depth);
             break;
         case SMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_sma(nhashes, 1 << bits, threshold, window_depth, true);
+            detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, window_depth);
             break;
         case EWMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_ewma(nhashes, 1 << bits, threshold, window_depth, true);
+            detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, window_depth);
             break;
+        default:
+            std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
+
+    AnomalyDetector(uint32_t nhashes,
+                    uint32_t bits,
+                    double threshold,
+                    double alpha,
+                    double beta,
+                    double gamma,
+                    FcastMethod method,
+                    std::shared_ptr<Node> next)
+        : next_(next)
+    {
+        switch(method) {
+        default:
+            std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
+            BOOST_THROW_EXCEPTION(err);
         }
     }
 
@@ -463,17 +486,39 @@ struct AnomalyDetector : Node {
 //         Factory methods           //
 //                                   //
 
+static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_tree::ptree const& ptree) {
+    bool approx = ptree.get<bool>("approx");
+    std::string name = ptree.get<std::string>("method");
+    AnomalyDetector::FcastMethod method;
+    if (name == "ewma") {
+        method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
+    } else if (name == "sma") {
+        method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
+    } else if (name == "double-hw") {
+        method = approx ? AnomalyDetector::DOUBLE_HOLT_WINTERS_SKETCH : AnomalyDetector::DOUBLE_HOLT_WINTERS;
+    } else {
+        QueryParserError err("Unknown forecasting method");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    return method;
+}
+
 std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
                                                 std::shared_ptr<Node> next,
                                                 aku_logger_cb_t logger)
 {
-    // ptree = { "algorithm": "reservoir", "size": "1000" }
-    // or
-    // ptree = { "algorithm": "moving-average", "window": "100" }
-    // or
-    // ptree = { "algorithm": "moving-median", "window": "100" }
-    // or
-    // ptree = { "algorithm": "frequent-items", "capacity": "1000" }
+    static const std::set<AnomalyDetector::FcastMethod> SLIDING_WINDOW = {
+        AnomalyDetector::SMA,
+        AnomalyDetector::SMA_SKETCH,
+        AnomalyDetector::EWMA,
+        AnomalyDetector::EWMA_SKETCH,
+    };
+
+    static const std::set<AnomalyDetector::FcastMethod> HOLT_WINTERS = {
+        AnomalyDetector::DOUBLE_HOLT_WINTERS,
+        AnomalyDetector::DOUBLE_HOLT_WINTERS_SKETCH,
+    };
+
     try {
         std::string name;
         name = ptree.get<std::string>("name");
@@ -501,31 +546,24 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             double portion = boost::lexical_cast<double>(sportion);
             return std::make_shared<SpaceSaver<true>>(error, portion, next);
         } else if (name == "anomaly-detector") {
-            std::string sbits = ptree.get<std::string>("bits", "16");
-            std::string shash = ptree.get<std::string>("hashes", "3");
-            std::string sthreshold = ptree.get<std::string>("threshold");
-            std::string swindow = ptree.get<std::string>("window");
-            std::string smethod = ptree.get<std::string>("method");
-            bool approx = ptree.get<bool>("approx");
-            uint32_t bits = boost::lexical_cast<uint32_t>(sbits);
-            uint32_t window = boost::lexical_cast<uint32_t>(swindow);
-            uint32_t hashes = boost::lexical_cast<uint32_t>(shash);
-            double threshold = boost::lexical_cast<double>(sthreshold);
-            AnomalyDetector::FcastMethod method;
-            if (smethod == "ewma") {
-                method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
-            } else if (smethod == "sma") {
-                method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
-            } else {
-                QueryParserError err("Unknown forecasting method");
-                BOOST_THROW_EXCEPTION(err);
+            double threshold = ptree.get<double>("threshold");
+            AnomalyDetector::FcastMethod method = parse_anomaly_detector_type(ptree);
+            if (SLIDING_WINDOW.count(method)) {
+                uint32_t bits = ptree.get<uint32_t>("bits", 10u);
+                uint32_t hashes = ptree.get<uint32_t>("hashes", 3u);
+                uint32_t window = ptree.get<uint32_t>("window");
+                return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
             }
-            return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
-        } else {
-            // only this one is implemented
-            NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
-            BOOST_THROW_EXCEPTION(except);
+            if (HOLT_WINTERS.count(method)) {
+                double alpha = ptree.get<double>("alpha");
+                double beta = ptree.get<double>("beta", 0.0);
+                double gamma = ptree.get<double>("gamma", 0.0);
+                return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
+            }
         }
+        // only this one is implemented
+        NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
+        BOOST_THROW_EXCEPTION(except);
     } catch (const boost::property_tree::ptree_error&) {
         NodeException except(Node::RandomSampler, "invalid sampler description");
         BOOST_THROW_EXCEPTION(except);
