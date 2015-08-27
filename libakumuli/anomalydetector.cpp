@@ -550,7 +550,7 @@ std::unique_ptr<AnomalyDetectorIface>
     typedef AnomalyDetectorPipeline<PreciseCounter, SMASlidingWindow>   Detector;
     typedef SMASlidingWindow<PreciseCounter>                            Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(256, 1, threshold, window_size);
+    result = create_detector<Window, Detector>(1, 8, threshold, window_size);
     return std::move(result);
 }
 
@@ -576,7 +576,7 @@ std::unique_ptr<AnomalyDetectorIface>
     typedef AnomalyDetectorPipeline<PreciseCounter, EWMASlidingWindow>  Detector;
     typedef EWMASlidingWindow<PreciseCounter>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(256, 1, threshold, window_size);
+    result = create_detector<Window, Detector>(1, 8, threshold, window_size);
     return std::move(result);
 }
 
@@ -591,7 +591,23 @@ std::unique_ptr<AnomalyDetectorIface>
     typedef DoubleHWSlidingWindow<PreciseCounter>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
     std::unique_ptr<Window> window(new Window(alpha, beta));
-    result.reset(new Detector(256, 1, threshold, std::move(window)));
+    result.reset(new Detector(1, 8, threshold, std::move(window)));
+    return std::move(result);
+}
+
+std::unique_ptr<AnomalyDetectorIface>
+    AnomalyDetectorUtil::create_approx_double_holt_winters(
+                                         uint32_t N,
+                                         uint32_t K,
+                                         double threshold,
+                                         double alpha,
+                                         double beta)
+{
+    typedef AnomalyDetectorPipeline<CountingSketch, DoubleHWSlidingWindow>  Detector;
+    typedef DoubleHWSlidingWindow<CountingSketch>                           Window;
+    std::unique_ptr<AnomalyDetectorIface> result;
+    std::unique_ptr<Window> window(new Window(alpha, beta));
+    result.reset(new Detector(N, K, threshold, std::move(window)));
     return std::move(result);
 }
 

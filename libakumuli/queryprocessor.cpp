@@ -445,6 +445,7 @@ struct AnomalyDetector : Node {
             detector_ = AnomalyDetectorUtil::create_precise_double_holt_winters(threshold, alpha, beta);
             break;
         case DOUBLE_HOLT_WINTERS_SKETCH:
+            detector_ = AnomalyDetectorUtil::create_approx_double_holt_winters(nhashes, 1 << bits, threshold, alpha, beta);
             break;
         default:
             std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
@@ -552,19 +553,19 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             return std::make_shared<SpaceSaver<true>>(error, portion, next);
         } else if (name == "anomaly-detector") {
             double threshold = ptree.get<double>("threshold");
+            // next two params unused if precise method is used
+            uint32_t bits = ptree.get<uint32_t>("bits", 10u);
+            uint32_t hashes = ptree.get<uint32_t>("hashes", 3u);
             AnomalyDetector::FcastMethod method = parse_anomaly_detector_type(ptree);
             if (SLIDING_WINDOW.count(method)) {
-                uint32_t bits = ptree.get<uint32_t>("bits", 10u);
-                uint32_t hashes = ptree.get<uint32_t>("hashes", 3u);
                 uint32_t window = ptree.get<uint32_t>("window");
                 return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
             }
             if (HOLT_WINTERS.count(method)) {
-                //double alpha = ptree.get<double>("alpha");
-                //double beta = ptree.get<double>("beta", 0.0);
-                //double gamma = ptree.get<double>("gamma", 0.0);
-                //return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
-                throw "Not implemented";
+                double alpha = ptree.get<double>("alpha");
+                double beta = ptree.get<double>("beta", 0.0);
+                double gamma = ptree.get<double>("gamma", 0.0);
+                return std::make_shared<AnomalyDetector>(hashes, bits, threshold, alpha, beta, gamma, method, next);
             }
         }
         // only this one is implemented

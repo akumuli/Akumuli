@@ -48,6 +48,15 @@ struct AnomalyDetectorUtil {
                                              double threshold,
                                              double alpha,
                                              double beta);
+
+    //! Create approximate anomaly detector based on double Holt-Winters smoothing
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_approx_double_holt_winters(
+                                             uint32_t N,
+                                             uint32_t K,
+                                             double threshold,
+                                             double alpha,
+                                             double beta);
 };
 
 }
