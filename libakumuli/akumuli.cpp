@@ -86,7 +86,7 @@ void aku_console_logger(int tag, const char* msg) {
 
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
-    int status_;
+    aku_Status status_;
     std::string query_;
 
     CursorImpl(Storage& storage, const char* query)
@@ -104,7 +104,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_done();
     }
 
-    bool is_error(int* out_error_code_or_null) const {
+    bool is_error(aku_Status* out_error_code_or_null) const {
         if (status_ != AKU_SUCCESS) {
             *out_error_code_or_null = status_;
             return false;
@@ -325,7 +325,7 @@ int aku_cursor_is_done(aku_Cursor* pcursor) {
     return static_cast<int>(pimpl->is_done());
 }
 
-int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
+int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
     return static_cast<int>(pimpl->is_error(out_error_code_or_null));
 }

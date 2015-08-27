@@ -77,7 +77,7 @@ void CursorFSM::complete() {
     complete_ = true;
 }
 
-void CursorFSM::set_error(int error_code) {
+void CursorFSM::set_error(aku_Status error_code) {
     error_code_ = error_code;
     error_ = true;
     complete_ = true;
@@ -87,7 +87,7 @@ bool CursorFSM::is_done() const {
     return complete_ || closed_;
 }
 
-bool CursorFSM::get_error(int *error_code) const {
+bool CursorFSM::get_error(aku_Status *error_code) const {
     if (error_ && error_code) {
         *error_code = error_code_;
         return true;
@@ -123,7 +123,7 @@ bool CoroCursor::is_done() const {
     return cursor_fsm_.is_done();
 }
 
-bool CoroCursor::is_error(int* out_error_code_or_null) const {
+bool CoroCursor::is_error(aku_Status* out_error_code_or_null) const {
     return cursor_fsm_.get_error(out_error_code_or_null);
 }
 
@@ -136,7 +136,7 @@ void CoroCursor::close() {
 
 // Internal cursor implementation
 
-void CoroCursor::set_error(Caller& caller, int error_code) {
+void CoroCursor::set_error(Caller& caller, aku_Status error_code) {
     cursor_fsm_.set_error(error_code);
     caller();
 }
@@ -175,7 +175,7 @@ StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
     , in_cursors_(in_cursors, in_cursors + size)
     , pred_{direction}
 {
-    int error = AKU_SUCCESS;
+    aku_Status error = AKU_SUCCESS;
     for (auto cursor: in_cursors_) {
         if (cursor->is_error(&error)) {
             set_error(error);
@@ -206,7 +206,7 @@ StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
 
 void StacklessFanInCursorCombinator::read_impl_() {
     // Check preconditions
-    int error = 0;
+    aku_Status error = AKU_SUCCESS;
     bool proceed = true;
     const size_t BUF_LEN = 0x200;
     aku_Sample buffer[BUF_LEN];
@@ -247,7 +247,7 @@ bool StacklessFanInCursorCombinator::is_done() const {
     return cursor_fsm_.is_done();
 }
 
-bool StacklessFanInCursorCombinator::is_error(int *out_error_code_or_null) const {
+bool StacklessFanInCursorCombinator::is_error(aku_Status *out_error_code_or_null) const {
     return cursor_fsm_.get_error(out_error_code_or_null);
 }
 
@@ -258,7 +258,7 @@ void StacklessFanInCursorCombinator::close() {
     cursor_fsm_.close();
 }
 
-void StacklessFanInCursorCombinator::set_error(int error_code) {
+void StacklessFanInCursorCombinator::set_error(aku_Status error_code) {
     cursor_fsm_.set_error(error_code);
 }
 

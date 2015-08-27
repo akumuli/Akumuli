@@ -21,7 +21,7 @@ struct AkumuliCursor : DbCursor {
 
     AkumuliCursor(aku_Cursor* cur) : cursor_(cur) { }
 
-    virtual aku_Status read(aku_Sample *dest, size_t dest_size) {
+    virtual int read(aku_Sample *dest, size_t dest_size) {
         return aku_cursor_read(cursor_, dest, dest_size);
     }
 
@@ -29,7 +29,7 @@ struct AkumuliCursor : DbCursor {
         return aku_cursor_is_done(cursor_);
     }
 
-    virtual bool is_error(int *out_error_code_or_null) {
+    virtual bool is_error(aku_Status *out_error_code_or_null) {
         return aku_cursor_is_error(cursor_, out_error_code_or_null);
     }
 

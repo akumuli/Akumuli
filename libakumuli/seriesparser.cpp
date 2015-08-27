@@ -379,10 +379,10 @@ static const char* skip_tag(const char* p, const char* end, bool *error) {
     return c;
 }
 
-int SeriesParser::to_normal_form(const char* begin, const char* end,
-                                 char* out_begin, char* out_end,
-                                 const char** keystr_begin,
-                                 const char** keystr_end)
+aku_Status SeriesParser::to_normal_form(const char* begin, const char* end,
+                                        char* out_begin, char* out_end,
+                                        const char** keystr_begin,
+                                        const char** keystr_end)
 {
     // Verify args
     if (end < begin) {

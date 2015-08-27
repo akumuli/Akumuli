@@ -192,14 +192,14 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    int add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
+    aku_Status add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.
      * @param data chunk header data (list of sorted timestamps, param ids, offsets and lengths
      * @returns operation status
      */
-    int complete_chunk(const UncompressedChunk& data);
+    aku_Status complete_chunk(const UncompressedChunk& data);
 
     /**
      * Get length of the entry.

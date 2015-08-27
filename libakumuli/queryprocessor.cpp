@@ -441,6 +441,11 @@ struct AnomalyDetector : Node {
         : next_(next)
     {
         switch(method) {
+        case DOUBLE_HOLT_WINTERS:
+            detector_ = AnomalyDetectorUtil::create_precise_double_holt_winters(threshold, alpha, beta);
+            break;
+        case DOUBLE_HOLT_WINTERS_SKETCH:
+            break;
         default:
             std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
             BOOST_THROW_EXCEPTION(err);

@@ -129,7 +129,7 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     return DateTimeUtil::from_boost_ptime(pt);
 }
 
-aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
+int DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
     using namespace boost::gregorian;
     using namespace boost::posix_time;
     ptime ptime = to_boost_ptime(ts);

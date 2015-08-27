@@ -52,7 +52,7 @@ void test_cursor_error(int n_iter, int buf_size) {
             cursor.put(caller, r);
             expected.push_back(r);
         }
-        cursor.set_error(caller, -1);
+        cursor.set_error(caller, (aku_Status)-1);
     };
     std::vector<aku_Sample> actual;
     cursor.start(generator);

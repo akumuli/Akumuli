@@ -201,8 +201,8 @@ int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
 /** Check timestamp and make checkpoint if timestamp is large enough.
   * @returns error code and flag that indicates whether or not new checkpoint is created
   */
-std::tuple<int, int> Sequencer::check_timestamp_(aku_Timestamp ts) {
-    int error_code = AKU_SUCCESS;
+std::tuple<aku_Status, int> Sequencer::check_timestamp_(aku_Timestamp ts) {
+    aku_Status error_code = AKU_SUCCESS;
     if (ts < top_timestamp_) {
         auto delta = top_timestamp_ - ts;
         if (delta > window_size_) {
@@ -224,9 +224,8 @@ std::tuple<int, int> Sequencer::check_timestamp_(aku_Timestamp ts) {
     return make_tuple(error_code, flag);
 }
 
-std::tuple<int, int> Sequencer::add(TimeSeriesValue const& value) {
-    // FIXME: max_cache_size_ is not used
-    int status = 0;
+std::tuple<aku_Status, int> Sequencer::add(TimeSeriesValue const& value) {
+    aku_Status status = AKU_SUCCESS;
     int lock = 0;
     tie(status, lock) = check_timestamp_(value.get_timestamp());
     if (status != AKU_SUCCESS) {

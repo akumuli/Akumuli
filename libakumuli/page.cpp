@@ -149,10 +149,10 @@ aku_Status PageHeader::add_entry(const aku_ParamId param
     const auto ENTRY_SIZE = sizeof(aku_Entry) + range.length;
 
     if (!range.length) {
-        return AKU_WRITE_STATUS_BAD_DATA;
+        return AKU_EBAD_DATA;
     }
     if (SPACE_REQUIRED > get_free_space()) {
-        return AKU_WRITE_STATUS_OVERFLOW;
+        return AKU_EOVERFLOW;
     }
     char* free_slot = payload + next_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
@@ -163,10 +163,10 @@ aku_Status PageHeader::add_entry(const aku_ParamId param
     page_index(count)->timestamp = timestamp;
     next_offset += ENTRY_SIZE;
     count++;
-    return AKU_WRITE_STATUS_SUCCESS;
+    return AKU_SUCCESS;
 }
 
-int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
+aku_Status PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
     const auto
         SPACE_REQUIRED = range.length + free_space_required,
         SPACE_NEEDED = range.length;
@@ -180,7 +180,7 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     return AKU_SUCCESS;
 }
 
-int PageHeader::complete_chunk(const UncompressedChunk& data) {
+aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     CompressedChunkDesc desc;
     Rand rand;
     aku_Timestamp first_ts;

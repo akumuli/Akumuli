@@ -42,55 +42,35 @@
 // General error codes
 
 //! Success
-#define AKU_SUCCESS               0
-//! No data, can't proceed
-#define AKU_ENO_DATA              1
-//! Not enough memory
-#define AKU_ENO_MEM               2
-//! Device is busy
-#define AKU_EBUSY                 3
-//! Can't find result
-#define AKU_ENOT_FOUND            4
-//! Bad argument
-#define AKU_EBAD_ARG              5
-//! Overflow error
-#define AKU_EOVERFLOW             6
-//! The suplied data is invalid
-#define AKU_EBAD_DATA             7
-//! Error, no details available
-#define AKU_EGENERAL              8
-//! Late write error
-#define AKU_ELATE_WRITE           9
-//! Not implemented error
-#define AKU_ENOT_IMPLEMENTED     10
-//! Invalid query
-#define AKU_EQUERY_PARSING_ERROR 11
-//! Anomaly detector doesn't supports negative values (now)
-#define AKU_EANOMALY_NEG_VAL     12
-#define AKU_EMAX_ERROR           13
+typedef enum {
+    AKU_SUCCESS = 0,
+    //! No data, can't proceed
+    AKU_ENO_DATA = 1,
+    //! Not enough memory
+    AKU_ENO_MEM = 2,
+    //! Device is busy
+    AKU_EBUSY = 3,
+    //! Can't find result
+    AKU_ENOT_FOUND = 4,
+    //! Bad argument
+    AKU_EBAD_ARG = 5,
+    //! Overflow error
+    AKU_EOVERFLOW = 6,
+    //! The suplied data is invalid
+    AKU_EBAD_DATA = 7,
+    //! Error, no details available
+    AKU_EGENERAL = 8,
+    //! Late write error
+    AKU_ELATE_WRITE = 9,
+    //! Not implemented error
+    AKU_ENOT_IMPLEMENTED = 10,
+    //! Invalid query
+    AKU_EQUERY_PARSING_ERROR = 11,
+    //! Anomaly detector doesn't supports negative values (now)
+    AKU_EANOMALY_NEG_VAL = 12,
 
-
-// Search error codes
-
-//! No error
-#define AKU_SEARCH_SUCCESS        0
-//! Can't find result
-#define AKU_SEARCH_ENOT_FOUND     4
-//! Invalid arguments
-#define AKU_SEARCH_EBAD_ARG       5
-
-// Config
-#define AKU_DEBUG_MODE_ON         1
-#define AKU_DEBUG_MODE_OFF        0
-
-// Write status
-
-//! Succesfull write
-#define AKU_WRITE_STATUS_SUCCESS  0
-//! Page overflow during write
-#define AKU_WRITE_STATUS_OVERFLOW 6
-//! Invalid input
-#define AKU_WRITE_STATUS_BAD_DATA 7
+    AKU_EMAX_ERROR = 13,
+} aku_Status;
 
 
 // Cursor directions

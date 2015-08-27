@@ -54,7 +54,7 @@ struct DateTimeUtil {
 
     /** Convert timestamp to string.
       */
-    static aku_Status to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size);
+    static int to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size);
 
     /** Parse time-duration from string
       * @throw BadDateTimeFormat on error

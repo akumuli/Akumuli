@@ -41,7 +41,7 @@ struct DbCursor {
     virtual int is_done() = 0;
 
     //! Check for error condition
-    virtual bool is_error(int* out_error_code_or_null) = 0;
+    virtual bool is_error(aku_Status* out_error_code_or_null) = 0;
 
     //! Close cursor
     virtual void close() = 0;

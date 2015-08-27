@@ -73,7 +73,7 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
     aku_Timestamp current_time = EPOCH + begin;
     size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
-        int err = AKU_SUCCESS;
+        aku_Status err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             std::cout << aku_error_message(err) << std::endl;
             return false;

@@ -42,8 +42,8 @@ struct RecordingCursor : InternalCursor {
         completed = true;
     }
 
-    virtual void set_error(Caller&, int error_code) {
-        this->error_code = error_code;
+    virtual void set_error(Caller&, aku_Status error_code) {
+        this->error_code = (int)error_code;
     }
 };
 

@@ -219,6 +219,15 @@ struct LocalStorage : Storage {
         }
     }
 
+    void throw_on_error(apr_status_t status) const {
+        if (status != APR_SUCCESS) {
+            char buffer[1000];
+            apr_strerror(status, buffer, 1000);
+            std::runtime_error err(buffer);
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
+
     std::string get_db_file_path() const {
         std::string path = work_dir_ + "/" + DBNAME_ + ".akumuli";
         return path;
