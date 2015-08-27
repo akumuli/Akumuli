@@ -427,13 +427,13 @@ struct DoubleHWSlidingWindow {
             counter_ = 2;
             break;
         default: {
-                PFrame old_baseline = baseline_;
-                PFrame old_slope = slope_;
+                PFrame old_baseline = std::move(baseline_);
+                PFrame old_slope = std::move(slope_);
                 baseline_.reset(new Frame(*sketch));
                 baseline_->mul(alpha_);
                 old_baseline->add(*old_slope);
                 old_baseline->mul(1.0 - alpha_);
-                baseline_->add(old_baseline);
+                baseline_->add(*old_baseline);
                 break;
             }
         };
@@ -528,50 +528,6 @@ std::unique_ptr<AnomalyDetectorIface> create_detector(uint32_t N,
     return std::move(result);
 }
 
-std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_sma(uint32_t N,
-                                                                      uint32_t K,
-                                                                      double threshold,
-                                                                      uint32_t window_size,
-                                                                      bool approx)
-{
-    typedef AnomalyDetectorPipeline<PreciseCounter, SMASlidingWindow>   PreciseSMADetector;
-    typedef SMASlidingWindow<PreciseCounter>                            PreciseSMAWindow;
-    typedef AnomalyDetectorPipeline<CountingSketch, SMASlidingWindow>   SketchSMADetector;
-    typedef SMASlidingWindow<CountingSketch>                            SketchSMAWindow;
-
-    std::unique_ptr<AnomalyDetectorIface> result;
-
-    if (approx) {
-        result = create_detector<SketchSMAWindow, SketchSMADetector>(N, K, threshold, window_size);
-        return std::move(result);
-    } else {
-        result = create_detector<PreciseSMAWindow, PreciseSMADetector>(N, K, threshold, window_size);
-        return std::move(result);
-    }
-}
-
-std::unique_ptr<AnomalyDetectorIface> AnomalyDetectorUtil::create_ewma(uint32_t N,
-                                                                      uint32_t K,
-                                                                      double threshold,
-                                                                      uint32_t window_size,
-                                                                      bool approx)
-{
-    typedef AnomalyDetectorPipeline<PreciseCounter, EWMASlidingWindow>  PreciseEWMADetector;
-    typedef EWMASlidingWindow<PreciseCounter>                           PreciseEWMAWindow;
-    typedef AnomalyDetectorPipeline<CountingSketch, EWMASlidingWindow>  SketchEWMADetector;
-    typedef EWMASlidingWindow<CountingSketch>                           SketchEWMAWindow;
-
-    std::unique_ptr<AnomalyDetectorIface> result;
-
-    if (approx) {
-        result = create_detector<SketchEWMAWindow, SketchEWMADetector>(N, K, threshold, window_size);
-        return std::move(result);
-    } else {
-        result = create_detector<PreciseEWMAWindow, PreciseEWMADetector>(N, K, threshold, window_size);
-        return std::move(result);
-    }
-}
-
 //! Create approximate anomaly detector based on simple moving-average smothing
 std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_approx_sma(uint32_t N,
@@ -632,9 +588,9 @@ std::unique_ptr<AnomalyDetectorIface>
                                              double beta)
 {
     typedef AnomalyDetectorPipeline<PreciseCounter, DoubleHWSlidingWindow>  Detector;
-    typedef EWMASlidingWindow<PreciseCounter>                               Window;
+    typedef DoubleHWSlidingWindow<PreciseCounter>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    std::unique_ptr<Window> window = new Window(alpha, beta);
+    std::unique_ptr<Window> window(new Window(alpha, beta));
     result.reset(new Detector(256, 1, threshold, std::move(window)));
     return std::move(result);
 }

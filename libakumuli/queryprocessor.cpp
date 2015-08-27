@@ -555,10 +555,11 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
                 return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
             }
             if (HOLT_WINTERS.count(method)) {
-                double alpha = ptree.get<double>("alpha");
-                double beta = ptree.get<double>("beta", 0.0);
-                double gamma = ptree.get<double>("gamma", 0.0);
-                return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
+                //double alpha = ptree.get<double>("alpha");
+                //double beta = ptree.get<double>("beta", 0.0);
+                //double gamma = ptree.get<double>("gamma", 0.0);
+                //return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
+                throw "Not implemented";
             }
         }
         // only this one is implemented
