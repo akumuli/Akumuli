@@ -168,7 +168,7 @@ AKU_EXPORT const char* aku_error_message(int error_code);
   * specified. Exported for testing reasons, no need to use it
   * explicitly.
   */
-AKU_EXPORT void aku_console_logger(int tag, const char* message);
+AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
 
 /**
  * @brief Destroy any object created with aku_make_*** function

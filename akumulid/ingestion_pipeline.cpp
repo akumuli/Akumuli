@@ -11,7 +11,7 @@ namespace Akumuli
 
 static Logger db_logger_ = Logger("akumuli-storage", 32);
 
-static void db_logger(int tag, const char *msg) {
+static void db_logger(aku_LogLevel tag, const char *msg) {
     db_logger_.error() << "(" << tag << ") " << msg;
 }
 
@@ -21,7 +21,7 @@ struct AkumuliCursor : DbCursor {
 
     AkumuliCursor(aku_Cursor* cur) : cursor_(cur) { }
 
-    virtual int read(aku_Sample *dest, size_t dest_size) {
+    virtual size_t read(aku_Sample *dest, size_t dest_size) {
         return aku_cursor_read(cursor_, dest, dest_size);
     }
 

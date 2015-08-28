@@ -11,7 +11,7 @@
 using namespace Akumuli;
 using namespace Akumuli::QP;
 
-void logger(int errlvl, const char* msg) {
+void logger(aku_LogLevel errlvl, const char* msg) {
     if (errlvl == AKU_LOG_ERROR) {
         std::cout << msg << std::endl;
     }

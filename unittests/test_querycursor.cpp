@@ -18,7 +18,7 @@ struct CursorMock : DbCursor {
     constexpr static const char* strval = "teststring";
     bool isdone_ = false;
 
-    int read(aku_Sample *dest, size_t dest_size) {
+    size_t read(aku_Sample *dest, size_t dest_size) {
         if (isdone_ == true) {
             return 0;
         }

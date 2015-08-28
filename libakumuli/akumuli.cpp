@@ -71,7 +71,7 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[AKU_EMAX_ERROR];
 }
 
-void aku_console_logger(int tag, const char* msg) {
+void aku_console_logger(aku_LogLevel tag, const char* msg) {
     apr_time_t now = apr_time_now();
     char ts[APR_RFC822_DATE_LEN];
     if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
@@ -262,7 +262,7 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
     {
         // Set defaut
         config.durability = AKU_MAX_DURABILITY;
-        (*config.logger)(-1, "config.durability = default(AKU_MAX_DURABILITY)");
+        (*config.logger)(AKU_LOG_INFO, "config.durability = default(AKU_MAX_DURABILITY)");
     }
     auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);

@@ -30,12 +30,14 @@
 
 
 // Log levels
-#define AKU_LOG_TRACE                 7
-#define AKU_LOG_INFO                  2
-#define AKU_LOG_ERROR                 1
+typedef enum {
+    AKU_LOG_TRACE = 7,
+    AKU_LOG_INFO  = 2,
+    AKU_LOG_ERROR = 1,
+} aku_LogLevel;
 
 //! Logging function type
-typedef void (*aku_logger_cb_t) (int level, const char * msg);
+typedef void (*aku_logger_cb_t) (aku_LogLevel level, const char * msg);
 
 //! Panic handler function type
 typedef void (*aku_panic_handler_t) (const char * msg);

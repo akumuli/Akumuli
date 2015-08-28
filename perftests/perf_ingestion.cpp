@@ -220,9 +220,9 @@ Mode read_cmd(int cnt, const char** args) {
     throw std::runtime_error("Bad command line parameters");
 }
 
-void logger_(int level, const char * msg) {
+void logger_(aku_LogLevel level, const char * msg) {
     if (level == AKU_LOG_ERROR) {
-        //aku_console_logger(level, msg);
+        aku_console_logger(level, msg);
     }
 }
 
