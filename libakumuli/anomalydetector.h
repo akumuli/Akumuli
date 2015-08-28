@@ -35,23 +35,23 @@ struct AnomalyDetectorUtil {
                          create_approx_ewma (uint32_t N,
                                              uint32_t K,
                                              double threshold,
-                                             uint32_t window_size);
+                                             double alpha);
 
     //! Create precise anomaly detector based on EWMA smoothing
     static std::unique_ptr<AnomalyDetectorIface>
                          create_precise_ewma(double threshold,
-                                             uint32_t window_size);
+                                             double alpha);
 
     //! Create precise anomaly detector based on double Holt-Winters smoothing
     static std::unique_ptr<AnomalyDetectorIface>
-                         create_precise_double_holt_winters(
+                         create_precise_double_exp_smoothing(
                                              double threshold,
                                              double alpha,
                                              double beta);
 
     //! Create approximate anomaly detector based on double Holt-Winters smoothing
     static std::unique_ptr<AnomalyDetectorIface>
-                         create_approx_double_holt_winters(
+                         create_approx_double_exp_smoothing(
                                              uint32_t N,
                                              uint32_t K,
                                              double threshold,

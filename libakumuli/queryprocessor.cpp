@@ -401,8 +401,8 @@ struct AnomalyDetector : Node {
         EWMA,
         SMA_SKETCH,
         EWMA_SKETCH,
-        DOUBLE_HOLT_WINTERS,
-        DOUBLE_HOLT_WINTERS_SKETCH,
+        DOUBLE_EXP_SMOOTHING,
+        DOUBLE_EXP_SMOOTHING_SKETCH,
     };
 
     std::shared_ptr<Node> next_;
@@ -415,14 +415,8 @@ struct AnomalyDetector : Node {
         case SMA:
             detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, window_depth);
             break;
-        case EWMA:
-            detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, window_depth);
-            break;
         case SMA_SKETCH:
             detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, window_depth);
-            break;
-        case EWMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, window_depth);
             break;
         default:
             std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
@@ -441,11 +435,17 @@ struct AnomalyDetector : Node {
         : next_(next)
     {
         switch(method) {
-        case DOUBLE_HOLT_WINTERS:
-            detector_ = AnomalyDetectorUtil::create_precise_double_holt_winters(threshold, alpha, beta);
+        case EWMA:
+            detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
             break;
-        case DOUBLE_HOLT_WINTERS_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_double_holt_winters(nhashes, 1 << bits, threshold, alpha, beta);
+        case EWMA_SKETCH:
+            detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
+            break;
+        case DOUBLE_EXP_SMOOTHING:
+            detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, beta);
+            break;
+        case DOUBLE_EXP_SMOOTHING_SKETCH:
+            detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, beta);
             break;
         default:
             std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
@@ -496,12 +496,12 @@ static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_
     bool approx = ptree.get<bool>("approx");
     std::string name = ptree.get<std::string>("method");
     AnomalyDetector::FcastMethod method;
-    if (name == "ewma") {
+    if (name == "ewma" || name == "exp-smoothing") {
         method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
-    } else if (name == "sma") {
+    } else if (name == "sma" || name == "simple-moving-average") {
         method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
-    } else if (name == "double-hw") {
-        method = approx ? AnomalyDetector::DOUBLE_HOLT_WINTERS_SKETCH : AnomalyDetector::DOUBLE_HOLT_WINTERS;
+    } else if (name == "double-exp-smoothing") {
+        method = approx ? AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH : AnomalyDetector::DOUBLE_EXP_SMOOTHING;
     } else {
         QueryParserError err("Unknown forecasting method");
         BOOST_THROW_EXCEPTION(err);
@@ -516,13 +516,13 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
     static const std::set<AnomalyDetector::FcastMethod> SLIDING_WINDOW = {
         AnomalyDetector::SMA,
         AnomalyDetector::SMA_SKETCH,
-        AnomalyDetector::EWMA,
-        AnomalyDetector::EWMA_SKETCH,
     };
 
-    static const std::set<AnomalyDetector::FcastMethod> HOLT_WINTERS = {
-        AnomalyDetector::DOUBLE_HOLT_WINTERS,
-        AnomalyDetector::DOUBLE_HOLT_WINTERS_SKETCH,
+    static const std::set<AnomalyDetector::FcastMethod> EXP_SMOOTHING = {
+        AnomalyDetector::EWMA,
+        AnomalyDetector::EWMA_SKETCH,
+        AnomalyDetector::DOUBLE_EXP_SMOOTHING,
+        AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH,
     };
 
     try {
@@ -561,7 +561,7 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
                 uint32_t window = ptree.get<uint32_t>("window");
                 return std::make_shared<AnomalyDetector>(hashes, bits, threshold, window, method, next);
             }
-            if (HOLT_WINTERS.count(method)) {
+            if (EXP_SMOOTHING.count(method)) {
                 double alpha = ptree.get<double>("alpha");
                 double beta = ptree.get<double>("beta", 0.0);
                 double gamma = ptree.get<double>("gamma", 0.0);

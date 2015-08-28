@@ -355,8 +355,8 @@ struct EWMASlidingWindow {
     const double         decay_;
     int                  counter_;
 
-    EWMASlidingWindow(uint32_t depth)
-        : decay_(1.0/(double(depth) + 1.0))
+    EWMASlidingWindow(double alpha)
+        : decay_(alpha)
         , counter_(0)
     {
     }
@@ -390,14 +390,14 @@ struct EWMASlidingWindow {
 };
 
 
-//                                  //
-//      DoubleHWSlidingWindow       //
-//                                  //
+//                                          //
+//      DoubleExpSmoothingSlidingWindow     //
+//                                          //
 
 
 //! Holt-Winters moving average implementation
 template<class Frame>
-struct DoubleHWSlidingWindow {
+struct DoubleExpSmoothingSlidingWindow {
     typedef std::unique_ptr<Frame> PFrame;
     PFrame               baseline_;
     PFrame               slope_;
@@ -408,7 +408,7 @@ struct DoubleHWSlidingWindow {
     /** C-tor
       * @param alpha smoothing coefficient
       */
-    DoubleHWSlidingWindow(double alpha, double beta)
+    DoubleExpSmoothingSlidingWindow(double alpha, double beta)
         : alpha_(alpha)
         , beta_(beta)
         , counter_(0)
@@ -427,13 +427,25 @@ struct DoubleHWSlidingWindow {
             counter_ = 2;
             break;
         default: {
-                PFrame old_baseline = std::move(baseline_);
+                PFrame old_baseline(new Frame(*baseline_));
                 PFrame old_slope = std::move(slope_);
-                baseline_.reset(new Frame(*sketch));
-                baseline_->mul(alpha_);
-                old_baseline->add(*old_slope);
-                old_baseline->mul(1.0 - alpha_);
-                baseline_->add(*old_baseline);
+                // Calculate new baseline
+                {
+                    PFrame new_baseline;
+                    new_baseline.reset(new Frame(*sketch));
+                    new_baseline->mul(alpha_);
+                    old_baseline->add(*old_slope);
+                    old_baseline->mul(1.0 - alpha_);
+                    new_baseline->add(*old_baseline);
+                    std::swap(new_baseline, baseline_);
+                    std::swap(new_baseline, old_baseline);
+                }
+                // Calculate new slope
+                slope_.reset(new Frame(*baseline_));
+                slope_->sub(*old_baseline);
+                slope_->mul(beta_);
+                old_slope->mul(1.0 - beta_);
+                slope_->add(*old_slope);
                 break;
             }
         };
@@ -441,7 +453,7 @@ struct DoubleHWSlidingWindow {
 
     PFrame forecast() const {
         PFrame res;
-        if (counter_ < 3) {
+        if (counter_ < 2) {
             // return empty response
             return std::move(res);
         }
@@ -538,7 +550,8 @@ std::unique_ptr<AnomalyDetectorIface>
     typedef AnomalyDetectorPipeline<CountingSketch, SMASlidingWindow>   Detector;
     typedef SMASlidingWindow<CountingSketch>                            Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(N, K, threshold, window_size);
+    std::unique_ptr<Window> window(new Window(window_size));
+    result.reset(new Detector(N, K, threshold, std::move(window)));
     return std::move(result);
 }
 
@@ -550,7 +563,8 @@ std::unique_ptr<AnomalyDetectorIface>
     typedef AnomalyDetectorPipeline<PreciseCounter, SMASlidingWindow>   Detector;
     typedef SMASlidingWindow<PreciseCounter>                            Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(1, 8, threshold, window_size);
+    std::unique_ptr<Window> window(new Window(window_size));
+    result.reset(new Detector(1, 8, threshold, std::move(window)));
     return std::move(result);
 }
 
@@ -559,36 +573,38 @@ std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_approx_ewma(uint32_t N,
                                             uint32_t K,
                                             double threshold,
-                                            uint32_t window_size)
+                                            double alpha)
 {
     typedef AnomalyDetectorPipeline<CountingSketch, EWMASlidingWindow>  Detector;
     typedef EWMASlidingWindow<CountingSketch>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(N, K, threshold, window_size);
+    std::unique_ptr<Window> window(new Window(alpha));
+    result.reset(new Detector(N, K, threshold, std::move(window)));
     return std::move(result);
 }
 
 //! Create precise anomaly detector based on simple moving-average smothing or EWMA
 std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_precise_ewma(double threshold,
-                                             uint32_t window_size)
+                                             double alpha)
 {
     typedef AnomalyDetectorPipeline<PreciseCounter, EWMASlidingWindow>  Detector;
     typedef EWMASlidingWindow<PreciseCounter>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
-    result = create_detector<Window, Detector>(1, 8, threshold, window_size);
+    std::unique_ptr<Window> window(new Window(alpha));
+    result.reset(new Detector(1, 8, threshold, std::move(window)));
     return std::move(result);
 }
 
 //! Create precise anomaly detector based on simple moving-average smothing or EWMA
 std::unique_ptr<AnomalyDetectorIface>
-    AnomalyDetectorUtil::create_precise_double_holt_winters(
+    AnomalyDetectorUtil::create_precise_double_exp_smoothing(
                                              double threshold,
                                              double alpha,
                                              double beta)
 {
-    typedef AnomalyDetectorPipeline<PreciseCounter, DoubleHWSlidingWindow>  Detector;
-    typedef DoubleHWSlidingWindow<PreciseCounter>                           Window;
+    typedef AnomalyDetectorPipeline<PreciseCounter, DoubleExpSmoothingSlidingWindow>  Detector;
+    typedef DoubleExpSmoothingSlidingWindow<PreciseCounter>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
     std::unique_ptr<Window> window(new Window(alpha, beta));
     result.reset(new Detector(1, 8, threshold, std::move(window)));
@@ -596,15 +612,15 @@ std::unique_ptr<AnomalyDetectorIface>
 }
 
 std::unique_ptr<AnomalyDetectorIface>
-    AnomalyDetectorUtil::create_approx_double_holt_winters(
+    AnomalyDetectorUtil::create_approx_double_exp_smoothing(
                                          uint32_t N,
                                          uint32_t K,
                                          double threshold,
                                          double alpha,
                                          double beta)
 {
-    typedef AnomalyDetectorPipeline<CountingSketch, DoubleHWSlidingWindow>  Detector;
-    typedef DoubleHWSlidingWindow<CountingSketch>                           Window;
+    typedef AnomalyDetectorPipeline<CountingSketch, DoubleExpSmoothingSlidingWindow>  Detector;
+    typedef DoubleExpSmoothingSlidingWindow<CountingSketch>                           Window;
     std::unique_ptr<AnomalyDetectorIface> result;
     std::unique_ptr<Window> window(new Window(alpha, beta));
     result.reset(new Detector(N, K, threshold, std::move(window)));
