@@ -1,6 +1,8 @@
 README [![Build Status](https://api.shippable.com/projects/5481624dd46935d5fbbf6b58/badge?branchName=master)](https://app.shippable.com/projects/5481624dd46935d5fbbf6b58/builds/latest)
 ======
 
+[![Join the chat at https://gitter.im/akumuli/Akumuli](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/akumuli/Akumuli?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 **Akumuli** is a time-series database. The word "akumuli" can be translated from esperanto as "accumulate".
 
 
