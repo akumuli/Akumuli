@@ -208,6 +208,30 @@ struct CountingSketch {
         }
         _update_sum();
     }
+
+    //! Multiply by another sketch
+    void mul(CountingSketch const& value) {
+        for (auto ixrow = 0u; ixrow < N; ixrow++) {
+            std::vector<double>& row = tables_[ixrow];
+            std::vector<double> const& rval = value.tables_[ixrow];
+            for (auto col = 0u; col < K; col++) {
+                row[col] = row[col] * rval[col];
+            }
+        }
+        _update_sum();
+    }
+
+    //! Divide by another sketch
+    void div(CountingSketch const& value) {
+        for (auto ixrow = 0u; ixrow < N; ixrow++) {
+            std::vector<double>& row = tables_[ixrow];
+            std::vector<double> const& rval = value.tables_[ixrow];
+            for (auto col = 0u; col < K; col++) {
+                row[col] = row[col] / rval[col];
+            }
+        }
+        _update_sum();
+    }
 };
 
 
@@ -289,6 +313,20 @@ struct PreciseCounter {
     void mul(double value) {
         for(auto it = table_.begin(); it != table_.end(); it++) {
             it->second *= value;
+        }
+    }
+
+    //! Multiply
+    void mul(PreciseCounter const& val) {
+        for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
+            table_[it->first] *= it->second;
+        }
+    }
+
+    //! Divide
+    void div(PreciseCounter const& val) {
+        for(auto it = val.table_.begin(); it != val.table_.end(); it++) {
+            table_[it->first] /= it->second;
         }
     }
 };
@@ -402,28 +440,29 @@ struct DoubleExpSmoothingSlidingWindow {
     PFrame               baseline_;
     PFrame               slope_;
     const double         alpha_;
-    const double         beta_;
+    const double         gamma_;
     int                  counter_;
 
     /** C-tor
       * @param alpha smoothing coefficient
       */
-    DoubleExpSmoothingSlidingWindow(double alpha, double beta)
+    DoubleExpSmoothingSlidingWindow(double alpha, double gamma)
         : alpha_(alpha)
-        , beta_(beta)
+        , gamma_(gamma)
         , counter_(0)
     {
     }
 
-    void add(PFrame sketch) {
+    void add(PFrame value) {
         switch(counter_) {
         case 0:
-            baseline_.reset(new Frame(*sketch));
+            std::swap(baseline_, value);
             counter_ = 1;
             break;
         case 1:
-            slope_.reset(new Frame(*sketch));
+            slope_.reset(new Frame(*value));
             slope_->sub(*baseline_);
+            baseline_ = std::move(value);
             counter_ = 2;
             break;
         default: {
@@ -431,8 +470,7 @@ struct DoubleExpSmoothingSlidingWindow {
                 PFrame old_slope = std::move(slope_);
                 // Calculate new baseline
                 {
-                    PFrame new_baseline;
-                    new_baseline.reset(new Frame(*sketch));
+                    PFrame new_baseline = std::move(value);
                     new_baseline->mul(alpha_);
                     old_baseline->add(*old_slope);
                     old_baseline->mul(1.0 - alpha_);
@@ -443,8 +481,8 @@ struct DoubleExpSmoothingSlidingWindow {
                 // Calculate new slope
                 slope_.reset(new Frame(*baseline_));
                 slope_->sub(*old_baseline);
-                slope_->mul(beta_);
-                old_slope->mul(1.0 - beta_);
+                slope_->mul(gamma_);
+                old_slope->mul(1.0 - gamma_);
                 slope_->add(*old_slope);
                 break;
             }
@@ -459,6 +497,122 @@ struct DoubleExpSmoothingSlidingWindow {
         }
         res.reset(new Frame(*baseline_));
         res->add(*slope_);
+        return std::move(res);
+    }
+};
+
+
+//                                      //
+//      HoltWintersSlidingWindow        //
+//                                      //
+
+template<class Frame>
+struct HoltWintersSlidingWindow {
+    typedef std::unique_ptr<Frame> PFrame;
+    PFrame               baseline_;
+    PFrame               slope_;
+    std::vector<PFrame>  seasonal_indices_;
+    const double         alpha_;
+    const double         beta_;
+    const double         gamma_;
+    int                  counter_;
+
+    HoltWintersSlidingWindow(double alpha, double beta, double gamma, int period)
+        : alpha_(alpha)
+        , beta_(beta)
+        , gamma_(gamma)
+        , counter_(0)
+    {
+        seasonal_indices_.resize(period);
+    }
+
+    void add(PFrame value) {
+        if (counter_ == 0) {
+            baseline_.reset(new Frame(*value));
+            seasonal_indices_.at(counter_) = std::move(value);
+        } else if (counter_ == 1) {
+            slope_.reset(new Frame(*value));
+            slope_->sub(*baseline_);
+            baseline_.reset(new Frame(*value));
+            seasonal_indices_.at(counter_) = std::move(value);
+        } else if (counter_ < seasonal_indices_.size()) {
+            PFrame old_baseline(new Frame(*baseline_));
+            PFrame old_slope = std::move(slope_);
+            // Calculate new baseline
+            {
+                PFrame new_baseline;
+                new_baseline.reset(new Frame(*value));
+                new_baseline->mul(alpha_);
+                old_baseline->add(*old_slope);
+                old_baseline->mul(1.0 - alpha_);
+                new_baseline->add(*old_baseline);
+                std::swap(new_baseline, baseline_);
+                std::swap(new_baseline, old_baseline);
+            }
+            // Calculate new slope
+            slope_.reset(new Frame(*baseline_));
+            slope_->sub(*old_baseline);
+            slope_->mul(gamma_);
+            old_slope->mul(1.0 - gamma_);
+            slope_->add(*old_slope);
+            seasonal_indices_.at(counter_) = std::move(value);
+        } else {
+            int ix_curr = counter_ % (int)seasonal_indices_.size();
+            int ix_prev = (counter_ + 1) % (int)seasonal_indices_.size();
+            PFrame old_baseline(new Frame(*baseline_));
+            PFrame old_slope = std::move(slope_);
+            // Calculate new baseline
+            {
+                //  St[i] = alpha * y[i] / It[i - period] + (1.0 - alpha) * (St[i - 1] + Bt[i - 1])
+                PFrame new_baseline;
+                new_baseline.reset(new Frame(*value));
+                new_baseline->mul(alpha_);
+                new_baseline->div(seasonal_indices_.at(ix_prev));
+
+                old_baseline->add(*old_slope);
+                old_baseline->mul(1.0 - alpha_);
+
+                new_baseline->add(*old_baseline);
+                std::swap(new_baseline, baseline_);
+                std::swap(new_baseline, old_baseline);
+            }
+            // Calculate new slope
+            {
+                //  Bt[i] = gamma * (St[i] - St[i - 1]) + (1 - gamma) * Bt[i - 1]
+                slope_.reset(new Frame(*baseline_));
+                slope_->sub(*old_baseline);
+                slope_->mul(gamma_);
+                old_slope->mul(1.0 - gamma_);
+                slope_->add(*old_slope);
+            }
+            // Calculate new seasonal value
+            {
+                //  It[i] = beta * y[i] / St[i] + (1.0 - beta) * It[i - period]
+                PFrame& item = seasonal_indices_.at(ix_curr);
+                PFrame& prev = seasonal_indices_.at(ix_prev);
+                item = std::move(value);
+                item->div(baseline_);
+                item->mul(beta_);
+                PFrame correction(new Frame(*prev));
+                correction->mul(1.0 - beta_);
+                item->add(*correction);
+            }
+        }
+        counter_++;
+    }
+
+    PFrame forecast() const {
+        PFrame res;
+        if (counter_ < 2) {
+            // return empty response
+            return std::move(res);
+        }
+        //  Ft[i + 1] = (St[i] + (1 * Bt[i])) * It[i - period + 1]
+        int ix_prev = (counter_ + 1) % (int)seasonal_indices_.size();
+        PFrame& prev = seasonal_indices_.at(ix_prev);
+        res.reset(new Frame(*slope_));
+        res->add(*baseline_);
+        res->mul(*prev);
         return std::move(res);
     }
 };

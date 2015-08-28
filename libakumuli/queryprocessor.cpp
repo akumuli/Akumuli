@@ -509,6 +509,14 @@ static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_
     return method;
 }
 
+static void validate_coef(double value, const char* err_msg) {
+    if (value <= 1.0 && value >= 0.0) {
+        return;
+    }
+    QueryParserError err(err_msg);
+    BOOST_THROW_EXCEPTION(err);
+}
+
 std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
                                                 std::shared_ptr<Node> next,
                                                 aku_logger_cb_t logger)
@@ -565,6 +573,9 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
                 double alpha = ptree.get<double>("alpha");
                 double beta = ptree.get<double>("beta", 0.0);
                 double gamma = ptree.get<double>("gamma", 0.0);
+                validate_coef(alpha, "alpha should be in [0, 1] range");
+                validate_coef(beta, "beta should be in [0, 1] range");
+                validate_coef(gamma, "gamma should be in [0, 1] range");
                 return std::make_shared<AnomalyDetector>(hashes, bits, threshold, alpha, beta, gamma, method, next);
             }
         }
