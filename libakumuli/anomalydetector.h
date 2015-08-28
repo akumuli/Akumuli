@@ -57,6 +57,24 @@ struct AnomalyDetectorUtil {
                                              double threshold,
                                              double alpha,
                                              double beta);
+
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_precise_holt_winters(
+                                             double threshold,
+                                             double alpha,
+                                             double beta,
+                                             double gamma,
+                                             int period);
+
+    static std::unique_ptr<AnomalyDetectorIface>
+                         create_approx_holt_winters(
+                                             uint32_t N,
+                                             uint32_t K,
+                                             double threshold,
+                                             double alpha,
+                                             double beta,
+                                             double gamma,
+                                             int period);
 };
 
 }

@@ -567,7 +567,7 @@ struct HoltWintersSlidingWindow {
                 PFrame new_baseline;
                 new_baseline.reset(new Frame(*value));
                 new_baseline->mul(alpha_);
-                new_baseline->div(seasonal_indices_.at(ix_prev));
+                new_baseline->div(*seasonal_indices_.at(ix_prev));
 
                 old_baseline->add(*old_slope);
                 old_baseline->mul(1.0 - alpha_);
@@ -591,7 +591,7 @@ struct HoltWintersSlidingWindow {
                 PFrame& item = seasonal_indices_.at(ix_curr);
                 PFrame& prev = seasonal_indices_.at(ix_prev);
                 item = std::move(value);
-                item->div(baseline_);
+                item->div(*baseline_);
                 item->mul(beta_);
                 PFrame correction(new Frame(*prev));
                 correction->mul(1.0 - beta_);
@@ -609,7 +609,7 @@ struct HoltWintersSlidingWindow {
         }
         //  Ft[i + 1] = (St[i] + (1 * Bt[i])) * It[i - period + 1]
         int ix_prev = (counter_ + 1) % (int)seasonal_indices_.size();
-        PFrame& prev = seasonal_indices_.at(ix_prev);
+        PFrame const& prev = seasonal_indices_.at(ix_prev);
         res.reset(new Frame(*slope_));
         res->add(*baseline_);
         res->mul(*prev);
@@ -781,6 +781,41 @@ std::unique_ptr<AnomalyDetectorIface>
     return std::move(result);
 }
 
+//! Create precise anomaly detector based on simple moving-average smothing or EWMA
+std::unique_ptr<AnomalyDetectorIface>
+    AnomalyDetectorUtil::create_precise_holt_winters(
+                                             double threshold,
+                                             double alpha,
+                                             double beta,
+                                             double gamma,
+                                             int period)
+{
+    typedef AnomalyDetectorPipeline<PreciseCounter, HoltWintersSlidingWindow>         Detector;
+    typedef HoltWintersSlidingWindow<PreciseCounter>                                  Window;
+    std::unique_ptr<AnomalyDetectorIface> result;
+    std::unique_ptr<Window> window(new Window(alpha, beta, gamma, period));
+    result.reset(new Detector(1, 8, threshold, std::move(window)));
+    return std::move(result);
+}
+
+//! Create precise anomaly detector based on simple moving-average smothing or EWMA
+std::unique_ptr<AnomalyDetectorIface>
+    AnomalyDetectorUtil::create_approx_holt_winters(
+                                             uint32_t N,
+                                             uint32_t K,
+                                             double threshold,
+                                             double alpha,
+                                             double beta,
+                                             double gamma,
+                                             int period)
+{
+    typedef AnomalyDetectorPipeline<PreciseCounter, HoltWintersSlidingWindow>         Detector;
+    typedef HoltWintersSlidingWindow<PreciseCounter>                                  Window;
+    std::unique_ptr<AnomalyDetectorIface> result;
+    std::unique_ptr<Window> window(new Window(alpha, beta, gamma, period));
+    result.reset(new Detector(N, K, threshold, std::move(window)));
+    return std::move(result);
+}
 
 }
 }
