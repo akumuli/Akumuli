@@ -90,6 +90,7 @@ BOOST_AUTO_TEST_CASE(Test_query_cursor) {
     con.reset(new ConnectionMock());
     char buffer[0x1000];
     QueryResultsPooler cursor(con, 1000);
+    cursor.append("{}", 2);
     cursor.start();
     size_t len = cursor.read_some(buffer, 0x1000);
     BOOST_REQUIRE(len > 0);

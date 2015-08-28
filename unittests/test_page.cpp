@@ -354,7 +354,7 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
     for(int i = 0; i < num_values; i++) {
         aku_Timestamp inst = 1000L + i*time_skew;
         aku_MemRange range = {(void*)&i, sizeof(i)};
-        BOOST_CHECK(page->add_entry(1, inst, range) != AKU_SUCCESS);
+        BOOST_CHECK(page->add_entry(1, inst, range) != AKU_EOVERFLOW);
     }
     return page;
 }

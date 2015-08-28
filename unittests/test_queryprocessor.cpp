@@ -132,8 +132,10 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
+    aku_Sample EMPTY = {};
+    EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
                                         mock,
                                         &logger_stub);
 
@@ -155,6 +157,10 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
         sample.timestamp = i;
         sample.payload.value.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
+        if (i % 10 == 0) {
+            EMPTY.timestamp = i;
+            ma->put(EMPTY);
+        }
     }
     ma->complete();
     const size_t EXPECTED_SIZE = 200;
@@ -164,12 +170,14 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     BOOST_REQUIRE_CLOSE(values_sum, 300.0, 0.00001);
     aku_Timestamp ts_sum = std::accumulate(mock->timestamps.begin(), mock->timestamps.end(), 0,
                                            [](aku_Timestamp a, aku_Timestamp b) { return a + b; });
-    BOOST_REQUIRE_EQUAL(ts_sum, 50500*2);
+    BOOST_REQUIRE_EQUAL(ts_sum, 99000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
+    aku_Sample EMPTY = {};
+    EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
                                         mock,
                                         &logger_stub);
 
@@ -191,6 +199,10 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
         sample.timestamp = i;
         sample.payload.value.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
+        if (i % 10 == 0) {
+            EMPTY.timestamp = i;
+            ma->put(EMPTY);
+        }
     }
     ma->complete();
     const size_t EXPECTED_SIZE = 200;
@@ -200,5 +212,5 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     BOOST_REQUIRE_CLOSE(values_sum, 300.0, 0.00001);
     aku_Timestamp ts_sum = std::accumulate(mock->timestamps.begin(), mock->timestamps.end(), 0,
                                            [](aku_Timestamp a, aku_Timestamp b) { return a + b; });
-    BOOST_REQUIRE_EQUAL(ts_sum, 50500*2);
+    BOOST_REQUIRE_EQUAL(ts_sum, 99000);
 }

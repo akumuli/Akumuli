@@ -313,7 +313,7 @@ void QueryResultsPooler::throw_if_not_started() const {
 void QueryResultsPooler::start() {
     throw_if_started();
     enum Format { RESP, CSV };  // TODO: add protobuf support
-    bool use_iso_timestamps = false;
+    bool use_iso_timestamps = true;
     Format output_format = RESP;
     boost::property_tree::ptree tree = from_json(query_text_);
     auto output = tree.get_child_optional("output");
