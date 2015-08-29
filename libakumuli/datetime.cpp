@@ -16,6 +16,7 @@
 
 #include "datetime.h"
 #include <cstdio>
+#include <boost/regex.hpp>
 
 namespace Akumuli {
 
@@ -62,6 +63,17 @@ static int parse_n_digits(const char* p, int n, const char* error_message = "can
 
 aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     size_t len = std::strlen(iso_str);
+    if (len < 15 || iso_str[8] != 'T') {
+        // Raw timestamp
+        aku_Timestamp ts;
+        char* end;
+        ts = strtoull(iso_str, &end, 10);
+        if (errno) {
+            BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
+            BOOST_THROW_EXCEPTION(error);
+        }
+        return ts;
+    }
     if (len < 15) {
         BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
         BOOST_THROW_EXCEPTION(error);
@@ -117,7 +129,7 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     return DateTimeUtil::from_boost_ptime(pt);
 }
 
-aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
+int DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
     using namespace boost::gregorian;
     using namespace boost::posix_time;
     ptime ptime = to_boost_ptime(ts);
@@ -139,6 +151,55 @@ aku_Status DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t bu
     }
     return len + 1;
 }
+
+aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
+    static const char* exp = R"(^(\d+)(n|us|s|min|ms|m|h)?$)";
+    static boost::regex regex(exp, boost::regex_constants::optimize);
+    boost::cmatch m;
+    if (!boost::regex_match(str, m, regex)) {
+        BadDateTimeFormat bad_duration("bad duration");
+        BOOST_THROW_EXCEPTION(bad_duration);
+    }
+    auto num = m[1];
+    auto unit = m[2].first;
+    auto unitlen = m[2].second - m[2].first;
+    auto K = 0ul;
+    if (unitlen > 0) {
+        switch(unit[0]) {
+        case 'n':  // nanosecond
+            K = 1ul;
+            break;
+        case 'u':  // microsecond
+            K = 1000ul;
+            break;
+        case 's':  // second
+            K = 1000000000ul;
+            break;
+        case 'm':
+            switch(unitlen) {
+            case 1:
+            case 3:  // minute
+                K = 60*1000000000ul;
+                break;
+            case 2:  // milisecond
+                K = 1000000ul;
+                break;
+            }
+            break;
+        case 'h':  // hour
+            K = 60*60*1000000000ul;
+            break;
+        }
+        if (K == 0ul) {
+            BadDateTimeFormat err("unknown time duration unit");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    } else {
+        K = 1ul;
+    }
+    return K*atoll(num.first);
+}
+
 
 }
 

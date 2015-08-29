@@ -1,8 +1,15 @@
 #pragma once
 #include "httpserver.h"
 #include "ingestion_pipeline.h"
+#include <memory>
 
 namespace Akumuli {
+
+//! Output formatter interface
+struct OutputFormatter {
+    virtual char* format(char* begin, char* end, const aku_Sample& sample) = 0;
+};
+
 
 struct QueryResultsPooler : Http::QueryResultsPooler {
 
@@ -10,6 +17,7 @@ struct QueryResultsPooler : Http::QueryResultsPooler {
     std::shared_ptr<DbConnection> connection_;
     std::shared_ptr<DbCursor> cursor_;
     std::vector<aku_Sample> rdbuf_;
+    std::unique_ptr<OutputFormatter> formatter_;
     size_t rdbuf_pos_;
     size_t rdbuf_top_;
     static const size_t DEFAULT_RDBUF_SIZE_ = 1000u;
@@ -27,9 +35,6 @@ struct QueryResultsPooler : Http::QueryResultsPooler {
     virtual aku_Status get_error();
 
     virtual size_t read_some(char *buf, size_t buf_size);
-
-    //! Try to format sample
-    char* format(char* begin, char* end, const aku_Sample& sample);
 
     virtual void close();
 };

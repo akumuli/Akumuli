@@ -11,7 +11,7 @@
 using namespace Akumuli;
 using namespace Akumuli::QP;
 
-void logger(int errlvl, const char* msg) {
+void logger(aku_LogLevel errlvl, const char* msg) {
     if (errlvl == AKU_LOG_ERROR) {
         std::cout << msg << std::endl;
     }
@@ -42,7 +42,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     aku_Sample s;
     s.paramid = id;
     s.timestamp = t;
-    s.payload.type = aku_PData::FLOAT;
+    s.payload.type = AKU_PAYLOAD_FLOAT;
     s.payload.value.float64 = value;
     return s;
 }
@@ -166,7 +166,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     }
     const char* json = R"(
             {
-                "sample": { "algorithm": "reservoir", "size": 1000 },
+                "sample": [{ "name": "reservoir", "size": 1000 }],
                 "metric": ["cpu", "mem"],
                 "range" : {
                     "from": "20150101T000000",
@@ -176,17 +176,13 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
                     {"in":
                         {"key3": [1, 2, 3] }
                     }
-                ],
-                "group_by": {
-                    "tag": ["host","region" ],
-                    "metric": ["cpu"]
-                }
+                ]
             }
     )";
     auto terminal = std::make_shared<NodeMock>();
     auto iproc = matcher.build_query_processor(json, terminal, &logger);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->root_node_->get_type() == Node::RandomSampler);
+    BOOST_REQUIRE(qproc->root_node_->get_type() == Node::FilterById);
     BOOST_REQUIRE(qproc->metrics_.size() == 2);
     auto m1 = qproc->metrics_.at(0);
     auto m2 = qproc->metrics_.at(1);

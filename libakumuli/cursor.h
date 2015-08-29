@@ -35,12 +35,12 @@ std::ostream& operator << (std::ostream& st, aku_Sample res);
 
 class CursorFSM {
     // user data
-    aku_Sample *usr_buffer_;        //! User owned buffer for output
+    aku_Sample       *usr_buffer_;        //! User owned buffer for output
     size_t            usr_buffer_len_;    //! Size of the user owned buffer
     // cursor state
     size_t            write_index_;       //! Current write position in usr_buffer_
     bool              error_;             //! Error flag
-    int               error_code_;        //! Error code
+    aku_Status        error_code_;        //! Error code
     bool              complete_;          //! Is complete
     bool              closed_;            //! Used to check that close method was called
 public:
@@ -49,14 +49,14 @@ public:
     // modifiers
     void put(aku_Sample const& result);
     void complete();
-    void set_error(int error_code);
+    void set_error(aku_Status error_code);
     void update_buffer(aku_Sample* buf, size_t buf_len);
     void update_buffer(CursorFSM *other_fsm);
     bool close();
     // accessors
     bool can_put() const;
     bool is_done() const;
-    bool get_error(int *error_code) const;
+    bool get_error(aku_Status *error_code) const;
     size_t get_data_len() const;
 };
 
@@ -70,7 +70,7 @@ struct ExternalCursor {
     //! Check is everything done
     virtual bool is_done() const = 0;
     //! Check is error occured and (optionally) get the error code
-    virtual bool is_error(int* out_error_code_or_null=nullptr) const = 0;
+    virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const = 0;
     //! Finalizer
     virtual void close() = 0;
 
@@ -97,13 +97,13 @@ struct CoroCursor : Cursor {
 
     virtual bool is_done() const;
 
-    virtual bool is_error(int* out_error_code_or_null=nullptr) const;
+    virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const;
 
     virtual void close();
 
     // Internal cursor implementation
 
-    void set_error(Caller& caller, int error_code);
+    void set_error(Caller& caller, aku_Status error_code);
 
     bool put(Caller& caller, aku_Sample const& result);
 
@@ -184,7 +184,7 @@ class StacklessFanInCursorCombinator : ExternalCursor {
     CursorFSM                           cursor_fsm_;
 
     void read_impl_();
-    void set_error(int error_code);
+    void set_error(aku_Status error_code);
     bool put(aku_Sample const& result);
     void complete();
 public:
@@ -202,7 +202,7 @@ public:
 public:
     virtual size_t read(aku_Sample *buf, size_t buf_len);
     virtual bool is_done() const;
-    virtual bool is_error(int *out_error_code_or_null) const;
+    virtual bool is_error(aku_Status *out_error_code_or_null) const;
     virtual void close();
 };
 

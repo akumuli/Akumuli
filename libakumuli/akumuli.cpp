@@ -60,6 +60,7 @@ static const char* g_error_messages[] = {
     "Late write",
     "Not implemented",
     "Query parsing error",
+    "Anomaly detector can't work with negative values",
     "Unknown error code"
 };
 
@@ -70,7 +71,7 @@ const char* aku_error_message(int error_code) {
     return g_error_messages[AKU_EMAX_ERROR];
 }
 
-void aku_console_logger(int tag, const char* msg) {
+void aku_console_logger(aku_LogLevel tag, const char* msg) {
     apr_time_t now = apr_time_now();
     char ts[APR_RFC822_DATE_LEN];
     if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
@@ -85,7 +86,7 @@ void aku_console_logger(int tag, const char* msg) {
 
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
-    int status_;
+    aku_Status status_;
     std::string query_;
 
     CursorImpl(Storage& storage, const char* query)
@@ -103,7 +104,7 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_done();
     }
 
-    bool is_error(int* out_error_code_or_null) const {
+    bool is_error(aku_Status* out_error_code_or_null) const {
         if (status_ != AKU_SUCCESS) {
             *out_error_code_or_null = status_;
             return false;
@@ -112,7 +113,7 @@ struct CursorImpl : aku_Cursor {
     }
 
     size_t read_values( aku_Sample     *values
-                   , size_t           values_size )
+                      , size_t          values_size )
     {
         return cursor_->read(values, values_size);
     }
@@ -169,9 +170,9 @@ struct DatabaseImpl : public aku_Database
 
     aku_Status add_sample(aku_Sample const* sample) {
         aku_Status status = AKU_EBAD_ARG;
-        if (sample->payload.type == aku_PData::FLOAT) {
+        if (sample->payload.type == AKU_PAYLOAD_FLOAT) {
             status = add_double(sample->paramid, sample->timestamp, sample->payload.value.float64);
-        } else if (sample->payload.type == aku_PData::BLOB) {
+        } else if (sample->payload.type == AKU_PAYLOAD_BLOB) {
             aku_PData data = sample->payload;
             const aku_MemRange mrange = {
                 data.value.blob.begin,
@@ -261,7 +262,7 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
     {
         // Set defaut
         config.durability = AKU_MAX_DURABILITY;
-        (*config.logger)(-1, "config.durability = default(AKU_MAX_DURABILITY)");
+        (*config.logger)(AKU_LOG_INFO, "config.durability = default(AKU_MAX_DURABILITY)");
     }
     auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
@@ -324,7 +325,7 @@ int aku_cursor_is_done(aku_Cursor* pcursor) {
     return static_cast<int>(pimpl->is_done());
 }
 
-int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null) {
+int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
     CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
     return static_cast<int>(pimpl->is_error(out_error_code_or_null));
 }

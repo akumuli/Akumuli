@@ -18,7 +18,7 @@ struct CursorMock : DbCursor {
     constexpr static const char* strval = "teststring";
     bool isdone_ = false;
 
-    int read(aku_Sample *dest, size_t dest_size) {
+    size_t read(aku_Sample *dest, size_t dest_size) {
         if (isdone_ == true) {
             return 0;
         }
@@ -28,13 +28,13 @@ struct CursorMock : DbCursor {
         // first value
         dest[0].paramid = 33;
         aku_parse_timestamp("20141210T074243.111999", &dest[0]);
-        dest[0].payload.type = aku_PData::FLOAT;
+        dest[0].payload.type = AKU_PAYLOAD_FLOAT;
         dest[0].payload.value.float64 = floatval;
 
         // second value
         dest[1].paramid = 44;
         aku_parse_timestamp("20141210T122434.999111", &dest[1]);
-        dest[1].payload.type = aku_PData::BLOB;
+        dest[1].payload.type = AKU_PAYLOAD_BLOB;
         dest[1].payload.value.blob.begin = strval;
         dest[1].payload.value.blob.size = strlen(strval);
 
@@ -46,7 +46,7 @@ struct CursorMock : DbCursor {
         return isdone_;
     }
 
-    bool is_error(int *out_error_code_or_null) {
+    bool is_error(aku_Status *out_error_code_or_null) {
         if (out_error_code_or_null) {
             *out_error_code_or_null = AKU_SUCCESS;
         }
@@ -90,6 +90,7 @@ BOOST_AUTO_TEST_CASE(Test_query_cursor) {
     con.reset(new ConnectionMock());
     char buffer[0x1000];
     QueryResultsPooler cursor(con, 1000);
+    cursor.append("{}", 2);
     cursor.start();
     size_t len = cursor.read_some(buffer, 0x1000);
     BOOST_REQUIRE(len > 0);

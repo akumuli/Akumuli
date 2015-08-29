@@ -55,6 +55,7 @@ struct DbErrMock : DbConnection {
     }
 };
 
+const int PORT = 14096;
 
 template<class Mock>
 struct TCPServerTestSuite {
@@ -70,9 +71,8 @@ struct TCPServerTestSuite {
         pline->start();
 
         // Run server
-        int port = 4096;
         std::vector<IOServiceT*> iovec = { &io };
-        serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
+        serv = std::make_shared<TcpAcceptor>(iovec, PORT, pline);
 
         // Start reading but don't start iorun thread
         serv->_start();
@@ -90,7 +90,7 @@ struct TCPServerTestSuite {
         // Connect to server
         SocketT socket(io);
         auto loopback = boost::asio::ip::address_v4::loopback();
-        boost::asio::ip::tcp::endpoint peer(loopback, 4096);
+        boost::asio::ip::tcp::endpoint peer(loopback, PORT);
         socket.connect(peer);
         serv->_run_one();  // run handle_accept one time
 

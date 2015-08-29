@@ -444,7 +444,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
         auto space_required = active_volume_->cache_->get_space_estimate();
-        int status = AKU_SUCCESS;
+        aku_Status status = AKU_SUCCESS;
         if (ts_value.is_blob()) {
             status = active_page_->add_chunk(data, space_required, &ts_value.payload.blob.value);
         }

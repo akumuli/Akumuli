@@ -27,6 +27,7 @@ add_library(akumuli SHARED
     stringpool.cpp
     datetime.cpp
     buffer_cache.cpp
+    anomalydetector.cpp
 )
 
 include(CppcheckTargets)

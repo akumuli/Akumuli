@@ -106,7 +106,7 @@ struct SeriesParser
       * @param keystr_begin points to the begining of the key string (string with key-value pairs)
       * @return AKU_SUCCESS if everything is OK, error code otherwise
       */
-    static int to_normal_form(const char* begin, const char* end,
+    static aku_Status to_normal_form(const char* begin, const char* end,
                               char* out_begin, char* out_end,
                               const char** keystr_begin, const char **keystr_end);
 };

@@ -43,7 +43,7 @@ struct InternalCursor {
     virtual bool put(Caller&, aku_Sample const& offset) = 0;
     virtual void complete(Caller&) = 0;
     //! Set error and stop execution
-    virtual void set_error(Caller&, int error_code) = 0;
+    virtual void set_error(Caller&, aku_Status error_code) = 0;
 };
 
 }

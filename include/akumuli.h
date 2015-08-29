@@ -41,7 +41,6 @@
 
 typedef uint64_t    aku_Timestamp;    //< Timestamp
 typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
-typedef int         aku_Status;       //< Status code of any operation
 
 //! Structure represents memory region
 typedef struct {
@@ -64,11 +63,19 @@ typedef struct {
     } value;
     //! Data element type
     enum {
-        FLOAT,
-        BLOB,
-        NONE
-    } type;
+        EMPTY                = 0,
+        URGENT               = 1 << 8,  /** urgent flag (anomaly or error) */
+        PARAMID_BIT          = 1,
+        TIMESTAMP_BIT        = 1 << 1,
+        CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
+        BLOB_BIT             = 1 << 3,
+        FLOAT_BIT            = 1 << 4,
+    };
+    uint32_t type;
 } aku_PData;
+
+#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)
+#define AKU_PAYLOAD_BLOB (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::BLOB_BIT)
 
 
 //! Cursor result type
@@ -161,7 +168,7 @@ AKU_EXPORT const char* aku_error_message(int error_code);
   * specified. Exported for testing reasons, no need to use it
   * explicitly.
   */
-AKU_EXPORT void aku_console_logger(int tag, const char* message);
+AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
 
 /**
  * @brief Destroy any object created with aku_make_*** function
@@ -298,7 +305,7 @@ AKU_EXPORT size_t aku_cursor_read( aku_Cursor       *cursor
 AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
 
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
-AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, int* out_error_code_or_null);
+AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null);
 
 /** Convert timestamp to string if possible, return string length
   * @return 0 on bad string, -LEN if buffer is too small, LEN on success

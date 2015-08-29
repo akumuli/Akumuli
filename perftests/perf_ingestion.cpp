@@ -18,7 +18,7 @@
 using namespace std;
 
 int DB_SIZE = 2;
-uint64_t NUM_ITERATIONS = 10*1000*1000;
+uint64_t NUM_ITERATIONS = 100*1000*1000;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -73,7 +73,7 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
     aku_Timestamp current_time = EPOCH + begin;
     size_t cursor_ix = 0;
     while(!aku_cursor_is_done(cursor)) {
-        int err = AKU_SUCCESS;
+        aku_Status err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             std::cout << aku_error_message(err) << std::endl;
             return false;
@@ -151,6 +151,49 @@ enum Mode {
     READ
 };
 
+//! Generate time-series from random walk
+struct RandomGen {
+    std::random_device                  randdev;
+    std::mt19937                        generator;
+    std::normal_distribution<double>  distribution;
+
+    RandomGen(double mean, double stddev)
+        : generator(randdev())
+        , distribution(mean, stddev)
+    {
+    }
+
+    int generate() {
+        return (int)abs(distribution(generator));
+    }
+};
+
+//! Generate time-series from random walk
+struct RandomWalk {
+    std::random_device                  randdev;
+    std::mt19937                        generator;
+    std::normal_distribution<double>    distribution;
+    size_t                              N;
+    std::vector<double>                 values;
+
+    RandomWalk(double start, double mean, double stddev, size_t N)
+        : generator(randdev())
+        , distribution(mean, stddev)
+        , N(N)
+    {
+        values.resize(N, start);
+    }
+
+    double generate(aku_ParamId id) {
+        values.at(id) += distribution(generator);
+        return values.at(id);
+    }
+
+    void add_anomaly(aku_ParamId id, double value) {
+        values.at(id) += value;
+    }
+};
+
 Mode read_cmd(int cnt, const char** args) {
     if (cnt < 2) {
         return NONE;
@@ -177,9 +220,9 @@ Mode read_cmd(int cnt, const char** args) {
     throw std::runtime_error("Bad command line parameters");
 }
 
-void logger_(int level, const char * msg) {
+void logger_(aku_LogLevel level, const char * msg) {
     if (level == AKU_LOG_ERROR) {
-        //aku_console_logger(level, msg);
+        aku_console_logger(level, msg);
     }
 }
 
@@ -200,8 +243,8 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        uint32_t threshold  =   1000;
-        uint64_t windowsize = 100000;
+        uint32_t threshold  = 1000;
+        uint64_t windowsize = 2;
         uint64_t cachesize =  10*1024*1024;  // 10Mb
         apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
                                                   threshold, windowsize, cachesize, &logger_);
@@ -221,21 +264,27 @@ int main(int cnt, const char** args)
     if (mode != READ) {
         uint64_t busy_count = 0;
         // Fill in data
+        RandomWalk rwalk(10.0, 0.0, 0.02, 10000);
         for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
             aku_Sample sample;
             char buffer[100];
 
             // =series=
-            int nchars = sprintf(buffer, "cpu key=%d", ((int)i + 1) & 0xffff);
+            int id = i % 10000;
+            int nchars = sprintf(buffer, "cpu key=%d", id);
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=
-            nchars = format_timestamp(i, buffer);
+            nchars = format_timestamp(i/10000, buffer);
             aku_parse_timestamp(buffer, &sample);
 
             // =payload=
-            sample.payload.type = aku_PData::FLOAT;
-            sample.payload.value.float64 = i + 0.1;
+            if (i == 1000000) {
+                // Add anomalous value
+                rwalk.add_anomaly(id, 100.0);
+            }
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.value.float64 = rwalk.generate(id);
 
             aku_Status status = aku_write(db, &sample);
 

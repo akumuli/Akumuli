@@ -96,6 +96,8 @@ struct Sequencer {
     static const int RUN_LOCK_FLAGS_MASK = 0x0FF;
     static const int RUN_LOCK_FLAGS_SIZE = 0x100;
 
+    // TODO: space usage should be limited
+
     std::vector<PSortedRun>      runs_;             //< Active sorted runs
     std::vector<PSortedRun>      ready_;            //< Ready to merge
     PSortedRun                   key_;
@@ -118,7 +120,7 @@ struct Sequencer {
       * @brief Timestamp of the sample can be out of order.
       * @returns error code and flag that indicates whether of not new checkpoint is createf
       */
-    std::tuple<int, int> add(TimeSeriesValue const& value);
+    std::tuple<aku_Status, int> add(TimeSeriesValue const& value);
 
     //! Simple merge and sync without compression. (depricated)
     void merge(Caller& caller, InternalCursor* cur);
@@ -171,7 +173,7 @@ private:
     /** Check timestamp and make checkpoint if timestamp is large enough.
       * @returns error code and flag that indicates whether or not new checkpoint is created
       */
-    std::tuple<int, int> check_timestamp_(aku_Timestamp ts);
+    std::tuple<aku_Status, int> check_timestamp_(aku_Timestamp ts);
 
     void filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
 };

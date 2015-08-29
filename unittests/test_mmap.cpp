@@ -18,7 +18,7 @@ struct AkumuliInitializer {
 
 AkumuliInitializer initializer;
 
-void test_logger(int tag, const char* msg) {
+void test_logger(aku_LogLevel tag, const char* msg) {
     BOOST_MESSAGE(msg);
 }
 

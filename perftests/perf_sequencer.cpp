@@ -30,7 +30,7 @@ struct BufferedCursor : InternalCursor {
     size_t buffer_size;
     size_t count;
     bool completed = false;
-    int error_code = AKU_SUCCESS;
+    aku_Status error_code = AKU_SUCCESS;
     //! C-tor
     BufferedCursor(aku_Sample* buf, size_t size)
         : results_buffer(buf)
@@ -53,7 +53,7 @@ struct BufferedCursor : InternalCursor {
         completed = true;
     }
 
-    void set_error(Caller&, int code) {
+    void set_error(Caller&, aku_Status code) {
         completed = true;
         error_code = code;
     }

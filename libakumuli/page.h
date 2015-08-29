@@ -40,14 +40,14 @@ namespace Akumuli {
 namespace {
     //! Get payload length
     uint32_t get_pd_length(const aku_PData& pdata) {
-        assert(pdata.type == aku_PData::BLOB);
+        assert(pdata.type & aku_PData::BLOB_BIT);
         return pdata.value.blob.size;
     }
 
     //! Get payload pointer
     template<class T>
     const T* get_pd_pointer(const aku_PData& pdata) {
-        assert(pdata.type == aku_PData::BLOB);
+        assert(pdata.type & aku_PData::BLOB_BIT);
         return static_cast<const T*>(pdata.value.blob.begin);
     }
 }
@@ -192,14 +192,14 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    int add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
+    aku_Status add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.
      * @param data chunk header data (list of sorted timestamps, param ids, offsets and lengths
      * @returns operation status
      */
-    int complete_chunk(const UncompressedChunk& data);
+    aku_Status complete_chunk(const UncompressedChunk& data);
 
     /**
      * Get length of the entry.

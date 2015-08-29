@@ -34,14 +34,14 @@ namespace Akumuli {
 //! Abstraction layer above aku_Cursor
 struct DbCursor {
     //! Read data from cursor
-    virtual int read( aku_Sample       *dest
-                    , size_t            dest_size) = 0;
+    virtual size_t read( aku_Sample       *dest
+                       , size_t            dest_size) = 0;
 
     //! Check is cursor is done reading
     virtual int is_done() = 0;
 
     //! Check for error condition
-    virtual bool is_error(int* out_error_code_or_null) = 0;
+    virtual bool is_error(aku_Status* out_error_code_or_null) = 0;
 
     //! Close cursor
     virtual void close() = 0;

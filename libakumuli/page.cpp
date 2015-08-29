@@ -131,7 +131,7 @@ void PageHeader::close() {
     close_count++;
 }
 
-aku_Status PageHeader::add_entry(const aku_ParamId param
+aku_Status PageHeader::add_entry( const aku_ParamId param
                                 , const aku_Timestamp timestamp
                                 , const aku_MemRange &range )
 {
@@ -149,10 +149,10 @@ aku_Status PageHeader::add_entry(const aku_ParamId param
     const auto ENTRY_SIZE = sizeof(aku_Entry) + range.length;
 
     if (!range.length) {
-        return AKU_WRITE_STATUS_BAD_DATA;
+        return AKU_EBAD_DATA;
     }
     if (SPACE_REQUIRED > get_free_space()) {
-        return AKU_WRITE_STATUS_OVERFLOW;
+        return AKU_EOVERFLOW;
     }
     char* free_slot = payload + next_offset;
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(free_slot);
@@ -163,10 +163,10 @@ aku_Status PageHeader::add_entry(const aku_ParamId param
     page_index(count)->timestamp = timestamp;
     next_offset += ENTRY_SIZE;
     count++;
-    return AKU_WRITE_STATUS_SUCCESS;
+    return AKU_SUCCESS;
 }
 
-int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
+aku_Status PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
     const auto
         SPACE_REQUIRED = range.length + free_space_required,
         SPACE_NEEDED = range.length;
@@ -180,7 +180,7 @@ int PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_re
     return AKU_SUCCESS;
 }
 
-int PageHeader::complete_chunk(const UncompressedChunk& data) {
+aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     CompressedChunkDesc desc;
     Rand rand;
     aku_Timestamp first_ts;
@@ -523,11 +523,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
             aku_PData pdata;
             if (header->values.at(i).type == ChunkValue::BLOB) {
-                pdata.type =  aku_PData::BLOB;
+                pdata.type = AKU_PAYLOAD_BLOB;
                 pdata.value.blob.begin = page->read_entry_data(header->values.at(i).value.blobval.offset);
                 pdata.value.blob.size = header->values.at(i).value.blobval.length;
             } else if (header->values.at(i).type == ChunkValue::FLOAT) {
-                pdata.type = aku_PData::FLOAT;
+                pdata.type = AKU_PAYLOAD_FLOAT;
                 pdata.value.float64 = header->values.at(i).value.floatval;
             }
             aku_Sample result = {
@@ -535,7 +535,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 header->paramids.at(i),
                 pdata,
             };
-            queryproc->put(result);
+            return queryproc->put(result);
         };
 
         if (IS_BACKWARD_) {
@@ -543,7 +543,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
                                       upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
-                    put_entry(i);
+                    if (!put_entry(i)) {
+                        probe_in_time_range = false;
+                        break;
+                    }
                 } else {
                     probe_in_time_range = lowerbound_ <= header->timestamps[i];
                     if (!probe_in_time_range) {
@@ -557,7 +560,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
                                       upperbound_ >= header->timestamps[i];
                 if (probe_in_time_range) {
-                    put_entry(i);
+                    if (!put_entry(i)) {
+                        probe_in_time_range = false;
+                        break;
+                    }
                 } else {
                     probe_in_time_range = upperbound_ >= header->timestamps[i];
                     if (!probe_in_time_range) {
@@ -599,7 +605,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     dbg_count++;
 #endif
                     aku_PData pdata;
-                    pdata.type = aku_PData::BLOB;
+                    pdata.type = AKU_PAYLOAD_BLOB;
                     pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
                     pdata.value.blob.size = probe_entry->length;
                     aku_Sample result = {

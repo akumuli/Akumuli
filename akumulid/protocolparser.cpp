@@ -92,7 +92,7 @@ void ProtocolParser::worker(Caller& caller) {
             next = stream.next_type();
             switch(next) {
             case RESPStream::INTEGER:
-                sample.payload.type = aku_PData::FLOAT;
+                sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.payload.value.float64 = stream.read_int();
                 break;
             case RESPStream::STRING:

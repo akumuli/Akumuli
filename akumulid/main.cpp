@@ -14,7 +14,7 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
-static void static_logger(int tag, const char * msg) {
+static void static_logger(aku_LogLevel tag, const char * msg) {
     static Logger logger = Logger("Main", 32);
     switch(tag) {
     case AKU_LOG_ERROR:

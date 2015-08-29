@@ -90,7 +90,7 @@ aku_Timestamp query_database_backward(aku_Database* db, aku_Timestamp begin, aku
     aku_Timestamp last = begin;
     bool last_initialized = false;
     while(!aku_cursor_is_done(cursor)) {
-        int err = AKU_SUCCESS;
+        aku_Status err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             aku_cursor_close(cursor);
             if (err == AKU_EBUSY) { // OK
@@ -157,7 +157,7 @@ aku_Timestamp query_database_forward(aku_Database* db, aku_Timestamp begin, aku_
     aku_Timestamp current_time = begin;
     aku_Timestamp last = begin;
     while(!aku_cursor_is_done(cursor)) {
-        int err = AKU_SUCCESS;
+        aku_Status err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
             aku_cursor_close(cursor);
             if (err == AKU_EBUSY) { // OK

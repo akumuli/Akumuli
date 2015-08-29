@@ -11,7 +11,7 @@
 using namespace Akumuli;
 using namespace Akumuli::QP;
 
-void logger_stub(int level, const char* msg) {
+void logger_stub(aku_LogLevel level, const char* msg) {
     if (level == AKU_LOG_ERROR) {
         BOOST_MESSAGE(msg);
     }
@@ -47,9 +47,11 @@ public:
         BOOST_FAIL("set_error shouldn't be called");
     }
     bool put(aku_Sample const& s) {
-        ids.push_back(s.paramid);
-        timestamps.push_back(s.timestamp);
-        values.push_back(s.payload.value.float64);
+        if (s.payload.type != aku_PData::EMPTY) {
+            ids.push_back(s.paramid);
+            timestamps.push_back(s.timestamp);
+            values.push_back(s.payload.value.float64);
+        }
         return true;
     }
 };
@@ -58,7 +60,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     aku_Sample s;
     s.paramid = id;
     s.timestamp = t;
-    s.payload.type = aku_PData::FLOAT;
+    s.payload.type = AKU_PAYLOAD_FLOAT;
     s.payload.value.float64 = value;
     return s;
 }
@@ -66,7 +68,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "5"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "5"})"),
                                              mock,
                                              &logger_stub);
 
@@ -93,7 +95,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "10"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "10"})"),
                                              mock,
                                              &logger_stub);
 
@@ -112,7 +114,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"algorithm": "reservoir", "size": "100"})"),
+    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "100"})"),
                                              mock,
                                              &logger_stub);
 
@@ -130,8 +132,10 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
+    aku_Sample EMPTY = {};
+    EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"algorithm": "ma", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
                                         mock,
                                         &logger_stub);
 
@@ -143,7 +147,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
         p2.push_back(2.0);
     }
     aku_Sample sample;
-    sample.payload.type = aku_PData::FLOAT;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
     for (int i = 0; i < END; i++) {
         sample.paramid = 0;
         sample.timestamp = i;
@@ -153,6 +157,10 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
         sample.timestamp = i;
         sample.payload.value.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
+        if (i % 10 == 0) {
+            EMPTY.timestamp = i;
+            ma->put(EMPTY);
+        }
     }
     ma->complete();
     const size_t EXPECTED_SIZE = 200;
@@ -162,12 +170,14 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     BOOST_REQUIRE_CLOSE(values_sum, 300.0, 0.00001);
     aku_Timestamp ts_sum = std::accumulate(mock->timestamps.begin(), mock->timestamps.end(), 0,
                                            [](aku_Timestamp a, aku_Timestamp b) { return a + b; });
-    BOOST_REQUIRE_EQUAL(ts_sum, 50500*2);
+    BOOST_REQUIRE_EQUAL(ts_sum, 99000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
+    aku_Sample EMPTY = {};
+    EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"algorithm": "ma", "window": "10"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
                                         mock,
                                         &logger_stub);
 
@@ -179,7 +189,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
         p2.push_back(2.0);
     }
     aku_Sample sample;
-    sample.payload.type = aku_PData::FLOAT;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
     for (int i = END; i --> 0;) {
         sample.paramid = 0;
         sample.timestamp = i;
@@ -189,6 +199,10 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
         sample.timestamp = i;
         sample.payload.value.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
+        if (i % 10 == 0) {
+            EMPTY.timestamp = i;
+            ma->put(EMPTY);
+        }
     }
     ma->complete();
     const size_t EXPECTED_SIZE = 200;
@@ -198,5 +212,5 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     BOOST_REQUIRE_CLOSE(values_sum, 300.0, 0.00001);
     aku_Timestamp ts_sum = std::accumulate(mock->timestamps.begin(), mock->timestamps.end(), 0,
                                            [](aku_Timestamp a, aku_Timestamp b) { return a + b; });
-    BOOST_REQUIRE_EQUAL(ts_sum, 50500*2);
+    BOOST_REQUIRE_EQUAL(ts_sum, 99000);
 }

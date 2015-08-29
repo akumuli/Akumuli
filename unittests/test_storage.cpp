@@ -16,7 +16,7 @@ struct AkumuliInitializer {
     }
 };
 
-void logger_stub(int tag, const char* msg) {}
+void logger_stub(aku_LogLevel tag, const char* msg) {}
 
 AkumuliInitializer initializer;
 

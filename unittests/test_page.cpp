@@ -43,8 +43,8 @@ struct RecordingCursor : InternalCursor {
         completed = true;
     }
 
-    virtual void set_error(Caller&, int error_code) {
-        this->error_code = error_code;
+    virtual void set_error(Caller&, aku_Status error_code) {
+        this->error_code = (int)error_code;
     }
 };
 
@@ -109,7 +109,7 @@ BOOST_AUTO_TEST_CASE(TestPaging2) {
     char buffer[128];
     aku_MemRange range = {buffer, 128};
     auto result = page->add_entry(1, 2, range);
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
+    BOOST_CHECK_EQUAL(result, AKU_SUCCESS);
     auto free_space_after = page->get_free_space();
     BOOST_CHECK_EQUAL(free_space_before - free_space_after, sizeof(aku_Entry) + 128 + sizeof(aku_EntryIndexRecord));
 }
@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(TestPaging3)
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     aku_MemRange range = {nullptr, static_cast<uint32_t>(page_mem.size())};
     auto result = page->add_entry(0, 1, range);
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_OVERFLOW);
+    BOOST_CHECK_EQUAL(result, AKU_EOVERFLOW);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging4)
@@ -131,7 +131,7 @@ BOOST_AUTO_TEST_CASE(TestPaging4)
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
     aku_MemRange range = {nullptr, 0};
     auto result = page->add_entry(0, 1, range);
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_BAD_DATA);
+    BOOST_CHECK_EQUAL(result, AKU_EBAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(TestPaging5)
@@ -142,7 +142,7 @@ BOOST_AUTO_TEST_CASE(TestPaging5)
     char buffer[222];
     aku_MemRange range = {buffer, 222};
     auto result = page->add_entry(0, 1, range);
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
+    BOOST_CHECK_EQUAL(result, AKU_SUCCESS);
     auto len = page->get_entry_length_at(0);
     BOOST_CHECK_EQUAL(len, 222);
 }
@@ -156,7 +156,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
+    BOOST_CHECK_EQUAL(result, AKU_SUCCESS);
 
     char out_buffer[0x1000];
     aku_Entry* entry = reinterpret_cast<aku_Entry*>(out_buffer);
@@ -177,7 +177,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
 
-    BOOST_CHECK_EQUAL(result, AKU_WRITE_STATUS_SUCCESS);
+    BOOST_CHECK_EQUAL(result, AKU_SUCCESS);
 
     auto centry = page->read_entry_at(0);
     BOOST_CHECK_EQUAL(centry->length, range.length);
@@ -193,7 +193,7 @@ static PageHeader* init_search_range_test(char* page_ptr, int page_len, int num_
         uint32_t box[1] = {i};
         aku_MemRange range = {(void*)box, sizeof(uint32_t)};
         aku_ParamId id = 1;
-        BOOST_CHECK(page->add_entry(id, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
+        BOOST_CHECK(page->add_entry(id, inst, range) != AKU_EOVERFLOW);
     }
 
     return page;
@@ -354,7 +354,7 @@ static PageHeader* init_search_range_test_with_skew(char* page_ptr, int page_len
     for(int i = 0; i < num_values; i++) {
         aku_Timestamp inst = 1000L + i*time_skew;
         aku_MemRange range = {(void*)&i, sizeof(i)};
-        BOOST_CHECK(page->add_entry(1, inst, range) != AKU_WRITE_STATUS_OVERFLOW);
+        BOOST_CHECK(page->add_entry(1, inst, range) != AKU_EOVERFLOW);
     }
     return page;
 }
@@ -438,7 +438,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         aku_Timestamp inst = time_stamp;
         aku_ParamId id = 1 + (rand_num & 1);
         aku_MemRange range = {(void*)&i, sizeof(i)};
-        if(page->add_entry(id, inst, range) == AKU_WRITE_STATUS_OVERFLOW) {
+        if(page->add_entry(id, inst, range) == AKU_EOVERFLOW) {
             break;
         }
         timestamps.push_back(time_stamp);  // i-th timestamp

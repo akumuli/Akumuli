@@ -139,7 +139,7 @@ struct LocalCursor : Cursor {
             std::string paramid(buffer, buffer + len - 1);
 
             std::string timestamp;
-            if (sample_.payload.type != aku_PData::NONE) {
+            if (sample_.payload.type & aku_PData::TIMESTAMP_BIT) {
                 // Convert timestamp
                 len = aku_timestamp_to_string(sample_.timestamp, buffer, buffer_size);
                 if (len <= 0) {
@@ -149,14 +149,14 @@ struct LocalCursor : Cursor {
                 timestamp = std::string(buffer, buffer + len - 1);
             }
             // Convert payload
-            if (sample_.payload.type == aku_PData::FLOAT) {
+            if (sample_.payload.type & aku_PData::FLOAT_BIT) {
                 result = std::make_tuple(
                             DOUBLE,
                             timestamp,
                             paramid,
                             sample_.payload.value.float64,
                             std::string());
-            } else if (sample_.payload.type == aku_PData::BLOB){
+            } else if (sample_.payload.type & aku_PData::BLOB_BIT){
                 auto begin = (const char*)sample_.payload.value.blob.begin;
                 auto end = begin + sample_.payload.value.blob.size;
                 std::string payload(begin, end);
@@ -219,6 +219,15 @@ struct LocalStorage : Storage {
         }
     }
 
+    void throw_on_error(apr_status_t status) const {
+        if (status != APR_SUCCESS) {
+            char buffer[1000];
+            apr_strerror(status, buffer, 1000);
+            std::runtime_error err(buffer);
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
+
     std::string get_db_file_path() const {
         std::string path = work_dir_ + "/" + DBNAME_ + ".akumuli";
         return path;
@@ -276,7 +285,7 @@ struct LocalStorage : Storage {
                 std::runtime_error err("invalid series name");
                 BOOST_THROW_EXCEPTION(err);
             }
-            sample.payload.type = aku_PData::FLOAT;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.value.float64 = value;
             status = aku_write(db_, &sample);
         }
@@ -295,7 +304,7 @@ struct LocalStorage : Storage {
                 std::runtime_error err("invalid series name");
                 BOOST_THROW_EXCEPTION(err);
             }
-            sample.payload.type = aku_PData::BLOB;
+            sample.payload.type = AKU_PAYLOAD_BLOB;
             sample.payload.value.blob.begin = blob.data();
             sample.payload.value.blob.size = blob.size();
             status = aku_write(db_, &sample);
