@@ -147,13 +147,14 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
-// Generic sliding window
+
+//! Generic piecewise aggregate approximation
 template<class State>
-struct SlidingWindow : Node {
+struct PAA : Node {
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
-    SlidingWindow(std::shared_ptr<Node> next)
+    PAA(std::shared_ptr<Node> next)
         : next_(next)
     {
     }
@@ -205,7 +206,7 @@ struct SlidingWindow : Node {
     }
 };
 
-struct MovingAverageCounter {
+struct MeanCounter {
     double acc = 0;
     size_t num = 0;
 
@@ -228,10 +229,10 @@ struct MovingAverageCounter {
     }
 };
 
-struct MovingAverage : SlidingWindow<MovingAverageCounter> {
+struct MeanPAA : PAA<MeanCounter> {
 
-    MovingAverage(std::shared_ptr<Node> next)
-        : SlidingWindow<MovingAverageCounter>(next)
+    MeanPAA(std::shared_ptr<Node> next)
+        : PAA<MeanCounter>(next)
     {
     }
 
@@ -240,8 +241,7 @@ struct MovingAverage : SlidingWindow<MovingAverageCounter> {
     }
 };
 
-struct MovingMedianCounter {
-    // NOTE: median-of-medians or some approx. estimation method can be used here
+struct MedianCounter {
     mutable std::vector<double> acc;
 
     void reset() {
@@ -271,10 +271,10 @@ struct MovingMedianCounter {
     }
 };
 
-struct MovingMedian : SlidingWindow<MovingMedianCounter> {
+struct MedianPAA : PAA<MedianCounter> {
 
-    MovingMedian(std::shared_ptr<Node> next)
-        : SlidingWindow<MovingMedianCounter>(next)
+    MedianPAA(std::shared_ptr<Node> next)
+        : PAA<MedianCounter>(next)
     {
     }
 
@@ -623,16 +623,13 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
         std::string name;
         name = ptree.get<std::string>("name");
         if (name == "reservoir") {
-            // Reservoir sampling
             std::string size = ptree.get<std::string>("size");
             uint32_t nsize = boost::lexical_cast<uint32_t>(size);
             return std::make_shared<RandomSamplingNode>(nsize, next);
-        } else if (name == "moving-average") {
-            // Moving average
-            return std::make_shared<MovingAverage>(next);
-        } else if (name == "moving-median") {
-            // Moving median
-            return std::make_shared<MovingMedian>(next);
+        } else if (name == "PAA") {
+            return std::make_shared<MeanPAA>(next);
+        } else if (name == "PAA-median") {
+            return std::make_shared<MedianPAA>(next);
         } else if (name == "frequent-items") {
             std::string serror = ptree.get<std::string>("error");
             std::string sportion = ptree.get<std::string>("portion");
