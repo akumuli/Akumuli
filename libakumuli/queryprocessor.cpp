@@ -457,10 +457,12 @@ struct AnomalyDetector : Node {
             detector_->move_sliding_window();
             return next_->put(sample);
         } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
+            /*
             if (sample.payload.value.float64 < 0.0) {
                 set_error(AKU_EANOMALY_NEG_VAL);
                 return false;
             }
+            */
             detector_->add(sample.paramid, sample.payload.value.float64);
             if (detector_->is_anomaly_candidate(sample.paramid)) {
                 aku_Sample anomaly = sample;
@@ -482,6 +484,7 @@ struct AnomalyDetector : Node {
 };
 
 
+/*
 static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
     if (size == 0) {
         return std::make_tuple(NAN, NAN);
@@ -518,6 +521,7 @@ static void znorm(double* array, size_t size, double threshold) {
         }
     }
 }
+*/
 
 struct SAXEncoder {
     const int alphabet_size_;
@@ -608,7 +612,7 @@ static void validate_anomaly_detector_params(boost::property_tree::ptree const& 
 }
 
 static void validate_coef(double value, double range_begin, double range_end, const char* err_msg) {
-    if (value <= range_begin && value >= range_end) {
+    if (value >= range_begin && value <= range_end) {
         return;
     }
     QueryParserError err(err_msg);
@@ -800,6 +804,9 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
     , root_node_(root)
+    , min_(AKU_MAX_TIMESTAMP)
+    , max_(AKU_MIN_TIMESTAMP)
+    , counter_(0ul)
 {
 }
 
@@ -808,14 +815,22 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
+    min_ = std::min(min_, sample.timestamp);
+    max_ = std::max(max_, sample.timestamp);
+    counter_++;
     return groupby_.put(sample, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
+    std::cout << "Query processor completed" << std::endl;
+    std::cout << "Min timestamp: " << min_ << std::endl;
+    std::cout << "Max timestamp: " << max_ << std::endl;
+    std::cout << "Counter: " << counter_ << std::endl;
     root_node_->complete();
 }
 
 void ScanQueryProcessor::set_error(aku_Status error) {
+    std::cerr << "ScanQueryProcessor->error" << std::endl;
     root_node_->set_error(error);
 }
 

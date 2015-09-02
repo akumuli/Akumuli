@@ -92,8 +92,11 @@ BOOST_AUTO_TEST_CASE(Test_query_cursor) {
     QueryResultsPooler cursor(con, 1000);
     cursor.append("{}", 2);
     cursor.start();
-    size_t len = cursor.read_some(buffer, 0x1000);
+    size_t len;
+    bool done;
+    std::tie(len, done) = cursor.read_some(buffer, 0x1000);
     BOOST_REQUIRE(len > 0);
+    BOOST_REQUIRE(!done);
     auto actual = std::string(buffer, buffer + len);
     BOOST_REQUIRE_EQUAL(expected, actual);
 }

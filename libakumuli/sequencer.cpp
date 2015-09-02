@@ -459,11 +459,8 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
     }
 
     auto status = target->complete_chunk(reindexed_header);
-    if (status != AKU_SUCCESS) {
-        return status;
-    }
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
-    return AKU_SUCCESS;
+    return status;
 }
 
 std::tuple<aku_Timestamp, int> Sequencer::get_window() const {

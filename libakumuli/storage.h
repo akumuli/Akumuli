@@ -196,6 +196,8 @@ struct Storage
     void get_stats(aku_StorageStats* rcv_stats);
 
     aku_Status get_open_error() const;
+
+    void debug_print() const;
 };
 
 }

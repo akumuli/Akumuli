@@ -213,6 +213,10 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
 
     // Write compressed data
     aku_Status status = CompressionUtil::encode_chunk(&desc.n_elements, &first_ts, &last_ts, &writer, data);
+    if (status != AKU_SUCCESS) {
+        std::cout << "CompressionUtil::encode_chunk failed: " << status << std::endl;
+        return status;
+    }
 
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
@@ -413,6 +417,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool interpolation() {
         if (!run(key_, &range_)) {
+            std::cout << "INTS -> not found" << std::endl;
             query_->set_error(AKU_ENOT_FOUND);
             return false;
         }
@@ -430,6 +435,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
             if (probe_index >= MAX_INDEX_) {
+                std::cout << "BINS -> not found" << std::endl;
                 query_->set_error(AKU_EOVERFLOW);
                 range_.begin = range_.end = MAX_INDEX_;
                 return;
@@ -482,13 +488,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
             auto probe_length = pdesc->n_elements;
 
-            // TODO:checksum!
             boost::crc_32_type checksum;
             checksum.process_block(pbegin, pend);
             if (checksum.checksum() != pdesc->checksum) {
                 AKU_PANIC("File damaged!");
-                // TODO: report error
-                return false;
             }
 
             status = CompressionUtil::decode_chunk(chunk_header.get(), pbegin, pend, probe_length);
@@ -641,10 +644,12 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     void scan() {
         if (range_.begin != range_.end) {
+            std::cout << "SCAN -> general" << std::endl;
             query_->set_error(AKU_EGENERAL);
             return;
         }
         if (range_.begin >= MAX_INDEX_) {
+            std::cout << "SCAN -> overflow" << std::endl;
             query_->set_error(AKU_EOVERFLOW);
             return;
         }

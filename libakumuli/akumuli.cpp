@@ -134,6 +134,10 @@ struct DatabaseImpl : public aku_Database
     {
     }
 
+    void debug_print() const {
+        storage_.debug_print();
+    }
+
     aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
         return storage_.series_to_param_id(begin, end, &out_sample->paramid);
     }
@@ -350,4 +354,9 @@ void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset) {
 void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->get_storage_stats(rcv_stats);
+}
+
+void aku_debug_print(aku_Database *db) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    dbi->debug_print();
 }

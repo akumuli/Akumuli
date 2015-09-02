@@ -34,7 +34,7 @@ struct QueryResultsPooler : Http::QueryResultsPooler {
 
     virtual aku_Status get_error();
 
-    virtual size_t read_some(char *buf, size_t buf_size);
+    virtual std::tuple<size_t, bool> read_some(char *buf, size_t buf_size);
 
     virtual void close();
 };

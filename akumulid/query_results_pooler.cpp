@@ -367,11 +367,11 @@ aku_Status QueryResultsPooler::get_error() {
     return AKU_SUCCESS;
 }
 
-size_t QueryResultsPooler::read_some(char *buf, size_t buf_size) {
+std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_size) {
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
         if (cursor_->is_done()) {
-            return 0;
+            return std::make_tuple(0u, true);
         }
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
@@ -381,9 +381,9 @@ size_t QueryResultsPooler::read_some(char *buf, size_t buf_size) {
             // Some error occured, put error message to the outgoing buffer and return
             int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
             if (len > 0) {
-                return len;
+                return std::make_tuple((size_t)len, true);
             }
-            return 0;
+            return std::make_tuple(0u, true);
         }
     }
 
@@ -399,7 +399,7 @@ size_t QueryResultsPooler::read_some(char *buf, size_t buf_size) {
         begin = next;
         rdbuf_pos_++;
     }
-    return begin - buf;
+    return std::make_tuple(begin - buf, false);
 }
 
 void QueryResultsPooler::close() {

@@ -336,3 +336,5 @@ AKU_EXPORT void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset);
   * @param rcv_stats pointer to destination
   */
 AKU_EXPORT void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
+
+AKU_EXPORT void aku_debug_print(aku_Database *db);

@@ -17,8 +17,8 @@
 
 using namespace std;
 
-int DB_SIZE = 2;
-uint64_t NUM_ITERATIONS = 100*1000*1000;
+int DB_SIZE = 8;
+uint64_t NUM_ITERATIONS = 1000*1000*1000ul;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "test";
@@ -261,6 +261,8 @@ int main(int cnt, const char** args)
     auto db = aku_open_database(DB_META_FILE, params);
     Timer timer;
 
+    aku_debug_print(db);
+
     if (mode != READ) {
         uint64_t busy_count = 0;
         // Fill in data
@@ -275,11 +277,14 @@ int main(int cnt, const char** args)
             aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
             // =timestamp=
-            nchars = format_timestamp(i/10000, buffer);
-            aku_parse_timestamp(buffer, &sample);
+            sample.timestamp = i/10000;
 
             // =payload=
-            if (i == 1000000) {
+            if (i == 1000000ul) {
+                // Add anomalous value
+                rwalk.add_anomaly(id, 100.0);
+            }
+            if (i == 899999999ul) {
                 // Add anomalous value
                 rwalk.add_anomaly(id, 100.0);
             }
@@ -299,6 +304,8 @@ int main(int cnt, const char** args)
         }
         std::cout << "!busy count = " << busy_count << std::endl;
     }
+
+    aku_debug_print(db);
 
     aku_StorageStats storage_stats = {0};
     aku_global_storage_stats(db, &storage_stats);
