@@ -46,21 +46,11 @@ bool top_element_more(const RunType& x, const RunType& y)
 
 TimeSeriesValue::TimeSeriesValue() {}
 
-TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, uint32_t value, uint32_t value_length)
-    : key_ts_(ts)
-    , key_id_(id)
-    , type_(BLOB)
-{
-    payload.blob.value = value;
-    payload.blob.value_length = value_length;
-}
-
 TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value)
     : key_ts_(ts)
     , key_id_(id)
-    , type_(DOUBLE)
+    , value(value)
 {
-    payload.value = value;
 }
 
 aku_Timestamp TimeSeriesValue::get_timestamp() const {
@@ -73,38 +63,17 @@ aku_ParamId TimeSeriesValue::get_paramid() const {
 
 aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     aku_Sample res;
-    if (type_ == BLOB) {
-        res.payload.type                = AKU_PAYLOAD_BLOB;
-        res.payload.value.blob.begin    = page->read_entry_data(payload.blob.value);
-        res.payload.value.blob.size     = payload.blob.value_length;
-    } else {
-        res.payload.type                = AKU_PAYLOAD_FLOAT;
-        res.payload.value.float64       = payload.value;
-    }
-    res.paramid   = key_id_;
-    res.timestamp = key_ts_;
+    res.payload.type    = AKU_PAYLOAD_FLOAT;
+    res.payload.float64 = value;
+    res.paramid         = key_id_;
+    res.timestamp       = key_ts_;
     return res;
 }
 
 void TimeSeriesValue::add_to_header(UncompressedChunk *chunk_header) const {
     chunk_header->timestamps.push_back(key_ts_);
     chunk_header->paramids.push_back(key_id_);
-    if (type_ == BLOB) {
-        ChunkValue chnk;
-        chnk.type = ChunkValue::BLOB;
-        chnk.value.blobval.offset = payload.blob.value;
-        chnk.value.blobval.length = payload.blob.value_length;
-        chunk_header->values.push_back(chnk);
-    } else {
-        ChunkValue chnk;
-        chnk.type = ChunkValue::FLOAT;
-        chnk.value.floatval = payload.value;
-        chunk_header->values.push_back(chnk);
-    }
-}
-
-bool TimeSeriesValue::is_blob() const {
-    return type_ == BLOB;
+    chunk_header->values.push_back(value);
 }
 
 bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
@@ -154,7 +123,7 @@ int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
         checkpoint_ = new_checkpoint;
         vector<PSortedRun> new_runs;
         for (auto& sorted_run: runs_) {
-            auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0u, 0u));
+            auto it = lower_bound(sorted_run->begin(), sorted_run->end(), TimeSeriesValue(old_top, AKU_LIMITS_MAX_ID, 0));
             // Check that compression threshold is reached
             if (it == sorted_run->begin()) {
                 // all timestamps are newer than old_top, do nothing
@@ -469,25 +438,21 @@ std::tuple<aku_Timestamp, int> Sequencer::get_window() const {
                            sequence_number_.load());
 }
 
-uint32_t Sequencer::get_space_estimate() const {
-    // ready_ must be empty here
-    return space_estimate_ + SPACE_PER_ELEMENT;
-}
 
-void Sequencer::filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, std::vector<PSortedRun>* results) const {
+void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, std::vector<PSortedRun>* results) const {
     if (run->empty()) {
         return;
     }
     PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q->lowerbound(), 0u, 0u, 0u);
-    auto rkey = TimeSeriesValue(q->upperbound(), ~0u, 0u, 0u);
+    auto lkey = TimeSeriesValue(q->lowerbound(),  0u, 0);
+    auto rkey = TimeSeriesValue(q->upperbound(), ~0u, 0);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     std::copy(begin, end, std::back_inserter(*result));
     results->push_back(move(result));
 }
 
-void Sequencer::searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const {
+void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const {
     int seq_id = sequence_number_.load();
     if (seq_id % 2 != 0 || sequence_number != seq_id) {
         query->set_error(AKU_EBUSY);
@@ -503,7 +468,7 @@ void Sequencer::searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequenc
         auto ix = run_ix & RUN_LOCK_FLAGS_MASK;
         auto& rwlock = run_locks_.at(ix);
         rwlock.rdlock();
-        filterV2(run, query, &filtered);
+        filter(run, query, &filtered);
         rwlock.unlock();
         run_ix++;
     }

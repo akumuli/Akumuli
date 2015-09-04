@@ -221,7 +221,7 @@ void generic_search_test
     auto recorder = std::make_shared<Recorder>(param_id);
     auto qproc = make_proc(recorder, begin, end, direction);
 
-    page->searchV2(qproc);
+    page->search(qproc);
 
     auto cursor = recorder->cursor;
 
@@ -374,7 +374,7 @@ void generic_search_test_with_skew
     auto recorder = std::make_shared<Recorder>(param_id);
     auto qproc = make_proc(recorder, begin, end, direction);
 
-    page->searchV2(qproc);
+    page->search(qproc);
 
     auto cursor = recorder->cursor;
 
@@ -467,7 +467,7 @@ BOOST_AUTO_TEST_CASE(Test_SingleParamCursor_search_range_large)
         auto qproc = make_proc(recorder, start_time, stop_time, dir);
         std::vector<uint32_t> matches;
 
-        page->searchV2(qproc);
+        page->search(qproc);
 
         auto cursor = recorder->cursor;
 
@@ -530,10 +530,7 @@ void generic_compression_test
     for (int i = 1; true; i++) {
         pos++;
         begin += 1 + std::rand() % 50;
-        ChunkValue value;
-        value.type = ChunkValue::BLOB;
-        value.value.blobval.length = std::rand() % 10 + 1;
-        value.value.blobval.offset = pos + std::rand() % 10;
+        double value = pos + std::rand() % 10;
         header.values.push_back(value);
         header.paramids.push_back(param_id);
         header.timestamps.push_back(begin);
@@ -565,7 +562,7 @@ void generic_compression_test
         auto recorder = std::make_shared<Recorder>(param_id);
         auto qproc = make_proc(recorder, ts_begin, ts_end, dir);
 
-        page->searchV2(qproc);
+        page->search(qproc);
 
         auto cur = recorder->cursor;
 
@@ -576,8 +573,7 @@ void generic_compression_test
             for (auto i = 0ul; i != cur.results.size(); i++) {
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps.at(i));
                 BOOST_REQUIRE_EQUAL(act_it->paramid, exp_chunk.paramids.at(i));
-                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->payload), exp_chunk.values.at(i).value.blobval.length);
-                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->payload), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
+                BOOST_REQUIRE_EQUAL(act_it->payload.float64, exp_chunk.values.at(i).float64);
                 act_it++;
             }
         } else {
@@ -585,8 +581,7 @@ void generic_compression_test
             for (auto i = 0ul; i != cur.results.size(); i++) {
                 BOOST_REQUIRE_EQUAL(act_it->timestamp, exp_chunk.timestamps[i]);
                 BOOST_REQUIRE_EQUAL(act_it->paramid, exp_chunk.paramids[i]);
-                BOOST_REQUIRE_EQUAL(get_pd_length(act_it->payload), exp_chunk.values.at(i).value.blobval.length);
-                BOOST_REQUIRE_EQUAL(get_pd_pointer<void>(act_it->payload), page->read_entry_data(exp_chunk.values.at(i).value.blobval.offset));
+                BOOST_REQUIRE_EQUAL(act_it->payload.float64, exp_chunk.values.at(i).float64);
                 act_it++;
             }
         }
@@ -601,7 +596,7 @@ void generic_compression_test
         auto recorder = std::make_shared<Recorder>(param_id);
         auto qproc = make_proc(recorder, ts_begin, ts_end, dir);
 
-        page->searchV2(qproc);
+        page->search(qproc);
 
         auto cur = recorder->cursor;
 

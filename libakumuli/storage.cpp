@@ -426,9 +426,9 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     tie(window, seq_id) = volume->cache_->get_window();
-                    volume->get_page()->searchV2(query_processor, cache_);
+                    volume->get_page()->search(query_processor, cache_);
                     tm.restart();
-                    volume->cache_->searchV2(query_processor, seq_id);
+                    volume->cache_->search(query_processor, seq_id);
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
@@ -438,8 +438,8 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     tie(window, seq_id) = volume->cache_->get_window();
-                    volume->cache_->searchV2(query_processor, seq_id);
-                    volume->get_page()->searchV2(query_processor, cache_);
+                    volume->cache_->search(query_processor, seq_id);
+                    volume->get_page()->search(query_processor, cache_);
                 }
             } else {
                 AKU_PANIC("data corruption in query processor");
@@ -465,11 +465,7 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
-        auto space_required = active_volume_->cache_->get_space_estimate();
         aku_Status status = AKU_SUCCESS;
-        if (ts_value.is_blob()) {
-            status = active_page_->add_chunk(data, space_required, &ts_value.payload.blob.value);
-        }
         int merge_lock = 0;
         std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
         switch (status) {
@@ -529,12 +525,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                 return status;
         }
     }
-}
-
-//! write binary data
-aku_Status Storage::write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data) {
-    TimeSeriesValue ts_value(ts, param, 0, data.length);
-    return _write_impl(ts_value, data);
 }
 
 //! write binary data

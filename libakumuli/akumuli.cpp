@@ -173,17 +173,7 @@ struct DatabaseImpl : public aku_Database
     }
 
     aku_Status add_sample(aku_Sample const* sample) {
-        aku_Status status = AKU_EBAD_ARG;
-        if (sample->payload.type == AKU_PAYLOAD_FLOAT) {
-            status = add_double(sample->paramid, sample->timestamp, sample->payload.value.float64);
-        } else if (sample->payload.type == AKU_PAYLOAD_BLOB) {
-            aku_PData data = sample->payload;
-            const aku_MemRange mrange = {
-                data.value.blob.begin,
-                data.value.blob.size
-            };
-            status = add_blob(sample->paramid, sample->timestamp, mrange);
-        }
+        aku_Status status = add_double(sample->paramid, sample->timestamp, sample->payload.float64);
         return status;
     }
 

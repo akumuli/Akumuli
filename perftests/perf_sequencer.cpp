@@ -70,7 +70,7 @@ int main(int cnt, const char** args)
         size_t ix_merged = 0;
         Sequencer seq(nullptr, {0, 10000, 0});
         for (uint32_t ix = 0u; ix < NUM_ITERATIONS; ix++) {
-            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, ix, 8u);
+            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (double)ix);
             int status = 0;
             int lock = 0;
             tie(status, lock) = seq.add(value);
@@ -110,7 +110,7 @@ int main(int cnt, const char** args)
             if (buffer_ix == 0) {
                 buffer_ix = buffer_size;
                 for(auto ixx: buffer) {
-                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (uint32_t)ixx, 8);
+                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (double)ixx);
                     int status = 0;
                     int lock = 0;
                     tie(status, lock) = seq.add(value);

@@ -166,7 +166,7 @@ struct PAA : Node {
             if (state.ready()) {
                 aku_Sample sample;
                 sample.paramid = pair.first;
-                sample.payload.value.float64 = state.value();
+                sample.payload.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.timestamp = ts;
                 state.reset();
@@ -225,7 +225,7 @@ struct MeanCounter {
     }
 
     void add(aku_Sample const& value) {
-        acc += value.payload.value.float64;
+        acc += value.payload.float64;
         num++;
     }
 };
@@ -268,7 +268,7 @@ struct MedianCounter {
     }
 
     void add(aku_Sample const& value) {
-        acc.push_back(value.payload.value.float64);
+        acc.push_back(value.payload.float64);
     }
 };
 
@@ -324,12 +324,12 @@ struct SpaceSaver : Node {
                 aku_Sample s;
                 s.paramid = it.first;
                 s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
-                s.payload.value.float64 = it.second.count;
+                s.payload.float64 = it.second.count;
                 samples.push_back(s);
             }
         }
         std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
-            return lhs.payload.value.float64 > rhs.payload.value.float64;
+            return lhs.payload.float64 > rhs.payload.float64;
         });
         for (const auto& s: samples) {
             if (!next_->put(s)) {
@@ -355,7 +355,7 @@ struct SpaceSaver : Node {
             }
         }
         auto id = sample.paramid;
-        auto weight = weighted ? sample.payload.value.float64 : 1.0;
+        auto weight = weighted ? sample.payload.float64 : 1.0;
         auto it = counters_.find(id);
         if (it == counters_.end()) {
             // new element
@@ -468,12 +468,12 @@ struct AnomalyDetector : Node {
             return next_->put(sample);
         } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
             /*
-            if (sample.payload.value.float64 < 0.0) {
+            if (sample.payload.float64 < 0.0) {
                 set_error(AKU_EANOMALY_NEG_VAL);
                 return false;
             }
             */
-            detector_->add(sample.paramid, sample.payload.value.float64);
+            detector_->add(sample.paramid, sample.payload.float64);
             if (detector_->is_anomaly_candidate(sample.paramid)) {
                 aku_Sample anomaly = sample;
                 anomaly.payload.type |= aku_PData::URGENT;

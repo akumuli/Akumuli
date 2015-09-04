@@ -60,7 +60,7 @@ typedef struct {
         } blob;
         //! Float type
         double       float64;
-    } value;
+    };
     //! Data element type
     enum {
         EMPTY                = 0,

@@ -41,14 +41,14 @@ namespace {
     //! Get payload length
     uint32_t get_pd_length(const aku_PData& pdata) {
         assert(pdata.type & aku_PData::BLOB_BIT);
-        return pdata.value.blob.size;
+        return pdata.blob.size;
     }
 
     //! Get payload pointer
     template<class T>
     const T* get_pd_pointer(const aku_PData& pdata) {
         assert(pdata.type & aku_PData::BLOB_BIT);
-        return static_cast<const T*>(pdata.value.blob.begin);
+        return static_cast<const T*>(pdata.blob.begin);
     }
 }
 
@@ -260,7 +260,7 @@ public:
     /**
       * @brief Search matches inside the volume
       */
-    void searchV2(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache = std::shared_ptr<ChunkCache>()) const;
+    void search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache = std::shared_ptr<ChunkCache>()) const;
 
     static void get_search_stats(aku_SearchStats* stats, bool reset=false);
 
