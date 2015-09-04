@@ -204,8 +204,6 @@ void test_chunk_header_compression() {
     RandomWalk rwalk(1, .11);
 
     // Fill chunk header
-    // 1 - double
-    // 2 - blob
     for (int i = 0; i < NROWS; i++) {
         expected.paramids.push_back(0);
     }
@@ -251,11 +249,12 @@ void test_chunk_header_compression() {
     // Original chunk size
     size_t total_bytes = 0;
     for (auto i = 0u; i < expected.paramids.size(); i++) {
-        total_bytes += sizeof(aku_ParamId) + sizeof(aku_Timestamp) + sizeof(int) +
-                       sizeof(double); // blob length+offset if of the same size
+        total_bytes += sizeof(aku_ParamId) +
+                       sizeof(aku_Timestamp) +
+                       sizeof(double);
     }
 
-    Writer writer(total_bytes*2);
+    Writer writer(total_bytes);
 
     auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, expected);
     BOOST_REQUIRE(status == AKU_SUCCESS);

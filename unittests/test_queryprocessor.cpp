@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
                                         mock,
                                         &logger_stub);
 
@@ -177,7 +177,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
                                         mock,
                                         &logger_stub);
 

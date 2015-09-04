@@ -212,7 +212,7 @@ void read_from_stream(Base128StreamReader& reader, const Fn& func) {
     func(stream, size_prefix);
 }
 
-aku_Status CompressionUtil::decode_chunk( UncompressedChunk         *header
+aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
                                         , const unsigned char *pbegin
                                         , const unsigned char *pend
                                         , uint32_t             nelements)
@@ -240,6 +240,7 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk         *header
         AKU_UNUSED(ncolumns);
 
         // Doubles stream
+        header->values.resize(nelements);
         const uint32_t nblocks = rstream.read_raw<uint32_t>();
         CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
     } catch (StreamOutOfBounds const&) {
