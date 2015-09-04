@@ -99,9 +99,6 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Root of the processing topology
     std::shared_ptr<Node>              root_node_;
 
-    // TODO: remove
-    aku_Timestamp min_, max_, counter_;
-
     /** Create new query processor.
       * @param root is a root of the processing topology
       * @param metrics is a list of metrics of interest

@@ -27,6 +27,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
 namespace QP {
@@ -421,30 +422,39 @@ struct AnomalyDetector : Node {
                     std::shared_ptr<Node> next)
         : next_(next)
     {
-        switch(method) {
-        case SMA:
-            detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
-            break;
-        case SMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
-            break;
-        case EWMA:
-            detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
-            break;
-        case EWMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
-            break;
-        case DOUBLE_EXP_SMOOTHING:
-            detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
-            break;
-        case DOUBLE_EXP_SMOOTHING_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
-            break;
-        case HOLT_WINTERS:
-            detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
-        default:
-            std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
-            BOOST_THROW_EXCEPTION(err);
+        try {
+            switch(method) {
+            case SMA:
+                detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
+                break;
+            case SMA_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
+                break;
+            case EWMA:
+                detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
+                break;
+            case EWMA_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
+                break;
+            case DOUBLE_EXP_SMOOTHING:
+                detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
+                break;
+            case DOUBLE_EXP_SMOOTHING_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
+                break;
+            case HOLT_WINTERS:
+                detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
+                break;
+            case HOLT_WINTERS_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_holt_winters(nhashes, 1 << bits, threshold, alpha, beta, gamma, period);
+                break;
+            default:
+                std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
+                BOOST_THROW_EXCEPTION(err);
+            }
+        } catch (...) {
+            // std::cout << boost::current_exception_diagnostic_information() << std::endl;
+            throw;
         }
     }
 
@@ -804,9 +814,6 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
     , root_node_(root)
-    , min_(AKU_MAX_TIMESTAMP)
-    , max_(AKU_MIN_TIMESTAMP)
-    , counter_(0ul)
 {
 }
 
@@ -815,17 +822,10 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
-    min_ = std::min(min_, sample.timestamp);
-    max_ = std::max(max_, sample.timestamp);
-    counter_++;
     return groupby_.put(sample, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
-    std::cout << "Query processor completed" << std::endl;
-    std::cout << "Min timestamp: " << min_ << std::endl;
-    std::cout << "Max timestamp: " << max_ << std::endl;
-    std::cout << "Counter: " << counter_ << std::endl;
     root_node_->complete();
 }
 

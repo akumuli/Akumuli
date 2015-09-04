@@ -293,7 +293,6 @@ aku_Status Storage::get_open_error() const {
 }
 
 void Storage::advance_volume_(int local_rev) {
-    std::cout << "Advance volume called" << std::endl;
     if (local_rev == active_volume_index_.load()) {
         log_message("advance volume, current:");
         log_message("....page ID", active_volume_->page_->get_page_id());
@@ -326,8 +325,6 @@ void Storage::advance_volume_(int local_rev) {
         log_message("....page ID", active_volume_->page_->get_page_id());
         log_message("....close count", active_volume_->page_->get_close_count());
         log_message("....open count", active_volume_->page_->get_open_count());
-    } else {
-        std::cout << "!!!Bad local rev" << std::endl;
     }
     // Or other thread already done all the switching
     // just redo all the things
@@ -429,13 +426,9 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     tie(window, seq_id) = volume->cache_->get_window();
-                    std::cout << "Search page " << ix << std::endl;
                     volume->get_page()->searchV2(query_processor, cache_);
-                    std::cout << "done in " << tm.elapsed() << std::endl;
                     tm.restart();
-                    std::cout << "Search cache " << ix << std::endl;
                     volume->cache_->searchV2(query_processor, seq_id);
-                    std::cout << "done in " << tm.elapsed() << std::endl << std::endl;
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
@@ -516,7 +509,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                         break;
                     case AKU_EOVERFLOW:
                         // Page overflow
-                        std::cout << "Overflow after merge_and_compress detected" << std::endl;
                         advance_volume_(local_rev);
                         break;
                     default:
