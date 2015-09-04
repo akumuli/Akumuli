@@ -33,7 +33,7 @@ public:
     bool put(aku_Sample const& s) {
         ids.push_back(s.paramid);
         timestamps.push_back(s.timestamp);
-        values.push_back(s.payload.value.float64);
+        values.push_back(s.payload.float64);
         return true;
     }
 };
@@ -43,7 +43,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     s.paramid = id;
     s.timestamp = t;
     s.payload.type = AKU_PAYLOAD_FLOAT;
-    s.payload.value.float64 = value;
+    s.payload.float64 = value;
     return s;
 }
 

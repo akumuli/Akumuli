@@ -15,7 +15,6 @@ using namespace Akumuli;
 struct CursorMock : DbCursor {
 
     constexpr static const double floatval = 3.1415;
-    constexpr static const char* strval = "teststring";
     bool isdone_ = false;
 
     size_t read(aku_Sample *dest, size_t dest_size) {
@@ -29,14 +28,13 @@ struct CursorMock : DbCursor {
         dest[0].paramid = 33;
         aku_parse_timestamp("20141210T074243.111999", &dest[0]);
         dest[0].payload.type = AKU_PAYLOAD_FLOAT;
-        dest[0].payload.value.float64 = floatval;
+        dest[0].payload.float64 = floatval;
 
         // second value
         dest[1].paramid = 44;
         aku_parse_timestamp("20141210T122434.999111", &dest[1]);
-        dest[1].payload.type = AKU_PAYLOAD_BLOB;
-        dest[1].payload.value.blob.begin = strval;
-        dest[1].payload.value.blob.size = strlen(strval);
+        dest[1].payload.type = AKU_PAYLOAD_FLOAT;
+        dest[1].payload.float64 = floatval;
 
         isdone_ = true;
         return 2;
@@ -85,7 +83,7 @@ using namespace Akumuli;
 
 BOOST_AUTO_TEST_CASE(Test_query_cursor) {
 
-    std::string expected = "+33\r\n+20141210T074243.111999000\r\n+3.141500e+00\r\n+44\r\n+20141210T122434.999111000\r\n$10\r\nteststring\r\n";
+    std::string expected = "+33\r\n+20141210T074243.111999000\r\n+3.141500e+00\r\n+44\r\n+20141210T122434.999111000\r\n+3.141500e+00\r\n";
     std::shared_ptr<DbConnection> con;
     con.reset(new ConnectionMock());
     char buffer[0x1000];

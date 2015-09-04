@@ -18,7 +18,7 @@ struct ConsumerMock : ProtocolConsumer {
     void write(const aku_Sample& sample) {
         param_.push_back(sample.paramid);
         ts_.push_back(sample.timestamp);
-        data_.push_back(sample.payload.value.float64);
+        data_.push_back(sample.payload.float64);
     }
 
     void add_bulk_string(const Byte *buffer, size_t n) {

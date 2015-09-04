@@ -32,14 +32,8 @@ bool check_path_exists(std::string path) {
 /** Row iterator interface
   */
 struct Cursor {
-    enum RecordType {
-        DOUBLE,
-        BLOB,
-        NONE,
-    };
-
-    //                 typeid      timestmap    seriesname   value   blob
-    typedef std::tuple<RecordType, std::string, std::string, double, std::string> RowT;
+    //                 timestmap    seriesname   value
+    typedef std::tuple<std::string, std::string, double> RowT;
 
     virtual ~Cursor() = default;
 
@@ -64,8 +58,6 @@ struct Storage {
     virtual void delete_all() = 0;
     //! Write numeric value
     virtual void add(std::string ts, std::string id, double value) = 0;
-    //! Write blob value
-    virtual void add(std::string ts, std::string id, std::string const& blob) = 0;
     //! Query database
     virtual std::unique_ptr<Cursor> query(std::string begin,
                                           std::string end,
@@ -151,28 +143,14 @@ struct LocalCursor : Cursor {
             // Convert payload
             if (sample_.payload.type & aku_PData::FLOAT_BIT) {
                 result = std::make_tuple(
-                            DOUBLE,
                             timestamp,
                             paramid,
-                            sample_.payload.value.float64,
-                            std::string());
-            } else if (sample_.payload.type & aku_PData::BLOB_BIT){
-                auto begin = (const char*)sample_.payload.value.blob.begin;
-                auto end = begin + sample_.payload.value.blob.size;
-                std::string payload(begin, end);
-                result = std::make_tuple(
-                            BLOB,
-                            timestamp,
-                            paramid,
-                            NAN,
-                            payload);
+                            sample_.payload.float64);
             } else {
                 result = std::make_tuple(
-                            NONE,
                             std::string(),
                             paramid,
-                            NAN,
-                            std::string());
+                            NAN);
             }
             return true;
         }
@@ -286,27 +264,7 @@ struct LocalStorage : Storage {
                 BOOST_THROW_EXCEPTION(err);
             }
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = value;
-            status = aku_write(db_, &sample);
-        }
-        throw_on_error(status);
-    }
-
-    virtual void add(std::string ts, std::string id, std::string const& blob) {
-        aku_Status status = AKU_EBUSY;
-        while(status == AKU_EBUSY) {
-            aku_Sample sample;
-            if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
-                std::runtime_error err("invalid timestamp");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
-                std::runtime_error err("invalid series name");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            sample.payload.type = AKU_PAYLOAD_BLOB;
-            sample.payload.value.blob.begin = blob.data();
-            sample.payload.value.blob.size = blob.size();
+            sample.payload.float64 = value;
             status = aku_write(db_, &sample);
         }
         throw_on_error(status);
@@ -380,43 +338,36 @@ struct LocalStorage : Storage {
 struct DataPoint {
     std::string   timestamp;
     std::string   id;
-    bool          is_blob;
     double        float_value;
-    std::string   blob_value;
 };
 
 
 std::vector<DataPoint> TEST_DATA = {
-    { "20150101T000000.000000000", "cpu key=0", false, 0.0,          "" },
-    { "20150101T000001.000000000", "cpu key=1",  true, NAN, "blob at 1" },
-    { "20150101T000002.000000000", "cpu key=2", false, 2.2,          "" },
-    { "20150101T000003.000000000", "cpu key=3",  true, NAN, "blob at 3" },
-    { "20150101T000004.000000000", "cpu key=4", false, 4.4,          "" },
-    { "20150101T000005.000000000", "cpu key=5",  true, NAN, "blob at 5" },
-    { "20150101T000006.000000000", "cpu key=0", false, 6.6,          "" },
-    { "20150101T000007.000000000", "cpu key=1",  true, NAN, "blob at 7" },
-    { "20150101T000008.000000000", "cpu key=2", false, 8.8,          "" },
-    { "20150101T000009.000000000", "cpu key=3",  true, NAN, "blob at 9" },
-    { "20150101T000010.000000000", "cpu key=4", false, 1.0,          "" },
-    { "20150101T000011.000000000", "cpu key=5",  true, NAN, "blob at 11"},
-    { "20150101T000012.000000000", "cpu key=0", false, 1.2,          "" },
-    { "20150101T000013.000000000", "cpu key=1",  true, NAN, "blob at 13"},
-    { "20150101T000014.000000000", "cpu key=2", false, 1.4,          "" },
-    { "20150101T000015.000000000", "cpu key=3",  true, NAN, "blob at 15"},
-    { "20150101T000016.000000000", "cpu key=4", false, 1.6,          "" },
-    { "20150101T000017.000000000", "cpu key=5",  true, NAN, "blob at 17"},
-    { "20150101T000018.000000000", "cpu key=0", false, 1.8,          "" },
-    { "20150101T000019.000000000", "cpu key=1",  true, NAN, "blob at 19"},
+    { "20150101T000000.000000000", "cpu key=0", 0.0 },
+    { "20150101T000001.000000000", "cpu key=1", 1.1 },
+    { "20150101T000002.000000000", "cpu key=2", 2.2 },
+    { "20150101T000003.000000000", "cpu key=3", 3.3 },
+    { "20150101T000004.000000000", "cpu key=4", 4.4 },
+    { "20150101T000005.000000000", "cpu key=5", 5.5 },
+    { "20150101T000006.000000000", "cpu key=0", 6.6 },
+    { "20150101T000007.000000000", "cpu key=1", 7.7 },
+    { "20150101T000008.000000000", "cpu key=2", 8.8 },
+    { "20150101T000009.000000000", "cpu key=3", 9.9 },
+    { "20150101T000010.000000000", "cpu key=4", 1.0 },
+    { "20150101T000011.000000000", "cpu key=5", 1.1 },
+    { "20150101T000012.000000000", "cpu key=0", 1.2 },
+    { "20150101T000013.000000000", "cpu key=1", 1.3 },
+    { "20150101T000014.000000000", "cpu key=2", 1.4 },
+    { "20150101T000015.000000000", "cpu key=3", 1.5 },
+    { "20150101T000016.000000000", "cpu key=4", 1.6 },
+    { "20150101T000017.000000000", "cpu key=5", 1.7 },
+    { "20150101T000018.000000000", "cpu key=0", 1.8 },
+    { "20150101T000019.000000000", "cpu key=1", 1.9 },
 };
 
 void add_element(Storage *storage, DataPoint& td) {
-    if (td.is_blob) {
-        storage->add(td.timestamp, td.id, td.blob_value);
-        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.blob_value << std::endl;
-    } else {
-        storage->add(td.timestamp, td.id, td.float_value);
-        std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
-    }
+    storage->add(td.timestamp, td.id, td.float_value);
+    std::cout << "Add " << td.timestamp << ", " << td.id << ", " << td.float_value << std::endl;
 }
 
 void fill_data(Storage *storage) {
@@ -441,50 +392,28 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             continue;
         }
         DataPoint exp = expected.at(ix++);
-        if (std::get<1>(row) != exp.timestamp) {
+        if (std::get<0>(row) != exp.timestamp) {
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad timestamp, get " << std::get<1>(row)
                       << ", expected " << exp.timestamp << std::endl;
             std::runtime_error err("Bad result");
             BOOST_THROW_EXCEPTION(err);
         }
-        if (std::get<2>(row) != exp.id) {
+        if (std::get<1>(row) != exp.id) {
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad id, get " << std::get<2>(row)
                       << ", expected " << exp.id << std::endl;
             std::runtime_error err("Bad result");
             BOOST_THROW_EXCEPTION(err);
         }
-        if (std::get<0>(row) == Cursor::BLOB) {
-            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<4>(row) << std::endl;
-            if (!exp.is_blob) {
-                std::cout << "Error at " << ix << std::endl;
-                std::cout << "blob expected"   << std::endl;
-                std::runtime_error err("Bad result");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            if (std::get<4>(row) != exp.blob_value) {
-                std::cout << "Error at " << ix << std::endl;
-                std::cout << "bad BLOB, get " << std::get<4>(row)
-                          << ", expected " << exp.blob_value << std::endl;
-                std::runtime_error err("Bad result");
-                BOOST_THROW_EXCEPTION(err);
-            }
-        } else {
-            std::cout << "Read " << std::get<1>(row) << ", " << std::get<2>(row) << ", " << std::get<3>(row) << std::endl;
-            if (exp.is_blob) {
-                std::cout << "Error at " << ix << std::endl;
-                std::cout << "float expected"   << std::endl;
-                std::runtime_error err("Bad result");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            if (std::get<3>(row) != exp.float_value) {
-                std::cout << "Error at " << ix << std::endl;
-                std::cout << "bad float, get " << std::get<3>(row)
-                          << ", expected " << exp.float_value << std::endl;
-                std::runtime_error err("Bad result");
-                BOOST_THROW_EXCEPTION(err);
-            }
+        // payload
+        std::cout << "Read " << std::get<0>(row) << ", " << std::get<1>(row) << ", " << std::get<2>(row) << std::endl;
+        if (std::get<2>(row) != exp.float_value) {
+            std::cout << "Error at " << ix << std::endl;
+            std::cout << "bad float, get " << std::get<2>(row)
+                      << ", expected " << exp.float_value << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
         }
     }
     if (ix != (int)expected.size()) {
@@ -578,7 +507,7 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
         if(!cursor->get_next_row(row)) {
             continue;
         }
-        actual.push_back(std::get<2>(row));
+        actual.push_back(std::get<1>(row));
     }
     cursor.reset();
     std::sort(expected.begin(), expected.end());
@@ -734,10 +663,10 @@ int main(int argc, const char** argv) {
             storage.open();
             // Add some data
             DataPoint newpoints[] = {
-                { "20150101T000020.000000000", "cpu key=2",  false, 2.0, ""},
-                { "20150101T000021.000000000", "cpu key=3",  true, NAN, "blob at 21"},
-                { "20150101T000022.000000000", "cpu key=4",  false, 2.2, ""},
-                { "20150101T000023.000000000", "cpu key=5",  true, NAN, "blob at 23"},
+                { "20150101T000020.000000000", "cpu key=2", 2.0 },
+                { "20150101T000021.000000000", "cpu key=3", 2.1 },
+                { "20150101T000022.000000000", "cpu key=4", 2.2 },
+                { "20150101T000023.000000000", "cpu key=5", 2.3 },
             };
             for (int i = 0; i < 4; i++) {
                 TEST_DATA.push_back(newpoints[i]);
@@ -780,7 +709,7 @@ int main(int argc, const char** argv) {
             query_subset(&storage, "20150101T000000", "20150101T000024", false, false, oddseries);
 
             // Add new series name
-            DataPoint newpoint = { "20150101T000023.000000000", "cpu key=5 xxx=1",  true, NAN, "blob at 23"};
+            DataPoint newpoint = { "20150101T000023.000000000", "cpu key=5 xxx=1", 23 };
             add_element(&storage, newpoint);
 
             const std::vector<std::string> newodds = {

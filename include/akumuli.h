@@ -52,31 +52,20 @@ typedef struct {
 //! Payload data
 typedef struct {
     //! Value
-    union {
-        //! BLOB type
-        struct {
-            const void *begin;
-            uint32_t    size;
-        } blob;
-        //! Float type
-        double       float64;
-    };
-    //! Data element type
+    double float64;
+    //! Data element flags
     enum {
         EMPTY                = 0,
         URGENT               = 1 << 8,  /** urgent flag (anomaly or error) */
         PARAMID_BIT          = 1,
         TIMESTAMP_BIT        = 1 << 1,
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
-        BLOB_BIT             = 1 << 3,
         FLOAT_BIT            = 1 << 4,
     };
     uint32_t type;
 } aku_PData;
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)
-#define AKU_PAYLOAD_BLOB (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::BLOB_BIT)
-
 
 //! Cursor result type
 typedef struct {
@@ -232,15 +221,6 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 //---------
 // Writing
 //---------
-
-/** Write binary blob
-  * @param db opened database instance
-  * @param param_id paramter id
-  * @param timestamp timestamp
-  * @param value BLOB memory range
-  * @returns operation status
-  */
-AKU_EXPORT aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, aku_MemRange value);
 
 /** Write measurement to DB
   * @param db opened database instance

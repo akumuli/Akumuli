@@ -164,10 +164,6 @@ struct DatabaseImpl : public aku_Database
         throw "depricated";
     }
 
-    aku_Status add_blob(aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
-        return storage_.write_blob(param_id, ts, value);
-    }
-
     aku_Status add_double(aku_ParamId param_id, aku_Timestamp ts, double value) {
         return storage_.write_double(param_id, ts, value);
     }
@@ -213,11 +209,6 @@ apr_status_t aku_create_database( const char     *file_name
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
 
     return Storage::remove_storage(file_name, logger);
-}
-
-aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->add_blob(param_id, ts, value);
 }
 
 aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value) {

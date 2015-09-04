@@ -21,8 +21,8 @@ struct DbMock : DbConnection {
     std::vector<ValueT> results;
 
     aku_Status write(const aku_Sample &sample) {
-        logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.value.float64 << ")";
-        results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.value.float64));
+        logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
+        results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64));
         return AKU_SUCCESS;
     }
     std::shared_ptr<DbCursor> search(std::string query) {

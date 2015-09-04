@@ -86,7 +86,7 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << samples[i].timestamp  << std::endl;
                 current_time = samples[i].timestamp;
             } else {
-                double dvalue = samples[i].payload.value.float64;
+                double dvalue = samples[i].payload.float64;
                 double dexpected = (current_time - EPOCH) + 1;
                 if (dvalue - dexpected > 0.000001) {
                     std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
@@ -289,7 +289,7 @@ int main(int cnt, const char** args)
                 rwalk.add_anomaly(id, 100.0);
             }
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = rwalk.generate(id);
+            sample.payload.float64 = rwalk.generate(id);
 
             aku_Status status = aku_write(db, &sample);
 

@@ -49,8 +49,8 @@ struct RecordingCursor : InternalCursor {
 
 }  // namespace
 
-BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
-{
+BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints) {
+
     const int LARGE_LOOP = 1000;
     const int SMALL_LOOP = 10;
 
@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0u, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 != 0) {
             RecordingCursor rec;
@@ -89,20 +89,20 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0u, 0u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 != 0) {
             // present write (ts <= last checkpoint)
             for (int j = 0; j < SMALL_LOOP; j++) {
                 int other_lock = 0;
-                tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + j), 24u, 0u, 0u));
+                tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + j), 24u, 0));
                 BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
                 BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
             }
 
             // future write (ts > last checkpoint)
             int other_lock = 0;
-            tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + SMALL_LOOP), 24u, 0u, 0u));
+            tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + SMALL_LOOP), 24u, 0));
             BOOST_REQUIRE_EQUAL(status, AKU_EBUSY);
             BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
 
@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     for (int i = 0; i < LARGE_LOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, i, 1u));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, (double)i));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         if (lock % 2 == 1) {
             RecordingCursor rec;
@@ -146,14 +146,13 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
             int end = i - (SMALL_LOOP - 1);
             for (int j = begin; j != end; j++) {
                 aku_Sample res;
-                res.payload.type = AKU_PAYLOAD_BLOB;
-                res.payload.value.blob.begin = reinterpret_cast<void*>(j + sizeof(PageHeader));
-                res.payload.value.blob.size = 1;
+                res.payload.type = AKU_PAYLOAD_FLOAT;
+                res.payload.float64 = j;
                 exp.emplace_back(res);
             }
             BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
             for(auto k = 0u; k < exp.size(); k++) {
-                BOOST_REQUIRE_EQUAL(rec.results[k].payload.value.blob.begin, exp[k].payload.value.blob.begin);
+                BOOST_REQUIRE_EQUAL(rec.results[k].payload.float64, exp[k].payload.float64);
             }
             begin = end;
         }
@@ -171,14 +170,13 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
     int end = LARGE_LOOP;
     for (int i = begin; i != end; i++) {
         aku_Sample res;
-        res.payload.type = AKU_PAYLOAD_BLOB;
-        auto p = i + sizeof(PageHeader);
-        res.payload.value.blob.begin = reinterpret_cast<void*>(p);  // NOTE: this is a hack, page in sequencer is null but merge
-        exp.emplace_back(res);                                      // wouldn't fail, it will return offset value as pointer
-    }                                                               // because it will be added to `this` and `this` == null.
+        res.payload.type = AKU_PAYLOAD_FLOAT;
+        res.payload.float64 = i;
+        exp.emplace_back(res);
+    }
     BOOST_REQUIRE_EQUAL(rec.results.size(), exp.size());
     for(auto k = 0u; k < exp.size(); k++) {
-        BOOST_REQUIRE_EQUAL(rec.results[k].payload.value.blob.begin, exp[k].payload.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(rec.results[k].payload.float64, exp[k].payload.float64);
     }
 
     BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
@@ -213,13 +211,13 @@ void test_sequencer_searching(int dir) {
     const int WINDOW = 10000;
 
     Sequencer seq(nullptr, {0u, WINDOW, 0u});
-    std::vector<uint32_t> offsets;
+    std::vector<double> expected;
 
     for (int i = 0; i < SZLOOP; i++) {
         int status;
         int lock = 0;
-        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(42u + i), 42u, i, 0u));
-        offsets.push_back(i + sizeof(PageHeader));
+        tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(42u + i), 42u, i));
+        expected.push_back(i);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         BOOST_REQUIRE(lock % 2 == 0);  // because window is larger than number of iterations
     }
@@ -228,7 +226,7 @@ void test_sequencer_searching(int dir) {
                   end   = AKU_MAX_TIMESTAMP;
 
     if (dir == AKU_CURSOR_DIR_BACKWARD) {
-        std::reverse(offsets.begin(), offsets.end());
+        std::reverse(expected.begin(), expected.end());
         begin = AKU_MAX_TIMESTAMP;
         end   = AKU_MIN_TIMESTAMP;
     }
@@ -242,13 +240,13 @@ void test_sequencer_searching(int dir) {
     aku_Timestamp window;
     int seq_id;
     std::tie(window, seq_id) = seq.get_window();
-    seq.searchV2(qproc, seq_id);
+    seq.search(qproc, seq_id);
 
     // Check that everything is there
-    BOOST_REQUIRE_EQUAL(cursor.results.size(), offsets.size());
+    BOOST_REQUIRE_EQUAL(cursor.results.size(), expected.size());
     for (auto i = 0u; i < cursor.results.size(); i++) {
-        auto offset = reinterpret_cast<size_t>(cursor.results[i].payload.value.blob.begin);
-        BOOST_REQUIRE_EQUAL(offset, offsets[i]);
+        auto actual = cursor.results[i].payload.float64;
+        BOOST_REQUIRE_EQUAL(actual, expected[i]);
     }
 }
 

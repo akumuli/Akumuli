@@ -112,25 +112,13 @@ struct CSVOutputFormatter : OutputFormatter {
         }
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
             // Floating-point
-            len = snprintf(begin, size, "+%e\n", sample.payload.value.float64);
+            len = snprintf(begin, size, "+%e\n", sample.payload.float64);
             if (len == size || len < 0) {
                 return nullptr;
             }
             begin += len;
             size  -= len;
             newline_required = false;  // new line already added
-        } else if (sample.payload.type & aku_PData::BLOB_BIT) {
-            // BLOB
-            int blobsize = (int)sample.payload.value.blob.size;
-            if (blobsize < size) {
-                if (blobsize > size) {
-                    return nullptr;
-                }
-                memcpy(begin, sample.payload.value.blob.begin, blobsize);
-                begin += blobsize;
-                size  -= blobsize;
-                newline_required = true;
-            }
         } else {
             // Something went wrong
             return pskip;
@@ -246,37 +234,12 @@ struct RESPOutputFormatter : OutputFormatter {
         }
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
             // Floating-point
-            len = snprintf(begin, size, "+%e\r\n", sample.payload.value.float64);
+            len = snprintf(begin, size, "+%e\r\n", sample.payload.float64);
             if (len == size || len < 0) {
                 return nullptr;
             }
             begin += len;
             size  -= len;
-        } else if (sample.payload.type & aku_PData::BLOB_BIT) {
-            // BLOB
-            int blobsize = (int)sample.payload.value.blob.size;
-            if (blobsize < size) {
-                // write length prefix - "$X\r\n"
-                len = snprintf(begin, size, "$%d\r\n", blobsize);
-                if (len < 0 || len == size) {
-                    return nullptr;
-                }
-                begin += len;
-                size  -= len;
-                if (blobsize > size) {
-                    return nullptr;
-                }
-                memcpy(begin, sample.payload.value.blob.begin, blobsize);
-                begin += blobsize;
-                size  -= blobsize;
-                if (size < 2) {
-                    return nullptr;
-                }
-                begin[0] = '\r';
-                begin[1] = '\n';
-                begin += 2;
-                size  -= 2;
-            }
         } else {
             // Something went wrong
             return pskip;
