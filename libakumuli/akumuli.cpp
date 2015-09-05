@@ -134,6 +134,10 @@ struct DatabaseImpl : public aku_Database
     {
     }
 
+    void debug_print() const {
+        storage_.debug_print();
+    }
+
     aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
         return storage_.series_to_param_id(begin, end, &out_sample->paramid);
     }
@@ -160,26 +164,12 @@ struct DatabaseImpl : public aku_Database
         throw "depricated";
     }
 
-    aku_Status add_blob(aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
-        return storage_.write_blob(param_id, ts, value);
-    }
-
     aku_Status add_double(aku_ParamId param_id, aku_Timestamp ts, double value) {
         return storage_.write_double(param_id, ts, value);
     }
 
     aku_Status add_sample(aku_Sample const* sample) {
-        aku_Status status = AKU_EBAD_ARG;
-        if (sample->payload.type == AKU_PAYLOAD_FLOAT) {
-            status = add_double(sample->paramid, sample->timestamp, sample->payload.value.float64);
-        } else if (sample->payload.type == AKU_PAYLOAD_BLOB) {
-            aku_PData data = sample->payload;
-            const aku_MemRange mrange = {
-                data.value.blob.begin,
-                data.value.blob.size
-            };
-            status = add_blob(sample->paramid, sample->timestamp, mrange);
-        }
+        aku_Status status = add_double(sample->paramid, sample->timestamp, sample->payload.float64);
         return status;
     }
 
@@ -219,11 +209,6 @@ apr_status_t aku_create_database( const char     *file_name
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
 
     return Storage::remove_storage(file_name, logger);
-}
-
-aku_Status aku_write_blob(aku_Database* db, aku_ParamId param_id, aku_Timestamp ts, aku_MemRange value) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->add_blob(param_id, ts, value);
 }
 
 aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value) {
@@ -350,4 +335,9 @@ void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset) {
 void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->get_storage_stats(rcv_stats);
+}
+
+void aku_debug_print(aku_Database *db) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    dbi->debug_print();
 }

@@ -39,28 +39,6 @@ struct StreamOutOfBounds : std::runtime_error {
 
 typedef std::vector<unsigned char> ByteVector;
 
-struct ChunkValue {
-
-    enum ChunkValueType {
-        NOT_SET = 0,
-        FLOAT,
-        BLOB,
-    };
-
-    // Types
-    struct blob_t {
-            uint32_t offset;
-            uint32_t length;
-    };
-    union value_t {
-        double     floatval;
-        blob_t      blobval;
-    };
-    // Data
-    int      type;
-    value_t value;
-};
-
 struct UncompressedChunk {
     /** Index in `timestamps` and `paramids` arrays corresponds
       * to individual row. Each element of the `values` array corresponds to
@@ -69,7 +47,7 @@ struct UncompressedChunk {
       */
     std::vector<aku_Timestamp>  timestamps;
     std::vector<aku_ParamId>    paramids;
-    std::vector<ChunkValue>     values;
+    std::vector<double>         values;
 };
 
 struct ChunkWriter {
@@ -461,7 +439,7 @@ struct CompressionUtil {
       * @param buffer resulting byte array
       */
     static
-    size_t compress_doubles(const std::vector<ChunkValue> &input,
+    size_t compress_doubles(const std::vector<double> &input,
                                 Base128StreamWriter &wstream);  // TODO: maybe I should use plain old buffer here
 
     /** Decompress list of doubles.
@@ -473,7 +451,7 @@ struct CompressionUtil {
     static
     void decompress_doubles(Base128StreamReader&     rstream,
                             size_t                   nblocks,
-                            std::vector<ChunkValue> *output);
+                            std::vector<double>     *output);
 
     /** Convert from chunk order to time order.
       * @note in chunk order all data elements ordered by series id first and then by timestamp,

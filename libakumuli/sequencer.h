@@ -49,15 +49,9 @@ struct TimeSeriesValue {
     // Data members
     aku_Timestamp                           key_ts_;  // Key value (time)
     aku_ParamId                             key_id_;  // Key value (id)
-    ValueType                               type_;    // Payload type
-    union {
-            Blob                            blob;     // Binary payload
-            double                          value;    // Numeric payload
-    } payload;
+    double                                  value;    // Numeric payload
 
     TimeSeriesValue();
-
-    TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, uint32_t offset, uint32_t value_length);
 
     TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value);
 
@@ -69,14 +63,12 @@ struct TimeSeriesValue {
 
     void add_to_header(UncompressedChunk *chunk_header) const;
 
-    bool is_blob() const;
-
     friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
     //! Chunk order less then operator (id goes first, then goes timestamp)
     friend bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
-} __attribute__((packed));
+};
 
 
 /** Time-series sequencer.
@@ -150,15 +142,9 @@ struct Sequencer {
       * will be aborted and AKU_EBUSY.error code will be returned If merge occures during search -
       * search will be aborted and AKU_EBUSY error code will be returned.
       */
-    void searchV2(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const;
+    void search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const;
 
     std::tuple<aku_Timestamp, int> get_window() const;
-
-    /** Returns number of bytes needed to store all data from the checkpoint
-     *  in compressed mode. This number can be more than actually needed but
-     *  can't be less (only overshoot is ok, undershoot is error).
-     */
-    uint32_t get_space_estimate() const;
 
 private:
     //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -175,6 +161,6 @@ private:
       */
     std::tuple<aku_Status, int> check_timestamp_(aku_Timestamp ts);
 
-    void filterV2(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
+    void filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
 };
 }

@@ -93,11 +93,11 @@ void ProtocolParser::worker(Caller& caller) {
             switch(next) {
             case RESPStream::INTEGER:
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.payload.value.float64 = stream.read_int();
+                sample.payload.float64 = stream.read_int();
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
-                sample.payload.value.float64 = strtod(buffer, nullptr);
+                sample.payload.float64 = strtod(buffer, nullptr);
                 memset(buffer, 0, bytes_read);
                 break;
             default:

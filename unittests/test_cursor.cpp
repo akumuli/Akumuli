@@ -18,9 +18,8 @@ void test_cursor(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
             aku_Sample r;
-            r.payload.value.blob.begin = reinterpret_cast<void*>(i);
-            r.payload.value.blob.size = sizeof(i);
-            r.payload.type = AKU_PAYLOAD_BLOB;
+            r.payload.float64 = i;
+            r.payload.type = AKU_PAYLOAD_FLOAT;
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -38,7 +37,7 @@ void test_cursor(int n_iter, int buf_size) {
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
 
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).payload.value.blob.begin, actual.at(i).payload.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(expected.at(i).payload.float64, actual.at(i).payload.float64);
     }
 }
 
@@ -48,7 +47,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
             aku_Sample r;
-            r.payload.value.blob.begin = reinterpret_cast<void*>(i);
+            r.payload.float64 = i;
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -67,7 +66,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
 
     for(size_t i = 0; i < actual.size(); i++) {
-        BOOST_REQUIRE_EQUAL(expected.at(i).payload.value.blob.begin, actual.at(i).payload.value.blob.begin);
+        BOOST_REQUIRE_EQUAL(expected.at(i).payload.float64, actual.at(i).payload.float64);
     }
 }
 
@@ -201,7 +200,7 @@ static void coroutine(Caller& caller, InternalCursor* cursor, bool backward) {
             sample.paramid = next & 3;
             sample.timestamp = next;
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = 0.0;
+            sample.payload.float64 = 0.0;
             cursor->put(caller, sample);
             next += std::rand() % 100;
         }
@@ -212,7 +211,7 @@ static void coroutine(Caller& caller, InternalCursor* cursor, bool backward) {
             sample.paramid = next & 3;
             sample.timestamp = next;
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.value.float64 = 0.0;
+            sample.payload.float64 = 0.0;
             cursor->put(caller, sample);
             next -= std::rand() % 100;
         }

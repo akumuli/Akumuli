@@ -213,6 +213,9 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
 
     // Write compressed data
     aku_Status status = CompressionUtil::encode_chunk(&desc.n_elements, &first_ts, &last_ts, &writer, data);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
 
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
@@ -482,13 +485,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto pend   = (const unsigned char*)page_->read_entry_data(pdesc->end_offset);
             auto probe_length = pdesc->n_elements;
 
-            // TODO:checksum!
             boost::crc_32_type checksum;
             checksum.process_block(pbegin, pend);
             if (checksum.checksum() != pdesc->checksum) {
                 AKU_PANIC("File damaged!");
-                // TODO: report error
-                return false;
             }
 
             status = CompressionUtil::decode_chunk(chunk_header.get(), pbegin, pend, probe_length);
@@ -522,14 +522,8 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
             aku_PData pdata;
-            if (header->values.at(i).type == ChunkValue::BLOB) {
-                pdata.type = AKU_PAYLOAD_BLOB;
-                pdata.value.blob.begin = page->read_entry_data(header->values.at(i).value.blobval.offset);
-                pdata.value.blob.size = header->values.at(i).value.blobval.length;
-            } else if (header->values.at(i).type == ChunkValue::FLOAT) {
-                pdata.type = AKU_PAYLOAD_FLOAT;
-                pdata.value.float64 = header->values.at(i).value.floatval;
-            }
+            pdata.type = AKU_PAYLOAD_FLOAT;
+            pdata.float64 = header->values.at(i);
             aku_Sample result = {
                 header->timestamps.at(i),
                 header->paramids.at(i),
@@ -576,11 +570,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
-#ifdef DEBUG
-        // Debug variables
-        aku_Timestamp dbg_prev_ts;
-        long dbg_count = 0;
-#endif
         int index_increment = IS_BACKWARD_ ? -1 : 1;
         while (true) {
             auto current_index = probe_index;
@@ -590,45 +579,16 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
             bool proceed = false;
-            bool probe_in_time_range = lowerbound_ <= probe_time &&
-                                       upperbound_ >= probe_time;
-            if (probe < AKU_ID_COMPRESSED) {
-                if (probe_in_time_range) {
-#ifdef DEBUG
-                    if (dbg_count) {
-                        // check for backward direction
-                        auto is_ok = IS_BACKWARD_ ? (dbg_prev_ts >= probe_time)
-                                                  : (dbg_prev_ts <= probe_time);
-                        assert(is_ok);
-                    }
-                    dbg_prev_ts = probe_time;
-                    dbg_count++;
-#endif
-                    aku_PData pdata;
-                    pdata.type = AKU_PAYLOAD_BLOB;
-                    pdata.value.blob.begin = page_->read_entry_data(probe_offset + sizeof(aku_Entry));
-                    pdata.value.blob.size = probe_entry->length;
-                    aku_Sample result = {
-                        probe_time,
-                        probe,  //id
-                        pdata
-                    };
-                    if (!query_->put(result)) {
-                        break;
-                    }
-                }
+
+            if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                proceed = scan_compressed_entries(current_index, probe_entry, false);
+            } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                proceed = scan_compressed_entries(current_index, probe_entry, false);
+            } else {
                 proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
                                        : upperbound_ >= probe_time;
-            } else {
-                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                    proceed = scan_compressed_entries(current_index, probe_entry, false);
-                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                    proceed = scan_compressed_entries(current_index, probe_entry, false);
-                } else {
-                    proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
-                                           : upperbound_ >= probe_time;
-                }
             }
+
             if (!proceed || probe_index >= MAX_INDEX_) {
                 // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
                 // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
@@ -661,7 +621,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 };
 
 
-void PageHeader::searchV2(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache) const {
+void PageHeader::search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache) const {
     SearchAlgorithm search_alg(this, query, cache);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {

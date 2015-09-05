@@ -38,6 +38,9 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/filesystem.hpp>
 
+// TODO:remove header
+#include <sys/time.h>
+
 namespace Akumuli {
 
 static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger);
@@ -381,6 +384,22 @@ struct TerminalNode : QP::Node {
     }
 };
 
+// TODO: remove
+class Timer
+{
+public:
+    Timer() { gettimeofday(&_start_time, nullptr); }
+    void   restart() { gettimeofday(&_start_time, nullptr); }
+    double elapsed() const {
+        timeval curr;
+        gettimeofday(&curr, nullptr);
+        return double(curr.tv_sec - _start_time.tv_sec) +
+               double(curr.tv_usec - _start_time.tv_usec)/1000000.0;
+    }
+private:
+    timeval _start_time;
+};
+
 void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
@@ -398,26 +417,29 @@ void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) c
 
         if (query_processor->start()) {
 
-            uint32_t starting_ix = active_volume_->get_page()->get_page_id();
             if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
+                uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
                 for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                    Timer tm;
                     int seq_id;
                     aku_Timestamp window;
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     tie(window, seq_id) = volume->cache_->get_window();
-                    volume->get_page()->searchV2(query_processor, cache_);
-                    volume->cache_->searchV2(query_processor, seq_id);
+                    volume->get_page()->search(query_processor, cache_);
+                    tm.restart();
+                    volume->cache_->search(query_processor, seq_id);
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+                uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
                 for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
                     int seq_id;
                     aku_Timestamp window;
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     tie(window, seq_id) = volume->cache_->get_window();
-                    volume->cache_->searchV2(query_processor, seq_id);
-                    volume->get_page()->searchV2(query_processor, cache_);
+                    volume->cache_->search(query_processor, seq_id);
+                    volume->get_page()->search(query_processor, cache_);
                 }
             } else {
                 AKU_PANIC("data corruption in query processor");
@@ -443,17 +465,12 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
     while (true) {
         int local_rev = active_volume_index_.load();
-        auto space_required = active_volume_->cache_->get_space_estimate();
         aku_Status status = AKU_SUCCESS;
-        if (ts_value.is_blob()) {
-            status = active_page_->add_chunk(data, space_required, &ts_value.payload.blob.value);
-        }
+        int merge_lock = 0;
+        std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
         switch (status) {
             case AKU_SUCCESS: {
-                int merge_lock = 0;
-                std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
                 if (merge_lock % 2 == 1) {
-
                     // Slow path //
 
                     // Update metadata store
@@ -465,7 +482,8 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
 
                     // Move data from cache to disk
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
-                    if (status == AKU_SUCCESS) {
+                    switch (status) {
+                    case AKU_SUCCESS:
                         switch(durability_) {
                         case AKU_MAX_DURABILITY:
                             // Max durability
@@ -484,7 +502,16 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                             }
                             break;
                         };
-                    }
+                        break;
+                    case AKU_EOVERFLOW:
+                        // Page overflow
+                        advance_volume_(local_rev);
+                        break;
+                    default:
+                        log_error(aku_error_message(status));
+                        AKU_PANIC("Fatal error in write path");
+                        break;
+                    };
                 }
                 return status;
             }
@@ -498,12 +525,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                 return status;
         }
     }
-}
-
-//! write binary data
-aku_Status Storage::write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data) {
-    TimeSeriesValue ts_value(ts, param, 0, data.length);
-    return _write_impl(ts_value, data);
 }
 
 //! write binary data
@@ -544,6 +565,18 @@ int Storage::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size
     buffer[str.second] = '\0';
     return str.second + 1;
 }
+
+void Storage::debug_print() const {
+    for (auto vol: volumes_) {
+        std::cout << "Volume id: " << vol->get_page()->get_page_id() << std::endl;
+        std::cout << "    num chunks: " << vol->get_page()->get_entries_count() << std::endl;
+        std::cout << "    free space: " << vol->get_page()->get_free_space() << std::endl;
+        std::cout << "    open count: " << vol->get_page()->get_open_count() << std::endl;
+        std::cout << "   close count: " << vol->get_page()->get_close_count() << std::endl;
+        std::cout << "     num pages: " << vol->get_page()->get_numpages() << std::endl;
+    }
+}
+
 
 // Standalone functions //
 

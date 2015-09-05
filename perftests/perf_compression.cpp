@@ -26,9 +26,8 @@ int main() {
                 c--;
             }
             header.timestamps.push_back(ts + c);
-            ChunkValue cvalue;
-            cvalue.type = ChunkValue::FLOAT;
-            cvalue.value.floatval = id + ts;
+            double cvalue;
+            cvalue = id + ts;
             header.values.push_back(cvalue);
         }
     }
@@ -86,23 +85,10 @@ int main() {
         if (header.paramids.at(i) != decomp.paramids.at(i)) {
             std::cout << "Error, bad paramid at " << i << std::endl;
         }
-        ChunkValue origvalue = header.values.at(i);
-        ChunkValue decvalue = decomp.values.at(i);
-        if (origvalue.type != decvalue.type) {
-            std::cout << "Error, bad type at " << i << std::endl;
-        } else {
-            if (origvalue.type == ChunkValue::FLOAT) {
-                if (origvalue.value.floatval != decvalue.value.floatval) {
-                    std::cout << "Error, bad value at " << i << std::endl;
-                }
-            } else {
-                if (origvalue.value.blobval.length != decvalue.value.blobval.length) {
-                    std::cout << "Error, bad length at " << i << std::endl;
-                }
-                if (origvalue.value.blobval.offset != decvalue.value.blobval.offset) {
-                    std::cout << "Error, bad offset at " << i << std::endl;
-                }
-            }
+        double origvalue = header.values.at(i);
+        double decvalue = decomp.values.at(i);
+        if (origvalue != decvalue) {
+            std::cout << "Error, bad value at " << i << std::endl;
         }
     }
 }

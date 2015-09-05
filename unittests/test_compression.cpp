@@ -130,16 +130,13 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
 }
 
-void test_doubles_compression(std::vector<ChunkValue> input) {
+void test_doubles_compression(std::vector<double> input) {
     ByteVector buffer;
     buffer.resize(input.size()*10);
     Base128StreamWriter wstream(buffer.data(), buffer.data() + buffer.size());
     size_t nblocks = CompressionUtil::compress_doubles(input, wstream);
-    std::vector<ChunkValue> output;
+    std::vector<double> output;
     output.resize(input.size());
-    for (auto& item: output) {
-        item.type = ChunkValue::FLOAT;
-    }
     Base128StreamReader rstream(buffer.data(), buffer.data() + buffer.size());
     CompressionUtil::decompress_doubles(rstream, nblocks, &output);
 
@@ -147,34 +144,33 @@ void test_doubles_compression(std::vector<ChunkValue> input) {
     for(auto i = 0u; i < input.size(); i++) {
         auto actual = input.at(i);
         auto expected = output.at(i);
-        BOOST_REQUIRE_EQUAL(actual.type, expected.type);
-        BOOST_REQUIRE_EQUAL(actual.value.floatval, expected.value.floatval);
+        BOOST_REQUIRE_EQUAL(actual, expected);
     }
 }
 
 BOOST_AUTO_TEST_CASE(Test_doubles_compression_1_series) {
-    std::vector<ChunkValue> input = {
-        { ChunkValue::FLOAT, 100.1001 },
-        { ChunkValue::FLOAT, 100.0999 },
-        { ChunkValue::FLOAT, 100.0998 },
-        { ChunkValue::FLOAT, 100.0997 },
-        { ChunkValue::FLOAT, 100.0996 },
+    std::vector<double> input = {
+        100.1001,
+        100.0999,
+        100.0998,
+        100.0997,
+        100.0996,
     };
     test_doubles_compression(input);
 }
 
 BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
-    std::vector<ChunkValue> input = {
-        { ChunkValue::FLOAT, 100.1001},
-        { ChunkValue::FLOAT, 200.4999},
-        { ChunkValue::FLOAT, 100.0999},
-        { ChunkValue::FLOAT, 200.499},
-        { ChunkValue::FLOAT, 100.0998},
-        { ChunkValue::FLOAT, 200.49},
-        { ChunkValue::FLOAT, 100.0997},
-        { ChunkValue::FLOAT, 200.5},
-        { ChunkValue::FLOAT, 100.0996},
-        { ChunkValue::FLOAT, 200.5001},
+    std::vector<double> input = {
+        100.1001,
+        200.4999,
+        100.0999,
+        200.499,
+        100.0998,
+        200.49,
+        100.0997,
+        200.5,
+        100.0996,
+        200.5001,
     };
     test_doubles_compression(input);
 }
@@ -208,8 +204,6 @@ void test_chunk_header_compression() {
     RandomWalk rwalk(1, .11);
 
     // Fill chunk header
-    // 1 - double
-    // 2 - blob
     for (int i = 0; i < NROWS; i++) {
         expected.paramids.push_back(0);
     }
@@ -225,17 +219,8 @@ void test_chunk_header_compression() {
 
     expected.values.resize(NROWS*NSER);
     for (int row = 0; row < NROWS*NSER; row++) {
-        ChunkValue cell;
-        if (row < NROWS) {
-            cell.type = ChunkValue::FLOAT;
-            cell.value.floatval = rwalk.generate();
-            expected.values.at(row) = cell;
-        } else {
-            cell.type = ChunkValue::BLOB;
-            cell.value.blobval.length = 100;
-            cell.value.blobval.offset = row;
-            expected.values.at(row) = cell;
-        }
+        double cell = rwalk.generate();
+        expected.values.at(row) = cell;
     }
 
     aku_Timestamp tsbegin = 0, tsend = 0;
@@ -264,11 +249,12 @@ void test_chunk_header_compression() {
     // Original chunk size
     size_t total_bytes = 0;
     for (auto i = 0u; i < expected.paramids.size(); i++) {
-        total_bytes += sizeof(aku_ParamId) + sizeof(aku_Timestamp) + sizeof(int) +
-                       sizeof(double); // blob length+offset if of the same size
+        total_bytes += sizeof(aku_ParamId) +
+                       sizeof(aku_Timestamp) +
+                       sizeof(double);
     }
 
-    Writer writer(total_bytes*2);
+    Writer writer(total_bytes);
 
     auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, expected);
     BOOST_REQUIRE(status == AKU_SUCCESS);
@@ -289,16 +275,7 @@ void test_chunk_header_compression() {
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.timestamps.begin(), expected.timestamps.end(),
                                     actual.timestamps.begin(), actual.timestamps.end());
     for (int i = 0; i < NROWS*NSER; i++) {
-        BOOST_REQUIRE_EQUAL(expected.values.at(i).type, actual.values.at(i).type);
-        if (expected.values.at(i).type == ChunkValue::FLOAT) {
-            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.floatval,
-                                actual.values.at(i).value.floatval);
-        } else {
-            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.blobval.length,
-                                actual.values.at(i).value.blobval.length);
-            BOOST_REQUIRE_EQUAL(expected.values.at(i).value.blobval.offset,
-                                actual.values.at(i).value.blobval.offset);
-        }
+        BOOST_REQUIRE_EQUAL(expected.values.at(i), actual.values.at(i));
     }
 }
 

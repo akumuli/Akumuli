@@ -25,7 +25,7 @@ ChunkCache::ItemT ChunkCache::get(KeyT key) {
 static size_t get_size(const std::shared_ptr<UncompressedChunk>& header) {
     return header->paramids.size()   * sizeof(aku_ParamId) +
            header->timestamps.size() * sizeof(aku_Timestamp) +
-           header->values.size()     * sizeof(ChunkValue);
+           header->values.size()     * sizeof(double);
 }
 
 void ChunkCache::put(KeyT key, const std::shared_ptr<UncompressedChunk>& header) {

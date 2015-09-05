@@ -17,6 +17,7 @@
 #pragma once
 #include <string>
 #include <memory>
+#include <tuple>
 
 #include <microhttpd.h>
 
@@ -57,8 +58,11 @@ struct QueryResultsPooler {
 
     /** Read some data from cursor. This method should be called only if `get_error` have returned
       * AKU_SUCCESS. If some error occured during read operation this method should throw.
+      * Method returns tuple (num_elements, is_done). If there is no more results, method returns
+      * (any, true) otherwise it returns (any, false). Number of elements can be 0, in this case
+      * if second tuple element is false client should call this method again.
       */
-    virtual size_t read_some(char* buf, size_t buf_size) = 0;
+    virtual std::tuple<size_t, bool> read_some(char* buf, size_t buf_size) = 0;
 
     /** Close cursor.
       * Should be called after read operation was completed or interrupted.

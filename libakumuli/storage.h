@@ -144,9 +144,6 @@ struct Storage
       */
     void advance_volume_(int ix);
 
-    //! Write binary data.
-    aku_Status write_blob(aku_ParamId param, aku_Timestamp ts, aku_MemRange data);
-
     //! Write double.
     aku_Status write_double(aku_ParamId param, aku_Timestamp ts, double value);
 
@@ -196,6 +193,8 @@ struct Storage
     void get_stats(aku_StorageStats* rcv_stats);
 
     aku_Status get_open_error() const;
+
+    void debug_print() const;
 };
 
 }

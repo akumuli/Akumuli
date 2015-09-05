@@ -14,8 +14,10 @@ static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     if (status) {
         return MHD_CONTENT_READER_END_OF_STREAM;
     }
-    size_t sz = cur->read_some(buf, max);
-    if (sz == 0) {
+    size_t sz;
+    bool is_done;
+    std::tie(sz, is_done) = cur->read_some(buf, max);
+    if (is_done) {
         return MHD_CONTENT_READER_END_OF_STREAM;
     }
     return sz;

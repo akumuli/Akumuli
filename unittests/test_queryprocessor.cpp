@@ -50,7 +50,7 @@ public:
         if (s.payload.type != aku_PData::EMPTY) {
             ids.push_back(s.paramid);
             timestamps.push_back(s.timestamp);
-            values.push_back(s.payload.value.float64);
+            values.push_back(s.payload.float64);
         }
         return true;
     }
@@ -61,7 +61,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
     s.paramid = id;
     s.timestamp = t;
     s.payload.type = AKU_PAYLOAD_FLOAT;
-    s.payload.value.float64 = value;
+    s.payload.float64 = value;
     return s;
 }
 
@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
                                         mock,
                                         &logger_stub);
 
@@ -151,11 +151,11 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     for (int i = 0; i < END; i++) {
         sample.paramid = 0;
         sample.timestamp = i;
-        sample.payload.value.float64 = p1.at(i);
+        sample.payload.float64 = p1.at(i);
         BOOST_REQUIRE(ma->put(sample));
         sample.paramid = 1;
         sample.timestamp = i;
-        sample.payload.value.float64 = p2.at(i);
+        sample.payload.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
         if (i % 10 == 0) {
             EMPTY.timestamp = i;
@@ -177,7 +177,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "moving-average"})"),
+    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
                                         mock,
                                         &logger_stub);
 
@@ -193,11 +193,11 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     for (int i = END; i --> 0;) {
         sample.paramid = 0;
         sample.timestamp = i;
-        sample.payload.value.float64 = p1.at(i);
+        sample.payload.float64 = p1.at(i);
         BOOST_REQUIRE(ma->put(sample));
         sample.paramid = 1;
         sample.timestamp = i;
-        sample.payload.value.float64 = p2.at(i);
+        sample.payload.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
         if (i % 10 == 0) {
             EMPTY.timestamp = i;

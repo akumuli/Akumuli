@@ -27,6 +27,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
 namespace QP {
@@ -147,13 +148,14 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 };
 
-// Generic sliding window
+
+//! Generic piecewise aggregate approximation
 template<class State>
-struct SlidingWindow : Node {
+struct PAA : Node {
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
-    SlidingWindow(std::shared_ptr<Node> next)
+    PAA(std::shared_ptr<Node> next)
         : next_(next)
     {
     }
@@ -164,7 +166,7 @@ struct SlidingWindow : Node {
             if (state.ready()) {
                 aku_Sample sample;
                 sample.paramid = pair.first;
-                sample.payload.value.float64 = state.value();
+                sample.payload.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.timestamp = ts;
                 state.reset();
@@ -205,7 +207,7 @@ struct SlidingWindow : Node {
     }
 };
 
-struct MovingAverageCounter {
+struct MeanCounter {
     double acc = 0;
     size_t num = 0;
 
@@ -223,15 +225,15 @@ struct MovingAverageCounter {
     }
 
     void add(aku_Sample const& value) {
-        acc += value.payload.value.float64;
+        acc += value.payload.float64;
         num++;
     }
 };
 
-struct MovingAverage : SlidingWindow<MovingAverageCounter> {
+struct MeanPAA : PAA<MeanCounter> {
 
-    MovingAverage(std::shared_ptr<Node> next)
-        : SlidingWindow<MovingAverageCounter>(next)
+    MeanPAA(std::shared_ptr<Node> next)
+        : PAA<MeanCounter>(next)
     {
     }
 
@@ -240,8 +242,7 @@ struct MovingAverage : SlidingWindow<MovingAverageCounter> {
     }
 };
 
-struct MovingMedianCounter {
-    // NOTE: median-of-medians or some approx. estimation method can be used here
+struct MedianCounter {
     mutable std::vector<double> acc;
 
     void reset() {
@@ -267,14 +268,14 @@ struct MovingMedianCounter {
     }
 
     void add(aku_Sample const& value) {
-        acc.push_back(value.payload.value.float64);
+        acc.push_back(value.payload.float64);
     }
 };
 
-struct MovingMedian : SlidingWindow<MovingMedianCounter> {
+struct MedianPAA : PAA<MedianCounter> {
 
-    MovingMedian(std::shared_ptr<Node> next)
-        : SlidingWindow<MovingMedianCounter>(next)
+    MedianPAA(std::shared_ptr<Node> next)
+        : PAA<MedianCounter>(next)
     {
     }
 
@@ -323,12 +324,12 @@ struct SpaceSaver : Node {
                 aku_Sample s;
                 s.paramid = it.first;
                 s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
-                s.payload.value.float64 = it.second.count;
+                s.payload.float64 = it.second.count;
                 samples.push_back(s);
             }
         }
         std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
-            return lhs.payload.value.float64 > rhs.payload.value.float64;
+            return lhs.payload.float64 > rhs.payload.float64;
         });
         for (const auto& s: samples) {
             if (!next_->put(s)) {
@@ -354,7 +355,7 @@ struct SpaceSaver : Node {
             }
         }
         auto id = sample.paramid;
-        auto weight = weighted ? sample.payload.value.float64 : 1.0;
+        auto weight = weighted ? sample.payload.float64 : 1.0;
         auto it = counters_.find(id);
         if (it == counters_.end()) {
             // new element
@@ -421,30 +422,39 @@ struct AnomalyDetector : Node {
                     std::shared_ptr<Node> next)
         : next_(next)
     {
-        switch(method) {
-        case SMA:
-            detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
-            break;
-        case SMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
-            break;
-        case EWMA:
-            detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
-            break;
-        case EWMA_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
-            break;
-        case DOUBLE_EXP_SMOOTHING:
-            detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
-            break;
-        case DOUBLE_EXP_SMOOTHING_SKETCH:
-            detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
-            break;
-        case HOLT_WINTERS:
-            detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
-        default:
-            std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
-            BOOST_THROW_EXCEPTION(err);
+        try {
+            switch(method) {
+            case SMA:
+                detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
+                break;
+            case SMA_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
+                break;
+            case EWMA:
+                detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
+                break;
+            case EWMA_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
+                break;
+            case DOUBLE_EXP_SMOOTHING:
+                detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
+                break;
+            case DOUBLE_EXP_SMOOTHING_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
+                break;
+            case HOLT_WINTERS:
+                detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
+                break;
+            case HOLT_WINTERS_SKETCH:
+                detector_ = AnomalyDetectorUtil::create_approx_holt_winters(nhashes, 1 << bits, threshold, alpha, beta, gamma, period);
+                break;
+            default:
+                std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
+                BOOST_THROW_EXCEPTION(err);
+            }
+        } catch (...) {
+            // std::cout << boost::current_exception_diagnostic_information() << std::endl;
+            throw;
         }
     }
 
@@ -457,11 +467,13 @@ struct AnomalyDetector : Node {
             detector_->move_sliding_window();
             return next_->put(sample);
         } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
-            if (sample.payload.value.float64 < 0.0) {
+            /*
+            if (sample.payload.float64 < 0.0) {
                 set_error(AKU_EANOMALY_NEG_VAL);
                 return false;
             }
-            detector_->add(sample.paramid, sample.payload.value.float64);
+            */
+            detector_->add(sample.paramid, sample.payload.float64);
             if (detector_->is_anomaly_candidate(sample.paramid)) {
                 aku_Sample anomaly = sample;
                 anomaly.payload.type |= aku_PData::URGENT;
@@ -481,6 +493,50 @@ struct AnomalyDetector : Node {
     }
 };
 
+
+/*
+static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
+    if (size == 0) {
+        return std::make_tuple(NAN, NAN);
+    }
+    double sqrsum = 0;
+    double sum = 0;
+    int count = 0;
+    for (size_t i = 0; i < size; i++) {
+        sqrsum += array[i] * array[i];
+        sum += array[i];
+        count += 1;
+    }
+    double stddev;
+    if (size > 1) {
+        stddev = sqrt((size * sqrsum - sum * sum) / (size * (size - 1)));
+    } else {
+        stddev = NAN;
+    }
+    double mean = sum / size;
+    return std::make_tuple(mean, stddev);
+}
+
+//! Z-norm series in-place
+static void znorm(double* array, size_t size, double threshold) {
+    double mean, stddev;
+    std::tie(mean, stddev) = mean_and_stddev(array, size);
+    if (stddev < threshold) {
+        for (size_t i = 0; i < size; i++) {
+            array[i] -= mean;
+        }
+    } else {
+        for (size_t i = 0; i < size; i++) {
+            array[i] = (array[i] - mean) / stddev;
+        }
+    }
+}
+*/
+
+struct SAXEncoder {
+    const int alphabet_size_;
+
+};
 
 
 //                                   //
@@ -566,7 +622,7 @@ static void validate_anomaly_detector_params(boost::property_tree::ptree const& 
 }
 
 static void validate_coef(double value, double range_begin, double range_end, const char* err_msg) {
-    if (value <= range_begin && value >= range_end) {
+    if (value >= range_begin && value <= range_end) {
         return;
     }
     QueryParserError err(err_msg);
@@ -581,16 +637,13 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
         std::string name;
         name = ptree.get<std::string>("name");
         if (name == "reservoir") {
-            // Reservoir sampling
             std::string size = ptree.get<std::string>("size");
             uint32_t nsize = boost::lexical_cast<uint32_t>(size);
             return std::make_shared<RandomSamplingNode>(nsize, next);
-        } else if (name == "moving-average") {
-            // Moving average
-            return std::make_shared<MovingAverage>(next);
-        } else if (name == "moving-median") {
-            // Moving median
-            return std::make_shared<MovingMedian>(next);
+        } else if (name == "PAA") {
+            return std::make_shared<MeanPAA>(next);
+        } else if (name == "PAA-median") {
+            return std::make_shared<MedianPAA>(next);
         } else if (name == "frequent-items") {
             std::string serror = ptree.get<std::string>("error");
             std::string sportion = ptree.get<std::string>("portion");
@@ -777,6 +830,7 @@ void ScanQueryProcessor::stop() {
 }
 
 void ScanQueryProcessor::set_error(aku_Status error) {
+    std::cerr << "ScanQueryProcessor->error" << std::endl;
     root_node_->set_error(error);
 }
 
