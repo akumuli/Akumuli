@@ -105,16 +105,19 @@ apr_status_t MemoryMappedFile::map_file() {
         status_ = apr_file_open(&fp_, path_.c_str(), APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
         if (status_ == APR_SUCCESS) {
             success_count++;
-            status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
+            status_ = apr_file_lock(fp_, APR_FLOCK_EXCLUSIVE);
             if (status_ == APR_SUCCESS) {
-                success_count++;
-                apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
-                if (enable_huge_tlb_) {
-                    flags |= MAP_HUGETLB;
-                }
-                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
-                if (status_ == APR_SUCCESS)
-                    success_count++; }}}
+                // No need to increment success_count, no cleanup needed for apr_file_lock
+                status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
+                if (status_ == APR_SUCCESS) {
+                    success_count++;
+                    apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
+                    if (enable_huge_tlb_) {
+                        flags |= MAP_HUGETLB;
+                    }
+                    status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
+                    if (status_ == APR_SUCCESS)
+                        success_count++; }}}}
 
     if (status_ != APR_SUCCESS) {
         free_resources(success_count);
