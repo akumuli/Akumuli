@@ -219,12 +219,7 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
 
     // Calculate checksum of the new compressed data
     boost::crc_32_type checksum;
-
     checksum.process_block(writer.begin, writer.end);
-    if (status != AKU_SUCCESS) {
-        return status;
-    }
-
     desc.checksum = checksum.checksum();
     desc.begin_offset = writer.begin - payload;
     desc.end_offset = writer.end - payload;

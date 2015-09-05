@@ -120,7 +120,7 @@ struct Sequencer {
       * and write it to target page.
       * caller and cur parameters used for communication with storage (error reporting).
       */
-    aku_Status merge_and_compress(PageHeader* target);
+    aku_Status merge_and_compress(PageHeader* target, bool enforce_write=false);
 
     //! Close cache for writing, merge everything to page header.
     aku_Status close(PageHeader* target);
