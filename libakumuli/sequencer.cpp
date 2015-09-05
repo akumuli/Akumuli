@@ -97,7 +97,6 @@ Sequencer::Sequencer(PageHeader const* page, aku_Config config)
     , checkpoint_(0u)
     , sequence_number_ {0}
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
-    , space_estimate_(0u)
     , c_threshold_(config.compression_threshold)
 {
     key_.reset(new SortedRun());
@@ -142,13 +141,9 @@ int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
                 new_runs.push_back(move(run));
             }
         }
-        Lock guard(runs_resize_lock_);
-        space_estimate_ = 0u;
-        for (auto& sorted_run: new_runs) {
-            space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
-        }
-        swap(runs_, new_runs);
 
+        Lock guard(runs_resize_lock_);
+        swap(runs_, new_runs);
         size_t ready_size = 0u;
         for (auto& sorted_run: ready_) {
             ready_size += sorted_run->size();
@@ -205,7 +200,6 @@ std::tuple<aku_Status, int> Sequencer::add(TimeSeriesValue const& value) {
     key_->push_back(value);
 
     Lock guard(runs_resize_lock_);
-    space_estimate_ += SPACE_PER_ELEMENT;
     auto begin = runs_.begin();
     auto end = runs_.end();
     auto insert_it = lower_bound(begin, end, key_, top_element_more<PSortedRun>);
