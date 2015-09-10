@@ -221,13 +221,23 @@ aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
     return dbi->add_sample(sample);
 }
 
-aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
+
+aku_Status aku_parse_duration(const char* str, int* value) {
     try {
-        sample->timestamp = DateTimeUtil::from_iso_string(iso_str);
-        return AKU_SUCCESS;
+        *value = DateTimeUtil::parse_duration(str, strlen(str));
     } catch (...) {
         return AKU_EBAD_ARG;
     }
+    return AKU_SUCCESS;
+}
+
+aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
+    try {
+        sample->timestamp = DateTimeUtil::from_iso_string(iso_str);
+    } catch (...) {
+        return AKU_EBAD_ARG;
+    }
+    return AKU_SUCCESS;
 }
 
 aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample) {

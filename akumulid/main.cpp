@@ -1,3 +1,4 @@
+#include "akumuli.h"
 #include "tcp_server.h"
 #include "httpserver.h"
 #include "utility.h"
@@ -7,6 +8,8 @@
 #include <fstream>
 #include <regex>
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
 #include <apr_errno.h>
@@ -14,6 +17,207 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
+
+//! Default configuration for `akumulid`
+const char* DEFAULT_CONFIG = R"(#Configuration file (generated automatically).
+
+# Main config
+
+# path to main database file
+path=~/.akumuli/main.akumuli
+# number of volumes, each volume uses 8Gb
+nvolumes=32
+# sliding window width, all data points older then this wouldn't be recorded
+window=10s
+# number of data points in each compressed chunk
+compression_threshold=1000
+# speed-durability tradeoff (can be set to 'max' or 'min' at the moment)
+durability=max
+
+
+# HTTP server config
+
+[HTTP]
+# port number
+port=8181
+
+
+# TCP ingestion server config (delete to disable)
+
+[TCP]
+# port number
+port=8282
+# worker pool size
+pool_size=1
+
+
+# UDP ingestion server config (delete to disable)
+
+[UDP]
+# port number
+port=8383
+# worker pool size
+pool_size=1
+)";
+
+struct ConfigFile {
+    typedef boost::property_tree::ptree PTree;
+
+    static PTree read_config_file(std::string file_path) {
+        PTree conf;
+        boost::property_tree::ini_parser::read_ini(file_path, conf);
+        return conf;
+    }
+
+    std::string get_path(PTree conf) {
+        return conf.get<std::string>("path");
+    }
+
+    int get_window(PTree conf) {
+        std::string window = conf.get<std::string>("window");
+        int r = 0;
+        auto status = aku_parse_duration(window.c_str(), &r);
+        if (status != AKU_SUCCESS) {
+            throw std::runtime_error("can't parse `window` parameter");
+        }
+        return r;
+    }
+
+    int get_nvolumes(PTree conf) {
+        return conf.get<int>("nvolumes");
+    }
+
+    int get_compression_threshold(PTree conf) {
+        return conf.get<int>("compression_threshold");
+    }
+
+    AkumuliConnection::Durability get_durability(PTree conf) {
+        std::string m = conf.get<std::string>("durability");
+        AkumuliConnection::Durability res;
+        if (m == "max") {
+            res = AkumuliConnection::MaxDurability;
+        } else if (m == "min") {
+            res = AkumuliConnection::MaxThroughput;
+        } else {
+            throw std::runtime_error("unknown durability level");
+        }
+        return res;
+    }
+
+};
+
+/** Help message used in CLI. It contains simple markdown formatting.
+  * `rich_print function should be used to print this message.
+  */
+const char* CLI_HELP_MESSAGE = R"(
+**NAME**
+        akumulid - time-series database daemon
+
+**SYNOPSIS**
+        akumulid
+
+        akumulid --help
+
+        akumulid --init
+
+**DESCRIPTION**
+        **akumulid** is a time-series database daemon.
+        All configuration can be done via `~/.akumulid` configuration
+        file.
+
+**OPTIONS**
+        **help**
+            produce help message and exit
+
+        **init**
+            create  configuration  file at `~/.akumulid`  filled with
+            default values and exit.
+
+**CONFIGURATION**
+        **path**
+            path to database files. Default values is `~/.akumuli/`.
+
+        **window**
+            sliding window  width. Can  be specified in nanoseconds
+            (unit  of  measure  is  not  specified),  seconds  (s),
+            milliseconds (ms),  microseconds (us) or minutes (min).
+
+            Examples:
+
+            **window**=__10s__
+            **window**=__500us__
+            **window**=__1000__   (in this case sliding window will be 1000
+                           nanoseconds long)
+
+        **nvolumes**
+            number of volumes used  to store data.  Each volume  is
+            `8Gb` in size and  allocated beforehand. To change number
+            of  volumes  they  should  change  `nvolumes`  value in
+            configuration and restart daemon.
+
+        **compression_threshold**
+            number of data  points stored in one  compressed chunk.
+            `Akumuli` stores data  in chunks.  If chunks is too large
+            decompression can be slow; in opposite case compression
+            can  be less  effective.  Good `compression_threshold` is
+            about 1000. In this case chunk size will be around 4Kb.
+
+        **durability**
+            durability level can  be set  to  `max`  or  `min`.  In the
+            first case  durability will  be maximal but speed won't
+            be  optimal.  If `durability` is  set  to `min` write speed
+            will be better.
+
+)";
+
+
+//! Format text for console. `plain_text` flag removes formatting.
+std::string cli_format(std::string dest, bool plain_text) {
+
+    const char* BOLD = "\033[1m";
+    const char* EMPH = "\033[3m";
+    const char* UNDR = "\033[4m";
+    const char* NORM = "\033[0m";
+
+    auto format = [&](std::string& line, const char* pattern, const char* open) {
+        size_t pos = 0;
+        int token_num = 0;
+        while(pos != std::string::npos) {
+            pos = line.find(pattern, pos);
+            if (pos != std::string::npos) {
+                // match
+                auto code = token_num % 2 ? NORM : open;
+                line.replace(pos, strlen(pattern), code);
+                token_num++;
+            }
+        }
+    };
+
+    if (!plain_text) {
+        format(dest, "**", BOLD);
+        format(dest, "__", EMPH);
+        format(dest, "`",  UNDR);
+    } else {
+        format(dest, "**", "");
+        format(dest, "__", "");
+        format(dest, "`",  "");
+    }
+
+    return dest;
+}
+
+//! Convert markdown subset to console escape codes and print
+void rich_print(const char* msg, bool plain_text=true) {
+
+    std::stringstream stream(const_cast<char*>(msg));
+    std::string dest;
+
+    while(std::getline(stream, dest)) {
+        std::cout << cli_format(dest, plain_text) << std::endl;
+    }
+}
+
+/** Logger f-n that shuld be used in libakumuli */
 static void static_logger(aku_LogLevel tag, const char * msg) {
     static Logger logger = Logger("Main", 32);
     switch(tag) {
@@ -87,37 +291,44 @@ uint64_t str2unixtime(std::string t) {
     return num;
 }
 
+
+/** Panic handler for libakumuli.
+  * Shouldn't be called directly, writes error message and
+  * writes coredump (this depends on system configuration)
+  */
+void panic_handler(const char * msg) {
+    // write error message
+    static_logger(AKU_LOG_ERROR, msg);
+    static_logger(AKU_LOG_ERROR, "Terminating (core dumped)");
+    // this should generate SIGABORT and triger coredump
+    abort();
+}
+
+
 int main(int argc, char** argv) {
-    aku_initialize(nullptr);
+
+    aku_initialize(&panic_handler);
 
     po::options_description cli_only_options;
     cli_only_options.add_options()
-            ("help",                                "Produce help message")
-            ("create",                              "Create database")
-            ("name", po::value<std::string>(),      "Database name (create)")
-            ("nvolumes", po::value<int32_t>(),      "Number of volumes to create (create)")
-            ("window", po::value<std::string>(),    "Window size (create)")
-            ;
+            ("help", "Produce help message")
+            ("init", "Create default configuration");
 
-    po::options_description generic_options;
-    generic_options.add_options()
-            ("path", po::value<std::string>(),      "Path to database files")
-            ;
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
     auto path2cfg = boost::filesystem::path(getenv("HOME"));
     path2cfg /= ".akumulid";
     std::fstream config_file(path2cfg.c_str());
-    po::store(po::parse_config_file(config_file, generic_options, true), vm);  // allow_unregistered=true
+    //po::store(po::parse_config_file(config_file, generic_options, true), vm);  // allow_unregistered=true
     po::notify(vm);
     if (vm.count("help")) {
-        std::cout << cli_only_options << std::endl;
+        rich_print(CLI_HELP_MESSAGE, false);
         return 0;
     }
     if (!vm.count("path")) {
         std::cout << "Incomplete configuration, path required" << std::endl;
-        std::cout << generic_options << std::endl;
+        //std::cout << generic_options << std::endl;
         return -1;
     }
     std::string path = vm["path"].as<std::string>();

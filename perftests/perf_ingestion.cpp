@@ -243,7 +243,7 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        uint32_t threshold  = 1000;
+        uint32_t threshold  = 10000;
         uint64_t windowsize = 2;
         uint64_t cachesize =  10*1024*1024;  // 10Mb
         apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
