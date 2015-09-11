@@ -16,6 +16,7 @@
 #include <apr_errno.h>
 
 #include <wordexp.h>
+#include <unistd.h>
 
 namespace po=boost::program_options;
 using namespace Akumuli;
@@ -236,7 +237,9 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
 
 //! Format text for console. `plain_text` flag removes formatting.
-std::string cli_format(std::string dest, bool plain_text) {
+std::string cli_format(std::string dest) {
+
+    bool plain_text = !isatty(STDOUT_FILENO);
 
     const char* BOLD = "\033[1m";
     const char* EMPH = "\033[3m";
@@ -271,13 +274,13 @@ std::string cli_format(std::string dest, bool plain_text) {
 }
 
 //! Convert markdown subset to console escape codes and print
-void rich_print(const char* msg, bool plain_text=true) {
+void rich_print(const char* msg) {
 
     std::stringstream stream(const_cast<char*>(msg));
     std::string dest;
 
     while(std::getline(stream, dest)) {
-        std::cout << cli_format(dest, plain_text) << std::endl;
+        std::cout << cli_format(dest) << std::endl;
     }
 }
 
@@ -317,12 +320,12 @@ void create_db_files(const char* path,
         } else {
             std::stringstream fmt;
             fmt << "**OK** database created, path: `" << path << "`";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
         }
     } else {
         std::stringstream fmt;
         fmt << "**ERROR** database file already exists";
-        std::cout << cli_format(fmt.str(), false) << std::endl;
+        std::cout << cli_format(fmt.str()) << std::endl;
     }
 }
 
@@ -393,12 +396,12 @@ void cmd_delete_database() {
         } else {
             std::stringstream fmt;
             fmt << "**OK** database at `" << path << "` deleted";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
         }
     } else {
         std::stringstream fmt;
         fmt << "**ERROR** database file doesn't exists";
-        std::cout << cli_format(fmt.str(), false) << std::endl;
+        std::cout << cli_format(fmt.str()) << std::endl;
     }
 }
 
@@ -433,7 +436,7 @@ int main(int argc, char** argv) {
         po::notify(vm);
 
         if (vm.count("help")) {
-            rich_print(CLI_HELP_MESSAGE, false);
+            rich_print(CLI_HELP_MESSAGE);
             exit(EXIT_SUCCESS);
         }
 
@@ -443,7 +446,7 @@ int main(int argc, char** argv) {
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
             exit(EXIT_SUCCESS);
         }
 
@@ -462,7 +465,7 @@ int main(int argc, char** argv) {
     } catch(const std::exception& e) {
         std::stringstream fmt;
         fmt << "**FAILURE** " << e.what();
-        std::cerr << cli_format(fmt.str(), false) << std::endl;
+        std::cerr << cli_format(fmt.str()) << std::endl;
         exit(EXIT_FAILURE);
     }
 
