@@ -12,7 +12,10 @@
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
+
 #include <apr_errno.h>
+
+#include <wordexp.h>
 
 namespace po=boost::program_options;
 using namespace Akumuli;
@@ -21,14 +24,14 @@ using namespace Akumuli;
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
 
-# path to database files. Default values is  ~/.akumuli/.
-path=~/.akumuli/main.akumuli
+# path to database files.  Default values is  ~/.akumuli.
+path=~/.akumuli
 
 # Number of volumes used  to store data.  Each volume  is
-# 8Gb in size and  allocated beforehand. To change number
+# 4Gb in size and  allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
-nvolumes=32
+nvolumes=4
 
 # Sliding window  width. Can  be specified in nanoseconds
 # (unit  of  measure  is  not  specified),  seconds  (s),
@@ -114,13 +117,39 @@ struct ConfigFile {
     }
 
     static PTree read_config_file(boost::filesystem::path file_path) {
+
+        if (!boost::filesystem::exists(file_path)) {
+            std::stringstream fmt;
+            fmt << "can't read config file `" << file_path << "`";
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        }
+
         PTree conf;
         boost::property_tree::ini_parser::read_ini(file_path.c_str(), conf);
         return conf;
     }
 
-    static std::string get_path(PTree conf) {
-        return conf.get<std::string>("path");
+    static boost::filesystem::path get_path(PTree conf) {
+        std::string path = conf.get<std::string>("path");
+        wordexp_t we;
+        int err = wordexp(path.c_str(), &we, 0);
+        if (err) {
+            std::stringstream fmt;
+            fmt << "invalid path: `" << path << "`";
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        }
+        if (we.we_wordc != 1) {
+            std::stringstream fmt;
+            fmt << "expansion error, path: `" << path << "`";
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        }
+        path = std::string(we.we_wordv[0]);
+        wordfree(&we);
+        auto result = boost::filesystem::path(path);
+        return result;
     }
 
     static uint64_t get_cache_size(PTree conf) {
@@ -168,9 +197,7 @@ struct ConfigFile {
 /** Help message used in CLI. It contains simple markdown formatting.
   * `rich_print function should be used to print this message.
   */
-const char* CLI_HELP_MESSAGE = R"(
-**NAME**
-        akumulid - time-series database daemon
+const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
 **SYNOPSIS**
         akumulid
@@ -198,6 +225,12 @@ const char* CLI_HELP_MESSAGE = R"(
 
         **create**
             generate database files in `~/.akumuli` folder
+
+        **delete**
+            delete database files in `~/.akumuli` folder
+
+        **(empty)**
+            run server
 
 )";
 
@@ -265,43 +298,31 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
 }
 
 
-/** Create `path` if not exists.
-  */
-void check_dir(const char* path) {
-    if (!boost::filesystem::exists(path)) {
-        // create dir
-        if (!boost::filesystem::create_directory(path)) {
-            std::stringstream fmt;
-            fmt << "can't create directory `" << path << "`";
-            std::runtime_error err(fmt.str());
-            BOOST_THROW_EXCEPTION(err);
-        }
-    }
-}
-
 /** Create database if database not exists.
   */
-void create_db_files(const char* name,
-                     const char* path,
+void create_db_files(const char* path,
                      int32_t nvolumes)
 {
-    // Create dir if not exists
-    check_dir(path);
-
-    auto full_path = boost::filesystem::path(path) / name / ".db";
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
-        auto status = aku_create_database(name, path, path, nvolumes,
+        auto status = aku_create_database("db", path, path, nvolumes,
                                           &static_logger);
-        if (status != AKU_SUCCESS) {
-            std::cout << "Error creating database" << std::endl;
+        if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
-            std::cout << buffer << std::endl;
+            std::stringstream fmt;
+            fmt << "can't create database: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
         } else {
-            std::cout << "Database created" << std::endl;
-            std::cout << "- path: " << path << std::endl;
-            std::cout << "- name: " << name << std::endl;
+            std::stringstream fmt;
+            fmt << "**OK** database created, path: `" << path << "`";
+            std::cout << cli_format(fmt.str(), false) << std::endl;
         }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file already exists";
+        std::cout << cli_format(fmt.str(), false) << std::endl;
     }
 }
 
@@ -309,25 +330,19 @@ void create_db_files(const char* name,
   * If config file can't be found - report error.
   */
 void cmd_run_server() {
-
     auto config_path = ConfigFile::default_config_path();
 
-    if (!boost::filesystem::exists(config_path)) {
-        std::stringstream fmt;
-        fmt << "can't read config file `" << config_path << "`";
-        std::runtime_error err(fmt.str());
-        BOOST_THROW_EXCEPTION(err);
-    }
+    auto config                 = ConfigFile::read_config_file(config_path);
+    auto window                 = ConfigFile::get_window(config);
+    auto durability             = ConfigFile::get_durability(config);
+    auto path                   = ConfigFile::get_path(config);
+    auto compression_threshold  = ConfigFile::get_compression_threshold(config);
+    auto huge_tlb               = ConfigFile::get_huge_tlb(config);
+    auto cache_size             = ConfigFile::get_cache_size(config);
 
-    auto config = ConfigFile::read_config_file(config_path);
-    auto window = ConfigFile::get_window(config);
-    auto durability = ConfigFile::get_durability(config);
-    auto path = ConfigFile::get_path(config);
-    auto compression_threshold = ConfigFile::get_compression_threshold(config);
-    auto huge_tlb = ConfigFile::get_huge_tlb(config);
-    auto cache_size = ConfigFile::get_cache_size(config);
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
 
-    auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
+    auto connection = std::make_shared<AkumuliConnection>(full_path.c_str(),
                                                           huge_tlb,
                                                           durability,
                                                           compression_threshold,
@@ -352,20 +367,39 @@ void cmd_run_server() {
 void cmd_create_database() {
     auto config_path = ConfigFile::default_config_path();
 
-    if (!boost::filesystem::exists(config_path)) {
-        std::stringstream fmt;
-        fmt << "can't read config file `" << config_path << "`";
-        std::runtime_error err(fmt.str());
-        BOOST_THROW_EXCEPTION(err);
-    }
-
     auto config     = ConfigFile::read_config_file(config_path);
     auto path       = ConfigFile::get_path(config);
     auto volumes    = ConfigFile::get_nvolumes(config);
 
-    check_dir(path.c_str());
+    create_db_files(path.c_str(), volumes);
+}
 
-    create_db_files("main", path.c_str(), volumes);
+void cmd_delete_database() {
+    auto config_path = ConfigFile::default_config_path();
+
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (boost::filesystem::exists(full_path)) {
+        auto status = aku_remove_database(full_path.c_str(), &static_logger);
+        if (status != APR_SUCCESS) {
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::stringstream fmt;
+            fmt << "can't delete database: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        } else {
+            std::stringstream fmt;
+            fmt << "**OK** database at `" << path << "` deleted";
+            std::cout << cli_format(fmt.str(), false) << std::endl;
+        }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists";
+        std::cout << cli_format(fmt.str(), false) << std::endl;
+    }
 }
 
 
@@ -391,6 +425,7 @@ int main(int argc, char** argv) {
         cli_only_options.add_options()
                 ("help", "Produce help message")
                 ("create", "Create database")
+                ("delete", "Delete database")
                 ("init", "Create default configuration");
 
         po::variables_map vm;
@@ -414,6 +449,11 @@ int main(int argc, char** argv) {
 
         if (vm.count("create")) {
             cmd_create_database();
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("delete")) {
+            cmd_delete_database();
             exit(EXIT_SUCCESS);
         }
 
