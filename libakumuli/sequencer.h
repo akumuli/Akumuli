@@ -103,10 +103,9 @@ struct Sequencer {
                                                     //< even - there is no merge and search will work correctly.
     mutable Mutex                runs_resize_lock_;
     mutable std::vector<RWLock>  run_locks_;
-    uint32_t                     space_estimate_;   //< Space estimate for storing all data
     const size_t                 c_threshold_;      //< Compression threshold
 
-    Sequencer(PageHeader const* page, aku_Config config);
+    Sequencer(PageHeader const* page, aku_FineTuneParams const& config);
 
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.
@@ -121,7 +120,7 @@ struct Sequencer {
       * and write it to target page.
       * caller and cur parameters used for communication with storage (error reporting).
       */
-    aku_Status merge_and_compress(PageHeader* target);
+    aku_Status merge_and_compress(PageHeader* target, bool enforce_write=false);
 
     //! Close cache for writing, merge everything to page header.
     aku_Status close(PageHeader* target);

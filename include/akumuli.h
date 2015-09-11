@@ -184,10 +184,6 @@ AKU_EXPORT apr_status_t aku_create_database
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , int32_t         num_volumes
-                                // optional args
-                                , uint32_t  compression_threshold
-                                , uint64_t  window_size
-                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger
                                 );
 
@@ -217,6 +213,33 @@ AKU_EXPORT aku_Status aku_open_status(aku_Database* db);
 //! Close database. Free resources.
 AKU_EXPORT void aku_close_database(aku_Database* db);
 
+//---------
+// Parsing
+//---------
+
+/** Try to parse timestamp.
+  * @param iso_str should point to the begining of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, AKU_EBAD_ARG otherwise
+  */
+AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample);
+
+/** Convert series name to id. Assign new id to series name on first encounter.
+  * @param db opened database instance
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param sample is an output parameter
+  * @returns AKU_SUCCESS on success, error code otherwise
+  */
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample);
+
+/** Try to parse duration.
+  * @param str should point to the begining of the string
+  * @param value is an output parameter
+  * @returns AKU_SUCCESS on success, AKU_EBAD_ARG otherwise
+  */
+AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
+
 
 //---------
 // Writing
@@ -238,21 +261,6 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_i
   */
 AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
 
-/** Try to parse timestamp.
-  * @param iso_str should point to the begining of the string
-  * @param sample is an output parameter
-  * @returns AKU_SUCCESS on success, AKU_EBAD_ARG otherwise
-  */
-AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample);
-
-/** Convert series name to id. Assign new id to series name on first encounter.
-  * @param db opened database instance
-  * @param begin should point to the begining of the string
-  * @param end should point to the next after end character of the string
-  * @param sample is an output parameter
-  * @returns AKU_SUCCESS on success, error code otherwise
-  */
-AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample);
 
 //---------
 // Queries

@@ -243,11 +243,8 @@ int main(int cnt, const char** args)
         delete_storage();
 
         // Create database
-        uint32_t threshold  = 1000;
-        uint64_t windowsize = 2;
-        uint64_t cachesize =  10*1024*1024;  // 10Mb
         apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
-                                                  threshold, windowsize, cachesize, &logger_);
+                                                  &logger_);
         if (result != APR_SUCCESS) {
             std::cout << "Error in new_storage" << std::endl;
             return (int)result;
@@ -258,7 +255,12 @@ int main(int cnt, const char** args)
     params.debug_mode = 0;
     params.durability = AKU_MAX_WRITE_SPEED;
     params.enable_huge_tlb = 0;
+    params.compression_threshold = 1000;
+    params.window_size = 2;
+    params.max_cache_size = 10*1024*1024;  // 10Mb
+
     auto db = aku_open_database(DB_META_FILE, params);
+
     Timer timer;
 
     aku_debug_print(db);

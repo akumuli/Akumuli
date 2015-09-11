@@ -57,15 +57,13 @@ struct Volume : std::enable_shared_from_this<Volume>
     size_t max_cache_size_;
     std::unique_ptr<Sequencer> cache_;
     std::string file_path_;
-    const aku_Config& config_;
+    aku_FineTuneParams config_;
     aku_logger_cb_t logger_;
     std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
-    const bool huge_tlb_;
 
     //! Create new volume stored in file
     Volume(const char           *file_path,
-           const aku_Config&     conf,
-           bool                  enable_huge_tlb,
+           aku_FineTuneParams    conf,
            aku_logger_cb_t       logger);
 
     ~Volume();
@@ -97,12 +95,11 @@ struct Storage
     typedef std::shared_ptr<ChunkCache>         PCache;
 
     // Active volume state
-    aku_Config                config_;
+    aku_FineTuneParams        config_;
     PVolume                   active_volume_;
     PageHeader*               active_page_;
     std::atomic<int>          active_volume_index_;
     aku_Duration              ttl_;                       //< Late write limit
-    bool                      compression;                //< Compression enabled
     aku_Status                open_error_code_;           //< Open op-n error code
     std::vector<PVolume>      volumes_;                   //< List of all volumes
     PMetadataStorage          metadata_;                  //< Metadata storage
@@ -113,8 +110,6 @@ struct Storage
     apr_time_t                creation_time_;             //< Cached metadata
     aku_logger_cb_t           logger_;
     Rand                      rand_;
-    const uint32_t            durability_;                //< Copy of the durability parameter
-    const bool                huge_tlb_;                  //< Copy of enable_huge_tlb parameter
     PCache                    cache_;
 
     /** Storage c-tor.
@@ -177,9 +172,6 @@ struct Storage
                                     const char     *metadata_path,
                                     const char     *volumes_path,
                                     int             num_pages,
-                                    uint32_t        compression_threshold,
-                                    uint64_t        window_size,
-                                    uint32_t        max_cache_size,
                                     aku_logger_cb_t logger);
 
     /** Remove all volumes

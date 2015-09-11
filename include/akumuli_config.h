@@ -36,11 +36,14 @@ typedef enum {
     AKU_LOG_ERROR = 1,
 } aku_LogLevel;
 
+
 //! Logging function type
 typedef void (*aku_logger_cb_t) (aku_LogLevel level, const char * msg);
 
+
 //! Panic handler function type
 typedef void (*aku_panic_handler_t) (const char * msg);
+
 
 /** Library configuration.
  */
@@ -57,6 +60,15 @@ typedef struct
 
     //! Consistency-speed tradeoff, 1 - max durability, 2 - tradeoff some durability for speed, 4 - max speed
     uint32_t durability;
+
+    //! Number of data points that should be stored in one compressed chunk
+    uint32_t compression_threshold;
+
+    //! Windth of the sliding window
+    uint64_t window_size;
+
+    //! Cache size limit
+    uint64_t max_cache_size;
 
 } aku_FineTuneParams;
 

@@ -49,17 +49,15 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 // TODO: remove max_cache_size
 Volume::Volume(const char* file_name,
-               aku_Config const& conf,
-               bool enable_huge_tlb,
+               aku_FineTuneParams conf,
                aku_logger_cb_t logger)
-    : mmap_(file_name, enable_huge_tlb, logger)
+    : mmap_(file_name, conf.enable_huge_tlb != 0, logger)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
     , file_path_(file_name)
     , config_(conf)
     , logger_(logger)
     , is_temporary_ {0}
-    , huge_tlb_(enable_huge_tlb)
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
@@ -101,7 +99,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
         AKU_PANIC("can't create new page file (out of space?)");
     }
 
-    newvol.reset(new Volume(file_path_.c_str(), config_, huge_tlb_, logger_));
+    newvol.reset(new Volume(file_path_.c_str(), config_, logger_));
     newvol->page_->set_open_count(open_count);
     newvol->page_->set_close_count(close_count);
     return newvol;
@@ -126,9 +124,6 @@ void Volume::flush() {
 //----------------------------------Storage---------------------------------------------
 
 struct VolumeIterator {
-    uint32_t                 compression_threshold;
-    uint64_t                 max_cache_size;
-    uint64_t                 window_size;
     std::vector<std::string> volume_names;
     aku_Status               error_code;
 
@@ -138,7 +133,7 @@ struct VolumeIterator {
         // 1. Read configuration data
         std::string creation_time;
         try {
-            db->get_configs(&compression_threshold, &max_cache_size, &window_size, &creation_time);
+            db->get_configs(&creation_time);
         } catch(std::exception const& err) {
             (*logger)(AKU_LOG_ERROR, err.what());
             error_code = AKU_ENO_DATA;
@@ -182,11 +177,9 @@ struct VolumeIterator {
 
 
 Storage::Storage(const char* path, aku_FineTuneParams const& params)
-    : compression(true)
+    : config_(params)
     , open_error_code_(AKU_SUCCESS)
     , logger_(params.logger)
-    , durability_(params.durability)
-    , huge_tlb_(params.enable_huge_tlb != 0)
 {
     // 0. Check that file exists
     auto filedesc = std::fopen(const_cast<char*>(path), "r");
@@ -214,10 +207,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
         return;
     }
 
-    config_.compression_threshold = v_iter.compression_threshold;
-    config_.max_cache_size = v_iter.max_cache_size;
-    config_.window_size = v_iter.window_size;
-    ttl_ = v_iter.window_size;
+    ttl_ = config_.window_size;
 
     // init cache
     cache_.reset(new ChunkCache(config_.max_cache_size));
@@ -225,7 +215,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     // create volumes list
     for(auto path: v_iter.volume_names) {
         PVolume vol;
-        vol.reset(new Volume(path.c_str(), config_, huge_tlb_, logger_));
+        vol.reset(new Volume(path.c_str(), config_, logger_));
         volumes_.push_back(vol);
     }
 
@@ -484,7 +474,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                     status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
                     switch (status) {
                     case AKU_SUCCESS:
-                        switch(durability_) {
+                        switch(config_.durability) {
                         case AKU_MAX_DURABILITY:
                             // Max durability
                             active_volume_->flush();
@@ -720,9 +710,6 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
   */
 static apr_status_t create_metadata_page( const char* file_name
                                         , std::vector<std::string> const& page_file_names
-                                        , uint32_t compression_threshold
-                                        , uint64_t window_size
-                                        , uint32_t max_cache_size
                                         , aku_logger_cb_t logger)
 {
     using namespace std;
@@ -733,10 +720,7 @@ static apr_status_t create_metadata_page( const char* file_name
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
 
-        storage->init_config(compression_threshold,
-                             max_cache_size,
-                             window_size,
-                             date_time);
+        storage->init_config(date_time);
 
         std::vector<MetadataStorage::VolumeDesc> desc;
         int ix = 0;
@@ -759,9 +743,6 @@ apr_status_t Storage::new_storage(const char  *file_name,
                                   const char  *metadata_path,
                                   const char  *volumes_path,
                                   int          num_pages,
-                                  uint32_t     compression_threshold,
-                                  uint64_t     window_size,
-                                  uint32_t     max_cache_size,
                                   aku_logger_cb_t logger)
 {
     apr_pool_t* mempool;
@@ -828,7 +809,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }
-    status = create_metadata_page(path, page_names, compression_threshold, window_size, max_cache_size, logger);
+    status = create_metadata_page(path, page_names, logger);
     apr_pool_destroy(mempool);
     return status;
 }

@@ -90,14 +90,13 @@ bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, aku_Config config)
+Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
     : window_size_(config.window_size)
     , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
     , sequence_number_ {0}
     , run_locks_(RUN_LOCK_FLAGS_SIZE)
-    , space_estimate_(0u)
     , c_threshold_(config.compression_threshold)
 {
     key_.reset(new SortedRun());
@@ -142,13 +141,9 @@ int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
                 new_runs.push_back(move(run));
             }
         }
-        Lock guard(runs_resize_lock_);
-        space_estimate_ = 0u;
-        for (auto& sorted_run: new_runs) {
-            space_estimate_ += sorted_run->size() * SPACE_PER_ELEMENT;
-        }
-        swap(runs_, new_runs);
 
+        Lock guard(runs_resize_lock_);
+        swap(runs_, new_runs);
         size_t ready_size = 0u;
         for (auto& sorted_run: ready_) {
             ready_size += sorted_run->size();
@@ -205,7 +200,6 @@ std::tuple<aku_Status, int> Sequencer::add(TimeSeriesValue const& value) {
     key_->push_back(value);
 
     Lock guard(runs_resize_lock_);
-    space_estimate_ += SPACE_PER_ELEMENT;
     auto begin = runs_.begin();
     auto end = runs_.end();
     auto insert_it = lower_bound(begin, end, key_, top_element_more<PSortedRun>);
@@ -259,7 +253,7 @@ aku_Status Sequencer::close(PageHeader* target) {
     runs_resize_lock_.unlock();
 
     sequence_number_.store(1);
-    return merge_and_compress(target);
+    return merge_and_compress(target, true);
 }
 
 int Sequencer::reset() {
@@ -334,7 +328,7 @@ template <
         int dir,
         class Consumer
 >
-void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
+void kway_merge(vector<Sequencer::PSortedRun>& runs, Consumer& cons) {
     typedef RunIter<Sequencer::PSortedRun, dir> RIter;
     typedef typename RIter::range_type range_t;
     typedef typename RIter::value_type KeyType;
@@ -364,6 +358,17 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
         int index = get<1>(item);
         if (!cons(point)) {
             // Interrupted
+            vector<Sequencer::PSortedRun> remaining_runs;
+            for (auto& remaining_item: heap) {
+                int rem_ix = get<1>(remaining_item);
+                KeyType rem_key = get<0>(remaining_item);
+                Sequencer::PSortedRun run(new Sequencer::SortedRun());
+                run->push_back(rem_key);
+                auto range = ranges[rem_ix];
+                std::copy(std::begin(range), std::end(range), std::back_inserter(*run));
+                remaining_runs.push_back(std::move(run));
+            }
+            std::swap(remaining_runs, runs);
             return;
         }
         heap.pop();
@@ -372,6 +377,9 @@ void kway_merge(vector<Sequencer::PSortedRun> const& runs, Consumer& cons) {
             ranges[index].advance_begin(1);
             heap.push(make_tuple(point, index));
         }
+    }
+    if (heap.empty()) {
+        runs.clear();
     }
 }
 
@@ -403,7 +411,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
-aku_Status Sequencer::merge_and_compress(PageHeader* target) {
+aku_Status Sequencer::merge_and_compress(PageHeader* target, bool enforce_write) {
     bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
         return AKU_EBUSY;
@@ -412,23 +420,54 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target) {
         return AKU_ENO_DATA;
     }
 
-    UncompressedChunk chunk_header;
+    aku_Status status = AKU_SUCCESS;
 
-    auto consumer = [&](TimeSeriesValue const& val) {
-        val.add_to_header(&chunk_header);
-        return true;
-    };
-
-    kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, consumer);
-    ready_.clear();
-
-    UncompressedChunk reindexed_header;
-    if (!CompressionUtil::convert_from_time_order(chunk_header, &reindexed_header)) {
-        AKU_PANIC("Invalid chunk");
+    while(!ready_.empty()) {
+        UncompressedChunk chunk_header;
+        int threshold = (int)c_threshold_;
+        auto push_to_header = [&](TimeSeriesValue const& val) {
+            if (threshold-->0) {
+                val.add_to_header(&chunk_header);
+                return true;
+            }
+            return false;
+        };
+        kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(ready_, push_to_header);
+        if (enforce_write || chunk_header.paramids.size() >= c_threshold_) {
+            UncompressedChunk reindexed_header;
+            if (!CompressionUtil::convert_from_time_order(chunk_header, &reindexed_header)) {
+                AKU_PANIC("Invalid chunk");
+            }
+            status = target->complete_chunk(reindexed_header);
+        } else {
+            // Wait for more data
+            status = AKU_ENO_DATA;
+        }
+        if (status != AKU_SUCCESS) {
+            PSortedRun run(new SortedRun());
+            for (int i = 0; i < (int)chunk_header.paramids.size(); i++) {
+                run->push_back(TimeSeriesValue(chunk_header.timestamps.at(i),
+                                               chunk_header.paramids.at(i),
+                                               chunk_header.values.at(i)));
+            }
+            ready_.push_back(std::move(run));
+            if (status == AKU_ENO_DATA) {
+                status = AKU_SUCCESS;
+            }
+            break;
+        }
     }
 
-    auto status = target->complete_chunk(reindexed_header);
+    if(!ready_.empty()) {
+        Lock guard(runs_resize_lock_);
+        for(auto sorted_run: ready_) {
+            runs_.push_back(sorted_run);
+        }
+        ready_.clear();
+    }
+
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
+
     return status;
 }
 

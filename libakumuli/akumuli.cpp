@@ -49,19 +49,19 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler) {
 
 static const char* g_error_messages[] = {
     "OK",
-    "No data",
-    "Not enough memory",
-    "Device is busy",
-    "Can't find result",
-    "Bad argument",
-    "Overflow",
-    "Invalid data",
-    "Error, no details available",
-    "Late write",
-    "Not implemented",
-    "Query parsing error",
-    "Anomaly detector can't work with negative values",
-    "Unknown error code"
+    "no data",
+    "not enough memory",
+    "device is busy",
+    "not found",
+    "bad argument",
+    "overflow",
+    "invalid data",
+    "unknown error",
+    "late write",
+    "not implemented",
+    "query parsing error",
+    "anomaly detector can't work with negative values",
+    "unknown error code"
 };
 
 const char* aku_error_message(int error_code) {
@@ -183,27 +183,12 @@ apr_status_t aku_create_database( const char     *file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , int32_t         num_volumes
-                                // optional args
-                                , uint32_t  compression_threshold
-                                , uint64_t  window_size
-                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
         logger = &aku_console_logger;
     }
-    if (compression_threshold == 0) {
-        compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
-    }
-    if (window_size == 0) {
-        window_size = AKU_DEFAULT_WINDOW_SIZE;
-    }
-    if (max_cache_size == 0) {
-        max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
-    }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes,
-                                compression_threshold, window_size, max_cache_size,
-                                logger);
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger);
 }
 
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
@@ -221,13 +206,23 @@ aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
     return dbi->add_sample(sample);
 }
 
-aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
+
+aku_Status aku_parse_duration(const char* str, int* value) {
     try {
-        sample->timestamp = DateTimeUtil::from_iso_string(iso_str);
-        return AKU_SUCCESS;
+        *value = DateTimeUtil::parse_duration(str, strlen(str));
     } catch (...) {
         return AKU_EBAD_ARG;
     }
+    return AKU_SUCCESS;
+}
+
+aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
+    try {
+        sample->timestamp = DateTimeUtil::from_iso_string(iso_str);
+    } catch (...) {
+        return AKU_EBAD_ARG;
+    }
+    return AKU_SUCCESS;
 }
 
 aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample) {
@@ -245,9 +240,20 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
         config.durability != AKU_DURABILITY_SPEED_TRADEOFF &&
         config.durability != AKU_MAX_WRITE_SPEED)
     {
-        // Set defaut
         config.durability = AKU_MAX_DURABILITY;
         (*config.logger)(AKU_LOG_INFO, "config.durability = default(AKU_MAX_DURABILITY)");
+    }
+    if (config.compression_threshold == 0) {
+        config.compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
+        (*config.logger)(AKU_LOG_INFO, "config.compression_threshold = default(AKU_DEFAULT_COMPRESSION_THRESHOLD)");
+    }
+    if (config.window_size == 0) {
+        config.window_size = AKU_DEFAULT_WINDOW_SIZE;
+        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
+    }
+    if (config.max_cache_size == 0) {
+        config.max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
+        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
     }
     auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);

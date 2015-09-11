@@ -77,9 +77,7 @@ struct MetadataStorage {
       */
     void init_volumes(std::vector<VolumeDesc> volumes);
 
-    void init_config(uint32_t compression_threshold,
-                     uint32_t max_cache_size,
-                     uint64_t window_size, const char *creation_datetime);
+    void init_config(const char *creation_datetime);
 
     // Retreival //
 
@@ -88,9 +86,7 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
-    void get_configs(uint32_t *compression_threshold,
-                     uint64_t *max_cache_size,
-                     uint64_t *window_size, std::string *creation_datetime);
+    void get_configs(std::string *creation_datetime);
 
     /** Read larges series id */
     uint64_t get_prev_largest_id();
