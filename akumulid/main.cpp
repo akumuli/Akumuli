@@ -94,7 +94,24 @@ pool_size=1
 port=8383
 # worker pool size
 pool_size=1
+
+# Logging configuration
+# This is just a log4cxx configuration without any modifications
+
+log4j.rootLogger=all, file
+log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
+log4j.appender.file.layout=org.apache.log4j.PatternLayout
+log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
+log4j.appender.file.filename=/tmp/akumuli.log
+log4j.appender.file.datePattern='.'yyyy-MM-dd
+
 )";
+
+
+struct ServerSettings {
+    int port;
+    int nworkers;
+};
 
 
 //! Container class for configuration related functions
@@ -192,6 +209,26 @@ struct ConfigFile {
         return res;
     }
 
+    static ServerSettings get_http_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("HTTP.port");
+        settings.nworkers = -1;
+        return settings;
+    }
+
+    static ServerSettings get_udp_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("UDP.port");
+        settings.nworkers = conf.get<int>("UDP.pool_size");
+        return settings;
+    }
+
+    static ServerSettings get_tcp_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("TCP.port");
+        settings.nworkers = conf.get<int>("TCP.pool_size");
+        return settings;
+    }
 };
 
 
@@ -342,6 +379,8 @@ void cmd_run_server() {
     auto compression_threshold  = ConfigFile::get_compression_threshold(config);
     auto huge_tlb               = ConfigFile::get_huge_tlb(config);
     auto cache_size             = ConfigFile::get_cache_size(config);
+    auto http_conf              = ConfigFile::get_http_server(config);
+    auto tcp_conf               = ConfigFile::get_tcp_server(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
 
@@ -356,13 +395,19 @@ void cmd_run_server() {
 
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
 
-    auto httpserver = std::make_shared<Http::HttpServer>(8877, qproc);
+    auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
 
     tcp_server->start();
+    std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
     httpserver->start();
-    tcp_server->wait();
+    std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
+
+    tcp_server->wait_for_signal();
+
     tcp_server->stop();
+    std::cout << cli_format("**OK** TCP  server stopped") << std::endl;
     httpserver->stop();
+    std::cout << cli_format("**OK** HTTP server stopped") << std::endl;
 }
 
 /** Create database command.
@@ -424,6 +469,12 @@ int main(int argc, char** argv) {
     aku_initialize(&panic_handler);
 
     try {
+        // Init logger
+        auto path = ConfigFile::default_config_path();
+        if (boost::filesystem::exists(path)) {
+            Logger::init(path.c_str());
+        }
+
         po::options_description cli_only_options;
         cli_only_options.add_options()
                 ("help", "Produce help message")
@@ -441,7 +492,6 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("init")) {
-            auto path = ConfigFile::default_config_path();
             ConfigFile::init_config(path);
 
             std::stringstream fmt;

@@ -325,7 +325,7 @@ void TcpServer::stop() {
     }
 }
 
-void TcpServer::wait() {
+void TcpServer::wait_for_signal() {
     // TODO: use cond var
     while(!stopped) {
         sleep(1);

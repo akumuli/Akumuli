@@ -42,6 +42,6 @@ int main(int argc, char *argv[]) {
     auto con = std::make_shared<DbMock>();
     auto server = std::make_shared<TcpServer>(con, 4);
     server->start();
-    server->wait();
+    server->wait_for_signal();
     server->stop();
 }

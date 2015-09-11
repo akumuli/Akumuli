@@ -78,6 +78,8 @@ public:
     Formatter&& trace(Formatter&& fmt = Formatter());
     Formatter&& info (Formatter&& fmt = Formatter());
     Formatter&& error(Formatter&& fmt = Formatter());
+
+    static void init(std::string path);
 };
 
 }

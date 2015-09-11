@@ -161,6 +161,6 @@ struct TcpServer : public std::enable_shared_from_this<TcpServer>
 
     void stop();
 
-    void wait();
+    void wait_for_signal();
 };
 }
