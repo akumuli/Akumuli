@@ -19,20 +19,52 @@ using namespace Akumuli;
 
 
 //! Default configuration for `akumulid`
-const char* DEFAULT_CONFIG = R"(#Configuration file (generated automatically).
+const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
 
-# Main config
-
-# path to main database file
+# path to database files. Default values is  ~/.akumuli/.
 path=~/.akumuli/main.akumuli
-# number of volumes, each volume uses 8Gb
+
+# Number of volumes used  to store data.  Each volume  is
+# 8Gb in size and  allocated beforehand. To change number
+# of  volumes  they  should  change  `nvolumes`  value in
+# configuration and restart daemon.
 nvolumes=32
-# sliding window width, all data points older then this wouldn't be recorded
+
+# Sliding window  width. Can  be specified in nanoseconds
+# (unit  of  measure  is  not  specified),  seconds  (s),
+# milliseconds (ms),  microseconds (us) or minutes (min).
+#
+# Examples:
+#
+# window=10s
+# window=500us
+# window=1000   (in this case sliding window will be 1000
+#                nanoseconds long)
 window=10s
-# number of data points in each compressed chunk
+
+# Number of data  points stored in one  compressed chunk.
+# Akumuli stores data  in chunks.  If chunks is too large
+# decompression can be slow; in opposite case compression
+# can  be less  effective.  Good compression_threshold is
+# about 1000. In this case chunk size will be around 4Kb.
 compression_threshold=1000
-# speed-durability tradeoff (can be set to 'max' or 'min' at the moment)
+
+# Durability level can  be set  to  max  or  min.  In the
+# first case  durability will  be maximal but speed won't
+# be  optimal.  If durability is  set  to min write speed
+# will be better.
 durability=max
+
+# This parameter  can  be used to  emable huge  pages for
+# data volumes.  This can speed up searching  and writing
+# process a bit. Setting  this  option can't  do any harm
+# except performance loss in some circumstances.
+huge_tlb = 0
+
+# Max cache capacity in bytes.  Akumuli  caches  recently
+# used chunks  in memory. This  parameter can  be used to
+# define size of this cache (default value: 512Mb).
+max_cache_size=536870912
 
 
 # HTTP server config
@@ -72,6 +104,10 @@ struct ConfigFile {
     }
 
     static void init_config(boost::filesystem::path path) {
+        if (boost::filesystem::exists(path)) {
+            std::runtime_error err("configuration file already exists");
+            BOOST_THROW_EXCEPTION(err);
+        }
         std::ofstream stream(path.c_str());
         stream << DEFAULT_CONFIG << std::endl;
         stream.close();
@@ -87,6 +123,10 @@ struct ConfigFile {
         return conf.get<std::string>("path");
     }
 
+    static uint64_t get_cache_size(PTree conf) {
+        return conf.get<uint64_t>("max_cache_size");
+    }
+
     static int get_window(PTree conf) {
         std::string window = conf.get<std::string>("window");
         int r = 0;
@@ -95,6 +135,10 @@ struct ConfigFile {
             throw std::runtime_error("can't parse `window` parameter");
         }
         return r;
+    }
+
+    static bool get_huge_tlb(PTree conf) {
+        return conf.get<bool>("huge_tlb");
     }
 
     static int get_nvolumes(PTree conf) {
@@ -135,6 +179,10 @@ const char* CLI_HELP_MESSAGE = R"(
 
         akumulid --init
 
+        akumulid --create
+
+        akumuild --delete
+
 **DESCRIPTION**
         **akumulid** is a time-series database daemon.
         All configuration can be done via `~/.akumulid` configuration
@@ -148,40 +196,8 @@ const char* CLI_HELP_MESSAGE = R"(
             create  configuration  file at `~/.akumulid`  filled with
             default values and exit.
 
-**CONFIGURATION**
-        **path**
-            path to database files. Default values is `~/.akumuli/`.
-
-        **window**
-            sliding window  width. Can  be specified in nanoseconds
-            (unit  of  measure  is  not  specified),  seconds  (s),
-            milliseconds (ms),  microseconds (us) or minutes (min).
-
-            Examples:
-
-            **window**=__10s__
-            **window**=__500us__
-            **window**=__1000__   (in this case sliding window will be 1000
-                           nanoseconds long)
-
-        **nvolumes**
-            number of volumes used  to store data.  Each volume  is
-            `8Gb` in size and  allocated beforehand. To change number
-            of  volumes  they  should  change  `nvolumes`  value in
-            configuration and restart daemon.
-
-        **compression_threshold**
-            number of data  points stored in one  compressed chunk.
-            `Akumuli` stores data  in chunks.  If chunks is too large
-            decompression can be slow; in opposite case compression
-            can  be less  effective.  Good `compression_threshold` is
-            about 1000. In this case chunk size will be around 4Kb.
-
-        **durability**
-            durability level can  be set  to  `max`  or  `min`.  In the
-            first case  durability will  be maximal but speed won't
-            be  optimal.  If `durability` is  set  to `min` write speed
-            will be better.
+        **create**
+            generate database files in `~/.akumuli` folder
 
 )";
 
@@ -248,29 +264,75 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
     }
 }
 
-void create_db(const char* name,
-               const char* path,
-               int32_t nvolumes)
-{
-    auto status = aku_create_database(name, path, path, nvolumes,
-                                      &static_logger);
-    if (status != AKU_SUCCESS) {
-        std::cout << "Error creating database" << std::endl;
-        char buffer[1024];
-        apr_strerror(status, buffer, 1024);
-        std::cout << buffer << std::endl;
-    } else {
-        std::cout << "Database created" << std::endl;
-        std::cout << "- path: " << path << std::endl;
-        std::cout << "- name: " << name << std::endl;
+
+/** Create `path` if not exists.
+  */
+void check_dir(const char* path) {
+    if (!boost::filesystem::exists(path)) {
+        // create dir
+        if (!boost::filesystem::create_directory(path)) {
+            std::stringstream fmt;
+            fmt << "can't create directory `" << path << "`";
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        }
     }
 }
 
-void run_server(std::string path) {
+/** Create database if database not exists.
+  */
+void create_db_files(const char* name,
+                     const char* path,
+                     int32_t nvolumes)
+{
+    // Create dir if not exists
+    check_dir(path);
+
+    auto full_path = boost::filesystem::path(path) / name / ".db";
+    if (!boost::filesystem::exists(full_path)) {
+        auto status = aku_create_database(name, path, path, nvolumes,
+                                          &static_logger);
+        if (status != AKU_SUCCESS) {
+            std::cout << "Error creating database" << std::endl;
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::cout << buffer << std::endl;
+        } else {
+            std::cout << "Database created" << std::endl;
+            std::cout << "- path: " << path << std::endl;
+            std::cout << "- name: " << name << std::endl;
+        }
+    }
+}
+
+/** Read configuration file and run server.
+  * If config file can't be found - report error.
+  */
+void cmd_run_server() {
+
+    auto config_path = ConfigFile::default_config_path();
+
+    if (!boost::filesystem::exists(config_path)) {
+        std::stringstream fmt;
+        fmt << "can't read config file `" << config_path << "`";
+        std::runtime_error err(fmt.str());
+        BOOST_THROW_EXCEPTION(err);
+    }
+
+    auto config = ConfigFile::read_config_file(config_path);
+    auto window = ConfigFile::get_window(config);
+    auto durability = ConfigFile::get_durability(config);
+    auto path = ConfigFile::get_path(config);
+    auto compression_threshold = ConfigFile::get_compression_threshold(config);
+    auto huge_tlb = ConfigFile::get_huge_tlb(config);
+    auto cache_size = ConfigFile::get_cache_size(config);
 
     auto connection = std::make_shared<AkumuliConnection>(path.c_str(),
-                                                          false,
-                                                          AkumuliConnection::MaxDurability);
+                                                          huge_tlb,
+                                                          durability,
+                                                          compression_threshold,
+                                                          window,
+                                                          cache_size);
 
     auto tcp_server = std::make_shared<TcpServer>(connection, 4);
 
@@ -285,19 +347,25 @@ void run_server(std::string path) {
     httpserver->stop();
 }
 
-uint64_t str2unixtime(std::string t) {
-    std::regex regex("(\\d)+\\s?(min|sec|s|m)");
-    std::smatch sm;
-    std::regex_match(t, sm, regex);
-    if (sm.size() != 2) {
-        throw std::runtime_error("Bad window size");
+/** Create database command.
+  */
+void cmd_create_database() {
+    auto config_path = ConfigFile::default_config_path();
+
+    if (!boost::filesystem::exists(config_path)) {
+        std::stringstream fmt;
+        fmt << "can't read config file `" << config_path << "`";
+        std::runtime_error err(fmt.str());
+        BOOST_THROW_EXCEPTION(err);
     }
-    std::string snum = sm[0].str();
-    auto num = boost::lexical_cast<uint64_t>(snum);
-    if (sm[1].str() == "m" || sm[1].str() == "min") {
-        return num * 60;
-    }
-    return num;
+
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+    auto volumes    = ConfigFile::get_nvolumes(config);
+
+    check_dir(path.c_str());
+
+    create_db_files("main", path.c_str(), volumes);
 }
 
 
@@ -318,41 +386,46 @@ int main(int argc, char** argv) {
 
     aku_initialize(&panic_handler);
 
-    po::options_description cli_only_options;
-    cli_only_options.add_options()
-            ("help", "Produce help message")
-            ("init", "Create default configuration");
+    try {
+        po::options_description cli_only_options;
+        cli_only_options.add_options()
+                ("help", "Produce help message")
+                ("create", "Create database")
+                ("init", "Create default configuration");
 
+        po::variables_map vm;
+        po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
+        po::notify(vm);
 
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
-    auto path2cfg = boost::filesystem::path(getenv("HOME"));
-    path2cfg /= ".akumulid";
-    std::fstream config_file(path2cfg.c_str());
-    //po::store(po::parse_config_file(config_file, generic_options, true), vm);  // allow_unregistered=true
-    po::notify(vm);
-    if (vm.count("help")) {
-        rich_print(CLI_HELP_MESSAGE, false);
-        return 0;
-    }
-    if (!vm.count("path")) {
-        std::cout << "Incomplete configuration, path required" << std::endl;
-        //std::cout << generic_options << std::endl;
-        return -1;
-    }
-    std::string path = vm["path"].as<std::string>();
-    if (vm.count("create") != 0) {
-        if (vm.count("nvolumes") == 0 || vm.count("name") == 0 || vm.count("window") == 0) {
-            std::cout << cli_only_options << std::endl;
-            return -1;
+        if (vm.count("help")) {
+            rich_print(CLI_HELP_MESSAGE, false);
+            exit(EXIT_SUCCESS);
         }
-        std::string name = vm["name"].as<std::string>();
-        int32_t nvol = vm["nvolumes"].as<int32_t>();
-        create_db(name.c_str(), path.c_str(), nvol);  // TODO: use correct numbers
+
+        if (vm.count("init")) {
+            auto path = ConfigFile::default_config_path();
+            ConfigFile::init_config(path);
+
+            std::stringstream fmt;
+            fmt << "**OK** configuration file created at: `" << path << "`";
+            std::cout << cli_format(fmt.str(), false) << std::endl;
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("create")) {
+            cmd_create_database();
+            exit(EXIT_SUCCESS);
+        }
+
+        cmd_run_server();
+
+    } catch(const std::exception& e) {
+        std::stringstream fmt;
+        fmt << "**FAILURE** " << e.what();
+        std::cerr << cli_format(fmt.str(), false) << std::endl;
+        exit(EXIT_FAILURE);
     }
 
-    run_server(path);
-
-    return 0;
+    exit(EXIT_SUCCESS);
 }
 

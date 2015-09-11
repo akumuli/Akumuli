@@ -49,19 +49,19 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler) {
 
 static const char* g_error_messages[] = {
     "OK",
-    "No data",
-    "Not enough memory",
-    "Device is busy",
-    "Can't find result",
-    "Bad argument",
-    "Overflow",
-    "Invalid data",
-    "Error, no details available",
-    "Late write",
-    "Not implemented",
-    "Query parsing error",
-    "Anomaly detector can't work with negative values",
-    "Unknown error code"
+    "no data",
+    "not enough memory",
+    "device is busy",
+    "not found",
+    "bad argument",
+    "overflow",
+    "invalid data",
+    "unknown error",
+    "late write",
+    "not implemented",
+    "query parsing error",
+    "anomaly detector can't work with negative values",
+    "unknown error code"
 };
 
 const char* aku_error_message(int error_code) {

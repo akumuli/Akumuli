@@ -38,20 +38,31 @@ struct AkumuliCursor : DbCursor {
     }
 };
 
-AkumuliConnection::AkumuliConnection(const char *path, bool hugetlb, Durability durability)
+AkumuliConnection::AkumuliConnection(const char *path,
+                                     bool hugetlb,
+                                     Durability durability,
+                                     uint32_t compression_threshold,
+                                     uint64_t window_width,
+                                     uint64_t cache_size)
     : dbpath_(path)
 {
-    aku_FineTuneParams params = {
-        // Debug mode
-        0,
-        // Pointer to logging function
-        &db_logger,
-        // huge tlbs
-        (hugetlb ? 1u : 0u),
-        // durability
-        (uint32_t)durability
-    };
+    aku_FineTuneParams params = {};
+    params.debug_mode = 0;
+    params.durability = (uint32_t)durability;
+    params.enable_huge_tlb = hugetlb ? 1u : 0u;
+    params.logger = &db_logger;
+    params.compression_threshold = compression_threshold;
+    params.window_size = window_width;
+    params.max_cache_size = cache_size;
     db_ = aku_open_database(dbpath_.c_str(), params);
+
+    aku_Status status = aku_open_status(db_);
+    if (status != AKU_SUCCESS) {
+        std::stringstream fmt;
+        fmt << "can't open database, error: `" << aku_error_message(status) << "`";
+        std::runtime_error err(fmt.str());
+        BOOST_THROW_EXCEPTION(err);
+    }
 }
 
 aku_Status AkumuliConnection::write(aku_Sample const& sample) {

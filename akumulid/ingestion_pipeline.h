@@ -78,7 +78,7 @@ private:
     std::string     dbpath_;
     aku_Database   *db_;
 public:
-    AkumuliConnection(const char* path, bool hugetlb, Durability durability);
+    AkumuliConnection(const char* path, bool hugetlb, Durability durability, uint32_t compression_threshold, uint64_t window_width, uint64_t cache_size);
 
     virtual aku_Status write(const aku_Sample &sample);
 
