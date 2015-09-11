@@ -90,7 +90,7 @@ bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, aku_Config config)
+Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
     : window_size_(config.window_size)
     , page_(page)
     , top_timestamp_()

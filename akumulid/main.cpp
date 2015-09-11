@@ -60,20 +60,34 @@ port=8383
 pool_size=1
 )";
 
+
+//! Container class for configuration related functions
 struct ConfigFile {
     typedef boost::property_tree::ptree PTree;
 
-    static PTree read_config_file(std::string file_path) {
+    static boost::filesystem::path default_config_path() {
+        auto path2cfg = boost::filesystem::path(getenv("HOME"));
+        path2cfg /= ".akumulid";
+        return path2cfg;
+    }
+
+    static void init_config(boost::filesystem::path path) {
+        std::ofstream stream(path.c_str());
+        stream << DEFAULT_CONFIG << std::endl;
+        stream.close();
+    }
+
+    static PTree read_config_file(boost::filesystem::path file_path) {
         PTree conf;
-        boost::property_tree::ini_parser::read_ini(file_path, conf);
+        boost::property_tree::ini_parser::read_ini(file_path.c_str(), conf);
         return conf;
     }
 
-    std::string get_path(PTree conf) {
+    static std::string get_path(PTree conf) {
         return conf.get<std::string>("path");
     }
 
-    int get_window(PTree conf) {
+    static int get_window(PTree conf) {
         std::string window = conf.get<std::string>("window");
         int r = 0;
         auto status = aku_parse_duration(window.c_str(), &r);
@@ -83,15 +97,15 @@ struct ConfigFile {
         return r;
     }
 
-    int get_nvolumes(PTree conf) {
+    static int get_nvolumes(PTree conf) {
         return conf.get<int>("nvolumes");
     }
 
-    int get_compression_threshold(PTree conf) {
+    static int get_compression_threshold(PTree conf) {
         return conf.get<int>("compression_threshold");
     }
 
-    AkumuliConnection::Durability get_durability(PTree conf) {
+    static AkumuliConnection::Durability get_durability(PTree conf) {
         std::string m = conf.get<std::string>("durability");
         AkumuliConnection::Durability res;
         if (m == "max") {
@@ -105,6 +119,7 @@ struct ConfigFile {
     }
 
 };
+
 
 /** Help message used in CLI. It contains simple markdown formatting.
   * `rich_print function should be used to print this message.
@@ -235,15 +250,9 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
 
 void create_db(const char* name,
                const char* path,
-               int32_t nvolumes,
-               uint32_t compression_threshold,
-               uint64_t window_size,
-               uint32_t max_cache_size)
+               int32_t nvolumes)
 {
     auto status = aku_create_database(name, path, path, nvolumes,
-                                      compression_threshold,
-                                      window_size,
-                                      max_cache_size,
                                       &static_logger);
     if (status != AKU_SUCCESS) {
         std::cout << "Error creating database" << std::endl;
@@ -339,8 +348,7 @@ int main(int argc, char** argv) {
         }
         std::string name = vm["name"].as<std::string>();
         int32_t nvol = vm["nvolumes"].as<int32_t>();
-        std::string window = vm["window"].as<std::string>();
-        create_db(name.c_str(), path.c_str(), nvol, 10000, str2unixtime(window), 100000);  // TODO: use correct numbers
+        create_db(name.c_str(), path.c_str(), nvol);  // TODO: use correct numbers
     }
 
     run_server(path);

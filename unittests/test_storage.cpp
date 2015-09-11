@@ -39,18 +39,10 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
 
     auto db = MetadataStorage(":memory:", &logger_stub);
-    auto window_size = 0xFFFFFFFFFFFF;
-    auto threshold = 0xFFFFFF;
-    auto cache_size = 0xFFFFFF;
     const char* creation_datetime = "2015-02-03 00:00:00";  // Formatting not required
-    db.init_config(threshold, cache_size, window_size, creation_datetime);
-    uint32_t actual_threshold;
-    uint64_t actual_window_size, actual_cache_size;;
+    db.init_config(creation_datetime);
     std::string actual_dt;
-    db.get_configs(&actual_threshold, &actual_cache_size, &actual_window_size, &actual_dt);
-    BOOST_REQUIRE_EQUAL(threshold, actual_threshold);
-    BOOST_REQUIRE_EQUAL(cache_size, actual_cache_size);
-    BOOST_REQUIRE_EQUAL(window_size, actual_window_size);
+    db.get_configs(&actual_dt);
     BOOST_REQUIRE_EQUAL(creation_datetime, actual_dt);
 }
 

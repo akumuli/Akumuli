@@ -105,7 +105,7 @@ struct Sequencer {
     mutable std::vector<RWLock>  run_locks_;
     const size_t                 c_threshold_;      //< Compression threshold
 
-    Sequencer(PageHeader const* page, aku_Config config);
+    Sequencer(PageHeader const* page, aku_FineTuneParams const& config);
 
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.

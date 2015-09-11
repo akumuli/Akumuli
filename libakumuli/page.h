@@ -52,16 +52,6 @@ struct CompressedChunkDesc {
     uint32_t checksum;          //< Checksum
 } __attribute__((packed));
 
-//! Storage configuration
-struct aku_Config {
-    uint32_t compression_threshold;
-
-    //! Maximum depth of the late write
-    uint64_t window_size;
-
-    //! Maximum cache size in bytes
-    uint64_t max_cache_size;
-};
 
 struct aku_Entry {
     //aku_Timestamp  time;      //< Entry timestamp

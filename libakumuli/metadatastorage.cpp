@@ -128,69 +128,20 @@ void MetadataStorage::create_tables() {
     execute_query(query);
 }
 
-void MetadataStorage::init_config(uint32_t compression_threshold,
-                                  uint32_t max_cache_size,
-                                  uint64_t window_size,
-                                  const char* creation_datetime)
+void MetadataStorage::init_config(const char* creation_datetime)
 {
     // Create table and insert data into it
 
     std::stringstream insert;
     insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'compression_threshold' as name, '" << compression_threshold << "' as value, "
+    insert << "\tSELECT 'creation_time' as name, '" << creation_datetime << "' as value, "
            << "'Compression threshold value' as comment" << std::endl;
-    insert << "\tUNION SELECT 'max_cache_size', '" << max_cache_size
-           << "', 'Maximal cache size'" << std::endl;
-    insert << "\tUNION SELECT 'window_size', '" << window_size << "', 'Write window size'" << std::endl;
-    insert << "\tUNION SELECT 'creation_time', '" << creation_datetime
-           << "', 'Database creation time'" << std::endl;
     std::string insert_query = insert.str();
     execute_query(insert_query);
 }
 
-void MetadataStorage::get_configs(uint32_t *compression_threshold,
-                                  uint64_t *max_cache_size,
-                                  uint64_t *window_size,
-                                  std::string *creation_datetime)
+void MetadataStorage::get_configs(std::string *creation_datetime)
 {
-    {   // Read compression_threshold
-        std::string query = "SELECT value FROM akumuli_configuration "
-                            "WHERE name='compression_threshold'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (compression_threshold)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (compression_threshold)");
-        }
-        *compression_threshold = boost::lexical_cast<uint32_t>(tuple.at(0));
-    }
-    {   // Read max_cache_size
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='max_cache_size'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (max_cache_size)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (max_cache_size)");
-        }
-        *max_cache_size = boost::lexical_cast<uint32_t>(tuple.at(0));
-    }
-    {   // Read window_size
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='window_size'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            throw std::runtime_error("Invalid configuration (window_size)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            throw std::runtime_error("Invalid configuration query (window_size)");
-        }
-        // This value can be encoded as dobule by the sqlite engine
-        *window_size = boost::lexical_cast<uint64_t>(tuple.at(0));
-    }
     {   // Read creation time
         std::string query = "SELECT value FROM akumuli_configuration WHERE name='creation_time'";
         auto results = select_query(query.c_str());

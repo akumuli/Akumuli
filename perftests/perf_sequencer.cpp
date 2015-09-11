@@ -68,7 +68,9 @@ int main(int cnt, const char** args)
         // Patience sort perf-test
         boost::timer timer;
         size_t ix_merged = 0;
-        Sequencer seq(nullptr, {0, 10000, 0});
+        aku_FineTuneParams params = {};
+        params.window_size = 10000;
+        Sequencer seq(nullptr, params);
         for (uint32_t ix = 0u; ix < NUM_ITERATIONS; ix++) {
             TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (double)ix);
             int status = 0;

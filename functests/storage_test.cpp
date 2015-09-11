@@ -224,7 +224,7 @@ struct LocalStorage : Storage {
     virtual void create_new()
     {
         apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
-                                                  compression_threshold_, sliding_window_size_, 0, nullptr);
+                                                  nullptr);
         throw_on_error(result);
     }
 
@@ -235,9 +235,13 @@ struct LocalStorage : Storage {
             BOOST_THROW_EXCEPTION(err);
         }
         aku_FineTuneParams params;
+
         params.durability = durability_;
         params.enable_huge_tlb = enable_huge_tlb_ ? 1 : 0;
         params.logger = &aku_console_logger;
+        params.compression_threshold = compression_threshold_;
+        params.window_size = sliding_window_size_;
+
         std::string path = get_db_file_path();
         db_ = aku_open_database(path.c_str(), params);
         auto status = aku_open_status(db_);

@@ -184,10 +184,6 @@ AKU_EXPORT apr_status_t aku_create_database
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , int32_t         num_volumes
-                                // optional args
-                                , uint32_t  compression_threshold
-                                , uint64_t  window_size
-                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger
                                 );
 

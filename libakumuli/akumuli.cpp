@@ -183,27 +183,12 @@ apr_status_t aku_create_database( const char     *file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , int32_t         num_volumes
-                                // optional args
-                                , uint32_t  compression_threshold
-                                , uint64_t  window_size
-                                , uint64_t  max_cache_size
                                 , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
         logger = &aku_console_logger;
     }
-    if (compression_threshold == 0) {
-        compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
-    }
-    if (window_size == 0) {
-        window_size = AKU_DEFAULT_WINDOW_SIZE;
-    }
-    if (max_cache_size == 0) {
-        max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
-    }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes,
-                                compression_threshold, window_size, max_cache_size,
-                                logger);
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger);
 }
 
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
@@ -255,9 +240,20 @@ aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
         config.durability != AKU_DURABILITY_SPEED_TRADEOFF &&
         config.durability != AKU_MAX_WRITE_SPEED)
     {
-        // Set defaut
         config.durability = AKU_MAX_DURABILITY;
         (*config.logger)(AKU_LOG_INFO, "config.durability = default(AKU_MAX_DURABILITY)");
+    }
+    if (config.compression_threshold == 0) {
+        config.compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
+        (*config.logger)(AKU_LOG_INFO, "config.compression_threshold = default(AKU_DEFAULT_COMPRESSION_THRESHOLD)");
+    }
+    if (config.window_size == 0) {
+        config.window_size = AKU_DEFAULT_WINDOW_SIZE;
+        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
+    }
+    if (config.max_cache_size == 0) {
+        config.max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
+        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
     }
     auto ptr = new DatabaseImpl(path, config);
     return static_cast<aku_Database*>(ptr);
