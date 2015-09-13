@@ -69,3 +69,4 @@ In case automatic script didn't work:
 Questions?
 ----------
 [Google group](https://groups.google.com/forum/#!forum/akumuli)
+[Trello board](https://trello.com/b/UO1sGA99)
