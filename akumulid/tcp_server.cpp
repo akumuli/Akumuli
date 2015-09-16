@@ -238,8 +238,8 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<DbConnection> con, int concurrency)
-    : dbcon(con)
+TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port)
+    : pline(pipeline)
     , barrier(concurrency + 1)
     , sig(io, SIGINT)
     , stopped{0}
@@ -247,8 +247,6 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> con, int concurrency)
     for(;concurrency --> 0;) {
         iovec.push_back(&io);
     }
-    pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
-    int port = 4096;
     serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
     pline->start();
     serv->start();

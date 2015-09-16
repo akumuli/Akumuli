@@ -144,7 +144,6 @@ private:
 struct TcpServer : public std::enable_shared_from_this<TcpServer>
 {
     std::shared_ptr<IngestionPipeline>  pline;
-    std::shared_ptr<DbConnection>       dbcon;
     std::shared_ptr<TcpAcceptor>        serv;
     boost::asio::io_service             io;
     std::vector<IOServiceT*>            iovec;
@@ -152,7 +151,7 @@ struct TcpServer : public std::enable_shared_from_this<TcpServer>
     boost::asio::signal_set             sig;
     std::atomic<int>                    stopped;
 
-    TcpServer(std::shared_ptr<DbConnection> con, int concurrency);
+    TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
 
     //! Run IO service
     void start();

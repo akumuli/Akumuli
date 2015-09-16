@@ -1,5 +1,6 @@
 #include "akumuli.h"
 #include "tcp_server.h"
+#include "udp_server.h"
 #include "httpserver.h"
 #include "utility.h"
 #include "query_results_pooler.h"
@@ -381,6 +382,7 @@ void cmd_run_server() {
     auto cache_size             = ConfigFile::get_cache_size(config);
     auto http_conf              = ConfigFile::get_http_server(config);
     auto tcp_conf               = ConfigFile::get_tcp_server(config);
+    auto udp_conf               = ConfigFile::get_udp_server(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
 
@@ -391,12 +393,17 @@ void cmd_run_server() {
                                                           window,
                                                           cache_size);
 
-    auto tcp_server = std::make_shared<TcpServer>(connection, 4);
+    auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
+
+    auto udp_server = std::make_shared<UdpServer>(pipeline, udp_conf.nworkers, udp_conf.port);
+
+    auto tcp_server = std::make_shared<TcpServer>(pipeline, tcp_conf.nworkers, tcp_conf.port);
 
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
-
     auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
 
+    udp_server->start();
+    std::cout << cli_format("**OK** UDP  server started, port: ") << udp_conf.port << std::endl;
     tcp_server->start();
     std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
     httpserver->start();
@@ -404,6 +411,8 @@ void cmd_run_server() {
 
     tcp_server->wait_for_signal();
 
+    udp_server->stop();
+    std::cout << cli_format("**OK** UDP  server stopped") << std::endl;
     tcp_server->stop();
     std::cout << cli_format("**OK** TCP  server stopped") << std::endl;
     httpserver->stop();

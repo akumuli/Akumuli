@@ -34,7 +34,6 @@ namespace Akumuli {
 class UdpServer : public std::enable_shared_from_this<UdpServer>
 {
     std::shared_ptr<IngestionPipeline> pipeline_;
-    ProtocolParser parser_;
     boost::barrier start_barrier_;  //< Barrier to start worker thread
     boost::barrier stop_barrier_;   //< Barrier to stop worker thread
     std::atomic<int> stop_;
@@ -74,7 +73,7 @@ public:
       * @param port port number
       * @param pipeline pointer to ingestion pipeline
       */
-    UdpServer(int nworkers, int port, std::shared_ptr<IngestionPipeline> pipeline);
+    UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port);
 
     //! Start processing packets
     void start();
@@ -83,7 +82,7 @@ public:
     void stop();
 
 private:
-    void worker(std::shared_ptr<PipelineSpout> spout, std::shared_ptr<IOBuf> iobuf);
+    void worker(std::shared_ptr<PipelineSpout> spout);
 };
 
 }  // namespace

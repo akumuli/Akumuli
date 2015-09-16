@@ -11,11 +11,12 @@
 
 namespace Akumuli {
 
-UdpServer::UdpServer(int nworkers, int port, std::shared_ptr<IngestionPipeline> pipeline)
+UdpServer::UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port)
     : start_barrier_(nworkers + 1)
     , stop_barrier_(nworkers + 1)
     , stop_{0}
     , port_(port)
+    , logger_("UdpServer", 128)
 {
     // Create workers
     for (int i = 0; i < nworkers; i++) {
@@ -37,13 +38,16 @@ void UdpServer::stop() {
 }
 
 
-void UdpServer::worker(std::shared_ptr<PipelineSpout> spout, std::shared_ptr<IOBuf> iobuf) {
+void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
     start_barrier_.wait();
 
     int sockfd, retval;
     sockaddr_in sa;
 
     try {
+
+        ProtocolParser parser(spout);
+
         // Create socket
         sockfd = socket(AF_INET, SOCK_DGRAM, 0);
         if (sockfd == -1) {
@@ -78,6 +82,7 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout, std::shared_ptr<IOB
         }
 
         while(!stop_.load(std::memory_order_relaxed)) {
+            std::shared_ptr<IOBuf> iobuf(new IOBuf());
             retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             // TODO: uset timeout to wake up thread periodically
             if (retval == -1) {
@@ -94,6 +99,15 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout, std::shared_ptr<IOB
                 // reset buffer to receive new message
                 iobuf->bps += iobuf->msgs[i].msg_len;
                 iobuf->msgs[i].msg_len = 0;
+
+                // parse message content
+                PDU pdu = {
+                    std::shared_ptr<Byte>(iobuf, iobuf->bufs[i]),
+                    MSS,
+                    0u,
+                };
+
+                parser.parse_next(pdu);
             }
         }
     } catch(...) {
