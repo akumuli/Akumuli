@@ -21,9 +21,9 @@ int DB_SIZE = 8;
 uint64_t NUM_ITERATIONS = 1000*1000*1000ul;
 int CHUNK_SIZE = 5000;
 
-const char* DB_NAME = "test";
-const char* DB_PATH = "test";
-const char* DB_META_FILE = "test/test.akumuli";
+const char* DB_NAME = "db";
+const char* DB_PATH = "";
+const char* DB_META_FILE = "/tmp/akumuli/db.akumuli";
 
 class Timer
 {
@@ -228,35 +228,14 @@ void logger_(aku_LogLevel level, const char * msg) {
 
 int main(int cnt, const char** args)
 {
-    Mode mode = read_cmd(cnt, args);
-
     aku_initialize(nullptr);
-
-    if (mode == DELETE) {
-        delete_storage();
-        std::cout << "storage deleted" << std::endl;
-        return 0;
-    }
-
-    if (mode != READ) {
-        // Cleanup
-        delete_storage();
-
-        // Create database
-        apr_status_t result = aku_create_database(DB_NAME, DB_PATH, DB_PATH, DB_SIZE,
-                                                  &logger_);
-        if (result != APR_SUCCESS) {
-            std::cout << "Error in new_storage" << std::endl;
-            return (int)result;
-        }
-    }
 
     aku_FineTuneParams params = {};
     params.debug_mode = 0;
-    params.durability = AKU_MAX_WRITE_SPEED;
+    params.durability = AKU_MAX_DURABILITY; //AKU_MAX_WRITE_SPEED;
     params.enable_huge_tlb = 0;
-    params.compression_threshold = 1000;
-    params.window_size = 2;
+    params.compression_threshold = 100000;
+    params.window_size = 600;
     params.max_cache_size = 10*1024*1024;  // 10Mb
 
     auto db = aku_open_database(DB_META_FILE, params);
@@ -265,47 +244,45 @@ int main(int cnt, const char** args)
 
     aku_debug_print(db);
 
-    if (mode != READ) {
-        uint64_t busy_count = 0;
-        // Fill in data
-        RandomWalk rwalk(10.0, 0.0, 0.02, 10000);
-        for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
-            aku_Sample sample;
-            char buffer[100];
+    uint64_t busy_count = 0;
+    // Fill in data
+    RandomWalk rwalk(10.0, 0.0, 0.02, 10000);
+    for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
+        aku_Sample sample;
+        char buffer[100];
 
-            // =series=
-            int id = i % 10000;
-            int nchars = sprintf(buffer, "cpu key=%d", id);
-            aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
+        // =series=
+        int id = i % 1000;
+        int nchars = sprintf(buffer, "cpu key=%d", id);
+        aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
-            // =timestamp=
-            sample.timestamp = i/10000;
+        // =timestamp=
+        sample.timestamp = i/1000;
 
-            // =payload=
-            if (i == 1000000ul) {
-                // Add anomalous value
-                rwalk.add_anomaly(id, 100.0);
-            }
-            if (i == 899999999ul) {
-                // Add anomalous value
-                rwalk.add_anomaly(id, 100.0);
-            }
-            sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.float64 = rwalk.generate(id);
-
-            aku_Status status = aku_write(db, &sample);
-
-            while (status == AKU_EBUSY) {
-                status = aku_write(db, &sample);
-                busy_count++;
-            }
-            if (i % 1000000 == 0) {
-                std::cout << i << " " << timer.elapsed() << "s" << std::endl;
-                timer.restart();
-            }
+        // =payload=
+        if (i == 1000000ul) {
+            // Add anomalous value
+            rwalk.add_anomaly(id, 100.0);
         }
-        std::cout << "!busy count = " << busy_count << std::endl;
+        if (i == 899999999ul) {
+            // Add anomalous value
+            rwalk.add_anomaly(id, 100.0);
+        }
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.float64 = rwalk.generate(id);
+
+        aku_Status status = aku_write(db, &sample);
+
+        while (status == AKU_EBUSY) {
+            status = aku_write(db, &sample);
+            busy_count++;
+        }
+        if (i % 1000000 == 0) {
+            std::cout << i << " " << timer.elapsed() << "s" << std::endl;
+            timer.restart();
+        }
     }
+    std::cout << "!busy count = " << busy_count << std::endl;
 
     aku_debug_print(db);
 
@@ -313,58 +290,53 @@ int main(int cnt, const char** args)
     aku_global_storage_stats(db, &storage_stats);
     print_storage_stats(storage_stats);
 
-    if (mode != CREATE) {
-        // Search
-        std::cout << "Sequential access" << std::endl;
-        aku_SearchStats search_stats = {0};
-        uint64_t counter = 0;
+    // Search
+    std::cout << "Sequential access" << std::endl;
+    aku_SearchStats search_stats = {0};
+    uint64_t counter = 0;
 
-        timer.restart();
+    timer.restart();
 
-        if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
-                                    NUM_ITERATIONS-1,
-                                    counter,
-                                    timer,
-                                    1000000))
-        {
-            return 2;
-        }
-
-        aku_global_search_stats(&search_stats, true);
-        print_search_stats(search_stats);
-
-        // Random access
-        std::cout << "Prepare test data" << std::endl;
-        std::vector<std::pair<aku_Timestamp, aku_Timestamp>> ranges;
-        for (aku_Timestamp i = 1u; i < (aku_Timestamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
-            aku_Timestamp j = (i - 1)*CHUNK_SIZE;
-            int count = 5;
-            for (int d = 0; d < count; d++) {
-                int r = std::rand() % CHUNK_SIZE;
-                int k = j + r;
-                ranges.push_back(std::make_pair(k, k+1));
-            }
-        }
-
-        std::random_shuffle(ranges.begin(), ranges.end());
-
-        std::cout << "Random access" << std::endl;
-        counter = 0;
-        timer.restart();
-        for(auto range: ranges) {
-            if (!query_database_forward(db, range.first, range.second, counter, timer, 1000)) {
-                return 3;
-            }
-        }
-        aku_global_search_stats(&search_stats, true);
-        print_search_stats(search_stats);
+    if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
+                                NUM_ITERATIONS-1,
+                                counter,
+                                timer,
+                                1000000))
+    {
+        return 2;
     }
+
+    aku_global_search_stats(&search_stats, true);
+    print_search_stats(search_stats);
+
+    // Random access
+    std::cout << "Prepare test data" << std::endl;
+    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> ranges;
+    for (aku_Timestamp i = 1u; i < (aku_Timestamp)NUM_ITERATIONS/CHUNK_SIZE; i++) {
+        aku_Timestamp j = (i - 1)*CHUNK_SIZE;
+        int count = 5;
+        for (int d = 0; d < count; d++) {
+            int r = std::rand() % CHUNK_SIZE;
+            int k = j + r;
+            ranges.push_back(std::make_pair(k, k+1));
+        }
+    }
+
+    std::random_shuffle(ranges.begin(), ranges.end());
+
+    std::cout << "Random access" << std::endl;
+    counter = 0;
+    timer.restart();
+    for(auto range: ranges) {
+        if (!query_database_forward(db, range.first, range.second, counter, timer, 1000)) {
+            return 3;
+        }
+    }
+    aku_global_search_stats(&search_stats, true);
+    print_search_stats(search_stats);
 
     aku_close_database(db);
 
-    if (mode == NONE) {
-        delete_storage();
-    }
     return 0;
 }
 

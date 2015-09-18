@@ -486,10 +486,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                             }
                             break;
                         case AKU_MAX_WRITE_SPEED:
-                            // Max speed
-                            if ((merge_lock % 32) == 1) {
-                                active_volume_->flush();
-                            }
                             break;
                         };
                         break;

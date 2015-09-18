@@ -21,6 +21,7 @@
 #include "compression.h"
 
 #include <thread>
+
 #include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -105,7 +106,6 @@ Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
 aku_Timestamp Sequencer::get_checkpoint_(aku_Timestamp ts) const {
-    // TODO: use fast integer division (libdivision or else)
     return ts / window_size_;
 }
 
@@ -362,9 +362,10 @@ void kway_merge(vector<Sequencer::PSortedRun>& runs, Consumer& cons) {
             for (auto& remaining_item: heap) {
                 int rem_ix = get<1>(remaining_item);
                 KeyType rem_key = get<0>(remaining_item);
-                Sequencer::PSortedRun run(new Sequencer::SortedRun());
-                run->push_back(rem_key);
                 auto range = ranges[rem_ix];
+                Sequencer::PSortedRun run(new Sequencer::SortedRun());
+                run->reserve(range.size() + 1);
+                run->push_back(rem_key);
                 std::copy(std::begin(range), std::end(range), std::back_inserter(*run));
                 remaining_runs.push_back(std::move(run));
             }
@@ -424,6 +425,9 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target, bool enforce_write)
 
     while(!ready_.empty()) {
         UncompressedChunk chunk_header;
+        chunk_header.paramids.reserve(c_threshold_);
+        chunk_header.timestamps.reserve(c_threshold_);
+        chunk_header.values.reserve(c_threshold_);
         int threshold = (int)c_threshold_;
         auto push_to_header = [&](TimeSeriesValue const& val) {
             if (threshold-->0) {

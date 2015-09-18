@@ -81,8 +81,12 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             BOOST_THROW_EXCEPTION(err);
         }
 
+        std::shared_ptr<IOBuf> iobuf(new IOBuf());
+
         while(!stop_.load(std::memory_order_relaxed)) {
-            std::shared_ptr<IOBuf> iobuf(new IOBuf());
+            if (!iobuf) {
+                iobuf.reset(new IOBuf());
+            }
             retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             // TODO: uset timeout to wake up thread periodically
             if (retval == -1) {
@@ -108,6 +112,8 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
                 };
 
                 parser.parse_next(pdu);
+
+                iobuf.reset();
             }
         }
     } catch(...) {

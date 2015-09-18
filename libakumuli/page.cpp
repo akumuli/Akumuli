@@ -214,6 +214,7 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     // Write compressed data
     aku_Status status = CompressionUtil::encode_chunk(&desc.n_elements, &first_ts, &last_ts, &writer, data);
     if (status != AKU_SUCCESS) {
+        std::cout << "encode chunk failed" << std::endl; // TODO: remove
         return status;
     }
 
@@ -227,10 +228,12 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     aku_MemRange head = {&desc, sizeof(desc)};
     status = add_entry(AKU_CHUNK_BWD_ID, first_ts, head);
     if (status != AKU_SUCCESS) {
+        std::cout << "add entry 1 failed" << std::endl; // TODO: remove
         return status;
     }
     status = add_entry(AKU_CHUNK_FWD_ID, last_ts, head);
     if (status != AKU_SUCCESS) {
+        std::cout << "add entry 2 failed" << std::endl; // TODO: remove
         return status;
     }
     return status;

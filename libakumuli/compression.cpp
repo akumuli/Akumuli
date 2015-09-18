@@ -274,8 +274,8 @@ bool reorder_chunk_header(UncompressedChunk const& header, UncompressedChunk* ou
 
 bool CompressionUtil::convert_from_chunk_order(UncompressedChunk const& header, UncompressedChunk* out) {
     auto fn = [&header](int lhs, int rhs) {
-        auto lhstup = std::make_tuple(header.timestamps[lhs], header.paramids[lhs]);
-        auto rhstup = std::make_tuple(header.timestamps[rhs], header.paramids[rhs]);
+        auto lhstup = header.timestamps[lhs];
+        auto rhstup = header.timestamps[rhs];
         return lhstup < rhstup;
     };
     return reorder_chunk_header(header, out, fn);
@@ -283,8 +283,8 @@ bool CompressionUtil::convert_from_chunk_order(UncompressedChunk const& header, 
 
 bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, UncompressedChunk* out) {
     auto fn = [&header](int lhs, int rhs) {
-        auto lhstup = std::make_tuple(header.paramids[lhs], header.timestamps[lhs]);
-        auto rhstup = std::make_tuple(header.paramids[rhs], header.timestamps[rhs]);
+        auto lhstup = header.paramids[lhs];
+        auto rhstup = header.paramids[rhs];
         return lhstup < rhstup;
     };
     return reorder_chunk_header(header, out, fn);
