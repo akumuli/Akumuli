@@ -37,7 +37,8 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>
     boost::barrier start_barrier_;  //< Barrier to start worker thread
     boost::barrier stop_barrier_;   //< Barrier to stop worker thread
     std::atomic<int> stop_;
-    int port_;
+    const int port_;
+    const int nworkers_;
 
     Logger logger_;
 

@@ -12,22 +12,24 @@
 namespace Akumuli {
 
 UdpServer::UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port)
-    : start_barrier_(nworkers + 1)
+    : pipeline_(pipeline)
+    , start_barrier_(nworkers + 1)
     , stop_barrier_(nworkers + 1)
     , stop_{0}
     , port_(port)
+    , nworkers_(nworkers)
     , logger_("UdpServer", 128)
 {
-    // Create workers
-    for (int i = 0; i < nworkers; i++) {
-        auto spout = pipeline->make_spout();
-        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), spout));
-        thread.detach();
-    }
 }
 
 
 void UdpServer::start() {
+    // Create workers
+    for (int i = 0; i < nworkers_; i++) {
+        auto spout = pipeline_->make_spout();
+        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), spout));
+        thread.detach();
+    }
     start_barrier_.wait();
 }
 
