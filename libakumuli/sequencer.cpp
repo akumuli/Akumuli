@@ -20,7 +20,7 @@
 #include "util.h"
 #include "compression.h"
 
-#include <thread>
+#include <future>
 
 #include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
@@ -102,6 +102,15 @@ Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
+
+    if (page) {
+        auto cnt = page->get_entries_count();
+        if (cnt != 0) {
+            auto ts = page->read_timestamp_at(cnt - 1);
+            checkpoint_ = get_checkpoint_(ts);
+            top_timestamp_ = get_timestamp_(ts);
+        }
+    }
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -411,6 +420,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
 
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
+
 
 aku_Status Sequencer::merge_and_compress(PageHeader* target, bool enforce_write) {
     bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start

@@ -504,10 +504,8 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
             case AKU_EOVERFLOW:
                 advance_volume_(local_rev);
                 break;  // retry
-            case AKU_ELATE_WRITE:
-                // Branch for rare and unexpected errors
             default:
-                log_error(aku_error_message(status));
+                // Branch for rare and unexpected errors
                 return status;
         }
     }

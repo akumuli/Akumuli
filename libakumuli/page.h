@@ -218,6 +218,13 @@ public:
     const aku_Entry* read_entry_at(uint32_t index) const;
 
     /**
+     * Get entry timefstamp by index
+     * @param index entry index
+     * @return timestamp
+     */
+    const aku_Timestamp read_timestamp_at(uint32_t index) const;
+
+    /**
      * Get pointer to entry without copying using offset
      * @param entry offset
      * @returns pointer to entry or NULL
