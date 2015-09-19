@@ -70,6 +70,17 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             BOOST_THROW_EXCEPTION(err);
         }
 
+        timeval tval;
+        tval.tv_sec = 0;
+        tval.tv_usec = 1000;  // 1ms
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof(tval)) == -1) {
+            const char* msg = strerror(errno);
+            std::stringstream fmt;
+            fmt << "can't set socket timeout: " << msg;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        }
+
         // Bind socket to port
         sa.sin_family = AF_INET;
         sa.sin_addr.s_addr = htonl(INADDR_ANY);

@@ -240,9 +240,10 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 
 TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port)
     : pline(pipeline)
-    , barrier(concurrency + 1)
+    , barrier(concurrency)
     , sig(io, SIGINT)
     , stopped{0}
+    , logger_("tcp-server", 32)
 {
     for(;concurrency --> 0;) {
         iovec.push_back(&io);
@@ -261,14 +262,15 @@ void TcpServer::start() {
                             boost::asio::placeholders::error)
                 );
 
-    auto iorun = [](IOServiceT& io, boost::barrier& bar) {
+    auto logger = &logger_;
+    auto iorun = [logger](IOServiceT& io, boost::barrier& bar) {
         auto fn = [&]() {
             try {
                 io.run();
                 bar.wait();
             } catch (RESPError const& e) {
-                std::cout << e.what() << std::endl;
-                std::cout << e.get_bottom_line() << std::endl;
+                logger->error() << e.what();
+                logger->error() << e.get_bottom_line();
                 throw;
             }
         };
@@ -283,43 +285,35 @@ void TcpServer::start() {
 
 void TcpServer::handle_sigint(boost::system::error_code err) {
     if (!err) {
-        if (stopped++ == 0) {
+        if (stopped == 0) {
             std::cout << "SIGINT catched, stopping pipeline" << std::endl;
-            for (auto io: iovec) {
-                io->stop();
-            }
-            pline->stop();
-            serv->stop();
-            barrier.wait();
-            std::cout << "Server stopped" << std::endl;
-        } else {
-            std::cout << "Already stopped (sigint)" << std::endl;
+            logger_.info() << "SIGINT catched, stopping pipeline";
+            stop();
+            stopped++;
         }
     } else {
-        std::cout << "Signal handler error " << err.message() << std::endl;
+        logger_.error() << "Signal handler error " << err.message();
     }
 }
 
 void TcpServer::stop() {
     if (stopped++ == 0) {
         serv->stop();
-        std::cout << "TcpServer stopped" << std::endl;
+        logger_.info() << "TcpServer stopped";
 
         sig.cancel();
 
         // No need to joint I/O threads, just wait until they completes.
         barrier.wait();
-        std::cout << "I/O threads stopped" << std::endl;
+        logger_.info() << "I/O threads stopped";
 
         pline->stop();
-        std::cout << "Pipeline stopped" << std::endl;
+        logger_.info() << "Pipeline stopped";
 
         for (auto io: iovec) {
             io->stop();
         }
-        std::cout << "I/O service stopped" << std::endl;
-    } else {
-        std::cout << "Already stopped" << std::endl;
+        logger_.info() << "I/O service stopped";
     }
 }
 
