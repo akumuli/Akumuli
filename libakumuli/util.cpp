@@ -261,9 +261,6 @@ int64_t log2(int64_t value) {
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
 }
 
-int leading_zeroes(int value) {
-    return __builtin_clz(value);
-}
 
 const void* align_to_page(const void* ptr, size_t page_size) {
     return reinterpret_cast<const void*>(

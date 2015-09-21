@@ -1,13 +1,13 @@
 #pragma once
 
-#include "util.h"
-
 #include <boost/circular_buffer.hpp>
 #include <boost/range.hpp>
 
 
 namespace Akumuli {
 namespace SAX {
+
+int leading_zeroes(int value);
 
 struct SAXWord {
 
@@ -19,7 +19,7 @@ struct SAXWord {
     // 11110 - 1E bits
     // 111110 - error
 
-    uint32_t buffer[8];  // 32 bytes
+    char buffer[32];
     // TODO: use dynamic memory if word is too large
 
     /** C-tor.
@@ -34,10 +34,7 @@ struct SAXWord {
     {
         int ix = 0;
         int shift = 0;
-        uint32_t* pbuf = buffer;
-        for(auto item: boost::make_iterator_range(begin, end)) {
-            // encode item
-            char c = *item;
+        for(auto c: boost::make_iterator_range(begin, end)) {
             int zerobits = leading_zeroes((int)c);
             int signbits = 8*sizeof(int) - zerobits;
             // Store mask
@@ -60,7 +57,7 @@ struct SAXWord {
                     signbits = 0x1E;
                 }
                 for (int i = 0; i < nmask; i++) {
-                    if (shift == 32) {
+                    if (shift == 8) {
                         ix++;
                         shift = 0;
                     }
@@ -70,7 +67,7 @@ struct SAXWord {
             }
             // Store payload
             for (int i = 0; i < signbits; i++) {
-                if (shift == 32) {
+                if (shift == 8) {
                     ix++;
                     shift = 0;
                 }
@@ -78,6 +75,62 @@ struct SAXWord {
                 shift++;
             }
         }
+    }
+
+    template<class It>
+    void read_n(int N, It it) {
+        int ix = 0;
+        int shift = 0;
+        int mask = 0;
+        int nbits = 0;
+        bool read_payload = false;
+        for (int i = 0; i < N; i++) {
+            mask <<= 1;
+            mask |= (buffer[ix] >> shift) & 0x1;
+            shift++;
+            if (shift == 8) {
+                ix++;
+                shift = 0;
+            }
+            switch(mask) {
+            case 0:
+                read_payload = true;
+                nbits = 0;
+                break;
+            case 2:
+                read_payload = true;
+                nbits = 2;
+                break;
+            case 6:
+                read_payload = true;
+                nbits = 6;
+                break;
+            case 0xE:
+                read_payload = true;
+                nbits = 30;
+                break;
+            case 0x1E:
+                read_payload = true;
+                nbits = 0x1E;
+                break;
+            default:
+                break;
+            }
+            if (read_payload) {
+                int payload = 0;
+                for(int j = 0; j < nbits; j++) {
+                    payload <<= 0;
+                    payload |= (buffer[ix] >> shift) & 0x1;
+                    shift++;
+                    if (shift == 8) {
+                        ix++;
+                        shift = 0;
+                    }
+                }
+                read_payload = false;
+            }
+        }
+
     }
 };
 

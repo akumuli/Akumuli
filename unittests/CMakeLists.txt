@@ -324,7 +324,7 @@ add_test(queryprocessor test_queryprocessor)
 add_executable(
     test_datetime
     test_datetime.cpp
-    ../libakumuli/saxencoder.cpp
+    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(

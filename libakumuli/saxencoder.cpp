@@ -26,7 +26,7 @@ static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
 }
 
 //! Z-norm series in-place
-static void znorm(double* array, size_t size, double threshold) {
+void znorm(double* array, size_t size, double threshold) {
     double mean, stddev;
     std::tie(mean, stddev) = mean_and_stddev(array, size);
     if (stddev < threshold) {
@@ -39,6 +39,11 @@ static void znorm(double* array, size_t size, double threshold) {
         }
     }
 }
+
+int leading_zeroes(int value) {
+    return __builtin_clz(value);
+}
+
 
 SAXEncoder::SAXEncoder(int alphabet, int window_width)
     : alphabet_(alphabet)
