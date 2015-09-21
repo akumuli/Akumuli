@@ -109,6 +109,9 @@ namespace Akumuli
     //! Fast integer logarithm
     int64_t log2(int64_t value);
 
+    //! Number of leading zeroes
+    int leading_zeroes(int value);
+
     std::tuple<bool, aku_Status> page_in_core(const void* addr);
 
     size_t get_page_size();

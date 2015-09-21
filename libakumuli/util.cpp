@@ -258,8 +258,11 @@ apr_status_t MemoryMappedFile::flush(size_t from, size_t to) {
 }
 
 int64_t log2(int64_t value) {
-    // TODO: visual studio version needed
     return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
+}
+
+int leading_zeroes(int value) {
+    return __builtin_clz(value);
 }
 
 const void* align_to_page(const void* ptr, size_t page_size) {

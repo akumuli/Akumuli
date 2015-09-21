@@ -324,7 +324,7 @@ add_test(queryprocessor test_queryprocessor)
 add_executable(
     test_datetime
     test_datetime.cpp
-    ../libakumuli/datetime.cpp
+    ../libakumuli/saxencoder.cpp
 )
 
 target_link_libraries(
@@ -333,3 +333,17 @@ target_link_libraries(
 )
 
 add_test(datetime test_datetime)
+
+# Sax test
+add_executable(
+    test_sax
+    test_sax.cpp
+    ../libakumuli/saxencoder.cpp
+)
+
+target_link_libraries(
+    test_sax
+    ${Boost_LIBRARIES}
+)
+
+add_test(SAX test_sax)
