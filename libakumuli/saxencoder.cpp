@@ -41,7 +41,7 @@ void znorm(double* array, size_t size, double threshold) {
 }
 
 int leading_zeroes(int value) {
-    return __builtin_clz(value);
+    return value == 0 ? sizeof(value)*8 : __builtin_clz(value);
 }
 
 
