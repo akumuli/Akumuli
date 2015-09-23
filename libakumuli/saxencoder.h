@@ -1,3 +1,19 @@
+/**
+ * Copyright (c) 2015 Eugene Lazin <4lazin@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 #pragma once
 
 #include <boost/circular_buffer.hpp>
@@ -12,15 +28,18 @@ int leading_zeroes(int value);
 struct SAXWord {
 
     // Compression schema
-    // 0 - no data
+    // 0 - no data stored (zero symbol)
     // 10 - 2 bits
     // 110 - 6 bits
     // 1110 - E bits
     // 11110 - 1E bits
     // 111110 - error
 
-    char buffer[32];
-    // TODO: use dynamic memory if word is too large
+    enum {
+        SIZE = 16
+    };
+
+    char buffer[SIZE];
 
     /** C-tor.
      */
@@ -28,6 +47,33 @@ struct SAXWord {
     {
     }
 
+    //! C-tor for unit-tests
+    SAXWord(const char* str)
+        : SAXWord(str, str + strlen(str))
+    {
+    }
+
+    //! Copy c-tor
+    SAXWord(const SAXWord& other) {
+        memcpy(buffer, other.buffer, SIZE);
+    }
+
+    SAXWord& operator = (const SAXWord& other) {
+        if (&other != this) {
+            memcpy(buffer, other.buffer, SIZE);
+        }
+        return *this;
+    }
+
+    bool operator != (const SAXWord& other) const {
+        return !std::equal(buffer, buffer+SIZE, other.buffer);
+    }
+
+    bool operator == (const SAXWord& other) const {
+        return std::equal(buffer, buffer+SIZE, other.buffer);
+    }
+
+    //! Copy data from sequence
     template<class FwdIt>
     SAXWord(FwdIt begin, FwdIt end)
         : SAXWord()
@@ -65,6 +111,10 @@ struct SAXWord {
                     if (shift == 8) {
                         ix++;
                         shift = 0;
+                        if (ix == SIZE) {
+                            std::runtime_error error("SAX word too long");
+                            BOOST_THROW_EXCEPTION(error);
+                        }
                     }
                     buffer[ix] |= ((1 & (mask >> i)) << shift);
                     shift++;
@@ -75,6 +125,10 @@ struct SAXWord {
                 if (shift == 8) {
                     ix++;
                     shift = 0;
+                    if (ix == SIZE) {
+                        std::runtime_error error("SAX word too long");
+                        BOOST_THROW_EXCEPTION(error);
+                    }
                 }
                 buffer[ix] |= ((1 & (payload >> i)) << shift);
                 shift++;
@@ -83,7 +137,7 @@ struct SAXWord {
     }
 
     template<class It>
-    void read_n(int N, It it) {
+    void read_n(int N, It it) const {
         int ix = 0;
         int shift = 0;
         int mask = 0;
@@ -96,6 +150,10 @@ struct SAXWord {
             if (shift == 8) {
                 ix++;
                 shift = 0;
+                if (ix == SIZE) {
+                    std::runtime_error error("sax word decoding out of bounds");
+                    BOOST_THROW_EXCEPTION(error);
+                }
             }
             switch(mask) {
             case 0:
@@ -119,6 +177,10 @@ struct SAXWord {
                 nbits = 0x1E;
                 break;
             default:
+                if (mask > 0x1E) {
+                    std::runtime_error error("invalid SAX word encoding");
+                    BOOST_THROW_EXCEPTION(error);
+                }
                 break;
             }
             if (read_payload) {
@@ -130,6 +192,10 @@ struct SAXWord {
                     if (shift == 8) {
                         ix++;
                         shift = 0;
+                        if (ix == SIZE) {
+                            std::runtime_error error("sax word decoding out of bounds");
+                            BOOST_THROW_EXCEPTION(error);
+                        }
                     }
                 }
                 *it++ = payload;
@@ -143,6 +209,7 @@ struct SAXWord {
     }
 };
 
+
 //! Symbolic Aggregate approXimmation encoder.
 struct SAXEncoder
 {
@@ -150,7 +217,7 @@ struct SAXEncoder
     const int window_width_;  //! sliding window width
 
     boost::circular_buffer<double> input_samples_;
-    boost::circular_buffer<SAXWord>   output_samples_;
+    SAXWord last_;
 
     /** C-tor
      * @param alphabet size should be a power of two
@@ -159,8 +226,10 @@ struct SAXEncoder
 
     /** Add sample to sliding window
      * @param sample value
+     * @param outword receives new sax word if true returned
+     * @returns true if new sax word returned; false otherwise
      */
-    void append(double sample);
+    bool encode(double sample, SAXWord *outword);
 };
 
 }
