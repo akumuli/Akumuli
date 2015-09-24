@@ -71,6 +71,9 @@ typedef struct {
         TIMESTAMP_BIT        = 1 << 1,
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT            = 1 << 4,
+        ERROR_CLIPPING       = 1 << 9,  /** indicates that some data was lost due to clipping
+                                            (extra payload stored in `data` was lost) */
+        SAX_WORD             = 1 << 10, /** indicates that SAX word is stored in extra payload */
     };
     uint16_t type;
 

@@ -31,6 +31,7 @@ namespace Akumuli {
 CursorFSM::CursorFSM()
     : usr_buffer_(nullptr)
     , usr_buffer_len_(0)
+    , item_len_(sizeof(aku_Sample))
     , write_index_(0)
     , error_(false)
     , error_code_(AKU_SUCCESS)
@@ -47,24 +48,40 @@ CursorFSM::~CursorFSM() {
 #endif
 }
 
-void CursorFSM::update_buffer(aku_Sample* buf, size_t buf_len) {
+void CursorFSM::update_buffer(void* buf, size_t item_len, size_t buf_len) {
+    assert(item_len >= sizeof(aku_Sample));
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
+    item_len_ = item_len;
     write_index_ = 0;
 }
 
 void CursorFSM::update_buffer(CursorFSM *other_fsm) {
     usr_buffer_ = other_fsm->usr_buffer_;
     usr_buffer_len_ = other_fsm->usr_buffer_len_;
+    item_len_ = other_fsm->item_len_;
     write_index_ = other_fsm->write_index_;
 }
 
 bool CursorFSM::can_put() const {
-    return usr_buffer_ != nullptr && write_index_ < usr_buffer_len_;
+    return usr_buffer_ != nullptr && write_index_ < (usr_buffer_len_/item_len_);
 }
 
 void CursorFSM::put(const aku_Sample &result) {
-    usr_buffer_[write_index_++] = result;
+    // new implementation
+    auto expected_len = item_len_;
+    if (expected_len > (result.payload.size == 0 ? sizeof(aku_Sample) : result.payload.size)) {
+        // write data with clipping
+        auto buf = reinterpret_cast<aku_Sample*>(usr_buffer_);
+        buf[write_index_] = result;
+        // indicate that some data was lost
+        buf[write_index_].payload.type |= aku_PData::ERROR_CLIPPING;
+    } else {
+        auto offset = write_index_ * item_len_;
+        auto ptr = (char*)usr_buffer_ + offset;
+        memcpy(ptr, &result, item_len_);
+    }
+    write_index_++;
 }
 
 bool CursorFSM::close() {
@@ -114,7 +131,13 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 // External cursor implementation
 
 size_t CoroCursor::read(aku_Sample *buf, size_t buf_len) {
-    cursor_fsm_.update_buffer(buf, buf_len);
+    cursor_fsm_.update_buffer(buf, sizeof(aku_Sample), buf_len*sizeof(aku_Sample));
+    coroutine_->operator()(this);
+    return cursor_fsm_.get_data_len();
+}
+
+size_t CoroCursor::read_ex(void* buffer, size_t item_size, size_t buffer_size) {
+    cursor_fsm_.update_buffer(buffer, item_size, buffer_size);
     coroutine_->operator()(this);
     return cursor_fsm_.get_data_len();
 }
@@ -238,7 +261,13 @@ void StacklessFanInCursorCombinator::read_impl_() {
 }
 
 size_t StacklessFanInCursorCombinator::read(aku_Sample *buf, size_t buf_len) {
-    cursor_fsm_.update_buffer(buf, buf_len);
+    cursor_fsm_.update_buffer(buf, sizeof(aku_Sample), buf_len*sizeof(aku_Sample));
+    read_impl_();
+    return cursor_fsm_.get_data_len();
+}
+
+size_t StacklessFanInCursorCombinator::read_ex(void* buffer, size_t item_size, size_t buffer_size) {
+    cursor_fsm_.update_buffer(buffer, item_size, buffer_size);
     read_impl_();
     return cursor_fsm_.get_data_len();
 }

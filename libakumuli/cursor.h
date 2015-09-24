@@ -35,8 +35,9 @@ std::ostream& operator << (std::ostream& st, aku_Sample res);
 
 class CursorFSM {
     // user data
-    aku_Sample       *usr_buffer_;        //! User owned buffer for output
+    void             *usr_buffer_;        //! User owned buffer for output
     size_t            usr_buffer_len_;    //! Size of the user owned buffer
+    size_t            item_len_;          //! Size of the sample
     // cursor state
     size_t            write_index_;       //! Current write position in usr_buffer_
     bool              error_;             //! Error flag
@@ -50,7 +51,7 @@ public:
     void put(aku_Sample const& result);
     void complete();
     void set_error(aku_Status error_code);
-    void update_buffer(aku_Sample* buf, size_t buf_len);
+    void update_buffer(void *buf, size_t item_len, size_t buf_len);
     void update_buffer(CursorFSM *other_fsm);
     bool close();
     // accessors
@@ -67,14 +68,24 @@ public:
 struct ExternalCursor {
     //! Read portion of the data to the buffer
     virtual size_t read(aku_Sample* buf, size_t buf_len) = 0;
+
+    /** New read interface for variably sized samples.
+     * @param buffer is an array of aku_Sample structs
+     * @param item_size defines size of each struct 0 - size = sizeof(aku_Sample)
+     * @param buffer_size defines size of the buffer in bytes (should be a multiple of item_size)
+     */
+    virtual size_t read_ex(void* buffer, size_t item_size, size_t buffer_size) = 0;
+
     //! Check is everything done
     virtual bool is_done() const = 0;
+
     //! Check is error occured and (optionally) get the error code
     virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const = 0;
+
     //! Finalizer
     virtual void close() = 0;
 
-    virtual ~ExternalCursor() {}
+    virtual ~ExternalCursor() = default;
 };
 
 
@@ -94,6 +105,8 @@ struct CoroCursor : Cursor {
     // External cursor implementation
 
     virtual size_t read(aku_Sample* buf, size_t buf_len);
+
+    virtual size_t read_ex(void* buffer, size_t item_size, size_t buffer_size);
 
     virtual bool is_done() const;
 
@@ -201,6 +214,7 @@ public:
     // ExternalCursor interface
 public:
     virtual size_t read(aku_Sample *buf, size_t buf_len);
+    virtual size_t read_ex(void* buffer, size_t item_size, size_t buffer_size);
     virtual bool is_done() const;
     virtual bool is_error(aku_Status *out_error_code_or_null) const;
     virtual void close();
