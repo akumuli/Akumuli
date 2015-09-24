@@ -51,8 +51,18 @@ typedef struct {
 
 //! Payload data
 typedef struct {
+    //------------------------------------------//
+    //       Normal payload (float value)       //
+    //------------------------------------------//
+
     //! Value
     double float64;
+
+    /** Payload size (payload can be variably sized)
+     *  size = 0 means size = sizeof(aku_Sample)
+     */
+    uint16_t size;
+
     //! Data element flags
     enum {
         EMPTY                = 0,
@@ -62,7 +72,15 @@ typedef struct {
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT            = 1 << 4,
     };
-    uint32_t type;
+    uint16_t type;
+
+    //---------------------------//
+    //       Extra payload       //
+    //---------------------------//
+
+    //! Extra payload data
+    char data[0];
+
 } aku_PData;
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)

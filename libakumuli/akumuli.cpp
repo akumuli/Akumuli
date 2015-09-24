@@ -93,7 +93,7 @@ struct CursorImpl : aku_Cursor {
         : query_(query)
     {
         status_ = AKU_SUCCESS;
-        cursor_ = CoroCursor::make(&Storage::searchV2, &storage, query_.data());
+        cursor_ = CoroCursor::make(&Storage::search, &storage, query_.data());
     }
 
     ~CursorImpl() {

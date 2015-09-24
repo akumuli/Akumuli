@@ -18,6 +18,7 @@
 #include "util.h"
 #include "datetime.h"
 #include "anomalydetector.h"
+#include "saxencoder.h"
 
 #include <random>
 #include <algorithm>
@@ -493,6 +494,53 @@ struct AnomalyDetector : Node {
     }
 };
 
+
+//                      //
+//      SAX Encoder     //
+//                      //
+
+struct SAXNode : Node {
+
+    std::shared_ptr<Node> next_;
+    SAX::SAXEncoder encoder_;
+    int window_width_;
+    int alphabet_size_;
+
+    SAXNode(int alphabet_size, int window_width)
+        : encoder_(alphabet_size, window_width)
+        , window_width_(window_width)
+        , alphabet_size_(alphabet_size)
+    {
+    }
+
+    void complete() {
+        next_->complete();
+    }
+
+    bool put(const aku_Sample &sample) {
+        if (sample.payload.type != aku_PData::EMPTY) {
+            SAX::SAXWord word;
+            if (encoder_.encode(sample.payload.float64, &word)) {
+                size_t ssize = sizeof(aku_Sample) + window_width_;
+                void* ptr = alloca(ssize);
+                aku_Sample* psample = new (ptr) aku_Sample();
+                *psample = sample;
+                psample->payload.size = ssize;
+                word.read_n(window_width_, psample->payload.data);
+                return next_->put(*psample);
+            }
+        }
+        return true;
+    }
+
+    void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    NodeType get_type() const {
+        return Node::SAX;
+    }
+};
 
 
 //                                   //

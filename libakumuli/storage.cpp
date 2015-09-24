@@ -390,7 +390,7 @@ private:
     timeval _start_time;
 };
 
-void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
+void Storage::search(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
     try {
