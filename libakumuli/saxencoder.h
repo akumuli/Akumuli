@@ -213,11 +213,14 @@ struct SAXWord {
 //! Symbolic Aggregate approXimmation encoder.
 struct SAXEncoder
 {
-    const int alphabet_;      //! alphabet size
-    const int window_width_;  //! sliding window width
+    int alphabet_;      //! alphabet size
+    int window_width_;  //! sliding window width
 
     boost::circular_buffer<double> input_samples_;
-    SAXWord last_;
+    std::string buffer_;
+    std::string last_;
+
+    SAXEncoder();
 
     /** C-tor
      * @param alphabet size should be a power of two
@@ -229,7 +232,7 @@ struct SAXEncoder
      * @param outword receives new sax word if true returned
      * @returns true if new sax word returned; false otherwise
      */
-    bool encode(double sample, SAXWord *outword);
+    bool encode(double sample, char *outword, size_t outword_size);
 };
 
 }

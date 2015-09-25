@@ -23,16 +23,19 @@ namespace SAX {
 
 #define AKU_ZNORM_THRESHOLD 1e-10
 
-static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
+template<class It>
+std::tuple<double, double> mean_and_stddev(It begin, It end) {
+    size_t size = std::distance(begin, end);
     if (size == 0) {
         return std::make_tuple(NAN, NAN);
     }
     double sqrsum = 0;
     double sum = 0;
     int count = 0;
-    for (size_t i = 0; i < size; i++) {
-        sqrsum += array[i] * array[i];
-        sum += array[i];
+    for (auto it = begin; it < end; it++) {
+        auto val = *it;
+        sqrsum += val * val;
+        sum += val;
         count += 1;
     }
     double stddev;
@@ -45,20 +48,6 @@ static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
     return std::make_tuple(mean, stddev);
 }
 
-//! Z-norm series in-place
-static void znorm(double* array, size_t size, double threshold) {
-    double mean, stddev;
-    std::tie(mean, stddev) = mean_and_stddev(array, size);
-    if (stddev < threshold) {
-        for (size_t i = 0; i < size; i++) {
-            array[i] -= mean;
-        }
-    } else {
-        for (size_t i = 0; i < size; i++) {
-            array[i] = (array[i] - mean) / stddev;
-        }
-    }
-}
 
 // source: https://github.com/jMotif/SAX/blob/master/src/main/java/net/seninp/jmotif/sax/alphabet/NormalAlphabet.java
 static const std::map<int, std::vector<double>> CUTPOINTS = {
@@ -151,7 +140,7 @@ static char to_char(double value, const std::vector<double>& cuts) {
 }
 
 //! Convert array of doubles to characters (both array modified in-place)
-static void saxify(double* input, char* output, size_t size, double threshold, int alphabet_size) {
+static void saxify(const boost::circular_buffer<double>& input, std::string& output, double threshold, int alphabet_size) {
     auto it = CUTPOINTS.find(alphabet_size);
     if (it == CUTPOINTS.end()) {
         std::runtime_error error("invalid alphabet size");
@@ -159,10 +148,20 @@ static void saxify(double* input, char* output, size_t size, double threshold, i
     }
     const std::vector<double>& cuts = it->second;
 
-    znorm(input, size, threshold);
-
-    for (auto i = 0u; i < size; i++) {
-        output[i] = to_char(input[i], cuts);
+    double mean, stddev;
+    std::tie(mean, stddev) = mean_and_stddev(input.begin(), input.end());
+    auto size = input.size();
+    output.resize(size);
+    if (stddev < threshold) {
+        for (size_t i = 0; i < size; i++) {
+            double val = input[i] - mean;
+            output[i] = to_char(val, cuts);
+        }
+    } else {
+        for (size_t i = 0; i < size; i++) {
+            double val = (input[i] - mean) / stddev;
+            output[i] = to_char(val, cuts);
+        }
     }
 }
 
@@ -171,6 +170,13 @@ int leading_zeroes(int value) {
 }
 
 
+SAXEncoder::SAXEncoder()
+    : alphabet_(0)
+    , window_width_(0)
+    , input_samples_(1)
+{
+}
+
 SAXEncoder::SAXEncoder(int alphabet, int window_width)
     : alphabet_(alphabet)
     , window_width_(window_width)
@@ -178,21 +184,16 @@ SAXEncoder::SAXEncoder(int alphabet, int window_width)
 {
 }
 
-bool SAXEncoder::encode(double sample, SAXWord *outword) {
+bool SAXEncoder::encode(double sample, char *outword, size_t outword_size) {
     input_samples_.push_back(sample);
     if (input_samples_.full()) {
         // scan samples
-        std::vector<double> cp;
-        std::vector<char> out;
-        out.resize(input_samples_.size());
-        std::copy(input_samples_.begin(), input_samples_.end(), std::back_inserter(cp));
-        saxify(cp.data(), out.data(), cp.size(), AKU_ZNORM_THRESHOLD, alphabet_);
-
-        SAXWord word(out.begin(), out.end());
-        if (word != last_) {
+        saxify(input_samples_, buffer_, AKU_ZNORM_THRESHOLD, alphabet_);
+        if (buffer_ != last_) {
             // Simple numerocity reduction
-            last_ = word;
-            *outword = word;
+            last_ = buffer_;
+            memcpy(outword, buffer_.data(), buffer_.size());
+            buffer_.clear();
             return true;
         }
     }

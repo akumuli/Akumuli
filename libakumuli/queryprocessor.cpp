@@ -502,15 +502,16 @@ struct AnomalyDetector : Node {
 struct SAXNode : Node {
 
     std::shared_ptr<Node> next_;
-    SAX::SAXEncoder encoder_;
+    std::unordered_map<aku_ParamId, SAX::SAXEncoder> encoders_;
     int window_width_;
     int alphabet_size_;
+    bool disable_value_;
 
-    SAXNode(int alphabet_size, int window_width, std::shared_ptr<Node> next)
+    SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next)
         : next_(next)
-        , encoder_(alphabet_size, window_width)
         , window_width_(window_width)
         , alphabet_size_(alphabet_size)
+        , disable_value_(disable_original_value)
     {
     }
 
@@ -521,13 +522,21 @@ struct SAXNode : Node {
     bool put(const aku_Sample &sample) {
         if (sample.payload.type != aku_PData::EMPTY) {
             SAX::SAXWord word;
-            if (encoder_.encode(sample.payload.float64, &word)) {
-                size_t ssize = sizeof(aku_Sample) + window_width_;
-                void* ptr = alloca(ssize);
-                aku_Sample* psample = new (ptr) aku_Sample();
-                *psample = sample;
-                psample->payload.size = ssize;
-                word.read_n(window_width_, psample->payload.data);
+            auto it = encoders_.find(sample.paramid);
+            if (it == encoders_.end()) {
+                encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
+                it = encoders_.find(sample.paramid);
+            }
+            size_t ssize = sizeof(aku_Sample) + window_width_;
+            void* ptr = alloca(ssize);
+            aku_Sample* psample = new (ptr) aku_Sample();
+            *psample = sample;
+            psample->payload.size = ssize;
+            psample->payload.type |= aku_PData::SAX_WORD;
+            if (disable_value_) {
+                psample->payload.type &= ~aku_PData::FLOAT_BIT;
+            }
+            if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
                 return next_->put(*psample);
             }
         }
@@ -678,9 +687,10 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
         } else if (name == "SAX") {
             int alphabet_size = ptree.get<int>("alphabet_size");
             int window_width  = ptree.get<int>("window_width");
+            bool disable_val  = ptree.get<bool>("no_value", true);
             validate_coef(alphabet_size, 1.0, 20.0, "`alphabet_size` should be in [1, 20] range");
             validate_coef(window_width, 4.0, 100.0, "`window_width` should be in [4, 100] range");
-            return std::make_shared<SAXNode>(alphabet_size, window_width, next);
+            return std::make_shared<SAXNode>(alphabet_size, window_width, disable_val, next);
         }
         // only this one is implemented
         NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");

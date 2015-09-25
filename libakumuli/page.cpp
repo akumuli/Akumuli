@@ -523,6 +523,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             aku_PData pdata;
             pdata.type = AKU_PAYLOAD_FLOAT;
             pdata.float64 = header->values.at(i);
+            pdata.size = sizeof(aku_Sample);
             aku_Sample result = {
                 header->timestamps.at(i),
                 header->paramids.at(i),
