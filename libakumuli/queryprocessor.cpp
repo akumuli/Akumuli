@@ -506,8 +506,9 @@ struct SAXNode : Node {
     int window_width_;
     int alphabet_size_;
 
-    SAXNode(int alphabet_size, int window_width)
-        : encoder_(alphabet_size, window_width)
+    SAXNode(int alphabet_size, int window_width, std::shared_ptr<Node> next)
+        : next_(next)
+        , encoder_(alphabet_size, window_width)
         , window_width_(window_width)
         , alphabet_size_(alphabet_size)
     {
@@ -670,10 +671,16 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             double beta = ptree.get<double>("beta", 0.0);
             double gamma = ptree.get<double>("gamma", 0.0);
             int period = ptree.get<int>("period", 0);
-            validate_coef(alpha, 0.0, 1.0, "alpha should be in [0, 1] range");
-            validate_coef(beta,  0.0, 1.0, "beta should be in [0, 1] range");
-            validate_coef(gamma, 0.0, 1.0, "gamma should be in [0, 1] range");
+            validate_coef(alpha, 0.0, 1.0, "`alpha` should be in [0, 1] range");
+            validate_coef(beta,  0.0, 1.0, "`beta` should be in [0, 1] range");
+            validate_coef(gamma, 0.0, 1.0, "`gamma` should be in [0, 1] range");
             return std::make_shared<AnomalyDetector>(hashes, bits, threshold, alpha, beta, gamma, period, method, next);
+        } else if (name == "SAX") {
+            int alphabet_size = ptree.get<int>("alphabet_size");
+            int window_width  = ptree.get<int>("window_width");
+            validate_coef(alphabet_size, 1.0, 20.0, "`alphabet_size` should be in [1, 20] range");
+            validate_coef(window_width, 4.0, 100.0, "`window_width` should be in [4, 100] range");
+            return std::make_shared<SAXNode>(alphabet_size, window_width, next);
         }
         // only this one is implemented
         NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
