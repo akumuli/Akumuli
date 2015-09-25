@@ -46,6 +46,12 @@ struct CSVOutputFormatter : OutputFormatter {
         bool newline_required = false;
 
         int len = 0;
+
+        if (sample.payload.type & aku_PData::EMPTY) {
+            // Skip empty samples
+            return pskip;
+        }
+
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
             len = connection_->param_id_to_series(sample.paramid, begin, size);
@@ -110,6 +116,7 @@ struct CSVOutputFormatter : OutputFormatter {
         if (size < 0) {
             return nullptr;
         }
+
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
             // Floating-point
             len = snprintf(begin, size, "+%e\n", sample.payload.float64);
@@ -119,9 +126,18 @@ struct CSVOutputFormatter : OutputFormatter {
             begin += len;
             size  -= len;
             newline_required = false;  // new line already added
-        } else {
-            // Something went wrong
-            return pskip;
+        } else if (sample.payload.type & aku_PData::SAX_WORD) {
+            size_t sample_size = std::max(sizeof(aku_Sample), (size_t)sample.payload.size);
+            int sax_word_sz = static_cast<int>(sample_size - sizeof(aku_Sample));
+            if (size < (sax_word_sz + 3)) {
+                return nullptr;
+            }
+            for(int i = 0; i < sax_word_sz; i++) {
+                begin[i] = sample.payload.data[i];
+            }
+            begin += sax_word_sz;
+            size  -= sax_word_sz;
+            newline_required = true;
         }
 
         if (newline_required) {
@@ -165,6 +181,11 @@ struct RESPOutputFormatter : OutputFormatter {
         // sz can't be zero here because of precondition
 
         int len = 0;
+        if (sample.payload.type == aku_PData::EMPTY) {
+            // skip empty samples
+            return pskip;
+        }
+
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
             len = connection_->param_id_to_series(sample.paramid, begin, size);
@@ -232,6 +253,7 @@ struct RESPOutputFormatter : OutputFormatter {
         if (size < 0) {
             return nullptr;
         }
+
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
             // Floating-point
             len = snprintf(begin, size, "+%e\r\n", sample.payload.float64);
@@ -240,9 +262,21 @@ struct RESPOutputFormatter : OutputFormatter {
             }
             begin += len;
             size  -= len;
-        } else {
-            // Something went wrong
-            return pskip;
+        } else if (sample.payload.type & aku_PData::SAX_WORD) {
+            size_t sample_size = std::max(sizeof(aku_Sample), (size_t)sample.payload.size);
+            int sax_word_sz = static_cast<int>(sample_size - sizeof(aku_Sample));
+            if (size < (sax_word_sz + 3)) {
+                return nullptr;
+            }
+            for(int i = 0; i < sax_word_sz; i++) {
+                begin[i] = sample.payload.data[i];
+            }
+            begin += sax_word_sz;
+            size  -= sax_word_sz;
+            begin[0] = '\r';
+            begin[1] = '\n';
+            begin += 2;
+            size  -= 2;
         }
         return begin;
     }
@@ -354,13 +388,15 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
     char* begin = buf;
     char* end = begin + buf_size;
     while(rdbuf_pos_ < rdbuf_top_) {
-        char* next = formatter_->format(begin, end, rdbuf_.at(rdbuf_pos_));
+        const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(rdbuf_.data() + rdbuf_pos_);
+        char* next = formatter_->format(begin, end, *sample);
         if (next == nullptr) {
             // done
             break;
         }
         begin = next;
-        rdbuf_pos_++;
+        assert(sample->payload.size);
+        rdbuf_pos_ += sample->payload.size;
     }
     return std::make_tuple(begin - buf, false);
 }

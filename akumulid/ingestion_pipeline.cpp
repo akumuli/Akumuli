@@ -21,7 +21,7 @@ struct AkumuliCursor : DbCursor {
 
     AkumuliCursor(aku_Cursor* cur) : cursor_(cur) { }
 
-    virtual size_t read(aku_Sample *dest, size_t dest_size) {
+    virtual size_t read(void *dest, size_t dest_size) {
         return aku_cursor_read(cursor_, dest, dest_size);
     }
 

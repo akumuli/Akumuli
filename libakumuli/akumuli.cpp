@@ -112,10 +112,10 @@ struct CursorImpl : aku_Cursor {
         return cursor_->is_error(out_error_code_or_null);
     }
 
-    size_t read_values( aku_Sample     *values
-                      , size_t          values_size )
+    size_t read_values( void  *values
+                      , size_t values_size )
     {
-        return cursor_->read(values, values_size);
+        return cursor_->read_ex(values, values_size);
     }
 };
 
@@ -303,7 +303,7 @@ void aku_cursor_close(aku_Cursor* pcursor) {
 }
 
 size_t aku_cursor_read( aku_Cursor       *cursor
-                      , aku_Sample       *dest
+                      , void             *dest
                       , size_t            dest_size)
 {
     // read columns from data store

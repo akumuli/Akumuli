@@ -17,27 +17,33 @@ struct CursorMock : DbCursor {
     constexpr static const double floatval = 3.1415;
     bool isdone_ = false;
 
-    size_t read(aku_Sample *dest, size_t dest_size) {
+    size_t read(void *dest, size_t dest_size) {
+        return read_impl((aku_Sample*)dest, dest_size);
+    }
+
+    size_t read_impl(aku_Sample *dest, size_t dest_size) {
         if (isdone_ == true) {
             return 0;
         }
-        if (dest_size < 2) {
+        if (dest_size < 2*sizeof(aku_Sample)) {
             BOOST_FAIL("invalid mock usage");
         }
         // first value
         dest[0].paramid = 33;
         aku_parse_timestamp("20141210T074243.111999", &dest[0]);
+        dest[0].payload.size = sizeof(aku_Sample);
         dest[0].payload.type = AKU_PAYLOAD_FLOAT;
         dest[0].payload.float64 = floatval;
 
         // second value
         dest[1].paramid = 44;
         aku_parse_timestamp("20141210T122434.999111", &dest[1]);
+        dest[1].payload.size = sizeof(aku_Sample);
         dest[1].payload.type = AKU_PAYLOAD_FLOAT;
         dest[1].payload.float64 = floatval;
 
         isdone_ = true;
-        return 2;
+        return 2*sizeof(aku_Sample);
     }
 
     int is_done() {

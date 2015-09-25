@@ -31,8 +31,7 @@ namespace Akumuli {
 CursorFSM::CursorFSM()
     : usr_buffer_(nullptr)
     , usr_buffer_len_(0)
-    , item_len_(sizeof(aku_Sample))
-    , write_index_(0)
+    , write_offset_(0)
     , error_(false)
     , error_code_(AKU_SUCCESS)
     , complete_(false)
@@ -48,40 +47,28 @@ CursorFSM::~CursorFSM() {
 #endif
 }
 
-void CursorFSM::update_buffer(void* buf, size_t item_len, size_t buf_len) {
-    assert(item_len >= sizeof(aku_Sample));
+void CursorFSM::update_buffer(void* buf, size_t buf_len) {
     usr_buffer_ = buf;
     usr_buffer_len_ = buf_len;
-    item_len_ = item_len;
-    write_index_ = 0;
+    write_offset_ = 0;
 }
 
 void CursorFSM::update_buffer(CursorFSM *other_fsm) {
     usr_buffer_ = other_fsm->usr_buffer_;
     usr_buffer_len_ = other_fsm->usr_buffer_len_;
-    item_len_ = other_fsm->item_len_;
-    write_index_ = other_fsm->write_index_;
+    write_offset_ = other_fsm->write_offset_;
 }
 
-bool CursorFSM::can_put() const {
-    return usr_buffer_ != nullptr && write_index_ < (usr_buffer_len_/item_len_);
+bool CursorFSM::can_put(int size) const {
+    return usr_buffer_ != nullptr && (write_offset_ + size) < usr_buffer_len_;
 }
 
 void CursorFSM::put(const aku_Sample &result) {
     // new implementation
-    auto expected_len = item_len_;
-    if (expected_len > (result.payload.size == 0 ? sizeof(aku_Sample) : result.payload.size)) {
-        // write data with clipping
-        auto buf = reinterpret_cast<aku_Sample*>(usr_buffer_);
-        buf[write_index_] = result;
-        // indicate that some data was lost
-        buf[write_index_].payload.type |= aku_PData::ERROR_CLIPPING;
-    } else {
-        auto offset = write_index_ * item_len_;
-        auto ptr = (char*)usr_buffer_ + offset;
-        memcpy(ptr, &result, item_len_);
-    }
-    write_index_++;
+    auto len = std::max(result.payload.size, (uint16_t)sizeof(aku_Sample));
+    auto ptr = (char*)usr_buffer_ + write_offset_;
+    memcpy(ptr, &result, len);
+    write_offset_ += len;
 }
 
 bool CursorFSM::close() {
@@ -113,7 +100,7 @@ bool CursorFSM::get_error(aku_Status *error_code) const {
 }
 
 size_t CursorFSM::get_data_len() const {
-    return write_index_;
+    return write_offset_;
 }
 
 // CoroCursor
@@ -130,14 +117,8 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 
 // External cursor implementation
 
-size_t CoroCursor::read(aku_Sample *buf, size_t buf_len) {
-    cursor_fsm_.update_buffer(buf, sizeof(aku_Sample), buf_len*sizeof(aku_Sample));
-    coroutine_->operator()(this);
-    return cursor_fsm_.get_data_len();
-}
-
-size_t CoroCursor::read_ex(void* buffer, size_t item_size, size_t buffer_size) {
-    cursor_fsm_.update_buffer(buffer, item_size, buffer_size);
+size_t CoroCursor::read_ex(void* buffer, size_t buffer_size) {
+    cursor_fsm_.update_buffer(buffer, buffer_size);
     coroutine_->operator()(this);
     return cursor_fsm_.get_data_len();
 }
@@ -168,7 +149,7 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
     if (cursor_fsm_.is_done()) {
         return false;
     }
-    if (!cursor_fsm_.can_put()) {
+    if (!cursor_fsm_.can_put(std::max(result.payload.size, (uint16_t)sizeof(aku_Sample)))) {
         // yield control to client
         caller();
     }
@@ -185,121 +166,6 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
 void CoroCursor::complete(Caller& caller) {
     cursor_fsm_.complete();
     caller();
-}
-
-
-// StacklessFanInCursorCombinator
-
-StacklessFanInCursorCombinator::StacklessFanInCursorCombinator(
-        ExternalCursor** in_cursors,
-        int size,
-        int direction)
-    : direction_(direction)
-    , in_cursors_(in_cursors, in_cursors + size)
-    , pred_{direction}
-{
-    aku_Status error = AKU_SUCCESS;
-    for (auto cursor: in_cursors_) {
-        if (cursor->is_error(&error)) {
-            set_error(error);
-            return;
-        }
-    }
-
-    const size_t BUF_LEN = 0x200;
-    aku_Sample buffer[BUF_LEN];
-    for(auto cur_index = 0u; cur_index < in_cursors_.size(); cur_index++) {
-        if (!in_cursors_[cur_index]->is_done()) {
-            ExternalCursor* cursor = in_cursors_[cur_index];
-            size_t nwrites = cursor->read(buffer, BUF_LEN);
-            if (cursor->is_error(&error)) {
-                set_error(error);
-                return;
-            }
-            for (size_t buf_ix = 0u; buf_ix < nwrites; buf_ix++) {
-                auto cur_count = nwrites - buf_ix;
-                auto key = std::make_tuple(buffer[buf_ix], cur_index, cur_count);
-                heap_.push_back(key);
-            }
-        }
-    }
-
-    std::make_heap(heap_.begin(), heap_.end(), pred_);
-}
-
-void StacklessFanInCursorCombinator::read_impl_() {
-    // Check preconditions
-    aku_Status error = AKU_SUCCESS;
-    bool proceed = true;
-    const size_t BUF_LEN = 0x200;
-    aku_Sample buffer[BUF_LEN];
-    while(proceed && !heap_.empty()) {
-        std::pop_heap(heap_.begin(), heap_.end(), pred_);
-        auto item = heap_.back();
-        const aku_Sample& cur_result = std::get<0>(item);
-        int cur_index = std::get<1>(item);
-        int cur_count = std::get<2>(item);
-        proceed = put(cur_result);
-        heap_.pop_back();
-        if (cur_count == 1 && !in_cursors_[cur_index]->is_done()) {
-            ExternalCursor* cursor = in_cursors_[cur_index];
-            size_t nwrites = cursor->read(buffer, BUF_LEN);
-            if (cursor->is_error(&error)) {
-                set_error(error);
-                return;
-            }
-            for (size_t buf_ix = 0u; buf_ix < nwrites; buf_ix++) {
-                auto key = std::make_tuple(buffer[buf_ix], cur_index, nwrites - buf_ix);
-                heap_.push_back(key);
-                std::push_heap(heap_.begin(), heap_.end(), pred_);
-            }
-        }
-    }
-    if (heap_.empty()) {
-        complete();
-    }
-}
-
-size_t StacklessFanInCursorCombinator::read(aku_Sample *buf, size_t buf_len) {
-    cursor_fsm_.update_buffer(buf, sizeof(aku_Sample), buf_len*sizeof(aku_Sample));
-    read_impl_();
-    return cursor_fsm_.get_data_len();
-}
-
-size_t StacklessFanInCursorCombinator::read_ex(void* buffer, size_t item_size, size_t buffer_size) {
-    cursor_fsm_.update_buffer(buffer, item_size, buffer_size);
-    read_impl_();
-    return cursor_fsm_.get_data_len();
-}
-
-bool StacklessFanInCursorCombinator::is_done() const {
-    return cursor_fsm_.is_done();
-}
-
-bool StacklessFanInCursorCombinator::is_error(aku_Status *out_error_code_or_null) const {
-    return cursor_fsm_.get_error(out_error_code_or_null);
-}
-
-void StacklessFanInCursorCombinator::close() {
-    for (auto cursor: in_cursors_) {
-        cursor->close();
-    }
-    cursor_fsm_.close();
-}
-
-void StacklessFanInCursorCombinator::set_error(aku_Status error_code) {
-    cursor_fsm_.set_error(error_code);
-}
-
-bool StacklessFanInCursorCombinator::put(aku_Sample const& result) {
-    if (cursor_fsm_.can_put()) {
-        cursor_fsm_.put(result);
-    }
-    return cursor_fsm_.is_done();
-}
-
-void StacklessFanInCursorCombinator::complete() {
-    cursor_fsm_.complete();
 }
 
 }

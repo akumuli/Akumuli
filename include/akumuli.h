@@ -306,8 +306,8 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @param dest_size is an output buffer size
   * @returns number of overwriten elements
   */
-AKU_EXPORT size_t aku_cursor_read( aku_Cursor       *cursor
-                                 , aku_Sample       *dest
+AKU_EXPORT size_t aku_cursor_read(aku_Cursor       *cursor
+                                 , void *dest
                                  , size_t            dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.

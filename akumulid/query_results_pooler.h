@@ -16,11 +16,13 @@ struct QueryResultsPooler : Http::QueryResultsPooler {
     std::string query_text_;
     std::shared_ptr<DbConnection> connection_;
     std::shared_ptr<DbCursor> cursor_;
-    std::vector<aku_Sample> rdbuf_;
     std::unique_ptr<OutputFormatter> formatter_;
-    size_t rdbuf_pos_;
-    size_t rdbuf_top_;
+
+    std::vector<char>   rdbuf_;       //! Read buffer
+    int                 rdbuf_pos_;   //! Read position in buffer
+    int                 rdbuf_top_;   //! Last initialized item _index_ in `rdbuf_`
     static const size_t DEFAULT_RDBUF_SIZE_ = 1000u;
+    static const size_t DEFAULT_ITEM_SIZE_ = sizeof(aku_Sample);
 
     QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize);
 
