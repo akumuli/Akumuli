@@ -64,9 +64,17 @@ bool CursorFSM::can_put(int size) const {
 }
 
 void CursorFSM::put(const aku_Sample &result) {
-    // new implementation
     auto len = std::max(result.payload.size, (uint16_t)sizeof(aku_Sample));
     auto ptr = (char*)usr_buffer_ + write_offset_;
+    assert(len >= sizeof(aku_Sample));
+    assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
+           result.payload.size == sizeof(aku_Sample) :
+           result.payload.size >= sizeof(aku_Sample));
+    if (len > sizeof(aku_Sample)) {
+        std::cout << "CursorFSM::len " << len << std::endl;
+        std::cout << "CursorFSM::write_offset_ " << write_offset_ << std::endl;
+        std::cout << "CursorFSM::usr_buffer_len_ " << usr_buffer_len_ << std::endl;
+    }
     memcpy(ptr, &result, len);
     write_offset_ += len;
 }

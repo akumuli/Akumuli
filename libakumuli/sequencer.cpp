@@ -66,6 +66,7 @@ aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     aku_Sample res;
     res.payload.type    = AKU_PAYLOAD_FLOAT;
     res.payload.float64 = value;
+    res.payload.size    = sizeof(aku_Sample);
     res.paramid         = key_id_;
     res.timestamp       = key_ts_;
     return res;

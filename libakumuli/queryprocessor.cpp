@@ -169,6 +169,7 @@ struct PAA : Node {
                 sample.paramid = pair.first;
                 sample.payload.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
+                sample.payload.size = sizeof(aku_Sample);
                 sample.timestamp = ts;
                 state.reset();
                 if (!next_->put(sample)) {
@@ -326,6 +327,7 @@ struct SpaceSaver : Node {
                 s.paramid = it.first;
                 s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
                 s.payload.float64 = it.second.count;
+                s.payload.size = sizeof(aku_Sample);
                 samples.push_back(s);
             }
         }
@@ -891,6 +893,7 @@ bool MetadataQueryProcessor::start() {
         s.paramid = id;
         s.timestamp = 0;
         s.payload.type = aku_PData::PARAMID_BIT;
+        s.payload.size = sizeof(aku_Sample);
         if (!root_->put(s)) {
             return false;
         }

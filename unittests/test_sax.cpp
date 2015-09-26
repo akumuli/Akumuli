@@ -22,13 +22,6 @@ BOOST_AUTO_TEST_CASE(Test_sax_word) {
 }
 
 
-std::string sax_to_str(int n, const SAXWord& word) {
-    std::string out;
-    word.read_n(n, std::back_inserter(out));
-    return out;
-}
-
-
 BOOST_AUTO_TEST_CASE(Test_encoding) {
 
     std::vector<double> input = {
@@ -40,9 +33,10 @@ BOOST_AUTO_TEST_CASE(Test_encoding) {
     std::vector<std::string> words;
 
     for (auto x: input) {
-        SAXWord word;
-        if (encoder.encode(x, &word)) {
-            words.push_back(sax_to_str(4, word));
+        std::string w;
+        w.resize(4);
+        if (encoder.encode(x, &w[0], w.size())) {
+            words.push_back(w);
         }
     }
 
