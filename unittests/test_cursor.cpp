@@ -20,6 +20,7 @@ void test_cursor(int n_iter, int buf_size) {
             aku_Sample r = {};
             r.payload.float64 = i;
             r.payload.type = AKU_PAYLOAD_FLOAT;
+            r.payload.size = sizeof(aku_Sample);
             cursor.put(caller, r);
             expected.push_back(r);
         }
@@ -54,6 +55,8 @@ void test_cursor_error(int n_iter, int buf_size) {
         for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
             aku_Sample r = {};
             r.payload.float64 = i;
+            r.payload.type = AKU_PAYLOAD_FLOAT;
+            r.payload.size = sizeof(aku_Sample);
             cursor.put(caller, r);
             expected.push_back(r);
         }
