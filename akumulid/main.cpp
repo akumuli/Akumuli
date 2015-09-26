@@ -1,5 +1,6 @@
 #include "akumuli.h"
 #include "tcp_server.h"
+#include "udp_server.h"
 #include "httpserver.h"
 #include "utility.h"
 #include "query_results_pooler.h"
@@ -16,6 +17,7 @@
 #include <apr_errno.h>
 
 #include <wordexp.h>
+#include <unistd.h>
 
 namespace po=boost::program_options;
 using namespace Akumuli;
@@ -93,7 +95,24 @@ pool_size=1
 port=8383
 # worker pool size
 pool_size=1
+
+# Logging configuration
+# This is just a log4cxx configuration without any modifications
+
+log4j.rootLogger=all, file
+log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
+log4j.appender.file.layout=org.apache.log4j.PatternLayout
+log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
+log4j.appender.file.filename=/tmp/akumuli.log
+log4j.appender.file.datePattern='.'yyyy-MM-dd
+
 )";
+
+
+struct ServerSettings {
+    int port;
+    int nworkers;
+};
 
 
 //! Container class for configuration related functions
@@ -191,6 +210,26 @@ struct ConfigFile {
         return res;
     }
 
+    static ServerSettings get_http_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("HTTP.port");
+        settings.nworkers = -1;
+        return settings;
+    }
+
+    static ServerSettings get_udp_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("UDP.port");
+        settings.nworkers = conf.get<int>("UDP.pool_size");
+        return settings;
+    }
+
+    static ServerSettings get_tcp_server(PTree conf) {
+        ServerSettings settings;
+        settings.port = conf.get<int>("TCP.port");
+        settings.nworkers = conf.get<int>("TCP.pool_size");
+        return settings;
+    }
 };
 
 
@@ -236,7 +275,9 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
 
 //! Format text for console. `plain_text` flag removes formatting.
-std::string cli_format(std::string dest, bool plain_text) {
+std::string cli_format(std::string dest) {
+
+    bool plain_text = !isatty(STDOUT_FILENO);
 
     const char* BOLD = "\033[1m";
     const char* EMPH = "\033[3m";
@@ -271,13 +312,13 @@ std::string cli_format(std::string dest, bool plain_text) {
 }
 
 //! Convert markdown subset to console escape codes and print
-void rich_print(const char* msg, bool plain_text=true) {
+void rich_print(const char* msg) {
 
     std::stringstream stream(const_cast<char*>(msg));
     std::string dest;
 
     while(std::getline(stream, dest)) {
-        std::cout << cli_format(dest, plain_text) << std::endl;
+        std::cout << cli_format(dest) << std::endl;
     }
 }
 
@@ -317,12 +358,12 @@ void create_db_files(const char* path,
         } else {
             std::stringstream fmt;
             fmt << "**OK** database created, path: `" << path << "`";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
         }
     } else {
         std::stringstream fmt;
         fmt << "**ERROR** database file already exists";
-        std::cout << cli_format(fmt.str(), false) << std::endl;
+        std::cout << cli_format(fmt.str()) << std::endl;
     }
 }
 
@@ -339,6 +380,9 @@ void cmd_run_server() {
     auto compression_threshold  = ConfigFile::get_compression_threshold(config);
     auto huge_tlb               = ConfigFile::get_huge_tlb(config);
     auto cache_size             = ConfigFile::get_cache_size(config);
+    auto http_conf              = ConfigFile::get_http_server(config);
+    auto tcp_conf               = ConfigFile::get_tcp_server(config);
+    auto udp_conf               = ConfigFile::get_udp_server(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
 
@@ -349,17 +393,30 @@ void cmd_run_server() {
                                                           window,
                                                           cache_size);
 
-    auto tcp_server = std::make_shared<TcpServer>(connection, 4);
+    auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
+
+    auto udp_server = std::make_shared<UdpServer>(pipeline, udp_conf.nworkers, udp_conf.port);
+
+    auto tcp_server = std::make_shared<TcpServer>(pipeline, tcp_conf.nworkers, tcp_conf.port);
 
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
+    auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
 
-    auto httpserver = std::make_shared<Http::HttpServer>(8877, qproc);
-
+    udp_server->start();
+    std::cout << cli_format("**OK** UDP  server started, port: ") << udp_conf.port << std::endl;
     tcp_server->start();
+    std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
     httpserver->start();
-    tcp_server->wait();
+    std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
+
+    tcp_server->wait_for_signal();
+
+    udp_server->stop();
+    std::cout << cli_format("**OK** UDP  server stopped") << std::endl;
     tcp_server->stop();
+    std::cout << cli_format("**OK** TCP  server stopped") << std::endl;
     httpserver->stop();
+    std::cout << cli_format("**OK** HTTP server stopped") << std::endl;
 }
 
 /** Create database command.
@@ -393,12 +450,12 @@ void cmd_delete_database() {
         } else {
             std::stringstream fmt;
             fmt << "**OK** database at `" << path << "` deleted";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
         }
     } else {
         std::stringstream fmt;
         fmt << "**ERROR** database file doesn't exists";
-        std::cout << cli_format(fmt.str(), false) << std::endl;
+        std::cout << cli_format(fmt.str()) << std::endl;
     }
 }
 
@@ -421,6 +478,12 @@ int main(int argc, char** argv) {
     aku_initialize(&panic_handler);
 
     try {
+        // Init logger
+        auto path = ConfigFile::default_config_path();
+        if (boost::filesystem::exists(path)) {
+            Logger::init(path.c_str());
+        }
+
         po::options_description cli_only_options;
         cli_only_options.add_options()
                 ("help", "Produce help message")
@@ -433,17 +496,16 @@ int main(int argc, char** argv) {
         po::notify(vm);
 
         if (vm.count("help")) {
-            rich_print(CLI_HELP_MESSAGE, false);
+            rich_print(CLI_HELP_MESSAGE);
             exit(EXIT_SUCCESS);
         }
 
         if (vm.count("init")) {
-            auto path = ConfigFile::default_config_path();
             ConfigFile::init_config(path);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
-            std::cout << cli_format(fmt.str(), false) << std::endl;
+            std::cout << cli_format(fmt.str()) << std::endl;
             exit(EXIT_SUCCESS);
         }
 
@@ -462,7 +524,7 @@ int main(int argc, char** argv) {
     } catch(const std::exception& e) {
         std::stringstream fmt;
         fmt << "**FAILURE** " << e.what();
-        std::cerr << cli_format(fmt.str(), false) << std::endl;
+        std::cerr << cli_format(fmt.str()) << std::endl;
         exit(EXIT_FAILURE);
     }
 

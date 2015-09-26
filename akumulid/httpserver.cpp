@@ -53,25 +53,33 @@ static int accept_connection(void           *cls,
             return MHD_YES;
         }
 
+        auto error_response = [&](const char* msg) {
+            char buffer[0x200];
+            int len = snprintf(buffer, 0x200, "-%s\r\n", msg);
+            auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
+            int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+            MHD_destroy_response(response);
+            return ret;
+        };
+
         // Should be called once
-        cursor->start();
+        try {
+            cursor->start();
+        } catch (const std::exception& err) {
+            return error_response(err.what());
+        }
 
         // Check for error
         auto err = cursor->get_error();
         if (err != AKU_SUCCESS) {
             const char* error_msg = aku_error_message(err);
-            char buffer[0x200];
-            int len = snprintf(buffer, 0x200, "-%s\r\n", error_msg);
-            auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
-            int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
-            MHD_destroy_response(response);
-            return ret;
-        } else {
-            auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
-            int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-            MHD_destroy_response(response);
-            return ret;
+            return error_response(error_msg);
         }
+
+        auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
+        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
+        return ret;
     } else {
         // Unsupported method
         // TODO: implement GET handler for simple queries (self diagnostics)

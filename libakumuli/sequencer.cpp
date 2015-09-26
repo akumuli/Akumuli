@@ -20,7 +20,8 @@
 #include "util.h"
 #include "compression.h"
 
-#include <thread>
+#include <future>
+
 #include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -65,6 +66,7 @@ aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
     aku_Sample res;
     res.payload.type    = AKU_PAYLOAD_FLOAT;
     res.payload.float64 = value;
+    res.payload.size    = sizeof(aku_Sample);
     res.paramid         = key_id_;
     res.timestamp       = key_ts_;
     return res;
@@ -101,11 +103,19 @@ Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
+
+    if (page) {
+        auto cnt = page->get_entries_count();
+        if (cnt != 0) {
+            auto ts = page->read_timestamp_at(cnt - 1);
+            checkpoint_ = get_checkpoint_(ts);
+            top_timestamp_ = get_timestamp_(ts);
+        }
+    }
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
 aku_Timestamp Sequencer::get_checkpoint_(aku_Timestamp ts) const {
-    // TODO: use fast integer division (libdivision or else)
     return ts / window_size_;
 }
 
@@ -362,9 +372,10 @@ void kway_merge(vector<Sequencer::PSortedRun>& runs, Consumer& cons) {
             for (auto& remaining_item: heap) {
                 int rem_ix = get<1>(remaining_item);
                 KeyType rem_key = get<0>(remaining_item);
-                Sequencer::PSortedRun run(new Sequencer::SortedRun());
-                run->push_back(rem_key);
                 auto range = ranges[rem_ix];
+                Sequencer::PSortedRun run(new Sequencer::SortedRun());
+                run->reserve(range.size() + 1);
+                run->push_back(rem_key);
                 std::copy(std::begin(range), std::end(range), std::back_inserter(*run));
                 remaining_runs.push_back(std::move(run));
             }
@@ -411,6 +422,7 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
     sequence_number_.fetch_add(1);  // progress_flag_ is even again
 }
 
+
 aku_Status Sequencer::merge_and_compress(PageHeader* target, bool enforce_write) {
     bool owns_lock = sequence_number_.load() % 2;  // progress_flag_ must be odd to start
     if (!owns_lock) {
@@ -424,6 +436,9 @@ aku_Status Sequencer::merge_and_compress(PageHeader* target, bool enforce_write)
 
     while(!ready_.empty()) {
         UncompressedChunk chunk_header;
+        chunk_header.paramids.reserve(c_threshold_);
+        chunk_header.timestamps.reserve(c_threshold_);
+        chunk_header.values.reserve(c_threshold_);
         int threshold = (int)c_threshold_;
         auto push_to_header = [&](TimeSeriesValue const& val) {
             if (threshold-->0) {

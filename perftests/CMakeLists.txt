@@ -80,6 +80,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
@@ -122,6 +123,7 @@ target_link_libraries(
 add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
+    jemalloc
     akumuli
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -159,6 +161,7 @@ add_executable(
     ../libakumuli/compression.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp

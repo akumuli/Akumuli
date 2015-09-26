@@ -34,8 +34,8 @@ namespace Akumuli {
 //! Abstraction layer above aku_Cursor
 struct DbCursor {
     //! Read data from cursor
-    virtual size_t read( aku_Sample       *dest
-                       , size_t            dest_size) = 0;
+    virtual size_t read( void   *dest
+                       , size_t  dest_size) = 0;
 
     //! Check is cursor is done reading
     virtual int is_done() = 0;

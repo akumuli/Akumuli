@@ -390,7 +390,7 @@ private:
     timeval _start_time;
 };
 
-void Storage::searchV2(Caller &caller, InternalCursor* cur, const char* query) const {
+void Storage::search(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
 
     try {
@@ -486,10 +486,6 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                             }
                             break;
                         case AKU_MAX_WRITE_SPEED:
-                            // Max speed
-                            if ((merge_lock % 32) == 1) {
-                                active_volume_->flush();
-                            }
                             break;
                         };
                         break;
@@ -508,10 +504,8 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
             case AKU_EOVERFLOW:
                 advance_volume_(local_rev);
                 break;  // retry
-            case AKU_ELATE_WRITE:
-                // Branch for rare and unexpected errors
             default:
-                log_error(aku_error_message(status));
+                // Branch for rare and unexpected errors
                 return status;
         }
     }

@@ -28,6 +28,7 @@ add_library(akumuli SHARED
     datetime.cpp
     buffer_cache.cpp
     anomalydetector.cpp
+    saxencoder.cpp
 )
 
 include(CppcheckTargets)

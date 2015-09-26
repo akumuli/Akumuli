@@ -108,7 +108,7 @@ struct LocalCursor : Cursor {
     }
 
     bool advance() {
-        auto n_results = aku_cursor_read(cursor_, &sample_, 1);
+        auto n_results = aku_cursor_read(cursor_, &sample_, sizeof(aku_Sample));
         throw_if_error();
         // Return true if cache is not empty
         return n_results;
@@ -557,8 +557,8 @@ int main(int argc, const char** argv) {
     std::cout << "Working directory: " << dir << std::endl;
     aku_initialize(nullptr);
 
-    uint32_t compression_threshold = 5;
-    uint64_t windowsize = 10;
+    uint32_t compression_threshold = 10;
+    uint64_t windowsize = 1;
     LocalStorage storage(dir, compression_threshold, windowsize, 2);
 
     // Try to delete old data if any

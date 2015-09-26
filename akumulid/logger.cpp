@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "log4cxx/propertyconfigurator.h"
 
 namespace Akumuli {
 
@@ -98,6 +99,11 @@ Formatter&& Logger::info(Formatter&& fmt) {
 Formatter&& Logger::error(Formatter&& fmt) {
     fmt.set_error_sink(plogger_, &trace_);
     return std::move(fmt);
+}
+
+void Logger::init(std::string path) {
+    log4cxx::File file(path);
+    log4cxx::PropertyConfigurator::configure(file);
 }
 
 }  // namespace

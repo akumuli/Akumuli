@@ -51,8 +51,18 @@ typedef struct {
 
 //! Payload data
 typedef struct {
+    //------------------------------------------//
+    //       Normal payload (float value)       //
+    //------------------------------------------//
+
     //! Value
     double float64;
+
+    /** Payload size (payload can be variably sized)
+     *  size = 0 means size = sizeof(aku_Sample)
+     */
+    uint16_t size;
+
     //! Data element flags
     enum {
         EMPTY                = 0,
@@ -61,8 +71,19 @@ typedef struct {
         TIMESTAMP_BIT        = 1 << 1,
         CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT            = 1 << 4,
+        ERROR_CLIPPING       = 1 << 9,  /** indicates that some data was lost due to clipping
+                                            (extra payload stored in `data` was lost) */
+        SAX_WORD             = 1 << 10, /** indicates that SAX word is stored in extra payload */
     };
-    uint32_t type;
+    uint16_t type;
+
+    //---------------------------//
+    //       Extra payload       //
+    //---------------------------//
+
+    //! Extra payload data
+    char data[0];
+
 } aku_PData;
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)
@@ -285,8 +306,8 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @param dest_size is an output buffer size
   * @returns number of overwriten elements
   */
-AKU_EXPORT size_t aku_cursor_read( aku_Cursor       *cursor
-                                 , aku_Sample       *dest
+AKU_EXPORT size_t aku_cursor_read(aku_Cursor       *cursor
+                                 , void *dest
                                  , size_t            dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.

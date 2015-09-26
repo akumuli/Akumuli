@@ -23,6 +23,8 @@ struct Node {
         Mock,
         // Cursor node
         Cursor,
+        // SAX Encoder
+        SAX,
     };
 
     virtual ~Node() = default;

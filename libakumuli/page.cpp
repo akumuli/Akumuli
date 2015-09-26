@@ -236,6 +236,10 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     return status;
 }
 
+const aku_Timestamp PageHeader::read_timestamp_at(uint32_t index) const {
+    return page_index(index)->timestamp;
+}
+
 const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     if (index < count) {
         auto offset = page_index(index)->offset;
@@ -519,6 +523,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             aku_PData pdata;
             pdata.type = AKU_PAYLOAD_FLOAT;
             pdata.float64 = header->values.at(i);
+            pdata.size = sizeof(aku_Sample);
             aku_Sample result = {
                 header->timestamps.at(i),
                 header->paramids.at(i),

@@ -18,6 +18,7 @@
 #include "util.h"
 #include "datetime.h"
 #include "anomalydetector.h"
+#include "saxencoder.h"
 
 #include <random>
 #include <algorithm>
@@ -168,6 +169,7 @@ struct PAA : Node {
                 sample.paramid = pair.first;
                 sample.payload.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
+                sample.payload.size = sizeof(aku_Sample);
                 sample.timestamp = ts;
                 state.reset();
                 if (!next_->put(sample)) {
@@ -325,6 +327,7 @@ struct SpaceSaver : Node {
                 s.paramid = it.first;
                 s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
                 s.payload.float64 = it.second.count;
+                s.payload.size = sizeof(aku_Sample);
                 samples.push_back(s);
             }
         }
@@ -494,48 +497,61 @@ struct AnomalyDetector : Node {
 };
 
 
-/*
-static std::tuple<double, double> mean_and_stddev(double* array, size_t size) {
-    if (size == 0) {
-        return std::make_tuple(NAN, NAN);
-    }
-    double sqrsum = 0;
-    double sum = 0;
-    int count = 0;
-    for (size_t i = 0; i < size; i++) {
-        sqrsum += array[i] * array[i];
-        sum += array[i];
-        count += 1;
-    }
-    double stddev;
-    if (size > 1) {
-        stddev = sqrt((size * sqrsum - sum * sum) / (size * (size - 1)));
-    } else {
-        stddev = NAN;
-    }
-    double mean = sum / size;
-    return std::make_tuple(mean, stddev);
-}
+//                      //
+//      SAX Encoder     //
+//                      //
 
-//! Z-norm series in-place
-static void znorm(double* array, size_t size, double threshold) {
-    double mean, stddev;
-    std::tie(mean, stddev) = mean_and_stddev(array, size);
-    if (stddev < threshold) {
-        for (size_t i = 0; i < size; i++) {
-            array[i] -= mean;
+struct SAXNode : Node {
+
+    std::shared_ptr<Node> next_;
+    std::unordered_map<aku_ParamId, SAX::SAXEncoder> encoders_;
+    int window_width_;
+    int alphabet_size_;
+    bool disable_value_;
+
+    SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next)
+        : next_(next)
+        , window_width_(window_width)
+        , alphabet_size_(alphabet_size)
+        , disable_value_(disable_original_value)
+    {
+    }
+
+    void complete() {
+        next_->complete();
+    }
+
+    bool put(const aku_Sample &sample) {
+        if (sample.payload.type != aku_PData::EMPTY) {
+            SAX::SAXWord word;
+            auto it = encoders_.find(sample.paramid);
+            if (it == encoders_.end()) {
+                encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
+                it = encoders_.find(sample.paramid);
+            }
+            size_t ssize = sizeof(aku_Sample) + window_width_;
+            void* ptr = alloca(ssize);
+            aku_Sample* psample = new (ptr) aku_Sample();
+            *psample = sample;
+            psample->payload.size = ssize;
+            psample->payload.type |= aku_PData::SAX_WORD;
+            if (disable_value_) {
+                psample->payload.type &= ~aku_PData::FLOAT_BIT;
+            }
+            if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
+                return next_->put(*psample);
+            }
         }
-    } else {
-        for (size_t i = 0; i < size; i++) {
-            array[i] = (array[i] - mean) / stddev;
-        }
+        return true;
     }
-}
-*/
 
-struct SAXEncoder {
-    const int alphabet_size_;
+    void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
 
+    NodeType get_type() const {
+        return Node::SAX;
+    }
 };
 
 
@@ -666,10 +682,17 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
             double beta = ptree.get<double>("beta", 0.0);
             double gamma = ptree.get<double>("gamma", 0.0);
             int period = ptree.get<int>("period", 0);
-            validate_coef(alpha, 0.0, 1.0, "alpha should be in [0, 1] range");
-            validate_coef(beta,  0.0, 1.0, "beta should be in [0, 1] range");
-            validate_coef(gamma, 0.0, 1.0, "gamma should be in [0, 1] range");
+            validate_coef(alpha, 0.0, 1.0, "`alpha` should be in [0, 1] range");
+            validate_coef(beta,  0.0, 1.0, "`beta` should be in [0, 1] range");
+            validate_coef(gamma, 0.0, 1.0, "`gamma` should be in [0, 1] range");
             return std::make_shared<AnomalyDetector>(hashes, bits, threshold, alpha, beta, gamma, period, method, next);
+        } else if (name == "SAX") {
+            int alphabet_size = ptree.get<int>("alphabet_size");
+            int window_width  = ptree.get<int>("window_width");
+            bool disable_val  = ptree.get<bool>("no_value", true);
+            validate_coef(alphabet_size, 1.0, 20.0, "`alphabet_size` should be in [1, 20] range");
+            validate_coef(window_width, 4.0, 100.0, "`window_width` should be in [4, 100] range");
+            return std::make_shared<SAXNode>(alphabet_size, window_width, disable_val, next);
         }
         // only this one is implemented
         NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
@@ -870,6 +893,7 @@ bool MetadataQueryProcessor::start() {
         s.paramid = id;
         s.timestamp = 0;
         s.payload.type = aku_PData::PARAMID_BIT;
+        s.payload.size = sizeof(aku_Sample);
         if (!root_->put(s)) {
             return false;
         }

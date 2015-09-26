@@ -40,8 +40,9 @@ struct DbMock : DbConnection {
 int main(int argc, char *argv[]) {
     std::cout << "Tcp server performance test" << std::endl;
     auto con = std::make_shared<DbMock>();
-    auto server = std::make_shared<TcpServer>(con, 4);
+    auto ppl = std::make_shared<IngestionPipeline>(con, AKU_LINEAR_BACKOFF);
+    auto server = std::make_shared<TcpServer>(ppl, 4, 4111);
     server->start();
-    server->wait();
+    server->wait_for_signal();
     server->stop();
 }

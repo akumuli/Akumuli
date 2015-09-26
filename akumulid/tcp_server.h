@@ -107,8 +107,7 @@ class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor>
     boost::barrier                      start_barrier_;  //< Barrier to start worker thread
     boost::barrier                      stop_barrier_;   //< Barrier to stop worker thread
 
-    // Logger
-    Logger logger_;
+    Logger                              logger_;
 public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
@@ -144,15 +143,15 @@ private:
 struct TcpServer : public std::enable_shared_from_this<TcpServer>
 {
     std::shared_ptr<IngestionPipeline>  pline;
-    std::shared_ptr<DbConnection>       dbcon;
     std::shared_ptr<TcpAcceptor>        serv;
     boost::asio::io_service             io;
     std::vector<IOServiceT*>            iovec;
     boost::barrier                      barrier;
     boost::asio::signal_set             sig;
     std::atomic<int>                    stopped;
+    Logger                              logger_;
 
-    TcpServer(std::shared_ptr<DbConnection> con, int concurrency);
+    TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
 
     //! Run IO service
     void start();
@@ -161,6 +160,6 @@ struct TcpServer : public std::enable_shared_from_this<TcpServer>
 
     void stop();
 
-    void wait();
+    void wait_for_signal();
 };
 }

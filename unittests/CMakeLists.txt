@@ -58,7 +58,6 @@ add_executable(
 target_link_libraries(
     test_protocolparser
     akumuli
-    gcc
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
     libboost_coroutine.a
@@ -149,6 +148,7 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
@@ -178,6 +178,7 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
@@ -266,6 +267,7 @@ add_executable(
     ../libakumuli/akumuli.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
@@ -288,6 +290,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
@@ -306,6 +309,7 @@ add_executable(
     test_queryprocessor
     test_queryprocessor.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
@@ -333,3 +337,17 @@ target_link_libraries(
 )
 
 add_test(datetime test_datetime)
+
+# Sax test
+add_executable(
+    test_sax
+    test_sax.cpp
+    ../libakumuli/saxencoder.cpp
+)
+
+target_link_libraries(
+    test_sax
+    ${Boost_LIBRARIES}
+)
+
+add_test(SAX test_sax)

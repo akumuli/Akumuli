@@ -35,10 +35,10 @@ std::ostream& operator << (std::ostream& st, aku_Sample res);
 
 class CursorFSM {
     // user data
-    aku_Sample       *usr_buffer_;        //! User owned buffer for output
+    void             *usr_buffer_;        //! User owned buffer for output
     size_t            usr_buffer_len_;    //! Size of the user owned buffer
     // cursor state
-    size_t            write_index_;       //! Current write position in usr_buffer_
+    size_t            write_offset_;       //! Current write position in usr_buffer_
     bool              error_;             //! Error flag
     aku_Status        error_code_;        //! Error code
     bool              complete_;          //! Is complete
@@ -50,11 +50,11 @@ public:
     void put(aku_Sample const& result);
     void complete();
     void set_error(aku_Status error_code);
-    void update_buffer(aku_Sample* buf, size_t buf_len);
+    void update_buffer(void *buf, size_t buf_len);
     void update_buffer(CursorFSM *other_fsm);
     bool close();
     // accessors
-    bool can_put() const;
+    bool can_put(int size) const;
     bool is_done() const;
     bool get_error(aku_Status *error_code) const;
     size_t get_data_len() const;
@@ -66,15 +66,26 @@ public:
  */
 struct ExternalCursor {
     //! Read portion of the data to the buffer
-    virtual size_t read(aku_Sample* buf, size_t buf_len) = 0;
+    //virtual size_t read(aku_Sample* buf, size_t buf_len) = 0;
+
+    /** New read interface for variably sized samples.
+     * @param buffer is an array of aku_Sample structs
+     * @param item_size defines size of each struct 0 - size = sizeof(aku_Sample)
+     * @param buffer_size defines size of the buffer in bytes (should be a multiple of item_size)
+     * @return number of overwritten bytes in `buffer`
+     */
+    virtual size_t read_ex(void* buffer, size_t buffer_size) = 0;
+
     //! Check is everything done
     virtual bool is_done() const = 0;
+
     //! Check is error occured and (optionally) get the error code
     virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const = 0;
+
     //! Finalizer
     virtual void close() = 0;
 
-    virtual ~ExternalCursor() {}
+    virtual ~ExternalCursor() = default;
 };
 
 
@@ -93,7 +104,9 @@ struct CoroCursor : Cursor {
 
     // External cursor implementation
 
-    virtual size_t read(aku_Sample* buf, size_t buf_len);
+    //virtual size_t read(aku_Sample* buf, size_t buf_len);
+
+    virtual size_t read_ex(void* buffer, size_t buffer_size);
 
     virtual bool is_done() const;
 
@@ -145,65 +158,6 @@ struct CoroCursor : Cursor {
          cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3, arg4));
          return std::move(cursor);
     }
-};
-
-typedef std::tuple<aku_Sample, int, int> HeapItem;
-
-struct HeapPred {
-    int dir;
-    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
-        bool result = false;
-        const aku_Sample& lres = std::get<0>(lhs);
-        const aku_Sample& rres = std::get<0>(rhs);
-        const auto lkey = std::make_tuple(lres.timestamp, lres.paramid);
-        const auto rkey = std::make_tuple(rres.timestamp, rres.paramid);
-        if (dir == AKU_CURSOR_DIR_BACKWARD) {
-            // Min heap is used
-            result = lkey < rkey;
-        } else if (dir == AKU_CURSOR_DIR_FORWARD) {
-            result = lkey > rkey;
-        } else {
-            AKU_PANIC("bad direction of the fan-in cursor")
-        }
-        return result;
-    }
-};
-
-/**
- * @brief Fan in cursor.
- * Takes list of cursors and pages and merges
- * results from this cursors in one ordered
- * sequence of events.
- */
-class StacklessFanInCursorCombinator : ExternalCursor {
-    typedef std::vector<HeapItem> Heap;
-    const int                           direction_;
-    const std::vector<ExternalCursor*>  in_cursors_;
-    const HeapPred                      pred_;
-    Heap                                heap_;
-    CursorFSM                           cursor_fsm_;
-
-    void read_impl_();
-    void set_error(aku_Status error_code);
-    bool put(aku_Sample const& result);
-    void complete();
-public:
-    /**
-     * @brief C-tor
-     * @param cursors array of pointer to cursors
-     * @param size size of the cursors array
-     * @param direction direction of the cursor (forward or backward)
-     */
-    StacklessFanInCursorCombinator( ExternalCursor** in_cursors
-                                  , int size
-                                  , int direction);
-
-    // ExternalCursor interface
-public:
-    virtual size_t read(aku_Sample *buf, size_t buf_len);
-    virtual bool is_done() const;
-    virtual bool is_error(aku_Status *out_error_code_or_null) const;
-    virtual void close();
 };
 
 }  // namespace
