@@ -20,6 +20,7 @@ add_executable(
 target_link_libraries(perf_respstream
     ${Boost_LIBRARIES}
 )
+set_target_properties(perf_respstream PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Pipeline perf test
 add_executable(
@@ -39,6 +40,7 @@ target_link_libraries(perf_pipeline
     libboost_coroutine.a
     libboost_context.a
 )
+set_target_properties(perf_pipeline PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # TCP server perf test
 add_executable(
@@ -62,8 +64,7 @@ target_link_libraries(perf_tcp_server
     libboost_coroutine.a
     libboost_context.a
 )
-
-
+set_target_properties(perf_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
 
 
 
@@ -82,6 +83,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
 )
@@ -91,6 +93,7 @@ target_link_libraries(
     ${Boost_LIBRARIES}
     "${APR_LIBRARY}"
 )
+set_target_properties(perf_seriesmatcher PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Datetime parser perftest
 add_executable(
@@ -105,6 +108,7 @@ target_link_libraries(
     jemalloc
     ${Boost_LIBRARIES}
 )
+set_target_properties(perf_datetime_parsing PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Compression perftest
 add_executable(
@@ -118,6 +122,7 @@ target_link_libraries(
     perf_compression
     ${Boost_LIBRARIES}
 )
+set_target_properties(perf_compression PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Ingestion perftest
 add_executable(perf_ingestion perf_ingestion.cpp)
@@ -132,6 +137,7 @@ target_link_libraries(perf_ingestion
     libboost_coroutine.a
     libboost_context.a
 )
+set_target_properties(perf_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Parallel ingestion perftest
 add_executable(perf_parallel_ingestion perf_parallel_ingestion.cpp)
@@ -145,6 +151,7 @@ target_link_libraries(perf_parallel_ingestion
     libboost_coroutine.a
     libboost_context.a
 )
+set_target_properties(perf_parallel_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Sequencer test
 add_executable(
@@ -163,6 +170,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
 )
@@ -174,3 +182,4 @@ target_link_libraries(perf_sequencer
     libboost_coroutine.a
     libboost_context.a
 )
+set_target_properties(perf_sequencer PROPERTIES EXCLUDE_FROM_ALL 1)

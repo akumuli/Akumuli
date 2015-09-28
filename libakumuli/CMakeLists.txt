@@ -29,6 +29,7 @@ add_library(akumuli SHARED
     buffer_cache.cpp
     anomalydetector.cpp
     saxencoder.cpp
+    hashfnfamily.cpp
 )
 
 include(CppcheckTargets)

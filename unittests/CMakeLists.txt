@@ -150,6 +150,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
 )
@@ -180,6 +181,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
 )
@@ -269,6 +271,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/datetime.cpp
 )
@@ -292,6 +295,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
 )
@@ -311,6 +315,7 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
