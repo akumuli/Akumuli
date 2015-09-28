@@ -23,7 +23,4 @@ private:
     uint32_t hash32(int ix, uint32_t key) const;
 };
 
-
-
-
-}
+}  // namespace

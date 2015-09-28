@@ -183,3 +183,20 @@ target_link_libraries(perf_sequencer
     libboost_context.a
 )
 set_target_properties(perf_sequencer PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# Inverted index perftest
+add_executable(
+    perf_invertedindex
+    perf_invertedindex.cpp
+    perftest_tools.cpp
+    ../libakumuli/invertedindex.cpp
+    ../libakumuli/hashfnfamily.cpp
+)
+
+target_link_libraries(
+    perf_invertedindex
+    jemalloc
+    benchmark
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)

@@ -30,6 +30,7 @@ add_library(akumuli SHARED
     anomalydetector.cpp
     saxencoder.cpp
     hashfnfamily.cpp
+    invertedindex.cpp
 )
 
 include(CppcheckTargets)

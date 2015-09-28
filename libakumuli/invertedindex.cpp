@@ -22,7 +22,7 @@ static const int NUM_HASHES = 5;
 
 InvertedIndex::InvertedIndex(const size_t table_size)
     : table_size_(table_size)
-    , hash_(NUM_HASHES, table_size)
+    , hashes_(NUM_HASHES, table_size)
 {
     table_.resize(table_size);
 }

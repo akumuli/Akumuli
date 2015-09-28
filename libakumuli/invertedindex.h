@@ -19,6 +19,7 @@
 #include "hashfnfamily.h"
 
 #include <vector>
+#include <memory>
 
 namespace Akumuli {
 
