@@ -16,15 +16,96 @@
  */
 #include "invertedindex.h"
 
+#include <random>
+#include <algorithm>
+
 namespace Akumuli {
 
-static const int NUM_HASHES = 5;
+static const int EXTERNAL_CARDINALITY = 3;
+static const int INTERNAL_CARDINALITY = 3;
 
-InvertedIndex::InvertedIndex(const size_t table_size)
-    : table_size_(table_size)
-    , hashes_(NUM_HASHES, table_size)
+TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
+    : INTERNAL_CARDINALITY_(cardinality)
+    , prime(2147483647)  // 2^31-1
+    , modulo(modulo)
+{
+    a.resize(INTERNAL_CARDINALITY_);
+    b.resize(INTERNAL_CARDINALITY_);
+    std::random_device randdev;
+    std::minstd_rand generator(randdev());
+    std::uniform_int_distribution<> distribution;
+    for (int i = 0; i < INTERNAL_CARDINALITY_; i++) {
+        a[i] = distribution(generator);
+        b[i] = distribution(generator);
+    }
+}
+
+uint64_t TwoUnivHashFnFamily::hash(int ix, uint64_t value) const {
+    return ((a[ix]*value + b[ix]) % prime) % modulo;
+}
+
+Postings::Postings(const TwoUnivHashFnFamily* h, size_t count)
+    : hash_(h)
+{
+    counters_.resize(count);
+}
+
+void Postings::append(aku_ParamId id) {
+    for (int i = 0; i < INTERNAL_CARDINALITY; i++) {
+        auto hash = hash_->hash(i, id);
+        counters_.at(hash) += 1;
+    }
+}
+
+size_t Postings::get_count(aku_ParamId id) const {
+    size_t results[INTERNAL_CARDINALITY];
+
+    for (int i = 0; i < INTERNAL_CARDINALITY; i++) {
+        auto hash = hash_->hash(i, id);
+        results[i] = counters_.at(hash);
+    }
+
+    return std::accumulate(results, results + INTERNAL_CARDINALITY, 0u, [](size_t a, size_t b) { return std::min(a, b); });
+}
+
+InvertedIndex::InvertedIndex(const size_t table_size, const size_t postings_list_size)
+    : postings_hash_(INTERNAL_CARDINALITY, postings_list_size)
+    , table_hash_(EXTERNAL_CARDINALITY, table_size)
+    , table_size_(table_size)
 {
     table_.resize(table_size);
+    for (auto i = 0u; i < table_size; i++) {
+        std::unique_ptr<Postings> ptr;
+        ptr.reset(new Postings(&postings_hash_, postings_list_size));
+        table_.at(i) = std::move(ptr);
+    }
 }
+
+static uint64_t sdbm(const char* begin, const char* end) {
+    unsigned long hash = 0;
+    for (auto it = begin; it != end; it++) {
+        hash = *it + (hash << 6) + (hash << 16) - hash;
+    }
+    return hash;
+}
+
+void InvertedIndex::append(aku_ParamId id, const char* begin, const char* end) {
+    auto hash = sdbm(begin, end);
+    for (int i = 0; i < EXTERNAL_CARDINALITY; i++) {
+        auto ith_hash = table_hash_.hash(i, hash);
+        table_.at(ith_hash)->append(id);
+    }
+}
+
+size_t InvertedIndex::get_count(const char *begin, const char *end) {
+    auto hash = sdbm(begin, end);
+    for (int i = 0; i < EXTERNAL_CARDINALITY; i++) {
+        auto ith_hash = table_hash_.hash(i, hash);
+        (void)ith_hash;
+    }
+    throw "not implemented";
+}
+
+
 
 }  // namespace

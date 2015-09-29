@@ -196,7 +196,6 @@ add_executable(
 target_link_libraries(
     perf_invertedindex
     jemalloc
-    benchmark
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)

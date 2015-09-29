@@ -16,22 +16,38 @@
  */
 #pragma once
 #include "akumuli.h"
-#include "hashfnfamily.h"
 
 #include <vector>
 #include <memory>
 
 namespace Akumuli {
 
+struct TwoUnivHashFnFamily {
+    const int INTERNAL_CARDINALITY_;
+    std::vector<uint64_t> a;
+    std::vector<uint64_t> b;
+    uint64_t prime;
+    uint64_t modulo;
+
+    TwoUnivHashFnFamily(int cardinality, size_t modulo);
+
+    uint64_t hash(int ix, uint64_t value) const;
+};
+
 /** Posting list.
  * In case of time-series data posting list is a pair of time-series Id and time-stamp
  * of the occurence.
  */
 struct Postings {
-    // Maybe I should use D-gap compression scheme - http://bmagic.sourceforge.net/dGap.html
-    // or something else. Maybe it will work fine without any compression at all.
-    std::vector<aku_ParamId>   paramids_;
-    std::vector<aku_Timestamp> timestamps_;
+    const TwoUnivHashFnFamily* hash_;
+
+    std::vector<size_t> counters_;
+
+    Postings(TwoUnivHashFnFamily const* h, size_t count);
+
+    void append(aku_ParamId id);
+
+    size_t get_count(aku_ParamId id) const;
 };
 
 
@@ -39,16 +55,22 @@ struct Postings {
  * One dimension of the inv-index is fixed (table size). Only postings can grow.
  */
 struct InvertedIndex {
+    TwoUnivHashFnFamily postings_hash_;
+    TwoUnivHashFnFamily table_hash_;
+
     //! Size of the table
     const size_t table_size_;
-    //! Family of 4-universal hash functions
-    HashFnFamily hashes_;
 
     //! Hash to postings list mapping.
     std::vector<std::unique_ptr<Postings>> table_;
 
     //! C-tor. Argument `table_size` should be a power of two.
-    InvertedIndex(const size_t table_size);
+    InvertedIndex(const size_t table_size, const size_t postings_list_size);
+
+    //! Add value to index
+    void append(aku_ParamId id, const char* begin, const char* end);
+
+    size_t get_count(const char* begin, const char* end);
 };
 
 }  // namespace
