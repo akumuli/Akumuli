@@ -17,11 +17,12 @@
 #include "invertedindex.h"
 
 #include <random>
+#include <memory>
 #include <algorithm>
 
 namespace Akumuli {
 
-static const int EXTERNAL_CARDINALITY = 3;
+static const int CARDINALITY = 3;
 
 TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
     : INTERNAL_CARDINALITY_(cardinality)
@@ -52,6 +53,10 @@ void Postings::append(aku_ParamId id) {
     }
 }
 
+size_t Postings::get_size() const {
+    return counters_.size();
+}
+
 size_t Postings::get_count(aku_ParamId id) const {
     auto it = counters_.find(id);
     if (it != counters_.end()) {
@@ -60,14 +65,25 @@ size_t Postings::get_count(aku_ParamId id) const {
     return 0u;
 }
 
+void Postings::merge(const Postings& other) {
+    std::unordered_map<aku_ParamId, size_t> tmp;
+    for (auto kv: counters_) {
+        auto it = other.counters_.find(kv.first);
+        if (it != other.counters_.end()) {
+            tmp[kv.first] = std::min(kv.second, it->second);
+        }
+    }
+    std::swap(tmp, counters_);
+}
+
 InvertedIndex::InvertedIndex(const size_t table_size, const size_t postings_list_size)
-    : table_hash_(EXTERNAL_CARDINALITY, table_size)
+    : table_hash_(CARDINALITY, table_size)
     , table_size_(table_size)
 {
     table_.resize(table_size);
     for (auto i = 0u; i < table_size; i++) {
         std::unique_ptr<Postings> ptr;
-        ptr.reset(new Postings(&postings_hash_, postings_list_size));
+        ptr.reset(new Postings());
         table_.at(i) = std::move(ptr);
     }
 }
@@ -82,29 +98,43 @@ static uint64_t sdbm(const char* begin, const char* end) {
 
 void InvertedIndex::append(aku_ParamId id, const char* begin, const char* end) {
     auto hash = sdbm(begin, end);
-    for (int i = 0; i < EXTERNAL_CARDINALITY; i++) {
+    for (int i = 0; i < CARDINALITY; i++) {
         auto ith_hash = table_hash_.hash(i, hash);
         table_.at(ith_hash)->append(id);
     }
 }
 
-size_t InvertedIndex::get_count(const char *begin, const char *end) {
+std::vector<std::pair<aku_ParamId, size_t>> InvertedIndex::get_count(const char *begin, const char *end) {
     auto hash = sdbm(begin, end);
     std::vector<std::unique_ptr<Postings>> postings;
-    for (int i = 0; i < EXTERNAL_CARDINALITY; i++) {
+    for (int i = 0; i < CARDINALITY; i++) {
         auto ith_hash = table_hash_.hash(i, hash);
-        Postings& original = table_.at(ith_hash);
-        postings.push_back(std::make_unique<Postings>(original));
+        Postings& original = *table_.at(ith_hash);
+        std::unique_ptr<Postings> copy;
+        copy.reset(new Postings());
+        *copy = original;
+        postings.push_back(std::move(copy));
     }
 
     std::sort(postings.begin(), postings.end(),
     [](const std::unique_ptr<Postings>& lhs, const std::unique_ptr<Postings>& rhs) {
-
+        return lhs->get_size() < rhs->get_size();
     });
 
-    throw "not implemented";
+    auto merged = std::move(postings[0]);
+    auto pbegin = postings.begin();
+    pbegin++;
+    while(pbegin != postings.end()) {
+        merged->merge(**pbegin);
+    }
+
+    std::vector<std::pair<aku_ParamId, size_t>> results;
+
+    for (auto kv: merged->counters_) {
+        results.push_back(kv);
+    }
+
+    return results;
 }
-
-
 
 }  // namespace

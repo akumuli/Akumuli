@@ -48,6 +48,8 @@ struct Postings {
     size_t get_count(aku_ParamId id) const;
 
     size_t get_size() const;
+
+    void merge(const Postings &other);
 };
 
 
@@ -55,7 +57,6 @@ struct Postings {
  * One dimension of the inv-index is fixed (table size). Only postings can grow.
  */
 struct InvertedIndex {
-    TwoUnivHashFnFamily postings_hash_;
     TwoUnivHashFnFamily table_hash_;
 
     //! Size of the table
@@ -70,7 +71,7 @@ struct InvertedIndex {
     //! Add value to index
     void append(aku_ParamId id, const char* begin, const char* end);
 
-    size_t get_count(const char* begin, const char* end);
+    std::vector<std::pair<aku_ParamId, size_t> > get_count(const char* begin, const char* end);
 };
 
 }  // namespace
