@@ -22,7 +22,6 @@
 namespace Akumuli {
 
 static const int EXTERNAL_CARDINALITY = 3;
-static const int INTERNAL_CARDINALITY = 3;
 
 TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
     : INTERNAL_CARDINALITY_(cardinality)
@@ -44,33 +43,25 @@ uint64_t TwoUnivHashFnFamily::hash(int ix, uint64_t value) const {
     return ((a[ix]*value + b[ix]) % prime) % modulo;
 }
 
-Postings::Postings(const TwoUnivHashFnFamily* h, size_t count)
-    : hash_(h)
-{
-    counters_.resize(count);
-}
-
 void Postings::append(aku_ParamId id) {
-    for (int i = 0; i < INTERNAL_CARDINALITY; i++) {
-        auto hash = hash_->hash(i, id);
-        counters_.at(hash) += 1;
+    auto it = counters_.find(id);
+    if (it != counters_.end()) {
+        it->second++;
+    } else {
+        counters_[id] = 1u;
     }
 }
 
 size_t Postings::get_count(aku_ParamId id) const {
-    size_t results[INTERNAL_CARDINALITY];
-
-    for (int i = 0; i < INTERNAL_CARDINALITY; i++) {
-        auto hash = hash_->hash(i, id);
-        results[i] = counters_.at(hash);
+    auto it = counters_.find(id);
+    if (it != counters_.end()) {
+        return it->second;
     }
-
-    return std::accumulate(results, results + INTERNAL_CARDINALITY, 0u, [](size_t a, size_t b) { return std::min(a, b); });
+    return 0u;
 }
 
 InvertedIndex::InvertedIndex(const size_t table_size, const size_t postings_list_size)
-    : postings_hash_(INTERNAL_CARDINALITY, postings_list_size)
-    , table_hash_(EXTERNAL_CARDINALITY, table_size)
+    : table_hash_(EXTERNAL_CARDINALITY, table_size)
     , table_size_(table_size)
 {
     table_.resize(table_size);
@@ -99,10 +90,18 @@ void InvertedIndex::append(aku_ParamId id, const char* begin, const char* end) {
 
 size_t InvertedIndex::get_count(const char *begin, const char *end) {
     auto hash = sdbm(begin, end);
+    std::vector<std::unique_ptr<Postings>> postings;
     for (int i = 0; i < EXTERNAL_CARDINALITY; i++) {
         auto ith_hash = table_hash_.hash(i, hash);
-        (void)ith_hash;
+        Postings& original = table_.at(ith_hash);
+        postings.push_back(std::make_unique<Postings>(original));
     }
+
+    std::sort(postings.begin(), postings.end(),
+    [](const std::unique_ptr<Postings>& lhs, const std::unique_ptr<Postings>& rhs) {
+
+    });
+
     throw "not implemented";
 }
 

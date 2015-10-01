@@ -16,8 +16,10 @@
  */
 #pragma once
 #include "akumuli.h"
+#include "hashfnfamily.h"
 
 #include <vector>
+#include <unordered_map>
 #include <memory>
 
 namespace Akumuli {
@@ -39,15 +41,13 @@ struct TwoUnivHashFnFamily {
  * of the occurence.
  */
 struct Postings {
-    const TwoUnivHashFnFamily* hash_;
-
-    std::vector<size_t> counters_;
-
-    Postings(TwoUnivHashFnFamily const* h, size_t count);
+    std::unordered_map<aku_ParamId, size_t> counters_;
 
     void append(aku_ParamId id);
 
     size_t get_count(aku_ParamId id) const;
+
+    size_t get_size() const;
 };
 
 
