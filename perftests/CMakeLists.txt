@@ -190,7 +190,6 @@ add_executable(
     perf_invertedindex.cpp
     perftest_tools.cpp
     ../libakumuli/invertedindex.cpp
-    ../libakumuli/hashfnfamily.cpp
 )
 
 target_link_libraries(

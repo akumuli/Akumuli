@@ -76,7 +76,7 @@ void Postings::merge(const Postings& other) {
     std::swap(tmp, counters_);
 }
 
-InvertedIndex::InvertedIndex(const size_t table_size, const size_t postings_list_size)
+InvertedIndex::InvertedIndex(const size_t table_size)
     : table_hash_(CARDINALITY, table_size)
     , table_size_(table_size)
 {
@@ -126,6 +126,7 @@ std::vector<std::pair<aku_ParamId, size_t>> InvertedIndex::get_count(const char 
     pbegin++;
     while(pbegin != postings.end()) {
         merged->merge(**pbegin);
+        pbegin++;
     }
 
     std::vector<std::pair<aku_ParamId, size_t>> results;

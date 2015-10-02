@@ -362,7 +362,6 @@ add_executable(
     test_invertedindex
     test_invertedindex.cpp
     ../libakumuli/invertedindex.cpp
-    ../libakumuli/hashfnfamily.cpp
 )
 
 target_link_libraries(

@@ -66,7 +66,7 @@ struct InvertedIndex {
     std::vector<std::unique_ptr<Postings>> table_;
 
     //! C-tor. Argument `table_size` should be a power of two.
-    InvertedIndex(const size_t table_size, const size_t postings_list_size);
+    InvertedIndex(const size_t table_size);
 
     //! Add value to index
     void append(aku_ParamId id, const char* begin, const char* end);
