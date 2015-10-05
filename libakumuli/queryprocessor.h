@@ -28,30 +28,18 @@
 namespace Akumuli {
 namespace QP {
 
-struct NodeException : std::runtime_error {
-    Node::NodeType type_;
-    NodeException(Node::NodeType type, const char* msg);
-    Node::NodeType get_type() const;
-};
 
+struct Builder {
 
-struct NodeBuilder {
-    //! Create random sampling node
-    static std::shared_ptr<Node> make_sampler(const boost::property_tree::ptree &ptree,
-                                                     std::shared_ptr<Node> next,
-                                                     aku_logger_cb_t logger);
-
-    //! Create filtering node
-    static std::shared_ptr<Node> make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next,
-                                                   aku_logger_cb_t logger);
-
-    //! Create filtering node
-    static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
-                                                        aku_logger_cb_t logger);
-
-    //! Create filtering node
-    static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids, std::shared_ptr<Node> next,
-                                                            aku_logger_cb_t logger);
+    /** Create new query processor.
+      * @param query should point to 0-terminated query string
+      * @param terminal_node should contain valid pointer to terminal(final) node
+      * @param logger should contain valid pointer to logging function
+      */
+    static std::shared_ptr<QP::IQueryProcessor> build_query_processor(const char* query,
+                                                                      std::shared_ptr<QP::Node> terminal_node,
+                                                                      const SeriesMatcher& matcher,
+                                                                      aku_logger_cb_t logger);
 };
 
 

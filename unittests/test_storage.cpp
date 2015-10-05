@@ -5,7 +5,7 @@
 #include <boost/test/unit_test.hpp>
 #include <vector>
 
-#include "storage.h"
+#include "metadatastorage.h"
 
 
 using namespace Akumuli;

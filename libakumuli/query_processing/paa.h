@@ -1,8 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
-#include "queryprocessor_fwd.h"
+#include "../queryprocessor_fwd.h"
 
 namespace Akumuli {
 namespace QP {

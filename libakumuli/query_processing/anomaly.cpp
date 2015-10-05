@@ -1,5 +1,7 @@
 #include "anomaly.h"
 
+#include <boost/exception/all.hpp>
+
 namespace Akumuli {
 namespace QP {
 

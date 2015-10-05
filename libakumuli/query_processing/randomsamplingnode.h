@@ -3,8 +3,8 @@
 #include <memory>
 #include <vector>
 
-#include "queryprocessor_fwd.h"
-#include "util.h"
+#include "../queryprocessor_fwd.h"
+#include "../util.h"
 
 namespace Akumuli {
 namespace QP {

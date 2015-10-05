@@ -31,7 +31,15 @@ add_library(akumuli SHARED
     saxencoder.cpp
     hashfnfamily.cpp
     invertedindex.cpp
+    # query_processing folder
+    query_processing/anomaly.cpp
+    query_processing/sax.cpp
+    query_processing/paa.cpp
+    query_processing/filterbyid.cpp
+    query_processing/randomsamplingnode.cpp
 )
+
+include_directories(./libakumuli)
 
 include(CppcheckTargets)
 add_cppcheck(akumuli UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)

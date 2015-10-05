@@ -1,8 +1,11 @@
 #pragma once
+#include <stdexcept>
 #include "akumuli.h"
 
 namespace Akumuli {
 namespace QP {
+
+static const aku_Sample EMPTY_SAMPLE = {};
 
 struct Node {
 
@@ -44,6 +47,20 @@ struct Node {
     //! Get node type
     virtual NodeType get_type() const = 0;
 };
+
+
+struct NodeException : std::runtime_error {
+    Node::NodeType type_;
+    NodeException(Node::NodeType type, const char* msg)
+        : std::runtime_error(msg)
+        , type_(type)
+    {
+    }
+    Node::NodeType get_type() const {
+        return type_;
+    }
+};
+
 
 //! Query processor interface
 struct IQueryProcessor {

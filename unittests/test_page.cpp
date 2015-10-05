@@ -11,7 +11,6 @@
 #include "akumuli_def.h"
 #include "cursor.h"
 #include "page.h"
-#include "queryprocessor.h"
 
 using namespace Akumuli;
 
@@ -73,18 +72,58 @@ struct Recorder : QP::Node {
     }
 };
 
+struct TestQueryProcessor : QP::IQueryProcessor {
+
+    // Search range
+    aku_Timestamp begin;
+    aku_Timestamp end;
+    int dir;
+    std::shared_ptr<QP::Node> root;
+
+    TestQueryProcessor(aku_Timestamp b, aku_Timestamp e, int d, std::shared_ptr<QP::Node> r)
+        : begin(b)
+        , end(e)
+        , dir(d)
+        , root(r)
+    {
+    }
+
+    //! Lowerbound
+    virtual aku_Timestamp lowerbound() const { return begin; }
+
+    //! Upperbound
+    virtual aku_Timestamp upperbound() const { return end; }
+
+    //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
+    virtual int direction() const { return dir; }
+
+    /** Will be called before query execution starts.
+      * If result already obtained - return False.
+      * In this case `stop` method shouldn't be called
+      * at the end.
+      */
+    virtual bool start() { return true; }
+
+    //! Get new value
+    virtual bool put(const aku_Sample& sample) {
+        return root->put(sample);
+    }
+
+    //! Will be called when processing completed without errors
+    virtual void stop() {
+        root->complete();
+    }
+
+    //! Will be called on error
+    virtual void set_error(aku_Status error) {
+        root->set_error(error);
+    }
+
+};
+
 // Make query processor
 std::shared_ptr<QP::IQueryProcessor> make_proc(std::shared_ptr<QP::Node> root, aku_Timestamp begin, aku_Timestamp end, int dir) {
-    std::vector<std::string> m;
-    aku_Timestamp b, e;
-    if (dir == AKU_CURSOR_DIR_BACKWARD) {
-        b = std::max(begin, end);
-        e = std::min(begin, end);
-    } else {
-        b = std::min(begin, end);
-        e = std::max(begin, end);
-    }
-    return std::make_shared<QP::ScanQueryProcessor>(root, m, b, e);
+    return std::make_shared<TestQueryProcessor>(begin, end, dir, root);
 }
 
 }  // namespace

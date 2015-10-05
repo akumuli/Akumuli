@@ -1,9 +1,11 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 
-#include "queryprocessor_fwd.h"
-#include "saxencoder.h"
+#include "../queryprocessor_fwd.h"
+#include "../saxencoder.h"
+
 
 namespace Akumuli {
 namespace QP {

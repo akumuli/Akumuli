@@ -1,4 +1,6 @@
 #include "paa.h"
+#include "../util.h"
+#include <algorithm>
 
 namespace Akumuli {
 namespace QP {
@@ -26,7 +28,7 @@ MeanPAA::MeanPAA(std::shared_ptr<Node> next)
 {
 }
 
-Node::NodeType MeanPAA::get_type() const override {
+Node::NodeType MeanPAA::get_type() const {
     return Node::MovingAverage;
 }
 
@@ -61,7 +63,7 @@ MedianPAA::MedianPAA(std::shared_ptr<Node> next)
 {
 }
 
-Node::NodeType MedianPAA::get_type() const override {
+Node::NodeType MedianPAA::get_type() const {
     return Node::MovingMedian;
 }
 

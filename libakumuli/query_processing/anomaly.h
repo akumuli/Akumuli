@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "queryprocessor_fwd.h"
-#include "anomalydetector.h"
+#include "../queryprocessor_fwd.h"
+#include "../anomalydetector.h"
 
 namespace Akumuli {
 namespace QP {

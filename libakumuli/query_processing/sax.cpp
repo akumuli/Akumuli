@@ -15,7 +15,7 @@ void SAXNode::complete() {
     next_->complete();
 }
 
-bool SAXNode::cput(const aku_Sample &sample) {
+bool SAXNode::put(const aku_Sample &sample) {
     if (sample.payload.type != aku_PData::EMPTY) {
         SAX::SAXWord word;
         auto it = encoders_.find(sample.paramid);

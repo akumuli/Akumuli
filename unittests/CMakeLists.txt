@@ -122,6 +122,7 @@ target_link_libraries(
     test_querycursor
     jemalloc
     akumuli
+    sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -147,12 +148,6 @@ add_executable(
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(
@@ -178,12 +173,6 @@ add_executable(
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/compression.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(
@@ -258,22 +247,7 @@ add_test(compression test_compression)
 add_executable(
     test_storage
     test_storage.cpp
-    ../libakumuli/storage.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/compression.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/sequencer.cpp
-    ../libakumuli/akumuli.cpp
     ../libakumuli/metadatastorage.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/datetime.cpp
 )
 
 target_link_libraries(
@@ -292,10 +266,6 @@ add_executable(
     test_parser.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
 )
@@ -319,6 +289,12 @@ add_executable(
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
+    # query_processing folder
+    ../libakumuli/query_processing/anomaly.cpp
+    ../libakumuli/query_processing/sax.cpp
+    ../libakumuli/query_processing/paa.cpp
+    ../libakumuli/query_processing/filterbyid.cpp
+    ../libakumuli/query_processing/randomsamplingnode.cpp
 )
 
 target_link_libraries(

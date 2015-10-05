@@ -212,6 +212,56 @@ struct Node : QP::Node {
     }
 };
 
+struct TestQueryProcessor : QP::IQueryProcessor {
+
+    // Search range
+    aku_Timestamp begin;
+    aku_Timestamp end;
+    int dir;
+    std::shared_ptr<QP::Node> root;
+
+    TestQueryProcessor(std::shared_ptr<QP::Node> r, aku_Timestamp b, aku_Timestamp e, int dir)
+        : begin(b)
+        , end(e)
+        , dir(dir)
+        , root(r)
+    {
+    }
+
+    //! Lowerbound
+    virtual aku_Timestamp lowerbound() const { return begin; }
+
+    //! Upperbound
+    virtual aku_Timestamp upperbound() const { return end; }
+
+    //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
+    virtual int direction() const { return dir; }
+
+    /** Will be called before query execution starts.
+      * If result already obtained - return False.
+      * In this case `stop` method shouldn't be called
+      * at the end.
+      */
+    virtual bool start() { return true; }
+
+    //! Get new value
+    virtual bool put(const aku_Sample& sample) {
+        return root->put(sample);
+    }
+
+    //! Will be called when processing completed without errors
+    virtual void stop() {
+        root->complete();
+    }
+
+    //! Will be called on error
+    virtual void set_error(aku_Status error) {
+        root->set_error(error);
+    }
+
+};
+
+
 void test_sequencer_searching(int dir) {
     const int SZLOOP = 1000;
     const int WINDOW = 10000;
@@ -235,15 +285,12 @@ void test_sequencer_searching(int dir) {
 
     if (dir == AKU_CURSOR_DIR_BACKWARD) {
         std::reverse(expected.begin(), expected.end());
-        begin = AKU_MAX_TIMESTAMP;
-        end   = AKU_MIN_TIMESTAMP;
     }
 
     Caller caller;
     RecordingCursor cursor;
     auto node = std::make_shared<Node>(caller, cursor);
-    std::vector<std::string> metrics;
-    auto qproc = std::make_shared<QP::ScanQueryProcessor>(node, metrics, begin, end);
+    auto qproc = std::make_shared<TestQueryProcessor>(node, begin, end, dir);
 
     aku_Timestamp window;
     int seq_id;

@@ -1,4 +1,5 @@
 #include "randomsamplingnode.h"
+#include <algorithm>
 
 namespace Akumuli {
 namespace QP {

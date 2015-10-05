@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "queryprocessor_fwd.h"
+#include "../queryprocessor_fwd.h"
 
 namespace Akumuli {
 namespace QP {
