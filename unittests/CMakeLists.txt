@@ -58,6 +58,7 @@ add_executable(
 target_link_libraries(
     test_protocolparser
     akumuli
+    sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
     libboost_coroutine.a
@@ -76,6 +77,7 @@ target_link_libraries(
     test_pipeline
     jemalloc
     akumuli
+    sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"

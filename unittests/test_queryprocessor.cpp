@@ -68,7 +68,8 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "5"})"),
+    auto sampler =
+            NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "5"})"),
                                              mock,
                                              &logger_stub);
 
