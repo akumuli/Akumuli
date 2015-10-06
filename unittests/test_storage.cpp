@@ -12,6 +12,14 @@ using namespace Akumuli;
 
 void logger_stub(aku_LogLevel tag, const char* msg) {}
 
+struct AkumuliInitializer {
+    AkumuliInitializer() {
+        aku_initialize(nullptr);
+    }
+};
+
+AkumuliInitializer initializer;
+
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
     auto db = MetadataStorage(":memory:", &logger_stub);
