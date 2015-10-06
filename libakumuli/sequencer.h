@@ -23,7 +23,7 @@
 #pragma once
 #include "page.h"
 #include "cursor.h"
-#include "queryprocessor.h"
+#include "queryprocessor_fwd.h"
 
 #include <tuple>
 #include <vector>

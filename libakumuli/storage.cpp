@@ -19,6 +19,7 @@
 #include "storage.h"
 #include "util.h"
 #include "cursor.h"
+#include "queryprocessor.h"
 
 #include <cstdlib>
 #include <cstdarg>
@@ -398,7 +399,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
         auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
         std::shared_ptr<QP::IQueryProcessor> query_processor;
         try {
-            query_processor = matcher_->build_query_processor(query, terminal_node, logger_);
+            query_processor = QP::Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
         } catch (const QueryParserError& qpe) {
             log_error(qpe.what());
             cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);

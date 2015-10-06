@@ -5,7 +5,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -fsanitize=address -static-libasan")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=native")
 
 find_package(Boost 1.53.0
     COMPONENTS
@@ -31,7 +31,7 @@ include_directories("${APRUTIL_INCLUDE_DIR}")
 include_directories("${SQLITE3_INCLUDE_DIR}")
 
 #if(CMAKE_COMPILER_IS_GNUCXX)
-add_definitions(-std=gnu++0x -fvisibility=hidden)
+add_definitions(-std=c++1y -fvisibility=hidden)
 #endif()
 
 include_directories(./include)

@@ -30,530 +30,16 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 
+// Include query processors
+#include "query_processing/anomaly.h"
+#include "query_processing/filterbyid.h"
+#include "query_processing/paa.h"
+#include "query_processing/randomsamplingnode.h"
+#include "query_processing/sax.h"
+#include "query_processing/spacesaver.h"
+
 namespace Akumuli {
 namespace QP {
-
-static aku_Sample EMPTY_SAMPLE = {};
-
-NodeException::NodeException(Node::NodeType type, const char* msg)
-    : std::runtime_error(msg)
-    , type_(type)
-{
-}
-
-Node::NodeType NodeException::get_type() const {
-    return type_;
-}
-
-struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, Node {
-    const uint32_t                      buffer_size_;
-    std::vector<aku_Sample>             samples_;
-    Rand                                random_;
-    std::shared_ptr<Node>               next_;
-
-    RandomSamplingNode(uint32_t buffer_size, std::shared_ptr<Node> next)
-        : buffer_size_(buffer_size)
-        , next_(next)
-    {
-        samples_.reserve(buffer_size);
-    }
-
-    // Bolt interface
-    virtual NodeType get_type() const {
-        return Node::RandomSampler;
-    }
-
-    bool flush() {
-        auto predicate = [](aku_Sample const& lhs, aku_Sample const& rhs) {
-            auto l = std::make_tuple(lhs.timestamp, lhs.paramid);
-            auto r = std::make_tuple(rhs.timestamp, rhs.paramid);
-            return l < r;
-        };
-
-        std::stable_sort(samples_.begin(), samples_.end(), predicate);
-
-        for(auto const& sample: samples_) {
-            if (next_->put(sample) == false) {
-                return false;
-            }
-        }
-        samples_.clear();
-        return true;
-    }
-
-    virtual void complete() {
-        flush();
-        next_->complete();
-    }
-
-    virtual bool put(const aku_Sample& sample) {
-        if (sample.payload.type == aku_PData::EMPTY) {
-            return flush();
-        } else {
-            if (samples_.size() < buffer_size_) {
-                // Just append new values
-                samples_.push_back(sample);
-            } else {
-                // Flip a coin
-                uint32_t ix = random_() % samples_.size();
-                if (ix < buffer_size_) {
-                    samples_.at(ix) = sample;
-                }
-            }
-        }
-        return true;
-    }
-
-    void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
-};
-
-
-/** Filter ids using predicate.
-  * Predicate is an unary functor that accepts parameter of type aku_ParamId - fun(aku_ParamId) -> bool.
-  */
-template<class Predicate>
-struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>, Node {
-    //! Id matching predicate
-    Predicate op_;
-    std::shared_ptr<Node> next_;
-
-    FilterByIdNode(Predicate pred, std::shared_ptr<Node> next)
-        : op_(pred)
-        , next_(next)
-    {
-    }
-
-    // Bolt interface
-    virtual void complete() {
-        next_->complete();
-    }
-
-    virtual bool put(const aku_Sample& sample) {
-        if (sample.payload.type == aku_PData::EMPTY) {
-            return next_->put(sample);
-        }
-        return op_(sample.paramid) ? next_->put(sample) : true;
-    }
-
-    void set_error(aku_Status status) {
-        if (!next_) {
-            AKU_PANIC("bad query processor node, next not set");
-        }
-        next_->set_error(status);
-    }
-
-    virtual NodeType get_type() const {
-        return NodeType::FilterById;
-    }
-};
-
-
-//! Generic piecewise aggregate approximation
-template<class State>
-struct PAA : Node {
-    std::shared_ptr<Node> next_;
-    std::unordered_map<aku_ParamId, State> counters_;
-
-    PAA(std::shared_ptr<Node> next)
-        : next_(next)
-    {
-    }
-
-    bool average_samples(aku_Timestamp ts) {
-        for (auto& pair: counters_) {
-            State& state = pair.second;
-            if (state.ready()) {
-                aku_Sample sample;
-                sample.paramid = pair.first;
-                sample.payload.float64 = state.value();
-                sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.payload.size = sizeof(aku_Sample);
-                sample.timestamp = ts;
-                state.reset();
-                if (!next_->put(sample)) {
-                    return false;
-                }
-            }
-        }
-        if (!next_->put(EMPTY_SAMPLE)) {
-            return false;
-        }
-        return true;
-    }
-
-    virtual void complete() {
-        next_->complete();
-    }
-
-    virtual bool put(const aku_Sample &sample) {
-        // ignore BLOBs
-        if (sample.payload.type == aku_PData::EMPTY) {
-            if (!average_samples(sample.timestamp)) {
-                return false;
-            }
-        } else {
-            auto& state = counters_[sample.paramid];
-            state.add(sample);
-        }
-        return true;
-    }
-
-    virtual void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
-
-    virtual NodeType get_type() const {
-        return Node::Resampler;
-    }
-};
-
-struct MeanCounter {
-    double acc = 0;
-    size_t num = 0;
-
-    void reset() {
-        acc = 0;
-        num = 0;
-    }
-
-    double value() const {
-        return acc/num;
-    }
-
-    bool ready() const {
-        return num != 0;
-    }
-
-    void add(aku_Sample const& value) {
-        acc += value.payload.float64;
-        num++;
-    }
-};
-
-struct MeanPAA : PAA<MeanCounter> {
-
-    MeanPAA(std::shared_ptr<Node> next)
-        : PAA<MeanCounter>(next)
-    {
-    }
-
-    virtual NodeType get_type() const override {
-        return Node::MovingAverage;
-    }
-};
-
-struct MedianCounter {
-    mutable std::vector<double> acc;
-
-    void reset() {
-        std::vector<double> tmp;
-        std::swap(tmp, acc);
-    }
-
-    double value() const {
-        if (acc.empty()) {
-            AKU_PANIC("`ready` should be called first");
-        }
-        if (acc.size() < 2) {
-            return acc.at(0);
-        }
-        auto middle = acc.begin();
-        std::advance(middle, acc.size() / 2);
-        std::partial_sort(acc.begin(), middle, acc.end());
-        return *middle;
-    }
-
-    bool ready() const {
-        return !acc.empty();
-    }
-
-    void add(aku_Sample const& value) {
-        acc.push_back(value.payload.float64);
-    }
-};
-
-struct MedianPAA : PAA<MedianCounter> {
-
-    MedianPAA(std::shared_ptr<Node> next)
-        : PAA<MedianCounter>(next)
-    {
-    }
-
-    virtual NodeType get_type() const override {
-        return Node::MovingMedian;
-    }
-};
-
-template<bool weighted>
-struct SpaceSaver : Node {
-    std::shared_ptr<Node> next_;
-
-    struct Item {
-        double count;
-        double error;
-    };
-
-    std::unordered_map<aku_ParamId, Item> counters_;
-    //! Capacity
-    double N;
-    const size_t M;
-    const double P;
-
-    /** C-tor.
-      * @param error is a allowed error value between 0 and 1
-      * @param portion is a frequency (or weight) portion that we interested in
-      * Object should report all items wich frequencies is greater then (portion-error)*N
-      * where N is a number of elements (or total weight of all items in a stream).
-      */
-    SpaceSaver(double error, double portion, std::shared_ptr<Node> next)
-        : next_(next)
-        , N(0)
-        , M(ceil(1.0/error))
-        , P(portion)  // between 0 and 1
-    {
-        assert(P >= 0.0);
-        assert(P <= 1.0);
-    }
-
-    bool count() {
-        std::vector<aku_Sample> samples;
-        auto support = N*P;
-        for (auto it: counters_) {
-            auto estimate = it.second.count - it.second.error;
-            if (support < estimate) {
-                aku_Sample s;
-                s.paramid = it.first;
-                s.payload.type = aku_PData::PARAMID_BIT|aku_PData::FLOAT_BIT;
-                s.payload.float64 = it.second.count;
-                s.payload.size = sizeof(aku_Sample);
-                samples.push_back(s);
-            }
-        }
-        std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
-            return lhs.payload.float64 > rhs.payload.float64;
-        });
-        for (const auto& s: samples) {
-            if (!next_->put(s)) {
-                return false;
-            }
-        }
-        counters_.clear();
-        return true;
-    }
-
-    virtual void complete() {
-        count();
-        next_->complete();
-    }
-
-    virtual bool put(const aku_Sample &sample) {
-        if (sample.payload.type == aku_PData::EMPTY) {
-            return count();
-        }
-        if (weighted) {
-            if ((sample.payload.type&aku_PData::FLOAT_BIT) == 0) {
-                return true;
-            }
-        }
-        auto id = sample.paramid;
-        auto weight = weighted ? sample.payload.float64 : 1.0;
-        auto it = counters_.find(id);
-        if (it == counters_.end()) {
-            // new element
-            double count = weight;
-            double error = 0;
-            if (counters_.size() == M) {
-                // remove element with smallest count
-                size_t min = std::numeric_limits<size_t>::max();
-                auto min_iter = it;
-                for (auto i = counters_.begin(); i != counters_.end(); i++) {
-                    if (i->second.count < min) {
-                        min_iter = i;
-                        min = i->second.count;
-                    }
-                }
-                counters_.erase(min_iter);
-                count += min;
-                error  = min;
-            }
-            counters_[id] = { count, error };
-        } else {
-            // increment
-            it->second.count += weight;
-        }
-        N += weight;
-        return true;
-    }
-
-    virtual void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
-
-    virtual NodeType get_type() const {
-        return Node::SpaceSaver;
-    }
-};
-
-
-struct AnomalyDetector : Node {
-    typedef std::unique_ptr<AnomalyDetectorIface> PDetector;
-
-    enum FcastMethod {
-        SMA,
-        SMA_SKETCH,
-        EWMA,
-        EWMA_SKETCH,
-        DOUBLE_EXP_SMOOTHING,
-        DOUBLE_EXP_SMOOTHING_SKETCH,
-        HOLT_WINTERS,
-        HOLT_WINTERS_SKETCH,
-    };
-
-    std::shared_ptr<Node> next_;
-    PDetector detector_;
-
-    AnomalyDetector(uint32_t nhashes,
-                    uint32_t bits,
-                    double   threshold,
-                    double   alpha,
-                    double   beta,
-                    double   gamma,
-                    int      period,
-                    FcastMethod method,
-                    std::shared_ptr<Node> next)
-        : next_(next)
-    {
-        try {
-            switch(method) {
-            case SMA:
-                detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
-                break;
-            case SMA_SKETCH:
-                detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
-                break;
-            case EWMA:
-                detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
-                break;
-            case EWMA_SKETCH:
-                detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
-                break;
-            case DOUBLE_EXP_SMOOTHING:
-                detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
-                break;
-            case DOUBLE_EXP_SMOOTHING_SKETCH:
-                detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
-                break;
-            case HOLT_WINTERS:
-                detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
-                break;
-            case HOLT_WINTERS_SKETCH:
-                detector_ = AnomalyDetectorUtil::create_approx_holt_winters(nhashes, 1 << bits, threshold, alpha, beta, gamma, period);
-                break;
-            default:
-                std::logic_error err("AnomalyDetector building error");  // invalid use of the constructor
-                BOOST_THROW_EXCEPTION(err);
-            }
-        } catch (...) {
-            // std::cout << boost::current_exception_diagnostic_information() << std::endl;
-            throw;
-        }
-    }
-
-    virtual void complete() {
-        next_->complete();
-    }
-
-    virtual bool put(const aku_Sample &sample) {
-        if (sample.payload.type == aku_PData::EMPTY) {
-            detector_->move_sliding_window();
-            return next_->put(sample);
-        } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
-            /*
-            if (sample.payload.float64 < 0.0) {
-                set_error(AKU_EANOMALY_NEG_VAL);
-                return false;
-            }
-            */
-            detector_->add(sample.paramid, sample.payload.float64);
-            if (detector_->is_anomaly_candidate(sample.paramid)) {
-                aku_Sample anomaly = sample;
-                anomaly.payload.type |= aku_PData::URGENT;
-                return next_->put(anomaly);
-            }
-        }
-        // Ignore BLOBs
-        return true;
-    }
-
-    virtual void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
-
-    virtual NodeType get_type() const {
-        return Node::AnomalyDetector;
-    }
-};
-
-
-//                      //
-//      SAX Encoder     //
-//                      //
-
-struct SAXNode : Node {
-
-    std::shared_ptr<Node> next_;
-    std::unordered_map<aku_ParamId, SAX::SAXEncoder> encoders_;
-    int window_width_;
-    int alphabet_size_;
-    bool disable_value_;
-
-    SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next)
-        : next_(next)
-        , window_width_(window_width)
-        , alphabet_size_(alphabet_size)
-        , disable_value_(disable_original_value)
-    {
-    }
-
-    void complete() {
-        next_->complete();
-    }
-
-    bool put(const aku_Sample &sample) {
-        if (sample.payload.type != aku_PData::EMPTY) {
-            SAX::SAXWord word;
-            auto it = encoders_.find(sample.paramid);
-            if (it == encoders_.end()) {
-                encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
-                it = encoders_.find(sample.paramid);
-            }
-            size_t ssize = sizeof(aku_Sample) + window_width_;
-            void* ptr = alloca(ssize);
-            aku_Sample* psample = new (ptr) aku_Sample();
-            *psample = sample;
-            psample->payload.size = ssize;
-            psample->payload.type |= aku_PData::SAX_WORD;
-            if (disable_value_) {
-                psample->payload.type &= ~aku_PData::FLOAT_BIT;
-            }
-            if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
-                return next_->put(*psample);
-            }
-        }
-        return true;
-    }
-
-    void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
-
-    NodeType get_type() const {
-        return Node::SAX;
-    }
-};
-
 
 //                                   //
 //         Factory methods           //
@@ -645,9 +131,9 @@ static void validate_coef(double value, double range_begin, double range_end, co
     BOOST_THROW_EXCEPTION(err);
 }
 
-std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree const& ptree,
-                                                std::shared_ptr<Node> next,
-                                                aku_logger_cb_t logger)
+static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptree,
+                                          std::shared_ptr<Node> next,
+                                          aku_logger_cb_t logger)
 {
     try {
         std::string name;
@@ -706,24 +192,10 @@ std::shared_ptr<Node> NodeBuilder::make_sampler(boost::property_tree::ptree cons
     }
 }
 
-std::shared_ptr<Node> NodeBuilder::make_filter_by_id(aku_ParamId id, std::shared_ptr<Node> next, aku_logger_cb_t logger) {
-    struct Fun {
-        aku_ParamId id_;
-        bool operator () (aku_ParamId id) {
-            return id == id_;
-        }
-    };
-    typedef FilterByIdNode<Fun> NodeT;
-    Fun fun = { id };
-    std::stringstream logfmt;
-    logfmt << "Creating id filter node for id " << id;
-    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-    return std::make_shared<NodeT>(fun, next);
-}
-
-std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamId> ids,
-                                                          std::shared_ptr<Node> next,
-                                                          aku_logger_cb_t logger) {
+static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids,
+                                                    std::shared_ptr<Node> next,
+                                                    aku_logger_cb_t logger)
+{
     struct Matcher {
         std::unordered_set<aku_ParamId> idset;
 
@@ -740,9 +212,9 @@ std::shared_ptr<Node> NodeBuilder::make_filter_by_id_list(std::vector<aku_ParamI
     return std::make_shared<NodeT>(fn, next);
 }
 
-std::shared_ptr<Node> NodeBuilder::make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
-                                                              std::shared_ptr<Node> next,
-                                                              aku_logger_cb_t logger)
+static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
+                                                        std::shared_ptr<Node> next,
+                                                        aku_logger_cb_t logger)
 {
     struct Matcher {
         std::unordered_set<aku_ParamId> idset;
@@ -912,6 +384,259 @@ void MetadataQueryProcessor::stop() {
 
 void MetadataQueryProcessor::set_error(aku_Status error) {
     root_->set_error(error);
+}
+
+
+
+//                          //
+//                          //
+//   Build query processor  //
+//                          //
+//                          //
+
+static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    auto select = ptree.get_child_optional("select");
+    if (select && select->empty()) {
+        // simple select query
+        auto str = select->get_value<std::string>("");
+        if (str == "names") {
+            // the only supported select query for now
+            return str;
+        }
+        (*logger)(AKU_LOG_ERROR, "Invalid `select` query");
+        auto rte = std::runtime_error("Invalid `select` query");
+        BOOST_THROW_EXCEPTION(rte);
+    }
+    return boost::optional<std::string>();
+}
+
+static QP::GroupByStatement parse_groupby(boost::property_tree::ptree const& ptree,
+                                          aku_logger_cb_t logger) {
+    aku_Timestamp duration = 0u;
+    auto groupby = ptree.get_child_optional("group-by");
+    if (groupby) {
+        for(auto child: *groupby) {
+            if (child.first == "time") {
+                std::string str = child.second.get_value<std::string>();
+                duration = DateTimeUtil::parse_duration(str.c_str(), str.size());
+            }
+        }
+    }
+    return QP::GroupByStatement(duration);
+}
+
+static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
+                                             aku_logger_cb_t logger) {
+    std::vector<std::string> metrics;
+    auto metric = ptree.get_child_optional("metric");
+    if (metric) {
+        auto single = metric->get_value<std::string>();
+        if (single.empty()) {
+            for(auto child: *metric) {
+                auto metric_name = child.second.get_value<std::string>();
+                metrics.push_back(metric_name);
+            }
+        } else {
+            metrics.push_back(single);
+        }
+    }
+    return metrics;
+}
+
+static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,
+                                           std::string const& name,
+                                           aku_logger_cb_t logger) {
+    auto range = ptree.get_child("range");
+    for(auto child: range) {
+        if (child.first == name) {
+            auto iso_string = child.second.get_value<std::string>();
+            auto ts = DateTimeUtil::from_iso_string(iso_string.c_str());
+            return ts;
+        }
+    }
+    std::stringstream fmt;
+    fmt << "can't find `" << name << "` tag inside the query";
+    QueryParserError error(fmt.str().c_str());
+    BOOST_THROW_EXCEPTION(error);
+}
+
+
+static aku_ParamId extract_id_from_pool(StringPool::StringT res) {
+    // Series name in string pool should be followed by \0 character and 64-bit series id.
+    auto p = res.first + res.second;
+    assert(p[0] == '\0');
+    p += 1;  // zero terminator + sizeof(uint64_t)
+    return *reinterpret_cast<uint64_t const*>(p);
+}
+
+static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree const& ptree,
+                                                   std::string metric,
+                                                   std::string pred,
+                                                   StringPool const& pool,
+                                                   aku_logger_cb_t logger)
+{
+    std::vector<aku_ParamId> ids;
+    bool not_set = false;
+    auto where = ptree.get_child_optional("where");
+    if (where) {
+        for (auto child: *where) {
+            auto predicate = child.second;
+            auto items = predicate.get_child_optional(pred);
+            if (items) {
+                for (auto item: *items) {
+                    std::string tag = item.first;
+                    auto idslist = item.second;
+                    // Read idlist
+                    for (auto idnode: idslist) {
+                        std::string value = idnode.second.get_value<std::string>();
+                        std::stringstream series_regexp;
+                        series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                                      << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                        std::string regex = series_regexp.str();
+                        auto results = pool.regex_match(regex.c_str());
+                        for(auto res: results) {
+                            aku_ParamId id = extract_id_from_pool(res);
+                            ids.push_back(id);
+                        }
+                    }
+                }
+            } else {
+                not_set = true;
+            }
+        }
+    } else {
+        not_set = true;
+    }
+    if (not_set) {
+        if (pred == "in") {
+            // there is no "in" predicate so we need to include all
+            // series from this metric
+            std::stringstream series_regexp;
+            series_regexp << "" << metric << R"((\s\w+=\w+)*)";
+            std::string regex = series_regexp.str();
+            auto results = pool.regex_match(regex.c_str());
+            for(auto res: results) {
+                aku_ParamId id = extract_id_from_pool(res);
+                ids.push_back(id);
+            }
+        }
+    }
+    return ids;
+}
+
+static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
+    std::stringstream ss;
+    boost::property_tree::write_json(ss, ptree, pretty_print);
+    return ss.str();
+}
+
+std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* query,
+                                                                    std::shared_ptr<QP::Node> terminal,
+                                                                    const SeriesMatcher &matcher,
+                                                                    aku_logger_cb_t logger) {
+    namespace pt = boost::property_tree;
+    using namespace QP;
+
+    const auto NOSAMPLE = std::make_pair<std::string, size_t>("", 0u);
+
+    //! C-string to streambuf adapter
+    struct MemStreambuf : std::streambuf {
+        MemStreambuf(const char* buf) {
+            char* p = const_cast<char*>(buf);
+            setg(p, p, p+strlen(p));
+        }
+    };
+
+    boost::property_tree::ptree ptree;
+    MemStreambuf strbuf(query);
+    std::istream stream(&strbuf);
+    try {
+        pt::json_parser::read_json(stream, ptree);
+    } catch (pt::json_parser_error& e) {
+        // Error, bad query
+        (*logger)(AKU_LOG_ERROR, e.what());
+        throw QueryParserError(e.what());
+    }
+
+    logger(AKU_LOG_INFO, "Parsing query:");
+    logger(AKU_LOG_INFO, to_json(ptree, true).c_str());
+
+    try {
+        // Read groupby statement
+        auto groupby = parse_groupby(ptree, logger);
+
+        // Read metric(s) name
+        auto metrics = parse_metric(ptree, logger);
+
+        // Read select statment
+        auto select = parse_select_stmt(ptree, logger);
+
+        // Read sampling method
+        auto sampling_params = ptree.get_child_optional("sample");
+
+        // Read where clause
+        std::vector<aku_ParamId> ids_included;
+        std::vector<aku_ParamId> ids_excluded;
+
+        for(auto metric: metrics) {
+
+            auto in = parse_where_clause(ptree, metric, "in", matcher.pool, logger);
+            std::copy(in.begin(), in.end(), std::back_inserter(ids_included));
+
+            auto notin = parse_where_clause(ptree, metric, "not_in", matcher.pool, logger);
+            std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
+        }
+
+        if (sampling_params && select) {
+            (*logger)(AKU_LOG_ERROR, "Can't combine select and sample statements together");
+            auto rte = std::runtime_error("`sample` and `select` can't be used together");
+            BOOST_THROW_EXCEPTION(rte);
+        }
+
+        // Build topology
+        std::shared_ptr<Node> next = terminal;
+        if (!select) {
+            // Read timestamps
+            auto ts_begin = parse_range_timestamp(ptree, "from", logger);
+            auto ts_end = parse_range_timestamp(ptree, "to", logger);
+
+            if (sampling_params) {
+                for (auto i = sampling_params->rbegin(); i != sampling_params->rend(); i++) {
+                        next = make_sampler(i->second, next, logger);
+                }
+            }
+            if (!ids_included.empty()) {
+                next = make_filter_by_id_list(ids_included, next, logger);
+            }
+            if (!ids_excluded.empty()) {
+                next = make_filter_out_by_id_list(ids_excluded, next, logger);
+            }
+            // Build query processor
+            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end, groupby);
+        }
+
+        if (ids_included.empty() && metrics.empty()) {
+            // list all
+            for (auto val: matcher.table) {
+                auto id = val.second;
+                ids_included.push_back(id);
+            }
+        }
+        if (!ids_excluded.empty()) {
+            std::sort(ids_included.begin(), ids_included.end());
+            std::sort(ids_excluded.begin(), ids_excluded.end());
+            std::vector<aku_ParamId> tmp;
+            std::set_difference(ids_included.begin(), ids_included.end(),
+                                ids_excluded.begin(), ids_excluded.end(),
+                                std::back_inserter(tmp));
+            std::swap(tmp, ids_included);
+        }
+        return std::make_shared<MetadataQueryProcessor>(ids_included, next);
+
+    } catch(std::exception const& e) {
+        (*logger)(AKU_LOG_ERROR, e.what());
+        throw QueryParserError(e.what());
+    }
 }
 
 }} // namespace

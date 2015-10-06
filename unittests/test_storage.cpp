@@ -5,18 +5,18 @@
 #include <boost/test/unit_test.hpp>
 #include <vector>
 
-#include "storage.h"
+#include "metadatastorage.h"
 
 
 using namespace Akumuli;
+
+void logger_stub(aku_LogLevel tag, const char* msg) {}
 
 struct AkumuliInitializer {
     AkumuliInitializer() {
         aku_initialize(nullptr);
     }
 };
-
-void logger_stub(aku_LogLevel tag, const char* msg) {}
 
 AkumuliInitializer initializer;
 

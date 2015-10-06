@@ -23,6 +23,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 
+#include <sqlite3.h>  // to set trace callback
+
 namespace Akumuli {
 
 void delete_apr_pool(apr_pool_t *p) {
@@ -44,6 +46,13 @@ void AprHandleDeleter::operator()(apr_dbd_t* handle) {
 
 
 //-------------------------------MetadataStorage----------------------------------------
+
+static void callback_adapter(void* cb, const char* msg) {
+    aku_logger_cb_t logger = (aku_logger_cb_t)cb;
+    if (logger != &aku_console_logger) {
+        logger(AKU_LOG_TRACE, msg);
+    }
+}
 
 MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     : pool_(nullptr, &delete_apr_pool)
@@ -73,6 +82,9 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     }
     handle_ = HandleT(handle, AprHandleDeleter(driver_));
 
+    auto sqlite_handle = apr_dbd_native_handle(driver_, handle);
+    sqlite3_trace((sqlite3*)sqlite_handle, callback_adapter, (void*)logger_);
+
     create_tables();
 
     // Create prepared statement
@@ -85,9 +97,6 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
 }
 
 int MetadataStorage::execute_query(std::string query) {
-    if (logger_ != &aku_console_logger) {
-        (*logger_)(AKU_LOG_TRACE, query.c_str());
-    }
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.c_str());
     if (status != 0 && status != 21) {
@@ -175,7 +184,6 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
 
 
 std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
-    (*logger_)(AKU_LOG_TRACE, query);
     std::vector<UntypedTuple> tuples;
     apr_dbd_results_t *results = nullptr;
     int status = apr_dbd_select(driver_, pool_.get(), handle_.get(), &results, query, 0);
