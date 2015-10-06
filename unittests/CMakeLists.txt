@@ -101,6 +101,7 @@ add_executable(
 target_link_libraries(test_tcp_server
     jemalloc
     akumuli
+    sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -122,8 +123,8 @@ add_executable(
 )
 target_link_libraries(
     test_querycursor
-    jemalloc
     akumuli
+    jemalloc
     sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
@@ -250,10 +251,15 @@ add_executable(
     test_storage
     test_storage.cpp
     ../libakumuli/metadatastorage.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/seriesparser.cpp
+    ../libakumuli/stringpool.cpp
 )
 
 target_link_libraries(
     test_storage
+    akumuli
+    sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -288,6 +294,7 @@ add_executable(
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/hashfnfamily.cpp
+    ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp

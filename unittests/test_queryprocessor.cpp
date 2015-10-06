@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
@@ -7,6 +8,9 @@
 #include <boost/property_tree/json_parser.hpp>
 
 #include "queryprocessor.h"
+#include "query_processing/randomsamplingnode.h"
+#include "query_processing/paa.h"
+#include "datetime.h"
 
 using namespace Akumuli;
 using namespace Akumuli::QP;
@@ -15,22 +19,6 @@ void logger_stub(aku_LogLevel level, const char* msg) {
     if (level == AKU_LOG_ERROR) {
         BOOST_MESSAGE(msg);
     }
-}
-
-boost::property_tree::ptree from_json(std::string json) {
-    //! C-string to streambuf adapter
-    struct MemStreambuf : std::streambuf {
-        MemStreambuf(const char* buf) {
-            char* p = const_cast<char*>(buf);
-            setg(p, p, p+strlen(p));
-        }
-    };
-
-    boost::property_tree::ptree ptree;
-    MemStreambuf strbuf(json.c_str());
-    std::istream stream(&strbuf);
-    boost::property_tree::json_parser::read_json(stream, ptree);
-    return ptree;
 }
 
 struct NodeMock : Node {
@@ -68,11 +56,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler =
-            NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "5"})"),
-                                             mock,
-                                             &logger_stub);
-
+    auto sampler = std::make_shared<RandomSamplingNode>(5, mock);
 
     sampler->put(make(1ul, 1ul, 1.0));
     sampler->put(make(0ul, 0ul, 0.0));
@@ -96,9 +80,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_0) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "10"})"),
-                                             mock,
-                                             &logger_stub);
+    auto sampler = std::make_shared<RandomSamplingNode>(10, mock);
 
     for (uint64_t u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));
@@ -115,9 +97,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
 BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
     auto mock = std::make_shared<NodeMock>();
-    auto sampler = NodeBuilder::make_sampler(from_json(R"({"name": "reservoir", "size": "100"})"),
-                                             mock,
-                                             &logger_stub);
+    auto sampler = std::make_shared<RandomSamplingNode>(100, mock);
 
     for (uint64_t u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));
@@ -136,9 +116,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
-                                        mock,
-                                        &logger_stub);
+    auto ma = std::make_shared<MeanPAA>(mock);
 
     // two parameters
     std::vector<double> p1, p2;
@@ -178,9 +156,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     aku_Sample EMPTY = {};
     EMPTY.payload.type = aku_PData::EMPTY;
     auto mock = std::make_shared<NodeMock>();
-    auto ma = NodeBuilder::make_sampler(from_json(R"({"name": "PAA"})"),
-                                        mock,
-                                        &logger_stub);
+    auto ma = std::make_shared<MeanPAA>(mock);
 
     // two parameters
     std::vector<double> p1, p2;
@@ -246,7 +222,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
             }
     )";
     auto terminal = std::make_shared<NodeMock>();
-    auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger);
+    auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger_stub);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
     BOOST_REQUIRE(qproc->root_node_->get_type() == Node::FilterById);
     BOOST_REQUIRE(qproc->metrics_.size() == 2);

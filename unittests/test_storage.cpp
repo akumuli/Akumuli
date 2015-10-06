@@ -10,15 +10,7 @@
 
 using namespace Akumuli;
 
-struct AkumuliInitializer {
-    AkumuliInitializer() {
-        aku_initialize(nullptr);
-    }
-};
-
 void logger_stub(aku_LogLevel tag, const char* msg) {}
-
-AkumuliInitializer initializer;
 
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
