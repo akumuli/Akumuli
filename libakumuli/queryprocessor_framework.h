@@ -1,9 +1,18 @@
 #pragma once
 #include <stdexcept>
+#include <memory>
+
 #include "akumuli.h"
+
+#include <boost/property_tree/ptree.hpp>
 
 namespace Akumuli {
 namespace QP {
+
+//! Exception triggered by query parser
+struct QueryParserError : std::runtime_error {
+    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
+};
 
 static const aku_Sample EMPTY_SAMPLE = {};
 

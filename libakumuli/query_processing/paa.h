@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace QP {
@@ -16,7 +16,7 @@ struct PAA : Node {
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
-    PAA(std::shared_ptr<Node> next)
+    PAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
         : next_(next)
     {
     }

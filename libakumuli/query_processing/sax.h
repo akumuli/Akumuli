@@ -3,7 +3,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 #include "../saxencoder.h"
 
 
@@ -23,6 +23,8 @@ struct SAXNode : Node {
     bool disable_value_;
 
     SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next);
+
+    SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
 
     void complete();
 
