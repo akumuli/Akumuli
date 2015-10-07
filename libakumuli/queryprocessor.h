@@ -20,7 +20,7 @@
 
 #include "akumuli.h"
 #include "stringpool.h"
-#include "queryprocessor_fwd.h"
+#include "queryprocessor_framework.h"
 #include "seriesparser.h"
 
 #include <boost/property_tree/ptree_fwd.hpp>

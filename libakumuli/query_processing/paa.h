@@ -16,7 +16,7 @@ struct PAA : Node {
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
-    PAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
+    PAA(std::shared_ptr<Node> next)
         : next_(next)
     {
     }
@@ -87,6 +87,8 @@ struct MeanPAA : PAA<MeanCounter> {
 
     MeanPAA(std::shared_ptr<Node> next);
 
+    MeanPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
+
     virtual NodeType get_type() const override;
 };
 
@@ -105,6 +107,8 @@ struct MedianCounter {
 struct MedianPAA : PAA<MedianCounter> {
 
     MedianPAA(std::shared_ptr<Node> next);
+
+    MedianPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 
     virtual NodeType get_type() const override;
 };

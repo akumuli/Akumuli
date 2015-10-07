@@ -105,4 +105,29 @@ struct IQueryProcessor {
 };
 
 
+struct BaseQueryParserToken {
+    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const = 0;
+};
+
+//! Register QueryParserToken
+void add_queryparsertoken_to_registry(BaseQueryParserToken const* ptr);
+
+//! Create new node using token registry
+std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+
+/** Register new query type
+  * NOTE: Each template instantination should be used only once, to create query parser for type.
+  */
+template<class Target>
+struct QueryParserToken : BaseQueryParserToken {
+    std::string tag;
+    QueryParserToken(const char* tag) : tag(tag) {
+        add_queryparsertoken_to_registry(this);
+    }
+    std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const {
+        return std::make_shared<Target>(ptree, next);
+    }
+};
+
+
 }}  // namespaces

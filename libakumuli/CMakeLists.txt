@@ -23,7 +23,6 @@ add_library(akumuli SHARED
     sequencer.cpp
     cursor.cpp
     metadatastorage.cpp
-    queryprocessor.cpp
     stringpool.cpp
     datetime.cpp
     buffer_cache.cpp
@@ -31,12 +30,15 @@ add_library(akumuli SHARED
     saxencoder.cpp
     hashfnfamily.cpp
     invertedindex.cpp
-    # query_processing folder
+    # query_processing
+    queryprocessor.cpp
+    queryprocessor_framework.cpp
     query_processing/anomaly.cpp
     query_processing/sax.cpp
     query_processing/paa.cpp
     query_processing/filterbyid.cpp
     query_processing/randomsamplingnode.cpp
+    query_processing/spacesaver.cpp
 )
 
 include_directories(./libakumuli)

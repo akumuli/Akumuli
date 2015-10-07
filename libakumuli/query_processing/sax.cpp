@@ -71,4 +71,6 @@ Node::NodeType SAXNode::get_type() const {
     return Node::SAX;
 }
 
+static QueryParserToken<SAXNode> sax_token("sax");
+
 }}  // namespace

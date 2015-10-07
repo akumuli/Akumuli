@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 #include "../util.h"
 
 namespace Akumuli {
@@ -16,6 +16,8 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
     std::shared_ptr<Node>               next_;
 
     RandomSamplingNode(uint32_t buffer_size, std::shared_ptr<Node> next);
+
+    RandomSamplingNode(boost::property_tree::ptree const&ptree, std::shared_ptr<Node> next);
 
     virtual NodeType get_type() const;
 

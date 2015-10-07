@@ -28,6 +28,11 @@ MeanPAA::MeanPAA(std::shared_ptr<Node> next)
 {
 }
 
+MeanPAA::MeanPAA(const boost::property_tree::ptree &, std::shared_ptr<Node> next)
+    : PAA<MeanCounter>(next)
+{
+}
+
 Node::NodeType MeanPAA::get_type() const {
     return Node::MovingAverage;
 }
@@ -63,8 +68,16 @@ MedianPAA::MedianPAA(std::shared_ptr<Node> next)
 {
 }
 
+MedianPAA::MedianPAA(const boost::property_tree::ptree &, std::shared_ptr<Node> next)
+    : PAA<MedianCounter>(next)
+{
+}
+
 Node::NodeType MedianPAA::get_type() const {
     return Node::MovingMedian;
 }
+
+static QueryParserToken<MeanPAA> mean_paa_token("paa");
+static QueryParserToken<MedianPAA> median_paa_token("median-paa");
 
 }}  // namespace

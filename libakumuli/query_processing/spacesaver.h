@@ -1,8 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace QP {
@@ -19,8 +20,8 @@ struct SpaceSaver : Node {
     std::unordered_map<aku_ParamId, Item> counters_;
     //! Capacity
     double N;
-    const size_t M;
-    const double P;
+    size_t M;
+    double P;
 
     /** C-tor.
       * @param error is a allowed error value between 0 and 1
@@ -36,6 +37,27 @@ struct SpaceSaver : Node {
     {
         assert(P >= 0.0);
         assert(P <= 1.0);
+    }
+
+    SpaceSaver(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+        : next_(next)
+    {
+        double error = ptree.get<std::string>("error");
+        double portion = ptree.get<std::string>("portion");
+        if (error == 0.0) {
+            QueryParserError error("`error` can't be 0.");
+            BOOST_THROW_EXCEPTION(error);
+        }
+        M = ceil(1.0/error);
+        P = portion;
+        if (P < 0.0) {
+            QueryParserError error("`portion` can't be negative");
+            BOOST_THROW_EXCEPTION(error);
+        }
+        if (P > 1.0) {
+            QueryParserError error("`portion` can't be greater then 1.");
+            BOOST_THROW_EXCEPTION(error);
+        }
     }
 
     bool count() {

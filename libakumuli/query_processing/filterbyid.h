@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "../util.h"  // for panic
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace QP {

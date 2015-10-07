@@ -54,6 +54,7 @@ int main() {
 
         //! Commit changes
         virtual aku_Status commit(size_t bytes_written) {
+            out->resize(bytes_written);
             return AKU_SUCCESS;
         }
     } writer(&out);
