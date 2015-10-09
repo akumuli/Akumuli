@@ -19,15 +19,15 @@ struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, No
 
     RandomSamplingNode(boost::property_tree::ptree const&ptree, std::shared_ptr<Node> next);
 
-    virtual NodeType get_type() const;
-
     bool flush();
 
     virtual void complete();
 
     virtual bool put(const aku_Sample& sample);
 
-    void set_error(aku_Status status);
+    virtual void set_error(aku_Status status);
+
+    virtual int get_requirements() const;
 };
 
 }}  // namespace

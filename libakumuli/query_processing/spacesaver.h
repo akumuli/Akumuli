@@ -134,8 +134,8 @@ struct SpaceSaver : Node {
         next_->set_error(status);
     }
 
-    virtual NodeType get_type() const {
-        return Node::SpaceSaver;
+    virtual int get_requirements() const {
+        return EMPTY|TERMINAL;
     }
 };
 

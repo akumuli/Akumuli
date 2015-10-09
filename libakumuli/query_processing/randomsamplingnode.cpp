@@ -21,8 +21,8 @@ RandomSamplingNode::RandomSamplingNode(boost::property_tree::ptree const& ptree,
     samples_.reserve(size);
 }
 
-Node::NodeType RandomSamplingNode::get_type() const {
-    return Node::RandomSampler;
+int RandomSamplingNode::get_requirements() const {
+    return EMPTY;
 }
 
 bool RandomSamplingNode::flush() {

@@ -67,8 +67,8 @@ struct Recorder : QP::Node {
         cursor.set_error(caller, status);
     }
 
-    NodeType get_type() const {
-        return Node::Cursor;
+    int get_requirements() const {
+        return EMPTY;
     }
 };
 

@@ -41,8 +41,8 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
         next_->set_error(status);
     }
 
-    virtual NodeType get_type() const {
-        return NodeType::FilterById;
+    virtual int get_requirements() const {
+        return EMPTY;
     }
 };
 

@@ -26,13 +26,13 @@ struct SAXNode : Node {
 
     SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
 
-    void complete();
+    virtual void complete();
 
-    bool put(const aku_Sample &sample);
+    virtual bool put(const aku_Sample &sample);
 
-    void set_error(aku_Status status);
+    virtual void set_error(aku_Status status);
 
-    NodeType get_type() const;
+    virtual int get_requirements() const;
 };
 
 }}  // namespace

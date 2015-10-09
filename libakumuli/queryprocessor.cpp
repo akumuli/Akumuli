@@ -55,7 +55,7 @@ static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptr
         name = ptree.get<std::string>("name");
         return QP::create_node(name, ptree, next);
     } catch (const boost::property_tree::ptree_error&) {
-        NodeException except(Node::RandomSampler, "invalid sampler description");
+        QueryParserError except("invalid sampler description");
         BOOST_THROW_EXCEPTION(except);
     }
 }

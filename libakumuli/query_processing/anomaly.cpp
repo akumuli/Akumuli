@@ -210,8 +210,8 @@ void AnomalyDetector::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-Node::NodeType AnomalyDetector::get_type() const {
-    return Node::AnomalyDetector;
+int AnomalyDetector::get_requirements() const {
+    return TERMINAL|GROUP_BY_REQUIRED;
 }
 
 //! Register anomaly detector for use in queries

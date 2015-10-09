@@ -24,7 +24,7 @@ struct NodeMock : Node {
     // Bolt interface
 public:
 
-    NodeType get_type() const { return Node::Mock; }
+    int get_requirements() const { return TERMINAL; }
     void complete() {}
     void set_error(aku_Status status) {
         BOOST_FAIL("set_error shouldn't be called");

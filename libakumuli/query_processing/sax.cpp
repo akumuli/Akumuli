@@ -67,8 +67,8 @@ void SAXNode::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-Node::NodeType SAXNode::get_type() const {
-    return Node::SAX;
+int SAXNode::get_requirements() const {
+    return GROUP_BY_REQUIRED;
 }
 
 static QueryParserToken<SAXNode> sax_token("sax");

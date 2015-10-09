@@ -18,27 +18,6 @@ static const aku_Sample EMPTY_SAMPLE = {};
 
 struct Node {
 
-    enum NodeType {
-        // Samplers
-        RandomSampler,
-        MovingAverage,
-        MovingMedian,
-        AnomalyDetector,
-        Resampler,
-        // Tok-K elements
-        SpaceSaver,
-        // Filtering
-        FilterById,
-        // Group by
-        GroupBy,
-        // Testing
-        Mock,
-        // Cursor node
-        Cursor,
-        // SAX Encoder
-        SAX,
-    };
-
     virtual ~Node() = default;
 
     //! Complete adding values
@@ -51,22 +30,24 @@ struct Node {
 
     virtual void set_error(aku_Status status) = 0;
 
-    // Introspections
+    // Query validation
 
-    //! Get node type
-    virtual NodeType get_type() const = 0;
+    enum QueryFlags {
+        EMPTY = 0,
+        GROUP_BY_REQUIRED = 1,
+        TERMINAL = 2,
+    };
+
+    /** This method returns set of flags that describes its functioning.
+      */
+    virtual int get_requirements() const = 0;
 };
 
 
 struct NodeException : std::runtime_error {
-    Node::NodeType type_;
-    NodeException(Node::NodeType type, const char* msg)
+    NodeException(const char* msg)
         : std::runtime_error(msg)
-        , type_(type)
     {
-    }
-    Node::NodeType get_type() const {
-        return type_;
     }
 };
 

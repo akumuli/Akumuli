@@ -370,8 +370,8 @@ struct TerminalNode : QP::Node {
         throw SearchError("search error detected", status);
     }
 
-    NodeType get_type() const {
-        return Node::Cursor;
+    int get_requirements() const {
+        return TERMINAL;
     }
 };
 

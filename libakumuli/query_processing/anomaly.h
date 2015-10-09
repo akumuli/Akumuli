@@ -44,7 +44,7 @@ struct AnomalyDetector : Node {
 
     virtual void set_error(aku_Status status);
 
-    virtual NodeType get_type() const;
+    virtual int get_requirements() const;
 };
 
 
