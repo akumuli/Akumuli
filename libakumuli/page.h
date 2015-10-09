@@ -29,7 +29,7 @@
 #include "util.h"
 #include "internal_cursor.h"
 #include "compression.h"
-#include "queryprocessor_fwd.h"
+#include "queryprocessor_framework.h"
 #include "buffer_cache.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;

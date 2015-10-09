@@ -20,7 +20,7 @@
 
 #include "akumuli.h"
 #include "stringpool.h"
-#include "queryprocessor_fwd.h"
+#include "queryprocessor_framework.h"
 #include "seriesparser.h"
 
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -59,6 +59,8 @@ struct GroupByStatement {
     GroupByStatement& operator = (const GroupByStatement& other);
 
     bool put(aku_Sample const& sample, Node& next);
+
+    bool empty() const;
 };
 
 
@@ -94,7 +96,7 @@ struct ScanQueryProcessor : IQueryProcessor {
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
-    ScanQueryProcessor(std::shared_ptr<Node> root,
+    ScanQueryProcessor(std::vector<std::shared_ptr<Node> > nodes,
                        std::vector<std::string> metrics,
                        aku_Timestamp begin,
                        aku_Timestamp end,

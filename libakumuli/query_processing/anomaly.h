@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 #include "../anomalydetector.h"
 
 namespace Akumuli {
@@ -36,13 +36,15 @@ struct AnomalyDetector : Node {
                     FcastMethod method,
                     std::shared_ptr<Node> next);
 
+    AnomalyDetector(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+
     virtual void complete();
 
     virtual bool put(const aku_Sample &sample);
 
     virtual void set_error(aku_Status status);
 
-    virtual NodeType get_type() const;
+    virtual int get_requirements() const;
 };
 
 

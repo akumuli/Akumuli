@@ -45,91 +45,6 @@ namespace QP {
 //         Factory methods           //
 //                                   //
 
-static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_tree::ptree const& ptree) {
-    bool approx = ptree.get<bool>("approx");
-    std::string name = ptree.get<std::string>("method");
-    AnomalyDetector::FcastMethod method;
-    if (name == "ewma" || name == "exp-smoothing") {
-        method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
-    } else if (name == "sma" || name == "simple-moving-average") {
-        method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
-    } else if (name == "double-exp-smoothing") {
-        method = approx ? AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH : AnomalyDetector::DOUBLE_EXP_SMOOTHING;
-    } else if (name == "holt-winters") {
-        method = approx ? AnomalyDetector::HOLT_WINTERS_SKETCH : AnomalyDetector::HOLT_WINTERS;
-    } else {
-        QueryParserError err("Unknown forecasting method");
-        BOOST_THROW_EXCEPTION(err);
-    }
-    return method;
-}
-
-void validate_sketch_params(boost::property_tree::ptree const& ptree) {
-    uint32_t bits = ptree.get<uint32_t>("bits", 8);
-    uint32_t hashes = ptree.get<uint32_t>("hashes", 1);
-    // bits should be in range
-    if (bits < 8 || bits > 16) {
-        QueryParserError err("Anomaly detector parameter `bits` out of range");
-        BOOST_THROW_EXCEPTION(err);
-    }
-    // hashes should be in range and odd
-    if (hashes % 2 == 0) {
-        QueryParserError err("Anomaly detector parameter `hashes` should be odd");
-        BOOST_THROW_EXCEPTION(err);
-    }
-    if (hashes == 0 || hashes > 9) {
-        QueryParserError err("Anomaly detector parameter `hashes` out of range");
-        BOOST_THROW_EXCEPTION(err);
-    }
-}
-
-void validate_all_params(std::vector<std::string> required, boost::property_tree::ptree const& ptree) {
-    for (auto name: required) {
-        auto o = ptree.get_optional<std::string>(name);
-        if (!o) {
-            std::string err_msg = "Parameter " + name + " should be set";
-            QueryParserError err(err_msg.c_str());
-            BOOST_THROW_EXCEPTION(err);
-        }
-    }
-}
-
-static void validate_anomaly_detector_params(boost::property_tree::ptree const& ptree) {
-    auto type = parse_anomaly_detector_type(ptree);
-    switch(type) {
-    case AnomalyDetector::SMA_SKETCH:
-        validate_sketch_params(ptree);
-    case AnomalyDetector::SMA:
-        validate_all_params({"period"}, ptree);
-        break;
-
-    case AnomalyDetector::EWMA_SKETCH:
-        validate_sketch_params(ptree);
-    case AnomalyDetector::EWMA:
-        validate_all_params({"alpha"}, ptree);
-        break;
-
-    case AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH:
-        validate_sketch_params(ptree);
-    case AnomalyDetector::DOUBLE_EXP_SMOOTHING:
-        validate_all_params({"alpha", "gamma"}, ptree);
-        break;
-
-    case AnomalyDetector::HOLT_WINTERS_SKETCH:
-        validate_sketch_params(ptree);
-    case AnomalyDetector::HOLT_WINTERS:
-        validate_all_params({"alpha", "beta", "gamma", "period"}, ptree);
-        break;
-    }
-}
-
-static void validate_coef(double value, double range_begin, double range_end, const char* err_msg) {
-    if (value >= range_begin && value <= range_end) {
-        return;
-    }
-    QueryParserError err(err_msg);
-    BOOST_THROW_EXCEPTION(err);
-}
 
 static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptree,
                                           std::shared_ptr<Node> next,
@@ -138,56 +53,9 @@ static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptr
     try {
         std::string name;
         name = ptree.get<std::string>("name");
-        if (name == "reservoir") {
-            std::string size = ptree.get<std::string>("size");
-            uint32_t nsize = boost::lexical_cast<uint32_t>(size);
-            return std::make_shared<RandomSamplingNode>(nsize, next);
-        } else if (name == "PAA") {
-            return std::make_shared<MeanPAA>(next);
-        } else if (name == "PAA-median") {
-            return std::make_shared<MedianPAA>(next);
-        } else if (name == "frequent-items") {
-            std::string serror = ptree.get<std::string>("error");
-            std::string sportion = ptree.get<std::string>("portion");
-            double error = boost::lexical_cast<double>(serror);
-            double portion = boost::lexical_cast<double>(sportion);
-            return std::make_shared<SpaceSaver<false>>(error, portion, next);
-        } else if (name == "heavy-hitters") {
-            std::string serror = ptree.get<std::string>("error");
-            std::string sportion = ptree.get<std::string>("portion");
-            double error = boost::lexical_cast<double>(serror);
-            double portion = boost::lexical_cast<double>(sportion);
-            return std::make_shared<SpaceSaver<true>>(error, portion, next);
-        } else if (name == "anomaly-detector") {
-            validate_anomaly_detector_params(ptree);
-            double threshold = ptree.get<double>("threshold");
-            uint32_t bits = ptree.get<uint32_t>("bits", 10u);
-            uint32_t hashes = ptree.get<uint32_t>("hashes", 3u);
-            AnomalyDetector::FcastMethod method = parse_anomaly_detector_type(ptree);
-            double alpha = ptree.get<double>("alpha", 0.0);
-            double beta = ptree.get<double>("beta", 0.0);
-            double gamma = ptree.get<double>("gamma", 0.0);
-            int period = ptree.get<int>("period", 0);
-            validate_coef(alpha, 0.0, 1.0, "`alpha` should be in [0, 1] range");
-            validate_coef(beta,  0.0, 1.0, "`beta` should be in [0, 1] range");
-            validate_coef(gamma, 0.0, 1.0, "`gamma` should be in [0, 1] range");
-            return std::make_shared<AnomalyDetector>(hashes, bits, threshold, alpha, beta, gamma, period, method, next);
-        } else if (name == "SAX") {
-            int alphabet_size = ptree.get<int>("alphabet_size");
-            int window_width  = ptree.get<int>("window_width");
-            bool disable_val  = ptree.get<bool>("no_value", true);
-            validate_coef(alphabet_size, 1.0, 20.0, "`alphabet_size` should be in [1, 20] range");
-            validate_coef(window_width, 4.0, 100.0, "`window_width` should be in [4, 100] range");
-            return std::make_shared<SAXNode>(alphabet_size, window_width, disable_val, next);
-        }
-        // only this one is implemented
-        NodeException except(Node::RandomSampler, "invalid sampler description, unknown algorithm");
-        BOOST_THROW_EXCEPTION(except);
+        return QP::create_node(name, ptree, next);
     } catch (const boost::property_tree::ptree_error&) {
-        NodeException except(Node::RandomSampler, "invalid sampler description");
-        BOOST_THROW_EXCEPTION(except);
-    } catch (const boost::bad_lexical_cast&) {
-        NodeException except(Node::RandomSampler, "invalid sampler description, valid integer expected");
+        QueryParserError except("invalid sampler description");
         BOOST_THROW_EXCEPTION(except);
     }
 }
@@ -297,7 +165,11 @@ bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
     return next.put(sample);
 }
 
-ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
+bool GroupByStatement::empty() const {
+    return step_ == 0;
+}
+
+ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::vector<std::string> metrics,
                                        aku_Timestamp begin,
                                        aku_Timestamp end,
@@ -308,8 +180,33 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
     , metrics_(metrics)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
-    , root_node_(root)
 {
+    if (nodes.empty()) {
+        AKU_PANIC("`nodes` shouldn't be empty")
+    }
+    root_node_ = nodes.at(0);
+
+    // validate query processor data
+    if (groupby_.empty()) {
+        for (auto ptr: nodes) {
+            if ((ptr->get_requirements() & Node::GROUP_BY_REQUIRED) != 0) {
+                NodeException err("`group_by` required");  // TODO: more detailed error message
+                BOOST_THROW_EXCEPTION(err);
+            }
+        }
+    }
+
+    int nnormal = 0;
+    for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
+        if (((*it)->get_requirements() & Node::TERMINAL) != 0) {
+            if (nnormal != 0) {
+                NodeException err("invalid sampling order");  // TODO: more detailed error message
+                BOOST_THROW_EXCEPTION(err);
+            }
+        } else {
+            nnormal++;
+        }
+    }
 }
 
 bool ScanQueryProcessor::start() {
@@ -537,6 +434,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
     namespace pt = boost::property_tree;
     using namespace QP;
 
+
     const auto NOSAMPLE = std::make_pair<std::string, size_t>("", 0u);
 
     //! C-string to streambuf adapter
@@ -595,6 +493,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
 
         // Build topology
         std::shared_ptr<Node> next = terminal;
+        std::vector<std::shared_ptr<Node>> allnodes = { next };
         if (!select) {
             // Read timestamps
             auto ts_begin = parse_range_timestamp(ptree, "from", logger);
@@ -603,16 +502,20 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             if (sampling_params) {
                 for (auto i = sampling_params->rbegin(); i != sampling_params->rend(); i++) {
                         next = make_sampler(i->second, next, logger);
+                        allnodes.push_back(next);
                 }
             }
             if (!ids_included.empty()) {
                 next = make_filter_by_id_list(ids_included, next, logger);
+                allnodes.push_back(next);
             }
             if (!ids_excluded.empty()) {
                 next = make_filter_out_by_id_list(ids_excluded, next, logger);
+                allnodes.push_back(next);
             }
+            std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end, groupby);
+            return std::make_shared<ScanQueryProcessor>(allnodes, metrics, ts_begin, ts_end, groupby);
         }
 
         if (ids_included.empty() && metrics.empty()) {

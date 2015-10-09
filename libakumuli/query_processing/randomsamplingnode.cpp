@@ -11,8 +11,18 @@ RandomSamplingNode::RandomSamplingNode(uint32_t buffer_size, std::shared_ptr<Nod
     samples_.reserve(buffer_size);
 }
 
-Node::NodeType RandomSamplingNode::get_type() const {
-    return Node::RandomSampler;
+RandomSamplingNode::RandomSamplingNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    : buffer_size_(0)
+    , next_(next)
+{
+    uint32_t size = ptree.get<uint32_t>("size");
+    auto pbs = const_cast<uint32_t*>(&buffer_size_);
+    *pbs = size;
+    samples_.reserve(size);
+}
+
+int RandomSamplingNode::get_requirements() const {
+    return EMPTY;
 }
 
 bool RandomSamplingNode::flush() {
@@ -59,5 +69,7 @@ bool RandomSamplingNode::put(const aku_Sample& sample) {
 void RandomSamplingNode::set_error(aku_Status status) {
     next_->set_error(status);
 }
+
+static QueryParserToken<RandomSamplingNode> token("reservoir");
 
 }}  // namespace

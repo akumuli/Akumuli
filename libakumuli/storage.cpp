@@ -370,8 +370,8 @@ struct TerminalNode : QP::Node {
         throw SearchError("search error detected", status);
     }
 
-    NodeType get_type() const {
-        return Node::Cursor;
+    int get_requirements() const {
+        return TERMINAL;
     }
 };
 
@@ -393,13 +393,14 @@ private:
 
 void Storage::search(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
+    using namespace QP;
 
     try {
         // Parse query
         auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
-        std::shared_ptr<QP::IQueryProcessor> query_processor;
+        std::shared_ptr<IQueryProcessor> query_processor;
         try {
-            query_processor = QP::Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
+            query_processor = Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
         } catch (const QueryParserError& qpe) {
             log_error(qpe.what());
             cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);

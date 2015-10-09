@@ -29,7 +29,6 @@ struct NodeMock : Node {
     // Bolt interface
 public:
 
-    NodeType get_type() const { return Node::Mock; }
     void complete() {}
     void set_error(aku_Status status) {
         BOOST_FAIL("set_error shouldn't be called");
@@ -42,6 +41,7 @@ public:
         }
         return true;
     }
+    int get_requirements() const { return EMPTY; }
 };
 
 aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
@@ -224,7 +224,6 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     auto terminal = std::make_shared<NodeMock>();
     auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger_stub);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->root_node_->get_type() == Node::FilterById);
     BOOST_REQUIRE(qproc->metrics_.size() == 2);
     auto m1 = qproc->metrics_.at(0);
     auto m2 = qproc->metrics_.at(1);

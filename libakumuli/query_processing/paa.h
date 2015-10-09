@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace QP {
@@ -64,8 +64,8 @@ struct PAA : Node {
         next_->set_error(status);
     }
 
-    virtual NodeType get_type() const {
-        return Node::Resampler;
+    virtual int get_requirements() const {
+        return GROUP_BY_REQUIRED;
     }
 };
 
@@ -87,7 +87,7 @@ struct MeanPAA : PAA<MeanCounter> {
 
     MeanPAA(std::shared_ptr<Node> next);
 
-    virtual NodeType get_type() const override;
+    MeanPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 };
 
 struct MedianCounter {
@@ -106,7 +106,7 @@ struct MedianPAA : PAA<MedianCounter> {
 
     MedianPAA(std::shared_ptr<Node> next);
 
-    virtual NodeType get_type() const override;
+    MedianPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 };
 
 }}  // namespace

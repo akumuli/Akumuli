@@ -9,6 +9,30 @@ SAXNode::SAXNode(int alphabet_size, int window_width, bool disable_original_valu
     , alphabet_size_(alphabet_size)
     , disable_value_(disable_original_value)
 {
+    if (alphabet_size_ > 20 || alphabet_size_ < 1) {
+        QueryParserError err("`alphabet_size` should be in [1, 20] range");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    if (window_width_ > 100 || window_width_ < 4) {
+        QueryParserError err("`window_width` should be in [4, 100] range");
+        BOOST_THROW_EXCEPTION(err);
+    }
+}
+
+SAXNode::SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    : next_(next)
+{
+    alphabet_size_ = ptree.get<int>("alphabet_size");
+    window_width_  = ptree.get<int>("window_width");
+    disable_value_ = ptree.get<bool>("no_value", true);
+    if (alphabet_size_ > 20 || alphabet_size_ < 1) {
+        QueryParserError err("`alphabet_size` should be in [1, 20] range");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    if (window_width_ > 100 || window_width_ < 4) {
+        QueryParserError err("`window_width` should be in [4, 100] range");
+        BOOST_THROW_EXCEPTION(err);
+    }
 }
 
 void SAXNode::complete() {
@@ -43,8 +67,10 @@ void SAXNode::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-Node::NodeType SAXNode::get_type() const {
-    return Node::SAX;
+int SAXNode::get_requirements() const {
+    return GROUP_BY_REQUIRED;
 }
+
+static QueryParserToken<SAXNode> sax_token("sax");
 
 }}  // namespace

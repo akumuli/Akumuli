@@ -3,7 +3,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include "../queryprocessor_fwd.h"
+#include "../queryprocessor_framework.h"
 #include "../saxencoder.h"
 
 
@@ -24,13 +24,15 @@ struct SAXNode : Node {
 
     SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next);
 
-    void complete();
+    SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
 
-    bool put(const aku_Sample &sample);
+    virtual void complete();
 
-    void set_error(aku_Status status);
+    virtual bool put(const aku_Sample &sample);
 
-    NodeType get_type() const;
+    virtual void set_error(aku_Status status);
+
+    virtual int get_requirements() const;
 };
 
 }}  // namespace

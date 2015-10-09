@@ -16,7 +16,7 @@
 
 #pragma once
 #include "akumuli_def.h"
-#include "queryprocessor_fwd.h"
+#include "queryprocessor_framework.h"
 #include "stringpool.h"
 
 #include <stdint.h>
@@ -29,11 +29,6 @@
 #include <mutex>
 
 namespace Akumuli {
-
-//! Exception triggered by query parser
-struct QueryParserError : std::runtime_error {
-    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
-};
 
 
 /** Series matcher. Table that maps series names to series
