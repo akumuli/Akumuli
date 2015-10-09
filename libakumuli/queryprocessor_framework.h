@@ -107,6 +107,7 @@ struct IQueryProcessor {
 
 struct BaseQueryParserToken {
     virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const = 0;
+    virtual std::string get_tag() const = 0;
 };
 
 //! Register QueryParserToken
@@ -124,7 +125,10 @@ struct QueryParserToken : BaseQueryParserToken {
     QueryParserToken(const char* tag) : tag(tag) {
         add_queryparsertoken_to_registry(this);
     }
-    std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const {
+    virtual std::string get_tag() const {
+        return tag;
+    }
+    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const {
         return std::make_shared<Target>(ptree, next);
     }
 };

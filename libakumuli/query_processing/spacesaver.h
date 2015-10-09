@@ -42,8 +42,8 @@ struct SpaceSaver : Node {
     SpaceSaver(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
         : next_(next)
     {
-        double error = ptree.get<std::string>("error");
-        double portion = ptree.get<std::string>("portion");
+        double error = ptree.get<double>("error");
+        double portion = ptree.get<double>("portion");
         if (error == 0.0) {
             QueryParserError error("`error` can't be 0.");
             BOOST_THROW_EXCEPTION(error);

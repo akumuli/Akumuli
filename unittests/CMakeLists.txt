@@ -291,6 +291,7 @@ add_executable(
     test_queryprocessor
     test_queryprocessor.cpp
     ../libakumuli/queryprocessor.cpp
+    ../libakumuli/queryprocessor_framework.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/hashfnfamily.cpp
