@@ -165,7 +165,11 @@ bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
     return next.put(sample);
 }
 
-ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
+bool GroupByStatement::empty() const {
+    return step_ == 0;
+}
+
+ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::vector<std::string> metrics,
                                        aku_Timestamp begin,
                                        aku_Timestamp end,
@@ -176,8 +180,33 @@ ScanQueryProcessor::ScanQueryProcessor(std::shared_ptr<Node> root,
     , metrics_(metrics)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
-    , root_node_(root)
 {
+    if (nodes.empty()) {
+        AKU_PANIC("`nodes` shouldn't be empty")
+    }
+    root_node_ = nodes.at(0);
+
+    // validate query processor data
+    if (groupby_.empty()) {
+        for (auto ptr: nodes) {
+            if ((ptr->get_requirements() & Node::GROUP_BY_REQUIRED) != 0) {
+                NodeException err("`group_by` required");  // TODO: more detailed error message
+                BOOST_THROW_EXCEPTION(err);
+            }
+        }
+    }
+
+    int nnormal = 0;
+    for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
+        if (((*it)->get_requirements() & Node::TERMINAL) != 0) {
+            if (nnormal != 0) {
+                NodeException err("invalid sampling order");  // TODO: more detailed error message
+                BOOST_THROW_EXCEPTION(err);
+            }
+        } else {
+            nnormal++;
+        }
+    }
 }
 
 bool ScanQueryProcessor::start() {
@@ -405,6 +434,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
     namespace pt = boost::property_tree;
     using namespace QP;
 
+
     const auto NOSAMPLE = std::make_pair<std::string, size_t>("", 0u);
 
     //! C-string to streambuf adapter
@@ -463,6 +493,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
 
         // Build topology
         std::shared_ptr<Node> next = terminal;
+        std::vector<std::shared_ptr<Node>> allnodes = { next };
         if (!select) {
             // Read timestamps
             auto ts_begin = parse_range_timestamp(ptree, "from", logger);
@@ -471,16 +502,20 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             if (sampling_params) {
                 for (auto i = sampling_params->rbegin(); i != sampling_params->rend(); i++) {
                         next = make_sampler(i->second, next, logger);
+                        allnodes.push_back(next);
                 }
             }
             if (!ids_included.empty()) {
                 next = make_filter_by_id_list(ids_included, next, logger);
+                allnodes.push_back(next);
             }
             if (!ids_excluded.empty()) {
                 next = make_filter_out_by_id_list(ids_excluded, next, logger);
+                allnodes.push_back(next);
             }
+            std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(next, metrics, ts_begin, ts_end, groupby);
+            return std::make_shared<ScanQueryProcessor>(allnodes, metrics, ts_begin, ts_end, groupby);
         }
 
         if (ids_included.empty() && metrics.empty()) {
