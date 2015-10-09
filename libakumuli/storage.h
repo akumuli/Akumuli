@@ -82,6 +82,12 @@ struct Volume : std::enable_shared_from_this<Volume>
 
     //! Flush page
     void flush();
+
+    //! Make volume read-only
+    void make_readonly();
+
+    //! Make volume writeable
+    void make_writable();
 };
 
 /** Interface to page manager

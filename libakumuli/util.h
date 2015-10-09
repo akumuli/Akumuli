@@ -99,6 +99,10 @@ namespace Akumuli
         apr_status_t status_code() const;
         //! Remap file in a destructive way (all file content is lost)
         void remap_file_destructive();
+        //! Protect page from writing
+        aku_Status protect_all();
+        //! Make page available for writing
+        aku_Status unprotect_all();
     private:
         //! Map file into virtual address space
         apr_status_t map_file();

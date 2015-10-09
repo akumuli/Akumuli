@@ -75,6 +75,18 @@ PageHeader* Volume::get_page() const {
     return page_;
 }
 
+void Volume::make_readonly() {
+    if (mmap_.protect_all() != AKU_SUCCESS) {
+        AKU_PANIC("can't make mmap region read-only");
+    }
+}
+
+void Volume::make_writable() {
+    if (mmap_.unprotect_all() != AKU_SUCCESS) {
+        AKU_PANIC("can't make mmap region writable");
+    }
+}
+
 std::shared_ptr<Volume> Volume::safe_realloc() {
     uint32_t page_id = page_->get_page_id();
     uint32_t open_count = page_->get_open_count();
@@ -217,6 +229,7 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
     for(auto path: v_iter.volume_names) {
         PVolume vol;
         vol.reset(new Volume(path.c_str(), config_, logger_));
+        vol->make_readonly();
         volumes_.push_back(vol);
     }
 
@@ -255,6 +268,7 @@ void Storage::select_active_page() {
     active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();
+    active_volume_->make_writable();
 
     if (active_page_->get_close_count() == active_page_->get_open_count()) {
         // Application was interrupted during volume
@@ -298,6 +312,7 @@ void Storage::advance_volume_(int local_rev) {
             active_volume_->cache_->merge_and_compress(active_page_);
         }
         active_volume_->close();
+        active_volume_->make_readonly();
         log_message("page complete");
 
         // select next page in round robin order
@@ -306,6 +321,7 @@ void Storage::advance_volume_(int local_rev) {
         volumes_[active_volume_index_ % volumes_.size()] = last_volume->safe_realloc();
         active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
         active_volume_->open();
+        active_volume_->make_writable();
         active_page_ = active_volume_->page_;
 
         auto new_page_id = active_page_->get_page_id();

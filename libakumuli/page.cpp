@@ -299,7 +299,6 @@ int PageHeader::copy_entry(uint32_t offset, aku_Entry *receiver) const {
     return 0;
 }
 
-
 SearchStats& get_global_search_stats() {
     static SearchStats stats;
     return stats;
