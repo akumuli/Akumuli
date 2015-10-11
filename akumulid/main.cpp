@@ -4,6 +4,7 @@
 #include "httpserver.h"
 #include "utility.h"
 #include "query_results_pooler.h"
+#include "signal_handler.h"
 
 #include <iostream>
 #include <fstream>
@@ -395,6 +396,8 @@ void cmd_run_server() {
 
     auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
 
+    SignalHandler sighandler({SIGINT});
+
     auto udp_server = std::make_shared<UdpServer>(pipeline, udp_conf.nworkers, udp_conf.port);
 
     auto tcp_server = std::make_shared<TcpServer>(pipeline, tcp_conf.nworkers, tcp_conf.port);
@@ -404,12 +407,12 @@ void cmd_run_server() {
 
     udp_server->start();
     std::cout << cli_format("**OK** UDP  server started, port: ") << udp_conf.port << std::endl;
-    tcp_server->start();
+    tcp_server->start(&sighandler);
     std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
     httpserver->start();
     std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
 
-    tcp_server->wait_for_signal();
+    sighandler.wait();
 
     udp_server->stop();
     std::cout << cli_format("**OK** UDP  server stopped") << std::endl;
