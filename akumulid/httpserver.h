@@ -23,6 +23,7 @@
 
 #include "logger.h"
 #include "akumuli.h"
+#include "server.h"
 
 namespace Akumuli {
 namespace Http {
@@ -70,7 +71,7 @@ struct QueryResultsPooler {
     virtual void close() = 0;
 };
 
-struct HttpServer
+struct HttpServer : std::enable_shared_from_this<HttpServer>, Server
 {
     AccessControlList               acl_;
     std::shared_ptr<QueryProcessor> proc_;
@@ -79,7 +80,8 @@ struct HttpServer
 
     HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc);
     HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl);
-    void start();
+
+    virtual void start(SignalHandler* handler, int id);
     void stop();
 };
 

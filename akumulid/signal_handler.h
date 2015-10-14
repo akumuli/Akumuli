@@ -6,19 +6,19 @@
 
 namespace Akumuli {
 
-/** Simple signal handler
+/** Very basic signal handler.
+  * Catches only SIGINT.
   */
 struct SignalHandler {
     typedef std::function<void()> Func;
 
-    std::vector<Func> handlers_;
-    std::vector<int> signals_;
+    std::vector<std::pair<Func, int>> handlers_;
 
-    SignalHandler(std::vector<int> s);
+    SignalHandler();
 
-    void add_handler(std::function<void()> cb);
+    void add_handler(Func cb, int id);
 
-    void wait();
+    std::vector<int> wait();
 };
 
 }

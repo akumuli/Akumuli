@@ -252,10 +252,10 @@ TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrenc
     serv->start();
 }
 
-void TcpServer::start(SignalHandler* sig) {
+void TcpServer::start(SignalHandler* sig, int id) {
 
     auto self = shared_from_this();
-    sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)));
+    sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)), id);
 
     auto logger = &logger_;
     auto iorun = [logger](IOServiceT& io, boost::barrier& bar) {

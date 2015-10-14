@@ -2,6 +2,8 @@
 #include "utility.h"
 #include <cstring>
 
+#include <boost/bind.hpp>
+
 namespace Akumuli {
 namespace Http {
 
@@ -100,7 +102,7 @@ HttpServer::HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qpro
 {
 }
 
-void HttpServer::start() {
+void HttpServer::start(SignalHandler* sig, int id) {
     daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
                                port_,
                                NULL,
@@ -111,6 +113,9 @@ void HttpServer::start() {
     if (daemon_ == nullptr) {
         BOOST_THROW_EXCEPTION(std::runtime_error("can't start daemon"));
     }
+
+    auto self = shared_from_this();
+    sig->add_handler(boost::bind(&HttpServer::stop, std::move(self)), id);
 }
 
 void HttpServer::stop() {

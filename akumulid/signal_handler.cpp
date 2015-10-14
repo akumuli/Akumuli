@@ -5,35 +5,32 @@
 
 namespace Akumuli {
 
-SignalHandler::SignalHandler(std::vector<int> s)
-    : signals_(s)
+SignalHandler::SignalHandler()
 {
 }
 
-void SignalHandler::add_handler(std::function<void()> fn) {
-    handlers_.push_back(fn);
+void SignalHandler::add_handler(std::function<void()> fn, int id) {
+    handlers_.push_back(std::make_pair(fn, id));
 }
 
-void SignalHandler::wait() {
-    sigset_t sset = {};
-    sigemptyset(&sset);
-    for(auto s: signals_) {
-        std::cout << "adding signal " << s << std::endl;
-        if (sigaddset(&sset, s) != 0) {
-            std::cout << "sigaddset error" << std::endl;
-        }
+static void sig_handler(int signo) {
+    if (signo == SIGINT) {
+        std::cout << "SIGINT catched!" << std::endl;
     }
-    int signo = 0;
-    std::cout << "starting to wait for signals" << std::endl;
-    if (sigwait(&sset, &signo) != 0) {
-        std::cout << "sigwait error" << std::endl;
-        std::runtime_error error("`sigwait` error");
+}
+
+std::vector<int> SignalHandler::wait() {
+    if (signal(SIGINT, &sig_handler) == SIG_ERR) {
+        std::runtime_error error("`signal` error");
         BOOST_THROW_EXCEPTION(error);
     }
-    std::cout << "signal received" << std::endl;
-    for (auto fn: handlers_) {
-        fn();
+    pause();
+    std::vector<int> ids;
+    for (auto pair: handlers_) {
+        pair.first();
+        ids.push_back(pair.second);
     }
+    return ids;
 }
 
 }

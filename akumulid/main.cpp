@@ -396,7 +396,7 @@ void cmd_run_server() {
 
     auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
 
-    SignalHandler sighandler({SIGINT});
+    SignalHandler sighandler;
 
     auto udp_server = std::make_shared<UdpServer>(pipeline, udp_conf.nworkers, udp_conf.port);
 
@@ -405,20 +405,18 @@ void cmd_run_server() {
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
     auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
 
-    udp_server->start();
+    udp_server->start(&sighandler, 0);
     std::cout << cli_format("**OK** UDP  server started, port: ") << udp_conf.port << std::endl;
-    tcp_server->start(&sighandler);
+    tcp_server->start(&sighandler, 1);
     std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
-    httpserver->start();
+    httpserver->start(&sighandler, 2);
     std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
 
     sighandler.wait();
+    // TODO: analyze return value
 
-    udp_server->stop();
     std::cout << cli_format("**OK** UDP  server stopped") << std::endl;
-    tcp_server->stop();
     std::cout << cli_format("**OK** TCP  server stopped") << std::endl;
-    httpserver->stop();
     std::cout << cli_format("**OK** HTTP server stopped") << std::endl;
 }
 

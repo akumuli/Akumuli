@@ -25,7 +25,7 @@
 #include "logger.h"
 #include "protocolparser.h"
 #include "ingestion_pipeline.h"
-#include "signal_handler.h"
+#include "server.h"
 
 namespace Akumuli {
 
@@ -141,7 +141,7 @@ private:
 };
 
 
-struct TcpServer : public std::enable_shared_from_this<TcpServer>
+struct TcpServer : std::enable_shared_from_this<TcpServer>, Server
 {
     std::shared_ptr<IngestionPipeline>  pline;
     std::shared_ptr<TcpAcceptor>        serv;
@@ -154,8 +154,9 @@ struct TcpServer : public std::enable_shared_from_this<TcpServer>
     TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
 
     //! Run IO service
-    void start(SignalHandler* sig_handler);
+    virtual void start(SignalHandler* sig_handler, int id);
 
+    //! Stop the server (should be called from signal handler)
     void stop();
 };
 }
