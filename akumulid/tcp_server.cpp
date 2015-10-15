@@ -241,7 +241,6 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port)
     : pline(pipeline)
     , barrier(concurrency)
-    , sig(io, SIGINT)
     , stopped{0}
     , logger_("tcp-server", 32)
 {
@@ -253,14 +252,10 @@ TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrenc
     serv->start();
 }
 
-void TcpServer::start() {
+void TcpServer::start(SignalHandler* sig, int id) {
 
-    sig.async_wait(
-                // Wait for sigint
-                boost::bind(&TcpServer::handle_sigint,
-                            shared_from_this(),
-                            boost::asio::placeholders::error)
-                );
+    auto self = shared_from_this();
+    sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)), id);
 
     auto logger = &logger_;
     auto iorun = [logger](IOServiceT& io, boost::barrier& bar) {
@@ -283,25 +278,10 @@ void TcpServer::start() {
     }
 }
 
-void TcpServer::handle_sigint(boost::system::error_code err) {
-    if (!err) {
-        if (stopped == 0) {
-            std::cout << "SIGINT catched, stopping pipeline" << std::endl;
-            logger_.info() << "SIGINT catched, stopping pipeline";
-            stop();
-            stopped++;
-        }
-    } else {
-        logger_.error() << "Signal handler error " << err.message();
-    }
-}
-
 void TcpServer::stop() {
     if (stopped++ == 0) {
         serv->stop();
         logger_.info() << "TcpServer stopped";
-
-        sig.cancel();
 
         // No need to joint I/O threads, just wait until they completes.
         barrier.wait();
@@ -317,12 +297,18 @@ void TcpServer::stop() {
     }
 }
 
-void TcpServer::wait_for_signal() {
-    // TODO: use cond var
-    while(!stopped) {
-        sleep(1);
+struct TcpServerBuilder {
+
+    TcpServerBuilder() {
+        ServerFactory::instance().register_type("TCP", *this);
     }
-}
+
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+        return std::make_shared<TcpServer>(pipeline, settings.nworkers, settings.port);
+    }
+};
+
+static TcpServerBuilder reg_type;
 
 }
 

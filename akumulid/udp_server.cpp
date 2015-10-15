@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <time.h>
 
+#include <boost/bind.hpp>
+
 namespace Akumuli {
 
 UdpServer::UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port)
@@ -23,7 +25,10 @@ UdpServer::UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, 
 }
 
 
-void UdpServer::start() {
+void UdpServer::start(SignalHandler *sig, int id) {
+    auto self = shared_from_this();
+    sig->add_handler(boost::bind(&UdpServer::stop, std::move(self)), id);
+
     // Create workers
     for (int i = 0; i < nworkers_; i++) {
         auto spout = pipeline_->make_spout();
@@ -135,6 +140,21 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
 
     stop_barrier_.wait();
 }
+
+
+struct UdpServerBuilder {
+
+    UdpServerBuilder() {
+        ServerFactory::instance().register_type("UDP", *this);
+    }
+
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+        return std::make_shared<UdpServer>(pipeline, settings.nworkers, settings.port);
+    }
+};
+
+static UdpServerBuilder reg_type;
+
 
 }
 

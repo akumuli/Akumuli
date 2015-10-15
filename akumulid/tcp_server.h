@@ -24,7 +24,7 @@
 
 #include "logger.h"
 #include "protocolparser.h"
-#include "ingestion_pipeline.h"
+#include "server.h"
 
 namespace Akumuli {
 
@@ -140,26 +140,22 @@ private:
 };
 
 
-struct TcpServer : public std::enable_shared_from_this<TcpServer>
+struct TcpServer : std::enable_shared_from_this<TcpServer>, Server
 {
     std::shared_ptr<IngestionPipeline>  pline;
     std::shared_ptr<TcpAcceptor>        serv;
     boost::asio::io_service             io;
     std::vector<IOServiceT*>            iovec;
     boost::barrier                      barrier;
-    boost::asio::signal_set             sig;
     std::atomic<int>                    stopped;
     Logger                              logger_;
 
     TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
 
     //! Run IO service
-    void start();
+    virtual void start(SignalHandler* sig_handler, int id);
 
-    void handle_sigint(boost::system::error_code err);
-
+    //! Stop the server (should be called from signal handler)
     void stop();
-
-    void wait_for_signal();
 };
 }

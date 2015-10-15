@@ -1,16 +1,16 @@
 # Main executable
 add_executable(akumulid
     main.cpp
-    logger.cpp logger.h
-    stream.cpp stream.h
-    resp.cpp resp.h
-    protocolparser.cpp protocolparser.h
-    protocol_consumer.h
-    ingestion_pipeline.cpp ingestion_pipeline.h
-    tcp_server.cpp tcp_server.h
-    udp_server.cpp udp_server.h
-    httpserver.cpp httpserver.h
-    query_results_pooler.cpp query_results_pooler.h
+    logger.cpp
+    stream.cpp
+    resp.cpp
+    protocolparser.cpp
+    ingestion_pipeline.cpp
+    tcp_server.cpp
+    udp_server.cpp
+    httpserver.cpp
+    query_results_pooler.cpp
+    signal_handler.cpp
 )
 
 target_link_libraries(akumulid

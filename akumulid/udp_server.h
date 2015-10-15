@@ -24,6 +24,7 @@
 #include "ingestion_pipeline.h"
 #include "logger.h"
 #include "protocolparser.h"
+#include "server.h"
 
 
 namespace Akumuli {
@@ -31,7 +32,7 @@ namespace Akumuli {
 
 /** UDP server for data ingestion.
   */
-class UdpServer : public std::enable_shared_from_this<UdpServer>
+class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server
 {
     std::shared_ptr<IngestionPipeline> pipeline_;
     boost::barrier start_barrier_;  //< Barrier to start worker thread
@@ -77,12 +78,12 @@ public:
     UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port);
 
     //! Start processing packets
-    void start();
+    virtual void start(SignalHandler* sig, int id);
 
+private:
     //! Stop processing packets
     void stop();
 
-private:
     void worker(std::shared_ptr<PipelineSpout> spout);
 };
 

@@ -236,6 +236,40 @@ apr_status_t MemoryMappedFile::flush() {
     return flush(0, mmap_->size);
 }
 
+aku_Status MemoryMappedFile::protect_all() {
+    if (!mprotect(mmap_->mm, mmap_->size, PROT_READ)) {
+        return AKU_SUCCESS;
+    }
+    int err = errno;
+    aku_Status ret = AKU_EGENERAL;
+    switch(err) {
+    case ENOMEM:
+        ret = AKU_ENO_MEM;
+        break;
+    case EACCES:
+        ret = AKU_EBAD_DATA;
+        break;
+    };
+    return ret;
+}
+
+aku_Status MemoryMappedFile::unprotect_all() {
+    if (!mprotect(mmap_->mm, mmap_->size, PROT_WRITE)) {
+        return AKU_SUCCESS;
+    }
+    int err = errno;
+    aku_Status ret = AKU_EGENERAL;
+    switch(err) {
+    case ENOMEM:
+        ret = AKU_ENO_MEM;
+        break;
+    case EACCES:
+        ret = AKU_EBAD_DATA;
+        break;
+    };
+    return ret;
+}
+
 apr_status_t MemoryMappedFile::flush(size_t from, size_t to) {
     void* p = align_to_page(static_cast<char*>(mmap_->mm) + from, get_page_size());
     size_t len = to - from;
