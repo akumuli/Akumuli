@@ -110,11 +110,6 @@ log4j.appender.file.datePattern='.'yyyy-MM-dd
 )";
 
 
-struct ServerSettings {
-    int port;
-    int nworkers;
-};
-
 
 //! Container class for configuration related functions
 struct ConfigFile {
@@ -213,6 +208,7 @@ struct ConfigFile {
 
     static ServerSettings get_http_server(PTree conf) {
         ServerSettings settings;
+        settings.name = "HTTP";
         settings.port = conf.get<int>("HTTP.port");
         settings.nworkers = -1;
         return settings;
@@ -220,6 +216,7 @@ struct ConfigFile {
 
     static ServerSettings get_udp_server(PTree conf) {
         ServerSettings settings;
+        settings.name = "UDP";
         settings.port = conf.get<int>("UDP.port");
         settings.nworkers = conf.get<int>("UDP.pool_size");
         return settings;
@@ -227,9 +224,19 @@ struct ConfigFile {
 
     static ServerSettings get_tcp_server(PTree conf) {
         ServerSettings settings;
+        settings.name = "TCP";
         settings.port = conf.get<int>("TCP.port");
         settings.nworkers = conf.get<int>("TCP.pool_size");
         return settings;
+    }
+
+    static std::vector<ServerSettings> get_server_settings(PTree conf) {
+        //TODO: this should be generic
+        std::vector<ServerSettings> result = {
+            get_tcp_server(conf),
+            get_udp_server(conf),
+        };
+        return result;
     }
 };
 
@@ -382,8 +389,7 @@ void cmd_run_server() {
     auto huge_tlb               = ConfigFile::get_huge_tlb(config);
     auto cache_size             = ConfigFile::get_cache_size(config);
     auto http_conf              = ConfigFile::get_http_server(config);
-    auto tcp_conf               = ConfigFile::get_tcp_server(config);
-    auto udp_conf               = ConfigFile::get_udp_server(config);
+    auto ingestion_servers      = ConfigFile::get_server_settings(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
 
@@ -397,27 +403,27 @@ void cmd_run_server() {
     auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
 
     SignalHandler sighandler;
-
-    auto udp_server = std::make_shared<UdpServer>(pipeline, udp_conf.nworkers, udp_conf.port);
-
-    auto tcp_server = std::make_shared<TcpServer>(pipeline, tcp_conf.nworkers, tcp_conf.port);
+    int srvid = 1;
+    std::map<int, std::string> srvnames;
+    for(auto settings: ingestion_servers) {
+        auto srv = ServerFactory::instance().create(pipeline, settings);
+        srvnames[srvid] = settings.name;
+        srv->start(&sighandler, srvid++);
+        std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+    }
 
     auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
     auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
 
-    udp_server->start(&sighandler, 0);
-    std::cout << cli_format("**OK** UDP  server started, port: ") << udp_conf.port << std::endl;
-    tcp_server->start(&sighandler, 1);
-    std::cout << cli_format("**OK** TCP  server started, port: ") << tcp_conf.port << std::endl;
-    httpserver->start(&sighandler, 2);
+    httpserver->start(&sighandler, 0);
+    srvnames[0] = http_conf.name;
     std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
 
-    sighandler.wait();
-    // TODO: analyze return value
+    auto srvids = sighandler.wait();
 
-    std::cout << cli_format("**OK** UDP  server stopped") << std::endl;
-    std::cout << cli_format("**OK** TCP  server stopped") << std::endl;
-    std::cout << cli_format("**OK** HTTP server stopped") << std::endl;
+    for(int id: srvids) {
+        std::cout << cli_format("**OK** ") << srvnames[id] << " server stopped" << std::endl;
+    }
 }
 
 /** Create database command.

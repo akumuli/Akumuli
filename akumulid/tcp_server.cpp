@@ -297,5 +297,18 @@ void TcpServer::stop() {
     }
 }
 
+struct TcpServerBuilder {
+
+    TcpServerBuilder() {
+        ServerFactory::instance().register_type("TCP", *this);
+    }
+
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+        return std::make_shared<TcpServer>(pipeline, settings.nworkers, settings.port);
+    }
+};
+
+static TcpServerBuilder reg_type;
+
 }
 

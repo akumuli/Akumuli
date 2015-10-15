@@ -141,5 +141,20 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
     stop_barrier_.wait();
 }
 
+
+struct UdpServerBuilder {
+
+    UdpServerBuilder() {
+        ServerFactory::instance().register_type("UDP", *this);
+    }
+
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+        return std::make_shared<UdpServer>(pipeline, settings.nworkers, settings.port);
+    }
+};
+
+static UdpServerBuilder reg_type;
+
+
 }
 

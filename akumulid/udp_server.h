@@ -32,7 +32,7 @@ namespace Akumuli {
 
 /** UDP server for data ingestion.
   */
-class UdpServer : public std::enable_shared_from_this<UdpServer>, Server
+class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server
 {
     std::shared_ptr<IngestionPipeline> pipeline_;
     boost::barrier start_barrier_;  //< Barrier to start worker thread

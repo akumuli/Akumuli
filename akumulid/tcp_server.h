@@ -24,7 +24,6 @@
 
 #include "logger.h"
 #include "protocolparser.h"
-#include "ingestion_pipeline.h"
 #include "server.h"
 
 namespace Akumuli {
