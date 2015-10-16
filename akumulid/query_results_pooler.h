@@ -1,6 +1,7 @@
 #pragma once
 #include "httpserver.h"
 #include "ingestion_pipeline.h"
+#include "server.h"
 #include <memory>
 
 namespace Akumuli {
@@ -11,7 +12,7 @@ struct OutputFormatter {
 };
 
 
-struct QueryResultsPooler : Http::QueryResultsPooler {
+struct QueryResultsPooler : ReadOperation {
 
     std::string query_text_;
     std::shared_ptr<DbConnection> connection_;
@@ -41,14 +42,14 @@ struct QueryResultsPooler : Http::QueryResultsPooler {
     virtual void close();
 };
 
-struct QueryProcessor : Http::QueryProcessor
+struct QueryProcessor : ReadOperationBuilder
 {
     std::shared_ptr<DbConnection> con_;
     int rdbufsize_;
 
     QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf);
 
-    virtual Http::QueryResultsPooler *create();
+    virtual ReadOperation *create();
 };
 
 }  // namespace

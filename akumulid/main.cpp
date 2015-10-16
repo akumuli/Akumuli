@@ -235,6 +235,7 @@ struct ConfigFile {
         std::vector<ServerSettings> result = {
             get_tcp_server(conf),
             get_udp_server(conf),
+            get_http_server(conf),
         };
         return result;
     }
@@ -388,7 +389,6 @@ void cmd_run_server() {
     auto compression_threshold  = ConfigFile::get_compression_threshold(config);
     auto huge_tlb               = ConfigFile::get_huge_tlb(config);
     auto cache_size             = ConfigFile::get_cache_size(config);
-    auto http_conf              = ConfigFile::get_http_server(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
@@ -401,23 +401,17 @@ void cmd_run_server() {
                                                           cache_size);
 
     auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
+    auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
 
     SignalHandler sighandler;
-    int srvid = 1;
+    int srvid = 0;
     std::map<int, std::string> srvnames;
     for(auto settings: ingestion_servers) {
-        auto srv = ServerFactory::instance().create(pipeline, settings);
+        auto srv = ServerFactory::instance().create(pipeline, qproc, settings);
         srvnames[srvid] = settings.name;
         srv->start(&sighandler, srvid++);
         std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
     }
-
-    auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
-    auto httpserver = std::make_shared<Http::HttpServer>(http_conf.port, qproc);
-
-    httpserver->start(&sighandler, 0);
-    srvnames[0] = http_conf.name;
-    std::cout << cli_format("**OK** HTTP server started, port: ") << http_conf.port << std::endl;
 
     auto srvids = sighandler.wait();
 
