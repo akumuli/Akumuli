@@ -27,3 +27,25 @@ target_link_libraries(akumulid
 
 include(CppcheckTargets)
 add_cppcheck(akumulid UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)
+
+
+install(
+    TARGETS
+        akumulid
+    RUNTIME DESTINATION
+        ${CMAKE_INSTALL_PREFIX}/bin
+)
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_NAME "akumuli")
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Evgeny Lazin")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Time-series storage engine")
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+
+set(CPACK_PACKAGE_VERSION "0.3.0")
+set(CPACK_PACKAGE_VERSION_MAJOR "0")
+set(CPACK_PACKAGE_VERSION_MINOR "3")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
+
+include(CPack)
