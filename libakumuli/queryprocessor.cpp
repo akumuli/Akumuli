@@ -80,6 +80,19 @@ static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids
     return std::make_shared<NodeT>(fn, next);
 }
 
+struct FilterNothing : QP::IQueryFilter {
+    virtual FilterResult apply(aku_ParamId id) const {
+        return PROCESS;
+    }
+};
+
+struct HashFilter : QP::IQueryFilter {
+    std::unordered_set<aku_ParamId> ids_;
+    virtual FilterResult apply(aku_ParamId id) const {
+        return ids_.count(id) != 0 ? PROCESS : SKIP_THIS;
+    }
+};
+
 static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
                                                         std::shared_ptr<Node> next,
                                                         aku_logger_cb_t logger)
@@ -207,6 +220,10 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
             nnormal++;
         }
     }
+}
+
+QP::IQueryFilter const& ScanQueryProcessor::filter() const {
+    return std::make_shared<FilterNothing>();
 }
 
 bool ScanQueryProcessor::start() {

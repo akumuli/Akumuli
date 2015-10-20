@@ -52,10 +52,22 @@ struct NodeException : std::runtime_error {
 };
 
 
+struct IQueryFilter {
+    enum FilterResult {
+        SKIP_THIS,
+        SKIP_ALL,
+        PROCESS,
+    };
+    virtual ~IQueryFilter() = default;
+    virtual FilterResult apply(aku_ParamId id) const = 0;
+};
+
+
 //! Query processor interface
 struct IQueryProcessor {
 
     // Query information
+    virtual ~IQueryProcessor() = default;
 
     //! Lowerbound
     virtual aku_Timestamp lowerbound() const = 0;
@@ -65,6 +77,9 @@ struct IQueryProcessor {
 
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const = 0;
+
+    //! Return query filter
+    virtual const IQueryFilter& filter() const = 0;
 
     // Execution control
 

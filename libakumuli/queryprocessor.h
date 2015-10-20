@@ -111,6 +111,8 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     int direction() const;
 
+    IQueryFilter const& filter() const;
+
     bool start();
 
     //! Process value
