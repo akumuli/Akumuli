@@ -237,6 +237,11 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const { return dir; }
 
+    virtual const QP::IQueryFilter& filter() const {
+        static QP::BypassFilter bypass;
+        return bypass;
+    }
+
     /** Will be called before query execution starts.
       * If result already obtained - return False.
       * In this case `stop` method shouldn't be called

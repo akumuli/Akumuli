@@ -80,12 +80,6 @@ static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids
     return std::make_shared<NodeT>(fn, next);
 }
 
-struct BypassFilter : QP::IQueryFilter {
-    virtual FilterResult apply(aku_ParamId id) const {
-        return PROCESS;
-    }
-};
-
 struct HashFilter : QP::IQueryFilter {
     std::unordered_set<aku_ParamId> ids_;
     virtual FilterResult apply(aku_ParamId id) const {

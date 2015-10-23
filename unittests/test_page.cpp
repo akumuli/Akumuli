@@ -94,6 +94,11 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Upperbound
     virtual aku_Timestamp upperbound() const { return end; }
 
+    virtual const QP::IQueryFilter& filter() const {
+        static QP::BypassFilter bypass;
+        return bypass;
+    }
+
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const { return dir; }
 

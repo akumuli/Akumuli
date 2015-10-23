@@ -63,6 +63,14 @@ struct IQueryFilter {
 };
 
 
+//! Query filter that doesn't block anything
+struct BypassFilter : QP::IQueryFilter {
+    virtual FilterResult apply(aku_ParamId id) const {
+        return PROCESS;
+    }
+};
+
+
 //! Query processor interface
 struct IQueryProcessor {
 

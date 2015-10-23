@@ -43,6 +43,7 @@ struct Builder {
 };
 
 
+
 /** Group-by statement processor */
 struct GroupByStatement {
     aku_Timestamp   step_;
