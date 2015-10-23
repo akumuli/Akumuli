@@ -54,7 +54,12 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     const char* p = &bin->back();
     p -= size - 1;
     int token_size = end - begin;
+    std::atomic_fetch_add(&counter, 1ul, std::memory_order_release);
     return std::make_pair(p, token_size);
+}
+
+size_t StringPool::size() const {
+    return std::atomic_load(&counter, std::memory_order_acquire);
 }
 
 std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset) const {

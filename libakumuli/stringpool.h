@@ -20,6 +20,7 @@
 #include <deque>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 
 #include "akumuli_def.h"
 
@@ -41,8 +42,12 @@ struct StringPool {
 
     std::deque<std::vector<char>> pool;
     mutable std::mutex pool_mutex;
+    std::atomic<size_t> counter;
 
     StringT add(const char* begin, const char *end, uint64_t payload);
+
+    //! Get number of stored strings atomically
+    size_t size() const;
 
     /** Find all series that match regex.
       * @param regex is a regullar expression
