@@ -80,7 +80,7 @@ static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids
     return std::make_shared<NodeT>(fn, next);
 }
 
-struct FilterNothing : QP::IQueryFilter {
+struct BypassFilter : QP::IQueryFilter {
     virtual FilterResult apply(aku_ParamId id) const {
         return PROCESS;
     }
@@ -222,8 +222,9 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     }
 }
 
-QP::IQueryFilter const& ScanQueryProcessor::filter() const {
-    return std::make_shared<FilterNothing>();
+IQueryFilter const& ScanQueryProcessor::filter() const {
+    static BypassFilter filter;
+    return filter;
 }
 
 bool ScanQueryProcessor::start() {
@@ -271,6 +272,11 @@ aku_Timestamp MetadataQueryProcessor::upperbound() const {
 
 int MetadataQueryProcessor::direction() const {
     return AKU_CURSOR_DIR_FORWARD;
+}
+
+IQueryFilter const& MetadataQueryProcessor::filter() const {
+    static BypassFilter bypass;
+    return bypass;
 }
 
 bool MetadataQueryProcessor::start() {

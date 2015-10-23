@@ -25,6 +25,15 @@
 
 namespace Akumuli {
 
+
+//! Offset inside string-pool
+struct StringPoolOffset {
+    //! Offset of the buffer
+    size_t buffer_offset;
+    //! Offset inside buffer
+    size_t offset;
+};
+
 struct StringPool {
 
     typedef std::pair<const char*, int> StringT;
@@ -34,7 +43,13 @@ struct StringPool {
     mutable std::mutex pool_mutex;
 
     StringT add(const char* begin, const char *end, uint64_t payload);
-    std::vector<StringT> regex_match(const char* regex) const;
+
+    /** Find all series that match regex.
+      * @param regex is a regullar expression
+      * @param outoffset can be used to retreive offset of the processed data or start search from
+      *        particullar point in the string-pool
+      */
+    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr) const;
 };
 
 struct StringTools {

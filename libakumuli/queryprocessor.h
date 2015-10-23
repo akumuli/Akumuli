@@ -136,6 +136,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
     aku_Timestamp lowerbound() const;
     aku_Timestamp upperbound() const;
     int direction() const;
+    IQueryFilter const& filter() const;
     bool start();
     bool put(const aku_Sample &sample);
     void stop();
