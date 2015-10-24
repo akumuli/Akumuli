@@ -80,12 +80,40 @@ static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids
     return std::make_shared<NodeT>(fn, next);
 }
 
-struct HashFilter : QP::IQueryFilter {
+
+struct RegexFilter : IQueryFilter {
+    std::string regex_;
     std::unordered_set<aku_ParamId> ids_;
-    virtual FilterResult apply(aku_ParamId id) const {
+    StringPool const& spool_;
+    StringPoolOffset offset_;
+    size_t prev_size_;
+
+    RegexFilter(std::string regex, StringPool const& spool)
+        : regex_(regex)
+        , spool_(spool)
+        , offset_{}
+        , prev_size_(spool.size())
+    {
+        refresh();
+    }
+
+    void refresh() {
+        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_);
+        for (StringPool::StringT item: results) {
+            auto id = StringTools::extract_id_from_pool(item);
+            ids_.insert(id);
+        }
+    }
+
+    virtual FilterResult apply(aku_ParamId id) {
+        // Atomic operation, can be a source of contention
+        if (spool_.size() != prev_size_) {
+            refresh();
+        }
         return ids_.count(id) != 0 ? PROCESS : SKIP_THIS;
     }
 };
+
 
 static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
                                                         std::shared_ptr<Node> next,
@@ -177,16 +205,17 @@ bool GroupByStatement::empty() const {
 }
 
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
-                                       std::vector<std::string> metrics,
+                                       std::string metric,
                                        aku_Timestamp begin,
-                                       aku_Timestamp end,
+                                       aku_Timestamp end, std::shared_ptr<IQueryFilter> filter,
                                        GroupByStatement groupby)
     : lowerbound_(std::min(begin, end))
     , upperbound_(std::max(begin, end))
     , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
-    , metrics_(metrics)
+    , metric_(metric)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
+    , filter_(filter)
 {
     if (nodes.empty()) {
         AKU_PANIC("`nodes` shouldn't be empty")
@@ -217,8 +246,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
 }
 
 IQueryFilter const& ScanQueryProcessor::filter() const {
-    static BypassFilter filter;
-    return filter;
+    return *filter_;
 }
 
 bool ScanQueryProcessor::start() {
@@ -250,8 +278,8 @@ int ScanQueryProcessor::direction() const {
     return direction_;
 }
 
-MetadataQueryProcessor::MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node)
-    : ids_(ids)
+MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt, std::shared_ptr<Node> node)
+    : filter_(flt)
     , root_(node)
 {
 }
@@ -269,11 +297,12 @@ int MetadataQueryProcessor::direction() const {
 }
 
 IQueryFilter const& MetadataQueryProcessor::filter() const {
-    static BypassFilter bypass;
-    return bypass;
+    return *filter_;
 }
 
 bool MetadataQueryProcessor::start() {
+    // TODO: read all ids and match them
+    /*
     for (aku_ParamId id: ids_) {
         aku_Sample s;
         s.paramid = id;
@@ -284,6 +313,7 @@ bool MetadataQueryProcessor::start() {
             return false;
         }
     }
+    */
     return true;
 }
 
@@ -339,22 +369,15 @@ static QP::GroupByStatement parse_groupby(boost::property_tree::ptree const& ptr
     return QP::GroupByStatement(duration);
 }
 
-static std::vector<std::string> parse_metric(boost::property_tree::ptree const& ptree,
-                                             aku_logger_cb_t logger) {
-    std::vector<std::string> metrics;
-    auto metric = ptree.get_child_optional("metric");
-    if (metric) {
-        auto single = metric->get_value<std::string>();
-        if (single.empty()) {
-            for(auto child: *metric) {
-                auto metric_name = child.second.get_value<std::string>();
-                metrics.push_back(metric_name);
-            }
-        } else {
-            metrics.push_back(single);
-        }
+static std::string parse_metric(boost::property_tree::ptree const& ptree,
+                                aku_logger_cb_t logger) {
+    std::string metric;
+    auto opt = ptree.get_child_optional("metric");
+    if (opt) {
+        auto single = opt->get_value<std::string>();
+        metric = single;
     }
-    return metrics;
+    return metric;
 }
 
 static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,
@@ -374,22 +397,13 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     BOOST_THROW_EXCEPTION(error);
 }
 
-
-static aku_ParamId extract_id_from_pool(StringPool::StringT res) {
-    // Series name in string pool should be followed by \0 character and 64-bit series id.
-    auto p = res.first + res.second;
-    assert(p[0] == '\0');
-    p += 1;  // zero terminator + sizeof(uint64_t)
-    return *reinterpret_cast<uint64_t const*>(p);
-}
-
-static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree const& ptree,
-                                                   std::string metric,
-                                                   std::string pred,
-                                                   StringPool const& pool,
-                                                   aku_logger_cb_t logger)
+static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptree const& ptree,
+                                                       std::string metric,
+                                                       std::string pred,
+                                                       StringPool const& pool,
+                                                       aku_logger_cb_t logger)
 {
-    std::vector<aku_ParamId> ids;
+    std::shared_ptr<RegexFilter> result;
     bool not_set = false;
     auto where = ptree.get_child_optional("where");
     if (where) {
@@ -407,11 +421,7 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
                         series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
                                       << tag << "=" << value << R"((?:\s\w+=\w+)*))";
                         std::string regex = series_regexp.str();
-                        auto results = pool.regex_match(regex.c_str());
-                        for(auto res: results) {
-                            aku_ParamId id = extract_id_from_pool(res);
-                            ids.push_back(id);
-                        }
+                        result = std::make_shared<RegexFilter>(regex, pool);
                     }
                 }
             } else {
@@ -428,14 +438,10 @@ static std::vector<aku_ParamId> parse_where_clause(boost::property_tree::ptree c
             std::stringstream series_regexp;
             series_regexp << "" << metric << R"((\s\w+=\w+)*)";
             std::string regex = series_regexp.str();
-            auto results = pool.regex_match(regex.c_str());
-            for(auto res: results) {
-                aku_ParamId id = extract_id_from_pool(res);
-                ids.push_back(id);
-            }
+            result = std::make_shared<RegexFilter>(regex, pool);
         }
     }
-    return ids;
+    return result;
 }
 
 static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
@@ -480,8 +486,8 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         // Read groupby statement
         auto groupby = parse_groupby(ptree, logger);
 
-        // Read metric(s) name
-        auto metrics = parse_metric(ptree, logger);
+        // Read metric name
+        auto metric = parse_metric(ptree, logger);
 
         // Read select statment
         auto select = parse_select_stmt(ptree, logger);
@@ -490,17 +496,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         auto sampling_params = ptree.get_child_optional("sample");
 
         // Read where clause
-        std::vector<aku_ParamId> ids_included;
-        std::vector<aku_ParamId> ids_excluded;
-
-        for(auto metric: metrics) {
-
-            auto in = parse_where_clause(ptree, metric, "in", matcher.pool, logger);
-            std::copy(in.begin(), in.end(), std::back_inserter(ids_included));
-
-            auto notin = parse_where_clause(ptree, metric, "not_in", matcher.pool, logger);
-            std::copy(notin.begin(), notin.end(), std::back_inserter(ids_excluded));
-        }
+        auto filter = parse_where_clause(ptree, metric, "in", matcher.pool, logger);
 
         if (sampling_params && select) {
             (*logger)(AKU_LOG_ERROR, "Can't combine select and sample statements together");
@@ -522,36 +518,11 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
                         allnodes.push_back(next);
                 }
             }
-            if (!ids_included.empty()) {
-                next = make_filter_by_id_list(ids_included, next, logger);
-                allnodes.push_back(next);
-            }
-            if (!ids_excluded.empty()) {
-                next = make_filter_out_by_id_list(ids_excluded, next, logger);
-                allnodes.push_back(next);
-            }
             std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(allnodes, metrics, ts_begin, ts_end, groupby);
+            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupby);
         }
-
-        if (ids_included.empty() && metrics.empty()) {
-            // list all
-            for (auto val: matcher.table) {
-                auto id = val.second;
-                ids_included.push_back(id);
-            }
-        }
-        if (!ids_excluded.empty()) {
-            std::sort(ids_included.begin(), ids_included.end());
-            std::sort(ids_excluded.begin(), ids_excluded.end());
-            std::vector<aku_ParamId> tmp;
-            std::set_difference(ids_included.begin(), ids_included.end(),
-                                ids_excluded.begin(), ids_excluded.end(),
-                                std::back_inserter(tmp));
-            std::swap(tmp, ids_included);
-        }
-        return std::make_shared<MetadataQueryProcessor>(ids_included, next);
+        return std::make_shared<MetadataQueryProcessor>(filter, next);
 
     } catch(std::exception const& e) {
         (*logger)(AKU_LOG_ERROR, e.what());

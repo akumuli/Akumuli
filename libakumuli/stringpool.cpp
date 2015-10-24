@@ -54,12 +54,12 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     const char* p = &bin->back();
     p -= size - 1;
     int token_size = end - begin;
-    std::atomic_fetch_add(&counter, 1ul, std::memory_order_release);
+    std::atomic_fetch_add(&counter, 1ul);
     return std::make_pair(p, token_size);
 }
 
 size_t StringPool::size() const {
-    return std::atomic_load(&counter, std::memory_order_acquire);
+    return std::atomic_load(&counter);
 }
 
 std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset) const {
@@ -134,6 +134,14 @@ bool StringTools::equal(StringT lhs, StringT rhs) {
 
 StringTools::TableT StringTools::create_table(size_t size) {
     return TableT(size, &StringTools::hash, &StringTools::equal);
+}
+
+uint64_t StringTools::extract_id_from_pool(StringPool::StringT res) {
+    // Series name in string pool should be followed by \0 character and 64-bit series id.
+    auto p = res.first + res.second;
+    assert(p[0] == '\0');
+    p += 1;  // zero terminator + sizeof(uint64_t)
+    return *reinterpret_cast<uint64_t const*>(p);
 }
 
 }

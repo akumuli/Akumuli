@@ -72,6 +72,8 @@ struct StringTools {
     typedef std::unordered_map<uint64_t, StringT> InvT;
 
     static TableT create_table(size_t size);
+
+    static uint64_t extract_id_from_pool(StringPool::StringT res);
 };
 
 }
