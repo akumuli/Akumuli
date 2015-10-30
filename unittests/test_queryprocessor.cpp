@@ -224,7 +224,7 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     auto terminal = std::make_shared<NodeMock>();
     auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger_stub);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->metric_ == "mem");
+    BOOST_REQUIRE(qproc->metric_ == "cpu");
     auto first_ts  = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 01));
     auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
     BOOST_REQUIRE(qproc->lowerbound() == DateTimeUtil::from_boost_ptime(first_ts));

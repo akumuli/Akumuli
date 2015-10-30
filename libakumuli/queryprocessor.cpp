@@ -60,25 +60,6 @@ static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptr
     }
 }
 
-static std::shared_ptr<Node> make_filter_by_id_list(std::vector<aku_ParamId> ids,
-                                                    std::shared_ptr<Node> next,
-                                                    aku_logger_cb_t logger)
-{
-    struct Matcher {
-        std::unordered_set<aku_ParamId> idset;
-
-        bool operator () (aku_ParamId id) {
-            return idset.count(id) > 0;
-        }
-    };
-    typedef FilterByIdNode<Matcher> NodeT;
-    std::unordered_set<aku_ParamId> idset(ids.begin(), ids.end());
-    Matcher fn = { idset };
-    std::stringstream logfmt;
-    logfmt << "Creating id-list filter node (" << ids.size() << " ids in a list)";
-    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-    return std::make_shared<NodeT>(fn, next);
-}
 
 
 struct RegexFilter : IQueryFilter {
@@ -105,6 +86,12 @@ struct RegexFilter : IQueryFilter {
         }
     }
 
+    virtual std::vector<aku_ParamId> get_ids() {
+        std::vector<aku_ParamId> result;
+        std::copy(ids_.begin(), ids_.end(), std::back_inserter(result));
+        return result;
+    }
+
     virtual FilterResult apply(aku_ParamId id) {
         // Atomic operation, can be a source of contention
         if (spool_.size() != prev_size_) {
@@ -113,27 +100,6 @@ struct RegexFilter : IQueryFilter {
         return ids_.count(id) != 0 ? PROCESS : SKIP_THIS;
     }
 };
-
-
-static std::shared_ptr<Node> make_filter_out_by_id_list(std::vector<aku_ParamId> ids,
-                                                        std::shared_ptr<Node> next,
-                                                        aku_logger_cb_t logger)
-{
-    struct Matcher {
-        std::unordered_set<aku_ParamId> idset;
-
-        bool operator () (aku_ParamId id) {
-            return idset.count(id) == 0;
-        }
-    };
-    typedef FilterByIdNode<Matcher> NodeT;
-    std::unordered_set<aku_ParamId> idset(ids.begin(), ids.end());
-    Matcher fn = { idset };
-    std::stringstream logfmt;
-    logfmt << "Creating id-list filter out node (" << ids.size() << " ids in a list)";
-    (*logger)(AKU_LOG_TRACE, logfmt.str().c_str());
-    return std::make_shared<NodeT>(fn, next);
-}
 
 
 GroupByStatement::GroupByStatement()
@@ -301,9 +267,7 @@ IQueryFilter const& MetadataQueryProcessor::filter() const {
 }
 
 bool MetadataQueryProcessor::start() {
-    // TODO: read all ids and match them
-    /*
-    for (aku_ParamId id: ids_) {
+    for (auto id: filter_->get_ids()) {
         aku_Sample s;
         s.paramid = id;
         s.timestamp = 0;
@@ -313,7 +277,6 @@ bool MetadataQueryProcessor::start() {
             return false;
         }
     }
-    */
     return true;
 }
 
@@ -411,19 +374,27 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
             auto predicate = child.second;
             auto items = predicate.get_child_optional(pred);
             if (items) {
+                bool firstitem = true;
+                std::stringstream series_regexp;
                 for (auto item: *items) {
                     std::string tag = item.first;
                     auto idslist = item.second;
                     // Read idlist
                     for (auto idnode: idslist) {
                         std::string value = idnode.second.get_value<std::string>();
-                        std::stringstream series_regexp;
+                        if (firstitem) {
+                            firstitem = false;
+                            series_regexp << "(?:";
+                        } else {
+                            series_regexp << "|";
+                        }
                         series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
                                       << tag << "=" << value << R"((?:\s\w+=\w+)*))";
-                        std::string regex = series_regexp.str();
-                        result = std::make_shared<RegexFilter>(regex, pool);
                     }
                 }
+                series_regexp << ")";
+                std::string regex = series_regexp.str();
+                result = std::make_shared<RegexFilter>(regex, pool);
             } else {
                 not_set = true;
             }
