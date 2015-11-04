@@ -237,7 +237,7 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const { return dir; }
 
-    virtual const QP::IQueryFilter& filter() const {
+    virtual QP::IQueryFilter& filter() {
         static QP::BypassFilter bypass;
         return bypass;
     }

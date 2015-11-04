@@ -113,7 +113,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     int direction() const;
 
-    IQueryFilter const& filter() const;
+    IQueryFilter& filter();
 
     bool start();
 
@@ -138,7 +138,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
     aku_Timestamp lowerbound() const;
     aku_Timestamp upperbound() const;
     int direction() const;
-    IQueryFilter const& filter() const;
+    IQueryFilter& filter();
     bool start();
     bool put(const aku_Sample &sample);
     void stop();

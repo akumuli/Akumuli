@@ -208,7 +208,6 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     }
     const char* json = R"(
             {
-                "sample": [{ "name": "reservoir", "size": 1000 }],
                 "metric": "cpu",
                 "range" : {
                     "from": "20150101T000000",
@@ -231,9 +230,19 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     BOOST_REQUIRE(qproc->upperbound() == DateTimeUtil::from_boost_ptime(second_ts));
 
     qproc->start();
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345));  // shouldn't match
+    if (qproc->filter().apply(1)) {
+        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
+    } else {
+        BOOST_FAIL("bad filter");
+    }
+    if (qproc->filter().apply(2)) {
+        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
+    } else {
+        BOOST_FAIL("bad filter");
+    }
+    if (qproc->filter().apply(4)) {
+        BOOST_FAIL("bad filter");
+    }
     qproc->stop();
 
     BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);

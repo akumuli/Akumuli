@@ -211,7 +211,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     }
 }
 
-IQueryFilter const& ScanQueryProcessor::filter() const {
+IQueryFilter& ScanQueryProcessor::filter() {
     return *filter_;
 }
 
@@ -262,7 +262,7 @@ int MetadataQueryProcessor::direction() const {
     return AKU_CURSOR_DIR_FORWARD;
 }
 
-IQueryFilter const& MetadataQueryProcessor::filter() const {
+IQueryFilter& MetadataQueryProcessor::filter() {
     return *filter_;
 }
 

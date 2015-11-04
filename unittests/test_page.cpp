@@ -94,7 +94,7 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Upperbound
     virtual aku_Timestamp upperbound() const { return end; }
 
-    virtual const QP::IQueryFilter& filter() const {
+    virtual QP::IQueryFilter& filter() {
         static QP::BypassFilter bypass;
         return bypass;
     }

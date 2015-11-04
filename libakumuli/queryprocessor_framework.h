@@ -91,7 +91,7 @@ struct IQueryProcessor {
     virtual int direction() const = 0;
 
     //! Return query filter
-    virtual const IQueryFilter& filter() const = 0;
+    virtual IQueryFilter& filter() = 0;
 
     // Execution control
 
