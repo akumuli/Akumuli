@@ -304,7 +304,7 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @param cursor should point to active cursor instance
   * @param dest is an output buffer
   * @param dest_size is an output buffer size
-  * @returns number of overwriten elements
+  * @returns number of overwriten bytes
   */
 AKU_EXPORT size_t aku_cursor_read(aku_Cursor       *cursor
                                  , void *dest

@@ -518,16 +518,20 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto page = page_;
 
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
-            aku_PData pdata;
-            pdata.type = AKU_PAYLOAD_FLOAT;
-            pdata.float64 = header->values.at(i);
-            pdata.size = sizeof(aku_Sample);
-            aku_Sample result = {
-                header->timestamps.at(i),
-                header->paramids.at(i),
-                pdata,
-            };
-            return queryproc->put(result);
+            auto id = header->paramids.at(i);
+            if (queryproc->filter().apply(id) == QP::IQueryFilter::PROCESS) {
+                aku_PData pdata;
+                pdata.type = AKU_PAYLOAD_FLOAT;
+                pdata.float64 = header->values.at(i);
+                pdata.size = sizeof(aku_Sample);
+                aku_Sample result = {
+                    header->timestamps.at(i),
+                    header->paramids.at(i),
+                    pdata,
+                };
+                return queryproc->put(result);
+            }
+            return true;
         };
 
         if (IS_BACKWARD_) {

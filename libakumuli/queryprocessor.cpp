@@ -366,6 +366,10 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
                                                        StringPool const& pool,
                                                        aku_logger_cb_t logger)
 {
+    if (metric.empty()) {
+        // metric wasn't set so we should match all metrics
+        metric = "\\w+";
+    }
     std::shared_ptr<RegexFilter> result;
     bool not_set = false;
     auto where = ptree.get_child_optional("where");
