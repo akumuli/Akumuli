@@ -416,7 +416,7 @@ QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
 {
 }
 
-Http::QueryResultsPooler* QueryProcessor::create() {
+ReadOperation *QueryProcessor::create() {
     return new QueryResultsPooler(con_, rdbufsize_);
 }
 

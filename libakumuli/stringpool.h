@@ -20,10 +20,20 @@
 #include <deque>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 
 #include "akumuli_def.h"
 
 namespace Akumuli {
+
+
+//! Offset inside string-pool
+struct StringPoolOffset {
+    //! Offset of the buffer
+    size_t buffer_offset;
+    //! Offset inside buffer
+    size_t offset;
+};
 
 struct StringPool {
 
@@ -32,9 +42,19 @@ struct StringPool {
 
     std::deque<std::vector<char>> pool;
     mutable std::mutex pool_mutex;
+    std::atomic<size_t> counter;
 
     StringT add(const char* begin, const char *end, uint64_t payload);
-    std::vector<StringT> regex_match(const char* regex) const;
+
+    //! Get number of stored strings atomically
+    size_t size() const;
+
+    /** Find all series that match regex.
+      * @param regex is a regullar expression
+      * @param outoffset can be used to retreive offset of the processed data or start search from
+      *        particullar point in the string-pool
+      */
+    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr) const;
 };
 
 struct StringTools {
@@ -52,6 +72,8 @@ struct StringTools {
     typedef std::unordered_map<uint64_t, StringT> InvT;
 
     static TableT create_table(size_t size);
+
+    static uint64_t extract_id_from_pool(StringPool::StringT res);
 };
 
 }

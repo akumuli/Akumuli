@@ -32,8 +32,14 @@ bool check_path_exists(std::string path) {
 /** Row iterator interface
   */
 struct Cursor {
-    //                 timestmap    seriesname   value
-    typedef std::tuple<std::string, std::string, double> RowT;
+    struct RowT {
+        std::string timestamp;
+        std::string seriesname;
+        double value;
+        // raw values
+        aku_ParamId rawid;
+        aku_Timestamp rawts;
+    };
 
     virtual ~Cursor() = default;
 
@@ -111,6 +117,7 @@ struct LocalCursor : Cursor {
         auto n_results = aku_cursor_read(cursor_, &sample_, sizeof(aku_Sample));
         throw_if_error();
         // Return true if cache is not empty
+        assert(n_results == 0 || n_results == sizeof(aku_Sample));
         return n_results;
     }
 
@@ -142,15 +149,9 @@ struct LocalCursor : Cursor {
             }
             // Convert payload
             if (sample_.payload.type & aku_PData::FLOAT_BIT) {
-                result = std::make_tuple(
-                            timestamp,
-                            paramid,
-                            sample_.payload.float64);
+                result = { timestamp, paramid, sample_.payload.float64, sample_.paramid, sample_.timestamp };
             } else {
-                result = std::make_tuple(
-                            std::string(),
-                            paramid,
-                            NAN);
+                result = { std::string(), paramid, NAN, sample_.paramid, sample_.timestamp };
             }
             return true;
         }
@@ -289,8 +290,6 @@ struct LocalStorage : Storage {
         // Where clause
         // Where clause
         boost::property_tree::ptree where;
-        boost::property_tree::ptree key;
-        boost::property_tree::ptree in;
         boost::property_tree::ptree array;
         for (auto series: ids) {
             auto val = series.substr(8, 1);
@@ -298,9 +297,7 @@ struct LocalStorage : Storage {
             elem.put("", val);
             array.push_back(std::make_pair("", elem));
         }
-        key.add_child("key", array);
-        in.add_child("in", key);
-        where.push_back(std::make_pair("", in));
+        where.add_child("key", array);
         query.add_child("where", where);
         std::stringstream stream;
         boost::property_tree::json_parser::write_json(stream, query, true);
@@ -396,25 +393,25 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             continue;
         }
         DataPoint exp = expected.at(ix++);
-        if (std::get<0>(row) != exp.timestamp) {
+        if (row.timestamp != exp.timestamp) {
             std::cout << "Error at " << ix << std::endl;
-            std::cout << "bad timestamp, get " << std::get<1>(row)
+            std::cout << "bad timestamp, get " << row.timestamp
                       << ", expected " << exp.timestamp << std::endl;
             std::runtime_error err("Bad result");
             BOOST_THROW_EXCEPTION(err);
         }
-        if (std::get<1>(row) != exp.id) {
+        if (row.seriesname != exp.id) {
             std::cout << "Error at " << ix << std::endl;
-            std::cout << "bad id, get " << std::get<2>(row)
+            std::cout << "bad id, get " << row.seriesname << " (" << row.rawid << ")"
                       << ", expected " << exp.id << std::endl;
             std::runtime_error err("Bad result");
             BOOST_THROW_EXCEPTION(err);
         }
         // payload
-        std::cout << "Read " << std::get<0>(row) << ", " << std::get<1>(row) << ", " << std::get<2>(row) << std::endl;
-        if (std::get<2>(row) != exp.float_value) {
+        std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        if (row.value != exp.float_value) {
             std::cout << "Error at " << ix << std::endl;
-            std::cout << "bad float, get " << std::get<2>(row)
+            std::cout << "bad float, get " << row.value
                       << ", expected " << exp.float_value << std::endl;
             std::runtime_error err("Bad result");
             BOOST_THROW_EXCEPTION(err);
@@ -511,7 +508,7 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
         if(!cursor->get_next_row(row)) {
             continue;
         }
-        actual.push_back(std::get<1>(row));
+        actual.push_back(row.seriesname);
     }
     cursor.reset();
     std::sort(expected.begin(), expected.end());
@@ -597,9 +594,7 @@ int main(int argc, const char** argv) {
         const std::vector<std::string> noseries;
 
         const char* include_odd  = R"( [{"in":     {"key": [1, 3, 5] } }] )";
-        const char* exclude_odd  = R"( [{"not_in": {"key": [1, 3, 5] } }] )";
         const char* include_even = R"( [{"in":     {"key": [0, 2, 4] } }] )";
-        const char* exclude_even = R"( [{"not_in": {"key": [0, 2, 4] } }] )";
 
         {
             // In this stage all data should be cached inside the the sequencer
@@ -612,20 +607,16 @@ int main(int argc, const char** argv) {
             // Query by metric and key
             query_metadata(&storage, "cpu", include_odd,    oddseries);
             query_metadata(&storage, "cpu", include_even,   evenseries);
-            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
-            query_metadata(&storage, "cpu", exclude_even,   oddseries);
 
             // Read in forward direction
             query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
-            // Try to read only half of the data-points in forward direction (should be empty)
+            // Try to read only half of the data-points in forward direction
             query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
             // Try to read only half of the data-points in backward direction
             query_subset(&storage, "20150101T000005", "20150101T000015", true, false, allseries);
-            // Try to read only numeric value
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, evenseries);
-            // Try to read only BLOB values
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, oddseries);
 
             storage.close();
@@ -643,8 +634,6 @@ int main(int argc, const char** argv) {
             // Query by metric and key
             query_metadata(&storage, "cpu", include_odd,    oddseries);
             query_metadata(&storage, "cpu", include_even,   evenseries);
-            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
-            query_metadata(&storage, "cpu", exclude_even,   oddseries);
 
             query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false,  allseries);
@@ -743,8 +732,6 @@ int main(int argc, const char** argv) {
             // Query by metric and key
             query_metadata(&storage, "cpu", include_odd,    newodds);
             query_metadata(&storage, "cpu", include_even,   evenseries);
-            query_metadata(&storage, "cpu", exclude_odd,    evenseries);
-            query_metadata(&storage, "cpu", exclude_even,   newodds);
 
             storage.close();
         }

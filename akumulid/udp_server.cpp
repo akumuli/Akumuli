@@ -148,7 +148,9 @@ struct UdpServerBuilder {
         ServerFactory::instance().register_type("UDP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline,
+                                         std::shared_ptr<ReadOperationBuilder>,
+                                         const ServerSettings& settings) {
         return std::make_shared<UdpServer>(pipeline, settings.nworkers, settings.port);
     }
 };
