@@ -374,47 +374,36 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
     bool not_set = false;
     auto where = ptree.get_child_optional("where");
     if (where) {
-        for (auto child: *where) {
-            auto predicate = child.second;
-            auto items = predicate.get_child_optional(pred);
-            if (items) {
-                bool firstitem = true;
-                std::stringstream series_regexp;
-                for (auto item: *items) {
-                    std::string tag = item.first;
-                    auto idslist = item.second;
-                    // Read idlist
-                    for (auto idnode: idslist) {
-                        std::string value = idnode.second.get_value<std::string>();
-                        if (firstitem) {
-                            firstitem = false;
-                            series_regexp << "(?:";
-                        } else {
-                            series_regexp << "|";
-                        }
-                        series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
-                                      << tag << "=" << value << R"((?:\s\w+=\w+)*))";
-                    }
+        for (auto item: *where) {
+            bool firstitem = true;
+            std::stringstream series_regexp;
+            std::string tag = item.first;
+            auto idslist = item.second;
+            // Read idlist
+            for (auto idnode: idslist) {
+                std::string value = idnode.second.get_value<std::string>();
+                if (firstitem) {
+                    firstitem = false;
+                    series_regexp << "(?:";
+                } else {
+                    series_regexp << "|";
                 }
-                series_regexp << ")";
-                std::string regex = series_regexp.str();
-                result = std::make_shared<RegexFilter>(regex, pool);
-            } else {
-                not_set = true;
+                series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                              << tag << "=" << value << R"((?:\s\w+=\w+)*))";
             }
+            series_regexp << ")";
+            std::string regex = series_regexp.str();
+            result = std::make_shared<RegexFilter>(regex, pool);
         }
     } else {
         not_set = true;
     }
     if (not_set) {
-        if (pred == "in") {
-            // there is no "in" predicate so we need to include all
-            // series from this metric
-            std::stringstream series_regexp;
-            series_regexp << "" << metric << R"((\s\w+=\w+)*)";
-            std::string regex = series_regexp.str();
-            result = std::make_shared<RegexFilter>(regex, pool);
-        }
+        // we need to include all series from this metric
+        std::stringstream series_regexp;
+        series_regexp << "" << metric << R"((\s\w+=\w+)*)";
+        std::string regex = series_regexp.str();
+        result = std::make_shared<RegexFilter>(regex, pool);
     }
     return result;
 }

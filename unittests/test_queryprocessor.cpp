@@ -195,14 +195,14 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
 BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
 
     SeriesMatcher matcher(1ul);
-    const char* series[] = {
+    const char* series1[] = {
         "cpu key1=1 key3=1",
         "cpu key2=2 key3=2",
         "cpu key3=3",
         "cpu key3=4",
     };
     for(int i = 0; i < 4; i++) {
-        const char* sname = series[i];
+        const char* sname = series1[i];
         int slen = strlen(sname);
         matcher.add(sname, sname+slen);
     }
@@ -213,11 +213,9 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
                     "from": "20150101T000000",
                     "to"  : "20150102T000000"
                 },
-                "where": [
-                    {"in":
-                        {"key3": [1, 2, 3] }
-                    }
-                ]
+                "where": {
+                    "key3": [1, 2, 3]
+                }
             }
     )";
     auto terminal = std::make_shared<NodeMock>();

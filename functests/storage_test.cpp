@@ -290,8 +290,6 @@ struct LocalStorage : Storage {
         // Where clause
         // Where clause
         boost::property_tree::ptree where;
-        boost::property_tree::ptree key;
-        boost::property_tree::ptree in;
         boost::property_tree::ptree array;
         for (auto series: ids) {
             auto val = series.substr(8, 1);
@@ -299,9 +297,7 @@ struct LocalStorage : Storage {
             elem.put("", val);
             array.push_back(std::make_pair("", elem));
         }
-        key.add_child("key", array);
-        in.add_child("in", key);
-        where.push_back(std::make_pair("", in));
+        where.add_child("key", array);
         query.add_child("where", where);
         std::stringstream stream;
         boost::property_tree::json_parser::write_json(stream, query, true);
