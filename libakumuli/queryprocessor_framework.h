@@ -52,10 +52,34 @@ struct NodeException : std::runtime_error {
 };
 
 
+struct IQueryFilter {
+    enum FilterResult {
+        SKIP_THIS,
+        SKIP_ALL,
+        PROCESS,
+    };
+    virtual ~IQueryFilter() = default;
+    virtual FilterResult apply(aku_ParamId id) = 0;
+    virtual std::vector<aku_ParamId> get_ids() = 0;
+};
+
+
+//! Query filter that doesn't block anything (for testing purposes)
+struct BypassFilter : QP::IQueryFilter {
+    virtual FilterResult apply(aku_ParamId id) {
+        return PROCESS;
+    }
+    std::vector<aku_ParamId> get_ids() {
+        throw std::runtime_error("not implemented");
+    }
+};
+
+
 //! Query processor interface
 struct IQueryProcessor {
 
     // Query information
+    virtual ~IQueryProcessor() = default;
 
     //! Lowerbound
     virtual aku_Timestamp lowerbound() const = 0;
@@ -65,6 +89,9 @@ struct IQueryProcessor {
 
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const = 0;
+
+    //! Return query filter
+    virtual IQueryFilter& filter() = 0;
 
     // Execution control
 

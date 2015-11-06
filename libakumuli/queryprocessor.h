@@ -43,6 +43,7 @@ struct Builder {
 };
 
 
+
 /** Group-by statement processor */
 struct GroupByStatement {
     aku_Timestamp   step_;
@@ -78,28 +79,29 @@ struct ScanQueryProcessor : IQueryProcessor {
     const aku_Timestamp                upperbound_;
     //! Scan direction
     const int                          direction_;
-    //! List of metrics of interest
-    const std::vector<std::string>     metrics_;
+    //! Name of the metrics of interest
+    const std::string                  metric_;
     //! Name to id mapping
     TableT                             namesofinterest_;
-
     //! Group-by statement
     GroupByStatement                   groupby_;
-
+    //! Filter
+    std::shared_ptr<IQueryFilter>      filter_;
     //! Root of the processing topology
     std::shared_ptr<Node>              root_node_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
-      * @param metrics is a list of metrics of interest
+      * @param metric is a name of the metric of interest
       * @param begin is a timestamp to begin from
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
     ScanQueryProcessor(std::vector<std::shared_ptr<Node> > nodes,
-                       std::vector<std::string> metrics,
+                       std::string metric,
                        aku_Timestamp begin,
                        aku_Timestamp end,
+                       std::shared_ptr<IQueryFilter> filter,
                        GroupByStatement groupby = GroupByStatement());
 
     //! Lowerbound
@@ -110,6 +112,8 @@ struct ScanQueryProcessor : IQueryProcessor {
 
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     int direction() const;
+
+    IQueryFilter& filter();
 
     bool start();
 
@@ -126,14 +130,15 @@ struct ScanQueryProcessor : IQueryProcessor {
 
 struct MetadataQueryProcessor : IQueryProcessor {
 
-    std::vector<aku_ParamId> ids_;
-    std::shared_ptr<Node>    root_;
+    std::shared_ptr<IQueryFilter>   filter_;
+    std::shared_ptr<Node>           root_;
 
-    MetadataQueryProcessor(std::vector<aku_ParamId> ids, std::shared_ptr<Node> node);
+    MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt, std::shared_ptr<Node> node);
 
     aku_Timestamp lowerbound() const;
     aku_Timestamp upperbound() const;
     int direction() const;
+    IQueryFilter& filter();
     bool start();
     bool put(const aku_Sample &sample);
     void stop();

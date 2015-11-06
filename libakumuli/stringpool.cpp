@@ -54,10 +54,15 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     const char* p = &bin->back();
     p -= size - 1;
     int token_size = end - begin;
+    std::atomic_fetch_add(&counter, 1ul);
     return std::make_pair(p, token_size);
 }
 
-std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) const {
+size_t StringPool::size() const {
+    return std::atomic_load(&counter);
+}
+
+std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset) const {
     std::vector<StringPool::StringT> results;
     boost::regex series_regex(regex, boost::regex_constants::optimize);
     typedef std::vector<char> const* PBuffer;
@@ -68,18 +73,40 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex) cons
             buffers.push_back(&buf);
         }
     }
+    size_t buffers_skip = 0;
+    if (offset != nullptr && offset->buffer_offset != 0) {
+        buffers_skip = offset->buffer_offset;
+    }
+    size_t first_row_skip = 0;
+    if (offset != nullptr && offset->offset != 0) {
+        first_row_skip = offset->offset;
+    }
     for(auto pbuf: buffers) {
-        auto begin = boost::cregex_iterator(pbuf->data(), pbuf->data() + pbuf->size(), series_regex);
-        auto end = boost::cregex_iterator();
-        for(boost::cregex_iterator i = begin; i != end; i++) {
-            boost::cmatch match = *i;
-            if (match[0].matched) {
-                const char* b = match[0].first;
-                const char* e = match[0].second;
-                size_t sz = e - b;
-                results.push_back(std::make_pair(b, sz));
+        if (buffers_skip == 0) {
+            // buffer space to search
+            auto bufbegin = pbuf->data() + first_row_skip;
+            auto bufend = pbuf->data() + pbuf->size();
+            // should be used to skip data only in a first row
+            first_row_skip = 0;
+            // regex search
+            auto begin = boost::cregex_iterator(bufbegin, bufend, series_regex);
+            auto end = boost::cregex_iterator();
+            for(boost::cregex_iterator i = begin; i != end; i++) {
+                boost::cmatch match = *i;
+                if (match[0].matched) {
+                    const char* b = match[0].first;
+                    const char* e = match[0].second;
+                    size_t sz = e - b;
+                    results.push_back(std::make_pair(b, sz));
+                }
             }
+        } else {
+            buffers_skip--;
         }
+    }
+    if (offset != nullptr) {
+        offset->buffer_offset = buffers.size() - 1;
+        offset->offset = buffers.back()->size();
     }
     return results;
 }
@@ -107,6 +134,14 @@ bool StringTools::equal(StringT lhs, StringT rhs) {
 
 StringTools::TableT StringTools::create_table(size_t size) {
     return TableT(size, &StringTools::hash, &StringTools::equal);
+}
+
+uint64_t StringTools::extract_id_from_pool(StringPool::StringT res) {
+    // Series name in string pool should be followed by \0 character and 64-bit series id.
+    auto p = res.first + res.second;
+    assert(p[0] == '\0');
+    p += 1;  // zero terminator + sizeof(uint64_t)
+    return *reinterpret_cast<uint64_t const*>(p);
 }
 
 }

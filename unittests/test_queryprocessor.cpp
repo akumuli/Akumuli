@@ -195,53 +195,52 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
 BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
 
     SeriesMatcher matcher(1ul);
-    const char* series[] = {
+    const char* series1[] = {
         "cpu key1=1 key3=1",
         "cpu key2=2 key3=2",
         "cpu key3=3",
         "cpu key3=4",
     };
     for(int i = 0; i < 4; i++) {
-        const char* sname = series[i];
+        const char* sname = series1[i];
         int slen = strlen(sname);
         matcher.add(sname, sname+slen);
     }
     const char* json = R"(
             {
-                "sample": [{ "name": "reservoir", "size": 1000 }],
-                "metric": ["cpu", "mem"],
+                "metric": "cpu",
                 "range" : {
                     "from": "20150101T000000",
                     "to"  : "20150102T000000"
                 },
-                "where": [
-                    {"in":
-                        {"key3": [1, 2, 3] }
-                    }
-                ]
+                "where": {
+                    "key3": [1, 2, 3]
+                }
             }
     )";
     auto terminal = std::make_shared<NodeMock>();
     auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger_stub);
     auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->metrics_.size() == 2);
-    auto m1 = qproc->metrics_.at(0);
-    auto m2 = qproc->metrics_.at(1);
-    if (m1 == "cpu") {
-        BOOST_REQUIRE(m2 == "mem");
-    } else {
-        BOOST_REQUIRE(m1 == "mem");
-        BOOST_REQUIRE(m2 == "cpu");
-    }
+    BOOST_REQUIRE(qproc->metric_ == "cpu");
     auto first_ts  = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 01));
     auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
     BOOST_REQUIRE(qproc->lowerbound() == DateTimeUtil::from_boost_ptime(first_ts));
     BOOST_REQUIRE(qproc->upperbound() == DateTimeUtil::from_boost_ptime(second_ts));
 
     qproc->start();
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
-    qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 4, 0.345));  // shouldn't match
+    if (qproc->filter().apply(1)) {
+        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
+    } else {
+        BOOST_FAIL("bad filter");
+    }
+    if (qproc->filter().apply(2)) {
+        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
+    } else {
+        BOOST_FAIL("bad filter");
+    }
+    if (qproc->filter().apply(4)) {
+        BOOST_FAIL("bad filter");
+    }
     qproc->stop();
 
     BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);

@@ -78,14 +78,45 @@ BOOST_AUTO_TEST_CASE(Test_seriesmatcher_0) {
     BOOST_REQUIRE_EQUAL(buz_id, 0ul);
 }
 
+BOOST_AUTO_TEST_CASE(Test_seriesmatcher_1) {
+
+    StringPool spool;
+    const char* foo = "host=1 region=A";
+    const char* bar = "host=1 region=B";
+    const char* buz = "host=2 region=C";
+
+    // Insert first
+    spool.add(foo, foo+strlen(foo), 0ul);
+
+    StringPoolOffset offset = {};  // zero offset initially
+    auto res = spool.regex_match("host=1 \\w+=\\w", &offset);
+    BOOST_REQUIRE_EQUAL(res.size(), 1u);
+    BOOST_REQUIRE(strcmp(foo, res.at(0).first) == 0);
+    BOOST_REQUIRE_EQUAL(res.at(0).second, strlen(foo));
+
+    // Insert next
+    spool.add(bar, bar+strlen(bar), 1u);
+
+    // Continue search
+    res = spool.regex_match("host=1 \\w+=\\w", &offset);
+    BOOST_REQUIRE_EQUAL(res.size(), 1u);
+    BOOST_REQUIRE(strcmp(bar, res.at(0).first) == 0);
+    BOOST_REQUIRE_EQUAL(res.at(0).second, strlen(bar));
+
+    // Insert last
+    spool.add(buz, buz+strlen(buz), 42ul);
+    res = spool.regex_match("host=1 \\w+=\\w", &offset);
+    BOOST_REQUIRE_EQUAL(res.size(), 0u);
+}
+
 BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
 
-    const char* series = " cpu  region=europe   host=127.0.0.1 ";
-    auto len = strlen(series);
+    const char* series1 = " cpu  region=europe   host=127.0.0.1 ";
+    auto len = strlen(series1);
     char out[40];
     const char* pbegin = nullptr;
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pbegin, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pbegin, &pend);
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
@@ -99,51 +130,51 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_1) {
 
-    const char* series = "cpu";
-    auto len = strlen(series);
+    const char* series1 = "cpu";
+    auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_2) {
 
-    const char* series = "cpu region host=127.0.0.1 ";
-    auto len = strlen(series);
+    const char* series1 = "cpu region host=127.0.0.1 ";
+    auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_3) {
 
-    const char* series = "cpu region=europe host";
-    auto len = strlen(series);
+    const char* series1 = "cpu region=europe host";
+    auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_4) {
 
     auto len = AKU_LIMITS_MAX_SNAME + 1;
-    char series[len];
+    char series1[len];
     char out[len];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
 
     auto len = AKU_LIMITS_MAX_SNAME - 1;
-    char series[len];
+    char series1[len];
     char out[10];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series, series + len, out, out + 10, &pend, &pend);
+    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + 10, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
 }
 

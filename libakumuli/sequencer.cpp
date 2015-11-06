@@ -529,8 +529,11 @@ void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_
 
     auto page = page_;
     auto consumer = [query, page](TimeSeriesValue const& val) {
-        aku_Sample result = val.to_result(page);
-        return query->put(result);
+        auto f = query->filter().apply(val.get_paramid());
+        if (f == QP::IQueryFilter::PROCESS) {
+            return query->put(val.to_result(page));
+        }
+        return true;
     };
 
     if (query->direction() == AKU_CURSOR_DIR_FORWARD) {

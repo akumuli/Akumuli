@@ -303,7 +303,9 @@ struct TcpServerBuilder {
         ServerFactory::instance().register_type("TCP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline, const ServerSettings& settings) {
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline,
+                                         std::shared_ptr<ReadOperationBuilder>,
+                                         const ServerSettings& settings) {
         return std::make_shared<TcpServer>(pipeline, settings.nworkers, settings.port);
     }
 };

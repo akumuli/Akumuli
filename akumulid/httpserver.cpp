@@ -11,7 +11,7 @@ namespace Http {
 namespace MHD {
 static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
-    QueryResultsPooler* cur = (QueryResultsPooler*)data;
+    ReadOperation* cur = (ReadOperation*)data;
     auto status = cur->get_error();
     if (status) {
         return MHD_CONTENT_READER_END_OF_STREAM;
@@ -26,7 +26,7 @@ static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
 }
 
 static void free_callback(void *data) {
-    QueryResultsPooler* cur = (QueryResultsPooler*)data;
+    ReadOperation* cur = (ReadOperation*)data;
     cur->close();
     delete cur;
 }
@@ -41,8 +41,8 @@ static int accept_connection(void           *cls,
                              void          **con_cls)
 {
     if (strcmp(method, "POST") == 0) {
-        QueryProcessor *queryproc = static_cast<QueryProcessor*>(cls);
-        QueryResultsPooler* cursor = static_cast<QueryResultsPooler*>(*con_cls);
+        ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
+        ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
 
         if (cursor == nullptr) {
             cursor = queryproc->create();
@@ -90,14 +90,14 @@ static int accept_connection(void           *cls,
 }
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc, AccessControlList const& acl)
+HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl)
     : acl_(acl)
     , proc_(qproc)
     , port_(port)
 {
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<QueryProcessor> qproc)
+HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc)
     : HttpServer(port, qproc, AccessControlList())
 {
 }
@@ -121,6 +121,21 @@ void HttpServer::start(SignalHandler* sig, int id) {
 void HttpServer::stop() {
     MHD_stop_daemon(daemon_);
 }
+
+struct HttpServerBuilder {
+
+    HttpServerBuilder() {
+        ServerFactory::instance().register_type("HTTP", *this);
+    }
+
+    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline>,
+                                         std::shared_ptr<ReadOperationBuilder> qproc,
+                                         const ServerSettings& settings) {
+        return std::make_shared<HttpServer>(settings.port, qproc);
+    }
+};
+
+static HttpServerBuilder reg_type;
 
 }  // namespace Http
 }  // namespace Akumuli

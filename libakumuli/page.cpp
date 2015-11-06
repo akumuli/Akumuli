@@ -421,7 +421,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     void binary_search() {
-        // TODO: use binary search from stdlib
         uint64_t steps = 0ul;
         if (range_.begin == range_.end) {
             return;
@@ -462,7 +461,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         bst.n_steps += steps;
     }
 
-    bool scan_compressed_entries(uint32_t current_index, aku_Entry const* probe_entry, bool binary_search=false) {
+    bool scan_compressed_entries(QP::IQueryFilter const& filter, uint32_t current_index, aku_Entry const* probe_entry, bool binary_search=false) {
         aku_Status status = AKU_SUCCESS;
         std::shared_ptr<UncompressedChunk> chunk_header, header;
 
@@ -519,16 +518,20 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto page = page_;
 
         auto put_entry = [&header, queryproc, page] (uint32_t i) {
-            aku_PData pdata;
-            pdata.type = AKU_PAYLOAD_FLOAT;
-            pdata.float64 = header->values.at(i);
-            pdata.size = sizeof(aku_Sample);
-            aku_Sample result = {
-                header->timestamps.at(i),
-                header->paramids.at(i),
-                pdata,
-            };
-            return queryproc->put(result);
+            auto id = header->paramids.at(i);
+            if (queryproc->filter().apply(id) == QP::IQueryFilter::PROCESS) {
+                aku_PData pdata;
+                pdata.type = AKU_PAYLOAD_FLOAT;
+                pdata.float64 = header->values.at(i);
+                pdata.size = sizeof(aku_Sample);
+                aku_Sample result = {
+                    header->timestamps.at(i),
+                    header->paramids.at(i),
+                    pdata,
+                };
+                return queryproc->put(result);
+            }
+            return true;
         };
 
         if (IS_BACKWARD_) {
@@ -568,7 +571,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         return probe_in_time_range;
     }
 
-    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
+    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index, QP::IQueryFilter const& filter) {
         int index_increment = IS_BACKWARD_ ? -1 : 1;
         while (true) {
             auto current_index = probe_index;
@@ -580,9 +583,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             bool proceed = false;
 
             if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
+                proceed = scan_compressed_entries(filter, current_index, probe_entry, false);
             } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
+                proceed = scan_compressed_entries(filter, current_index, probe_entry, false);
             } else {
                 proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
                                        : upperbound_ >= probe_time;
@@ -598,7 +601,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         return std::make_tuple(0ul, 0ul);
     }
 
-    void scan() {
+    void scan(QP::IQueryFilter const& filter) {
         if (range_.begin != range_.end) {
             query_->set_error(AKU_EGENERAL);
             return;
@@ -608,7 +611,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return;
         }
 
-        auto sums = scan_impl(range_.begin);
+        auto sums = scan_impl(range_.begin, filter);
 
         auto& stats = get_global_search_stats();
         {
@@ -625,7 +628,7 @@ void PageHeader::search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {
             search_alg.binary_search();
-            search_alg.scan();
+            search_alg.scan(query->filter());
         }
     }
 }
