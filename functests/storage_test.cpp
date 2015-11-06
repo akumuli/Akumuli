@@ -426,6 +426,61 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
+void continous_query(Storage *storage, Query query, std::vector<DataPoint> expected, std::vector<DataPoint> datatoadd) {
+    auto require_equal = [](Cursor::RowT row, DataPoint exp) {
+        if (row.timestamp != exp.timestamp) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad timestamp, get " << row.timestamp
+                      << ", expected " << exp.timestamp << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        if (row.seriesname != exp.id) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad id, get " << row.seriesname << " (" << row.rawid << ")"
+                      << ", expected " << exp.id << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        // payload
+        std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        if (row.value != exp.float_value) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad float, get " << row.value
+                      << ", expected " << exp.float_value << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    };
+
+    std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
+    for (auto item: expected) {
+        if (cursor->done()) {
+            std::runtime_error err("Not enough data");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        Cursor::RowT row;
+        cursor->get_next_row(row);
+        require_equal(row, item);
+    }
+
+    // Add new data
+    for (auto item: datatoadd) {
+        storage->add(item.timestamp, item.id, item.float_value);
+    }
+
+    // Read the rest of the data
+    for (auto item: datatoadd) {
+        if (cursor->done()) {
+            std::runtime_error err("Not enough data");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        Cursor::RowT row;
+        cursor->get_next_row(row);
+        require_equal(row, item);
+    }
+}
+
 aku_Timestamp to_timestamp(std::string ts) {
     aku_Sample s;
     if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
@@ -734,6 +789,35 @@ int main(int argc, const char** argv) {
             query_metadata(&storage, "cpu", include_even,   evenseries);
 
             storage.close();
+        }
+
+        {
+            storage.open();
+            std::vector<DataPoint> exppoints = {
+                { "20150101T000020.000000000", "cpu key=2", 2.0 },
+                { "20150101T000021.000000000", "cpu key=3", 2.1 },
+                { "20150101T000022.000000000", "cpu key=4", 2.2 },
+                { "20150101T000023.000000000", "cpu key=5", 2.3 },
+            };
+            std::vector<DataPoint> newpoints = {
+                { "20150101T000024.000000000", "cpu key=1", 2.4 },
+                { "20150101T000025.000000000", "cpu key=2", 2.5 },
+                { "20150101T000026.000000000", "cpu key=3", 2.6 },
+                { "20150101T000027.000000000", "cpu key=4", 2.7 },
+            };
+            std::vector<std::string> ids = {
+                "cpu key=1",
+                "cpu key=2",
+                "cpu key=3",
+                "cpu key=4",
+                "cpu key=5",
+            };
+            Query q = {
+                std::string("20150101T000020.000000000"),
+                std::string("20150101T000027.000000000"),
+                ids
+            };
+            continous_query(&storage, q, exppoints, newpoints);
         }
 
         std::cout << "OK!" << std::endl;
