@@ -593,8 +593,8 @@ int main(int argc, const char** argv) {
 
         const std::vector<std::string> noseries;
 
-        const char* include_odd  = R"( [{"in":     {"key": [1, 3, 5] } }] )";
-        const char* include_even = R"( [{"in":     {"key": [0, 2, 4] } }] )";
+        const char* include_odd  = R"({"key": [1, 3, 5] })";
+        const char* include_even = R"({"key": [0, 2, 4] })";
 
         {
             // In this stage all data should be cached inside the the sequencer
