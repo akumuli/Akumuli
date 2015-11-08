@@ -98,15 +98,17 @@ struct LocalCursor : Cursor {
         : db_(db)
         , cursor_(cursor)
     {
-        throw_if_error();
+        can_proceed();
     }
 
-    void throw_if_error() {
+    bool can_proceed() {
         aku_Status status = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor_, &status)) {
             std::runtime_error err(aku_error_message(status));
             BOOST_THROW_EXCEPTION(err);
+            return false;
         }
+        return true;
     }
 
     virtual ~LocalCursor() {
@@ -115,10 +117,12 @@ struct LocalCursor : Cursor {
 
     bool advance() {
         auto n_results = aku_cursor_read(cursor_, &sample_, sizeof(aku_Sample));
-        throw_if_error();
-        // Return true if cache is not empty
-        assert(n_results == 0 || n_results == sizeof(aku_Sample));
-        return n_results;
+        if (can_proceed()) {
+            // Return true if cache is not empty
+            assert(n_results == 0 || n_results == sizeof(aku_Sample));
+            return n_results;
+        }
+        return false;
     }
 
     virtual bool done() {
@@ -127,6 +131,9 @@ struct LocalCursor : Cursor {
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
+            if (sample_.payload.type == aku_PData::EMPTY) {
+                return false;
+            }
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
             char buffer[buffer_size];
             // Convert id
@@ -460,8 +467,12 @@ void continous_query(Storage *storage, Query query, std::vector<DataPoint> expec
             BOOST_THROW_EXCEPTION(err);
         }
         Cursor::RowT row;
-        cursor->get_next_row(row);
-        require_equal(row, item);
+        if (cursor->get_next_row(row)) {
+            require_equal(row, item);
+        } else {
+            std::runtime_error err("Can't read data");
+            BOOST_THROW_EXCEPTION(err);
+        }
     }
 
     // Add new data
@@ -476,8 +487,16 @@ void continous_query(Storage *storage, Query query, std::vector<DataPoint> expec
             BOOST_THROW_EXCEPTION(err);
         }
         Cursor::RowT row;
-        cursor->get_next_row(row);
-        require_equal(row, item);
+        int cnt = 0;
+        while (!cursor->get_next_row(row)) {
+            if(cnt++ == 10) {
+                std::runtime_error err("Can't read data");
+                BOOST_THROW_EXCEPTION(err);
+            }
+        }
+        std::cout << "Expected: " << item.id << ", " << item.timestamp << ", " << item.float_value << std::endl;
+        std::cout << "Atcual:   " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        //require_equal(row, item);
     }
 }
 
@@ -609,7 +628,7 @@ int main(int argc, const char** argv) {
     std::cout << "Working directory: " << dir << std::endl;
     aku_initialize(nullptr);
 
-    uint32_t compression_threshold = 10;
+    uint32_t compression_threshold = 5;
     uint64_t windowsize = 1;
     LocalStorage storage(dir, compression_threshold, windowsize, 2);
 
@@ -804,6 +823,8 @@ int main(int argc, const char** argv) {
                 { "20150101T000025.000000000", "cpu key=2", 2.5 },
                 { "20150101T000026.000000000", "cpu key=3", 2.6 },
                 { "20150101T000027.000000000", "cpu key=4", 2.7 },
+                { "20150101T000028.000000000", "cpu key=5", 2.8 },
+                { "20150101T000029.000000000", "cpu key=1", 2.8 },
             };
             std::vector<std::string> ids = {
                 "cpu key=1",
@@ -814,7 +835,7 @@ int main(int argc, const char** argv) {
             };
             Query q = {
                 std::string("20150101T000020.000000000"),
-                std::string("20150101T000027.000000000"),
+                std::string("20150101T000029.000000000"),
                 ids
             };
             continous_query(&storage, q, exppoints, newpoints);

@@ -158,15 +158,18 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
         return false;
     }
     if (!cursor_fsm_.can_put(std::max(result.payload.size, (uint16_t)sizeof(aku_Sample)))) {
-        // yield control to client
         caller();
-    }
-    if (cursor_fsm_.is_done()) {
-        return false;
+        if (cursor_fsm_.is_done()) {
+            return false;
+        }
     }
     cursor_fsm_.put(result);
     if (result.payload.type&aku_PData::URGENT) {
+        // Important sample received (anomaly). Cursor should call consumer immediately.
         caller();
+        if (cursor_fsm_.is_done()) {
+            return false;
+        }
     }
     return true;
 }

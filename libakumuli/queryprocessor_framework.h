@@ -14,7 +14,9 @@ struct QueryParserError : std::runtime_error {
     QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
 };
 
-static const aku_Sample EMPTY_SAMPLE = {};
+static const aku_Sample NO_DATA = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::EMPTY}};
+
+static const aku_Sample SAMPLING_MARGIN = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::MARGIN}};
 
 struct Node {
 

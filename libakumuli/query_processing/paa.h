@@ -37,7 +37,7 @@ struct PAA : Node {
                 }
             }
         }
-        if (!next_->put(EMPTY_SAMPLE)) {
+        if (!next_->put(SAMPLING_MARGIN)) {
             return false;
         }
         return true;

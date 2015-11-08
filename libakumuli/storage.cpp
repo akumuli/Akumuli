@@ -428,25 +428,27 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
             if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
                 for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-                    Timer tm;
-                    int seq_id;
-                    aku_Timestamp window;
+                    // Search volume
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
-                    tie(window, seq_id) = volume->cache_->get_window();
                     volume->get_page()->search(query_processor, cache_);
-                    tm.restart();
+                    // Search cache
+                    int seq_id;
+                    aku_Timestamp window;
+                    tie(window, seq_id) = volume->cache_->get_window();
                     volume->cache_->search(query_processor, seq_id);
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
                 for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
-                    int seq_id;
-                    aku_Timestamp window;
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
+                    // Search cache
+                    int seq_id;
+                    aku_Timestamp window;
                     tie(window, seq_id) = volume->cache_->get_window();
                     volume->cache_->search(query_processor, seq_id);
+                    // Search volume
                     volume->get_page()->search(query_processor, cache_);
                 }
             } else {
