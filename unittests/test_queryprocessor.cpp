@@ -34,7 +34,7 @@ public:
         BOOST_FAIL("set_error shouldn't be called");
     }
     bool put(aku_Sample const& s) {
-        if (s.payload.type != aku_PData::EMPTY) {
+        if (s.payload.type != aku_PData::MARGIN) {
             ids.push_back(s.paramid);
             timestamps.push_back(s.timestamp);
             values.push_back(s.payload.float64);
@@ -113,8 +113,9 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
-    aku_Sample EMPTY = {};
-    EMPTY.payload.type = aku_PData::EMPTY;
+    aku_Sample margin = {};
+    margin.payload.type = aku_PData::MARGIN;
+    margin.payload.size = sizeof(aku_Sample);
     auto mock = std::make_shared<NodeMock>();
     auto ma = std::make_shared<MeanPAA>(mock);
 
@@ -137,8 +138,8 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
         sample.payload.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
         if (i % 10 == 0) {
-            EMPTY.timestamp = i;
-            ma->put(EMPTY);
+            margin.timestamp = i;
+            ma->put(margin);
         }
     }
     ma->complete();
@@ -153,8 +154,9 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
-    aku_Sample EMPTY = {};
-    EMPTY.payload.type = aku_PData::EMPTY;
+    aku_Sample margin = {};
+    margin.payload.type = aku_PData::MARGIN;
+    margin.payload.size = sizeof(aku_Sample);
     auto mock = std::make_shared<NodeMock>();
     auto ma = std::make_shared<MeanPAA>(mock);
 
@@ -177,8 +179,8 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
         sample.payload.float64 = p2.at(i);
         BOOST_REQUIRE(ma->put(sample));
         if (i % 10 == 0) {
-            EMPTY.timestamp = i;
-            ma->put(EMPTY);
+            margin.timestamp = i;
+            ma->put(margin);
         }
     }
     ma->complete();
