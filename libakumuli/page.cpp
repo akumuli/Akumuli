@@ -627,17 +627,21 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             }
 
             if (probe_index >= max_index()) {
-                switch(proceed) {
-                case IN_RANGE:
-                case UNDERSHOOT:
-                    if (query_->put(QP::NO_DATA)) {
-                        // We should wait for consumer!
-                        break;
-                    }
-                case OVERSHOOT:
-                case INTERRUPTED:
+                if (IS_BACKWARD_) {
                     proceed = INTERRUPTED;
-                };
+                } else {
+                    switch(proceed) {
+                    case IN_RANGE:
+                    case UNDERSHOOT:
+                        if (query_->put(QP::NO_DATA)) {
+                            // We should wait for consumer!
+                            break;
+                        }
+                    case OVERSHOOT:
+                    case INTERRUPTED:
+                        proceed = INTERRUPTED;
+                    };
+                }
             }
         }
         // TODO: use relevant numbers here!
