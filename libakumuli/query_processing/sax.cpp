@@ -59,8 +59,6 @@ bool SAXNode::put(const aku_Sample &sample) {
         if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
             return next_->put(*psample);
         }
-    } else if (sample.payload.type == aku_PData::EMPTY){
-        return next_->put(sample);
     }
     return true;
 }

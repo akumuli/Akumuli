@@ -48,13 +48,10 @@ struct PAA : Node {
     }
 
     virtual bool put(const aku_Sample &sample) {
-        // ignore BLOBs
         if (sample.payload.type == aku_PData::MARGIN) {
             if (!average_samples(sample.timestamp)) {
                 return false;
             }
-        } else if (sample.payload.type == aku_PData::EMPTY) {
-            return next_->put(sample);
         } else {
             auto& state = counters_[sample.paramid];
             state.add(sample);

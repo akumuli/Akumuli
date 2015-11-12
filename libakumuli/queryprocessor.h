@@ -44,24 +44,43 @@ struct Builder {
 
 
 
-/** Group-by statement processor */
-struct GroupByStatement {
+/** Group-by time statement processor */
+struct GroupByTime {
     aku_Timestamp   step_;
     bool            first_hit_;
     aku_Timestamp   lowerbound_;
     aku_Timestamp   upperbound_;
 
-    GroupByStatement();
+    GroupByTime();
 
-    GroupByStatement(aku_Timestamp step);
+    GroupByTime(aku_Timestamp step);
 
-    GroupByStatement(const GroupByStatement& other);
+    GroupByTime(const GroupByTime& other);
 
-    GroupByStatement& operator = (const GroupByStatement& other);
+    GroupByTime& operator = (const GroupByTime& other);
 
     bool put(aku_Sample const& sample, Node& next);
 
     bool empty() const;
+};
+
+
+/** Group-by tag statement processor */
+struct GroupByTag {
+    std::string regex_;
+    std::unordered_map<aku_ParamId, aku_ParamId> ids_;
+    StringPool const& spool_;
+    StringPoolOffset offset_;
+    size_t prev_size_;
+
+    //! Main c-tor
+    GroupByTag(StringPool const& spool, std::string metric, std::vector<std::string> tags);
+
+    GroupByTag(const GroupByTag& other);
+
+    GroupByTag& operator = (const GroupByTag& other);
+
+    bool put(aku_Sample const& sample);
 };
 
 
@@ -84,11 +103,13 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Name to id mapping
     TableT                             namesofinterest_;
     //! Group-by statement
-    GroupByStatement                   groupby_;
+    GroupByTime                   groupby_;
     //! Filter
     std::shared_ptr<IQueryFilter>      filter_;
     //! Root of the processing topology
     std::shared_ptr<Node>              root_node_;
+    //! Final of the processing topology
+    std::shared_ptr<Node>              last_node_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -102,7 +123,7 @@ struct ScanQueryProcessor : IQueryProcessor {
                        aku_Timestamp begin,
                        aku_Timestamp end,
                        std::shared_ptr<IQueryFilter> filter,
-                       GroupByStatement groupby = GroupByStatement());
+                       GroupByTime groupby = GroupByTime());
 
     //! Lowerbound
     aku_Timestamp lowerbound() const;

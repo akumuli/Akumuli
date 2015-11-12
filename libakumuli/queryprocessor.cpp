@@ -104,7 +104,7 @@ struct RegexFilter : IQueryFilter {
 };
 
 
-GroupByStatement::GroupByStatement()
+GroupByTime::GroupByTime()
     : step_(0)
     , first_hit_(true)
     , lowerbound_(AKU_MIN_TIMESTAMP)
@@ -112,7 +112,7 @@ GroupByStatement::GroupByStatement()
 {
 }
 
-GroupByStatement::GroupByStatement(aku_Timestamp step)
+GroupByTime::GroupByTime(aku_Timestamp step)
     : step_(step)
     , first_hit_(true)
     , lowerbound_(AKU_MIN_TIMESTAMP)
@@ -120,7 +120,7 @@ GroupByStatement::GroupByStatement(aku_Timestamp step)
 {
 }
 
-GroupByStatement::GroupByStatement(const GroupByStatement& other)
+GroupByTime::GroupByTime(const GroupByTime& other)
     : step_(other.step_)
     , first_hit_(other.first_hit_)
     , lowerbound_(other.lowerbound_)
@@ -128,7 +128,7 @@ GroupByStatement::GroupByStatement(const GroupByStatement& other)
 {
 }
 
-GroupByStatement& GroupByStatement::operator = (const GroupByStatement& other) {
+GroupByTime& GroupByTime::operator = (const GroupByTime& other) {
     step_ = other.step_;
     first_hit_ = other.first_hit_;
     lowerbound_ = other.lowerbound_;
@@ -136,7 +136,7 @@ GroupByStatement& GroupByStatement::operator = (const GroupByStatement& other) {
     return *this;
 }
 
-bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
+bool GroupByTime::put(aku_Sample const& sample, Node& next) {
     if (step_ && sample.payload.type != aku_PData::EMPTY) {
         aku_Timestamp ts = sample.timestamp;
         if (AKU_UNLIKELY(first_hit_ == true)) {
@@ -168,15 +168,40 @@ bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
     return next.put(sample);
 }
 
-bool GroupByStatement::empty() const {
+bool GroupByTime::empty() const {
     return step_ == 0;
 }
+
+//  GroupByTag  //
+
+GroupByTag::GroupByTag(StringPool const& spool, std::string metric, std::vector<std::string> tags)
+    : spool_(spool)
+{
+    throw "not implemented";
+}
+
+GroupByTag::GroupByTag(const GroupByTag& other)
+    : spool_(other.spool_)
+{
+    throw "not implemented";
+}
+
+GroupByTag& GroupByTag::operator = (const GroupByTag& other) {
+    throw "not implemented";
+}
+
+bool GroupByTag::put(aku_Sample const& sample) {
+    throw "not implemented";
+}
+
+
+//  ScanQueryProcessor  //
 
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::string metric,
                                        aku_Timestamp begin,
                                        aku_Timestamp end, std::shared_ptr<IQueryFilter> filter,
-                                       GroupByStatement groupby)
+                                       GroupByTime groupby)
     : lowerbound_(std::min(begin, end))
     , upperbound_(std::max(begin, end))
     , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
@@ -188,7 +213,9 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     if (nodes.empty()) {
         AKU_PANIC("`nodes` shouldn't be empty")
     }
-    root_node_ = nodes.at(0);
+
+    root_node_ = nodes.front();
+    last_node_ = nodes.back();
 
     // validate query processor data
     if (groupby_.empty()) {
@@ -222,6 +249,10 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
+    if (AKU_UNLIKELY(sample.payload.type == aku_PData::EMPTY)) {
+        // shourtcut for empty samples
+        last_node_->put(sample);
+    }
     return groupby_.put(sample, *root_node_);
 }
 
@@ -318,7 +349,7 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
-static QP::GroupByStatement parse_groupby(boost::property_tree::ptree const& ptree,
+static QP::GroupByTime parse_groupby(boost::property_tree::ptree const& ptree,
                                           aku_logger_cb_t logger) {
     aku_Timestamp duration = 0u;
     auto groupby = ptree.get_child_optional("group-by");
@@ -330,7 +361,7 @@ static QP::GroupByStatement parse_groupby(boost::property_tree::ptree const& ptr
             }
         }
     }
-    return QP::GroupByStatement(duration);
+    return QP::GroupByTime(duration);
 }
 
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
