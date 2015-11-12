@@ -94,6 +94,8 @@ struct SpaceSaver : Node {
     virtual bool put(const aku_Sample &sample) {
         if (sample.payload.type == aku_PData::MARGIN) {
             return count();
+        } else if (sample.payload.type == aku_PData::EMPTY) {
+            return next_->put(sample);
         }
         if (weighted) {
             if ((sample.payload.type&aku_PData::FLOAT_BIT) == 0) {

@@ -53,6 +53,8 @@ struct PAA : Node {
             if (!average_samples(sample.timestamp)) {
                 return false;
             }
+        } else if (sample.payload.type == aku_PData::EMPTY) {
+            return next_->put(sample);
         } else {
             auto& state = counters_[sample.paramid];
             state.add(sample);

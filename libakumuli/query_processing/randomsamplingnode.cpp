@@ -51,6 +51,8 @@ void RandomSamplingNode::complete() {
 bool RandomSamplingNode::put(const aku_Sample& sample) {
     if (sample.payload.type == aku_PData::MARGIN) {
         return flush();
+    } else if (sample.payload.type == aku_PData::EMPTY) {
+        return next_->put(sample);
     } else {
         if (samples_.size() < buffer_size_) {
             // Just append new values

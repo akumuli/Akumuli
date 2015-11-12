@@ -80,9 +80,11 @@ struct RegexFilter : IQueryFilter {
 
     void refresh() {
         std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_);
+        int ix = 0;
         for (StringPool::StringT item: results) {
             auto id = StringTools::extract_id_from_pool(item);
             ids_.insert(id);
+            ix++;
         }
     }
 
@@ -135,7 +137,7 @@ GroupByStatement& GroupByStatement::operator = (const GroupByStatement& other) {
 }
 
 bool GroupByStatement::put(aku_Sample const& sample, Node& next) {
-    if (step_) {
+    if (step_ && sample.payload.type != aku_PData::EMPTY) {
         aku_Timestamp ts = sample.timestamp;
         if (AKU_UNLIKELY(first_hit_ == true)) {
             first_hit_ = false;
@@ -228,7 +230,6 @@ void ScanQueryProcessor::stop() {
 }
 
 void ScanQueryProcessor::set_error(aku_Status error) {
-    std::cerr << "ScanQueryProcessor->error" << std::endl;
     root_node_->set_error(error);
 }
 
@@ -367,8 +368,8 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
                                                        aku_logger_cb_t logger)
 {
     if (metric.empty()) {
-        // metric wasn't set so we should match all metrics
-        metric = "\\w+";
+        QueryParserError error("metric is not set");
+        BOOST_THROW_EXCEPTION(error);
     }
     std::shared_ptr<RegexFilter> result;
     bool not_set = false;

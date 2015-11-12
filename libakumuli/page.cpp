@@ -601,9 +601,15 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         return proceed;
     }
 
+    /**
+     * @brief scan_impl is a scan procedure impelementation
+     * @param probe_index is an index to start with
+     * @return tuple{fwd-bytes, bwd-bytes}
+     */
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
         int index_increment = IS_BACKWARD_ ? -1 : 1;
-        while (true) {
+        ScanResultT proceed = IN_RANGE;
+        while (proceed != INTERRUPTED) {
             auto current_index = probe_index;
             probe_index += index_increment;
             auto probe_offset = page_->page_index(current_index)->offset;
@@ -611,7 +617,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
 
-            ScanResultT proceed = IN_RANGE;
 
             if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
                 proceed = scan_compressed_entries(current_index, probe_entry, false);
@@ -621,18 +626,18 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 proceed = check_timestamp(probe_time);
             }
 
-            if ((proceed == IN_RANGE || proceed == UNDERSHOOT) && probe_index >= max_index()) {
-                // We should wait for consumer!
-                if (!query_->put(QP::NO_DATA)) {
-                    break;
-                }
-            }
-
-            if (proceed == OVERSHOOT || proceed == INTERRUPTED || probe_index >= max_index()) {
-                // When scanning forward probe_index will be equal to max_index() at the end of the page
-                // When scanning backward probe_index will be equal to ~0 (probe_index > max_index())
-                // at the end of the page
-                break;
+            if (probe_index >= max_index()) {
+                switch(proceed) {
+                case IN_RANGE:
+                case UNDERSHOOT:
+                    if (query_->put(QP::NO_DATA)) {
+                        // We should wait for consumer!
+                        break;
+                    }
+                case OVERSHOOT:
+                case INTERRUPTED:
+                    proceed = INTERRUPTED;
+                };
             }
         }
         // TODO: use relevant numbers here!

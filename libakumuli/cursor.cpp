@@ -70,11 +70,6 @@ void CursorFSM::put(const aku_Sample &result) {
     assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
            result.payload.size == sizeof(aku_Sample) :
            result.payload.size >= sizeof(aku_Sample));
-    if (len > sizeof(aku_Sample)) {
-        std::cout << "CursorFSM::len " << len << std::endl;
-        std::cout << "CursorFSM::write_offset_ " << write_offset_ << std::endl;
-        std::cout << "CursorFSM::usr_buffer_len_ " << usr_buffer_len_ << std::endl;
-    }
     memcpy(ptr, &result, len);
     write_offset_ += len;
 }
