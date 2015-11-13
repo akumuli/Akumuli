@@ -432,11 +432,18 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     volume->get_page()->search(query_processor, cache_);
-                    // Search cache
-                    int seq_id;
-                    aku_Timestamp window;
-                    tie(window, seq_id) = volume->cache_->get_window();
-                    volume->cache_->search(query_processor, seq_id);
+
+                    // Instead of searching cache we are using continuous querying feature here.
+                    // We can read cache data only if we're interested in instant picture, for example if
+                    // we're loocking for latest value. Forward direction is for immutable data only
+                    // and continuous queries works here fine. And backward direction can't be used with
+                    // continuous queries (because you're reading latest data first) but you can access
+                    // in-memory cache in backward direction. This in-memory cache is not immutable.
+                    // Two subsequent queries in backward direction can  produce different results even in
+                    // the same time range.
+                    //
+                    // So, backward direction should be used to implement `top` query and forward direction
+                    // can be used to impelent `tail -f` like functionality.
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume

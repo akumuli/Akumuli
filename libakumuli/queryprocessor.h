@@ -68,17 +68,30 @@ struct GroupByTime {
 /** Group-by tag statement processor */
 struct GroupByTag {
     std::string regex_;
+    //! Mapping from global parameter ids to local parameter ids
     std::unordered_map<aku_ParamId, aku_ParamId> ids_;
-    StringPool const& spool_;
+    //! Shared string pool
+    StringPool const* spool_;
+    //! Previous string pool offset
     StringPoolOffset offset_;
+    //! Previous string pool size
     size_t prev_size_;
+    //! List of tags of interest
+    std::vector<std::string> tags_;
+    //! Local string pool. All transient series names lives here.
+    StringPool local_spool_;
+
+    //! Empty c-tor. Creates invalid object.
+    GroupByTag();
 
     //! Main c-tor
-    GroupByTag(StringPool const& spool, std::string metric, std::vector<std::string> tags);
+    GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
 
     GroupByTag(const GroupByTag& other);
 
     GroupByTag& operator = (const GroupByTag& other);
+
+    void refresh_();
 
     bool put(aku_Sample const& sample);
 };

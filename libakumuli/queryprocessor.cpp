@@ -173,11 +173,48 @@ bool GroupByTime::empty() const {
 }
 
 //  GroupByTag  //
-
-GroupByTag::GroupByTag(StringPool const& spool, std::string metric, std::vector<std::string> tags)
-    : spool_(spool)
+GroupByTag::GroupByTag()
 {
-    throw "not implemented";
+}
+
+GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
+    : spool_(spool)
+    , tags_(tags)
+{
+    // Build regexp
+    std::stringstream series_regexp;
+    series_regexp << metric << "(?:\\s\\w+=\\w+)*\\s";
+    bool firstitem = true;
+    for (auto tag: tags) {
+        if (firstitem) {
+            firstitem = false;
+            series_regexp << "(?:";
+        } else {
+            series_regexp << "|";
+        }
+        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "(?:=\\w+\\s\\w+=\\w+)*)";
+    }
+    regex_ = series_regexp.str();
+    refresh_();
+}
+
+void GroupByTag::refresh_() {
+    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_);
+    auto filter = StringTools::create_set(tags_.size());
+    for (const &tag: tags_) {
+        filter.insert(std::make_pair(tag.data(), tag.size()));
+    }
+    aku_ParamId ix = ids_.size();
+    char buffer[AKU_LIMITS_MAX_SNAME];
+    for (StringPool::StringT item: results) {
+        auto id = StringTools::extract_id_from_pool(item);
+        aku_Status status;
+        SeriesParser::StringT result;
+        std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);
+        if (status == AKU_SUCCESS) {
+            // put result to local stringpool
+        }
+    }
 }
 
 GroupByTag::GroupByTag(const GroupByTag& other)

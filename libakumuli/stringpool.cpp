@@ -136,6 +136,10 @@ StringTools::TableT StringTools::create_table(size_t size) {
     return TableT(size, &StringTools::hash, &StringTools::equal);
 }
 
+StringTools::SetT StringTools::create_set(size_t size) {
+    return SetT(size, &StringTools::hash, &StringTools::equal);
+}
+
 uint64_t StringTools::extract_id_from_pool(StringPool::StringT res) {
     // Series name in string pool should be followed by \0 character and 64-bit series id.
     auto p = res.first + res.second;

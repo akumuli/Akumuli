@@ -23,6 +23,7 @@
 #include <map>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <deque>
 #include <memory>
@@ -95,6 +96,12 @@ struct SeriesParser
     static aku_Status to_normal_form(const char* begin, const char* end,
                               char* out_begin, char* out_end,
                               const char** keystr_begin, const char **keystr_end);
+
+    typedef StringTools::StringT StringT;
+
+    /** Remove redundant tags from input string. Leave only metric and tags from the list.
+      */
+    static std::tuple<aku_Status, StringT> filter_tags(StringT const& input, StringTools::SetT const& tags, char* out);
 };
 
 }

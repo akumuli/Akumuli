@@ -19,6 +19,7 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <atomic>
 
@@ -68,10 +69,16 @@ struct StringTools {
                                decltype(&StringTools::hash),
                                decltype(&StringTools::equal)> TableT;
 
+    typedef std::unordered_set<StringT,
+                               decltype(&StringTools::hash),
+                               decltype(&StringTools::equal)> SetT;
+
     //! Inverted table type (id to string mapping)
     typedef std::unordered_map<uint64_t, StringT> InvT;
 
     static TableT create_table(size_t size);
+
+    static SetT create_set(size_t size);
 
     static uint64_t extract_id_from_pool(StringPool::StringT res);
 };
