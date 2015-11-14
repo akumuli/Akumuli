@@ -242,6 +242,10 @@ struct TestQueryProcessor : QP::IQueryProcessor {
         return bypass;
     }
 
+    virtual SeriesMatcher* matcher() {
+        return nullptr;
+    }
+
     /** Will be called before query execution starts.
       * If result already obtained - return False.
       * In this case `stop` method shouldn't be called

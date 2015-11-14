@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "akumuli.h"
+#include "seriesparser.h"
 
 #include <boost/property_tree/ptree.hpp>
 
@@ -94,6 +95,11 @@ struct IQueryProcessor {
 
     //! Return query filter
     virtual IQueryFilter& filter() = 0;
+
+    /** Returns series matcher to override global one for query execution.
+      * If override is not needed - return nullptr.
+      */
+    virtual SeriesMatcher* matcher() = 0;
 
     // Execution control
 

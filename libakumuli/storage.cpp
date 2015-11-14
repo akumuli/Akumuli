@@ -423,6 +423,12 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
             return;
         }
 
+        auto matcher = query_processor->matcher();
+        if (matcher) {
+            // Override series matcher if needed
+            set_thread_local_matcher(matcher);
+        }
+
         if (query_processor->start()) {
 
             if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
@@ -562,7 +568,7 @@ aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint6
     return status;
 }
 
-void Storage::set_thread_local_matcher(SeriesMatcher *matcher) {
+void Storage::set_thread_local_matcher(SeriesMatcher *matcher) const {
     local_matcher_.reset(matcher);
 }
 

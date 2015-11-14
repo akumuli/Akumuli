@@ -233,8 +233,11 @@ bool GroupByTag::apply(aku_Sample* sample) {
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::string metric,
                                        aku_Timestamp begin,
-                                       aku_Timestamp end, std::shared_ptr<IQueryFilter> filter,
-                                       GroupByTime groupby)
+                                       aku_Timestamp end,
+                                       std::shared_ptr<IQueryFilter> filter,
+                                       GroupByTime groupby,
+                                       std::unique_ptr<GroupByTag> groupbytag
+                                       )
     : lowerbound_(std::min(begin, end))
     , upperbound_(std::max(begin, end))
     , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
@@ -242,6 +245,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
     , filter_(filter)
+    , groupby_tag_(std::move(groupbytag))
 {
     if (nodes.empty()) {
         AKU_PANIC("`nodes` shouldn't be empty")
@@ -275,6 +279,10 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
 
 IQueryFilter& ScanQueryProcessor::filter() {
     return *filter_;
+}
+
+SeriesMatcher* ScanQueryProcessor::matcher() {
+    return &groupby_tag_->local_matcher_;
 }
 
 bool ScanQueryProcessor::start() {
@@ -313,6 +321,10 @@ MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt
     : filter_(flt)
     , root_(node)
 {
+}
+
+SeriesMatcher* MetadataQueryProcessor::matcher() {
+    return nullptr;
 }
 
 aku_Timestamp MetadataQueryProcessor::lowerbound() const {
@@ -514,6 +526,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
     try {
         // Read groupby statement
         auto groupby = parse_groupby(ptree, logger);
+        auto groupbytag = std::unique_ptr<GroupByTag>();
 
         // Read metric name
         auto metric = parse_metric(ptree, logger);
@@ -549,7 +562,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             }
             std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupby);
+            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupby, std::move(groupbytag));
         }
         return std::make_shared<MetadataQueryProcessor>(filter, next);
 

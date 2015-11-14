@@ -121,14 +121,18 @@ struct Storage
     PCache                    cache_;
 
     //! Local (per query) string pool
-    boost::thread_specific_ptr<SeriesMatcher> local_matcher_;
+    mutable boost::thread_specific_ptr<SeriesMatcher> local_matcher_;
 
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
     Storage(const char *path, aku_FineTuneParams const& conf);
 
-    void set_thread_local_matcher(SeriesMatcher* spool);
+    /** Override local series matcher.
+      * This method is const because it doesn't affect any storage data except
+      * thread local variable.
+      */
+    void set_thread_local_matcher(SeriesMatcher* spool) const;
 
     //! Select page that was active last time
     void select_active_page();
