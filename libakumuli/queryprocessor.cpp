@@ -394,8 +394,9 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
-static QP::GroupByTime parse_groupby(boost::property_tree::ptree const& ptree,
-                                          aku_logger_cb_t logger) {
+static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost::property_tree::ptree const& ptree,
+                                                                           aku_logger_cb_t logger) {
+    std::vector<std::string> tags;
     aku_Timestamp duration = 0u;
     auto groupby = ptree.get_child_optional("group-by");
     if (groupby) {
@@ -403,10 +404,13 @@ static QP::GroupByTime parse_groupby(boost::property_tree::ptree const& ptree,
             if (child.first == "time") {
                 std::string str = child.second.get_value<std::string>();
                 duration = DateTimeUtil::parse_duration(str.c_str(), str.size());
+            } else if (child.first == "tag") {
+                std::string tag = child.second.get_value<std::string>();
+                tags.push_back(tag);
             }
         }
     }
-    return QP::GroupByTime(duration);
+    return std::make_tuple(QP::GroupByTime(duration), tags);
 }
 
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
@@ -524,12 +528,15 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
     logger(AKU_LOG_INFO, to_json(ptree, true).c_str());
 
     try {
-        // Read groupby statement
-        auto groupby = parse_groupby(ptree, logger);
-        auto groupbytag = std::unique_ptr<GroupByTag>();
-
         // Read metric name
         auto metric = parse_metric(ptree, logger);
+
+        // Read groupby statement
+        std::vector<std::string> tags;
+        GroupByTime groupbytime;
+        std::tie(groupbytime, tags) = parse_groupby(ptree, logger);
+        auto groupbytag = std::unique_ptr<GroupByTag>();
+        groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
 
         // Read select statment
         auto select = parse_select_stmt(ptree, logger);
@@ -556,13 +563,13 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
 
             if (sampling_params) {
                 for (auto i = sampling_params->rbegin(); i != sampling_params->rend(); i++) {
-                        next = make_sampler(i->second, next, logger);
-                        allnodes.push_back(next);
+                    next = make_sampler(i->second, next, logger);
+                    allnodes.push_back(next);
                 }
             }
             std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupby, std::move(groupbytag));
+            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupbytime, std::move(groupbytag));
         }
         return std::make_shared<MetadataQueryProcessor>(filter, next);
 

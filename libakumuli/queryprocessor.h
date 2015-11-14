@@ -83,9 +83,6 @@ struct GroupByTag {
     //! List of string already added string pool
     StringTools::SetT snames_;
 
-    //! Empty c-tor. Creates invalid object.
-    GroupByTag();
-
     //! Main c-tor
     GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
 

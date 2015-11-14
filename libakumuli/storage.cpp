@@ -423,11 +423,9 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
             return;
         }
 
+        // Override series matcher
         auto matcher = query_processor->matcher();
-        if (matcher) {
-            // Override series matcher if needed
-            set_thread_local_matcher(matcher);
-        }
+        set_thread_local_matcher(matcher);
 
         if (query_processor->start()) {
 
