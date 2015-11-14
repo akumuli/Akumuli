@@ -173,13 +173,11 @@ bool GroupByTime::empty() const {
 }
 
 //  GroupByTag  //
-GroupByTag::GroupByTag()
-{
-}
-
 GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
     : spool_(spool)
     , tags_(tags)
+    , local_matcher_(0ul)
+    , snames_(StringTools::create_set(64))
 {
     // Build regexp
     std::stringstream series_regexp;
@@ -201,34 +199,32 @@ GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<
 void GroupByTag::refresh_() {
     std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_);
     auto filter = StringTools::create_set(tags_.size());
-    for (const &tag: tags_) {
+    for (const auto& tag: tags_) {
         filter.insert(std::make_pair(tag.data(), tag.size()));
     }
-    aku_ParamId ix = ids_.size();
     char buffer[AKU_LIMITS_MAX_SNAME];
     for (StringPool::StringT item: results) {
         auto id = StringTools::extract_id_from_pool(item);
         aku_Status status;
         SeriesParser::StringT result;
         std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);
-        if (status == AKU_SUCCESS) {
-            // put result to local stringpool
+        if (status == AKU_SUCCESS && snames_.count(result) == 0) {
+            // put result to local stringpool and ids list
+            auto newid = local_matcher_.add(result.first, result.first + result.second);
+            auto str = local_matcher_.id2str(newid);
+            snames_.insert(str);
+            ids_[id] = newid;
         }
     }
 }
 
-GroupByTag::GroupByTag(const GroupByTag& other)
-    : spool_(other.spool_)
-{
-    throw "not implemented";
-}
-
-GroupByTag& GroupByTag::operator = (const GroupByTag& other) {
-    throw "not implemented";
-}
-
-bool GroupByTag::put(aku_Sample const& sample) {
-    throw "not implemented";
+bool GroupByTag::apply(aku_Sample* sample) {
+    auto it = ids_.find(sample->paramid);
+    if (it != ids_.end()) {
+        sample->paramid = it->second;
+        return true;
+    }
+    return false;
 }
 
 

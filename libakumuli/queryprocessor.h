@@ -79,7 +79,9 @@ struct GroupByTag {
     //! List of tags of interest
     std::vector<std::string> tags_;
     //! Local string pool. All transient series names lives here.
-    StringPool local_spool_;
+    SeriesMatcher local_matcher_;
+    //! List of string already added string pool
+    StringTools::SetT snames_;
 
     //! Empty c-tor. Creates invalid object.
     GroupByTag();
@@ -87,13 +89,9 @@ struct GroupByTag {
     //! Main c-tor
     GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
 
-    GroupByTag(const GroupByTag& other);
-
-    GroupByTag& operator = (const GroupByTag& other);
-
     void refresh_();
 
-    bool put(aku_Sample const& sample);
+    bool apply(aku_Sample* sample);
 };
 
 
@@ -116,7 +114,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Name to id mapping
     TableT                             namesofinterest_;
     //! Group-by statement
-    GroupByTime                   groupby_;
+    GroupByTime                        groupby_;
     //! Filter
     std::shared_ptr<IQueryFilter>      filter_;
     //! Root of the processing topology

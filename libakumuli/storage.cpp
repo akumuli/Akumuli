@@ -562,8 +562,20 @@ aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint6
     return status;
 }
 
+void Storage::set_thread_local_matcher(SeriesMatcher *matcher) {
+    local_matcher_.reset(matcher);
+}
+
 int Storage::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const {
-    auto str = matcher_->id2str(id);
+    SeriesMatcher const* m;
+    if (local_matcher_.get() != nullptr) {
+        // Series matcher overriden by query (group by tag stmtm)
+        m = local_matcher_.get();
+    } else {
+        // Use global matcher
+        m = matcher_.get();
+    }
+    auto str = m->id2str(id);
     if (str.first == nullptr) {
         return 0;
     }

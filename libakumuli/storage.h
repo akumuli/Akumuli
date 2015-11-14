@@ -43,6 +43,8 @@
 #include "akumuli_def.h"
 #include "metadatastorage.h"
 
+#include <boost/thread.hpp>
+
 namespace Akumuli {
 
 /** Storage volume.
@@ -118,10 +120,15 @@ struct Storage
     Rand                      rand_;
     PCache                    cache_;
 
+    //! Local (per query) string pool
+    boost::thread_specific_ptr<SeriesMatcher> local_matcher_;
+
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
     Storage(const char *path, aku_FineTuneParams const& conf);
+
+    void set_thread_local_matcher(SeriesMatcher* spool);
 
     //! Select page that was active last time
     void select_active_page();

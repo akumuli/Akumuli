@@ -70,7 +70,7 @@ struct SeriesMatcher {
     uint64_t match(const char* begin, const char* end);
 
     //! Convert id to string
-    StringT id2str(uint64_t tokenid);
+    StringT id2str(uint64_t tokenid) const;
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements

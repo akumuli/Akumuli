@@ -79,7 +79,7 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     return it->second;
 }
 
-SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) {
+SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) const {
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
         return EMPTY;
