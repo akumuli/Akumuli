@@ -746,16 +746,14 @@ int main(int argc, const char** argv) {
             }
 
             // Read in forward direction, result-set should be empty because all new data is cached
-            query_subset(&storage, "20150101T000020", "20150101T000025", false, false, allseries);
+            query_subset(&storage, "20150101T000020", "20150101T000025", false, true, allseries);
             // Read in backward direction, result-set shouldn't be empty
             // because cache accessed in backward direction
             query_subset(&storage, "20150101T000020", "20150101T000025", true, false, allseries);
             // Query all in rev. direction, everything should be in place
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
 
-            // Filter out BLOBs
             query_subset(&storage, "20150101T000000", "20150101T000024", true, false, evenseries);
-            // Filter out numeric values
             query_subset(&storage, "20150101T000000", "20150101T000024", true, false, oddseries);
 
             storage.close();
