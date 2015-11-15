@@ -191,7 +191,7 @@ void AnomalyDetector::complete() {
 }
 
 bool AnomalyDetector::put(const aku_Sample &sample) {
-    if (sample.payload.type == aku_PData::EMPTY) {
+    if (sample.payload.type == aku_PData::MARGIN) {
         detector_->move_sliding_window();
         return next_->put(sample);
     } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
@@ -202,7 +202,6 @@ bool AnomalyDetector::put(const aku_Sample &sample) {
             return next_->put(anomaly);
         }
     }
-    // Ignore BLOBs
     return true;
 }
 

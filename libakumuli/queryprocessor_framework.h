@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "akumuli.h"
+#include "seriesparser.h"
 
 #include <boost/property_tree/ptree.hpp>
 
@@ -14,7 +15,9 @@ struct QueryParserError : std::runtime_error {
     QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
 };
 
-static const aku_Sample EMPTY_SAMPLE = {};
+static const aku_Sample NO_DATA = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::EMPTY}};
+
+static const aku_Sample SAMPLING_MARGIN = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::MARGIN}};
 
 struct Node {
 
@@ -92,6 +95,11 @@ struct IQueryProcessor {
 
     //! Return query filter
     virtual IQueryFilter& filter() = 0;
+
+    /** Returns series matcher to override global one for query execution.
+      * If override is not needed - return nullptr.
+      */
+    virtual SeriesMatcher* matcher() = 0;
 
     // Execution control
 

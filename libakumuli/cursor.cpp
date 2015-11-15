@@ -70,11 +70,6 @@ void CursorFSM::put(const aku_Sample &result) {
     assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
            result.payload.size == sizeof(aku_Sample) :
            result.payload.size >= sizeof(aku_Sample));
-    if (len > sizeof(aku_Sample)) {
-        std::cout << "CursorFSM::len " << len << std::endl;
-        std::cout << "CursorFSM::write_offset_ " << write_offset_ << std::endl;
-        std::cout << "CursorFSM::usr_buffer_len_ " << usr_buffer_len_ << std::endl;
-    }
     memcpy(ptr, &result, len);
     write_offset_ += len;
 }
@@ -158,15 +153,18 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
         return false;
     }
     if (!cursor_fsm_.can_put(std::max(result.payload.size, (uint16_t)sizeof(aku_Sample)))) {
-        // yield control to client
         caller();
-    }
-    if (cursor_fsm_.is_done()) {
-        return false;
+        if (cursor_fsm_.is_done()) {
+            return false;
+        }
     }
     cursor_fsm_.put(result);
     if (result.payload.type&aku_PData::URGENT) {
+        // Important sample received (anomaly). Cursor should call consumer immediately.
         caller();
+        if (cursor_fsm_.is_done()) {
+            return false;
+        }
     }
     return true;
 }

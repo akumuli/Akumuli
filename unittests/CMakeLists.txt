@@ -181,13 +181,13 @@ add_executable(
 
 target_link_libraries(
     test_sequencer
+    pthread
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a
-    pthread
 )
 
 add_test(sequencer test_sequencer)
@@ -259,6 +259,7 @@ add_executable(
 
 target_link_libraries(
     test_storage
+    pthread
     akumuli
     sqlite3
     "${SQLITE3_LIBRARY}"
@@ -281,6 +282,7 @@ add_executable(
 
 target_link_libraries(
     test_seriesparser
+    pthread
     ${Boost_LIBRARIES}
     "${APR_LIBRARY}"
 )
@@ -310,6 +312,7 @@ add_executable(
 
 target_link_libraries(
     test_queryprocessor
+    pthread
     ${Boost_LIBRARIES}
     "${APR_LIBRARY}"
 )

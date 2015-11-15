@@ -334,7 +334,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     std::shared_ptr<QP::IQueryProcessor> query_;
     std::shared_ptr<ChunkCache> cache_;
 
-    const uint32_t      MAX_INDEX_;
     const bool          IS_BACKWARD_;
     const aku_Timestamp key_;
     const aku_Timestamp lowerbound_;
@@ -346,23 +345,26 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         : page_(page)
         , query_(query)
         , cache_(cache)
-        , MAX_INDEX_(page->get_entries_count())
         , IS_BACKWARD_(query->direction() == AKU_CURSOR_DIR_BACKWARD)
         , key_(IS_BACKWARD_ ? query->upperbound() : query->lowerbound())
         , lowerbound_(query->lowerbound())
         , upperbound_(query->upperbound())
     {
-        if (MAX_INDEX_) {
+        if (max_index()) {
             range_.begin = 0u;
-            range_.end = MAX_INDEX_ - 1;
+            range_.end = max_index() - 1;
         } else {
             range_.begin = 0u;
             range_.end = 0u;
         }
     }
 
+    uint32_t max_index() const {
+        return page_->get_entries_count();
+    }
+
     bool fast_path() {
-        if (!MAX_INDEX_) {
+        if (!max_index()) {
             return true;
         }
 
@@ -429,9 +431,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         while (range_.end >= range_.begin) {
             steps++;
             probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
-            if (probe_index >= MAX_INDEX_) {
+            if (probe_index >= max_index()) {
                 query_->set_error(AKU_EOVERFLOW);
-                range_.begin = range_.end = MAX_INDEX_;
+                range_.begin = range_.end = max_index();
                 return;
             }
 
@@ -441,7 +443,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 break;
             } else if (probe < key_) {
                 range_.begin = probe_index + 1u;         // change min index to search upper subarray
-                if (range_.begin >= MAX_INDEX_) {        // we hit the upper bound of the array
+                if (range_.begin >= max_index()) {        // we hit the upper bound of the array
                     break;
                 }
             } else {
@@ -461,8 +463,19 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         bst.n_steps += steps;
     }
 
-    bool scan_compressed_entries(QP::IQueryFilter const& filter, uint32_t current_index, aku_Entry const* probe_entry, bool binary_search=false) {
+    enum ScanResultT {
+        OVERSHOOT,
+        UNDERSHOOT,
+        IN_RANGE,
+        INTERRUPTED,
+    };
+
+    ScanResultT scan_compressed_entries(uint32_t current_index,
+                                        aku_Entry const* probe_entry,
+                                        bool binary_search=false)
+    {
         aku_Status status = AKU_SUCCESS;
+        ScanResultT result = UNDERSHOOT;
         std::shared_ptr<UncompressedChunk> chunk_header, header;
 
         auto npages = page_->get_numpages();    // This needed to prevent key collision
@@ -512,7 +525,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         if (IS_BACKWARD_) {
             start_pos = static_cast<int>(header->timestamps.size() - 1);
         }
-        bool probe_in_time_range = true;
 
         auto queryproc = query_;
         auto page = page_;
@@ -536,16 +548,14 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
         if (IS_BACKWARD_) {
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
-                                      upperbound_ >= header->timestamps[i];
-                if (probe_in_time_range) {
+                result = check_timestamp(header->timestamps[i]);
+                if (result == OVERSHOOT) {
+                    break;
+                }
+                if (result == IN_RANGE) {
                     if (!put_entry(i)) {
-                        probe_in_time_range = false;
-                        break;
-                    }
-                } else {
-                    probe_in_time_range = lowerbound_ <= header->timestamps[i];
-                    if (!probe_in_time_range) {
+                        // Scaning process interrupted by the user (connection closed)
+                        result = INTERRUPTED;
                         break;
                     }
                 }
@@ -553,65 +563,102 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         } else {
             auto end_pos = (int)header->timestamps.size();
             for (auto i = start_pos; i != end_pos; i++) {
-                probe_in_time_range = lowerbound_ <= header->timestamps[i] &&
-                                      upperbound_ >= header->timestamps[i];
-                if (probe_in_time_range) {
+                result = check_timestamp(header->timestamps[i]);
+                if (result == OVERSHOOT) {
+                    break;
+                }
+                if (result == IN_RANGE) {
                     if (!put_entry(i)) {
-                        probe_in_time_range = false;
-                        break;
-                    }
-                } else {
-                    probe_in_time_range = upperbound_ >= header->timestamps[i];
-                    if (!probe_in_time_range) {
+                        result = INTERRUPTED;
                         break;
                     }
                 }
             }
         }
-        return probe_in_time_range;
+        return result;
     }
 
-    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index, QP::IQueryFilter const& filter) {
+    ScanResultT check_timestamp(aku_Timestamp probe_time)
+    {
+        ScanResultT proceed;
+        if (IS_BACKWARD_) {
+            if (probe_time > upperbound_) {
+                proceed = UNDERSHOOT;
+            } else if (probe_time < lowerbound_) {
+                proceed = OVERSHOOT;
+            } else {
+                proceed = IN_RANGE;
+            }
+        } else {
+            if (probe_time > upperbound_) {
+                proceed = OVERSHOOT;
+            } else if (probe_time < lowerbound_) {
+                proceed = UNDERSHOOT;
+            } else {
+                proceed = IN_RANGE;
+            }
+        }
+        return proceed;
+    }
+
+    /**
+     * @brief scan_impl is a scan procedure impelementation
+     * @param probe_index is an index to start with
+     * @return tuple{fwd-bytes, bwd-bytes}
+     */
+    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
         int index_increment = IS_BACKWARD_ ? -1 : 1;
-        while (true) {
+        ScanResultT proceed = IN_RANGE;
+        while (proceed != INTERRUPTED) {
             auto current_index = probe_index;
             probe_index += index_increment;
             auto probe_offset = page_->page_index(current_index)->offset;
             auto probe_time = page_->page_index(current_index)->timestamp;
             auto probe_entry = page_->read_entry(probe_offset);
             auto probe = probe_entry->param_id;
-            bool proceed = false;
+
 
             if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                proceed = scan_compressed_entries(filter, current_index, probe_entry, false);
+                proceed = scan_compressed_entries(current_index, probe_entry, false);
             } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                proceed = scan_compressed_entries(filter, current_index, probe_entry, false);
+                proceed = scan_compressed_entries(current_index, probe_entry, false);
             } else {
-                proceed = IS_BACKWARD_ ? lowerbound_ <= probe_time
-                                       : upperbound_ >= probe_time;
+                proceed = check_timestamp(probe_time);
             }
 
-            if (!proceed || probe_index >= MAX_INDEX_) {
-                // When scanning forward probe_index will be equal to MAX_INDEX_ at the end of the page
-                // When scanning backward probe_index will be equal to ~0 (probe_index > MAX_INDEX_)
-                // at the end of the page
-                break;
+            if (probe_index >= max_index()) {
+                if (IS_BACKWARD_) {
+                    proceed = INTERRUPTED;
+                } else {
+                    switch(proceed) {
+                    case IN_RANGE:
+                    case UNDERSHOOT:
+                        if (query_->put(QP::NO_DATA)) {
+                            // We should wait for consumer!
+                            break;
+                        }
+                    case OVERSHOOT:
+                    case INTERRUPTED:
+                        proceed = INTERRUPTED;
+                    };
+                }
             }
         }
+        // TODO: use relevant numbers here!
         return std::make_tuple(0ul, 0ul);
     }
 
-    void scan(QP::IQueryFilter const& filter) {
+    void scan() {
         if (range_.begin != range_.end) {
             query_->set_error(AKU_EGENERAL);
             return;
         }
-        if (range_.begin >= MAX_INDEX_) {
+        if (range_.begin >= max_index()) {
             query_->set_error(AKU_EOVERFLOW);
             return;
         }
 
-        auto sums = scan_impl(range_.begin, filter);
+        auto sums = scan_impl(range_.begin);
 
         auto& stats = get_global_search_stats();
         {
@@ -628,7 +675,7 @@ void PageHeader::search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {
             search_alg.binary_search();
-            search_alg.scan(query->filter());
+            search_alg.scan();
         }
     }
 }

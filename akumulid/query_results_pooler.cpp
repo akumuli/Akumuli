@@ -1,5 +1,6 @@
 #include "query_results_pooler.h"
 #include <cstdio>
+#include <thread>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/exception/all.hpp>
@@ -393,12 +394,14 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
     char* end = begin + buf_size;
     while(rdbuf_pos_ < rdbuf_top_) {
         const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(rdbuf_.data() + rdbuf_pos_);
-        char* next = formatter_->format(begin, end, *sample);
-        if (next == nullptr) {
-            // done
-            break;
+        if (sample->payload.type != aku_PData::EMPTY) {
+            char* next = formatter_->format(begin, end, *sample);
+            if (next == nullptr) {
+                // done
+                break;
+            }
+            begin = next;
         }
-        begin = next;
         assert(sample->payload.size);
         rdbuf_pos_ += sample->payload.size;
     }

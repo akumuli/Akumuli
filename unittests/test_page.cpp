@@ -88,6 +88,8 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     {
     }
 
+    virtual SeriesMatcher* matcher() { return nullptr; }
+
     //! Lowerbound
     virtual aku_Timestamp lowerbound() const { return begin; }
 

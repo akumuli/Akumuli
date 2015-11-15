@@ -98,15 +98,17 @@ struct LocalCursor : Cursor {
         : db_(db)
         , cursor_(cursor)
     {
-        throw_if_error();
+        can_proceed();
     }
 
-    void throw_if_error() {
+    bool can_proceed() {
         aku_Status status = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor_, &status)) {
             std::runtime_error err(aku_error_message(status));
             BOOST_THROW_EXCEPTION(err);
+            return false;
         }
+        return true;
     }
 
     virtual ~LocalCursor() {
@@ -115,18 +117,28 @@ struct LocalCursor : Cursor {
 
     bool advance() {
         auto n_results = aku_cursor_read(cursor_, &sample_, sizeof(aku_Sample));
-        throw_if_error();
-        // Return true if cache is not empty
-        assert(n_results == 0 || n_results == sizeof(aku_Sample));
-        return n_results;
+        if (can_proceed()) {
+            // Return true if cache is not empty
+            assert(n_results == 0 || n_results == sizeof(aku_Sample));
+            return n_results;
+        }
+        return false;
     }
 
     virtual bool done() {
-        return aku_cursor_is_done(cursor_);
+        if (cursor_) {
+            return aku_cursor_is_done(cursor_);
+        }
+        return true;
     }
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
+            if (sample_.payload.type == aku_PData::EMPTY) {
+                aku_cursor_close(cursor_);
+                cursor_ = nullptr;
+                return false;
+            }
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
             char buffer[buffer_size];
             // Convert id
@@ -426,6 +438,73 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
+void continous_query(Storage *storage, Query query, std::vector<DataPoint> expected, std::vector<DataPoint> datatoadd) {
+    auto require_equal = [](Cursor::RowT row, DataPoint exp) {
+        if (row.timestamp != exp.timestamp) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad timestamp, get " << row.timestamp
+                      << ", expected " << exp.timestamp << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        if (row.seriesname != exp.id) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad id, get " << row.seriesname << " (" << row.rawid << ")"
+                      << ", expected " << exp.id << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        // payload
+        std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        if (row.value != exp.float_value) {
+            std::cout << "Error" << std::endl;
+            std::cout << "bad float, get " << row.value
+                      << ", expected " << exp.float_value << std::endl;
+            std::runtime_error err("Bad result");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    };
+
+    std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
+    for (auto item: expected) {
+        if (cursor->done()) {
+            std::runtime_error err("Not enough data");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        Cursor::RowT row;
+        if (cursor->get_next_row(row)) {
+            require_equal(row, item);
+        } else {
+            std::runtime_error err("Can't read data");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
+
+    // Add new data
+    for (auto item: datatoadd) {
+        storage->add(item.timestamp, item.id, item.float_value);
+    }
+
+    // Read the rest of the data
+    for (auto item: datatoadd) {
+        if (cursor->done()) {
+            std::runtime_error err("Not enough data");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        Cursor::RowT row;
+        int cnt = 0;
+        while (!cursor->get_next_row(row)) {
+            if(cnt++ == 10) {
+                std::runtime_error err("Can't read data");
+                BOOST_THROW_EXCEPTION(err);
+            }
+        }
+        std::cout << "Expected: " << item.id << ", " << item.timestamp << ", " << item.float_value << std::endl;
+        std::cout << "Atcual:   " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        //require_equal(row, item);
+    }
+}
+
 aku_Timestamp to_timestamp(std::string ts) {
     aku_Sample s;
     if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
@@ -554,7 +633,7 @@ int main(int argc, const char** argv) {
     std::cout << "Working directory: " << dir << std::endl;
     aku_initialize(nullptr);
 
-    uint32_t compression_threshold = 10;
+    uint32_t compression_threshold = 5;
     uint64_t windowsize = 1;
     LocalStorage storage(dir, compression_threshold, windowsize, 2);
 
@@ -609,15 +688,15 @@ int main(int argc, const char** argv) {
             query_metadata(&storage, "cpu", include_even,   evenseries);
 
             // Read in forward direction
-            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
             // Try to read only half of the data-points in forward direction
-            query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
+            query_subset(&storage, "20150101T000005", "20150101T000014", false, false, allseries);
             // Try to read only half of the data-points in backward direction
-            query_subset(&storage, "20150101T000005", "20150101T000015", true, false, allseries);
-            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, evenseries);
-            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, oddseries);
+            query_subset(&storage, "20150101T000005", "20150101T000014", true, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, evenseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, oddseries);
 
             storage.close();
         }
@@ -667,16 +746,14 @@ int main(int argc, const char** argv) {
             }
 
             // Read in forward direction, result-set should be empty because all new data is cached
-            query_subset(&storage, "20150101T000020", "20150101T000025", false, false, allseries);
+            query_subset(&storage, "20150101T000020", "20150101T000025", false, true, allseries);
             // Read in backward direction, result-set shouldn't be empty
             // because cache accessed in backward direction
             query_subset(&storage, "20150101T000020", "20150101T000025", true, false, allseries);
             // Query all in rev. direction, everything should be in place
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
 
-            // Filter out BLOBs
             query_subset(&storage, "20150101T000000", "20150101T000024", true, false, evenseries);
-            // Filter out numeric values
             query_subset(&storage, "20150101T000000", "20150101T000024", true, false, oddseries);
 
             storage.close();
@@ -734,6 +811,37 @@ int main(int argc, const char** argv) {
             query_metadata(&storage, "cpu", include_even,   evenseries);
 
             storage.close();
+        }
+
+        {
+            storage.open();
+            std::vector<DataPoint> exppoints = {
+                { "20150101T000020.000000000", "cpu key=2", 2.0 },
+                { "20150101T000021.000000000", "cpu key=3", 2.1 },
+                { "20150101T000022.000000000", "cpu key=4", 2.2 },
+                { "20150101T000023.000000000", "cpu key=5", 2.3 },
+            };
+            std::vector<DataPoint> newpoints = {
+                { "20150101T000024.000000000", "cpu key=1", 2.4 },
+                { "20150101T000025.000000000", "cpu key=2", 2.5 },
+                { "20150101T000026.000000000", "cpu key=3", 2.6 },
+                { "20150101T000027.000000000", "cpu key=4", 2.7 },
+                { "20150101T000028.000000000", "cpu key=5", 2.8 },
+                { "20150101T000029.000000000", "cpu key=1", 2.8 },
+            };
+            std::vector<std::string> ids = {
+                "cpu key=1",
+                "cpu key=2",
+                "cpu key=3",
+                "cpu key=4",
+                "cpu key=5",
+            };
+            Query q = {
+                std::string("20150101T000020.000000000"),
+                std::string("20150101T000029.000000000"),
+                ids
+            };
+            continous_query(&storage, q, exppoints, newpoints);
         }
 
         std::cout << "OK!" << std::endl;

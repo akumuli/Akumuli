@@ -27,6 +27,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
+#include <bits/unordered_set.h>
+
 namespace Akumuli {
 
 //                          //
@@ -77,7 +79,7 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     return it->second;
 }
 
-SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) {
+SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) const {
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
         return EMPTY;
@@ -99,6 +101,18 @@ static const char* skip_space(const char* p, const char* end) {
         p++;
     }
     return p;
+}
+
+static StringTools::StringT get_tag_name(const char* p, const char* end) {
+    StringTools::StringT EMPTY = {nullptr, 0};
+    auto begin = p;
+    while(p < end && *p != '=' && *p != ' ' && *p != '\t') {
+        p++;
+    }
+    if (p == end || *p != '=') {
+        return EMPTY;
+    }
+    return {begin, p - begin};
 }
 
 static const char* copy_until(const char* begin, const char* end, const char pattern, char** out) {
@@ -231,6 +245,60 @@ aku_Status SeriesParser::to_normal_form(const char* begin, const char* end,
     *keystr_begin = skip_space(*keystr_begin, out_end);
     *keystr_end = it_out;
     return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesParser::StringT const& input, const StringTools::SetT &tags, char* out) {
+    StringT NO_RESULT = {};
+    char* out_begin = out;
+    char* it_out = out;
+    const char* it = input.first;
+    const char* end = it + input.second;
+
+    // Get metric name
+    it = skip_space(it, end);
+    it = copy_until(it, end, ' ', &it_out);
+    it = skip_space(it, end);
+
+    if (it == end) {
+        // At least one tag should be specified
+        return std::make_tuple(AKU_EBAD_DATA, NO_RESULT);
+    }
+
+    // Get pointers to the keys
+    const char* last_tag;
+    auto ix_tag = 0u;
+    bool error = false;
+    while(it < end && ix_tag < AKU_LIMITS_MAX_TAGS) {
+        last_tag = it;
+        it = skip_tag(it, end, &error);
+        if (!error) {
+            // Check tag
+            StringT tag = get_tag_name(last_tag, it);
+            if (tags.count(tag) != 0) {
+                *it_out = ' ';
+                it_out++;
+                auto sz = it - last_tag;
+                memcpy((void*)it_out, (const void*)last_tag, sz);
+                it_out += sz;
+                ix_tag++;
+            }
+        } else {
+            break;
+        }
+        it = skip_space(it, end);
+    }
+
+    if (error) {
+        // Bad string
+        return std::make_tuple(AKU_EBAD_DATA, NO_RESULT);
+    }
+
+    if (ix_tag == 0) {
+        // User should specify at least one tag
+        return std::make_tuple(AKU_EBAD_DATA, NO_RESULT);
+    }
+
+    return std::make_tuple(AKU_SUCCESS, std::make_pair(out_begin, it_out - out_begin));
 }
 
 }

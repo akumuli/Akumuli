@@ -16,13 +16,14 @@
 
 #pragma once
 #include "akumuli_def.h"
-#include "queryprocessor_framework.h"
+//#include "queryprocessor_framework.h"
 #include "stringpool.h"
 
 #include <stdint.h>
 #include <map>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <deque>
 #include <memory>
@@ -69,7 +70,7 @@ struct SeriesMatcher {
     uint64_t match(const char* begin, const char* end);
 
     //! Convert id to string
-    StringT id2str(uint64_t tokenid);
+    StringT id2str(uint64_t tokenid) const;
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements
@@ -95,6 +96,12 @@ struct SeriesParser
     static aku_Status to_normal_form(const char* begin, const char* end,
                               char* out_begin, char* out_end,
                               const char** keystr_begin, const char **keystr_end);
+
+    typedef StringTools::StringT StringT;
+
+    /** Remove redundant tags from input string. Leave only metric and tags from the list.
+      */
+    static std::tuple<aku_Status, StringT> filter_tags(StringT const& input, StringTools::SetT const& tags, char* out);
 };
 
 }

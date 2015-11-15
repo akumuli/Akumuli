@@ -1,6 +1,7 @@
 #include "httpserver.h"
 #include "utility.h"
 #include <cstring>
+#include <thread>
 
 #include <boost/bind.hpp>
 
@@ -21,6 +22,11 @@ static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
     std::tie(sz, is_done) = cur->read_some(buf, max);
     if (is_done) {
         return MHD_CONTENT_READER_END_OF_STREAM;
+    } else {
+        if (sz == 0u) {
+            // Not at the end of the stream but data is not ready yet.
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
     return sz;
 }

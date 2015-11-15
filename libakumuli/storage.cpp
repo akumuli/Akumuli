@@ -423,36 +423,48 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
             return;
         }
 
+        // Override series matcher
+        auto matcher = query_processor->matcher();
+        set_thread_local_matcher(matcher);
+
         if (query_processor->start()) {
 
             if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
                 for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
-                    Timer tm;
-                    int seq_id;
-                    aku_Timestamp window;
+                    // Search volume
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
-                    tie(window, seq_id) = volume->cache_->get_window();
                     volume->get_page()->search(query_processor, cache_);
-                    tm.restart();
-                    volume->cache_->search(query_processor, seq_id);
+
+                    // Instead of searching cache we are using continuous querying feature here.
+                    // We can read cache data only if we're interested in instant picture, for example if
+                    // we're loocking for latest value. Forward direction is for immutable data only
+                    // and continuous queries works here fine. And backward direction can't be used with
+                    // continuous queries (because you're reading latest data first) but you can access
+                    // in-memory cache in backward direction. This in-memory cache is not immutable.
+                    // Two subsequent queries in backward direction can  produce different results even in
+                    // the same time range.
+                    //
+                    // So, backward direction should be used to implement `top` query and forward direction
+                    // can be used to impelent `tail -f` like functionality.
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
                 for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
-                    int seq_id;
-                    aku_Timestamp window;
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
+                    // Search cache
+                    int seq_id;
+                    aku_Timestamp window;
                     tie(window, seq_id) = volume->cache_->get_window();
                     volume->cache_->search(query_processor, seq_id);
+                    // Search volume
                     volume->get_page()->search(query_processor, cache_);
                 }
             } else {
                 AKU_PANIC("data corruption in query processor");
             }
-
             query_processor->stop();
         }
     }
@@ -554,8 +566,20 @@ aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint6
     return status;
 }
 
+void Storage::set_thread_local_matcher(SeriesMatcher *matcher) const {
+    local_matcher_.reset(matcher);
+}
+
 int Storage::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) const {
-    auto str = matcher_->id2str(id);
+    SeriesMatcher const* m;
+    if (local_matcher_.get() != nullptr) {
+        // Series matcher overriden by query (group by tag stmtm)
+        m = local_matcher_.get();
+    } else {
+        // Use global matcher
+        m = matcher_.get();
+    }
+    auto str = m->id2str(id);
     if (str.first == nullptr) {
         return 0;
     }

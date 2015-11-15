@@ -49,7 +49,7 @@ void RandomSamplingNode::complete() {
 }
 
 bool RandomSamplingNode::put(const aku_Sample& sample) {
-    if (sample.payload.type == aku_PData::EMPTY) {
+    if (sample.payload.type == aku_PData::MARGIN) {
         return flush();
     } else {
         if (samples_.size() < buffer_size_) {

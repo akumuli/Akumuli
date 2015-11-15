@@ -5,7 +5,9 @@
 #include <boost/test/unit_test.hpp>
 
 #include "seriesparser.h"
+#include "queryprocessor_framework.h"
 #include "datetime.h"
+#include <tuple>
 
 using namespace Akumuli;
 using namespace Akumuli::QP;
@@ -176,5 +178,25 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
     const char* pend = nullptr;
     int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + 10, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_6) {
+    const char* tags[] = {
+        "tag2",
+        "tag4",
+        "tag7",  // doesn't exists in series name
+    };
+    const char* series = "metric tag1=1 tag2=2 tag3=3 tag4=4 tag5=5";
+    auto name = std::make_pair(series, strlen(series));
+    char out[AKU_LIMITS_MAX_SNAME];
+    aku_Status status;
+    SeriesParser::StringT result;
+    StringTools::SetT filter = StringTools::create_set(2);
+    filter.insert(std::make_pair(tags[0], 4));
+    filter.insert(std::make_pair(tags[1], 4));
+    filter.insert(std::make_pair(tags[2], 4));
+    std::tie(status, result) = SeriesParser::filter_tags(name, filter, out);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(std::string("metric tag2=2 tag4=4"), std::string(result.first, result.first + result.second));
 }
 

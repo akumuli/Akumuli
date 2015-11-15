@@ -44,24 +44,51 @@ struct Builder {
 
 
 
-/** Group-by statement processor */
-struct GroupByStatement {
+/** Group-by time statement processor */
+struct GroupByTime {
     aku_Timestamp   step_;
     bool            first_hit_;
     aku_Timestamp   lowerbound_;
     aku_Timestamp   upperbound_;
 
-    GroupByStatement();
+    GroupByTime();
 
-    GroupByStatement(aku_Timestamp step);
+    GroupByTime(aku_Timestamp step);
 
-    GroupByStatement(const GroupByStatement& other);
+    GroupByTime(const GroupByTime& other);
 
-    GroupByStatement& operator = (const GroupByStatement& other);
+    GroupByTime& operator = (const GroupByTime& other);
 
     bool put(aku_Sample const& sample, Node& next);
 
     bool empty() const;
+};
+
+
+/** Group-by tag statement processor */
+struct GroupByTag {
+    std::string regex_;
+    //! Mapping from global parameter ids to local parameter ids
+    std::unordered_map<aku_ParamId, aku_ParamId> ids_;
+    //! Shared string pool
+    StringPool const* spool_;
+    //! Previous string pool offset
+    StringPoolOffset offset_;
+    //! Previous string pool size
+    size_t prev_size_;
+    //! List of tags of interest
+    std::vector<std::string> tags_;
+    //! Local string pool. All transient series names lives here.
+    SeriesMatcher local_matcher_;
+    //! List of string already added string pool
+    StringTools::SetT snames_;
+
+    //! Main c-tor
+    GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
+
+    void refresh_();
+
+    bool apply(aku_Sample* sample);
 };
 
 
@@ -83,12 +110,16 @@ struct ScanQueryProcessor : IQueryProcessor {
     const std::string                  metric_;
     //! Name to id mapping
     TableT                             namesofinterest_;
-    //! Group-by statement
-    GroupByStatement                   groupby_;
+    //! Group-by-time statement
+    GroupByTime                        groupby_;
     //! Filter
     std::shared_ptr<IQueryFilter>      filter_;
     //! Root of the processing topology
     std::shared_ptr<Node>              root_node_;
+    //! Final of the processing topology
+    std::shared_ptr<Node>              last_node_;
+    //! Group-by-tag
+    std::unique_ptr<GroupByTag>        groupby_tag_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -102,7 +133,8 @@ struct ScanQueryProcessor : IQueryProcessor {
                        aku_Timestamp begin,
                        aku_Timestamp end,
                        std::shared_ptr<IQueryFilter> filter,
-                       GroupByStatement groupby = GroupByStatement());
+                       GroupByTime groupby,
+                       std::unique_ptr<GroupByTag> groupbytag);
 
     //! Lowerbound
     aku_Timestamp lowerbound() const;
@@ -114,6 +146,8 @@ struct ScanQueryProcessor : IQueryProcessor {
     int direction() const;
 
     IQueryFilter& filter();
+
+    SeriesMatcher* matcher();
 
     bool start();
 
@@ -139,6 +173,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
     aku_Timestamp upperbound() const;
     int direction() const;
     IQueryFilter& filter();
+    SeriesMatcher* matcher();
     bool start();
     bool put(const aku_Sample &sample);
     void stop();

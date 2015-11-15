@@ -37,7 +37,7 @@ struct PAA : Node {
                 }
             }
         }
-        if (!next_->put(EMPTY_SAMPLE)) {
+        if (!next_->put(SAMPLING_MARGIN)) {
             return false;
         }
         return true;
@@ -48,8 +48,7 @@ struct PAA : Node {
     }
 
     virtual bool put(const aku_Sample &sample) {
-        // ignore BLOBs
-        if (sample.payload.type == aku_PData::EMPTY) {
+        if (sample.payload.type == aku_PData::MARGIN) {
             if (!average_samples(sample.timestamp)) {
                 return false;
             }
