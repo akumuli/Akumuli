@@ -126,12 +126,17 @@ struct LocalCursor : Cursor {
     }
 
     virtual bool done() {
-        return aku_cursor_is_done(cursor_);
+        if (cursor_) {
+            return aku_cursor_is_done(cursor_);
+        }
+        return true;
     }
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
             if (sample_.payload.type == aku_PData::EMPTY) {
+                aku_cursor_close(cursor_);
+                cursor_ = nullptr;
                 return false;
             }
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
@@ -683,15 +688,15 @@ int main(int argc, const char** argv) {
             query_metadata(&storage, "cpu", include_even,   evenseries);
 
             // Read in forward direction
-            query_subset(&storage, "20150101T000000", "20150101T000020", false, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
             // Try to read only half of the data-points in forward direction
-            query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
+            query_subset(&storage, "20150101T000005", "20150101T000014", false, false, allseries);
             // Try to read only half of the data-points in backward direction
-            query_subset(&storage, "20150101T000005", "20150101T000015", true, false, allseries);
-            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, evenseries);
-            query_subset(&storage, "20150101T000000", "20150101T000020", true, false, oddseries);
+            query_subset(&storage, "20150101T000005", "20150101T000014", true, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, evenseries);
+            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, oddseries);
 
             storage.close();
         }

@@ -176,7 +176,7 @@ bool GroupByTime::empty() const {
 GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
     : spool_(spool)
     , tags_(tags)
-    , local_matcher_(0ul)
+    , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
 {
     // Build regexp
@@ -282,7 +282,10 @@ IQueryFilter& ScanQueryProcessor::filter() {
 }
 
 SeriesMatcher* ScanQueryProcessor::matcher() {
-    return &groupby_tag_->local_matcher_;
+    if (groupby_tag_) {
+        return &groupby_tag_->local_matcher_;
+    }
+    return nullptr;
 }
 
 bool ScanQueryProcessor::start() {
@@ -447,14 +450,14 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
                                                        StringPool const& pool,
                                                        aku_logger_cb_t logger)
 {
-    if (metric.empty()) {
-        QueryParserError error("metric is not set");
-        BOOST_THROW_EXCEPTION(error);
-    }
     std::shared_ptr<RegexFilter> result;
     bool not_set = false;
     auto where = ptree.get_child_optional("where");
     if (where) {
+        if (metric.empty()) {
+            QueryParserError error("metric is not set");
+            BOOST_THROW_EXCEPTION(error);
+        }
         for (auto item: *where) {
             bool firstitem = true;
             std::stringstream series_regexp;
@@ -480,9 +483,12 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
         not_set = true;
     }
     if (not_set) {
-        // we need to include all series from this metric
+        // we need to include all series
+        if (metric.empty()) {
+            metric = "\\w+";
+        }
         std::stringstream series_regexp;
-        series_regexp << "" << metric << R"((\s\w+=\w+)*)";
+        series_regexp << metric << "(?:\\s\\w+=\\w+)+";
         std::string regex = series_regexp.str();
         result = std::make_shared<RegexFilter>(regex, pool);
     }
@@ -536,7 +542,9 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         GroupByTime groupbytime;
         std::tie(groupbytime, tags) = parse_groupby(ptree, logger);
         auto groupbytag = std::unique_ptr<GroupByTag>();
-        groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
+        if (!tags.empty()) {
+            groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
+        }
 
         // Read select statment
         auto select = parse_select_stmt(ptree, logger);
