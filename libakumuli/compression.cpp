@@ -65,24 +65,109 @@ struct HalfByteStreamReader {
     }
 };
 
+
+struct PrevValPredictor {
+    uint64_t last_value;
+    PrevValPredictor(int) : last_value(0)
+    {
+    }
+    uint64_t predict_next() const {
+        return last_value;
+    }
+    void update(uint64_t value) {
+        last_value = value;
+    }
+};
+
+struct DfcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    uint64_t last_value;
+
+    //! C-tor. `table_size` should be a power of two.
+    DfcmPredictor(int table_size)
+        : last_hash (0ul)
+        , last_value(0ul)
+    {
+       assert((table_size & (table_size - 1)) == 0);
+       table.resize(table_size);
+    }
+
+    uint64_t predict_next() const {
+        return table.at(last_hash) + last_value;
+    }
+
+    void update(uint64_t value) {
+        table.at(last_hash) = value - last_value;
+        auto mask = table.size() - 1;
+        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40));
+        last_hash &= mask;
+        last_value = value;
+    }
+};
+
+struct ThirdOrderDfcmPredictor {
+    std::vector<std::pair<uint64_t, uint64_t>> table;
+    uint64_t last_hash;
+    uint64_t last_values[3];
+
+    //! C-tor. `table_size` should be a power of two.
+    ThirdOrderDfcmPredictor(int table_size)
+        : last_hash (0ul)
+        , last_values{0ul}
+    {
+       assert((table_size & (table_size - 1)) == 0);
+       table.resize(table_size);
+    }
+
+    uint64_t predict_next() const {
+        auto result = table.at(last_hash);
+        auto d1 = result.first;
+        auto d2 = result.second;
+        if ((d1 >> 50) != (d2 >> 50)) {
+            return last_values[0] + d1;
+        }
+        return last_values[0] + d1 + (d1 - d2);
+    }
+
+    void update(uint64_t value) {
+        table.at(last_hash) = std::make_pair(value - last_values[0], last_values[0] - last_values[1]);
+        auto mask = table.size() - 1;
+        auto delta1 = (value - last_values[0]) >> 50;
+        auto delta2 = (last_values[0]  - last_values[1]) >> 50;
+        auto delta3 = (last_values[1]  - last_values[2]) >> 50;
+        // hash(delta1, delta2, delta3) = lsb (delta1 ⊗ (delta2 << 5) ⊗ (delta3 << 10))
+        last_hash = delta1 ^ (delta2 << 5) ^ (delta3 << 10);
+        last_hash &= mask;
+        // update last values
+        last_values[2] = last_values[1];
+        last_values[1] = last_values[0];
+        last_values[0] = value;
+    }
+};
+
+typedef ThirdOrderDfcmPredictor PredictorT;
+static const int PREDICTOR_N = 1 << 10;
+
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
-    uint64_t prev_in_series = 0ul;
     HalfByteStreamWriter stream(wstream);
+    PredictorT predictor(PREDICTOR_N);
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
             uint64_t bits;
         } curr = {};
         curr.real = input.at(ix);
-        uint64_t diff = curr.bits ^ prev_in_series;
-        prev_in_series = curr.bits;
-        int res = 64;
+        uint64_t predicted = predictor.predict_next();
+        predictor.update(curr.bits);
+        uint64_t diff = curr.bits ^ predicted;
+        int leading_zeros  = 64;
         if (diff != 0) {
-            res = __builtin_clzl(diff);
+            leading_zeros = __builtin_clzl(diff);
         }
-        int nblocks = 0xF - res / 4;
+        int nblocks = 0xF - leading_zeros / 4;
         if (nblocks < 0) {
             nblocks = 0;
         }
@@ -100,8 +185,8 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
                                          size_t                   numblocks,
                                          std::vector<double>     *output)
 {
-    uint64_t prev_in_series = 0ul;
     HalfByteStreamReader stream(rstream, numblocks);
+    PredictorT predictor(PREDICTOR_N);
     auto end = output->end();
     auto it = output->begin();
     while(numblocks) {
@@ -116,8 +201,9 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
             uint64_t bits;
             double real;
         } curr = {};
-        curr.bits = prev_in_series ^ diff;
-        prev_in_series = curr.bits;
+        uint64_t predicted = predictor.predict_next();
+        curr.bits = predicted ^ diff;
+        predictor.update(curr.bits);
         // put
         if (it < end) {
             *it++ = curr.real;
