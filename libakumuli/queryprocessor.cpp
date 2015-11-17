@@ -73,13 +73,13 @@ struct RegexFilter : IQueryFilter {
         : regex_(regex)
         , spool_(spool)
         , offset_{}
-        , prev_size_(spool.size())
+        , prev_size_(0ul)
     {
         refresh();
     }
 
     void refresh() {
-        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_);
+        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_, &prev_size_);
         int ix = 0;
         for (StringPool::StringT item: results) {
             auto id = StringTools::extract_id_from_pool(item);
@@ -195,7 +195,7 @@ GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<
 }
 
 void GroupByTag::refresh_() {
-    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_);
+    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_, &prev_size_);
     auto filter = StringTools::create_set(tags_.size());
     for (const auto& tag: tags_) {
         filter.insert(std::make_pair(tag.data(), tag.size()));
@@ -217,6 +217,9 @@ void GroupByTag::refresh_() {
 }
 
 bool GroupByTag::apply(aku_Sample* sample) {
+    if (spool_->size() != prev_size_) {
+        refresh_();
+    }
     auto it = ids_.find(sample->paramid);
     if (it != ids_.end()) {
         sample->paramid = it->second;
@@ -299,10 +302,10 @@ bool ScanQueryProcessor::put(const aku_Sample &sample) {
     // that comes right from page or sequencer. Because of that
     // we can copy it without slicing.
     auto copy = sample;
-    if (groupby_tag_->apply(&copy)) {
-        return groupby_.put(copy, *root_node_);
+    if (groupby_tag_ && !groupby_tag_->apply(&copy)) {
+        return true;
     }
-    return true;
+    return groupby_.put(copy, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
@@ -413,8 +416,14 @@ static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost
                 std::string str = child.second.get_value<std::string>();
                 duration = DateTimeUtil::parse_duration(str.c_str(), str.size());
             } else if (child.first == "tag") {
-                std::string tag = child.second.get_value<std::string>();
-                tags.push_back(tag);
+                if (!child.second.empty()) {
+                    for (auto tag: child.second) {
+                        tags.push_back(tag.second.get_value<std::string>());
+                    }
+                } else {
+                    auto tag = child.second.get_value<std::string>();
+                    tags.push_back(tag);
+                }
             }
         }
     }

@@ -48,7 +48,7 @@ struct CSVOutputFormatter : OutputFormatter {
 
         int len = 0;
 
-        if (sample.payload.type & aku_PData::EMPTY) {
+        if (sample.payload.type == aku_PData::EMPTY || sample.payload.type == aku_PData::MARGIN) {
             // Skip empty samples
             return pskip;
         }
@@ -172,6 +172,11 @@ struct RESPOutputFormatter : OutputFormatter {
 
         char* pskip = begin;  // return this pointer to skip sample
 
+        if (sample.payload.type == aku_PData::EMPTY || sample.payload.type == aku_PData::MARGIN) {
+            // skip empty samples
+            return pskip;
+        }
+
         if(begin >= end) {
             return nullptr;  // not enough space inside the buffer
         }
@@ -184,10 +189,6 @@ struct RESPOutputFormatter : OutputFormatter {
         // sz can't be zero here because of precondition
 
         int len = 0;
-        if (sample.payload.type == aku_PData::EMPTY) {
-            // skip empty samples
-            return pskip;
-        }
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
