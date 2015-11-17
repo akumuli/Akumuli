@@ -253,8 +253,8 @@ int main(int cnt, const char** args)
 
         // =series=
         int id = i % 1000;
-        int hash = i % 32;
-        int nchars = sprintf(buffer, "cpu key=%d hash=%d", id, hash);
+        int hashval =  i % 10;
+        int nchars = sprintf(buffer, "cpu key=%d hash=%d", id, hashval);
         aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
         // =timestamp=

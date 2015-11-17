@@ -146,7 +146,8 @@ struct ThirdOrderDfcmPredictor {
     }
 };
 
-typedef ThirdOrderDfcmPredictor PredictorT;
+typedef DfcmPredictor PredictorT;
+
 static const int PREDICTOR_N = 1 << 10;
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,

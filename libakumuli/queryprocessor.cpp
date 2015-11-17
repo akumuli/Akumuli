@@ -175,23 +175,21 @@ bool GroupByTime::empty() const {
 //  GroupByTag  //
 GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
     : spool_(spool)
+    , offset_{0}
+    , prev_size_(0)
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
 {
+    std::sort(tags_.begin(), tags_.end());
     // Build regexp
     std::stringstream series_regexp;
-    series_regexp << metric << "(?:\\s\\w+=\\w+)*\\s";
-    bool firstitem = true;
+    //cpu(?:\s\w+=\w+)* (?:\s\w+=\w+)*\s hash=\w+ (?:\s\w+=\w+)*
+    series_regexp << metric << "(?:\\s\\w+=\\w+)*";
     for (auto tag: tags) {
-        if (firstitem) {
-            firstitem = false;
-            series_regexp << "(?:";
-        } else {
-            series_regexp << "|";
-        }
-        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "(?:=\\w+\\s\\w+=\\w+)*)";
+        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "=\\w+";
     }
+    series_regexp << "(?:\\s\\w+=\\w+)*";
     regex_ = series_regexp.str();
     refresh_();
 }
@@ -297,7 +295,14 @@ bool ScanQueryProcessor::put(const aku_Sample &sample) {
         // shourtcut for empty samples
         last_node_->put(sample);
     }
-    return groupby_.put(sample, *root_node_);
+    // We're dealing with basic sample here (no extra payload)
+    // that comes right from page or sequencer. Because of that
+    // we can copy it without slicing.
+    auto copy = sample;
+    if (groupby_tag_->apply(&copy)) {
+        return groupby_.put(copy, *root_node_);
+    }
+    return true;
 }
 
 void ScanQueryProcessor::stop() {
