@@ -37,8 +37,6 @@ struct CSVOutputFormatter : OutputFormatter {
     }
 
     virtual char* format(char* begin, char* end, const aku_Sample& sample) {
-        char* pskip = begin;  // return this pointer to skip sample
-
         if(begin >= end) {
             return nullptr;  // not enough space inside the buffer
         }
@@ -47,11 +45,6 @@ struct CSVOutputFormatter : OutputFormatter {
         bool newline_required = false;
 
         int len = 0;
-
-        if (sample.payload.type == aku_PData::EMPTY || sample.payload.type == aku_PData::MARGIN) {
-            // Skip empty samples
-            return pskip;
-        }
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
@@ -169,13 +162,6 @@ struct RESPOutputFormatter : OutputFormatter {
 
     virtual char* format(char* begin, char* end, const aku_Sample& sample) {
         // RESP formatted output: +series name\r\n+timestamp\r\n+value\r\n (for double or $value for blob)
-
-        char* pskip = begin;  // return this pointer to skip sample
-
-        if (sample.payload.type == aku_PData::EMPTY || sample.payload.type == aku_PData::MARGIN) {
-            // skip empty samples
-            return pskip;
-        }
 
         if(begin >= end) {
             return nullptr;  // not enough space inside the buffer

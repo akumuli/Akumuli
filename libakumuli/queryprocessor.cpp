@@ -296,7 +296,7 @@ bool ScanQueryProcessor::start() {
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
     if (AKU_UNLIKELY(sample.payload.type == aku_PData::EMPTY)) {
         // shourtcut for empty samples
-        last_node_->put(sample);
+        return last_node_->put(sample);
     }
     // We're dealing with basic sample here (no extra payload)
     // that comes right from page or sequencer. Because of that

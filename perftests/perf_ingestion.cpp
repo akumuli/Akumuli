@@ -246,7 +246,7 @@ int main(int cnt, const char** args)
 
     uint64_t busy_count = 0;
     // Fill in data
-    RandomWalk rwalk(10.0, 1.0, 0.0002, 10000);
+    RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
     for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
         aku_Sample sample;
         char buffer[100];

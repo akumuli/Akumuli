@@ -108,8 +108,13 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, Stri
         }
     }
     if (offset != nullptr) {
-        offset->buffer_offset = buffers.size() - 1;
-        offset->offset = buffers.back()->size();
+        if (buffers.empty()) {
+            offset->buffer_offset = 0;
+            offset->offset = 0;
+        } else {
+            offset->buffer_offset = buffers.size() - 1;
+            offset->offset = buffers.back()->size();
+        }
     }
     return results;
 }
