@@ -4,7 +4,7 @@ README [![Build Status](https://api.shippable.com/projects/5481624dd46935d5fbbf6
 [![Join the chat at https://gitter.im/akumuli/Akumuli](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/akumuli/Akumuli?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 **Akumuli** is a numeric time-series database.
-It can be used to capture and store large amount of time-series data and to process this data in real-time.
+It can be used to capture, store and process time-series data in real-time.
 The word "akumuli" can be translated from esperanto as "accumulate".
 
 
@@ -18,10 +18,10 @@ Features
 * Accepts unordered data (at some configurable extent).
 * Real-time compression (up to 2.5 bytes per element on appropriate data).
 * Simple query language based on JSON over HTTP.
-* Query results returned using chunked transfer encoding at rate 50MB/second (about 1M data points/second).
+* Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second).
 * Series are organized using metrics and tags.
-* Time-series can be clustered by time (find aggregate for each 5sec interval).
-* Time-series can be merged together using tags.
+* Time-series can be groupped by time (find aggregate for each 5sec interval).
+* Time-series can be joined together by tags.
 * Resampling (PAA transform), sliding window methods.
 * Random sampling.
 * Frequent items and heavy hitters.
