@@ -20,7 +20,7 @@ Features
 * Simple query language based on JSON over HTTP.
 * Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second).
 * Series are organized using metrics and tags.
-* Time-series can be groupped by time (find aggregate for each 5sec interval).
+* Time-series can be grouped by time (find aggregate for each 5sec interval).
 * Time-series can be joined together by tags.
 * Resampling (PAA transform), sliding window methods.
 * Random sampling.
