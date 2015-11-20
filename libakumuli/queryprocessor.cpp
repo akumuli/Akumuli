@@ -37,6 +37,7 @@
 #include "query_processing/randomsamplingnode.h"
 #include "query_processing/sax.h"
 #include "query_processing/spacesaver.h"
+#include "query_processing/limiter.h"
 
 namespace Akumuli {
 namespace QP {
@@ -430,6 +431,19 @@ static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost
     return std::make_tuple(QP::GroupByTime(duration), tags);
 }
 
+static std::pair<uint64_t, uint64_t> parse_limit_offset(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    uint64_t limit = 0ul, offset = 0ul;
+    auto optlimit = ptree.get_child_optional("limit");
+    if (optlimit) {
+        limit = optlimit->get_value<uint64_t>();
+    }
+    auto optoffset = ptree.get_child_optional("offset");
+    if (optoffset) {
+        limit = optoffset->get_value<uint64_t>();
+    }
+    return std::make_pair(limit, offset);
+}
+
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
                                 aku_logger_cb_t logger) {
     std::string metric;
@@ -560,6 +574,9 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
         }
 
+        // Read limit/offset
+        auto limoff = parse_limit_offset(ptree, logger);
+
         // Read select statment
         auto select = parse_select_stmt(ptree, logger);
 
@@ -578,6 +595,11 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         // Build topology
         std::shared_ptr<Node> next = terminal;
         std::vector<std::shared_ptr<Node>> allnodes = { next };
+        if (limoff.first != 0 || limoff.second != 0) {
+            // Limiter should work with both metadata and scan queryprocessors.
+            next = std::make_shared<QP::Limiter>(limoff.first, limoff.second, terminal);
+            allnodes.push_back(next);
+        }
         if (!select) {
             // Read timestamps
             auto ts_begin = parse_range_timestamp(ptree, "from", logger);

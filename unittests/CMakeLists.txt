@@ -308,6 +308,7 @@ add_executable(
     ../libakumuli/query_processing/paa.cpp
     ../libakumuli/query_processing/filterbyid.cpp
     ../libakumuli/query_processing/randomsamplingnode.cpp
+    ../libakumuli/query_processing/limiter.cpp
 )
 
 target_link_libraries(
