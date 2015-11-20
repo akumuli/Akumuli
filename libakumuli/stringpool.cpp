@@ -69,7 +69,7 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, Stri
     std::vector<PBuffer> buffers;
     {
         std::lock_guard<std::mutex> guard(pool_mutex);
-        if (offset) {
+        if (psize) {
             *psize = size();
         }
         for(auto& buf: pool) {
