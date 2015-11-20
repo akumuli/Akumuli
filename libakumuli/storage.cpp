@@ -189,10 +189,13 @@ struct VolumeIterator {
 };
 
 
+static void zero_deleter(SeriesMatcher*) {}
+
 Storage::Storage(const char* path, aku_FineTuneParams const& params)
     : config_(params)
     , open_error_code_(AKU_SUCCESS)
     , logger_(params.logger)
+    , local_matcher_(&zero_deleter)
 {
     // 0. Check that file exists
     auto filedesc = std::fopen(const_cast<char*>(path), "r");
@@ -378,7 +381,10 @@ struct TerminalNode : QP::Node {
     }
 
     bool put(const aku_Sample& sample) {
-        return cursor->put(caller, sample);
+        if (sample.payload.type != aku_PData::EMPTY && sample.payload.type != aku_PData::MARGIN) {
+            return cursor->put(caller, sample);
+        }
+        return true;
     }
 
     void set_error(aku_Status status) {

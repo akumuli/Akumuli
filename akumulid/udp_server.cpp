@@ -106,8 +106,10 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
                 iobuf.reset(new IOBuf());
             }
             retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
-            // TODO: uset timeout to wake up thread periodically
             if (retval == -1) {
+                if (errno == EAGAIN) {
+                    continue;
+                }
                 const char* msg = strerror(errno);
                 std::stringstream fmt;
                 fmt << "socket read error: " << msg;

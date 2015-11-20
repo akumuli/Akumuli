@@ -55,7 +55,7 @@ struct StringPool {
       * @param outoffset can be used to retreive offset of the processed data or start search from
       *        particullar point in the string-pool
       */
-    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr) const;
+    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr, size_t* psize = nullptr) const;
 };
 
 struct StringTools {

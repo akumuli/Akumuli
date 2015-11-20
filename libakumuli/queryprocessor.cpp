@@ -37,6 +37,7 @@
 #include "query_processing/randomsamplingnode.h"
 #include "query_processing/sax.h"
 #include "query_processing/spacesaver.h"
+#include "query_processing/limiter.h"
 
 namespace Akumuli {
 namespace QP {
@@ -73,13 +74,13 @@ struct RegexFilter : IQueryFilter {
         : regex_(regex)
         , spool_(spool)
         , offset_{}
-        , prev_size_(spool.size())
+        , prev_size_(0ul)
     {
         refresh();
     }
 
     void refresh() {
-        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_);
+        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_, &prev_size_);
         int ix = 0;
         for (StringPool::StringT item: results) {
             auto id = StringTools::extract_id_from_pool(item);
@@ -175,29 +176,27 @@ bool GroupByTime::empty() const {
 //  GroupByTag  //
 GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
     : spool_(spool)
+    , offset_{0}
+    , prev_size_(0)
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
 {
+    std::sort(tags_.begin(), tags_.end());
     // Build regexp
     std::stringstream series_regexp;
-    series_regexp << metric << "(?:\\s\\w+=\\w+)*\\s";
-    bool firstitem = true;
+    //cpu(?:\s\w+=\w+)* (?:\s\w+=\w+)*\s hash=\w+ (?:\s\w+=\w+)*
+    series_regexp << metric << "(?:\\s\\w+=\\w+)*";
     for (auto tag: tags) {
-        if (firstitem) {
-            firstitem = false;
-            series_regexp << "(?:";
-        } else {
-            series_regexp << "|";
-        }
-        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "(?:=\\w+\\s\\w+=\\w+)*)";
+        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "=\\w+";
     }
+    series_regexp << "(?:\\s\\w+=\\w+)*";
     regex_ = series_regexp.str();
     refresh_();
 }
 
 void GroupByTag::refresh_() {
-    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_);
+    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_, &prev_size_);
     auto filter = StringTools::create_set(tags_.size());
     for (const auto& tag: tags_) {
         filter.insert(std::make_pair(tag.data(), tag.size()));
@@ -219,6 +218,9 @@ void GroupByTag::refresh_() {
 }
 
 bool GroupByTag::apply(aku_Sample* sample) {
+    if (spool_->size() != prev_size_) {
+        refresh_();
+    }
     auto it = ids_.find(sample->paramid);
     if (it != ids_.end()) {
         sample->paramid = it->second;
@@ -295,9 +297,16 @@ bool ScanQueryProcessor::start() {
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
     if (AKU_UNLIKELY(sample.payload.type == aku_PData::EMPTY)) {
         // shourtcut for empty samples
-        last_node_->put(sample);
+        return last_node_->put(sample);
     }
-    return groupby_.put(sample, *root_node_);
+    // We're dealing with basic sample here (no extra payload)
+    // that comes right from page or sequencer. Because of that
+    // we can copy it without slicing.
+    auto copy = sample;
+    if (groupby_tag_ && !groupby_tag_->apply(&copy)) {
+        return true;
+    }
+    return groupby_.put(copy, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
@@ -408,12 +417,31 @@ static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost
                 std::string str = child.second.get_value<std::string>();
                 duration = DateTimeUtil::parse_duration(str.c_str(), str.size());
             } else if (child.first == "tag") {
-                std::string tag = child.second.get_value<std::string>();
-                tags.push_back(tag);
+                if (!child.second.empty()) {
+                    for (auto tag: child.second) {
+                        tags.push_back(tag.second.get_value<std::string>());
+                    }
+                } else {
+                    auto tag = child.second.get_value<std::string>();
+                    tags.push_back(tag);
+                }
             }
         }
     }
     return std::make_tuple(QP::GroupByTime(duration), tags);
+}
+
+static std::pair<uint64_t, uint64_t> parse_limit_offset(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    uint64_t limit = 0ul, offset = 0ul;
+    auto optlimit = ptree.get_child_optional("limit");
+    if (optlimit) {
+        limit = optlimit->get_value<uint64_t>();
+    }
+    auto optoffset = ptree.get_child_optional("offset");
+    if (optoffset) {
+        limit = optoffset->get_value<uint64_t>();
+    }
+    return std::make_pair(limit, offset);
 }
 
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
@@ -546,6 +574,9 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
         }
 
+        // Read limit/offset
+        auto limoff = parse_limit_offset(ptree, logger);
+
         // Read select statment
         auto select = parse_select_stmt(ptree, logger);
 
@@ -564,6 +595,11 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         // Build topology
         std::shared_ptr<Node> next = terminal;
         std::vector<std::shared_ptr<Node>> allnodes = { next };
+        if (limoff.first != 0 || limoff.second != 0) {
+            // Limiter should work with both metadata and scan queryprocessors.
+            next = std::make_shared<QP::Limiter>(limoff.first, limoff.second, terminal);
+            allnodes.push_back(next);
+        }
         if (!select) {
             // Read timestamps
             auto ts_begin = parse_range_timestamp(ptree, "from", logger);

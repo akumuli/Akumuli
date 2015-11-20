@@ -3,36 +3,38 @@ README [![Build Status](https://api.shippable.com/projects/5481624dd46935d5fbbf6
 
 [![Join the chat at https://gitter.im/akumuli/Akumuli](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/akumuli/Akumuli?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-**Akumuli** is a numeric time-series database. The word "akumuli" can be translated from esperanto as "accumulate".
+**Akumuli** is a numeric time-series database.
+It can be used to capture, store and process time-series data in real-time.
+The word "akumuli" can be translated from esperanto as "accumulate".
 
-
-Rationale
----------
-
-Most open source projects focus on query language and things useful for web-analytics, but they ignore some key characteristics of time series data:
-
-* High write throughput (millions of data-points per second)
-* Very late writes can be dropped
-* Numeric time-series can be compressed very efficiently
-* Periodic time-series can be compressed very efficiently
-* Compression is crucial for time-series storage!
 
 Features
---------
-* Implements specialized storage engine for time-series data
-* Memory mapped and x64 only
-* Uses constant amount of disk space (like RRD-tool)
-* Crash recovery 
-* Very high write throughput (about 1M writes per second on single machine)
-* Allows unordered writes
-* Compressed (specialized compression algorithms for different data elements - timestamps, ids, values)
-* Easy to use server software (based on Redis protocol)
+-------
+
+* Log-structured storage. 
+* Row oriented at large scale, column oriented at small scale.
+* Crash recovery.
+* In-memory storage for recent data.
+* Accepts unordered data (at some configurable extent).
+* Real-time compression (up to 2.5 bytes per element on appropriate data).
+* Simple query language based on JSON over HTTP.
+* Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second).
+* Series are organized using metrics and tags.
+* Time-series can be grouped by time (find aggregate for each 5sec interval).
+* Time-series can be joined together by tags.
+* Resampling (PAA transform), sliding window methods.
+* Random sampling.
+* Frequent items and heavy hitters.
+* SAX transformation.
+* Anomaly detection (SMA, EWMA, Holt-Winters).
+* Data ingestion through TCP or UDP based protocols (over 1M data points/second).
+* Continuous queries (streaming).
+
  
 Documentation
 -------------
 * [Wiki](https://github.com/akumuli/Akumuli/wiki)
 * [Getting started](https://github.com/akumuli/Akumuli/wiki/Getting-started)
-* [API reference](https://github.com/akumuli/Akumuli/wiki/API-Reference)
 
 How to build
 ------------

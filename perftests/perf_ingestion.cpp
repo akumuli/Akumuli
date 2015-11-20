@@ -246,18 +246,19 @@ int main(int cnt, const char** args)
 
     uint64_t busy_count = 0;
     // Fill in data
-    RandomWalk rwalk(10.0, 0.0, 0.02, 10000);
+    RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
     for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
         aku_Sample sample;
         char buffer[100];
 
         // =series=
         int id = i % 1000;
-        int nchars = sprintf(buffer, "cpu key=%d", id);
+        int hashval =  i % 10;
+        int nchars = sprintf(buffer, "cpu key=%d hash=%d", id, hashval);
         aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
 
         // =timestamp=
-        sample.timestamp = i/1000;
+        sample.timestamp = i/100;
 
         // =payload=
         if (i == 1000000ul) {

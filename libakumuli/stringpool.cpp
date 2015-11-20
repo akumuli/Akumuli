@@ -62,13 +62,16 @@ size_t StringPool::size() const {
     return std::atomic_load(&counter);
 }
 
-std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset) const {
+std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset, size_t* psize) const {
     std::vector<StringPool::StringT> results;
     boost::regex series_regex(regex, boost::regex_constants::optimize);
     typedef std::vector<char> const* PBuffer;
     std::vector<PBuffer> buffers;
     {
         std::lock_guard<std::mutex> guard(pool_mutex);
+        if (psize) {
+            *psize = size();
+        }
         for(auto& buf: pool) {
             buffers.push_back(&buf);
         }
@@ -105,8 +108,13 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, Stri
         }
     }
     if (offset != nullptr) {
-        offset->buffer_offset = buffers.size() - 1;
-        offset->offset = buffers.back()->size();
+        if (buffers.empty()) {
+            offset->buffer_offset = 0;
+            offset->offset = 0;
+        } else {
+            offset->buffer_offset = buffers.size() - 1;
+            offset->offset = buffers.back()->size();
+        }
     }
     return results;
 }

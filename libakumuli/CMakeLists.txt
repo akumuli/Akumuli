@@ -39,6 +39,7 @@ add_library(akumuli SHARED
     query_processing/filterbyid.cpp
     query_processing/randomsamplingnode.cpp
     query_processing/spacesaver.cpp
+    query_processing/limiter.cpp
 )
 
 include_directories(./libakumuli)
