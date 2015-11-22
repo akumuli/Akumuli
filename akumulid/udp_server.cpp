@@ -29,9 +29,15 @@ void UdpServer::start(SignalHandler *sig, int id) {
     auto self = shared_from_this();
     sig->add_handler(boost::bind(&UdpServer::stop, std::move(self)), id);
 
+    auto logger = &logger_;
+    auto error_cb = [logger](aku_Status status, uint64_t counter) {
+        const char* msg = aku_error_message(status);
+        logger->error() << msg;
+    };
     // Create workers
     for (int i = 0; i < nworkers_; i++) {
         auto spout = pipeline_->make_spout();
+        spout->set_error_cb(error_cb);
         std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), spout));
         thread.detach();
     }
@@ -51,9 +57,10 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
     int sockfd, retval;
     sockaddr_in sa;
 
+    ProtocolParser parser(spout);
     try {
 
-        ProtocolParser parser(spout);
+        parser.start();
 
         // Create socket
         sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -107,7 +114,7 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             }
             retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             if (retval == -1) {
-                if (errno == EAGAIN) {
+                if (errno == EAGAIN || errno == EINTR) {
                     continue;
                 }
                 const char* msg = strerror(errno);
@@ -122,12 +129,13 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             for (int i = 0; i < retval; i++) {
                 // reset buffer to receive new message
                 iobuf->bps += iobuf->msgs[i].msg_len;
+                size_t mlen = iobuf->msgs[i].msg_len;
                 iobuf->msgs[i].msg_len = 0;
 
                 // parse message content
                 PDU pdu = {
                     std::shared_ptr<Byte>(iobuf, iobuf->bufs[i]),
-                    MSS,
+                    mlen,
                     0u,
                 };
 
@@ -139,6 +147,8 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
     } catch(...) {
         logger_.error() << boost::current_exception_diagnostic_information();
     }
+
+    parser.close();
 
     stop_barrier_.wait();
 }
