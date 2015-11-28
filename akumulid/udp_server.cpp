@@ -106,12 +106,9 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             BOOST_THROW_EXCEPTION(err);
         }
 
-        std::shared_ptr<IOBuf> iobuf(new IOBuf());
+        auto iobuf = std::make_shared<IOBuf>();
 
         while(!stop_.load(std::memory_order_relaxed)) {
-            if (!iobuf) {
-                iobuf.reset(new IOBuf());
-            }
             retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             if (retval == -1) {
                 if (errno == EAGAIN || errno == EINTR) {
@@ -140,8 +137,9 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
                 };
 
                 parser.parse_next(pdu);
-
-                iobuf.reset();
+            }
+            if (retval != 0) {
+                iobuf = std::make_shared<IOBuf>();
             }
         }
     } catch(...) {

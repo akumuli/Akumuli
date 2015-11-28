@@ -61,6 +61,7 @@ static const char* g_error_messages[] = {
     "not implemented",
     "query parsing error",
     "anomaly detector can't work with negative values",
+    "merge required",
     "unknown error code"
 };
 

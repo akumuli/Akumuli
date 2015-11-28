@@ -161,13 +161,15 @@ int Sequencer::make_checkpoint_(aku_Timestamp new_checkpoint) {
         if (ready_size < c_threshold_) {
             // If ready doesn't contains enough data compression wouldn't be efficient,
             //  we need to wait for more data to come
-            flag = sequence_number_.fetch_add(1) + 1;
             // We should make sorted runs in ready_ array searchable again
             for (auto& sorted_run: ready_) {
                 runs_.push_back(sorted_run);
             }
             ready_.clear();
+            flag = sequence_number_.fetch_add(1) + 1;
         }
+    } else {
+        AKU_PANIC("macke_checkpoint_ should be called from one thread");
     }
     return flag;
 }
@@ -189,10 +191,6 @@ std::tuple<aku_Status, int> Sequencer::check_timestamp_(aku_Timestamp ts) {
     if (point > checkpoint_) {
         // Create new checkpoint
         flag = make_checkpoint_(point);
-        if (flag % 2 == 0) {
-            // Previous checkpoint not completed
-            error_code = AKU_EBUSY;
-        }
     }
     top_timestamp_ = ts;
     return make_tuple(error_code, flag);
