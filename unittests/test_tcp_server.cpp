@@ -34,6 +34,7 @@ struct DbMock : DbConnection {
     aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
         throw "not implemented";
     }
+    std::string get_all_stats() { throw "not impelemnted"; }
 };
 
 
@@ -53,6 +54,7 @@ struct DbErrMock : DbConnection {
     aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
         throw "not implemented";
     }
+    std::string get_all_stats() { throw "not impelemented"; }
 };
 
 const int PORT = 14096;

@@ -56,6 +56,7 @@ struct ReadOperation {
 struct ReadOperationBuilder {
     virtual ~ReadOperationBuilder() = default;
     virtual ReadOperation* create() = 0;
+    virtual std::string get_all_stats() = 0;
 };
 
 

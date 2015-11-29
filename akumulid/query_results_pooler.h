@@ -50,6 +50,8 @@ struct QueryProcessor : ReadOperationBuilder
     QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf);
 
     virtual ReadOperation *create();
+
+    virtual std::string get_all_stats();
 };
 
 }  // namespace

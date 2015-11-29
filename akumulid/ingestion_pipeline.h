@@ -62,6 +62,8 @@ struct DbConnection {
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
 
     virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample) = 0;
+
+    virtual std::string get_all_stats() = 0;
 };
 
 
@@ -86,7 +88,9 @@ public:
 
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size);
 
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample);
+    virtual aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample);
+
+    virtual std::string get_all_stats();
 };
 
 using boost::lockfree::queue;

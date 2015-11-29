@@ -89,10 +89,27 @@ static int accept_connection(void           *cls,
         MHD_destroy_response(response);
         return ret;
     } else {
-        // Unsupported method
-        // TODO: implement GET handler for simple queries (self diagnostics)
-        return MHD_NO;
+        static const char* SIGIL = "";
+        auto queryproc = static_cast<ReadOperationBuilder*>(cls);
+        auto cursor = static_cast<const char*>(*con_cls);
+        if (cursor == nullptr) {
+            *con_cls = const_cast<char*>(SIGIL);
+            return MHD_YES;
+        }
+        std::string path = url;
+        if (path == "/stats") {
+            std::string stats = queryproc->get_all_stats();
+            auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
+            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            if (ret == MHD_NO) {
+                return ret;
+            }
+            ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
+        }
     }
+    return MHD_NO;
 }
 }
 

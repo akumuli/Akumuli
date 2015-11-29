@@ -23,6 +23,10 @@ struct ConnectionMock : DbConnection {
         return AKU_SUCCESS;
     }
 
+    std::string get_all_stats() {
+        throw "not impelemnted";
+    }
+
     std::shared_ptr<DbCursor> search(std::string query) {
         throw "not implemented";
     }

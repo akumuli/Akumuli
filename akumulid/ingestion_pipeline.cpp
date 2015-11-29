@@ -82,6 +82,11 @@ aku_Status AkumuliConnection::series_to_param_id(const char *name, size_t size, 
     return aku_series_to_param_id(db_, name, name + size, sample);
 }
 
+std::string AkumuliConnection::get_all_stats() {
+    // TODO: impement
+    return "{}";
+}
+
 // Pipeline spout
 PipelineSpout::PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp, std::shared_ptr<DbConnection> con)
     : created_{0}
