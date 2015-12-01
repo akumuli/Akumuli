@@ -5,6 +5,8 @@
 #include <thread>
 
 #include <boost/exception/all.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 namespace Akumuli
 {
@@ -83,8 +85,13 @@ aku_Status AkumuliConnection::series_to_param_id(const char *name, size_t size, 
 }
 
 std::string AkumuliConnection::get_all_stats() {
-    // TODO: impement
-    return "{}";
+    std::vector<char> buffer;
+    buffer.resize(0x1000);
+    int nbytes = aku_json_stats(db_, buffer.data(), buffer.size());
+    if (nbytes > 0) {
+        return std::string(buffer.data(), buffer.data() + nbytes);
+    }
+    return "nope!";
 }
 
 // Pipeline spout
