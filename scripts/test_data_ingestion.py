@@ -11,10 +11,29 @@ try:
 except ImportError:
     import urllib
 
-def main(path):
+class UDPChan:
+    def __init__(self, host, port):
+        self.__host = host
+        self.__port = port
+        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+
+    def send(self, data):
+        self.__sock.sendto(data, (self.__host, self.__port))
+
+class TCPChan:
+    def __init__(self, host, port):
+        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__sock.connect((host, port))
+
+    def send(self, data):
+        self.__sock.send(data)
+
+def main(path, protocol):
+
     if not os.path.exists(path):
         print("Path {0} doesn't exists".format(path))
         sys.exit(1)
+
     akumulid = att.Akumulid(path)
     # delete database
     akumulid.delete_database()
@@ -26,18 +45,24 @@ def main(path):
     time.sleep(5)
     try:
         # fill data in
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
         host = '127.0.0.1'
         udpport = 8383
-        httpport = 8181
+        tcpport = 8282
+        if protocol == 'TCP':
+            chan = TCPChan(host, tcpport)
+        elif protocol == 'UDP':
+            chan = UDPChan(host, udpport)
+        else:
+            print('Unknown protocol "{0}"'.format(protocol))
         dt = datetime.datetime.utcnow()
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 1000000
-        print("Sending {0} messages...".format(nmsgs))
+        print("Sending {0} messages through {1}...".format(nmsgs, protocol))
         for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
-            sock.sendto(it, (host, udpport))
+            chan.send(it)
 
         # check stats
+        httpport = 8181
         statsurl = "http://{0}:{1}/stats".format(host, httpport)
         rawstats = urllib.urlopen(statsurl).read()
         stats = json.loads(rawstats)
@@ -59,9 +84,9 @@ def main(path):
         time.sleep(5)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Argument required")
+    if len(sys.argv) != 3:
+        print("Not enough arguments")
         sys.exit(1)
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])
 else:
     raise ImportError("This module shouldn't be imported")
