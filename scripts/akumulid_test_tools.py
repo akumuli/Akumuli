@@ -10,11 +10,29 @@ def msg(timestamp, value, metric, **tags):
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 
-def generate_messages(dt, delta, N, metric_name, **tags):
-    for i in xrange(0, N):
-        dt = dt + delta
-        m = msg(dt, i*0.1, metric_name, **tags)
-        yield m
+def generate_messages(dt, delta, N, metric_name, tag):
+    if type(tag) is str: 
+        for i in xrange(0, N):
+            dt = dt + delta
+            m = msg(dt, i*1.0, metric_name, tag=tag)
+            yield m
+    elif type(tag) is list:
+        for i in xrange(0, N):
+            dt = dt + delta
+            next_tag = tag[i % len(tag)]
+            m = msg(dt, i*1.0, metric_name, tag=next_tag)
+            yield m
+
+def makequery(begin, end, **kwargs):
+    query = {
+            "sample": "all",
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
 
 
 class Akumulid:
