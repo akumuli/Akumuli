@@ -10,18 +10,56 @@ try:
     from urllib2 import urlopen
 except ImportError:
     from urllib import urlopen
+import traceback
+
+HOST = '127.0.0.1'
+TCPPORT = 8282
+HTTPPORT = 8181
 
 def parse_timestamp(ts):
     """Parse ISO formatted timestamp"""
-    return datetime.datetime.strptime(ts, "%Y%m%dT%H%M%S.%f")
+    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
 
 class TCPChan:
-    def __init__(self, host, port):
+    def __init__(self, HOST, port):
         self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__sock.connect((host, port))
+        self.__sock.connect((HOST, port))
 
     def send(self, data):
         self.__sock.send(data)
+
+
+def test_read_all_in_backward_direction(dtstart, delta, N):
+    """Read all data in backward direction.
+    All data should be received as expected."""
+    begin = dtstart + delta*N
+    end = dtstart
+    query = att.makequery(begin, end, output=dict(format='csv'))
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    exp_ts = begin
+    exp_value = N
+    iterations = 0
+    for line in response:
+        columns = line.split(',')
+        tagline = columns[0].strip()
+        timestamp = parse_timestamp(columns[1].strip())
+        value = float(columns[2].strip())
+        # Check values
+        if timestamp != exp_ts:
+            raise ValueError("Invalid timestamp, expected: {0}, actual: {1}".format(exp_ts, timestamp))
+        if value != 1.0*exp_value:
+            raise ValueError("Invalid value, expected: {0}, actual: {1}".format(exp_value, value))
+        exp_ts -= delta
+        exp_value -= 1
+        iterations += 1
+
+    # Check that we received all values
+    if iterations != N:
+        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
+    print("Test #1 passed")
+
 
 def main(path):
     if not os.path.exists(path):
@@ -38,31 +76,20 @@ def main(path):
     akumulid.serve()
     time.sleep(5)
     try:
-        host = '127.0.0.1'
-        tcpport = 8282
-        httpport = 8181
 
-        chan = TCPChan(host, tcpport)
+        chan = TCPChan(HOST, TCPPORT)
 
         # fill data in
         dt = datetime.datetime.utcnow()
         delta = datetime.timedelta(milliseconds=1)
-        nmsgs = 100
+        nmsgs = 100000
         print("Sending {0} messages through TCP...".format(nmsgs))
         for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
             chan.send(it)
 
-        # read data back
-        begin = dt + delta*nmsgs
-        end = dt
-        query = att.makequery(begin, end)
-        queryurl = "http://{0}:{1}".format(host, httpport)
-        response = urlopen(queryurl, json.dumps(query)).read()
-        print(query)
-        print(response)
-
-    except Exception as err:
-        print(err)
+        test_read_all_in_backward_direction(dt, delta, nmsgs)
+    except:
+        traceback.print_exc()
     finally:
         print("Stopping server...")
         akumulid.stop()

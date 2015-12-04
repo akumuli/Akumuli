@@ -14,13 +14,13 @@ def generate_messages(dt, delta, N, metric_name, tag):
     if type(tag) is str: 
         for i in xrange(0, N):
             dt = dt + delta
-            m = msg(dt, i*1.0, metric_name, tag=tag)
+            m = msg(dt, float(i), metric_name, tag=tag)
             yield m
     elif type(tag) is list:
         for i in xrange(0, N):
             dt = dt + delta
             next_tag = tag[i % len(tag)]
-            m = msg(dt, i*1.0, metric_name, tag=next_tag)
+            m = msg(dt, float(i), metric_name, tag=next_tag)
             yield m
 
 def makequery(begin, end, **kwargs):
