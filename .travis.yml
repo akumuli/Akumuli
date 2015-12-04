@@ -22,3 +22,8 @@ script:
    - make -j4
    - ctest -VV
    - functests/storage_test /tmp
+   - akumulid/akumulid --init
+   - cd ../scripts
+   - python test_data_ingestion.py ../build/akumulid/ TCP
+   - python test_data_ingestion.py ../build/akumulid/ UDP
+   - python test_query_language.py ../build/akumulid/
