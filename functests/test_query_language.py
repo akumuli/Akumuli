@@ -90,6 +90,7 @@ def main(path):
         test_read_all_in_backward_direction(dt, delta, nmsgs)
     except:
         traceback.print_exc()
+        sys.exit(1)
     finally:
         print("Stopping server...")
         akumulid.stop()

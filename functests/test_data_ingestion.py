@@ -10,6 +10,7 @@ try:
     import urllib2 as urllib
 except ImportError:
     import urllib
+import traceback
 
 class UDPChan:
     def __init__(self, host, port):
@@ -76,8 +77,9 @@ def main(path, protocol):
             sys.exit(10)
         else:
             print("Test #1 passed")
-    except Exception as err:
-        print(err)
+    except:
+        traceback.print_exc()
+        sys.exit(1)
     finally:
         print("Stopping server...")
         akumulid.stop()
