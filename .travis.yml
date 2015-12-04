@@ -23,7 +23,6 @@ script:
    - ctest -VV
    - functests/storage_test /tmp
    - akumulid/akumulid --init
-   - cd ../scripts
-   - python test_data_ingestion.py ../build/akumulid/ TCP
-   - python test_data_ingestion.py ../build/akumulid/ UDP
-   - python test_query_language.py ../build/akumulid/
+   - python functests/test_data_ingestion.py akumulid/ TCP
+   - python functests/test_data_ingestion.py akumulid/ UDP
+   - python functests/test_query_language.py akumulid/
