@@ -98,6 +98,7 @@ void ProtocolParser::worker(Caller& caller) {
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
+                buffer[bytes_read] = '\0';
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.payload.float64 = strtod(buffer, nullptr);
                 sample.payload.size = sizeof(aku_Sample);

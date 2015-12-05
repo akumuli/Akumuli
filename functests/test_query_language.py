@@ -39,21 +39,29 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
-    exp_value = N
+    exp_value = N-1
     iterations = 0
     for line in response:
-        columns = line.split(',')
-        tagline = columns[0].strip()
-        timestamp = parse_timestamp(columns[1].strip())
-        value = float(columns[2].strip())
-        # Check values
-        if timestamp != exp_ts:
-            raise ValueError("Invalid timestamp, expected: {0}, actual: {1}".format(exp_ts, timestamp))
-        if value != 1.0*exp_value:
-            raise ValueError("Invalid value, expected: {0}, actual: {1}".format(exp_value, value))
-        exp_ts -= delta
-        exp_value -= 1
-        iterations += 1
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            # Check values
+            if timestamp != exp_ts:
+                errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
+                raise ValueError(errormsg)
+            if value != 1.0*exp_value:
+                print(columns[2])
+                print(columns[2].strip())
+                errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
+                raise ValueError(errormsg)
+            exp_ts -= delta
+            exp_value -= 1
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
 
     # Check that we received all values
     if iterations != N:
@@ -61,20 +69,22 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     print("Test #1 passed")
 
 
-def main(path):
+def main(path, debug=False):
     if not os.path.exists(path):
         print("Path {0} doesn't exists".format(path))
         sys.exit(1)
 
     akumulid = att.Akumulid(path)
-    # delete database
-    akumulid.delete_database()
-    # create empty database
-    akumulid.create_database()
-    # start ./akumulid server
-    print("Starting server...")
-    akumulid.serve()
-    time.sleep(5)
+    if not debug:
+        # Reset database
+        akumulid.delete_database()
+        akumulid.create_database()
+        # start ./akumulid server
+        print("Starting server...")
+        akumulid.serve()
+        time.sleep(5)
+    else:
+        print("Akumulid should be started first")
     try:
 
         chan = TCPChan(HOST, TCPPORT)
@@ -82,24 +92,26 @@ def main(path):
         # fill data in
         dt = datetime.datetime.utcnow()
         delta = datetime.timedelta(milliseconds=1)
-        nmsgs = 100000
+        nmsgs = 10000
         print("Sending {0} messages through TCP...".format(nmsgs))
         for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
             chan.send(it)
+        time.sleep(5)  # wait untill all messagess will be processed
 
         test_read_all_in_backward_direction(dt, delta, nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)
     finally:
-        print("Stopping server...")
-        akumulid.stop()
-        time.sleep(5)
+        if not debug:
+            print("Stopping server...")
+            akumulid.stop()
+            time.sleep(5)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print("Not enough arguments")
         sys.exit(1)
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2] == 'debug' if len(sys.argv) == 3 else False)
 else:
     raise ImportError("This module shouldn't be imported")
