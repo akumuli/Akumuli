@@ -81,35 +81,21 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints) {
 
 BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
 {
-    const int LARGE_LOOP = 1000;
-    const int SMALL_LOOP = 10;
+    const int LOOP_SIZE = 10000;
 
     aku_FineTuneParams params = {};
-    params.window_size = SMALL_LOOP;
+    params.window_size = 10;
     Sequencer seq(nullptr, params);
 
     int num_checkpoints = 0;
 
-    for (int i = 0; i < LARGE_LOOP; i++) {
+    for (int i = 0; i < LOOP_SIZE; i++) {
         int status;
         int lock = 0;
         tie(status, lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i), 42u, 0));
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
         if (lock % 2 != 0) {
-            // present write (ts <= last checkpoint)
-            for (int j = 0; j < SMALL_LOOP; j++) {
-                int other_lock = 0;
-                tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + j), 24u, 0));
-                BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-                BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
-            }
-
-            // future write (ts > last checkpoint)
-            int other_lock = 0;
-            tie(status, other_lock) = seq.add(TimeSeriesValue(static_cast<aku_Timestamp>(i + SMALL_LOOP), 24u, 0));
-            BOOST_REQUIRE_EQUAL(status, AKU_EBUSY);
-            BOOST_REQUIRE_EQUAL(other_lock % 2, 0);
-
             // merge
             RecordingCursor rec;
             Caller caller;
@@ -121,7 +107,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
     // one for data points that will be available after close
     num_checkpoints++;
 
-    BOOST_REQUIRE_EQUAL(num_checkpoints, LARGE_LOOP/SMALL_LOOP);
+    BOOST_REQUIRE_EQUAL(num_checkpoints, LOOP_SIZE/10);
 }
 
 BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)

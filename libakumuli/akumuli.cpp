@@ -27,6 +27,9 @@
 #include "storage.h"
 #include "datetime.h"
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
 using namespace Akumuli;
 
 //! Pool for `apr_dbd_init`
@@ -61,6 +64,7 @@ static const char* g_error_messages[] = {
     "not implemented",
     "query parsing error",
     "anomaly detector can't work with negative values",
+    "merge required",
     "unknown error code"
 };
 
@@ -176,6 +180,10 @@ struct DatabaseImpl : public aku_Database
     // Stats
     void get_storage_stats(aku_StorageStats* recv_stats) {
         storage_.get_stats(recv_stats);
+    }
+
+    std::vector<Storage::PVolume> iter_volumes() const {
+        return storage_.volumes_;
     }
 };
 
@@ -343,7 +351,72 @@ void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
     dbi->get_storage_stats(rcv_stats);
 }
 
+int aku_json_stats(aku_Database *db, char* buffer, size_t size) {
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    try {
+        boost::property_tree::ptree ptree;
+
+        // Get search stats
+        aku_SearchStats sstats;
+        PageHeader::get_search_stats(&sstats, false);
+
+        // Binary-search
+        ptree.put("search_stats.binary_search.steps", sstats.bstats.n_steps);
+        ptree.put("search_stats.binary_search.times", sstats.bstats.n_times);
+        // Scan
+        ptree.put("search_stats.scan.bytes_read_backward", sstats.scan.bwd_bytes);
+        ptree.put("search_stats.scan.bytes_read_forward", sstats.scan.fwd_bytes);
+        // Interpolation search
+        ptree.put("search_stats.interpolation_search.matches", sstats.istats.n_matches);
+        ptree.put("search_stats.interpolation_search.overshoots", sstats.istats.n_overshoots);
+        ptree.put("search_stats.interpolation_search.undershoots", sstats.istats.n_undershoots);
+        ptree.put("search_stats.interpolation_search.pages_in_core_found", sstats.istats.n_pages_in_core_found);
+        ptree.put("search_stats.interpolation_search.pages_in_core_miss", sstats.istats.n_pages_in_core_miss);
+        ptree.put("search_stats.interpolation_search.page_in_core_checks", sstats.istats.n_page_in_core_checks);
+        ptree.put("search_stats.interpolation_search.page_in_core_errors", sstats.istats.n_page_in_core_errors);
+        ptree.put("search_stats.interpolation_search.reduced_to_one_page", sstats.istats.n_reduced_to_one_page);
+        ptree.put("search_stats.interpolation_search.steps", sstats.istats.n_steps);
+        ptree.put("search_stats.interpolation_search.times", sstats.istats.n_times);
+
+        // Get per-volume stats
+        auto volumes = dbi->iter_volumes();
+        int iter = 0;
+        for (const auto volume: volumes) {
+            std::stringstream fmt;
+            fmt << "volume_" << iter << ".";
+            auto path = fmt.str();
+            auto file = volume->file_path_;
+            ptree.put(path + "path", file);
+            const PageHeader* page = volume->page_;
+            ptree.put(path + "close_count", page->get_close_count());
+            ptree.put(path + "entries_count", page->get_entries_count());
+            ptree.put(path + "free_space", page->get_free_space());
+            ptree.put(path + "open_count", page->get_open_count());
+            ptree.put(path + "num_pages", page->get_numpages());
+            ptree.put(path + "page_id", page->get_page_id());
+            iter++;
+        }
+
+
+        // encode json
+        std::stringstream out;
+        boost::property_tree::json_parser::write_json(out, ptree, true);
+        auto str = out.str();
+        if (str.size() > size) {
+            return -1*(int)str.size();
+        }
+        strcpy(buffer, str.c_str());
+        return (int)str.size();
+    } catch (std::exception const& e) {
+        (*dbi->storage_.logger_)(AKU_LOG_ERROR, e.what());
+    } catch (...) {
+        AKU_PANIC("unexpected error in `aku_json_stats`");
+    }
+    return -1;
+}
+
 void aku_debug_print(aku_Database *db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->debug_print();
 }
+

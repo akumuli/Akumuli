@@ -410,5 +410,9 @@ ReadOperation *QueryProcessor::create() {
     return new QueryResultsPooler(con_, rdbufsize_);
 }
 
+std::string QueryProcessor::get_all_stats() {
+    return con_->get_all_stats();
+}
+
 }  // namespace
 

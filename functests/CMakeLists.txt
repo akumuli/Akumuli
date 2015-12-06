@@ -8,3 +8,11 @@ target_link_libraries(storage_test
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a)
+
+file(COPY
+    akumulid_test_tools.py
+    test_data_ingestion.py
+    test_query_language.py
+    DESTINATION
+    ./
+)

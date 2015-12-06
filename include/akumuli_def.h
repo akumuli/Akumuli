@@ -68,8 +68,10 @@ typedef enum {
     AKU_EQUERY_PARSING_ERROR = 11,
     //! Anomaly detector doesn't supports negative values (now)
     AKU_EANOMALY_NEG_VAL = 12,
+    //! Stale data in sequencer, merge to disk required
+    AKU_EMERGE_REQUIRED = 13,
 
-    AKU_EMAX_ERROR = 13,
+    AKU_EMAX_ERROR = 14,
 } aku_Status;
 
 

@@ -335,16 +335,21 @@ AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* bu
 // Stats and counters
 //--------------------
 
-/** Get search counters.
+/** DEPRICATED
+  * Get search counters.
   * @param rcv_stats pointer to `aku_SearchStats` structure that will be filled with data.
   * @param reset reset all counter if not zero
   */
 AKU_EXPORT void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset);
 
-/** Get storage stats.
+/** DEPRICATED
+  * Get storage stats.
   * @param db database instance.
   * @param rcv_stats pointer to destination
   */
 AKU_EXPORT void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
 
 AKU_EXPORT void aku_debug_print(aku_Database *db);
+
+AKU_EXPORT int aku_json_stats(aku_Database *db, char* buffer, size_t size);
+

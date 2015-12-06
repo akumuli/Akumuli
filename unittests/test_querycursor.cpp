@@ -70,6 +70,10 @@ struct ConnectionMock : DbConnection
         return std::make_shared<CursorMock>();
     }
 
+    std::string get_all_stats() {
+        return "{}";
+    }
+
     int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {
