@@ -41,6 +41,7 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
+    print("Test #1 - read all data in backward direction")
     for line in response:
         try:
             columns = line.split(',')
@@ -52,8 +53,6 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
                 errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
                 raise ValueError(errormsg)
             if value != 1.0*exp_value:
-                print(columns[2])
-                print(columns[2].strip())
                 errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
                 raise ValueError(errormsg)
             exp_ts -= delta

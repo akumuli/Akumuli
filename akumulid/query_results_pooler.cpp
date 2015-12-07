@@ -113,7 +113,7 @@ struct CSVOutputFormatter : OutputFormatter {
 
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
             // Floating-point
-            len = snprintf(begin, size, "+%.17g\n", sample.payload.float64);
+            len = snprintf(begin, size, "%.17g\n", sample.payload.float64);
             if (len == size || len < 0) {
                 return nullptr;
             }
