@@ -92,7 +92,7 @@ def main(path, debug=False):
         # fill data in
         dt = datetime.datetime.utcnow()
         delta = datetime.timedelta(milliseconds=1)
-        nmsgs = 10000
+        nmsgs = 1000000
         print("Sending {0} messages through TCP...".format(nmsgs))
         for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
             chan.send(it)

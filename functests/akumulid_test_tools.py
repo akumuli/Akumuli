@@ -6,7 +6,7 @@ import datetime
 def msg(timestamp, value, metric, **tags):
     timestr = timestamp.strftime('+%Y%m%dT%H%M%S.%f')
     sseries = '+{0} '.format(metric) + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
-    strval  = '+{:.4}'.format(value)
+    strval  = '+{0}'.format(value)
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 
@@ -14,13 +14,13 @@ def generate_messages(dt, delta, N, metric_name, tag):
     if type(tag) is str: 
         for i in xrange(0, N):
             dt = dt + delta
-            m = msg(dt, float(i), metric_name, tag=tag)
+            m = msg(dt, i, metric_name, tag=tag)
             yield m
     elif type(tag) is list:
         for i in xrange(0, N):
             dt = dt + delta
             next_tag = tag[i % len(tag)]
-            m = msg(dt, float(i), metric_name, tag=next_tag)
+            m = msg(dt, i, metric_name, tag=next_tag)
             yield m
 
 def makequery(begin, end, **kwargs):
