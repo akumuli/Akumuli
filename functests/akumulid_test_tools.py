@@ -10,22 +10,19 @@ def msg(timestamp, value, metric, **tags):
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 
-def generate_messages(dt, delta, N, metric_name, tag):
-    if type(tag) is str: 
-        for i in xrange(0, N):
-            dt = dt + delta
-            m = msg(dt, i, metric_name, tag=tag)
-            yield m
-    elif type(tag) is list:
-        for i in xrange(0, N):
-            dt = dt + delta
-            next_tag = tag[i % len(tag)]
-            m = msg(dt, i, metric_name, tag=next_tag)
-            yield m
+def generate_messages(dt, delta, N, metric_name, **kwargs):
+    for i in xrange(0, N):
+        dt = dt + delta
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        m = msg(dt, i, metric_name, **tags)
+        if i == (N-1):
+            print(m)
+        yield m
 
-def makequery(begin, end, **kwargs):
+def makequery(metric, begin, end, **kwargs):
     query = {
-            "sample": "all",
+            "metric": metric,
             "range": {
                 "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
                 "to": end.strftime('%Y%m%dT%H%M%S.%f'),

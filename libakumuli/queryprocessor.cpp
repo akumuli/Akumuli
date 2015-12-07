@@ -446,13 +446,12 @@ static std::pair<uint64_t, uint64_t> parse_limit_offset(boost::property_tree::pt
 
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
                                 aku_logger_cb_t logger) {
-    std::string metric;
     auto opt = ptree.get_child_optional("metric");
     if (opt) {
         auto single = opt->get_value<std::string>();
-        metric = single;
+        return single;
     }
-    return metric;
+    throw QueryParserError("`metric` not set");
 }
 
 static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,
