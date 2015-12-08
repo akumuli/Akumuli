@@ -16,8 +16,6 @@ def generate_messages(dt, delta, N, metric_name, **kwargs):
         tags = dict([(key, val[i % len(val)] if type(val) is list else val)
                      for key, val in kwargs.iteritems()])
         m = msg(dt, i, metric_name, **tags)
-        if i == (N-1):
-            print(m)
         yield m
 
 def makequery(metric, begin, end, **kwargs):

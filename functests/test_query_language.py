@@ -78,7 +78,6 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
         "group-by": {  "tag": "tag3" },
     }
     query = att.makequery("test", begin, end, **query_params)
-    print(query)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
@@ -94,17 +93,15 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
         "test tag3=H",
     ]
     for line in response:
-        if iterations == 0:
-            print(line)
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
             timestamp = parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             # Check values
-            exp_tags = expected_tags[(N-1-iterations) % len(expected_tags)]
+            exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
             if tagline != exp_tags:
-                errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_value, tagline, iterations)
+                errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, tagline, iterations)
                 raise ValueError(errormsg)
             if timestamp != exp_ts:
                 errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
@@ -120,7 +117,6 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
             raise
 
     # Check that we received all values
-    print("Iterations: %d" % iterations)
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
     print("Test #2 passed")
@@ -159,7 +155,7 @@ def main(path, debug=False):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
-        #test_read_all_in_backward_direction(dt, delta, nmsgs)
+        test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
     except:
         traceback.print_exc()
