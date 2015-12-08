@@ -121,6 +121,60 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
     print("Test #2 passed")
 
+def test_where_clause_in_backward_direction(dtstart, delta, N):
+    """Filter data by tag"""
+    begin = dtstart + delta*N
+    end = dtstart
+    query_params = {
+        "output": { "format":  "csv" },
+        "where": {
+            "tag2": ["C"], # read only odd
+        }
+    }
+    query = att.makequery("test", begin, end, **query_params)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    exp_ts = begin
+    exp_value = N-1
+    iterations = 0
+    print("Test #3 - filter by tag")
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            # Check values
+            exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
+            if not tagline.endswith(exp_tags):
+                errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, tagline, iterations)
+                raise ValueError(errormsg)
+            if timestamp != exp_ts:
+                errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
+                raise ValueError(errormsg)
+            if value != 1.0*exp_value:
+                errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
+                raise ValueError(errormsg)
+            exp_ts -= 2*delta
+            exp_value -= 2
+            iterations += 2
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+
+    # Check that we received all values
+    if iterations != N:
+        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
+    print("Test #3 passed")
+
 def main(path, debug=False):
     if not os.path.exists(path):
         print("Path {0} doesn't exists".format(path))
@@ -157,6 +211,7 @@ def main(path, debug=False):
 
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
+        test_where_clause_in_backward_direction(dt, delta, nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)
