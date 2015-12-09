@@ -460,7 +460,12 @@ static std::string parse_metric(boost::property_tree::ptree const& ptree,
         auto single = opt->get_value<std::string>();
         return single;
     }
-    throw QueryParserError("`metric` not set");
+    auto select = ptree.get_child_optional("select");
+    if (!select) {
+        QueryParserError error("`metric` not set");
+        BOOST_THROW_EXCEPTION(error);
+    }
+    return "";
 }
 
 static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,

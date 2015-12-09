@@ -11,6 +11,7 @@ try:
 except ImportError:
     from urllib import urlopen
 import traceback
+import itertools
 
 HOST = '127.0.0.1'
 TCPPORT = 8282
@@ -28,6 +29,21 @@ class TCPChan:
     def send(self, data):
         self.__sock.send(data)
 
+def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
+    if tags_cmp_method == 'EQ':
+        if act_tags != exp_tags:
+            errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    elif tags_cmp_method == 'ENDS':
+        if not act_tags.endswith(exp_tags):
+            errormsg = "Invalid tags, expected suffix: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    if act_ts != exp_ts:
+        errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, act_ts, iterations)
+        raise ValueError(errormsg)
+    if act_value != exp_value:
+        errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, act_value, iterations)
+        raise ValueError(errormsg)
 
 def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
@@ -38,6 +54,13 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
     exp_ts = begin
     exp_value = N-1
     iterations = 0
@@ -48,13 +71,10 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
             tagline = columns[0].strip()
             timestamp = parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
-            # Check values
-            if timestamp != exp_ts:
-                errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
-                raise ValueError(errormsg)
-            if value != 1.0*exp_value:
-                errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
-                raise ValueError(errormsg)
+            exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
+
+            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+
             exp_ts -= delta
             exp_value -= 1
             iterations += 1
@@ -98,17 +118,10 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
             tagline = columns[0].strip()
             timestamp = parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
-            # Check values
             exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
-            if tagline != exp_tags:
-                errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, tagline, iterations)
-                raise ValueError(errormsg)
-            if timestamp != exp_ts:
-                errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
-                raise ValueError(errormsg)
-            if value != 1.0*exp_value:
-                errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
-                raise ValueError(errormsg)
+
+            check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
+
             exp_ts -= delta
             exp_value -= 1
             iterations += 1
@@ -152,17 +165,10 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
             tagline = columns[0].strip()
             timestamp = parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
-            # Check values
             exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
-            if not tagline.endswith(exp_tags):
-                errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, tagline, iterations)
-                raise ValueError(errormsg)
-            if timestamp != exp_ts:
-                errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, timestamp, iterations)
-                raise ValueError(errormsg)
-            if value != 1.0*exp_value:
-                errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, value, iterations)
-                raise ValueError(errormsg)
+
+            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+
             exp_ts -= 2*delta
             exp_value -= 2
             iterations += 2
@@ -173,7 +179,86 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #3 passed")
+    print("test #3 passed")
+
+
+def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
+    """Filter data by tag and group by another tag"""
+    begin = dtstart + delta*N
+    end = dtstart
+    query_params = {
+        "output": { "format":  "csv" },
+        "group-by": { "tag": "tag3" },
+        "where": {
+            "tag2": ["C"], # read only odd
+        }
+    }
+    query = att.makequery("test", begin, end, **query_params)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    exp_ts = begin
+    exp_value = N-1
+    iterations = 0
+    print("Test #4 - where + group-by")
+    expected_tags = [
+        "test tag3=D",
+        "test tag3=E",
+        "test tag3=F",
+        "test tag3=G",
+        "test tag3=H",
+    ]
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
+
+            check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
+
+            exp_ts -= 2*delta
+            exp_value -= 2
+            iterations += 2
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+
+    # Check that we received all values
+    if iterations != N:
+        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
+    print("test #4 passed")
+
+def test_metadata_query(tags):
+    print("Test #5 - metadata query")
+    # generate all possible series
+    taglist = sorted(itertools.product(*tags.values()))
+    expected_series = []
+    for it in taglist:
+        kv = sorted(zip(tags.keys(), it))
+        series = "test " + " ".join(["{0}={1}".format(tag, value) for tag, value in kv])
+        expected_series.append(series)
+    expected_series.sort()
+
+    # read metadata from server
+    actual_series = []
+    query = {
+        "select": "names",
+        "output": { "format":  "csv" },
+    }
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    for line in response:
+        actual_series.append(line.strip())
+    actual_series.sort()
+    if actual_series != expected_series:
+        print("Expected series: {0}".format(expected_series))
+        print("Actual series: {0}".format(actual_series))
+        raise ValueError("Output didn't match")
+    print("test #5 passed")
+
+
 
 def main(path, debug=False):
     if not os.path.exists(path):
@@ -212,6 +297,8 @@ def main(path, debug=False):
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
+        test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
+        test_metadata_query(tags)
     except:
         traceback.print_exc()
         sys.exit(1)

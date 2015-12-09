@@ -64,17 +64,20 @@ struct CSVOutputFormatter : OutputFormatter {
             len--;  // terminating '\0' character should be rewritten
             begin += len;
             size  -= len;
-            // Add trailing \r\n to the end
-            if (size < 1) {
-                return nullptr;
-            }
-            begin[0] = ',';
-            begin += 1;
-            size  -= 1;
             newline_required = true;
         }
 
         if (sample.payload.type & aku_PData::TIMESTAMP_BIT) {
+            if (sample.payload.type & aku_PData::PARAMID_BIT) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
+
             // Timestamp
             if (size < 0) {
                 return nullptr;
@@ -96,13 +99,6 @@ struct CSVOutputFormatter : OutputFormatter {
             }
             begin += len;
             size  -= len;
-            // Add trailing \r\n to the end
-            if (size < 1) {
-                return nullptr;
-            }
-            begin[0] = ',';
-            begin += 1;
-            size  -= 1;
             newline_required = true;
         }
 
@@ -112,6 +108,15 @@ struct CSVOutputFormatter : OutputFormatter {
         }
 
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
+            if (sample.payload.type & aku_PData::TIMESTAMP_BIT) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
             // Floating-point
             len = snprintf(begin, size, "%.17g\n", sample.payload.float64);
             if (len == size || len < 0) {
