@@ -1,6 +1,10 @@
 import os
 import subprocess
 import datetime
+try:
+    import ConfigParser as ini
+except ImportError:
+    import configparser as ini
 
 
 def msg(timestamp, value, metric, **tags):
@@ -28,6 +32,15 @@ def makequery(metric, begin, end, **kwargs):
             }
     query.update(**kwargs)
     return query
+
+def get_config_file():
+    abspath = "~/.akumulid"
+    config = ini.RawConfigParser()
+    config.read(abspath)
+    return config
+
+def get_window_width(config):
+    pass
 
 
 class Akumulid:
