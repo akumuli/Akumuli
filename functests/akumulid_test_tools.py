@@ -1,5 +1,6 @@
 import os
 import subprocess
+import socket
 import datetime
 try:
     import ConfigParser as ini
@@ -7,6 +8,40 @@ except ImportError:
     import configparser as ini
 import os
 import StringIO
+
+
+def parse_timestamp(ts):
+    """Parse ISO formatted timestamp"""
+    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
+
+
+class TCPChan:
+    def __init__(self, host, port):
+        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__sock.connect((host, port))
+
+    def send(self, data):
+        self.__sock.send(data)
+
+    def recv(self):
+        return self.__sock.recv(0x1000)
+
+
+def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
+    if tags_cmp_method == 'EQ':
+        if act_tags != exp_tags:
+            errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    elif tags_cmp_method == 'ENDS':
+        if not act_tags.endswith(exp_tags):
+            errormsg = "Invalid tags, expected suffix: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    if act_ts != exp_ts:
+        errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, act_ts, iterations)
+        raise ValueError(errormsg)
+    if act_value != exp_value:
+        errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, act_value, iterations)
+        raise ValueError(errormsg)
 
 
 def msg(timestamp, value, metric, **tags):

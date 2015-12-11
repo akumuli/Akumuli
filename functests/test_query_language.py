@@ -18,37 +18,6 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-def parse_timestamp(ts):
-    """Parse ISO formatted timestamp"""
-    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
-
-class TCPChan:
-    def __init__(self, HOST, port):
-        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__sock.connect((HOST, port))
-
-    def send(self, data):
-        self.__sock.send(data)
-
-    def recv(self):
-        return self.__sock.recv(0x1000)
-
-def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
-    if tags_cmp_method == 'EQ':
-        if act_tags != exp_tags:
-            errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
-            raise ValueError(errormsg)
-    elif tags_cmp_method == 'ENDS':
-        if not act_tags.endswith(exp_tags):
-            errormsg = "Invalid tags, expected suffix: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
-            raise ValueError(errormsg)
-    if act_ts != exp_ts:
-        errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, act_ts, iterations)
-        raise ValueError(errormsg)
-    if act_value != exp_value:
-        errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, act_value, iterations)
-        raise ValueError(errormsg)
-
 def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
@@ -73,11 +42,11 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = parse_timestamp(columns[1].strip())
+            timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
 
-            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
 
             exp_ts -= delta
             exp_value -= 1
@@ -120,11 +89,11 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = parse_timestamp(columns[1].strip())
+            timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
 
-            check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            att.check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
 
             exp_ts -= delta
             exp_value -= 1
@@ -167,11 +136,11 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = parse_timestamp(columns[1].strip())
+            timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
 
-            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
 
             exp_ts -= 2*delta
             exp_value -= 2
@@ -216,11 +185,11 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = parse_timestamp(columns[1].strip())
+            timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
 
-            check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            att.check_values(exp_tags, tagline, 'EQ', exp_ts, timestamp, exp_value*1.0, value, iterations)
 
             exp_ts -= 2*delta
             exp_value -= 2
@@ -294,11 +263,11 @@ def test_read_in_forward_direction(dtstart, delta, N):
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = parse_timestamp(columns[1].strip())
+            timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
             exp_tags = expected_tags[(iterations) % len(expected_tags)]
 
-            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
 
             exp_ts += delta
             exp_value += 1
@@ -345,7 +314,7 @@ def main(path, debug=False):
         print("Akumulid should be started first")
     try:
 
-        chan = TCPChan(HOST, TCPPORT)
+        chan = att.TCPChan(HOST, TCPPORT)
 
         # fill data in
         dt = datetime.datetime.utcnow()
