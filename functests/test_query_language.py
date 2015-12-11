@@ -12,6 +12,7 @@ except ImportError:
     from urllib import urlopen
 import traceback
 import itertools
+import math
 
 HOST = '127.0.0.1'
 TCPPORT = 8282
@@ -48,7 +49,7 @@ def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value,
 def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
-    begin = dtstart + delta*N
+    begin = dtstart + delta*(N-1)
     end = dtstart
     query = att.makequery("test", begin, end, output=dict(format='csv'))
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
@@ -91,7 +92,7 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
 def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
-    begin = dtstart + delta*N
+    begin = dtstart + delta*(N-1)
     end = dtstart
     query_params = {
         "output": { "format":  "csv" },
@@ -136,7 +137,7 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
 
 def test_where_clause_in_backward_direction(dtstart, delta, N):
     """Filter data by tag"""
-    begin = dtstart + delta*N
+    begin = dtstart + delta*(N-1)
     end = dtstart
     query_params = {
         "output": { "format":  "csv" },
@@ -184,7 +185,7 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
 
 def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     """Filter data by tag and group by another tag"""
-    begin = dtstart + delta*N
+    begin = dtstart + delta*(N-1)
     end = dtstart
     query_params = {
         "output": { "format":  "csv" },
@@ -259,6 +260,55 @@ def test_metadata_query(tags):
     print("test #5 passed")
 
 
+def test_read_in_forward_direction(dtstart, delta, N):
+    """Read data in forward direction"""
+    window = att.get_window_width()
+    end = dtstart + delta*N - 2*window
+    begin = dtstart
+    timedelta = end - begin
+    points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / (delta.seconds*1000000.0 + delta.microseconds))) + 1
+    # We need to add 1 because query will include both begin and end timestamps.
+
+    query_params = {
+        "output": { "format":  "csv" },
+    }
+    query = att.makequery("test", begin, end, **query_params)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    exp_ts = begin
+    exp_value = 0
+    iterations = 0
+    print("Test #6 - filter by tag")
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tags = expected_tags[(iterations) % len(expected_tags)]
+
+            check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+
+            exp_ts += delta
+            exp_value += 1
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+
+    # Check that we received all values
+    if iterations != points_required:
+        raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
+    print("test #6 passed")
+
 
 def main(path, debug=False):
     if not os.path.exists(path):
@@ -283,7 +333,7 @@ def main(path, debug=False):
         # fill data in
         dt = datetime.datetime.utcnow()
         delta = datetime.timedelta(milliseconds=1)
-        nmsgs = 1000000
+        nmsgs = 100000
         print("Sending {0} messages through TCP...".format(nmsgs))
         tags = {
             "tag1": ['A'],
@@ -299,6 +349,7 @@ def main(path, debug=False):
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
+        test_read_in_forward_direction(dt, delta, nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)

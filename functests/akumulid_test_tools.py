@@ -5,6 +5,8 @@ try:
     import ConfigParser as ini
 except ImportError:
     import configparser as ini
+import os
+import StringIO
 
 
 def msg(timestamp, value, metric, **tags):
@@ -16,10 +18,10 @@ def msg(timestamp, value, metric, **tags):
 
 def generate_messages(dt, delta, N, metric_name, **kwargs):
     for i in xrange(0, N):
-        dt = dt + delta
         tags = dict([(key, val[i % len(val)] if type(val) is list else val)
                      for key, val in kwargs.iteritems()])
         m = msg(dt, i, metric_name, **tags)
+        dt = dt + delta
         yield m
 
 def makequery(metric, begin, end, **kwargs):
@@ -34,14 +36,25 @@ def makequery(metric, begin, end, **kwargs):
     return query
 
 def get_config_file():
-    abspath = "~/.akumulid"
+    abspath = os.path.expanduser("~/.akumulid")
+    config_data = '[root]\n' + open(abspath, 'r').read()
     config = ini.RawConfigParser()
-    config.read(abspath)
+    config_fp = StringIO.StringIO(config_data)
+    config.readfp(config_fp)
     return config
 
-def get_window_width(config):
-    pass
-
+def get_window_width():
+    config = get_config_file()
+    def parse(val):
+        if val.endswith('s'):
+            return datetime.timedelta(seconds=int(val[:-1]))
+        elif val.endswith('sec'):
+            return datetime.timedelta(seconds=int(val[:-3]))
+        elif val.enswith('ms'):
+            return datetime.timedelta(milliseconds=int(val[:-2]))
+        else:
+            raise ValueError("Can't read `window` value from config")
+    return parse(config.get("root", "window"))
 
 class Akumulid:
     """akumulid daemon instance"""
