@@ -30,6 +30,9 @@ class TCPChan:
     def send(self, data):
         self.__sock.send(data)
 
+    def recv(self):
+        return self.__sock.recv(0x1000)
+
 def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
     if tags_cmp_method == 'EQ':
         if act_tags != exp_tags:
@@ -180,7 +183,7 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("test #3 passed")
+    print("Test #3 passed")
 
 
 def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
@@ -229,7 +232,7 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("test #4 passed")
+    print("Test #4 passed")
 
 def test_metadata_query(tags):
     print("Test #5 - metadata query")
@@ -257,13 +260,13 @@ def test_metadata_query(tags):
         print("Expected series: {0}".format(expected_series))
         print("Actual series: {0}".format(actual_series))
         raise ValueError("Output didn't match")
-    print("test #5 passed")
+    print("Test #5 passed")
 
 
 def test_read_in_forward_direction(dtstart, delta, N):
     """Read data in forward direction"""
     window = att.get_window_width()
-    end = dtstart + delta*N - 2*window
+    end = dtstart + delta*(N-1) - window
     begin = dtstart
     timedelta = end - begin
     points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / (delta.seconds*1000000.0 + delta.microseconds))) + 1
@@ -307,7 +310,21 @@ def test_read_in_forward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != points_required:
         raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
-    print("test #6 passed")
+    print("Test #6 passed")
+
+
+def test_late_write(dtstart, delta, N, chan):
+    """Read data in forward direction"""
+    print("Test #7 - late write")
+    window = att.get_window_width()
+    ts = dtstart + delta*(N-1) - 2*window
+    message = att.msg(ts, 1.0, 'test', key='value')
+    chan.send(message)
+    resp = chan.recv().strip()
+    if resp != '-DB late write':
+        print(resp)
+        raise ValueError("Late write not detected")
+    print("Test #7 passed")
 
 
 def main(path, debug=False):
@@ -350,6 +367,7 @@ def main(path, debug=False):
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
+        test_late_write(dt, delta, nmsgs, chan)
     except:
         traceback.print_exc()
         sys.exit(1)
