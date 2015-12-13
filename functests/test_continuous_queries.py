@@ -57,12 +57,12 @@ def writer(dt, delta, N):
 
 def reader(dtstart, delta, N):
     # Start writer process
-    wproc = multiprocessing.Process(target=writer, args=[dtstart, delta, N])
+    wproc = multiprocessing.Process(name='Writer', target=writer, args=[dtstart, delta, N])
     wproc.start()
 
     try:
         window = att.get_window_width()
-        end = dtstart + delta*(N-1) - window
+        end = dtstart + delta*(N-1) - 2*window
         begin = dtstart
         timedelta = end - begin
         points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / 
@@ -127,7 +127,7 @@ def main(path, debug=False):
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 100000
 
-        rproc = multiprocessing.Process(target=reader, args=[dt, delta, nmsgs])
+        rproc = multiprocessing.Process(name='Reader', target=reader, args=[dt, delta, nmsgs])
         rproc.start()
         rproc.join()
 
