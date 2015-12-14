@@ -367,7 +367,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         while (!max_index()) {
             if (page_->get_page_id() == 0 && page_->get_close_count() == 0) {
                 // Special case. Database is new and there is no data yet.
-                std::cout << "PAGE - search fast path - new database detected" << std::endl;
                 if (query_->put(QP::NO_DATA)) {
                     continue;
                 }

@@ -35,6 +35,9 @@ def writer(dt, delta, N):
     try:
         chan = att.TCPChan(HOST, TCPPORT)
 
+        checkpoint = dt
+        checkpoint_iter = dt
+        checkpoint_delta = datetime.timedelta(seconds=10)
         # fill data in
         print("Sending {0} messages through TCP...".format(N))
         tags = {
@@ -45,10 +48,21 @@ def writer(dt, delta, N):
         print("Generating first {0} messages...".format(N1))
         for it in att.generate_messages(dt, delta, N1, 'test', **tags):
             chan.send(it)
+            checkpoint_iter += delta
+            if checkpoint_iter - checkpoint >= checkpoint_delta:
+                print("Write {0}".format(checkpoint_iter))
+                checkpoint = checkpoint_iter
         time.sleep(10)
         print("Generating last {0} messages...".format(N2))
+        checkpoint = dt+delta*N1
+        checkpoint_iter = dt+delta*N1
         for it in att.generate_messages(dt + delta*N1, delta, N2, 'test', **tags):
             chan.send(it)
+            checkpoint_iter += delta
+            if checkpoint_iter - checkpoint >= checkpoint_delta:
+                print("Write {0}".format(checkpoint_iter))
+                checkpoint = checkpoint_iter
+        print("{0} messages sent".format(N))
         time.sleep(10)
     except:
         print("Exception in writer")
@@ -65,6 +79,9 @@ def reader(dtstart, delta, N):
         end = dtstart + delta*(N-1) - 2*window
         begin = dtstart
         timedelta = end - begin
+        print("Time delta: {0}".format(timedelta))
+        print("Time begin: {0}".format(begin))
+        print("Time   end: {0}".format(end))
         points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / 
                                         (delta.seconds*1000000.0 + delta.microseconds))) + 1
         query_params = {"output": { "format":  "csv" }}
@@ -79,7 +96,12 @@ def reader(dtstart, delta, N):
 
         print("Test #1 - continuous queries")
 
+        last_line = None
+        first_line = None
         for line in response:
+            if first_line is None:
+                first_line = line
+            last_line = line
             try:
                 columns = line.split(',')
                 tagline = columns[0].strip()
@@ -98,6 +120,8 @@ def reader(dtstart, delta, N):
                 raise
 
         print("Query completed")
+        print("First line:\n" + first_line.strip())
+        print("Last line:\n" + last_line.strip())
         # Check that we received all values
         if iterations != points_required:
             raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))

@@ -471,6 +471,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
             } else {
                 AKU_PANIC("data corruption in query processor");
             }
+            std::cout << "QUERY - stop" << std::endl;
             query_processor->stop();
         }
     }
