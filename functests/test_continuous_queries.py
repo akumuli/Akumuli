@@ -38,6 +38,7 @@ def writer(dt, delta, N):
         checkpoint = dt
         checkpoint_iter = dt
         checkpoint_delta = datetime.timedelta(seconds=10)
+        ngenerated = 0
         # fill data in
         print("Sending {0} messages through TCP...".format(N))
         tags = {
@@ -49,8 +50,9 @@ def writer(dt, delta, N):
         for it in att.generate_messages(dt, delta, N1, 'test', **tags):
             chan.send(it)
             checkpoint_iter += delta
+            ngenerated += 1
             if checkpoint_iter - checkpoint >= checkpoint_delta:
-                print("Write {0}".format(checkpoint_iter))
+                print("Write {0} total {1} elem.".format(checkpoint_iter, ngenerated))
                 checkpoint = checkpoint_iter
         time.sleep(10)
         print("Generating last {0} messages...".format(N2))
@@ -59,8 +61,9 @@ def writer(dt, delta, N):
         for it in att.generate_messages(dt + delta*N1, delta, N2, 'test', **tags):
             chan.send(it)
             checkpoint_iter += delta
+            ngenerated += 1
             if checkpoint_iter - checkpoint >= checkpoint_delta:
-                print("Write {0}".format(checkpoint_iter))
+                print("Write {0} total {1} elem.".format(checkpoint_iter, ngenerated))
                 checkpoint = checkpoint_iter
         print("{0} messages sent".format(N))
         time.sleep(10)

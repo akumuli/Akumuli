@@ -26,6 +26,8 @@
 #include "akumuli_def.h"
 #include "search.h"
 #include "buffer_cache.h"
+//TODO: remove
+//#include "datetime.h"
 
 #include <random>
 #include <iostream>
@@ -364,13 +366,23 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     bool fast_path() {
+        int first_iter = 0;  // TODO: remove
         while (!max_index()) {
             if (page_->get_page_id() == 0 && page_->get_close_count() == 0) {
+                if (first_iter == 0) {
+                    printf("PAGE - fast path special case\n");
+                    first_iter = 1;
+                }
                 // Special case. Database is new and there is no data yet.
                 if (query_->put(QP::NO_DATA)) {
                     continue;
+                    if (first_iter == 1) {
+                        printf("PAGE - fast path special case (waiting...) \n");
+                        first_iter = 2;
+                    }
+
                 }
-                break;
+                printf("PAGE - fast path special case (done waiting...) \n");
             }
             return true;
         }
@@ -481,6 +493,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                                         aku_Entry const* probe_entry,
                                         bool binary_search=false)
     {
+        // -----------------
+        printf("PAGE - scan compressed\n");
+        // -----------------
         aku_Status status = AKU_SUCCESS;
         ScanResultT result = UNDERSHOOT;
         std::shared_ptr<UncompressedChunk> chunk_header, header;
@@ -614,38 +629,55 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
      * @return tuple{fwd-bytes, bwd-bytes}
      */
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
+        printf("PAGE - scan impl start\n");
         int index_increment = IS_BACKWARD_ ? -1 : 1;
         ScanResultT proceed = IN_RANGE;
+        aku_Timestamp last_valid_timestamp = 0ul;
         while (proceed != INTERRUPTED) {
-            auto current_index = probe_index;
-            probe_index += index_increment;
-            auto probe_offset = page_->page_index(current_index)->offset;
-            auto probe_time = page_->page_index(current_index)->timestamp;
-            auto probe_entry = page_->read_entry(probe_offset);
-            auto probe = probe_entry->param_id;
+            if (probe_index < max_index()) {
+                auto probe_offset = page_->page_index(probe_index)->offset;
+                auto probe_time = page_->page_index(probe_index)->timestamp;
+                auto probe_entry = page_->read_entry(probe_offset);
+                auto probe = probe_entry->param_id;
+                last_valid_timestamp = probe_time;
 
+                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                    //--------remove-----------
+                    //char ts_buffer[0x100] = {};
+                    //DateTimeUtil::to_iso_string(probe_time, ts_buffer, 0x100);
+                    //printf("PAGE - scan compressed forward %s\n", ts_buffer);
+                    //--------remove-----------
+                    proceed = scan_compressed_entries(probe_index, probe_entry, false);
+                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                    proceed = scan_compressed_entries(probe_index, probe_entry, false);
+                } else {
+                    proceed = check_timestamp(probe_time);
+                }
+                probe_index += index_increment;
 
-            if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
-            } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
             } else {
-                proceed = check_timestamp(probe_time);
-            }
-
-            if (probe_index >= max_index()) {
                 if (IS_BACKWARD_) {
                     proceed = INTERRUPTED;
                 } else {
+                    proceed = check_timestamp(last_valid_timestamp);
                     switch(proceed) {
                     case IN_RANGE:
                     case UNDERSHOOT:
+                        // TODO: wait only if page is opened for writing!
                         if (query_->put(QP::NO_DATA)) {
                             // We should wait for consumer!
+                            //---------remove------------
+                            //if (last_valid_timestamp != 0) {
+                            //    char ts_buffer[0x100] = {};
+                            //    DateTimeUtil::to_iso_string(last_valid_timestamp, ts_buffer, 0x100);
+                            //    printf("PAGE - scan impl WAIT CONSUMER %s\n", ts_buffer);
+                            //}
+                            //---------remove------------
                             break;
                         }
                     case OVERSHOOT:
                     case INTERRUPTED:
+                        printf("PAGE - scan impl INTERRUPTED\n");
                         proceed = INTERRUPTED;
                     };
                 }
