@@ -34,6 +34,9 @@ struct RecordingCursor : InternalCursor {
     int error_code = NO_ERROR;
 
     virtual bool put(Caller&, aku_Sample const& result) {
+        if (result.payload.type == aku_PData::EMPTY) {
+            return false;
+        }
         results.push_back(result);
         return true;
     }
@@ -60,6 +63,9 @@ struct Recorder : QP::Node {
     }
 
     bool put(const aku_Sample &sample) {
+        if (sample.payload.type == aku_PData::EMPTY) {
+            return cursor.put(caller, sample);
+        }
         return sample.paramid == expected_id ? cursor.put(caller, sample) : true;
     }
 
@@ -273,7 +279,8 @@ void generic_compression_test
     BOOST_REQUIRE_NE(expected.size(), 0ul);
 
     // Test sequential access
-    for(const auto& exp_chunk: expected) {
+    for (auto i = 0ul; i < expected.size(); i++) {
+        const auto& exp_chunk = expected.at(i);
         auto ts_begin = exp_chunk.timestamps.front();
         auto ts_end = exp_chunk.timestamps.back();
 
