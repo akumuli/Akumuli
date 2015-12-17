@@ -1,31 +1,67 @@
 import os
 import subprocess
+import socket
 import datetime
+try:
+    import ConfigParser as ini
+except ImportError:
+    import configparser as ini
+import os
+import StringIO
+
+
+def parse_timestamp(ts):
+    """Parse ISO formatted timestamp"""
+    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
+
+
+class TCPChan:
+    def __init__(self, host, port):
+        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__sock.connect((host, port))
+
+    def send(self, data):
+        self.__sock.send(data)
+
+    def recv(self):
+        return self.__sock.recv(0x1000)
+
+
+def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
+    if tags_cmp_method == 'EQ':
+        if act_tags != exp_tags:
+            errormsg = "Invalid tags, expected: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    elif tags_cmp_method == 'ENDS':
+        if not act_tags.endswith(exp_tags):
+            errormsg = "Invalid tags, expected suffix: {0}, actual: {1}, iter: {2}".format(exp_tags, act_tags, iterations)
+            raise ValueError(errormsg)
+    if act_ts != exp_ts:
+        errormsg = "Invalid timestamp, expected: {0}, actual: {1}, iter: {2}".format(exp_ts, act_ts, iterations)
+        raise ValueError(errormsg)
+    if act_value != exp_value:
+        errormsg = "Invalid value, expected: {0}, actual: {1}, iter: {2}".format(exp_value, act_value, iterations)
+        raise ValueError(errormsg)
 
 
 def msg(timestamp, value, metric, **tags):
     timestr = timestamp.strftime('+%Y%m%dT%H%M%S.%f')
     sseries = '+{0} '.format(metric) + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
-    strval  = '+{:.4}'.format(value)
+    strval  = '+{0}'.format(value)
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 
-def generate_messages(dt, delta, N, metric_name, tag):
-    if type(tag) is str: 
-        for i in xrange(0, N):
-            dt = dt + delta
-            m = msg(dt, float(i), metric_name, tag=tag)
-            yield m
-    elif type(tag) is list:
-        for i in xrange(0, N):
-            dt = dt + delta
-            next_tag = tag[i % len(tag)]
-            m = msg(dt, float(i), metric_name, tag=next_tag)
-            yield m
+def generate_messages(dt, delta, N, metric_name, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        m = msg(dt, i, metric_name, **tags)
+        dt = dt + delta
+        yield m
 
-def makequery(begin, end, **kwargs):
+def makequery(metric, begin, end, **kwargs):
     query = {
-            "sample": "all",
+            "metric": metric,
             "range": {
                 "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
                 "to": end.strftime('%Y%m%dT%H%M%S.%f'),
@@ -34,6 +70,26 @@ def makequery(begin, end, **kwargs):
     query.update(**kwargs)
     return query
 
+def get_config_file():
+    abspath = os.path.expanduser("~/.akumulid")
+    config_data = '[root]\n' + open(abspath, 'r').read()
+    config = ini.RawConfigParser()
+    config_fp = StringIO.StringIO(config_data)
+    config.readfp(config_fp)
+    return config
+
+def get_window_width():
+    config = get_config_file()
+    def parse(val):
+        if val.endswith('s'):
+            return datetime.timedelta(seconds=int(val[:-1]))
+        elif val.endswith('sec'):
+            return datetime.timedelta(seconds=int(val[:-3]))
+        elif val.enswith('ms'):
+            return datetime.timedelta(milliseconds=int(val[:-2]))
+        else:
+            raise ValueError("Can't read `window` value from config")
+    return parse(config.get("root", "window"))
 
 class Akumulid:
     """akumulid daemon instance"""

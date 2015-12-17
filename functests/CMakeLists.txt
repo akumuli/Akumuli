@@ -13,6 +13,7 @@ file(COPY
     akumulid_test_tools.py
     test_data_ingestion.py
     test_query_language.py
+    test_continuous_queries.py
     DESTINATION
     ./
 )

@@ -207,12 +207,21 @@ void GroupByTag::refresh_() {
         aku_Status status;
         SeriesParser::StringT result;
         std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);
-        if (status == AKU_SUCCESS && snames_.count(result) == 0) {
-            // put result to local stringpool and ids list
-            auto newid = local_matcher_.add(result.first, result.first + result.second);
-            auto str = local_matcher_.id2str(newid);
-            snames_.insert(str);
-            ids_[id] = newid;
+        if (status == AKU_SUCCESS) {
+            if (snames_.count(result) == 0) {
+                // put result to local stringpool and ids list
+                auto localid = local_matcher_.add(result.first, result.first + result.second);
+                auto str = local_matcher_.id2str(localid);
+                snames_.insert(str);
+                ids_[id] = localid;
+            } else {
+                // local name already created
+                auto localid = local_matcher_.match(result.first, result.first + result.second);
+                if (localid == 0ul) {
+                    AKU_PANIC("inconsistent matcher state");
+                }
+                ids_[id] = localid;
+            }
         }
     }
 }
@@ -446,13 +455,17 @@ static std::pair<uint64_t, uint64_t> parse_limit_offset(boost::property_tree::pt
 
 static std::string parse_metric(boost::property_tree::ptree const& ptree,
                                 aku_logger_cb_t logger) {
-    std::string metric;
     auto opt = ptree.get_child_optional("metric");
     if (opt) {
         auto single = opt->get_value<std::string>();
-        metric = single;
+        return single;
     }
-    return metric;
+    auto select = ptree.get_child_optional("select");
+    if (!select) {
+        QueryParserError error("`metric` not set");
+        BOOST_THROW_EXCEPTION(error);
+    }
+    return "";
 }
 
 static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& ptree,

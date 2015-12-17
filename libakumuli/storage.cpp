@@ -381,7 +381,7 @@ struct TerminalNode : QP::Node {
     }
 
     bool put(const aku_Sample& sample) {
-        if (sample.payload.type != aku_PData::EMPTY && sample.payload.type != aku_PData::MARGIN) {
+        if (sample.payload.type != aku_PData::MARGIN) {
             return cursor->put(caller, sample);
         }
         return true;

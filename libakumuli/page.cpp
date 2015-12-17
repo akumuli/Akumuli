@@ -364,7 +364,13 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     bool fast_path() {
-        if (!max_index()) {
+        while (!max_index()) {
+            if (page_->get_page_id() == 0 && page_->get_close_count() == 0) {
+                // Special case. Database is new and there is no data yet.
+                if (query_->put(QP::NO_DATA)) {
+                    continue;
+                }
+            }
             return true;
         }
 
@@ -609,30 +615,33 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
         int index_increment = IS_BACKWARD_ ? -1 : 1;
         ScanResultT proceed = IN_RANGE;
+        aku_Timestamp last_valid_timestamp = 0ul;
         while (proceed != INTERRUPTED) {
-            auto current_index = probe_index;
-            probe_index += index_increment;
-            auto probe_offset = page_->page_index(current_index)->offset;
-            auto probe_time = page_->page_index(current_index)->timestamp;
-            auto probe_entry = page_->read_entry(probe_offset);
-            auto probe = probe_entry->param_id;
+            if (probe_index < max_index()) {
+                auto probe_offset = page_->page_index(probe_index)->offset;
+                auto probe_time = page_->page_index(probe_index)->timestamp;
+                auto probe_entry = page_->read_entry(probe_offset);
+                auto probe = probe_entry->param_id;
+                last_valid_timestamp = probe_time;
 
+                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                    proceed = scan_compressed_entries(probe_index, probe_entry, false);
+                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                    proceed = scan_compressed_entries(probe_index, probe_entry, false);
+                } else {
+                    proceed = check_timestamp(probe_time);
+                }
+                probe_index += index_increment;
 
-            if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
-            } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
-                proceed = scan_compressed_entries(current_index, probe_entry, false);
             } else {
-                proceed = check_timestamp(probe_time);
-            }
-
-            if (probe_index >= max_index()) {
                 if (IS_BACKWARD_) {
                     proceed = INTERRUPTED;
                 } else {
+                    proceed = check_timestamp(last_valid_timestamp);
                     switch(proceed) {
                     case IN_RANGE:
                     case UNDERSHOOT:
+                        // TODO: wait only if page is opened for writing!
                         if (query_->put(QP::NO_DATA)) {
                             // We should wait for consumer!
                             break;
