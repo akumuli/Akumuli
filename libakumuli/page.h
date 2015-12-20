@@ -33,7 +33,7 @@
 #include "buffer_cache.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
-const int64_t AKU_MAX_PAGE_OFFSET =  0xFFFFFFFF;
+const int64_t AKU_TEST_PAGE_SIZE  = 0x1000000;
 
 namespace Akumuli {
 

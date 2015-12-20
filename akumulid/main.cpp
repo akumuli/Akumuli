@@ -351,12 +351,19 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
 /** Create database if database not exists.
   */
 void create_db_files(const char* path,
-                     int32_t nvolumes)
+                     int32_t nvolumes,
+                     bool testdb=false)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
-        auto status = aku_create_database("db", path, path, nvolumes,
-                                          &static_logger);
+        apr_status_t status = APR_SUCCESS;
+        if (!testdb) {
+            status = aku_create_database("db", path, path, nvolumes,
+                                         &static_logger);
+        } else {
+            status = aku_create_test_database("db", path, path, nvolumes,
+                                              &static_logger);
+        }
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -422,14 +429,14 @@ void cmd_run_server() {
 
 /** Create database command.
   */
-void cmd_create_database() {
+void cmd_create_database(bool test_db=false) {
     auto config_path = ConfigFile::default_config_path();
 
     auto config     = ConfigFile::read_config_file(config_path);
     auto path       = ConfigFile::get_path(config);
     auto volumes    = ConfigFile::get_nvolumes(config);
 
-    create_db_files(path.c_str(), volumes);
+    create_db_files(path.c_str(), volumes, test_db);
 }
 
 void cmd_delete_database() {
@@ -490,6 +497,7 @@ int main(int argc, char** argv) {
                 ("help", "Produce help message")
                 ("create", "Create database")
                 ("delete", "Delete database")
+                ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration");
 
         po::variables_map vm;
@@ -511,7 +519,12 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("create")) {
-            cmd_create_database();
+            cmd_create_database(false);
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("CI")) {
+            cmd_create_database(true);
             exit(EXIT_SUCCESS);
         }
 

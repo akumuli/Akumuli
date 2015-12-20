@@ -39,16 +39,12 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/filesystem.hpp>
 
-// TODO:remove header
-#include <sys/time.h>
-
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger);
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page=false);
 
 //----------------------------------Volume----------------------------------------------
 
-// TODO: remove max_cache_size
 Volume::Volume(const char* file_name,
                aku_FineTuneParams conf,
                aku_logger_cb_t logger)
@@ -103,7 +99,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     is_temporary_.store(true);
 
     std::shared_ptr<Volume> newvol;
-    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_);
+    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_, false);
     if (status != AKU_SUCCESS) {
         (*logger_)(AKU_LOG_ERROR, "Failed to create new volume");
         // Try to restore previous state on disk
@@ -397,21 +393,6 @@ struct TerminalNode : QP::Node {
     }
 };
 
-// TODO: remove
-class Timer
-{
-public:
-    Timer() { gettimeofday(&_start_time, nullptr); }
-    void   restart() { gettimeofday(&_start_time, nullptr); }
-    double elapsed() const {
-        timeval curr;
-        gettimeofday(&curr, nullptr);
-        return double(curr.tv_sec - _start_time.tv_sec) +
-               double(curr.tv_usec - _start_time.tv_usec)/1000000.0;
-    }
-private:
-    timeval _start_time;
-};
 
 void Storage::search(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
@@ -528,7 +509,7 @@ aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
                     case AKU_EOVERFLOW:
                         // Page overflow
                         advance_volume_(local_rev);
-                        break;
+                        continue;
                     default:
                         log_error(aku_error_message(status));
                         AKU_PANIC("Fatal error in write path");
@@ -663,10 +644,10 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger) {
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page) {
     using namespace std;
     apr_status_t status;
-    int64_t size = AKU_MAX_PAGE_SIZE;
+    int64_t size = test_page ? AKU_TEST_PAGE_SIZE : AKU_MAX_PAGE_SIZE;
 
     status = create_file(file_name, size, logger);
     if (status != APR_SUCCESS) {
@@ -682,7 +663,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
     // Create index page
     auto index_ptr = mfile.get_pointer();
-    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index, npages);
+    auto index_page = new (index_ptr) PageHeader(0, size, page_index, npages);
 
     // Activate the first page
     if (page_index == 0) {
@@ -693,10 +674,10 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 /** Create page files, return list of statuses.
   */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger) {
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, bool test_page=false) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger);
+        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger, test_page);
         results[ix] = res;
     }
     return results;
@@ -785,7 +766,8 @@ apr_status_t Storage::new_storage(const char  *file_name,
                                   const char  *metadata_path,
                                   const char  *volumes_path,
                                   int          num_pages,
-                                  aku_logger_cb_t logger)
+                                  aku_logger_cb_t logger,
+                                  bool         test_db)
 {
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
@@ -828,7 +810,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
 
-    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger);
+    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger, test_db);
     for(auto creation_status: page_creation_statuses) {
         if (creation_status != APR_SUCCESS) {
             (*logger)(AKU_LOG_ERROR, "Not all pages successfullly created. Cleaning up.");
