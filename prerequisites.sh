@@ -16,7 +16,9 @@ if [ "x$pkgman" = "xyum" ]; then
 	sudo yum install sqlite sqlite-devel
 	sudo yum install apr-util-devel
 	sudo yum install libmicrohttpd-devel
-	sudo yum install jemalloc
+	sudo yum install jemalloc-devel
+	sudo yum install python-devel
+	sudo yum install bzip2-devel
 else
 	if [ "x$pkgman" = "xapt" ]; then
 		echo 'The script will install packages using apt-get.' \

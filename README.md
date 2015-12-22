@@ -73,12 +73,12 @@ In case automatic script didn't work:
 ##### Semiautomatic
 * RHEL has an old version of boost that didn't really support coroutines (It's 1.53, which should contain coroutines, but compiling fails). At the time of writing, Akumulid needs boost 1.54 PRECISELY, so uninstall the original and get version 1.54 from the boost website:
 ```
-wget 'wget http://downloads.sourceforge.net/project/boost/boost/1.54.0/boost_1_54_0.tar.gz'
+wget 'http://downloads.sourceforge.net/project/boost/boost/1.54.0/boost_1_54_0.tar.gz'
 tar -xzvf boost_1_54_0.tar.gz
 cd boost_1_54_0
 ./bootstrap.sh --prefix=/usr --libdir=/usr/lib64
-./b2
-#Go get some coffee...
+./b2 -j4 
+#Go get some coffee (-j4: Use four cores)...
 ./b2 install
 #Go get some more coffee...
 ```
