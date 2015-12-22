@@ -308,7 +308,12 @@ void Storage::advance_volume_(int local_rev) {
 
         int close_lock = active_volume_->cache_->reset();
         if (close_lock % 2 == 1) {
-            active_volume_->cache_->merge_and_compress(active_page_);
+            auto status = active_volume_->cache_->merge_and_compress(active_page_);
+            if (status != AKU_SUCCESS) {
+                std::cout << "advance_volume_ status: " << aku_error_message(status) << std::endl;
+            } else {
+                std::cout << "advance_volume_ status: SUCCESS" << std::endl;
+            }
         }
         active_volume_->close();
         active_volume_->make_readonly();
@@ -438,7 +443,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
-                for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                for (int64_t ix = (starting_ix + volumes_.size()); ix >= starting_ix; ix--) {
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     // Search cache

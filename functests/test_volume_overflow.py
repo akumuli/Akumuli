@@ -41,7 +41,10 @@ def read_in_backward_direction(batch_size):
 
     iterations = 0
     print("Test #1 - read all data in backward direction")
+    pivot = None
     exp_value = None
+    val_count = 0
+    num_off = 0
     for line in response:
         try:
             columns = line.split(',')
@@ -49,18 +52,37 @@ def read_in_backward_direction(batch_size):
             #timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
 
-            if exp_value is None:
-                exp_value = int(float(value))
+            if exp_value is None and pivot is None:
+                pivot = int(float(value))
 
-            if float(exp_value) != value:
-                raise ValueError("Unexpected value at {0}, actual {1}, expected {2}".format(iterations, value, exp_value))
+            if pivot is not None and exp_value is None:
+                if pivot != int(float(value)):
+                    print("Off-elements count: %d" % num_off)
+                    exp_value = int(float(value))
+                else:
+                    num_off += 1
 
+            if exp_value:
+                val_count += 1
+                if float(exp_value) != value:
+                    print("Unexpected value at {0}, actual {1}, expected {2}".format(iterations, value, exp_value))
+                    exp_value = None
+                    pivot = None
+                    val_count = 0
+                    num_off = 0
+
+            if exp_value:
+                if val_count % batch_size == 0:
+                    exp_value -= 1
+
+            #TODO: remove
             if iterations % batch_size == 0:
-                exp_value -= 1
+                if iterations % (batch_size*1000) == 0:
+                    print("Read {0}".format(iterations))
 
             iterations += 1
         except:
-            print("Error at line: {0}".format(line))
+            print("Error at line {0}: `{1}`".format(iterations, line))
             raise
 
     # Check that we received all values
