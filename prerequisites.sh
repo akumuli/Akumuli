@@ -2,9 +2,15 @@
 
 distri=$(awk '/^DISTRIB_ID=|^ID=/' /etc/*-release | sed 's/.*=//' | sed 's/"//g' | tr '[:upper:]' '[:lower:]')
 
+if [ "x$distri" = "x" ]; then
+	distri=$(find /etc/*-release | head -n1 | xargs grep -o '(\w*)' | sed 's/[()]//g' | tr '[:upper:]' '[:lower:]')
+fi
+
 case $distri in
 	"rhel") pkgman='yum';;
 	"debian") pkgman='apt';;
+	"santiago") pkgman='yum';; #RHEL6
+	"tikanga") pkgman='yum';; #RHEL5
 	#more to come...
 esac
 
@@ -40,7 +46,7 @@ else
 		echo 'Trying to install cmake'
 		sudo apt-get install -y cmake
 	else
-		echo "ERROR: Unknown package manager"
+		echo "ERROR: Unknown package manager: $distri"
 		exit 1
 	fi
 fi #package manager check

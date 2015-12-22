@@ -94,7 +94,22 @@ cd boost_1_54_0
 1. `make -j`
 1. `make`
 
-
+### Centos 6 / RHEL6
+#### Prequisites
+* Same as for RHEL7, but we need to manually install log4cxx, as there isn't a package in the repos:
+```
+wget http://www.pirbot.com/mirrors/apache/logging/log4cxx/0.10.0/apache-log4cxx-0.10.0.tar.gz
+tar -xzvf apache-log4cxx-0.10.0.tar.gz 
+cd apache-log4cxx-0.10.0
+```
+* Add `#include <cstring>` to: `src/main/cpp/inputstreamreader.cpp`, `src/main/cpp/socketoutputstream.cpp` and `src/examples/cpp/console.cpp`
+* Add `#include <cstdio>` to: `src/examples/cpp/console.cpp`
+```
+./configure --prefix=/usr --libdir=/usr/lib64
+make -j4
+sudo make install
+```
+* Go on as for RHEL7
 Questions?
 ----------
 [Google group](https://groups.google.com/forum/#!forum/akumuli)
