@@ -20,7 +20,7 @@ if [ "x$pkgman" = "xyum" ]; then
 	#sudo yum install boost boost-devel boost-thread
 	sudo yum install log4cxx log4cxx-devel
 	sudo yum install sqlite sqlite-devel
-	sudo yum install apr-util-devel
+	sudo yum install apr-util-devel apr-util-sqlite
 	sudo yum install libmicrohttpd-devel
 	sudo yum install jemalloc-devel
 	sudo yum install python-devel
