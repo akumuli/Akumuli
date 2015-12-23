@@ -59,6 +59,17 @@ def generate_messages(dt, delta, N, metric_name, **kwargs):
         dt = dt + delta
         yield m
 
+def infinite_msg_stream(batch_size, metric_name, **kwargs):
+    i = 0
+    dt = datetime.datetime.utcnow()
+    template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
+    sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
+    while True:
+        dt = datetime.datetime.utcnow()
+        m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), float(i), sseries)
+        yield m
+        i += 1
+
 def makequery(metric, begin, end, **kwargs):
     query = {
             "metric": metric,
@@ -100,6 +111,11 @@ class Akumulid:
         """Create database in standard location"""
         cmd = os.path.join(self.__path, "akumulid")
         subprocess.call([cmd, "--create"])
+
+    def create_test_database(self):
+        """Create database in standard location"""
+        cmd = os.path.join(self.__path, "akumulid")
+        subprocess.call([cmd, "--CI"])
 
     def delete_database(self):
         """Remove database from standard location"""
