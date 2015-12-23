@@ -7,6 +7,11 @@ README [![Build Status](https://api.shippable.com/projects/5481624dd46935d5fbbf6
 It can be used to capture, store and process time-series data in real-time.
 The word "akumuli" can be translated from esperanto as "accumulate".
 
+Disclaimer
+----------
+
+Akumuli is work in progress and not ready for production yet.
+
 
 Features
 -------
