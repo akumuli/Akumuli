@@ -443,7 +443,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
-                for (int64_t ix = (starting_ix + volumes_.size()); ix >= starting_ix; ix--) {
+                for (int64_t ix = (starting_ix + volumes_.size()); ix > starting_ix; ix--) {
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     // Search cache
