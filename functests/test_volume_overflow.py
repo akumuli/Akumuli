@@ -45,6 +45,7 @@ def read_in_backward_direction(batch_size):
     exp_value = None
     val_count = 0
     num_off = 0
+    failcnt = 0
     for line in response:
         try:
             columns = line.split(',')
@@ -65,6 +66,7 @@ def read_in_backward_direction(batch_size):
             if exp_value:
                 val_count += 1
                 if float(exp_value) != value:
+                    failcnt += 1
                     print("Unexpected value at {0}, actual {1}, expected {2}".format(iterations, value, exp_value))
                     exp_value = None
                     pivot = None
@@ -75,7 +77,6 @@ def read_in_backward_direction(batch_size):
                 if val_count % batch_size == 0:
                     exp_value -= 1
 
-            #TODO: remove
             if iterations % batch_size == 0:
                 if iterations % (batch_size*1000) == 0:
                     print("Read {0}".format(iterations))
@@ -88,6 +89,10 @@ def read_in_backward_direction(batch_size):
     # Check that we received all values
     if iterations == 0:
         raise ValueError("Expect {0} data points, get {1} data points".format('--', iterations))
+
+    if failcnt != 0:
+        raise ValueError("Some data was lost")
+
     print("Test passed")
 
 def main(path, debug):

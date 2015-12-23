@@ -58,7 +58,7 @@ Volume::Volume(const char* file_name,
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Sequencer(page_, conf));
+    cache_.reset(new Sequencer(conf));
 }
 
 Volume::~Volume() {
@@ -306,24 +306,27 @@ void Storage::advance_volume_(int local_rev) {
         auto old_page_id = active_page_->get_page_id();
         AKU_UNUSED(old_page_id);
 
-        int close_lock = active_volume_->cache_->reset();
-        if (close_lock % 2 == 1) {
-            auto status = active_volume_->cache_->merge_and_compress(active_page_);
-            if (status != AKU_SUCCESS) {
-                std::cout << "advance_volume_ status: " << aku_error_message(status) << std::endl;
-            } else {
-                std::cout << "advance_volume_ status: SUCCESS" << std::endl;
-            }
-        }
+        auto prev_volume = active_volume_;
         active_volume_->close();
         active_volume_->make_readonly();
-        log_message("page complete");
 
         // select next page in round robin order
         active_volume_index_++;
-        auto last_volume = volumes_[active_volume_index_ % volumes_.size()];
-        volumes_[active_volume_index_ % volumes_.size()] = last_volume->safe_realloc();
-        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+        auto next_volume_index = active_volume_index_ % volumes_.size();
+        auto next_volume = volumes_[next_volume_index];
+        // swap next and prev volumes caches
+        volumes_[next_volume_index] = next_volume->safe_realloc();
+
+        active_volume_ = volumes_[next_volume_index];
+        std::swap(active_volume_->cache_, prev_volume->cache_);
+
+        std::cout << "$$$$$$ active_volume runs num " << active_volume_->cache_->runs_.size() << std::endl;
+        size_t sumsize = 0;
+        for(auto const& run: active_volume_->cache_->runs_) {
+            sumsize += run->size();
+        }
+        std::cout << "$$$$$$ active_volume runs total size " << sumsize << std::endl;
+        std::cout << "$$$$$$ active_volume ready size " << active_volume_->cache_->ready_.size() << std::endl;
         active_volume_->open();
         active_volume_->make_writable();
         active_page_ = active_volume_->page_;
