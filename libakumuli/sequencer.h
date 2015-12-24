@@ -35,12 +35,6 @@ namespace Akumuli {
 
 struct TimeSeriesValue {
 
-    // Type definitions
-    struct Blob {
-        uint32_t value;
-        uint32_t value_length;
-    };
-
     enum ValueType {
         BLOB,
         DOUBLE,

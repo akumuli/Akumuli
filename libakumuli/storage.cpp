@@ -320,13 +320,6 @@ void Storage::advance_volume_(int local_rev) {
         active_volume_ = volumes_[next_volume_index];
         std::swap(active_volume_->cache_, prev_volume->cache_);
 
-        std::cout << "$$$$$$ active_volume runs num " << active_volume_->cache_->runs_.size() << std::endl;
-        size_t sumsize = 0;
-        for(auto const& run: active_volume_->cache_->runs_) {
-            sumsize += run->size();
-        }
-        std::cout << "$$$$$$ active_volume runs total size " << sumsize << std::endl;
-        std::cout << "$$$$$$ active_volume ready size " << active_volume_->cache_->ready_.size() << std::endl;
         active_volume_->open();
         active_volume_->make_writable();
         active_page_ = active_volume_->page_;
