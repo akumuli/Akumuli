@@ -471,62 +471,57 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 // Writing
 
 aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
-    while (true) {
-        int local_rev = active_volume_index_.load();
-        aku_Status status = AKU_SUCCESS;
-        int merge_lock = 0;
-        std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-        switch (status) {
-            case AKU_SUCCESS: {
-                if (merge_lock % 2 == 1) {
-                    // Slow path //
+    int local_rev = active_volume_index_.load();
+    aku_Status status = AKU_SUCCESS;
+    int merge_lock = 0;
+    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+    switch (status) {
+        case AKU_SUCCESS: {
+            if (merge_lock % 2 == 1) {
+                // Slow path //
 
-                    // Update metadata store
-                    std::vector<SeriesMatcher::SeriesNameT> names;
-                    matcher_->pull_new_names(&names);
-                    if (!names.empty()) {
-                        metadata_->insert_new_names(names);
-                    }
+                // Update metadata store
+                std::vector<SeriesMatcher::SeriesNameT> names;
+                matcher_->pull_new_names(&names);
+                if (!names.empty()) {
+                    metadata_->insert_new_names(names);
+                }
 
-                    // Move data from cache to disk
-                    status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
-                    switch (status) {
-                    case AKU_SUCCESS:
-                        switch(config_.durability) {
-                        case AKU_MAX_DURABILITY:
-                            // Max durability
-                            active_volume_->flush();
-                            break;
-                        case AKU_DURABILITY_SPEED_TRADEOFF:
-                            // Compromice some durability for speed
-                            if ((merge_lock % 8) == 1) {
-                                active_volume_->flush();
-                            }
-                            break;
-                        case AKU_MAX_WRITE_SPEED:
-                            break;
-                        };
+                // Move data from cache to disk
+                status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
+                switch (status) {
+                case AKU_SUCCESS:
+                    switch(config_.durability) {
+                    case AKU_MAX_DURABILITY:
+                        // Max durability
+                        active_volume_->flush();
                         break;
-                    case AKU_EOVERFLOW:
-                        // Page overflow
-                        advance_volume_(local_rev);
-                        continue;
-                    default:
-                        log_error(aku_error_message(status));
-                        AKU_PANIC("Fatal error in write path");
+                    case AKU_DURABILITY_SPEED_TRADEOFF:
+                        // Compromice some durability for speed
+                        if ((merge_lock % 8) == 1) {
+                            active_volume_->flush();
+                        }
+                        break;
+                    case AKU_MAX_WRITE_SPEED:
                         break;
                     };
-                }
-                return status;
+                    break;
+                case AKU_EOVERFLOW:
+                    // Page overflow
+                    advance_volume_(local_rev);
+                    status = AKU_SUCCESS;  // Value is stored by cache so it wouldn't be lost
+                    break;
+                default:
+                    log_error(aku_error_message(status));
+                    AKU_PANIC("Fatal error in write path");
+                    break;
+                };
             }
-            case AKU_EOVERFLOW:
-                advance_volume_(local_rev);
-                break;  // retry
-            default:
-                // Branch for rare and unexpected errors
-                return status;
         }
+        default:
+            break;
     }
+    return status;
 }
 
 //! write binary data
