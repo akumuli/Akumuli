@@ -229,6 +229,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(mmap test_mmap)

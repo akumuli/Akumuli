@@ -62,7 +62,7 @@ aku_ParamId TimeSeriesValue::get_paramid() const {
     return key_id_;
 }
 
-aku_Sample TimeSeriesValue::to_result(PageHeader const *page) const {
+aku_Sample TimeSeriesValue::to_result() const {
     aku_Sample res;
     res.payload.type    = AKU_PAYLOAD_FLOAT;
     res.payload.float64 = value;
@@ -92,9 +92,8 @@ bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
 
 // Sequencer
 
-Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
+Sequencer::Sequencer(const aku_FineTuneParams &config)
     : window_size_(config.window_size)
-    , page_(page)
     , top_timestamp_()
     , checkpoint_(0u)
     , sequence_number_ {0}
@@ -103,15 +102,6 @@ Sequencer::Sequencer(PageHeader const* page, const aku_FineTuneParams &config)
 {
     key_.reset(new SortedRun());
     key_->push_back(TimeSeriesValue());
-
-    if (page) {
-        auto cnt = page->get_entries_count();
-        if (cnt != 0) {
-            auto ts = page->read_timestamp_at(cnt - 1);
-            checkpoint_ = get_checkpoint_(ts);
-            top_timestamp_ = get_timestamp_(ts);
-        }
-    }
 }
 
 //! Checkpoint id = ⌊timestamp/window_size⌋
@@ -406,9 +396,8 @@ void Sequencer::merge(Caller& caller, InternalCursor* cur) {
         return;
     }
 
-    auto page = page_;
-    auto consumer = [&caller, cur, page](TimeSeriesValue const& val) {
-        aku_Sample result = val.to_result(page);
+    auto consumer = [&caller, cur](TimeSeriesValue const& val) {
+        aku_Sample result = val.to_result();
         return cur->put(caller, result);
     };
 
@@ -525,11 +514,10 @@ void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_
         run_ix++;
     }
 
-    auto page = page_;
-    auto consumer = [query, page](TimeSeriesValue const& val) {
+    auto consumer = [query](TimeSeriesValue const& val) {
         auto f = query->filter().apply(val.get_paramid());
         if (f == QP::IQueryFilter::PROCESS) {
-            return query->put(val.to_result(page));
+            return query->put(val.to_result());
         }
         return true;
     };

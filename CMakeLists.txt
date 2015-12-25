@@ -7,6 +7,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=native")
 
+set(Boost_USE_STATIC_LIBS OFF) 
+set(Boost_USE_MULTITHREADED ON)  
+set(Boost_USE_STATIC_RUNTIME OFF) 
 find_package(Boost 1.53.0
     COMPONENTS
     unit_test_framework
@@ -24,6 +27,8 @@ find_package(Boost 1.53.0
 find_package(Log4Cxx REQUIRED)
 find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
+
+find_package(Threads REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${APR_INCLUDE_DIR}")
@@ -43,4 +48,3 @@ add_subdirectory(functests)
 
 enable_testing()
 add_subdirectory(unittests)
-

@@ -14,6 +14,7 @@ file(COPY
     test_data_ingestion.py
     test_query_language.py
     test_continuous_queries.py
+    test_volume_overflow.py
     DESTINATION
     ./
 )

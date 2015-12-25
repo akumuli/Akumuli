@@ -56,7 +56,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_number_of_checkpoints) {
 
     aku_FineTuneParams params = {};
     params.window_size = SMALL_LOOP;
-    Sequencer seq(nullptr, params);
+    Sequencer seq(params);
 
     int num_checkpoints = 0;
 
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_busy_behavior)
 
     aku_FineTuneParams params = {};
     params.window_size = 10;
-    Sequencer seq(nullptr, params);
+    Sequencer seq(params);
 
     int num_checkpoints = 0;
 
@@ -117,7 +117,7 @@ BOOST_AUTO_TEST_CASE(Test_sequencer_correct_order_of_elements)
 
     aku_FineTuneParams params = {};
     params.window_size = SMALL_LOOP;
-    Sequencer seq(nullptr, params);
+    Sequencer seq(params);
 
     int num_checkpoints = 0;
 
@@ -263,7 +263,7 @@ void test_sequencer_searching(int dir) {
 
     aku_FineTuneParams params = {};
     params.window_size = WINDOW;
-    Sequencer seq(nullptr, params);
+    Sequencer seq(params);
     std::vector<double> expected;
 
     for (int i = 0; i < SZLOOP; i++) {

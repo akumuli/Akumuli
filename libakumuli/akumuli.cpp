@@ -196,7 +196,19 @@ apr_status_t aku_create_database( const char     *file_name
     if (logger == nullptr) {
         logger = &aku_console_logger;
     }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger);
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger, false);
+}
+
+apr_status_t aku_create_test_database( const char     *file_name
+                                     , const char     *metadata_path
+                                     , const char     *volumes_path
+                                     , int32_t         num_volumes
+                                     , aku_logger_cb_t logger)
+{
+    if (logger == nullptr) {
+        logger = &aku_console_logger;
+    }
+    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger, true);
 }
 
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {

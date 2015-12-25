@@ -209,6 +209,23 @@ AKU_EXPORT apr_status_t aku_create_database
                                 , aku_logger_cb_t logger
                                 );
 
+/**
+ * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
+ * @param file_name database file name
+ * @param metadata_path path to metadata file
+ * @param volumes_path path to volumes
+ * @param num_volumes number of volumes to create
+ * @return APR errorcode or APR_SUCCESS
+ * TODO: move from apr_status_t to aku_Status
+ */
+AKU_EXPORT apr_status_t aku_create_test_database
+                                ( const char     *file_name
+                                , const char     *metadata_path
+                                , const char     *volumes_path
+                                , int32_t         num_volumes
+                                , aku_logger_cb_t logger
+                                );
+
 
 /** Remove all volumes.
   * @param file_name

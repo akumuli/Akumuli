@@ -71,7 +71,7 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     status = apr_dbd_get_driver(pool, "sqlite3", &driver_);
     if (status != APR_SUCCESS) {
         (*logger_)(AKU_LOG_ERROR, "Can't load driver, maybe libaprutil1-dbd-sqlite3 isn't installed");
-        throw std::runtime_error("Can't load sqlite3 dirver");
+        throw std::runtime_error("Can't load sqlite3 driver");
     }
 
     apr_dbd_t *handle = nullptr;

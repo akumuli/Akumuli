@@ -39,16 +39,12 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/filesystem.hpp>
 
-// TODO:remove header
-#include <sys/time.h>
-
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger);
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page=false);
 
 //----------------------------------Volume----------------------------------------------
 
-// TODO: remove max_cache_size
 Volume::Volume(const char* file_name,
                aku_FineTuneParams conf,
                aku_logger_cb_t logger)
@@ -62,7 +58,7 @@ Volume::Volume(const char* file_name,
 {
     mmap_.panic_if_bad();  // panic if can't mmap volume
     page_ = reinterpret_cast<PageHeader*>(mmap_.get_pointer());
-    cache_.reset(new Sequencer(page_, conf));
+    cache_.reset(new Sequencer(conf));
 }
 
 Volume::~Volume() {
@@ -103,7 +99,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     is_temporary_.store(true);
 
     std::shared_ptr<Volume> newvol;
-    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_);
+    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_, false);
     if (status != AKU_SUCCESS) {
         (*logger_)(AKU_LOG_ERROR, "Failed to create new volume");
         // Try to restore previous state on disk
@@ -310,19 +306,20 @@ void Storage::advance_volume_(int local_rev) {
         auto old_page_id = active_page_->get_page_id();
         AKU_UNUSED(old_page_id);
 
-        int close_lock = active_volume_->cache_->reset();
-        if (close_lock % 2 == 1) {
-            active_volume_->cache_->merge_and_compress(active_page_);
-        }
+        auto prev_volume = active_volume_;
         active_volume_->close();
         active_volume_->make_readonly();
-        log_message("page complete");
 
         // select next page in round robin order
         active_volume_index_++;
-        auto last_volume = volumes_[active_volume_index_ % volumes_.size()];
-        volumes_[active_volume_index_ % volumes_.size()] = last_volume->safe_realloc();
-        active_volume_ = volumes_[active_volume_index_ % volumes_.size()];
+        auto next_volume_index = active_volume_index_ % volumes_.size();
+        auto next_volume = volumes_[next_volume_index];
+        // swap next and prev volumes caches
+        volumes_[next_volume_index] = next_volume->safe_realloc();
+
+        active_volume_ = volumes_[next_volume_index];
+        std::swap(active_volume_->cache_, prev_volume->cache_);
+
         active_volume_->open();
         active_volume_->make_writable();
         active_page_ = active_volume_->page_;
@@ -397,21 +394,6 @@ struct TerminalNode : QP::Node {
     }
 };
 
-// TODO: remove
-class Timer
-{
-public:
-    Timer() { gettimeofday(&_start_time, nullptr); }
-    void   restart() { gettimeofday(&_start_time, nullptr); }
-    double elapsed() const {
-        timeval curr;
-        gettimeofday(&curr, nullptr);
-        return double(curr.tv_sec - _start_time.tv_sec) +
-               double(curr.tv_usec - _start_time.tv_usec)/1000000.0;
-    }
-private:
-    timeval _start_time;
-};
 
 void Storage::search(Caller &caller, InternalCursor* cur, const char* query) const {
     using namespace std;
@@ -457,7 +439,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                 }
             } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
-                for (int64_t ix = (starting_ix + volumes_.size() - 1); ix >= starting_ix; ix--) {
+                for (int64_t ix = (starting_ix + volumes_.size()); ix > starting_ix; ix--) {
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     // Search cache
@@ -489,62 +471,57 @@ void Storage::get_stats(aku_StorageStats* rcv_stats) {
 // Writing
 
 aku_Status Storage::_write_impl(TimeSeriesValue ts_value, aku_MemRange data) {
-    while (true) {
-        int local_rev = active_volume_index_.load();
-        aku_Status status = AKU_SUCCESS;
-        int merge_lock = 0;
-        std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
-        switch (status) {
-            case AKU_SUCCESS: {
-                if (merge_lock % 2 == 1) {
-                    // Slow path //
+    int local_rev = active_volume_index_.load();
+    aku_Status status = AKU_SUCCESS;
+    int merge_lock = 0;
+    std::tie(status, merge_lock) = active_volume_->cache_->add(ts_value);
+    switch (status) {
+        case AKU_SUCCESS: {
+            if (merge_lock % 2 == 1) {
+                // Slow path //
 
-                    // Update metadata store
-                    std::vector<SeriesMatcher::SeriesNameT> names;
-                    matcher_->pull_new_names(&names);
-                    if (!names.empty()) {
-                        metadata_->insert_new_names(names);
-                    }
+                // Update metadata store
+                std::vector<SeriesMatcher::SeriesNameT> names;
+                matcher_->pull_new_names(&names);
+                if (!names.empty()) {
+                    metadata_->insert_new_names(names);
+                }
 
-                    // Move data from cache to disk
-                    status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
-                    switch (status) {
-                    case AKU_SUCCESS:
-                        switch(config_.durability) {
-                        case AKU_MAX_DURABILITY:
-                            // Max durability
+                // Move data from cache to disk
+                status = active_volume_->cache_->merge_and_compress(active_volume_->get_page());
+                switch (status) {
+                case AKU_SUCCESS:
+                    switch(config_.durability) {
+                    case AKU_MAX_DURABILITY:
+                        // Max durability
+                        active_volume_->flush();
+                        break;
+                    case AKU_DURABILITY_SPEED_TRADEOFF:
+                        // Compromice some durability for speed
+                        if ((merge_lock % 8) == 1) {
                             active_volume_->flush();
-                            break;
-                        case AKU_DURABILITY_SPEED_TRADEOFF:
-                            // Compromice some durability for speed
-                            if ((merge_lock % 8) == 1) {
-                                active_volume_->flush();
-                            }
-                            break;
-                        case AKU_MAX_WRITE_SPEED:
-                            break;
-                        };
+                        }
                         break;
-                    case AKU_EOVERFLOW:
-                        // Page overflow
-                        advance_volume_(local_rev);
-                        break;
-                    default:
-                        log_error(aku_error_message(status));
-                        AKU_PANIC("Fatal error in write path");
+                    case AKU_MAX_WRITE_SPEED:
                         break;
                     };
-                }
-                return status;
+                    break;
+                case AKU_EOVERFLOW:
+                    // Page overflow
+                    advance_volume_(local_rev);
+                    status = AKU_SUCCESS;  // Value is stored by cache so it wouldn't be lost
+                    break;
+                default:
+                    log_error(aku_error_message(status));
+                    AKU_PANIC("Fatal error in write path");
+                    break;
+                };
             }
-            case AKU_EOVERFLOW:
-                advance_volume_(local_rev);
-                break;  // retry
-            default:
-                // Branch for rare and unexpected errors
-                return status;
         }
+        default:
+            break;
     }
+    return status;
 }
 
 //! write binary data
@@ -663,10 +640,10 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger) {
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page) {
     using namespace std;
     apr_status_t status;
-    int64_t size = AKU_MAX_PAGE_SIZE;
+    int64_t size = test_page ? AKU_TEST_PAGE_SIZE : AKU_MAX_PAGE_SIZE;
 
     status = create_file(file_name, size, logger);
     if (status != APR_SUCCESS) {
@@ -682,7 +659,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
     // Create index page
     auto index_ptr = mfile.get_pointer();
-    auto index_page = new (index_ptr) PageHeader(0, AKU_MAX_PAGE_SIZE, page_index, npages);
+    auto index_page = new (index_ptr) PageHeader(0, size, page_index, npages);
 
     // Activate the first page
     if (page_index == 0) {
@@ -693,10 +670,10 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 /** Create page files, return list of statuses.
   */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger) {
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, bool test_page=false) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger);
+        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger, test_page);
         results[ix] = res;
     }
     return results;
@@ -785,7 +762,8 @@ apr_status_t Storage::new_storage(const char  *file_name,
                                   const char  *metadata_path,
                                   const char  *volumes_path,
                                   int          num_pages,
-                                  aku_logger_cb_t logger)
+                                  aku_logger_cb_t logger,
+                                  bool         test_db)
 {
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
@@ -828,7 +806,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
 
-    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger);
+    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger, test_db);
     for(auto creation_status: page_creation_statuses) {
         if (creation_status != APR_SUCCESS) {
             (*logger)(AKU_LOG_ERROR, "Not all pages successfullly created. Cleaning up.");

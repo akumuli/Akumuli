@@ -189,7 +189,8 @@ struct Storage
                                     const char     *metadata_path,
                                     const char     *volumes_path,
                                     int             num_pages,
-                                    aku_logger_cb_t logger);
+                                    aku_logger_cb_t logger,
+                                    bool            test_db = false);
 
     /** Remove all volumes
       * @param file_name
