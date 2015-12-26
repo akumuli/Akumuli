@@ -232,7 +232,7 @@ int main(int cnt, const char** args)
 
     aku_FineTuneParams params = {};
     params.debug_mode = 0;
-    params.durability = AKU_MAX_DURABILITY; //AKU_MAX_WRITE_SPEED;
+    params.durability = /*AKU_MAX_DURABILITY; //*/AKU_MAX_WRITE_SPEED;
     params.enable_huge_tlb = 0;
     params.compression_threshold = 100000;
     params.window_size = 600;

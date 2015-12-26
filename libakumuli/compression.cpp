@@ -10,62 +10,6 @@ StreamOutOfBounds::StreamOutOfBounds(const char* msg) : std::runtime_error(msg)
 {
 }
 
-//! Stream that can be used to write data by 4-bits
-struct HalfByteStreamWriter {
-    Base128StreamWriter& stream;
-    size_t write_pos;
-    unsigned char tmp;
-
-    HalfByteStreamWriter(Base128StreamWriter& stream, size_t numblocks=0u)
-        : stream(stream)
-        , write_pos(numblocks)
-        , tmp(0)
-    {
-    }
-
-    void add4bits(unsigned char value) {
-        if (write_pos % 2 == 0) {
-            tmp = value & 0xF;
-        } else {
-            tmp |= (value << 4);
-            stream.put(tmp);
-            tmp = 0;
-        }
-        write_pos++;
-    }
-
-    void close() {
-        if (write_pos % 2 != 0) {
-            stream.put(tmp);
-        }
-    }
-};
-
-//! Stream that can be used to write data by 4-bits
-struct HalfByteStreamReader {
-    Base128StreamReader& stream;
-    size_t read_pos;
-    unsigned char tmp;
-
-    HalfByteStreamReader(Base128StreamReader& stream, size_t numblocks=0u)
-        : stream(stream)
-        , read_pos(0)
-        , tmp(0)
-    {
-    }
-
-    unsigned char read4bits() {
-        if (read_pos % 2 == 0) {
-            tmp = stream.read_raw<unsigned char>();
-            read_pos++;
-            return tmp & 0xF;
-        }
-        read_pos++;
-        return tmp >> 4;
-    }
-};
-
-
 struct PrevValPredictor {
     uint64_t last_value;
     PrevValPredictor(int) : last_value(0)
@@ -153,7 +97,7 @@ static const int PREDICTOR_N = 1 << 10;
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
-    HalfByteStreamWriter stream(wstream);
+    size_t total_blocks = 0u;
     PredictorT predictor(PREDICTOR_N);
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
@@ -164,40 +108,74 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         uint64_t predicted = predictor.predict_next();
         predictor.update(curr.bits);
         uint64_t diff = curr.bits ^ predicted;
-        int leading_zeros  = 64;
+
+        int leading_zeros = 64;
+        int trailing_zeros = 64;
+
+        if (diff != 0) {
+            trailing_zeros = __builtin_ctzl(diff);
+        }
+
+        trailing_zeros /= 2;
+        diff >>= trailing_zeros*2;
+
         if (diff != 0) {
             leading_zeros = __builtin_clzl(diff);
         }
-        int nblocks = 0xF - leading_zeros / 4;
-        if (nblocks < 0) {
-            nblocks = 0;
+
+        int nblocks = 8 - leading_zeros / 8;
+        wstream.put_raw(static_cast<unsigned char>( (nblocks&7) | (trailing_zeros<<3) ));
+
+        // Unrolled loop:
+        switch(nblocks) {
+        case 8:
+            wstream.put_raw(diff);
+            break;
+        case 7:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        case 6:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        case 5:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        case 4:
+            wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
+            break;
+        case 3:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        case 2:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        case 1:
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
         }
-        stream.add4bits(nblocks);
-        for (int i = (nblocks + 1); i --> 0;) {
-            stream.add4bits(diff & 0xF);
-            diff >>= 4;
-        }
+        total_blocks += (size_t)nblocks + 1;
     }
-    stream.close();
-    return stream.write_pos;
+    return total_blocks;
 }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
                                          size_t                   numblocks,
                                          std::vector<double>     *output)
 {
-    HalfByteStreamReader stream(rstream, numblocks);
     PredictorT predictor(PREDICTOR_N);
     auto end = output->end();
     auto it = output->begin();
     while(numblocks) {
         uint64_t diff   = 0ul;
-        int nsteps = stream.read4bits();
-        for (int i = 0; i < (nsteps + 1); i++) {
-            uint64_t delta = stream.read4bits();
-            diff |= delta << (i*4);
+        int flags = (int)rstream.read_raw<unsigned char>();
+        int nsteps = flags & 7;
+        int trailing_zeros = flags >> 3;
+        for (int i = 0; i < nsteps; i++) {
+            uint64_t delta = rstream.read_raw<unsigned char>();
+            diff |= delta << (i*8);
         }
-        numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of 4bit blocks
+        diff <<= trailing_zeros*2;
+        numblocks -= nsteps + 1;  // 1 for (nsteps + 1) and 1 for number of bytes
         union {
             uint64_t bits;
             double real;
