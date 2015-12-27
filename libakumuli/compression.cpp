@@ -124,10 +124,13 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         }
 
         int nblocks = 8 - leading_zeros / 8;
+        if (nblocks > 0) {
+            nblocks--;
+        }
         wstream.put_raw(static_cast<unsigned char>( (nblocks&7) | (trailing_zeros<<3) ));
 
         // Unrolled loop:
-        switch(nblocks) {
+        switch(nblocks+1) {
         case 8:
             wstream.put_raw(diff);
             break;
@@ -170,12 +173,12 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         int flags = (int)rstream.read_raw<unsigned char>();
         int nsteps = flags & 7;
         int trailing_zeros = flags >> 3;
-        for (int i = 0; i < nsteps; i++) {
+        for (int i = 0; i < (nsteps + 1); i++) {
             uint64_t delta = rstream.read_raw<unsigned char>();
             diff |= delta << (i*8);
         }
         diff <<= trailing_zeros*2;
-        numblocks -= nsteps + 1;  // 1 for (nsteps + 1) and 1 for number of bytes
+        numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of bytes
         union {
             uint64_t bits;
             double real;
