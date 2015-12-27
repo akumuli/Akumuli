@@ -27,7 +27,7 @@ struct RandomWalk {
 
     double generate(aku_ParamId id) {
         values.at(id) += distribution(generator);
-        return values.at(id);
+        return (int)values.at(id);
     }
 
     void add_anomaly(aku_ParamId id, double value) {
@@ -35,7 +35,7 @@ struct RandomWalk {
     }
 };
 
-int main() {
+int main(int argc, char** argv) {
     const uint64_t N_TIMESTAMPS = 1000;
     const uint64_t N_PARAMS = 100;
     UncompressedChunk header;
@@ -185,53 +185,55 @@ int main() {
         }
     }
 
-    // Bench compression process
-    const int NRUNS = 1000;
-    PerfTimer tm;
-    aku_Status tstatus;
-    volatile uint32_t vn;
-    ByteVector vec;
-    for (int i = 0; i < NRUNS; i++) {
-        vec.resize(N_PARAMS*N_TIMESTAMPS*24);
-        Writer w(&vec);
-        aku_Timestamp ts;
-        uint32_t n;
-        tstatus = CompressionUtil::encode_chunk(&n, &ts, &ts, &w, header);
-        if (tstatus != AKU_SUCCESS) {
-            std::cout << "Encoding error" << std::endl;
-            return 1;
+    if (argc == 2 && std::string(argv[1]) == "benchmark") {
+        // Bench compression process
+        const int NRUNS = 1000;
+        PerfTimer tm;
+        aku_Status tstatus;
+        volatile uint32_t vn;
+        ByteVector vec;
+        for (int i = 0; i < NRUNS; i++) {
+            vec.resize(N_PARAMS*N_TIMESTAMPS*24);
+            Writer w(&vec);
+            aku_Timestamp ts;
+            uint32_t n;
+            tstatus = CompressionUtil::encode_chunk(&n, &ts, &ts, &w, header);
+            if (tstatus != AKU_SUCCESS) {
+                std::cout << "Encoding error" << std::endl;
+                return 1;
+            }
+            vn = n;
         }
-        vn = n;
-    }
-    double elapsed = tm.elapsed();
-    std::cout << "Elapsed (akumuli): " << elapsed << " " << vn << std::endl;
+        double elapsed = tm.elapsed();
+        std::cout << "Elapsed (akumuli): " << elapsed << " " << vn << std::endl;
 
-    tm.restart();
-    for (int i = 0; i < NRUNS; i++) {
-        uLongf offset = 0;
-        // compress param ids
-        auto zstatus = compress(pgzout, &gzoutlen, pgz_ids, header.paramids.size()*8);
-        if (zstatus != Z_OK) {
-            std::cout << "GZip error" << std::endl;
-            exit(zstatus);
+        tm.restart();
+        for (int i = 0; i < NRUNS; i++) {
+            uLongf offset = 0;
+            // compress param ids
+            auto zstatus = compress(pgzout, &gzoutlen, pgz_ids, header.paramids.size()*8);
+            if (zstatus != Z_OK) {
+                std::cout << "GZip error" << std::endl;
+                exit(zstatus);
+            }
+            offset += gzoutlen;
+            gzoutlen = gz_max_size - offset;
+            // compress timestamps
+            zstatus = compress(pgzout + offset, &gzoutlen, pgz_ts, header.timestamps.size()*8);
+            if (zstatus != Z_OK) {
+                std::cout << "GZip error" << std::endl;
+                exit(zstatus);
+            }
+            offset += gzoutlen;
+            gzoutlen = gz_max_size - offset;
+            // compress floats
+            zstatus = compress(pgzout + offset, &gzoutlen, pgz_val, header.values.size()*8);
+            if (zstatus != Z_OK) {
+                std::cout << "GZip error" << std::endl;
+                exit(zstatus);
+            }
         }
-        offset += gzoutlen;
-        gzoutlen = gz_max_size - offset;
-        // compress timestamps
-        zstatus = compress(pgzout + offset, &gzoutlen, pgz_ts, header.timestamps.size()*8);
-        if (zstatus != Z_OK) {
-            std::cout << "GZip error" << std::endl;
-            exit(zstatus);
-        }
-        offset += gzoutlen;
-        gzoutlen = gz_max_size - offset;
-        // compress floats
-        zstatus = compress(pgzout + offset, &gzoutlen, pgz_val, header.values.size()*8);
-        if (zstatus != Z_OK) {
-            std::cout << "GZip error" << std::endl;
-            exit(zstatus);
-        }
+        elapsed = tm.elapsed();
+        std::cout << "Elapsed (zlib): " << elapsed << " " << vn << std::endl;
     }
-    elapsed = tm.elapsed();
-    std::cout << "Elapsed (zlib): " << elapsed << " " << vn << std::endl;
 }
