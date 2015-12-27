@@ -204,5 +204,34 @@ int main() {
         vn = n;
     }
     double elapsed = tm.elapsed();
-    std::cout << "Elapsed: " << elapsed << " " << vn << std::endl;
+    std::cout << "Elapsed (akumuli): " << elapsed << " " << vn << std::endl;
+
+    tm.restart();
+    for (int i = 0; i < NRUNS; i++) {
+        uLongf offset = 0;
+        // compress param ids
+        auto zstatus = compress(pgzout, &gzoutlen, pgz_ids, header.paramids.size()*8);
+        if (zstatus != Z_OK) {
+            std::cout << "GZip error" << std::endl;
+            exit(zstatus);
+        }
+        offset += gzoutlen;
+        gzoutlen = gz_max_size - offset;
+        // compress timestamps
+        zstatus = compress(pgzout + offset, &gzoutlen, pgz_ts, header.timestamps.size()*8);
+        if (zstatus != Z_OK) {
+            std::cout << "GZip error" << std::endl;
+            exit(zstatus);
+        }
+        offset += gzoutlen;
+        gzoutlen = gz_max_size - offset;
+        // compress floats
+        zstatus = compress(pgzout + offset, &gzoutlen, pgz_val, header.values.size()*8);
+        if (zstatus != Z_OK) {
+            std::cout << "GZip error" << std::endl;
+            exit(zstatus);
+        }
+    }
+    elapsed = tm.elapsed();
+    std::cout << "Elapsed (zlib): " << elapsed << " " << vn << std::endl;
 }
