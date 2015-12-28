@@ -15,6 +15,7 @@ file(COPY
     test_query_language.py
     test_continuous_queries.py
     test_volume_overflow.py
+    test_restart.py
     DESTINATION
     ./
 )
