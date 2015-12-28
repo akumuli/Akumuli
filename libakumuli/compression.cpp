@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <iostream> // TODO: remove me
 
 namespace Akumuli {
 
@@ -116,8 +117,9 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             trailing_zeros = __builtin_ctzl(diff);
         }
 
-        trailing_zeros /= 2;
-        diff >>= trailing_zeros*2;
+        trailing_zeros /= 4;
+        diff >>= trailing_zeros*4;
+        // trailing_zeros is in [0, 16] range
 
         if (diff != 0) {
             leading_zeros = __builtin_clzl(diff);
@@ -127,16 +129,17 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         if (nblocks > 0) {
             nblocks--;
         }
-        wstream.put_raw(static_cast<unsigned char>( (nblocks&7) | (trailing_zeros<<3) ));
+
+        unsigned char flags = nblocks&7;
+        flags |= trailing_zeros << 3;
+        wstream.put_raw(flags);
 
         // Unrolled loop:
-        switch(nblocks+1) {
-        case 8:
-            wstream.put_raw(diff);
-            break;
+        switch(nblocks) {
         case 7:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
+            wstream.put_raw(diff);
+            total_blocks += (size_t)nblocks + 2;
+            break;
         case 6:
             wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
             diff >>= 8;
@@ -144,19 +147,28 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
             diff >>= 8;
         case 4:
-            wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
-            break;
-        case 3:
             wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
             diff >>= 8;
+        case 3:
+            wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
+            total_blocks += (size_t)nblocks + 2;
+            break;
         case 2:
             wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
             diff >>= 8;
         case 1:
             wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
             diff >>= 8;
+        case 0:
+            if (trailing_zeros != 0x10) {
+                wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+                diff >>= 8;
+                total_blocks += (size_t)nblocks + 2;
+            } else {
+                // In this case no payload data is stored
+                total_blocks += 1;
+            }
         }
-        total_blocks += (size_t)nblocks + 1;
     }
     return total_blocks;
 }
@@ -169,16 +181,18 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
     auto end = output->end();
     auto it = output->begin();
     while(numblocks) {
-        uint64_t diff   = 0ul;
+        uint64_t diff = 0ul;
         int flags = (int)rstream.read_raw<unsigned char>();
-        int nsteps = flags & 7;
+        int nsteps = (flags & 7) + 1;
         int trailing_zeros = flags >> 3;
-        for (int i = 0; i < (nsteps + 1); i++) {
-            uint64_t delta = rstream.read_raw<unsigned char>();
-            diff |= delta << (i*8);
+        if (trailing_zeros != 0x10) {
+            for (int i = 0; i < nsteps; i++) {
+                uint64_t delta = rstream.read_raw<unsigned char>();
+                diff |= delta << (i*8);
+            }
         }
-        diff <<= trailing_zeros*2;
-        numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of bytes
+        diff <<= trailing_zeros*4;
+        numblocks -= nsteps + 1;
         union {
             uint64_t bits;
             double real;
