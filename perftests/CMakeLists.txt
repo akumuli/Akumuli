@@ -120,6 +120,7 @@ add_executable(
 
 target_link_libraries(
     perf_compression
+    z
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_compression PROPERTIES EXCLUDE_FROM_ALL 1)
