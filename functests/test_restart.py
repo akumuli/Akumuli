@@ -92,6 +92,7 @@ def main(path):
             chan.send(it)
 
         time.sleep(5)  # wait untill all messagess will be processed
+        chan.close()
 
         test_read_all(dt, delta, nmsgs)
     except:
@@ -101,9 +102,12 @@ def main(path):
         print("Stopping server...")
         akumulid.stop()
         time.sleep(5)
+        print("Server stopped")
 
-    akumuli.serve()
+    print("Starting server...")
+    akumulid.serve()
     time.sleep(5)
+    print("Server started")
     try:
         test_read_all(dt, delta, nmsgs)
     finally:
