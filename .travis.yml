@@ -14,21 +14,23 @@ before_install:
 
 
 before_script:
-   - mkdir build
-   - cd build
-   - cmake ..
+  - mkdir -p shippable/testresults
+  - mkdir -p shippable/codecoverage
+  - mkdir build
+  - cd build
+  - cmake ..
 
 script: 
-   - make -j4
-   - ctest -VV
-   - functests/storage_test /tmp
-   - akumulid/akumulid --init
-   - python functests/test_data_ingestion.py akumulid/ TCP
-   - python functests/test_data_ingestion.py akumulid/ UDP
-   - python functests/test_query_language.py akumulid/
-   - python functests/test_continuous_queries.py akumulid/
-   - python functests/test_volume_overflow.py akumulid/
-   - python functests/test_restart.py akumulid/
+  - make -j4
+  - ctest -VV
+  - functests/storage_test /tmp
+  - akumulid/akumulid --init
+  - python functests/test_data_ingestion.py akumulid/ TCP
+  - python functests/test_data_ingestion.py akumulid/ UDP
+  - python functests/test_query_language.py akumulid/
+  - python functests/test_continuous_queries.py akumulid/
+  - python functests/test_volume_overflow.py akumulid/
+  - python functests/test_restart.py akumulid/
 
 after_script:
-   - cp /tmp/akumuli.log shipable/testreports
+  - cp /tmp/akumuli.log shippable/testresults
