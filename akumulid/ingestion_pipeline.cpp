@@ -67,6 +67,10 @@ AkumuliConnection::AkumuliConnection(const char *path,
     }
 }
 
+void AkumuliConnection::close() {
+    aku_close_database(db_);
+}
+
 aku_Status AkumuliConnection::write(aku_Sample const& sample) {
     return aku_write(db_, &sample);
 }
@@ -204,6 +208,8 @@ void IngestionPipeline::start() {
                                     self->logger_.error() << "Queue not empty, some data will be lost.";
                                 }
                             }
+                            self->logger_.info() << "Closing akumuli database";
+                            self->con_->close();
                             // Stop
                             self->logger_.info() << "Stopping pipeline worker";
                             self->stopbar_.wait();

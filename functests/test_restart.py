@@ -92,6 +92,7 @@ def main(path):
             chan.send(it)
 
         time.sleep(5)  # wait untill all messagess will be processed
+        print("Trying to close channel")
         chan.close()
 
         test_read_all(dt, delta, nmsgs)

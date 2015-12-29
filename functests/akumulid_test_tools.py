@@ -12,7 +12,7 @@ import StringIO
 
 def parse_timestamp(ts):
     """Parse ISO formatted timestamp"""
-    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
+    return datetime.datetime.strptime(ts.rstrip('0').rstrip('.'), "%Y%m%dT%H%M%S.%f")
 
 
 class TCPChan:
