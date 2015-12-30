@@ -240,7 +240,9 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
 void Storage::close() {
     auto status = active_volume_->cache_->close(active_page_);
     if (status != AKU_SUCCESS) {
-        log_error("Can't merge cached values back to disk, some data would be lost");
+        std::stringstream fmt;
+        fmt << "Can't merge cached values back to disk, some data would be lost. Reason: " << aku_error_message(status);
+        log_error(fmt.str().c_str());
         return;
     }
     active_volume_->flush();
