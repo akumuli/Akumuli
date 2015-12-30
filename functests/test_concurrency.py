@@ -49,7 +49,7 @@ def writer(dt, delta, N):
     except:
         print("Exception in writer")
         traceback.print_exc()
-        sys.exit(1)
+        raise
 
 def line2tup(seq):
     for line in seq:
@@ -91,16 +91,19 @@ def reader(dtstart, delta, N):
 
     try:
         print("Test #1 - continuous queries")
+        end = dtstart + delta*(N-1)
+        begin = dtstart
+        timedelta = end - begin
+        query_params = {"output": { "format":  "csv" }}
         while True:
-            end = dtstart + delta*(N-1)
-            begin = dtstart
-            timedelta = end - begin
-            query_params = {"output": { "format":  "csv" }}
             query = att.makequery("test", end, begin, **query_params)
+            #print("Query: {0}".format(query))
             queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
             response = urlopen(queryurl, json.dumps(query))
             tuples = line2tup(response)
             first, last = require_continuous(tuples, cmp_tuples)
+            #print("First: {0}".format(first[1].strftime("%Y%m%dT%H%M%S.%f")))
+            #print("Last : {0}".format( last[1].strftime("%Y%m%dT%H%M%S.%f")))
             if last is not None:
                 begin = last[1]
             if first[1] == end:
@@ -138,7 +141,7 @@ def main(path, debug=False):
 
     except:
         traceback.print_exc()
-        sys.exit(1)
+        raise
     finally:
         if not debug:
             print("Stopping server...")
