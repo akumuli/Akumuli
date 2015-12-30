@@ -17,6 +17,7 @@ file(COPY
     test_volume_overflow.py
     test_restart.py
     test_kill.py
+    test_concurrency.py
     DESTINATION
     ./
 )
