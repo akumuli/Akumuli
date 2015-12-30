@@ -48,6 +48,7 @@ void UdpServer::start(SignalHandler *sig, int id) {
 void UdpServer::stop() {
     stop_.store(1, std::memory_order_relaxed);
     stop_barrier_.wait();
+    logger_.info() << "UDP server stopped";
 }
 
 

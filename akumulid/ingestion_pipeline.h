@@ -52,6 +52,8 @@ struct DbConnection {
 
     virtual ~DbConnection() {}
 
+    virtual void close() = 0;
+
     //! Write value to DB
     virtual aku_Status write(const aku_Sample &sample) = 0;
 
@@ -81,6 +83,8 @@ private:
     aku_Database   *db_;
 public:
     AkumuliConnection(const char* path, bool hugetlb, Durability durability, uint32_t compression_threshold, uint64_t window_width, uint64_t cache_size);
+
+    virtual void close();
 
     virtual aku_Status write(const aku_Sample &sample);
 

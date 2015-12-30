@@ -20,6 +20,9 @@ struct DbMock : DbConnection {
     typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
     std::vector<ValueT> results;
 
+    void close() {
+    }
+
     aku_Status write(const aku_Sample &sample) {
         logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
         results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64));
@@ -41,6 +44,9 @@ struct DbMock : DbConnection {
 template<aku_Status ERR>
 struct DbErrMock : DbConnection {
     aku_Status err = ERR;
+
+    void close() {
+    }
 
     aku_Status write(const aku_Sample &sample) {
         return err;
