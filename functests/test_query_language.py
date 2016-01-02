@@ -282,9 +282,68 @@ def test_read_in_forward_direction(dtstart, delta, N):
     print("Test #6 passed")
 
 
+def test_paa_in_backward_direction(dtstart, delta, N):
+    """Filter data by tag"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart
+    query_params = {
+            "sample": [{ "name": "median-paa" }],
+        "output": { "format":  "csv" },
+        "group-by": { "time": "1s" },
+    }
+    query = att.makequery("test", begin, end, **query_params)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    exp_ts = begin
+    exp_value = N-1
+    iterations = 0
+    print("Test #7 - filter by tag")
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    error = None
+    for line in response:
+        if iterations < 100:
+            print("|> " + line.strip())
+        if iterations == 100 and error is not None:
+            raise error
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
+
+            try:
+                att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            except Exception as err:
+                if iterations < 100:
+                    error = err
+                else:
+                    raise
+
+            if iterations % len(expected_tags) == 0:
+                exp_ts -= datetime.timedelta(seconds=1)
+                exp_value -= 100
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+
+    # Check that we received all values
+    if iterations != N:
+        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
+    print("Test #7 passed")
+
+
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
-    print("Test #7 - late write")
+    print("Test #8 - late write")
     window = att.get_window_width()
     ts = dtstart + delta*(N-1) - 2*window
     message = att.msg(ts, 1.0, 'test', key='value')
@@ -293,7 +352,8 @@ def test_late_write(dtstart, delta, N, chan):
     if resp != '-DB late write':
         print(resp)
         raise ValueError("Late write not detected")
-    print("Test #7 passed")
+    print("Test #8 passed")
+
 
 
 def main(path, debug=False):
@@ -330,13 +390,16 @@ def main(path, debug=False):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
+        """
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
-        test_late_write(dt, delta, nmsgs, chan)
+        """
+        test_paa_in_backward_direction(dt, delta, nmsgs)
+        #test_late_write(dt, delta, nmsgs, chan)
     except:
         traceback.print_exc()
         sys.exit(1)
