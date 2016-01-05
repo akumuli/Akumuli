@@ -66,6 +66,9 @@ struct ConnectionMock : DbConnection
         return AKU_SUCCESS;
     }
 
+    void close() {
+    }
+
     std::shared_ptr<DbCursor> search(std::string query) {
         return std::make_shared<CursorMock>();
     }

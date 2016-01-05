@@ -35,12 +35,6 @@ namespace Akumuli {
 
 struct TimeSeriesValue {
 
-    // Type definitions
-    struct Blob {
-        uint32_t value;
-        uint32_t value_length;
-    };
-
     enum ValueType {
         BLOB,
         DOUBLE,
@@ -59,7 +53,7 @@ struct TimeSeriesValue {
 
     aku_ParamId get_paramid() const;
 
-    aku_Sample to_result(const PageHeader *page) const;
+    aku_Sample to_result() const;
 
     void add_to_header(UncompressedChunk *chunk_header) const;
 
@@ -94,7 +88,6 @@ struct Sequencer {
     std::vector<PSortedRun>      ready_;            //< Ready to merge
     PSortedRun                   key_;
     const aku_Duration           window_size_;
-    const PageHeader* const      page_;
     aku_Timestamp                top_timestamp_;    //< Largest timestamp ever seen
     aku_Timestamp                checkpoint_;       //< Last checkpoint timestamp
     mutable std::atomic_int      sequence_number_;  //< Flag indicates that merge operation is in progress and
@@ -105,7 +98,7 @@ struct Sequencer {
     mutable std::vector<RWLock>  run_locks_;
     const size_t                 c_threshold_;      //< Compression threshold
 
-    Sequencer(PageHeader const* page, aku_FineTuneParams const& config);
+    Sequencer(aku_FineTuneParams const& config);
 
     /** Add new sample to sequence.
       * @brief Timestamp of the sample can be out of order.

@@ -365,7 +365,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool fast_path() {
         while (!max_index()) {
-            if (page_->get_page_id() == 0 && page_->get_close_count() == 0) {
+            if (!IS_BACKWARD_ && page_->get_page_id() == 0 && page_->get_close_count() == 0) {
                 // Special case. Database is new and there is no data yet.
                 if (query_->put(QP::NO_DATA)) {
                     continue;
