@@ -306,12 +306,7 @@ def test_paa_in_backward_direction(dtstart, delta, N):
         "tag3=E",
         "tag3=D",
     ]
-    error = None
     for line in response:
-        if iterations < 100:
-            print("|> " + line.strip())
-        if iterations == 100 and error is not None:
-            raise error
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
@@ -391,16 +386,14 @@ def main(path, debug=False):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
-        """
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
-        """
         test_paa_in_backward_direction(dt, delta, nmsgs)
-        #test_late_write(dt, delta, nmsgs, chan)
+        test_late_write(dt, delta, nmsgs, chan)
     except:
         traceback.print_exc()
         sys.exit(1)
