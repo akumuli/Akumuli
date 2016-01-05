@@ -15,18 +15,19 @@ void Limiter::complete() {
 }
 
 bool Limiter::put(const aku_Sample& sample) {
-    if (sample.payload.type != aku_PData::MARGIN && sample.payload.type != aku_PData::EMPTY) {
-        if (counter_ < offset_) {
-            // continue iteration
-            return true;
-        } else if (counter_ >= limit_) {
-            // stop iteration
-            return false;
-        }
-        counter_++;
-        return next_->put(sample);
+    if (sample.payload.type > aku_PData::MARGIN || sample.payload.type == aku_PData::EMPTY) {
+        // If margin or empty - continue
+        return true;
     }
-    return true;
+    if (counter_ < offset_) {
+        // continue iteration
+        return true;
+    } else if (counter_ >= limit_) {
+        // stop iteration
+        return false;
+    }
+    counter_++;
+    return next_->put(sample);
 }
 
 void Limiter::set_error(aku_Status status) {

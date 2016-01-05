@@ -284,12 +284,12 @@ def test_read_in_forward_direction(dtstart, delta, N):
 
 def test_paa_in_backward_direction(dtstart, delta, N):
     """Filter data by tag"""
-    begin = dtstart + delta*(N-1)
+    begin = dtstart + delta*N
     end = dtstart
     query_params = {
-            "sample": [{ "name": "median-paa" }],
-        "output": { "format":  "csv" },
-        "group-by": { "time": "1s" },
+        "sample": [{   "name": "paa" }],
+        "output":  { "format": "csv" },
+        "group-by":{   "time": "1s"  },
     }
     query = att.makequery("test", begin, end, **query_params)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
@@ -300,11 +300,11 @@ def test_paa_in_backward_direction(dtstart, delta, N):
     iterations = 0
     print("Test #7 - filter by tag")
     expected_tags = [
-        "tag3=D",
-        "tag3=E",
-        "tag3=F",
-        "tag3=G",
         "tag3=H",
+        "tag3=G",
+        "tag3=F",
+        "tag3=E",
+        "tag3=D",
     ]
     error = None
     for line in response:
@@ -317,17 +317,18 @@ def test_paa_in_backward_direction(dtstart, delta, N):
             tagline = columns[0].strip()
             timestamp = att.parse_timestamp(columns[1].strip())
             value = float(columns[2].strip())
-            exp_tags = expected_tags[(N - iterations - 1) % len(expected_tags)]
 
-            try:
-                att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
-            except Exception as err:
-                if iterations < 100:
-                    error = err
-                else:
-                    raise
+            exp_tags = expected_tags[iterations % len(expected_tags)]
 
-            if iterations % len(expected_tags) == 0:
+            #att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            if timestamp != exp_ts:
+                raise ValueError("Invalid timestamp")
+            #if value != exp_value:
+            #    raise ValueError("Invalid value")
+            if not tagline.endswith(exp_tags):
+                raise ValueError("Invalid tags")
+
+            if (iterations + 1) % 10 == 0:
                 exp_ts -= datetime.timedelta(seconds=1)
                 exp_value -= 100
             iterations += 1
@@ -336,7 +337,7 @@ def test_paa_in_backward_direction(dtstart, delta, N):
             raise
 
     # Check that we received all values
-    if iterations != N:
+    if iterations == 0:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
     print("Test #7 passed")
 
@@ -377,7 +378,7 @@ def main(path, debug=False):
         chan = att.TCPChan(HOST, TCPPORT)
 
         # fill data in
-        dt = datetime.datetime.utcnow()
+        dt = datetime.datetime.utcnow().replace(second=0, microsecond=0)
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 100000
         print("Sending {0} messages through TCP...".format(nmsgs))

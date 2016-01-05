@@ -21,23 +21,34 @@ struct PAA : Node {
     {
     }
 
-    bool average_samples(aku_Timestamp ts) {
+    bool average_samples(aku_Sample const& margin) {
+        std::vector<aku_ParamId> ids;
         for (auto& pair: counters_) {
-            State& state = pair.second;
+            ids.push_back(pair.first);
+        }
+        if (margin.payload.type == aku_PData::LO_MARGIN) {
+            // Moving in backward direction
+            std::sort(ids.begin(), ids.end(), std::greater<aku_ParamId>());
+        } else {
+            // Moving forward
+            std::sort(ids.begin(), ids.end(), std::less<aku_ParamId>());
+        }
+        for (auto id: ids) {
+            State& state = counters_[id];
             if (state.ready()) {
                 aku_Sample sample;
-                sample.paramid = pair.first;
+                sample.paramid = id;
                 sample.payload.float64 = state.value();
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.payload.size = sizeof(aku_Sample);
-                sample.timestamp = ts;
+                sample.timestamp = margin.timestamp;
                 state.reset();
                 if (!next_->put(sample)) {
                     return false;
                 }
             }
         }
-        if (!next_->put(SAMPLING_MARGIN)) {
+        if (!next_->put(margin)) {
             return false;
         }
         return true;
@@ -48,8 +59,8 @@ struct PAA : Node {
     }
 
     virtual bool put(const aku_Sample &sample) {
-        if (sample.payload.type == aku_PData::MARGIN) {
-            if (!average_samples(sample.timestamp)) {
+        if (sample.payload.type > aku_PData::MARGIN) {
+            if (!average_samples(sample)) {
                 return false;
             }
         } else {
