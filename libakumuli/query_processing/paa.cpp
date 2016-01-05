@@ -44,10 +44,12 @@ double MedianCounter::value() const {
     }
     if (acc.size() < 2) {
         return acc.at(0);
+    } else if (acc.size() == 2) {
+        return (acc[0] + acc[1])/2;
     }
     auto middle = acc.begin();
     std::advance(middle, acc.size() / 2);
-    std::partial_sort(acc.begin(), middle, acc.end());
+    std::partial_sort(acc.begin(), middle + 1, acc.end());
     return *middle;
 }
 

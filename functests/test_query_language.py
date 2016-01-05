@@ -282,23 +282,48 @@ def test_read_in_forward_direction(dtstart, delta, N):
     print("Test #6 passed")
 
 
-def test_paa_in_backward_direction(dtstart, delta, N):
-    """Filter data by tag"""
+def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
+    expected_values = [
+        reversed(range(9, 100000, 10)),
+        reversed(range(8, 100000, 10)),
+        reversed(range(7, 100000, 10)),
+        reversed(range(6, 100000, 10)),
+        reversed(range(5, 100000, 10)),
+        reversed(range(4, 100000, 10)),
+        reversed(range(3, 100000, 10)),
+        reversed(range(2, 100000, 10)),
+        reversed(range(1, 100000, 10)),
+        reversed(range(0, 100000, 10)),
+    ]
+
+    def sliding_window(values, winlen, func):
+        top = [0]*winlen
+        for ix, it in enumerate(values):
+            k = ix % winlen
+            top[k] = it
+            if (ix + 1) % winlen == 0:
+                yield func(top)
+
+    def round_robin(sequences, maxlen):
+        l = len(sequences)
+        for i in xrange(0, maxlen):
+            seq = sequences[i % l]
+            it = seq.next()
+            yield it
+
     begin = dtstart + delta*N
     end = dtstart
     query_params = {
-        "sample": [{   "name": "paa" }],
+        "sample": [{   "name": query }],
         "output":  { "format": "csv" },
         "group-by":{   "time": "1s"  },
     }
     query = att.makequery("test", begin, end, **query_params)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
-
     exp_ts = begin
-    exp_value = N-1
     iterations = 0
-    print("Test #7 - filter by tag")
+    print("{0} - PAA".format(testname))
     expected_tags = [
         "tag3=H",
         "tag3=G",
@@ -306,6 +331,8 @@ def test_paa_in_backward_direction(dtstart, delta, N):
         "tag3=E",
         "tag3=D",
     ]
+    sequences = [sliding_window(it, 100, fn) for it in expected_values]
+    exp_values = round_robin(sequences, N)
     for line in response:
         try:
             columns = line.split(',')
@@ -314,27 +341,25 @@ def test_paa_in_backward_direction(dtstart, delta, N):
             value = float(columns[2].strip())
 
             exp_tags = expected_tags[iterations % len(expected_tags)]
-
-            #att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            exp_value = exp_values.next()
             if timestamp != exp_ts:
-                raise ValueError("Invalid timestamp")
-            #if value != exp_value:
-            #    raise ValueError("Invalid value")
+                raise ValueError("Expected {0}, actual {1}".format(exp_ts, timestamp))
+            if value != exp_value:
+                raise ValueError("Expected {0}, actual {1}".format(exp_value, value))
             if not tagline.endswith(exp_tags):
-                raise ValueError("Invalid tags")
+                raise ValueError("Expected {0}, actual {1}".format(exp_tags, tagline))
 
             if (iterations + 1) % 10 == 0:
                 exp_ts -= datetime.timedelta(seconds=1)
-                exp_value -= 100
             iterations += 1
         except:
             print("Error at line: {0}".format(line))
             raise
 
     # Check that we received all values
-    if iterations == 0:
-        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #7 passed")
+    if iterations != 990:
+        raise ValueError("Expect {0} data points, get {1} data points".format(990, iterations))
+    print("{0} passed".format(testname))
 
 
 def test_late_write(dtstart, delta, N, chan):
@@ -392,7 +417,11 @@ def main(path, debug=False):
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
-        test_paa_in_backward_direction(dt, delta, nmsgs)
+        test_paa_in_backward_direction("Test #7", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
+        def med(buf):
+            buf = sorted(buf)
+            return buf[len(buf)/2]
+        test_paa_in_backward_direction("Test #8", dt, delta, nmsgs, med, "median-paa")
         test_late_write(dt, delta, nmsgs, chan)
     except:
         traceback.print_exc()

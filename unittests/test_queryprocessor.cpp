@@ -34,7 +34,7 @@ public:
         BOOST_FAIL("set_error shouldn't be called");
     }
     bool put(aku_Sample const& s) {
-        if (s.payload.type != aku_PData::MARGIN) {
+        if (s.payload.type < aku_PData::MARGIN) {
             ids.push_back(s.paramid);
             timestamps.push_back(s.timestamp);
             values.push_back(s.payload.float64);
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
     aku_Sample margin = {};
-    margin.payload.type = aku_PData::MARGIN;
+    margin.payload.type = aku_PData::HI_MARGIN;
     margin.payload.size = sizeof(aku_Sample);
     auto mock = std::make_shared<NodeMock>();
     auto ma = std::make_shared<MeanPAA>(mock);
@@ -155,7 +155,7 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_fwd) {
 
 BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     aku_Sample margin = {};
-    margin.payload.type = aku_PData::MARGIN;
+    margin.payload.type = aku_PData::LO_MARGIN;
     margin.payload.size = sizeof(aku_Sample);
     auto mock = std::make_shared<NodeMock>();
     auto ma = std::make_shared<MeanPAA>(mock);
