@@ -119,4 +119,24 @@ struct MedianPAA : PAA<MedianCounter> {
     MedianPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 };
 
+struct MaxCounter {
+    double acc;
+    size_t num;
+
+    void reset();
+
+    double value() const;
+
+    bool ready() const;
+
+    void add(aku_Sample const& value);
+};
+
+struct MaxPAA : PAA<MaxCounter> {
+
+    MaxPAA(std::shared_ptr<Node> next);
+
+    MaxPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
+};
+
 }}  // namespace

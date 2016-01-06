@@ -71,7 +71,42 @@ MedianPAA::MedianPAA(const boost::property_tree::ptree &, std::shared_ptr<Node> 
 {
 }
 
+// MaxPAA
+
+void MaxCounter::reset() {
+    acc = 0;
+    num = 0;
+}
+
+double MaxCounter::value() const {
+    return acc;
+}
+
+bool MaxCounter::ready() const {
+    return num != 0;
+}
+
+void MaxCounter::add(aku_Sample const& value) {
+    if (!num) {
+        acc = value.payload.float64;
+    } else {
+        acc = std::max(acc, value.payload.float64);
+    }
+    num++;
+}
+
+MaxPAA::MaxPAA(std::shared_ptr<Node> next)
+    : PAA<MaxCounter>(next)
+{
+}
+
+MaxPAA::MaxPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
+    : PAA<MaxCounter>(next)
+{
+}
+
 static QueryParserToken<MeanPAA> mean_paa_token("paa");
 static QueryParserToken<MedianPAA> median_paa_token("median-paa");
+static QueryParserToken<MaxPAA> max_paa_token("max-paa");
 
 }}  // namespace

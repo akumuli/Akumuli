@@ -364,7 +364,7 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
 
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
-    print("Test #8 - late write")
+    print("Test #7 - late write")
     window = att.get_window_width()
     ts = dtstart + delta*(N-1) - 2*window
     message = att.msg(ts, 1.0, 'test', key='value')
@@ -373,8 +373,11 @@ def test_late_write(dtstart, delta, N, chan):
     if resp != '-DB late write':
         print(resp)
         raise ValueError("Late write not detected")
-    print("Test #8 passed")
+    print("Test #7 passed")
 
+def med(buf):
+    buf = sorted(buf)
+    return buf[len(buf)/2]
 
 
 def main(path, debug=False):
@@ -417,12 +420,10 @@ def main(path, debug=False):
         test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
-        test_paa_in_backward_direction("Test #7", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
-        def med(buf):
-            buf = sorted(buf)
-            return buf[len(buf)/2]
-        test_paa_in_backward_direction("Test #8", dt, delta, nmsgs, med, "median-paa")
         test_late_write(dt, delta, nmsgs, chan)
+        test_paa_in_backward_direction("Test #8", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
+        test_paa_in_backward_direction("Test #9", dt, delta, nmsgs, med, "median-paa")
+        test_paa_in_backward_direction("Test #A", dt, delta, nmsgs, max, "max-paa")
     except:
         traceback.print_exc()
         sys.exit(1)
