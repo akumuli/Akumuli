@@ -119,24 +119,48 @@ struct MedianPAA : PAA<MedianCounter> {
     MedianPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 };
 
-struct MaxCounter {
+template< class SelectFn >
+struct ValueSelector {
     double acc;
     size_t num;
 
-    void reset();
+    void reset() {
+        acc = 0;
+        num = 0;
+    }
 
-    double value() const;
+    double value() const {
+        return acc;
+    }
 
-    bool ready() const;
+    bool ready() const {
+        return num != 0;
+    }
 
-    void add(aku_Sample const& value);
+    void add(aku_Sample const& value) {
+        if (!num) {
+            acc = value.payload.float64;
+        } else {
+            SelectFn fn;
+            acc = fn(acc, value.payload.float64);
+        }
+        num++;
+    }
 };
 
-struct MaxPAA : PAA<MaxCounter> {
+template<class SelectFn>
+struct GenericPAA : PAA<ValueSelector<SelectFn>> {
+    GenericPAA(std::shared_ptr<Node> next)
+        : PAA<ValueSelector<SelectFn>>(next)
+    {
+    }
 
-    MaxPAA(std::shared_ptr<Node> next);
-
-    MaxPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
+    GenericPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
+        : PAA<ValueSelector<SelectFn>>(next)
+    {
+    }
 };
+
+
 
 }}  // namespace

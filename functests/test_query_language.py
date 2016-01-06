@@ -323,7 +323,7 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     response = urlopen(queryurl, json.dumps(query))
     exp_ts = begin
     iterations = 0
-    print("{0} - PAA".format(testname))
+    print(testname)
     expected_tags = [
         "tag3=H",
         "tag3=G",
@@ -359,7 +359,7 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     # Check that we received all values
     if iterations != 990:
         raise ValueError("Expect {0} data points, get {1} data points".format(990, iterations))
-    print("{0} passed".format(testname))
+    print("{0} passed".format(testname[:testname.index(" - ")]))
 
 
 def test_late_write(dtstart, delta, N, chan):
@@ -421,9 +421,12 @@ def main(path, debug=False):
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
-        test_paa_in_backward_direction("Test #8", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
-        test_paa_in_backward_direction("Test #9", dt, delta, nmsgs, med, "median-paa")
-        test_paa_in_backward_direction("Test #A", dt, delta, nmsgs, max, "max-paa")
+        test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
+        test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
+        test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
+        test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
+        test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
+        test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
     except:
         traceback.print_exc()
         sys.exit(1)

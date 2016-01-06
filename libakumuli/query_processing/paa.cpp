@@ -71,42 +71,46 @@ MedianPAA::MedianPAA(const boost::property_tree::ptree &, std::shared_ptr<Node> 
 {
 }
 
-// MaxPAA
+struct SelectMin {
+   double operator () (double lhs, double rhs) {
+       if (lhs < rhs) {
+           return lhs;
+       }
+       return rhs;
+   }
+};
 
-void MaxCounter::reset() {
-    acc = 0;
-    num = 0;
-}
+struct SelectMax {
+   double operator () (double lhs, double rhs) {
+       if (lhs > rhs) {
+           return lhs;
+       }
+       return rhs;
+   }
+};
 
-double MaxCounter::value() const {
-    return acc;
-}
+struct SelectFirst {
+   double operator () (double lhs, double) {
+       return lhs;
+   }
+};
 
-bool MaxCounter::ready() const {
-    return num != 0;
-}
+struct SelectLast {
+   double operator () (double, double rhs) {
+       return rhs;
+   }
+};
 
-void MaxCounter::add(aku_Sample const& value) {
-    if (!num) {
-        acc = value.payload.float64;
-    } else {
-        acc = std::max(acc, value.payload.float64);
-    }
-    num++;
-}
-
-MaxPAA::MaxPAA(std::shared_ptr<Node> next)
-    : PAA<MaxCounter>(next)
-{
-}
-
-MaxPAA::MaxPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
-    : PAA<MaxCounter>(next)
-{
-}
+typedef GenericPAA<SelectMax> MaxPAA;
+typedef GenericPAA<SelectMin> MinPAA;
+typedef GenericPAA<SelectFirst> FirstPAA;
+typedef GenericPAA<SelectLast> LastPAA;
 
 static QueryParserToken<MeanPAA> mean_paa_token("paa");
 static QueryParserToken<MedianPAA> median_paa_token("median-paa");
 static QueryParserToken<MaxPAA> max_paa_token("max-paa");
+static QueryParserToken<MinPAA> min_paa_token("min-paa");
+static QueryParserToken<FirstPAA> first_paa_token("first-paa");
+static QueryParserToken<LastPAA> last_paa_token("last-paa");
 
 }}  // namespace
