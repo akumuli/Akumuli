@@ -59,6 +59,9 @@ bool SAXNode::put(const aku_Sample &sample) {
         psample->payload.type &= ~aku_PData::FLOAT_BIT;
     }
     if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
+        if (inverse_) {
+            std::reverse(psample->payload.data, psample->payload.data + window_width_);
+        }
         return next_->put(*psample);
     }
     return true;

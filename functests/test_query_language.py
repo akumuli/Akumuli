@@ -379,14 +379,16 @@ def test_sax_in_backward_direction(dtstart, delta, N):
     begin = dtstart + delta*N
     end = dtstart
     query_params = {
-            "sample": [{   "name": "sax", "alphabet_size": "5", "window_width": "10" }],
-            "output":  { "format": "csv" },
-            "group-by":{   "time": "1s"  },
+            "sample": [{          "name": "sax", 
+                         "alphabet_size": "5", 
+                          "window_width": "10" }],
+            "output":  {        "format": "csv" },
+            "group-by":{          "time": "1ms" },
     }
     query = att.makequery("test", begin, end, **query_params)
+    print(query)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
-    exp_ts = begin
     iterations = 0
     print("Test ##")
     expected_tags = [
@@ -398,22 +400,20 @@ def test_sax_in_backward_direction(dtstart, delta, N):
     ]
     exp_value = "aabbccddee"
     for line in response:
+        print(line)
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
-            timestamp = att.parse_timestamp(columns[1].strip())
             value = columns[2].strip()
 
             exp_tags = expected_tags[iterations % len(expected_tags)]
-            if timestamp != exp_ts:
-                raise ValueError("Expected {0}, actual {1}".format(exp_ts, timestamp))
             if value != exp_value:
                 raise ValueError("Expected {0}, actual {1}".format(exp_value, value))
             if not tagline.endswith(exp_tags):
                 raise ValueError("Expected {0}, actual {1}".format(exp_tags, tagline))
 
-            if (iterations + 1) % 10 == 0:
-                exp_ts -= datetime.timedelta(seconds=1)
+            if (iterations + 1) % 50 == 0:
+                exp_ts -= datetime.timedelta(seconds=5)
             iterations += 1
         except:
             print("Error at line: {0}".format(line))

@@ -21,6 +21,7 @@ struct SAXNode : Node {
     int window_width_;
     int alphabet_size_;
     bool disable_value_;
+    bool inverse_;
 
     SAXNode(int alphabet_size, int window_width, bool disable_original_value, std::shared_ptr<Node> next);
 
