@@ -164,6 +164,10 @@ int PipelineSpout::get_index_of_empty_slot() {
     return -1;
 }
 
+bool PipelineSpout::is_empty() const {
+    return created_ == deleted_;
+}
+
 // Ingestion pipeline
 
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con, BackoffPolicy bp)

@@ -89,6 +89,8 @@ private:
                      size_t nbytes);
 
     void handle_write_error(boost::system::error_code error);
+
+    void drain_pipeline_spout();
 };
 
 

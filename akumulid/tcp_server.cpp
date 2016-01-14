@@ -120,6 +120,13 @@ void TcpSession::handle_read(BufferT buffer,
     } else {
         logger_.error() << error.message();
         parser_.close();
+        drain_pipeline_spout();
+    }
+}
+
+void TcpSession::drain_pipeline_spout() {
+    if (!spout_->is_empty()) {
+        io_->post(boost::bind(&TcpSession::drain_pipeline_spout, shared_from_this()));
     }
 }
 
