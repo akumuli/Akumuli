@@ -65,6 +65,16 @@ def generate_messages(dt, delta, N, metric_name, **kwargs):
         dt = dt + delta
         yield m
 
+
+def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        m = msg(dt, value_gen(i), metric_name, **tags)
+        dt = dt + delta
+        yield m
+
+
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
     dt = datetime.datetime.utcnow()

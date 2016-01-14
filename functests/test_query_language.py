@@ -375,54 +375,6 @@ def test_late_write(dtstart, delta, N, chan):
         raise ValueError("Late write not detected")
     print("Test #7 passed")
 
-def test_sax_in_backward_direction(dtstart, delta, N):
-    begin = dtstart + delta*N
-    end = dtstart
-    query_params = {
-            "sample": [{          "name": "sax", 
-                         "alphabet_size": "5", 
-                          "window_width": "10" }],
-            "output":  {        "format": "csv" },
-            "group-by":{          "time": "1ms" },
-    }
-    query = att.makequery("test", begin, end, **query_params)
-    print(query)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-    response = urlopen(queryurl, json.dumps(query))
-    iterations = 0
-    print("Test ##")
-    expected_tags = [
-        "tag3=H",
-        "tag3=G",
-        "tag3=F",
-        "tag3=E",
-        "tag3=D",
-    ]
-    exp_value = "aabbccddee"
-    for line in response:
-        print(line)
-        try:
-            columns = line.split(',')
-            tagline = columns[0].strip()
-            value = columns[2].strip()
-
-            exp_tags = expected_tags[iterations % len(expected_tags)]
-            if value != exp_value:
-                raise ValueError("Expected {0}, actual {1}".format(exp_value, value))
-            if not tagline.endswith(exp_tags):
-                raise ValueError("Expected {0}, actual {1}".format(exp_tags, tagline))
-
-            if (iterations + 1) % 50 == 0:
-                exp_ts -= datetime.timedelta(seconds=5)
-            iterations += 1
-        except:
-            print("Error at line: {0}".format(line))
-            raise
-
-    # Check that we received all values
-    if iterations != N/10:
-        raise ValueError("Expect {0} data points, get {1} data points".format(N/10, iterations))
-    print("Test ## passed")
 
 def med(buf):
     buf = sorted(buf)
@@ -463,20 +415,19 @@ def main(path, debug=False):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
-        #test_read_all_in_backward_direction(dt, delta, nmsgs)
-        #test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
-        #test_where_clause_in_backward_direction(dt, delta, nmsgs)
-        #test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
-        #test_metadata_query(tags)
-        #test_read_in_forward_direction(dt, delta, nmsgs)
-        #test_late_write(dt, delta, nmsgs, chan)
-        #test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
-        #test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
-        #test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
-        #test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
-        #test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
-        #test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
-        test_sax_in_backward_direction(dt, delta, nmsgs)
+        test_read_all_in_backward_direction(dt, delta, nmsgs)
+        test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
+        test_where_clause_in_backward_direction(dt, delta, nmsgs)
+        test_where_clause_with_groupby_in_backward_direction(dt, delta, nmsgs)
+        test_metadata_query(tags)
+        test_read_in_forward_direction(dt, delta, nmsgs)
+        test_late_write(dt, delta, nmsgs, chan)
+        test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
+        test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
+        test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
+        test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
+        test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
+        test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
     except:
         traceback.print_exc()
         sys.exit(1)
