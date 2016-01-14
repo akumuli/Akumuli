@@ -74,7 +74,10 @@ typedef struct {
         ERROR_CLIPPING       = 1 << 9,  /** indicates that some data was lost due to clipping
                                             (extra payload stored in `data` was lost) */
         SAX_WORD             = 1 << 10, /** indicates that SAX word is stored in extra payload */
-        MARGIN               = 1 << 11, /** indicates that aggregate functions should kick in */
+
+        MARGIN               = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
+        LO_MARGIN            = 1 << 14, /** backward direction margin */
+        HI_MARGIN            = 1 << 15, /** forward direction margin */
     };
     uint16_t type;
 

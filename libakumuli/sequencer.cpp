@@ -251,7 +251,10 @@ aku_Status Sequencer::close(PageHeader* target) {
     runs_resize_lock_.unlock();
 
     sequence_number_.store(1);
-    return merge_and_compress(target, true);
+    if (!ready_.empty()) {
+        return merge_and_compress(target, true);
+    }
+    return AKU_SUCCESS;
 }
 
 int Sequencer::reset() {

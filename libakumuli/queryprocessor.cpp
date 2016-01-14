@@ -148,7 +148,7 @@ bool GroupByTime::put(aku_Sample const& sample, Node& next) {
         }
         if (ts >= upperbound_) {
             // Forward direction
-            aku_Sample empty = SAMPLING_MARGIN;
+            aku_Sample empty = SAMPLING_HI_MARGIN;
             empty.timestamp = upperbound_;
             if (!next.put(empty)) {
                 return false;
@@ -157,7 +157,7 @@ bool GroupByTime::put(aku_Sample const& sample, Node& next) {
             upperbound_ += step_;
         } else if (ts < lowerbound_) {
             // Backward direction
-            aku_Sample empty = SAMPLING_MARGIN;
+            aku_Sample empty = SAMPLING_LO_MARGIN;
             empty.timestamp = upperbound_;
             if (!next.put(empty)) {
                 return false;

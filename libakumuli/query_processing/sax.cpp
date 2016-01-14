@@ -40,25 +40,29 @@ void SAXNode::complete() {
 }
 
 bool SAXNode::put(const aku_Sample &sample) {
-    if (sample.payload.type != aku_PData::MARGIN) {
-        SAX::SAXWord word;
-        auto it = encoders_.find(sample.paramid);
-        if (it == encoders_.end()) {
-            encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
-            it = encoders_.find(sample.paramid);
+    if (sample.payload.type > aku_PData::MARGIN) {
+        return true;
+    }
+    SAX::SAXWord word;
+    auto it = encoders_.find(sample.paramid);
+    if (it == encoders_.end()) {
+        encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
+        it = encoders_.find(sample.paramid);
+    }
+    size_t ssize = sizeof(aku_Sample) + window_width_;
+    void* ptr = alloca(ssize);
+    aku_Sample* psample = new (ptr) aku_Sample();
+    *psample = sample;
+    psample->payload.size = ssize;
+    psample->payload.type |= aku_PData::SAX_WORD;
+    if (disable_value_) {
+        psample->payload.type &= ~aku_PData::FLOAT_BIT;
+    }
+    if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
+        if (inverse_) {
+            std::reverse(psample->payload.data, psample->payload.data + window_width_);
         }
-        size_t ssize = sizeof(aku_Sample) + window_width_;
-        void* ptr = alloca(ssize);
-        aku_Sample* psample = new (ptr) aku_Sample();
-        *psample = sample;
-        psample->payload.size = ssize;
-        psample->payload.type |= aku_PData::SAX_WORD;
-        if (disable_value_) {
-            psample->payload.type &= ~aku_PData::FLOAT_BIT;
-        }
-        if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
-            return next_->put(*psample);
-        }
+        return next_->put(*psample);
     }
     return true;
 }

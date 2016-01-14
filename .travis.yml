@@ -31,6 +31,8 @@ script:
   - python functests/test_continuous_queries.py akumulid/
   - python functests/test_volume_overflow.py akumulid/
   - python functests/test_restart.py akumulid/
+  - python functests/test_kill.py akumulid/
+  - python functests/test_concurrency.py akumulid/
 
 after_script:
   - cp /tmp/akumuli.log shippable/testresults

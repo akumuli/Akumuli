@@ -44,10 +44,12 @@ double MedianCounter::value() const {
     }
     if (acc.size() < 2) {
         return acc.at(0);
+    } else if (acc.size() == 2) {
+        return (acc[0] + acc[1])/2;
     }
     auto middle = acc.begin();
     std::advance(middle, acc.size() / 2);
-    std::partial_sort(acc.begin(), middle, acc.end());
+    std::partial_sort(acc.begin(), middle + 1, acc.end());
     return *middle;
 }
 
@@ -69,7 +71,46 @@ MedianPAA::MedianPAA(const boost::property_tree::ptree &, std::shared_ptr<Node> 
 {
 }
 
+struct SelectMin {
+   double operator () (double lhs, double rhs) {
+       if (lhs < rhs) {
+           return lhs;
+       }
+       return rhs;
+   }
+};
+
+struct SelectMax {
+   double operator () (double lhs, double rhs) {
+       if (lhs > rhs) {
+           return lhs;
+       }
+       return rhs;
+   }
+};
+
+struct SelectFirst {
+   double operator () (double lhs, double) {
+       return lhs;
+   }
+};
+
+struct SelectLast {
+   double operator () (double, double rhs) {
+       return rhs;
+   }
+};
+
+typedef GenericPAA<SelectMax> MaxPAA;
+typedef GenericPAA<SelectMin> MinPAA;
+typedef GenericPAA<SelectFirst> FirstPAA;
+typedef GenericPAA<SelectLast> LastPAA;
+
 static QueryParserToken<MeanPAA> mean_paa_token("paa");
 static QueryParserToken<MedianPAA> median_paa_token("median-paa");
+static QueryParserToken<MaxPAA> max_paa_token("max-paa");
+static QueryParserToken<MinPAA> min_paa_token("min-paa");
+static QueryParserToken<FirstPAA> first_paa_token("first-paa");
+static QueryParserToken<LastPAA> last_paa_token("last-paa");
 
 }}  // namespace

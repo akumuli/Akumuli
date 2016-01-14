@@ -174,6 +174,9 @@ struct PipelineSpout : ProtocolConsumer {
     void get_error(std::ostream& ostr);
 
     aku_Status series_to_param_id(const char *str, size_t strlen, aku_Sample *sample);
+
+    /** Returns true if all TVal's is processed */
+    bool is_empty() const;
 };
 
 class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>

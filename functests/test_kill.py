@@ -34,30 +34,30 @@ def test_read_all(dtstart, delta, N):
         "tag3=G",
         "tag3=H",
     ]
-    exp_ts = begin
+    exp_ts = None
     exp_value = N-1
     iterations = 0
     print("Test - read all data in backward direction")
     for line in response:
         try:
             columns = line.split(',')
-            tagline = columns[0].strip()
             timestamp = att.parse_timestamp(columns[1].strip())
-            value = float(columns[2].strip())
-            exp_tags = expected_tags[(N-iterations-1) % len(expected_tags)]
 
-            att.check_values(exp_tags, tagline, 'ENDS', exp_ts, timestamp, exp_value*1.0, value, iterations)
+            if exp_ts is None:
+                exp_ts = timestamp
+
+            if exp_ts and exp_ts != timestamp:
+                raise ValueError("Invalid timestamp at {0}".format(iterations))
 
             exp_ts -= delta
-            exp_value -= 1
             iterations += 1
         except:
             print("Error at line: {0}".format(line))
             raise
 
     # Check that we received all values
-    if iterations != N:
-        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
+    if iterations == 0:
+        raise ValueError("Unable to read any data")
     print("Test passed")
 
 
@@ -88,22 +88,17 @@ def main(path):
             "tag2": ['B', 'C'],
             "tag3": ['D', 'E', 'F', 'G', 'H'],
         }
+
         for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
             chan.send(it)
 
-        time.sleep(5)  # wait untill all messagess will be processed
-        print("Trying to close channel")
-        chan.close()
-
-        test_read_all(dt, delta, nmsgs)
+        # kill process
+        akumulid.terminate()
     except:
         traceback.print_exc()
         sys.exit(1)
     finally:
-        print("Stopping server...")
-        akumulid.stop()
-        time.sleep(5)
-        print("Server stopped")
+        print("Server terminated")
 
     print("Starting server...")
     akumulid.serve()
@@ -112,20 +107,23 @@ def main(path):
     try:
         test_read_all(dt, delta, nmsgs)
 
-        # Try to write new data
-        dt = datetime.datetime.utcnow()
+        # Try to write some data
         chan = att.TCPChan(HOST, TCPPORT)
-
-        # fill data in
-        print("Sending {0} messages through TCP second time...".format(nmsgs))
+        dt = datetime.datetime.utcnow()
         tags = {
             "tag1": ['A'],
             "tag2": ['B', 'C'],
             "tag3": ['D', 'E', 'F', 'G', 'H'],
         }
+
+        print("Sending {0} messages through TCP...".format(nmsgs))
         for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
             chan.send(it)
-        time.sleep(5)
+
+        time.sleep(5)  # wait untill all messagess will be processed
+        print("Trying to close channel")
+        chan.close()
+
         test_read_all(dt, delta, nmsgs)
     finally:
         print("Stopping server...")
