@@ -79,6 +79,44 @@ struct BypassFilter : QP::IQueryFilter {
 };
 
 
+struct QueryRange {
+
+    enum QueryRangeType {
+        INSTANT,        // If upperbound is in the future - query should be executed untill most recent data were reached
+        CONTINUOUS,     // If upperbound is in the future - query should wait
+    };
+
+    aku_Timestamp  lowerbound;
+    aku_Timestamp  upperbound;
+    QueryRangeType type;
+
+    //! Return true if query should scan data backward in time
+    bool is_backward() const {
+        return upperbound < lowerbound;
+    }
+
+    //! Return true if query should scan data in normal direction
+    bool is_forward() const {
+        return !is_backward();
+    }
+
+    //! Return scan direction
+    int direction() const {
+        return is_backward() ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD;
+    }
+
+    //! Return timestamp from wich scan starts
+    aku_Timestamp begin() const {
+        return is_backward() ? upperbound : lowerbound;
+    }
+
+    //! Return timestamp at wich scan stops
+    aku_Timestamp end() const {
+        return is_backward() ? lowerbound : upperbound;
+    }
+};
+
+
 //! Query processor interface
 struct IQueryProcessor {
 
@@ -86,13 +124,7 @@ struct IQueryProcessor {
     virtual ~IQueryProcessor() = default;
 
     //! Lowerbound
-    virtual aku_Timestamp lowerbound() const = 0;
-
-    //! Upperbound
-    virtual aku_Timestamp upperbound() const = 0;
-
-    //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
-    virtual int direction() const = 0;
+    virtual QueryRange range() const = 0;
 
     //! Return query filter
     virtual IQueryFilter& filter() = 0;
