@@ -415,6 +415,7 @@ void cmd_run_server() {
     std::map<int, std::string> srvnames;
     for(auto settings: ingestion_servers) {
         auto srv = ServerFactory::instance().create(pipeline, qproc, settings);
+	assert(srv != nullptr);
         srvnames[srvid] = settings.name;
         srv->start(&sighandler, srvid++);
         std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
