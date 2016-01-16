@@ -68,7 +68,7 @@ struct CSVOutputFormatter : OutputFormatter {
         }
 
         if (sample.payload.type & aku_PData::TIMESTAMP_BIT) {
-            if (sample.payload.type & aku_PData::PARAMID_BIT) {
+            if (newline_required) {
                 // Add trailing ',' to the end
                 if (size < 1) {
                     return nullptr;
@@ -108,7 +108,7 @@ struct CSVOutputFormatter : OutputFormatter {
         }
 
         if (sample.payload.type & aku_PData::FLOAT_BIT) {
-            if (sample.payload.type & aku_PData::TIMESTAMP_BIT) {
+            if (newline_required) {
                 // Add trailing ',' to the end
                 if (size < 1) {
                     return nullptr;
@@ -118,16 +118,25 @@ struct CSVOutputFormatter : OutputFormatter {
                 size  -= 1;
             }
             // Floating-point
-            len = snprintf(begin, size, "%.17g\n", sample.payload.float64);
+            len = snprintf(begin, size, "%.17g", sample.payload.float64);
             if (len == size || len < 0) {
                 return nullptr;
             }
             begin += len;
             size  -= len;
-            newline_required = false;  // new line already added
+            newline_required = true;
         }
 
         if (sample.payload.type & aku_PData::SAX_WORD) {
+            if (newline_required) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
             size_t sample_size = std::max(sizeof(aku_Sample), (size_t)sample.payload.size);
             int sax_word_sz = static_cast<int>(sample_size - sizeof(aku_Sample));
             if (size < (sax_word_sz + 3)) {
