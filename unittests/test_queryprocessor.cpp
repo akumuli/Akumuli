@@ -226,8 +226,8 @@ BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
     BOOST_REQUIRE(qproc->metric_ == "cpu");
     auto first_ts  = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 01));
     auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
-    BOOST_REQUIRE(qproc->lowerbound() == DateTimeUtil::from_boost_ptime(first_ts));
-    BOOST_REQUIRE(qproc->upperbound() == DateTimeUtil::from_boost_ptime(second_ts));
+    BOOST_REQUIRE(qproc->range().lowerbound == DateTimeUtil::from_boost_ptime(first_ts));
+    BOOST_REQUIRE(qproc->range().upperbound == DateTimeUtil::from_boost_ptime(second_ts));
 
     qproc->start();
     if (qproc->filter().apply(1)) {

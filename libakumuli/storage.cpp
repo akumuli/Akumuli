@@ -419,7 +419,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
 
         if (query_processor->start()) {
 
-            if (query_processor->range().direction() == AKU_CURSOR_DIR_FORWARD) {
+            if (!query_processor->range().is_backward()) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
                 for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
                     // Search volume
@@ -443,7 +443,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                         // NOTE: no operation required
                     }
                 }
-            } else if (query_processor->range().direction() == AKU_CURSOR_DIR_BACKWARD) {
+            } else if (query_processor->range().is_backward()) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
                 // TODO: handle case when `query_processor->range().type == QP::QueryRange::CONTINUOUS`
                 // in this case we should wait until data with timestamp that matches `range.from` timestamp

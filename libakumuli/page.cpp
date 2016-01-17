@@ -334,7 +334,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     std::shared_ptr<QP::IQueryProcessor> query_;
     std::shared_ptr<ChunkCache> cache_;
 
-    const bool           IS_BACKWARD_;
     const aku_Timestamp  key_;
     const QP::QueryRange query_range_;
 
@@ -344,7 +343,6 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         : page_(page)
         , query_(query)
         , cache_(cache)
-        , IS_BACKWARD_(query->range().is_backward())
         , key_(query->range().begin())
         , query_range_(query->range())
     {
@@ -363,7 +361,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool fast_path() {
         while (!max_index()) {
-            if (!IS_BACKWARD_ && page_->get_page_id() == 0 && page_->get_close_count() == 0) {
+            if (query_range_.type == QP::QueryRange::CONTINUOUS &&
+                page_->get_page_id() == 0 && page_->get_close_count() == 0)
+            {
                 // Special case. Database is new and there is no data yet.
                 if (query_->put(QP::NO_DATA)) {
                     continue;
@@ -377,7 +377,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         {
             // Shortcut for corner cases
             if (key_ > page_->page_index(search_range_.end)->timestamp) {
-                if (IS_BACKWARD_) {
+                if (query_range_.is_backward()) {
                     search_range_.begin = search_range_.end;
                     return false;
                 } else {
@@ -386,7 +386,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 }
             }
             else if (key_ < page_->page_index(search_range_.begin)->timestamp) {
-                if (!IS_BACKWARD_) {
+                if (!query_range_.is_backward()) {
                     search_range_.end = search_range_.begin;
                     return false;
                 } else {
@@ -443,11 +443,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
             auto probe = page_->page_index(probe_index)->timestamp;
 
-            if (probe == key_) {                         // found
+            if (probe == key_) {                                // found
                 break;
             } else if (probe < key_) {
                 search_range_.begin = probe_index + 1u;         // change min index to search upper subarray
-                if (search_range_.begin >= max_index()) {        // we hit the upper bound of the array
+                if (search_range_.begin >= max_index()) {       // we hit the upper bound of the array
                     break;
                 }
             } else {
@@ -526,7 +526,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
 
         int start_pos = 0;
-        if (IS_BACKWARD_) {
+        if (query_range_.is_backward()) {
             start_pos = static_cast<int>(header->timestamps.size() - 1);
         }
 
@@ -550,7 +550,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return true;
         };
 
-        if (IS_BACKWARD_) {
+        if (query_range_.is_backward()) {
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
                 result = check_timestamp(header->timestamps[i]);
                 if (result == OVERSHOOT) {
@@ -585,7 +585,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     ScanResultT check_timestamp(aku_Timestamp probe_time)
     {
         ScanResultT proceed;
-        if (IS_BACKWARD_) {
+        if (query_range_.is_backward()) {
             if (probe_time > query_range_.upperbound) {
                 proceed = UNDERSHOOT;
             } else if (probe_time < query_range_.lowerbound) {
@@ -611,9 +611,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
      * @return tuple{fwd-bytes, bwd-bytes}
      */
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
-        int index_increment = IS_BACKWARD_ ? -1 : 1;
+        int index_increment = query_range_.is_backward() ? -1 : 1;
         ScanResultT proceed = IN_RANGE;
         aku_Timestamp last_valid_timestamp = 0ul;
+        bool should_busy_wait = query_range_.type == QP::QueryRange::CONTINUOUS;
         while (proceed != INTERRUPTED) {
             if (probe_index < max_index()) {
                 auto probe_offset = page_->page_index(probe_index)->offset;
@@ -622,9 +623,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 auto probe = probe_entry->param_id;
                 last_valid_timestamp = probe_time;
 
-                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                if (probe == AKU_CHUNK_FWD_ID && !query_range_.is_backward()) {
                     proceed = scan_compressed_entries(probe_index, probe_entry, false);
-                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                } else if (probe == AKU_CHUNK_BWD_ID && query_range_.is_backward()) {
                     proceed = scan_compressed_entries(probe_index, probe_entry, false);
                 } else {
                     proceed = check_timestamp(probe_time);
@@ -632,7 +633,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_index += index_increment;
 
             } else {
-                if (IS_BACKWARD_) {
+                if (!should_busy_wait) {
                     proceed = INTERRUPTED;
                 } else {
                     proceed = check_timestamp(last_valid_timestamp);
@@ -640,9 +641,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     case IN_RANGE:
                     case UNDERSHOOT:
                         // TODO: wait only if page is opened for writing!
-                        if (query_->put(QP::NO_DATA)) {
-                            // We should wait for consumer!
-                            break;
+                        if (page_->get_open_count() > page_->get_close_count()) {
+                            if (query_->put(QP::NO_DATA)) {
+                                // We should wait for consumer!
+                                break;
+                            }
                         }
                     case OVERSHOOT:
                     case INTERRUPTED:

@@ -88,31 +88,22 @@ struct QueryRange {
 
     aku_Timestamp  lowerbound;
     aku_Timestamp  upperbound;
+    int            direction;
     QueryRangeType type;
 
     //! Return true if query should scan data backward in time
     bool is_backward() const {
-        return upperbound < lowerbound;
-    }
-
-    //! Return true if query should scan data in normal direction
-    bool is_forward() const {
-        return !is_backward();
-    }
-
-    //! Return scan direction
-    int direction() const {
-        return is_backward() ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD;
+        return direction == AKU_CURSOR_DIR_BACKWARD;
     }
 
     //! Return timestamp from wich scan starts
     aku_Timestamp begin() const {
-        return is_backward() ? upperbound : lowerbound;
+        return direction == AKU_CURSOR_DIR_BACKWARD ? upperbound : lowerbound;
     }
 
     //! Return timestamp at wich scan stops
     aku_Timestamp end() const {
-        return is_backward() ? lowerbound : upperbound;
+        return direction == AKU_CURSOR_DIR_BACKWARD ? lowerbound : upperbound;
     }
 };
 

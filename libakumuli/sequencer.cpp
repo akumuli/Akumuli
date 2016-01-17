@@ -525,7 +525,7 @@ void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_
         return true;
     };
 
-    if (query->range().direction() == AKU_CURSOR_DIR_FORWARD) {
+    if (!query->range().is_backward()) {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);
