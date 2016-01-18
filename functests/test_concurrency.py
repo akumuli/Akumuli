@@ -10,9 +10,9 @@ import sys
 import time
 import traceback
 try:
-    from urllib2 import urlopen
+    from urllib2 import urlopen, HTTPError
 except ImportError:
-    from urllib import urlopen
+    from urllib import urlopen, HTTPError
 
 HOST = '127.0.0.1'
 TCPPORT = 8282
@@ -75,6 +75,8 @@ def require_continuous(seq, fn):
         prev = it
     return first, prev
 
+processed = 0
+
 def reader(dtstart, delta, N):
     # Start writer process
     wproc = multiprocessing.Process(name='Writer', target=writer, args=[dtstart, delta, N])
@@ -82,35 +84,48 @@ def reader(dtstart, delta, N):
 
     def cmp_tuples(lhs, rhs):
         # ignore tags
-        timedelta = rhs[1] - lhs[1]
+        timedelta = lhs[1] - rhs[1]
         if timedelta != delta:
             raise ValueError("Invalid timestamps, current {0}, previous {1}".format(lhs[1], rhs[1]))
-        valdelta = rhs[2] - lhs[2]
+        valdelta = lhs[2] - rhs[2]
         if valdelta - 1.0 > 0.000001:
             raise ValueError("Invalid value, current {0}, previous {1}".format(lhs[2], rhs[2]))
 
     try:
-        print("Test #1 - continuous queries")
+        print("Test #1")
         end = dtstart + delta*(N-1)
         begin = dtstart
         timedelta = end - begin
         query_params = {"output": { "format":  "csv" }}
+        http_err_cnt = 0
         while True:
-            query = att.makequery("test", end, begin, **query_params)
-            #print("Query: {0}".format(query))
-            queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-            response = urlopen(queryurl, json.dumps(query))
-            tuples = line2tup(response)
-            first, last = require_continuous(tuples, cmp_tuples)
-            #print("First: {0}".format(first[1].strftime("%Y%m%dT%H%M%S.%f")))
-            #print("Last : {0}".format( last[1].strftime("%Y%m%dT%H%M%S.%f")))
-            if last is not None:
-                begin = last[1]
-            if first[1] == end:
-                break
+            try:
+                query = att.makequery("test", begin, end, **query_params)
+                #print("Query: {0}".format(query))
+                queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+                response = urlopen(queryurl, json.dumps(query))
+                def count_lines(seq):
+                    global processed
+                    for msg in seq:
+                        yield msg
+                        processed += 1
+                tuples = line2tup(count_lines(response))
+                first, last = require_continuous(tuples, cmp_tuples)
+                #print("First: {0}".format(first and first[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
+                #print("Last : {0}".format( last and  last[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
+                if last is not None:
+                    begin = last[1]
+                if first[1] == end:
+                    break
+            except HTTPError as err:
+                #print("HTTP error: {0}".format(err))
+                http_err_cnt += 1
+                if http_err_cnt == 10:
+                    raise
 
         print("Test passed")
     finally:
+        print("{0} messages processed".format(processed))
         wproc.join()
 
 def main(path, debug=False):

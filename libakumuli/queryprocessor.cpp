@@ -241,6 +241,10 @@ bool GroupByTag::apply(aku_Sample* sample) {
 
 //  ScanQueryProcessor  //
 
+static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type) {
+    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type};
+}
+
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::string metric,
                                        aku_Timestamp begin,
@@ -250,7 +254,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        GroupByTime groupby,
                                        std::unique_ptr<GroupByTag> groupbytag
                                        )
-    : range_{std::min(begin, end), std::max(begin, end), type}
+    : range_(make_range(begin, end, type))
     , metric_(metric)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
