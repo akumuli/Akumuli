@@ -67,6 +67,10 @@ AkumuliConnection::AkumuliConnection(const char *path,
     }
 }
 
+void AkumuliConnection::close() {
+    aku_close_database(db_);
+}
+
 aku_Status AkumuliConnection::write(aku_Sample const& sample) {
     return aku_write(db_, &sample);
 }
@@ -160,6 +164,10 @@ int PipelineSpout::get_index_of_empty_slot() {
     return -1;
 }
 
+bool PipelineSpout::is_empty() const {
+    return created_ == deleted_;
+}
+
 // Ingestion pipeline
 
 IngestionPipeline::IngestionPipeline(std::shared_ptr<DbConnection> con, BackoffPolicy bp)
@@ -204,6 +212,8 @@ void IngestionPipeline::start() {
                                     self->logger_.error() << "Queue not empty, some data will be lost.";
                                 }
                             }
+                            self->logger_.info() << "Closing akumuli database";
+                            self->con_->close();
                             // Stop
                             self->logger_.info() << "Stopping pipeline worker";
                             self->stopbar_.wait();

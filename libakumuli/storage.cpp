@@ -240,7 +240,9 @@ Storage::Storage(const char* path, aku_FineTuneParams const& params)
 void Storage::close() {
     auto status = active_volume_->cache_->close(active_page_);
     if (status != AKU_SUCCESS) {
-        log_error("Can't merge cached values back to disk, some data would be lost");
+        std::stringstream fmt;
+        fmt << "Can't merge cached values back to disk, some data would be lost. Reason: " << aku_error_message(status);
+        log_error(fmt.str().c_str());
         return;
     }
     active_volume_->flush();
@@ -417,28 +419,40 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
 
         if (query_processor->start()) {
 
-            if (query_processor->direction() == AKU_CURSOR_DIR_FORWARD) {
+            if (!query_processor->range().is_backward()) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
                 for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
                     // Search volume
                     uint32_t index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     volume->get_page()->search(query_processor, cache_);
+                    if (query_processor->range().type == QP::QueryRange::INSTANT) {
+                        // Search cache
+                        int seq_id;
+                        aku_Timestamp window;
+                        tie(window, seq_id) = volume->cache_->get_window();
+                        volume->cache_->search(query_processor, seq_id);
+                        // TODO: obtain `seq_id` before calling PageHeader::serach, if `seq_id` is outdated -
+                        // obtain new `seq_id` and re-run PageHeader::search with adjusted query parameters (
+                        // this is a tricky part because we should modify query_processor state a bit).
+                    } else {
+                        // Instead of searching cache we are using continuous querying feature here.
+                        // We can read cache data only if we're interested in instant picture, for example if
+                        // we're loocking for latest value.                     }
 
-                    // Instead of searching cache we are using continuous querying feature here.
-                    // We can read cache data only if we're interested in instant picture, for example if
-                    // we're loocking for latest value. Forward direction is for immutable data only
-                    // and continuous queries works here fine. And backward direction can't be used with
-                    // continuous queries (because you're reading latest data first) but you can access
-                    // in-memory cache in backward direction. This in-memory cache is not immutable.
-                    // Two subsequent queries in backward direction can  produce different results even in
-                    // the same time range.
-                    //
-                    // So, backward direction should be used to implement `top` query and forward direction
-                    // can be used to impelent `tail -f` like functionality.
+                        // NOTE: no operation required
+                    }
                 }
-            } else if (query_processor->direction() == AKU_CURSOR_DIR_BACKWARD) {
+            } else if (query_processor->range().is_backward()) {
                 uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
+                // TODO: handle case when `query_processor->range().type == QP::QueryRange::CONTINUOUS`
+                // in this case we should wait until data with timestamp that matches `range.from` timestamp
+                // will be written to disk and then start the query. Until this behavior become implemented
+                // this set of parameter should trigger an error (AKU_ENOT_IMPLEMENTED).
+                if (query_processor->range().type == QP::QueryRange::CONTINUOUS) {
+                    SearchError error{"Continuous queries doesn't work in backward direction", AKU_ENOT_IMPLEMENTED};
+                    BOOST_THROW_EXCEPTION(error);
+                }
                 for (int64_t ix = (starting_ix + volumes_.size()); ix > starting_ix; ix--) {
                     uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);

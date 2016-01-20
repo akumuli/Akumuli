@@ -28,7 +28,7 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
     }
 
     virtual bool put(const aku_Sample& sample) {
-        if (sample.payload.type == aku_PData::MARGIN) {
+        if (sample.payload.type > aku_PData::MARGIN) {
             return next_->put(sample);
         }
         return op_(sample.paramid) ? next_->put(sample) : true;

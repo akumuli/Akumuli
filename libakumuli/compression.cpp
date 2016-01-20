@@ -24,17 +24,42 @@ struct PrevValPredictor {
     }
 };
 
+struct FcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    const uint64_t MASK_;
+
+    FcmPredictor(size_t table_size)
+        : last_hash(0ull)
+        , MASK_(table_size - 1)
+    {
+        assert((table_size & MASK_) == 0);
+        table.resize(table_size);
+    }
+
+    uint64_t predict_next() const {
+        return table[last_hash];
+    }
+
+    void update(uint64_t value) {
+        table[last_hash] = value;
+        last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+    }
+};
+
 struct DfcmPredictor {
     std::vector<uint64_t> table;
     uint64_t last_hash;
     uint64_t last_value;
+    const uint64_t MASK_;
 
     //! C-tor. `table_size` should be a power of two.
     DfcmPredictor(int table_size)
         : last_hash (0ul)
         , last_value(0ul)
+        , MASK_(table_size - 1)
     {
-       assert((table_size & (table_size - 1)) == 0);
+       assert((table_size & MASK_) == 0);
        table.resize(table_size);
     }
 
@@ -43,51 +68,9 @@ struct DfcmPredictor {
     }
 
     void update(uint64_t value) {
-        table.at(last_hash) = value - last_value;
-        auto mask = table.size() - 1;
-        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40));
-        last_hash &= mask;
+        table[last_hash] = value - last_value;
+        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
         last_value = value;
-    }
-};
-
-struct ThirdOrderDfcmPredictor {
-    std::vector<std::pair<uint64_t, uint64_t>> table;
-    uint64_t last_hash;
-    uint64_t last_values[3];
-
-    //! C-tor. `table_size` should be a power of two.
-    ThirdOrderDfcmPredictor(int table_size)
-        : last_hash (0ul)
-        , last_values{0ul}
-    {
-       assert((table_size & (table_size - 1)) == 0);
-       table.resize(table_size);
-    }
-
-    uint64_t predict_next() const {
-        auto result = table.at(last_hash);
-        auto d1 = result.first;
-        auto d2 = result.second;
-        if ((d1 >> 50) != (d2 >> 50)) {
-            return last_values[0] + d1;
-        }
-        return last_values[0] + d1 + (d1 - d2);
-    }
-
-    void update(uint64_t value) {
-        table.at(last_hash) = std::make_pair(value - last_values[0], last_values[0] - last_values[1]);
-        auto mask = table.size() - 1;
-        auto delta1 = (value - last_values[0]) >> 50;
-        auto delta2 = (last_values[0]  - last_values[1]) >> 50;
-        auto delta3 = (last_values[1]  - last_values[2]) >> 50;
-        // hash(delta1, delta2, delta3) = lsb (delta1 ⊗ (delta2 << 5) ⊗ (delta3 << 10))
-        last_hash = delta1 ^ (delta2 << 5) ^ (delta3 << 10);
-        last_hash &= mask;
-        // update last values
-        last_values[2] = last_values[1];
-        last_values[1] = last_values[0];
-        last_values[0] = value;
     }
 };
 

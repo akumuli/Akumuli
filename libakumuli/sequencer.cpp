@@ -251,7 +251,10 @@ aku_Status Sequencer::close(PageHeader* target) {
     runs_resize_lock_.unlock();
 
     sequence_number_.store(1);
-    return merge_and_compress(target, true);
+    if (!ready_.empty()) {
+        return merge_and_compress(target, true);
+    }
+    return AKU_SUCCESS;
 }
 
 int Sequencer::reset() {
@@ -485,8 +488,8 @@ void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, s
         return;
     }
     PSortedRun result(new SortedRun);
-    auto lkey = TimeSeriesValue(q->lowerbound(),  0u, 0);
-    auto rkey = TimeSeriesValue(q->upperbound(), ~0u, 0);
+    auto lkey = TimeSeriesValue(q->range().lowerbound,  0u, 0);
+    auto rkey = TimeSeriesValue(q->range().upperbound, ~0u, 0);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     std::copy(begin, end, std::back_inserter(*result));
@@ -522,7 +525,7 @@ void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_
         return true;
     };
 
-    if (query->direction() == AKU_CURSOR_DIR_FORWARD) {
+    if (!query->range().is_backward()) {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_FORWARD>(filtered, consumer);
     } else {
         kway_merge<TimeOrderMergePredicate, AKU_CURSOR_DIR_BACKWARD>(filtered, consumer);

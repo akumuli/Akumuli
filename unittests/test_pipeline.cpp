@@ -23,6 +23,9 @@ struct ConnectionMock : DbConnection {
         return AKU_SUCCESS;
     }
 
+    void close() {
+    }
+
     std::string get_all_stats() {
         throw "not impelemnted";
     }

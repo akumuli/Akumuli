@@ -30,6 +30,7 @@ std::vector<int> SignalHandler::wait() {
         pair.first();
         ids.push_back(pair.second);
     }
+    handlers_.clear();
     return ids;
 }
 

@@ -282,6 +282,86 @@ def test_read_in_forward_direction(dtstart, delta, N):
     print("Test #6 passed")
 
 
+def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
+    expected_values = [
+        reversed(range(9, 100000, 10)),
+        reversed(range(8, 100000, 10)),
+        reversed(range(7, 100000, 10)),
+        reversed(range(6, 100000, 10)),
+        reversed(range(5, 100000, 10)),
+        reversed(range(4, 100000, 10)),
+        reversed(range(3, 100000, 10)),
+        reversed(range(2, 100000, 10)),
+        reversed(range(1, 100000, 10)),
+        reversed(range(0, 100000, 10)),
+    ]
+
+    def sliding_window(values, winlen, func):
+        top = [0]*winlen
+        for ix, it in enumerate(values):
+            k = ix % winlen
+            top[k] = it
+            if (ix + 1) % winlen == 0:
+                yield func(top)
+
+    def round_robin(sequences, maxlen):
+        l = len(sequences)
+        for i in xrange(0, maxlen):
+            seq = sequences[i % l]
+            it = seq.next()
+            yield it
+
+    begin = dtstart + delta*N
+    end = dtstart
+    query_params = {
+        "sample": [{   "name": query }],
+        "output":  { "format": "csv" },
+        "group-by":{   "time": "1s"  },
+    }
+    query = att.makequery("test", begin, end, **query_params)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    exp_ts = begin
+    iterations = 0
+    print(testname)
+    expected_tags = [
+        "tag3=H",
+        "tag3=G",
+        "tag3=F",
+        "tag3=E",
+        "tag3=D",
+    ]
+    sequences = [sliding_window(it, 100, fn) for it in expected_values]
+    exp_values = round_robin(sequences, N)
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+
+            exp_tags = expected_tags[iterations % len(expected_tags)]
+            exp_value = exp_values.next()
+            if timestamp != exp_ts:
+                raise ValueError("Expected {0}, actual {1}".format(exp_ts, timestamp))
+            if value != exp_value:
+                raise ValueError("Expected {0}, actual {1}".format(exp_value, value))
+            if not tagline.endswith(exp_tags):
+                raise ValueError("Expected {0}, actual {1}".format(exp_tags, tagline))
+
+            if (iterations + 1) % 10 == 0:
+                exp_ts -= datetime.timedelta(seconds=1)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+
+    # Check that we received all values
+    if iterations != 990:
+        raise ValueError("Expect {0} data points, get {1} data points".format(990, iterations))
+    print("{0} passed".format(testname[:testname.index(" - ")]))
+
+
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
     print("Test #7 - late write")
@@ -294,6 +374,11 @@ def test_late_write(dtstart, delta, N, chan):
         print(resp)
         raise ValueError("Late write not detected")
     print("Test #7 passed")
+
+
+def med(buf):
+    buf = sorted(buf)
+    return buf[len(buf)/2]
 
 
 def main(path, debug=False):
@@ -317,7 +402,7 @@ def main(path, debug=False):
         chan = att.TCPChan(HOST, TCPPORT)
 
         # fill data in
-        dt = datetime.datetime.utcnow()
+        dt = datetime.datetime.utcnow().replace(second=0, microsecond=0)
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 100000
         print("Sending {0} messages through TCP...".format(nmsgs))
@@ -337,6 +422,12 @@ def main(path, debug=False):
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
+        test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
+        test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
+        test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
+        test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
+        test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
+        test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
     except:
         traceback.print_exc()
         sys.exit(1)

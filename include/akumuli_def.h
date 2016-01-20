@@ -28,8 +28,8 @@
 #define AKU_LIMITS_MAX_TAGS      32
 //! Longest possible series name
 #define AKU_LIMITS_MAX_SNAME  0x200
-#define AKU_MIN_TIMESTAMP         0
-#define AKU_MAX_TIMESTAMP       (~0)
+#define AKU_MIN_TIMESTAMP         0ull
+#define AKU_MAX_TIMESTAMP       (~0ull)
 #define AKU_STACK_SIZE            0x100000
 #define AKU_HISTOGRAM_SIZE        0x10000
 #define AKU_MAX_COLUMNS           8

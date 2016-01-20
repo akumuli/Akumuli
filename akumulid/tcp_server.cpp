@@ -120,6 +120,13 @@ void TcpSession::handle_read(BufferT buffer,
     } else {
         logger_.error() << error.message();
         parser_.close();
+        drain_pipeline_spout();
+    }
+}
+
+void TcpSession::drain_pipeline_spout() {
+    if (!spout_->is_empty()) {
+        io_->post(boost::bind(&TcpSession::drain_pipeline_spout, shared_from_this()));
     }
 }
 
@@ -228,10 +235,10 @@ void TcpAcceptor::_stop() {
 void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
+        _start();
     } else {
         logger_.error() << "Acceptor error " << err.message();
     }
-    _start();
 }
 
 //                    //

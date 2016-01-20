@@ -334,28 +334,24 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     std::shared_ptr<QP::IQueryProcessor> query_;
     std::shared_ptr<ChunkCache> cache_;
 
-    const bool          IS_BACKWARD_;
-    const aku_Timestamp key_;
-    const aku_Timestamp lowerbound_;
-    const aku_Timestamp upperbound_;
+    const aku_Timestamp  key_;
+    const QP::QueryRange query_range_;
 
-    SearchRange range_;
+    SearchRange search_range_;
 
     SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache)
         : page_(page)
         , query_(query)
         , cache_(cache)
-        , IS_BACKWARD_(query->direction() == AKU_CURSOR_DIR_BACKWARD)
-        , key_(IS_BACKWARD_ ? query->upperbound() : query->lowerbound())
-        , lowerbound_(query->lowerbound())
-        , upperbound_(query->upperbound())
+        , key_(query->range().begin())
+        , query_range_(query->range())
     {
         if (max_index()) {
-            range_.begin = 0u;
-            range_.end = max_index() - 1;
+            search_range_.begin = 0u;
+            search_range_.end = max_index() - 1;
         } else {
-            range_.begin = 0u;
-            range_.end = 0u;
+            search_range_.begin = 0u;
+            search_range_.end = 0u;
         }
     }
 
@@ -365,7 +361,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     bool fast_path() {
         while (!max_index()) {
-            if (page_->get_page_id() == 0 && page_->get_close_count() == 0) {
+            if (query_range_.type == QP::QueryRange::CONTINUOUS &&
+                page_->get_page_id() == 0 && page_->get_close_count() == 0)
+            {
                 // Special case. Database is new and there is no data yet.
                 if (query_->put(QP::NO_DATA)) {
                     continue;
@@ -374,22 +372,22 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return true;
         }
 
-        if (key_ > page_->page_index(range_.end)->timestamp ||
-            key_ < page_->page_index(range_.begin)->timestamp)
+        if (key_ > page_->page_index(search_range_.end)->timestamp ||
+            key_ < page_->page_index(search_range_.begin)->timestamp)
         {
             // Shortcut for corner cases
-            if (key_ > page_->page_index(range_.end)->timestamp) {
-                if (IS_BACKWARD_) {
-                    range_.begin = range_.end;
+            if (key_ > page_->page_index(search_range_.end)->timestamp) {
+                if (query_range_.is_backward()) {
+                    search_range_.begin = search_range_.end;
                     return false;
                 } else {
                     // return empty result
                     return true;
                 }
             }
-            else if (key_ < page_->page_index(range_.begin)->timestamp) {
-                if (!IS_BACKWARD_) {
-                    range_.end = range_.begin;
+            else if (key_ < page_->page_index(search_range_.begin)->timestamp) {
+                if (!query_range_.is_backward()) {
+                    search_range_.end = search_range_.begin;
                     return false;
                 } else {
                     // return empty result
@@ -421,7 +419,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     bool interpolation() {
-        if (!run(key_, &range_)) {
+        if (!run(key_, &search_range_)) {
             query_->set_error(AKU_ENOT_FOUND);
             return false;
         }
@@ -430,37 +428,37 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     void binary_search() {
         uint64_t steps = 0ul;
-        if (range_.begin == range_.end) {
+        if (search_range_.begin == search_range_.end) {
             return;
         }
         uint32_t probe_index = 0u;
-        while (range_.end >= range_.begin) {
+        while (search_range_.end >= search_range_.begin) {
             steps++;
-            probe_index = range_.begin + ((range_.end - range_.begin) / 2u);
+            probe_index = search_range_.begin + ((search_range_.end - search_range_.begin) / 2u);
             if (probe_index >= max_index()) {
                 query_->set_error(AKU_EOVERFLOW);
-                range_.begin = range_.end = max_index();
+                search_range_.begin = search_range_.end = max_index();
                 return;
             }
 
             auto probe = page_->page_index(probe_index)->timestamp;
 
-            if (probe == key_) {                         // found
+            if (probe == key_) {                                // found
                 break;
             } else if (probe < key_) {
-                range_.begin = probe_index + 1u;         // change min index to search upper subarray
-                if (range_.begin >= max_index()) {        // we hit the upper bound of the array
+                search_range_.begin = probe_index + 1u;         // change min index to search upper subarray
+                if (search_range_.begin >= max_index()) {       // we hit the upper bound of the array
                     break;
                 }
             } else {
-                range_.end = probe_index - 1u;           // change max index to search lower subarray
-                if (range_.end == ~0u) {                 // we hit the lower bound of the array
+                search_range_.end = probe_index - 1u;           // change max index to search lower subarray
+                if (search_range_.end == ~0u) {                 // we hit the lower bound of the array
                     break;
                 }
             }
         }
-        range_.begin = probe_index;
-        range_.end = probe_index;
+        search_range_.begin = probe_index;
+        search_range_.end = probe_index;
 
         auto& stats = get_global_search_stats();
         std::lock_guard<std::mutex> guard(stats.mutex);
@@ -528,7 +526,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
 
         int start_pos = 0;
-        if (IS_BACKWARD_) {
+        if (query_range_.is_backward()) {
             start_pos = static_cast<int>(header->timestamps.size() - 1);
         }
 
@@ -552,7 +550,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
             return true;
         };
 
-        if (IS_BACKWARD_) {
+        if (query_range_.is_backward()) {
             for (int i = static_cast<int>(start_pos); i >= 0; i--) {
                 result = check_timestamp(header->timestamps[i]);
                 if (result == OVERSHOOT) {
@@ -587,18 +585,18 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     ScanResultT check_timestamp(aku_Timestamp probe_time)
     {
         ScanResultT proceed;
-        if (IS_BACKWARD_) {
-            if (probe_time > upperbound_) {
+        if (query_range_.is_backward()) {
+            if (probe_time > query_range_.upperbound) {
                 proceed = UNDERSHOOT;
-            } else if (probe_time < lowerbound_) {
+            } else if (probe_time < query_range_.lowerbound) {
                 proceed = OVERSHOOT;
             } else {
                 proceed = IN_RANGE;
             }
         } else {
-            if (probe_time > upperbound_) {
+            if (probe_time > query_range_.upperbound) {
                 proceed = OVERSHOOT;
-            } else if (probe_time < lowerbound_) {
+            } else if (probe_time < query_range_.lowerbound) {
                 proceed = UNDERSHOOT;
             } else {
                 proceed = IN_RANGE;
@@ -613,9 +611,10 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
      * @return tuple{fwd-bytes, bwd-bytes}
      */
     std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
-        int index_increment = IS_BACKWARD_ ? -1 : 1;
+        int index_increment = query_range_.is_backward() ? -1 : 1;
         ScanResultT proceed = IN_RANGE;
         aku_Timestamp last_valid_timestamp = 0ul;
+        bool should_busy_wait = query_range_.type == QP::QueryRange::CONTINUOUS;
         while (proceed != INTERRUPTED) {
             if (probe_index < max_index()) {
                 auto probe_offset = page_->page_index(probe_index)->offset;
@@ -624,9 +623,9 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 auto probe = probe_entry->param_id;
                 last_valid_timestamp = probe_time;
 
-                if (probe == AKU_CHUNK_FWD_ID && IS_BACKWARD_ == false) {
+                if (probe == AKU_CHUNK_FWD_ID && !query_range_.is_backward()) {
                     proceed = scan_compressed_entries(probe_index, probe_entry, false);
-                } else if (probe == AKU_CHUNK_BWD_ID && IS_BACKWARD_ == true) {
+                } else if (probe == AKU_CHUNK_BWD_ID && query_range_.is_backward()) {
                     proceed = scan_compressed_entries(probe_index, probe_entry, false);
                 } else {
                     proceed = check_timestamp(probe_time);
@@ -634,7 +633,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 probe_index += index_increment;
 
             } else {
-                if (IS_BACKWARD_) {
+                if (!should_busy_wait) {
                     proceed = INTERRUPTED;
                 } else {
                     proceed = check_timestamp(last_valid_timestamp);
@@ -642,9 +641,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                     case IN_RANGE:
                     case UNDERSHOOT:
                         // TODO: wait only if page is opened for writing!
-                        if (query_->put(QP::NO_DATA)) {
-                            // We should wait for consumer!
-                            break;
+                        if (page_->get_open_count() > page_->get_close_count()) {
+                            if (query_->put(QP::NO_DATA)) {
+                                // We should wait for consumer!
+                                break;
+                            }
                         }
                     case OVERSHOOT:
                     case INTERRUPTED:
@@ -658,16 +659,16 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     void scan() {
-        if (range_.begin != range_.end) {
+        if (search_range_.begin != search_range_.end) {
             query_->set_error(AKU_EGENERAL);
             return;
         }
-        if (range_.begin >= max_index()) {
+        if (search_range_.begin >= max_index()) {
             query_->set_error(AKU_EOVERFLOW);
             return;
         }
 
-        auto sums = scan_impl(range_.begin);
+        auto sums = scan_impl(search_range_.begin);
 
         auto& stats = get_global_search_stats();
         {

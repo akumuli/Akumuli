@@ -12,7 +12,10 @@ import StringIO
 
 def parse_timestamp(ts):
     """Parse ISO formatted timestamp"""
-    return datetime.datetime.strptime(ts.rstrip('0'), "%Y%m%dT%H%M%S.%f")
+    try:
+        return datetime.datetime.strptime(ts.rstrip('0').rstrip('.'), "%Y%m%dT%H%M%S.%f")
+    except ValueError:
+        return datetime.datetime.strptime(ts.rstrip('0').rstrip('.'), "%Y%m%dT%H%M%S")
 
 
 class TCPChan:
@@ -25,6 +28,9 @@ class TCPChan:
 
     def recv(self):
         return self.__sock.recv(0x1000)
+
+    def close(self):
+        self.__sock.close()
 
 
 def check_values(exp_tags, act_tags, tags_cmp_method, exp_ts, act_ts, exp_value, act_value, iterations):
@@ -58,6 +64,16 @@ def generate_messages(dt, delta, N, metric_name, **kwargs):
         m = msg(dt, i, metric_name, **tags)
         dt = dt + delta
         yield m
+
+
+def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        m = msg(dt, value_gen(i), metric_name, **tags)
+        dt = dt + delta
+        yield m
+
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
