@@ -74,16 +74,34 @@ struct DfcmPredictor {
     }
 };
 
-typedef DfcmPredictor PredictorT;
+typedef FcmPredictor PredictorT;
 
 static const int PREDICTOR_N = 1 << 10;
+
+static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
+    if (flag & 8) {
+        int nb = (flag&7) + 1;
+        int nshift = 64 - ((flag&7) + 1)*8;
+        diff >>= nshift;
+        for (int i = 0; i < nb; i++) {
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        }
+    } else {
+        int nbytes = (flag&7) + 1;
+        for (int i = 0; i < (nbytes+1); i++) {
+            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+            diff >>= 8;
+        }
+    }
+}
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
     PredictorT predictor(PREDICTOR_N);
-    uint64_t prev_diff;
-    unsigned char prev_flag;
+    uint64_t prev_diff = 0;
+    unsigned char prev_flag = 0;
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
@@ -100,7 +118,6 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         if (diff != 0) {
             trailing_zeros = __builtin_ctzl(diff);
         }
-
         if (diff != 0) {
             leading_zeros = __builtin_clzl(diff);
         }
@@ -114,12 +131,14 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             if (nbytes > 0) {
                 nbytes--;
             }
+            // 4th bit indicates that only leading bytes are stored
             flag = 8 | (nbytes&7);
         } else {
             nbytes = 8 - leading_zeros / 8;
             if (nbytes > 0) {
                 nbytes--;
             }
+            // zeroed 4th bit indicates that only trailing bytes are stored
             flag = nbytes&7;
         }
 
@@ -127,50 +146,20 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             prev_diff = diff;
             prev_flag = flag;
         } else {
+            // we're storing values by pairs to save space
             unsigned char flags = (prev_flag << 4) | flag;
             wstream.put_raw(flags);
-
-            if (prev_flag & 8) {
-                int nb = (prev_flag&7) + 1;
-                int nshift = 64 - ((prev_flag&7) + 1)*8;
-                prev_diff >>= nshift;
-                for (int i = 0; i < nb; i++) {
-                    wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
-                    prev_diff >>= 8;
-                }
-            } else {
-                for (int i = 0; i < (prev_flag+1); i++) {
-                    wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
-                    prev_diff >>= 8;
-                }
-            }
-            if (flag & 8) {
-                int nb = (flag&7) + 1;
-                int nshift = 64 - ((flag&7) + 1)*8;
-                diff >>= nshift;
-                for (int i = 0; i < nb; i++) {
-                    wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-                    diff >>= 8;
-                }
-
-            } else {
-                for (int i = 0; i < (nbytes+1); i++) {
-                    wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-                    diff >>= 8;
-                }
-            }
+            encode_value(wstream, prev_diff, prev_flag);
+            encode_value(wstream, diff, flag);
         }
     }
     if (input.size() % 2 == 0) {
-            unsigned char flags = prev_flag << 4;
-            wstream.put_raw(flags);
-
-            for (int i = 0; i < (prev_flag+1); i++) {
-                wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
-                prev_diff >>= 8;
-            }
-            wstream.put_raw(static_cast<unsigned char>(0));
-
+        // `input` contains odd number of values so we should use
+        // empty second value that will take one byte in output
+        unsigned char flags = prev_flag << 4;
+        wstream.put_raw(flags);
+        encode_value(wstream, prev_diff, prev_flag);
+        encode_value(wstream, 0ull, 0);
     }
     return wstream.size();
 }
@@ -186,9 +175,13 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         uint64_t diff = 0ul;
         int flags = (int)rstream.read_raw<unsigned char>();
         int nsteps = (flags & 7) + 1;
-        for (int i = 0; i < nsteps; i++) {
-            uint64_t delta = rstream.read_raw<unsigned char>();
-            diff |= delta << (i*8);
+        if (flags & 8) {
+            // TODO: implement "trailing bits" branch
+        } else {
+            for (int i = 0; i < nsteps; i++) {
+                uint64_t delta = rstream.read_raw<unsigned char>();
+                diff |= delta << (i*8);
+            }
         }
         numblocks -= nsteps + 1;
         union {
