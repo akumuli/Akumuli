@@ -81,8 +81,9 @@ static const int PREDICTOR_N = 1 << 10;
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
-    size_t total_blocks = 0u;
     PredictorT predictor(PREDICTOR_N);
+    uint64_t prev_diff;
+    unsigned char prev_flag;
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
@@ -100,60 +101,78 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             trailing_zeros = __builtin_ctzl(diff);
         }
 
-        trailing_zeros /= 4;
-        diff >>= trailing_zeros*4;
-        // trailing_zeros is in [0, 16] range
-
         if (diff != 0) {
             leading_zeros = __builtin_clzl(diff);
         }
 
-        int nblocks = 8 - leading_zeros / 8;
-        if (nblocks > 0) {
-            nblocks--;
+        int nbytes;
+        unsigned char flag;
+
+        if (trailing_zeros > leading_zeros) {
+            // this would be the case with low precision values
+            nbytes = 8 - trailing_zeros / 8;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            flag = 8 | (nbytes&7);
+        } else {
+            nbytes = 8 - leading_zeros / 8;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            flag = nbytes&7;
         }
 
-        unsigned char flags = nblocks&7;
-        flags |= trailing_zeros << 3;
-        wstream.put_raw(flags);
+        if (ix % 2 == 0) {
+            prev_diff = diff;
+            prev_flag = flag;
+        } else {
+            unsigned char flags = (prev_flag << 4) | flag;
+            wstream.put_raw(flags);
 
-        // Unrolled loop:
-        switch(nblocks) {
-        case 7:
-            wstream.put_raw(diff);
-            total_blocks += (size_t)nblocks + 2;
-            break;
-        case 6:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        case 5:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        case 4:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        case 3:
-            wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
-            total_blocks += (size_t)nblocks + 2;
-            break;
-        case 2:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        case 1:
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        case 0:
-            if (trailing_zeros != 0x10) {
-                wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-                diff >>= 8;
-                total_blocks += (size_t)nblocks + 2;
+            if (prev_flag & 8) {
+                int nb = (prev_flag&7) + 1;
+                int nshift = 64 - ((prev_flag&7) + 1)*8;
+                prev_diff >>= nshift;
+                for (int i = 0; i < nb; i++) {
+                    wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
+                    prev_diff >>= 8;
+                }
             } else {
-                // In this case no payload data is stored
-                total_blocks += 1;
+                for (int i = 0; i < (prev_flag+1); i++) {
+                    wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
+                    prev_diff >>= 8;
+                }
+            }
+            if (flag & 8) {
+                int nb = (flag&7) + 1;
+                int nshift = 64 - ((flag&7) + 1)*8;
+                diff >>= nshift;
+                for (int i = 0; i < nb; i++) {
+                    wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+                    diff >>= 8;
+                }
+
+            } else {
+                for (int i = 0; i < (nbytes+1); i++) {
+                    wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+                    diff >>= 8;
+                }
             }
         }
     }
-    return total_blocks;
+    if (input.size() % 2 == 0) {
+            unsigned char flags = prev_flag << 4;
+            wstream.put_raw(flags);
+
+            for (int i = 0; i < (prev_flag+1); i++) {
+                wstream.put_raw(static_cast<unsigned char>(prev_diff & 0xFF));
+                prev_diff >>= 8;
+            }
+            wstream.put_raw(static_cast<unsigned char>(0));
+
+    }
+    return wstream.size();
 }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
@@ -167,14 +186,10 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         uint64_t diff = 0ul;
         int flags = (int)rstream.read_raw<unsigned char>();
         int nsteps = (flags & 7) + 1;
-        int trailing_zeros = flags >> 3;
-        if (trailing_zeros != 0x10) {
-            for (int i = 0; i < nsteps; i++) {
-                uint64_t delta = rstream.read_raw<unsigned char>();
-                diff |= delta << (i*8);
-            }
+        for (int i = 0; i < nsteps; i++) {
+            uint64_t delta = rstream.read_raw<unsigned char>();
+            diff |= delta << (i*8);
         }
-        diff <<= trailing_zeros*4;
         numblocks -= nsteps + 1;
         union {
             uint64_t bits;
