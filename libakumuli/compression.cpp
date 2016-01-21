@@ -79,12 +79,12 @@ typedef FcmPredictor PredictorT;
 static const int PREDICTOR_N = 1 << 10;
 
 static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
-    int nbytes = (flag&7) + 1;
+    int nbytes = (flag & 7) + 1;
     if (flag & 8) {
-        int nshift = 64 - ((flag&7) + 1)*8;
+        int nshift = 64 - nbytes*8;
         diff >>= nshift;
     }
-    for (int i = 0; i < (nbytes+1); i++) {
+    for (int i = 0; i < nbytes; i++) {
         wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
         diff >>= 8;
     }
