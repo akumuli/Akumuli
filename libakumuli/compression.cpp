@@ -161,7 +161,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             encode_value(wstream, diff, flag);
         }
     }
-    if (input.size() % 2 == 0) {
+    if (input.size() % 2 != 0) {
         // `input` contains odd number of values so we should use
         // empty second value that will take one byte in output
         unsigned char flags = prev_flag << 4;
