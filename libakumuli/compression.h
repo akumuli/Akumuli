@@ -467,7 +467,7 @@ struct CompressionUtil {
       */
     static
     void decompress_doubles(Base128StreamReader&     rstream,
-                            size_t                   nblocks,
+                            size_t                   numvalues,
                             std::vector<double>     *output);
 
     /** Convert from chunk order to time order.

@@ -79,21 +79,29 @@ typedef FcmPredictor PredictorT;
 static const int PREDICTOR_N = 1 << 10;
 
 static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
+    int nbytes = (flag&7) + 1;
     if (flag & 8) {
-        int nb = (flag&7) + 1;
         int nshift = 64 - ((flag&7) + 1)*8;
         diff >>= nshift;
-        for (int i = 0; i < nb; i++) {
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        }
-    } else {
-        int nbytes = (flag&7) + 1;
-        for (int i = 0; i < (nbytes+1); i++) {
-            wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
-            diff >>= 8;
-        }
     }
+    for (int i = 0; i < (nbytes+1); i++) {
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    }
+}
+
+static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char flag) {
+    uint64_t diff = 0ul;
+    int nsteps = (flag & 7) + 1;
+    for (int i = 0; i < nsteps; i++) {
+        uint64_t delta = rstream.read_raw<unsigned char>();
+        diff |= delta << (i*8);
+    }
+    if (flag & 8) {
+        int shift_width = 64 - nsteps*8;
+        diff <<= shift_width;
+    }
+    return diff;
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
@@ -161,29 +169,26 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         encode_value(wstream, prev_diff, prev_flag);
         encode_value(wstream, 0ull, 0);
     }
-    return wstream.size();
+    return input.size();
 }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
-                                         size_t                   numblocks,
+                                         size_t                   numvalues,
                                          std::vector<double>     *output)
 {
     PredictorT predictor(PREDICTOR_N);
     auto end = output->end();
     auto it = output->begin();
-    while(numblocks) {
-        uint64_t diff = 0ul;
-        int flags = (int)rstream.read_raw<unsigned char>();
-        int nsteps = (flags & 7) + 1;
-        if (flags & 8) {
-            // TODO: implement "trailing bits" branch
+    int flags = 0;
+    for (auto i = 0u; i < numvalues; i++) {
+        unsigned char flag = 0;
+        if (i % 2 == 0) {
+            flags = (int)rstream.read_raw<unsigned char>();
+            flag = static_cast<unsigned char>(flags >> 4);
         } else {
-            for (int i = 0; i < nsteps; i++) {
-                uint64_t delta = rstream.read_raw<unsigned char>();
-                diff |= delta << (i*8);
-            }
+            flag = static_cast<unsigned char>(flags & 0xF);
         }
-        numblocks -= nsteps + 1;
+        uint64_t diff = decode_value(rstream, flag);
         union {
             uint64_t bits;
             double real;
@@ -195,7 +200,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         if (it < end) {
             *it++ = curr.real;
         } else {
-            throw StreamOutOfBounds("can't decode doubles, not enough space inside the chunk");
+            throw StreamOutOfBounds("can't decode doubles, not enough space inside the out buffer");
         }
     }
 }
