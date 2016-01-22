@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     int c = 100;
     std::vector<aku_ParamId> ids;
     for (uint64_t id = 0; id < N_PARAMS; id++) { ids.push_back(id); }
-    RandomWalk rwalk(10.0, 0.0, 1.00, N_PARAMS);
+    RandomWalk rwalk(10.0, 0.0, 0.01, N_PARAMS);
     for (uint64_t id = 0; id < N_PARAMS; id++) {
         for (uint64_t ts = 0; ts < N_TIMESTAMPS; ts++) {
             header.paramids.push_back(ids[id]);

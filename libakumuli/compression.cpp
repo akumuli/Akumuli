@@ -80,27 +80,45 @@ static const int PREDICTOR_N = 1 << 10;
 
 static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
-    if (flag & 8) {
-        int nshift = 64 - nbytes*8;
-        diff >>= nshift;
-    }
-    for (int i = 0; i < nbytes; i++) {
+    int nshift = (64 - nbytes*8)*(flag >> 3);
+    diff >>= nshift;
+    switch(nbytes) {
+    case 8:
+        wstream.put_raw(diff);
+        break;
+    case 7:
         wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
         diff >>= 8;
+    case 6:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 5:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 4:
+        wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
+        diff >>= 32;
+        break;
+    case 3:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 2:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 1:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
     }
 }
 
 static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char flag) {
     uint64_t diff = 0ul;
-    int nsteps = (flag & 7) + 1;
-    for (int i = 0; i < nsteps; i++) {
+    int nbytes = (flag & 7) + 1;
+    for (int i = 0; i < nbytes; i++) {
         uint64_t delta = rstream.read_raw<unsigned char>();
         diff |= delta << (i*8);
     }
-    if (flag & 8) {
-        int shift_width = 64 - nsteps*8;
-        diff <<= shift_width;
-    }
+    int shift_width = (64 - nbytes*8)*(flag >> 3);
+    diff <<= shift_width;
     return diff;
 }
 
