@@ -6,6 +6,7 @@ namespace QP {
 Limiter::Limiter(uint64_t limit, uint64_t offset, std::shared_ptr<Node> next)
     : limit_(limit)
     , offset_(offset)
+    , counter_(0)
     , next_(next)
 {
 }
