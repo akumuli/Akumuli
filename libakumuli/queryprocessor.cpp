@@ -364,6 +364,7 @@ bool MetadataQueryProcessor::start() {
         s.payload.type = aku_PData::PARAMID_BIT;
         s.payload.size = sizeof(aku_Sample);
         if (!root_->put(s)) {
+            root_->complete();
             return false;
         }
     }
