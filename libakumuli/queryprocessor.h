@@ -100,12 +100,8 @@ struct ScanQueryProcessor : IQueryProcessor {
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT TableT;
 
-    //! Lowerbound
-    const aku_Timestamp                lowerbound_;
-    //! Upperbound
-    const aku_Timestamp                upperbound_;
-    //! Scan direction
-    const int                          direction_;
+    //! Query range clause data (upperbound, lowerbound, direction, query type)
+    QueryRange                         range_;
     //! Name of the metrics of interest
     const std::string                  metric_;
     //! Name to id mapping
@@ -132,18 +128,12 @@ struct ScanQueryProcessor : IQueryProcessor {
                        std::string metric,
                        aku_Timestamp begin,
                        aku_Timestamp end,
+                       QueryRange::QueryRangeType type,
                        std::shared_ptr<IQueryFilter> filter,
                        GroupByTime groupby,
                        std::unique_ptr<GroupByTag> groupbytag);
 
-    //! Lowerbound
-    aku_Timestamp lowerbound() const;
-
-    //! Upperbound
-    aku_Timestamp upperbound() const;
-
-    //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
-    int direction() const;
+    QueryRange range() const;
 
     IQueryFilter& filter();
 
@@ -169,9 +159,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
 
     MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt, std::shared_ptr<Node> node);
 
-    aku_Timestamp lowerbound() const;
-    aku_Timestamp upperbound() const;
-    int direction() const;
+    QueryRange range() const;
     IQueryFilter& filter();
     SeriesMatcher* matcher();
     bool start();

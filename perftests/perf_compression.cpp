@@ -27,7 +27,7 @@ struct RandomWalk {
 
     double generate(aku_ParamId id) {
         values.at(id) += distribution(generator);
-        return (int)values.at(id);
+        return values.at(id);
     }
 
     void add_anomaly(aku_ParamId id, double value) {

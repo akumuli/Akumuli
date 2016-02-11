@@ -102,6 +102,10 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Upperbound
     virtual aku_Timestamp upperbound() const { return end; }
 
+    virtual QP::QueryRange range() const {
+        return { begin, end, dir, QP::QueryRange::INSTANT };
+    }
+
     virtual QP::IQueryFilter& filter() {
         static QP::BypassFilter bypass;
         return bypass;

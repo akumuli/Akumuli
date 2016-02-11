@@ -241,17 +241,20 @@ bool GroupByTag::apply(aku_Sample* sample) {
 
 //  ScanQueryProcessor  //
 
+static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type) {
+    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type};
+}
+
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        std::string metric,
                                        aku_Timestamp begin,
                                        aku_Timestamp end,
+                                       QueryRange::QueryRangeType type,
                                        std::shared_ptr<IQueryFilter> filter,
                                        GroupByTime groupby,
                                        std::unique_ptr<GroupByTag> groupbytag
                                        )
-    : lowerbound_(std::min(begin, end))
-    , upperbound_(std::max(begin, end))
-    , direction_(begin > end ? AKU_CURSOR_DIR_BACKWARD : AKU_CURSOR_DIR_FORWARD)
+    : range_(make_range(begin, end, type))
     , metric_(metric)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
@@ -285,6 +288,11 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
         } else {
             nnormal++;
         }
+    }
+
+    if (range_.is_backward() && range_.type == QueryRange::CONTINUOUS) {
+        NodeException err("invalid range field");
+        BOOST_THROW_EXCEPTION(err);
     }
 }
 
@@ -326,16 +334,8 @@ void ScanQueryProcessor::set_error(aku_Status error) {
     root_node_->set_error(error);
 }
 
-aku_Timestamp ScanQueryProcessor::lowerbound() const {
-    return lowerbound_;
-}
-
-aku_Timestamp ScanQueryProcessor::upperbound() const {
-    return upperbound_;
-}
-
-int ScanQueryProcessor::direction() const {
-    return direction_;
+QueryRange ScanQueryProcessor::range() const {
+    return range_;
 }
 
 MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt, std::shared_ptr<Node> node)
@@ -348,16 +348,8 @@ SeriesMatcher* MetadataQueryProcessor::matcher() {
     return nullptr;
 }
 
-aku_Timestamp MetadataQueryProcessor::lowerbound() const {
-    return AKU_MAX_TIMESTAMP;
-}
-
-aku_Timestamp MetadataQueryProcessor::upperbound() const {
-    return AKU_MAX_TIMESTAMP;
-}
-
-int MetadataQueryProcessor::direction() const {
-    return AKU_CURSOR_DIR_FORWARD;
+QueryRange MetadataQueryProcessor::range() const {
+    return QueryRange{AKU_MAX_TIMESTAMP, AKU_MAX_TIMESTAMP, QueryRange::INSTANT};
 }
 
 IQueryFilter& MetadataQueryProcessor::filter() {
@@ -627,7 +619,9 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             }
             std::reverse(allnodes.begin(), allnodes.end());
             // Build query processor
-            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end, filter, groupbytime, std::move(groupbytag));
+            return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end,
+                                                        QueryRange::INSTANT,  // TODO: parse from query
+                                                        filter, groupbytime, std::move(groupbytag));
         }
         return std::make_shared<MetadataQueryProcessor>(filter, next);
 

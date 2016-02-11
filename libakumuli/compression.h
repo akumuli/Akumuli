@@ -168,12 +168,29 @@ struct Base128StreamWriter {
         pos_ = p;
     }
 
-    void put(unsigned char value) {
+    void put_raw(unsigned char value) {
         if (pos_ == end_) {
             throw StreamOutOfBounds("can't write value, out of bounds");
         }
         *pos_++ = value;
     }
+
+    void put_raw(uint32_t value) {
+        if ((end_ - pos_) < (int)sizeof(value)) {
+            throw StreamOutOfBounds("can't write value, out of bounds");
+        }
+        *reinterpret_cast<uint32_t*>(pos_) = value;
+        pos_ += sizeof(value);
+    }
+
+    void put_raw(uint64_t value) {
+        if ((end_ - pos_) < (int)sizeof(value)) {
+            throw StreamOutOfBounds("can't write value, out of bounds");
+        }
+        *reinterpret_cast<uint64_t*>(pos_) = value;
+        pos_ += sizeof(value);
+    }
+
 
     //! Commit stream
     void commit() {}
@@ -440,7 +457,7 @@ struct CompressionUtil {
       */
     static
     size_t compress_doubles(const std::vector<double> &input,
-                                Base128StreamWriter &wstream);  // TODO: maybe I should use plain old buffer here
+                                Base128StreamWriter &wstream);
 
     /** Decompress list of doubles.
       * @param buffer input data
@@ -450,7 +467,7 @@ struct CompressionUtil {
       */
     static
     void decompress_doubles(Base128StreamReader&     rstream,
-                            size_t                   nblocks,
+                            size_t                   numvalues,
                             std::vector<double>     *output);
 
     /** Convert from chunk order to time order.

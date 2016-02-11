@@ -3,68 +3,13 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <iostream> // TODO: remove me
 
 namespace Akumuli {
 
 StreamOutOfBounds::StreamOutOfBounds(const char* msg) : std::runtime_error(msg)
 {
 }
-
-//! Stream that can be used to write data by 4-bits
-struct HalfByteStreamWriter {
-    Base128StreamWriter& stream;
-    size_t write_pos;
-    unsigned char tmp;
-
-    HalfByteStreamWriter(Base128StreamWriter& stream, size_t numblocks=0u)
-        : stream(stream)
-        , write_pos(numblocks)
-        , tmp(0)
-    {
-    }
-
-    void add4bits(unsigned char value) {
-        if (write_pos % 2 == 0) {
-            tmp = value & 0xF;
-        } else {
-            tmp |= (value << 4);
-            stream.put(tmp);
-            tmp = 0;
-        }
-        write_pos++;
-    }
-
-    void close() {
-        if (write_pos % 2 != 0) {
-            stream.put(tmp);
-        }
-    }
-};
-
-//! Stream that can be used to write data by 4-bits
-struct HalfByteStreamReader {
-    Base128StreamReader& stream;
-    size_t read_pos;
-    unsigned char tmp;
-
-    HalfByteStreamReader(Base128StreamReader& stream, size_t numblocks=0u)
-        : stream(stream)
-        , read_pos(0)
-        , tmp(0)
-    {
-    }
-
-    unsigned char read4bits() {
-        if (read_pos % 2 == 0) {
-            tmp = stream.read_raw<unsigned char>();
-            read_pos++;
-            return tmp & 0xF;
-        }
-        read_pos++;
-        return tmp >> 4;
-    }
-};
-
 
 struct PrevValPredictor {
     uint64_t last_value;
@@ -79,17 +24,42 @@ struct PrevValPredictor {
     }
 };
 
+struct FcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    const uint64_t MASK_;
+
+    FcmPredictor(size_t table_size)
+        : last_hash(0ull)
+        , MASK_(table_size - 1)
+    {
+        assert((table_size & MASK_) == 0);
+        table.resize(table_size);
+    }
+
+    uint64_t predict_next() const {
+        return table[last_hash];
+    }
+
+    void update(uint64_t value) {
+        table[last_hash] = value;
+        last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+    }
+};
+
 struct DfcmPredictor {
     std::vector<uint64_t> table;
     uint64_t last_hash;
     uint64_t last_value;
+    const uint64_t MASK_;
 
     //! C-tor. `table_size` should be a power of two.
     DfcmPredictor(int table_size)
         : last_hash (0ul)
         , last_value(0ul)
+        , MASK_(table_size - 1)
     {
-       assert((table_size & (table_size - 1)) == 0);
+       assert((table_size & MASK_) == 0);
        table.resize(table_size);
     }
 
@@ -98,63 +68,66 @@ struct DfcmPredictor {
     }
 
     void update(uint64_t value) {
-        table.at(last_hash) = value - last_value;
-        auto mask = table.size() - 1;
-        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40));
-        last_hash &= mask;
+        table[last_hash] = value - last_value;
+        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
         last_value = value;
     }
 };
 
-struct ThirdOrderDfcmPredictor {
-    std::vector<std::pair<uint64_t, uint64_t>> table;
-    uint64_t last_hash;
-    uint64_t last_values[3];
-
-    //! C-tor. `table_size` should be a power of two.
-    ThirdOrderDfcmPredictor(int table_size)
-        : last_hash (0ul)
-        , last_values{0ul}
-    {
-       assert((table_size & (table_size - 1)) == 0);
-       table.resize(table_size);
-    }
-
-    uint64_t predict_next() const {
-        auto result = table.at(last_hash);
-        auto d1 = result.first;
-        auto d2 = result.second;
-        if ((d1 >> 50) != (d2 >> 50)) {
-            return last_values[0] + d1;
-        }
-        return last_values[0] + d1 + (d1 - d2);
-    }
-
-    void update(uint64_t value) {
-        table.at(last_hash) = std::make_pair(value - last_values[0], last_values[0] - last_values[1]);
-        auto mask = table.size() - 1;
-        auto delta1 = (value - last_values[0]) >> 50;
-        auto delta2 = (last_values[0]  - last_values[1]) >> 50;
-        auto delta3 = (last_values[1]  - last_values[2]) >> 50;
-        // hash(delta1, delta2, delta3) = lsb (delta1 ⊗ (delta2 << 5) ⊗ (delta3 << 10))
-        last_hash = delta1 ^ (delta2 << 5) ^ (delta3 << 10);
-        last_hash &= mask;
-        // update last values
-        last_values[2] = last_values[1];
-        last_values[1] = last_values[0];
-        last_values[0] = value;
-    }
-};
-
-typedef DfcmPredictor PredictorT;
+typedef FcmPredictor PredictorT;
 
 static const int PREDICTOR_N = 1 << 10;
+
+static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
+    int nbytes = (flag & 7) + 1;
+    int nshift = (64 - nbytes*8)*(flag >> 3);
+    diff >>= nshift;
+    switch(nbytes) {
+    case 8:
+        wstream.put_raw(diff);
+        break;
+    case 7:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 6:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 5:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 4:
+        wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
+        diff >>= 32;
+        break;
+    case 3:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 2:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        diff >>= 8;
+    case 1:
+        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+    }
+}
+
+static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char flag) {
+    uint64_t diff = 0ul;
+    int nbytes = (flag & 7) + 1;
+    for (int i = 0; i < nbytes; i++) {
+        uint64_t delta = rstream.read_raw<unsigned char>();
+        diff |= delta << (i*8);
+    }
+    int shift_width = (64 - nbytes*8)*(flag >> 3);
+    diff <<= shift_width;
+    return diff;
+}
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
-    HalfByteStreamWriter stream(wstream);
     PredictorT predictor(PREDICTOR_N);
+    uint64_t prev_diff = 0;
+    unsigned char prev_flag = 0;
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
@@ -164,40 +137,76 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         uint64_t predicted = predictor.predict_next();
         predictor.update(curr.bits);
         uint64_t diff = curr.bits ^ predicted;
-        int leading_zeros  = 64;
+
+        int leading_zeros = 64;
+        int trailing_zeros = 64;
+
+        if (diff != 0) {
+            trailing_zeros = __builtin_ctzl(diff);
+        }
         if (diff != 0) {
             leading_zeros = __builtin_clzl(diff);
         }
-        int nblocks = 0xF - leading_zeros / 4;
-        if (nblocks < 0) {
-            nblocks = 0;
+
+        int nbytes;
+        unsigned char flag;
+
+        if (trailing_zeros > leading_zeros) {
+            // this would be the case with low precision values
+            nbytes = 8 - trailing_zeros / 8;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            // 4th bit indicates that only leading bytes are stored
+            flag = 8 | (nbytes&7);
+        } else {
+            nbytes = 8 - leading_zeros / 8;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            // zeroed 4th bit indicates that only trailing bytes are stored
+            flag = nbytes&7;
         }
-        stream.add4bits(nblocks);
-        for (int i = (nblocks + 1); i --> 0;) {
-            stream.add4bits(diff & 0xF);
-            diff >>= 4;
+
+        if (ix % 2 == 0) {
+            prev_diff = diff;
+            prev_flag = flag;
+        } else {
+            // we're storing values by pairs to save space
+            unsigned char flags = (prev_flag << 4) | flag;
+            wstream.put_raw(flags);
+            encode_value(wstream, prev_diff, prev_flag);
+            encode_value(wstream, diff, flag);
         }
     }
-    stream.close();
-    return stream.write_pos;
+    if (input.size() % 2 != 0) {
+        // `input` contains odd number of values so we should use
+        // empty second value that will take one byte in output
+        unsigned char flags = prev_flag << 4;
+        wstream.put_raw(flags);
+        encode_value(wstream, prev_diff, prev_flag);
+        encode_value(wstream, 0ull, 0);
+    }
+    return input.size();
 }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
-                                         size_t                   numblocks,
+                                         size_t                   numvalues,
                                          std::vector<double>     *output)
 {
-    HalfByteStreamReader stream(rstream, numblocks);
     PredictorT predictor(PREDICTOR_N);
     auto end = output->end();
     auto it = output->begin();
-    while(numblocks) {
-        uint64_t diff   = 0ul;
-        int nsteps = stream.read4bits();
-        for (int i = 0; i < (nsteps + 1); i++) {
-            uint64_t delta = stream.read4bits();
-            diff |= delta << (i*4);
+    int flags = 0;
+    for (auto i = 0u; i < numvalues; i++) {
+        unsigned char flag = 0;
+        if (i % 2 == 0) {
+            flags = (int)rstream.read_raw<unsigned char>();
+            flag = static_cast<unsigned char>(flags >> 4);
+        } else {
+            flag = static_cast<unsigned char>(flags & 0xF);
         }
-        numblocks -= nsteps + 2;  // 1 for (nsteps + 1) and 1 for number of 4bit blocks
+        uint64_t diff = decode_value(rstream, flag);
         union {
             uint64_t bits;
             double real;
@@ -209,7 +218,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         if (it < end) {
             *it++ = curr.real;
         } else {
-            throw StreamOutOfBounds("can't decode doubles, not enough space inside the chunk");
+            throw StreamOutOfBounds("can't decode doubles, not enough space inside the out buffer");
         }
     }
 }

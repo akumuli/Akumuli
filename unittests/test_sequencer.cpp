@@ -223,6 +223,10 @@ struct TestQueryProcessor : QP::IQueryProcessor {
     //! Scan direction (AKU_CURSOR_DIR_BACKWARD or AKU_CURSOR_DIR_FORWARD)
     virtual int direction() const { return dir; }
 
+    virtual QP::QueryRange range() const {
+        return { begin, end, dir, QP::QueryRange::INSTANT };
+    }
+
     virtual QP::IQueryFilter& filter() {
         static QP::BypassFilter bypass;
         return bypass;
