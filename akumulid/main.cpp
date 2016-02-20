@@ -23,6 +23,7 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
+const int64_t AKU_TEST_PAGE_SIZE  = 0x1000000;
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -352,18 +353,12 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
   */
 void create_db_files(const char* path,
                      int32_t nvolumes,
-                     bool testdb=false)
+                     uint64_t page_size=0)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        if (!testdb) {
-            status = aku_create_database("db", path, path, nvolumes,
-                                         &static_logger);
-        } else {
-            status = aku_create_test_database("db", path, path, nvolumes,
-                                              &static_logger);
-        }
+        status = aku_create_database_ex("db", path, path, nvolumes, page_size, &static_logger);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -437,7 +432,7 @@ void cmd_create_database(bool test_db=false) {
     auto path       = ConfigFile::get_path(config);
     auto volumes    = ConfigFile::get_nvolumes(config);
 
-    create_db_files(path.c_str(), volumes, test_db);
+    create_db_files(path.c_str(), volumes, test_db ? AKU_TEST_PAGE_SIZE : 0);
 }
 
 void cmd_delete_database() {

@@ -41,7 +41,7 @@
 
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page=false);
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, uint64_t page_size=0);
 
 //----------------------------------Volume----------------------------------------------
 
@@ -88,6 +88,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     uint32_t open_count = page_->get_open_count();
     uint32_t close_count = page_->get_close_count();
     uint32_t npages = page_->get_numpages();
+    uint64_t page_size = page_->get_page_length();
 
     std::string new_file_name = file_path_;
                 new_file_name += ".tmp";
@@ -99,7 +100,7 @@ std::shared_ptr<Volume> Volume::safe_realloc() {
     is_temporary_.store(true);
 
     std::shared_ptr<Volume> newvol;
-    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_, false);
+    auto status = create_page_file(file_path_.c_str(), page_id, npages, logger_, page_size);
     if (status != AKU_SUCCESS) {
         (*logger_)(AKU_LOG_ERROR, "Failed to create new volume");
         // Try to restore previous state on disk
@@ -654,10 +655,10 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, bool test_page) {
+static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, uint64_t page_size) {
     using namespace std;
     apr_status_t status;
-    int64_t size = test_page ? AKU_TEST_PAGE_SIZE : AKU_MAX_PAGE_SIZE;
+    int64_t size = page_size == 0 ? AKU_MAX_PAGE_SIZE : page_size;
 
     status = create_file(file_name, size, logger);
     if (status != APR_SUCCESS) {
@@ -684,10 +685,10 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 /** Create page files, return list of statuses.
   */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, bool test_page=false) {
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, uint64_t page_size) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger, test_page);
+        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger, page_size);
         results[ix] = res;
     }
     return results;
@@ -772,17 +773,21 @@ static apr_status_t create_metadata_page( const char* file_name
 }
 
 
-apr_status_t Storage::new_storage(const char  *file_name,
-                                  const char  *metadata_path,
-                                  const char  *volumes_path,
-                                  int          num_pages,
+apr_status_t Storage::new_storage(const char     *file_name,
+                                  const char     *metadata_path,
+                                  const char     *volumes_path,
+                                  int             num_pages,
                                   aku_logger_cb_t logger,
-                                  bool         test_db)
+                                  uint64_t        page_size)
 {
+    if (page_size > AKU_MAX_PAGE_SIZE) {
+        return APR_EINVAL;
+    }
     apr_pool_t* mempool;
     apr_status_t status = apr_pool_create(&mempool, NULL);
-    if (status != APR_SUCCESS)
+    if (status != APR_SUCCESS) {
         return status;
+    }
 
     // get absolute volumes and metadata path
     boost::filesystem::path volpath(volumes_path);
@@ -820,7 +825,7 @@ apr_status_t Storage::new_storage(const char  *file_name,
         (*logger)(AKU_LOG_INFO, "Volumes dir already exists");
     }
 
-    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger, test_db);
+    std::vector<apr_status_t> page_creation_statuses = create_page_files(page_names, logger, page_size);
     for(auto creation_status: page_creation_statuses) {
         if (creation_status != APR_SUCCESS) {
             (*logger)(AKU_LOG_ERROR, "Not all pages successfullly created. Cleaning up.");

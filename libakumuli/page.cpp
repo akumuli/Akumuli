@@ -51,6 +51,10 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32
 {
 }
 
+uint64_t PageHeader::get_page_length() const {
+    return length + sizeof(PageHeader);
+}
+
 uint32_t PageHeader::get_page_id() const {
     return page_id;
 }
