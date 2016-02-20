@@ -33,7 +33,6 @@
 #include "buffer_cache.h"
 
 const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
-const int64_t AKU_TEST_PAGE_SIZE  = 0x1000000;
 
 namespace Akumuli {
 
@@ -100,6 +99,9 @@ class PageHeader {
     char payload[];             //< page payload
 
 public:
+
+    //! Get length of the page
+    uint64_t get_page_length() const;
 
     //! Get page ID
     uint32_t get_page_id() const;

@@ -184,13 +184,14 @@ struct Storage
       * @param storage_name storage name
       * @param metadata_path path to metadata dir
       * @param volumes_path path to volumes dir
+      * @param page_size size of each page (default value is 0 means 4GB)
       */
     static apr_status_t new_storage(const char     *file_name,
                                     const char     *metadata_path,
                                     const char     *volumes_path,
                                     int             num_pages,
                                     aku_logger_cb_t logger,
-                                    bool            test_db = false);
+                                    uint64_t        page_size = 0);
 
     /** Remove all volumes
       * @param file_name
