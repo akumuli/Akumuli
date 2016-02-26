@@ -31,10 +31,9 @@ struct ProtocolConsumer {
     virtual void write(const aku_Sample&) = 0;
 
     // TODO: remove this function, bulk string decoding should be done inside ProtocolParser
-    virtual void add_bulk_string(const Byte *buffer, size_t n) = 0;
+    virtual void add_bulk_string(const Byte* buffer, size_t n) = 0;
 
     //! Convert series name to param id
     virtual aku_Status series_to_param_id(const char* str, size_t strlen, aku_Sample* sample) = 0;
 };
-
 }

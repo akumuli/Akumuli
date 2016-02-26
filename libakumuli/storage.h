@@ -21,27 +21,27 @@
 
 
 #pragma once
+#include <atomic>
 #include <cstddef>
-#include <vector>
-#include <queue>
 #include <list>
 #include <map>
-#include <atomic>
-#include <thread>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 // APR headers
 #include <apr.h>
 #include <apr_mmap.h>
 
-#include "page.h"
-#include "util.h"
-#include "sequencer.h"
-#include "cursor.h"
-#include "seriesparser.h"
 #include "akumuli_def.h"
+#include "cursor.h"
 #include "metadatastorage.h"
+#include "page.h"
+#include "sequencer.h"
+#include "seriesparser.h"
+#include "util.h"
 
 #include <boost/thread.hpp>
 
@@ -51,22 +51,20 @@ namespace Akumuli {
   * Coresponds to one of the storage pages. Includes page
   * data and main memory data.
   */
-struct Volume : std::enable_shared_from_this<Volume>
-{
-    MemoryMappedFile mmap_;
-    PageHeader* page_;
-    aku_Duration window_;
-    size_t max_cache_size_;
+struct Volume : std::enable_shared_from_this<Volume> {
+    MemoryMappedFile           mmap_;
+    PageHeader*                page_;
+    aku_Duration               window_;
+    size_t                     max_cache_size_;
     std::unique_ptr<Sequencer> cache_;
-    std::string file_path_;
-    aku_FineTuneParams config_;
-    aku_logger_cb_t logger_;
-    std::atomic_bool is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
+    std::string                file_path_;
+    aku_FineTuneParams         config_;
+    aku_logger_cb_t            logger_;
+    std::atomic_bool
+        is_temporary_;  //< True if this is temporary volume and underlying file should be deleted
 
     //! Create new volume stored in file
-    Volume(const char           *file_path,
-           aku_FineTuneParams    conf,
-           aku_logger_cb_t       logger);
+    Volume(const char* file_path, aku_FineTuneParams conf, aku_logger_cb_t logger);
 
     ~Volume();
 
@@ -94,31 +92,30 @@ struct Volume : std::enable_shared_from_this<Volume>
 
 /** Interface to page manager
  */
-struct Storage
-{
-    typedef std::mutex                          LockType;
-    typedef std::shared_ptr<Volume>             PVolume;
-    typedef std::shared_ptr<MetadataStorage>    PMetadataStorage;
-    typedef std::shared_ptr<SeriesMatcher>      PSeriesMatcher;
-    typedef std::shared_ptr<ChunkCache>         PCache;
+struct Storage {
+    typedef std::mutex                       LockType;
+    typedef std::shared_ptr<Volume>          PVolume;
+    typedef std::shared_ptr<MetadataStorage> PMetadataStorage;
+    typedef std::shared_ptr<SeriesMatcher>   PSeriesMatcher;
+    typedef std::shared_ptr<ChunkCache>      PCache;
 
     // Active volume state
-    aku_FineTuneParams        config_;
-    PVolume                   active_volume_;
-    PageHeader*               active_page_;
-    std::atomic<int>          active_volume_index_;
-    aku_Duration              ttl_;                       //< Late write limit
-    aku_Status                open_error_code_;           //< Open op-n error code
-    std::vector<PVolume>      volumes_;                   //< List of all volumes
-    PMetadataStorage          metadata_;                  //< Metadata storage
-    PSeriesMatcher            matcher_;                   //< Series matcher
+    aku_FineTuneParams   config_;
+    PVolume              active_volume_;
+    PageHeader*          active_page_;
+    std::atomic<int>     active_volume_index_;
+    aku_Duration         ttl_;              //< Late write limit
+    aku_Status           open_error_code_;  //< Open op-n error code
+    std::vector<PVolume> volumes_;          //< List of all volumes
+    PMetadataStorage     metadata_;         //< Metadata storage
+    PSeriesMatcher       matcher_;          //< Series matcher
 
-    LockType                  mutex_;                     //< Storage lock (used by worker thread)
+    LockType mutex_;  //< Storage lock (used by worker thread)
 
-    apr_time_t                creation_time_;             //< Cached metadata
-    aku_logger_cb_t           logger_;
-    Rand                      rand_;
-    PCache                    cache_;
+    apr_time_t      creation_time_;  //< Cached metadata
+    aku_logger_cb_t logger_;
+    Rand            rand_;
+    PCache          cache_;
 
     //! Local (per query) string pool
     mutable boost::thread_specific_ptr<SeriesMatcher> local_matcher_;
@@ -126,7 +123,7 @@ struct Storage
     /** Storage c-tor.
       * @param file_name path to metadata file
       */
-    Storage(const char *path, aku_FineTuneParams const& conf);
+    Storage(const char* path, aku_FineTuneParams const& conf);
 
     /** Override local series matcher.
       * This method is const because it doesn't affect any storage data except
@@ -167,7 +164,7 @@ struct Storage
       * @param value is a pointer to output parameter
       * @returns status code
       */
-    aku_Status series_to_param_id(const char* begin, const char* end, uint64_t *value);
+    aku_Status series_to_param_id(const char* begin, const char* end, uint64_t* value);
 
     /** Convert parameter id to series name.
       */
@@ -176,7 +173,7 @@ struct Storage
     // Reading
 
     //! Search storage using cursor
-    void search(Caller &caller, InternalCursor* cur, const char* query) const;
+    void search(Caller& caller, InternalCursor* cur, const char* query) const;
 
     // Static interface
 
@@ -186,12 +183,9 @@ struct Storage
       * @param volumes_path path to volumes dir
       * @param page_size size of each page (default value is 0 means 4GB)
       */
-    static apr_status_t new_storage(const char     *file_name,
-                                    const char     *metadata_path,
-                                    const char     *volumes_path,
-                                    int             num_pages,
-                                    aku_logger_cb_t logger,
-                                    uint64_t        page_size = 0);
+    static apr_status_t new_storage(const char* file_name, const char* metadata_path,
+                                    const char* volumes_path, int num_pages, aku_logger_cb_t logger,
+                                    uint64_t page_size = 0);
 
     /** Remove all volumes
       * @param file_name
@@ -207,5 +201,4 @@ struct Storage
 
     void debug_print() const;
 };
-
 }

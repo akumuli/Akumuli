@@ -16,11 +16,11 @@
 
 #pragma once
 #include <cstddef>
-#include <string>
-#include <stdexcept>
-#include <vector>
-#include <queue>
 #include <memory>
+#include <queue>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace Akumuli {
 
@@ -28,7 +28,8 @@ typedef char Byte;
 
 class StreamError : public std::exception {
     std::string line_;
-    int pos_;
+    int         pos_;
+
 public:
     enum {
         MAX_LENGTH = 64,
@@ -36,7 +37,7 @@ public:
     StreamError(std::string line, int pos);
 
     virtual const char* what() const throw();
-    std::string get_bottom_line() const;
+    std::string         get_bottom_line() const;
 };
 
 /** Stream reader that operates on byte level. */
@@ -70,7 +71,7 @@ struct ByteStreamReader {
       * should return zero. If error occured (stream already closed) - negative value
       * should be returned.
       */
-    virtual int read(Byte *buffer, size_t buffer_len) = 0;
+    virtual int read(Byte* buffer, size_t buffer_len) = 0;
 
     /** Close stream.
      **/
@@ -84,21 +85,20 @@ struct ByteStreamReader {
 };
 
 class MemStreamReader : public ByteStreamReader {
-    const Byte   *buf_;   //< Source bytes
-    const size_t  size_;  //< Source size
-    size_t        pos_;   //< Position in the stream
+    const Byte*  buf_;   //< Source bytes
+    const size_t size_;  //< Source size
+    size_t       pos_;   //< Position in the stream
 public:
-    MemStreamReader(const Byte *buffer, size_t buffer_len);
+    MemStreamReader(const Byte* buffer, size_t buffer_len);
 
     // ByteStreamReader interface
 public:
     virtual Byte get();
     virtual Byte pick() const;
     virtual bool is_eof();
-    virtual int read(Byte *buffer, size_t buffer_len);
+    virtual int read(Byte* buffer, size_t buffer_len);
     virtual void close();
     virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const;
 };
 
 }  // namespace
-

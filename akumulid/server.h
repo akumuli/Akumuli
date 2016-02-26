@@ -1,11 +1,11 @@
 #pragma once
 #include "akumuli.h"
-#include "signal_handler.h"
 #include "ingestion_pipeline.h"
+#include "signal_handler.h"
 
 #include <map>
-#include <tuple>
 #include <string>
+#include <tuple>
 #include <tuple>
 
 namespace Akumuli {
@@ -54,9 +54,9 @@ struct ReadOperation {
 
 //! Interface that can be used to create read operations
 struct ReadOperationBuilder {
-    virtual ~ReadOperationBuilder() = default;
-    virtual ReadOperation* create() = 0;
-    virtual std::string get_all_stats() = 0;
+    virtual ~ReadOperationBuilder()        = default;
+    virtual ReadOperation* create()        = 0;
+    virtual std::string    get_all_stats() = 0;
 };
 
 
@@ -71,13 +71,13 @@ struct ServerFactory {
     typedef std::function<std::shared_ptr<Server>(std::shared_ptr<IngestionPipeline>,
                                                   std::shared_ptr<ReadOperationBuilder>,
                                                   const ServerSettings&)>
-            Generator;
+        Generator;
 
     std::map<std::string, Generator> gen_;
 
-    std::shared_ptr<Server> create(std::shared_ptr<IngestionPipeline> pipeline,
+    std::shared_ptr<Server> create(std::shared_ptr<IngestionPipeline>    pipeline,
                                    std::shared_ptr<ReadOperationBuilder> qproc,
-                                   const ServerSettings& settings) {
+                                   const ServerSettings&                 settings) {
         auto it = gen_.find(settings.name);
         if (it == gen_.end()) {
             return std::shared_ptr<Server>();
@@ -85,9 +85,7 @@ struct ServerFactory {
         return it->second(pipeline, qproc, settings);
     }
 
-    void register_type(std::string name, Generator gen) {
-        gen_[name] = gen;
-    }
+    void register_type(std::string name, Generator gen) { gen_[name] = gen; }
 
     static ServerFactory& instance() {
         static ServerFactory factory;

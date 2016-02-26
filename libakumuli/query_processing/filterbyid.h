@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "../util.h"  // for panic
 #include "../queryprocessor_framework.h"
+#include "../util.h"  // for panic
 
 namespace Akumuli {
 namespace QP {
@@ -11,21 +11,17 @@ namespace QP {
 /** Filter ids using predicate.
   * Predicate is an unary functor that accepts parameter of type aku_ParamId - fun(aku_ParamId) -> bool.
   */
-template<class Predicate>
+template <class Predicate>
 struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>, Node {
     //! Id matching predicate
-    Predicate op_;
+    Predicate             op_;
     std::shared_ptr<Node> next_;
 
     FilterByIdNode(Predicate pred, std::shared_ptr<Node> next)
         : op_(pred)
-        , next_(next)
-    {
-    }
+        , next_(next) {}
 
-    virtual void complete() {
-        next_->complete();
-    }
+    virtual void complete() { next_->complete(); }
 
     virtual bool put(const aku_Sample& sample) {
         if (sample.payload.type > aku_PData::MARGIN) {
@@ -41,9 +37,7 @@ struct FilterByIdNode : std::enable_shared_from_this<FilterByIdNode<Predicate>>,
         next_->set_error(status);
     }
 
-    virtual int get_requirements() const {
-        return EMPTY;
-    }
+    virtual int get_requirements() const { return EMPTY; }
 };
-
-}}  // namespace
+}
+}  // namespace

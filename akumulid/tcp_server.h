@@ -32,12 +32,12 @@ namespace Akumuli {
 //          Type aliases from boost.asio          //
 //                                                //
 
-typedef boost::asio::io_service         IOServiceT;
-typedef boost::asio::ip::tcp::acceptor  AcceptorT;
-typedef boost::asio::ip::tcp::socket    SocketT;
-typedef boost::asio::ip::tcp::endpoint  EndpointT;
-typedef boost::asio::strand             StrandT;
-typedef boost::asio::io_service::work   WorkT;
+typedef boost::asio::io_service        IOServiceT;
+typedef boost::asio::ip::tcp::acceptor AcceptorT;
+typedef boost::asio::ip::tcp::socket   SocketT;
+typedef boost::asio::ip::tcp::endpoint EndpointT;
+typedef boost::asio::strand            StrandT;
+typedef boost::asio::io_service::work  WorkT;
 
 /** Server session. Reads data from socket.
  *  Must be created in the heap.
@@ -48,28 +48,26 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
         BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
     };
-    IOServiceT *io_;
-    SocketT socket_;
-    StrandT strand_;
+    IOServiceT*                    io_;
+    SocketT                        socket_;
+    StrandT                        strand_;
     std::shared_ptr<PipelineSpout> spout_;
-    ProtocolParser parser_;
-    Logger logger_;
+    ProtocolParser                 parser_;
+    Logger                         logger_;
+
 public:
     typedef std::shared_ptr<Byte> BufferT;
-    TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout);
+    TcpSession(IOServiceT* io, std::shared_ptr<PipelineSpout> spout);
 
     SocketT& socket();
 
-    void start(BufferT buf,
-               size_t buf_size,
-               size_t pos,
-               size_t bytes_read);
+    void start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_read);
 
     PipelineErrorCb get_error_cb();
 
     static BufferT NO_BUFFER;
-private:
 
+private:
     /** Allocate new buffer or reuse old if there is enough space in there.
       * @param prev_buf previous buffer or NO_BUFFER
       * @param size buffer full size
@@ -77,15 +75,10 @@ private:
       * @param bytes_read number of newly overwritten bytes in the buffer
       * @return buffer (allocated or reused), full buffer size and write position (three element tuple)
       */
-    std::tuple<BufferT, size_t, size_t> get_next_buffer(BufferT prev_buf,
-                                                        size_t size,
-                                                        size_t pos,
+    std::tuple<BufferT, size_t, size_t> get_next_buffer(BufferT prev_buf, size_t size, size_t pos,
                                                         size_t bytes_read);
 
-    void handle_read(BufferT buffer,
-                     size_t pos,
-                     size_t buf_size,
-                     boost::system::error_code error,
+    void handle_read(BufferT buffer, size_t pos, size_t buf_size, boost::system::error_code error,
                      size_t nbytes);
 
     void handle_write_error(boost::system::error_code error);
@@ -97,29 +90,29 @@ private:
 /** Tcp server.
   * Accepts connections and creates new client sessions
   */
-class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor>
-{
-    IOServiceT                          own_io_;         //< Acceptor's own io-service
-    AcceptorT                           acceptor_;       //< Acceptor
-    std::vector<IOServiceT*>            sessions_io_;    //< List of io-services for sessions
-    std::vector<WorkT>                  sessions_work_;  //< Work to block io-services from completing too early
-    std::shared_ptr<IngestionPipeline>  pipeline_;       //< Pipeline instance
-    std::atomic<int>                    io_index_;       //< I/O service index
+class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
+    IOServiceT               own_io_;       //< Acceptor's own io-service
+    AcceptorT                acceptor_;     //< Acceptor
+    std::vector<IOServiceT*> sessions_io_;  //< List of io-services for sessions
+    std::vector<WorkT> sessions_work_;      //< Work to block io-services from completing too early
+    std::shared_ptr<IngestionPipeline> pipeline_;  //< Pipeline instance
+    std::atomic<int>                   io_index_;  //< I/O service index
 
-    boost::barrier                      start_barrier_;  //< Barrier to start worker thread
-    boost::barrier                      stop_barrier_;   //< Barrier to stop worker thread
+    boost::barrier start_barrier_;  //< Barrier to start worker thread
+    boost::barrier stop_barrier_;   //< Barrier to stop worker thread
 
-    Logger                              logger_;
+    Logger logger_;
+
 public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
       * @param port port to listen for new connections
       * @param pipeline ingestion pipeline
       */
-    TcpAcceptor(// Server parameters
-                std::vector<IOServiceT*> io, int port,
-                // Storage & pipeline
-                std::shared_ptr<IngestionPipeline> pipeline);
+    TcpAcceptor(  // Server parameters
+        std::vector<IOServiceT*> io, int port,
+        // Storage & pipeline
+        std::shared_ptr<IngestionPipeline> pipeline);
 
     //! Start listening on socket
     void start();
@@ -135,22 +128,21 @@ public:
 
     //! Run one handler (should be used only for testing)
     void _run_one();
-private:
 
+private:
     //! Accept event handler
     void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);
 };
 
 
-struct TcpServer : std::enable_shared_from_this<TcpServer>, Server
-{
-    std::shared_ptr<IngestionPipeline>  pline;
-    std::shared_ptr<TcpAcceptor>        serv;
-    boost::asio::io_service             io;
-    std::vector<IOServiceT*>            iovec;
-    boost::barrier                      barrier;
-    std::atomic<int>                    stopped;
-    Logger                              logger_;
+struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
+    std::shared_ptr<IngestionPipeline> pline;
+    std::shared_ptr<TcpAcceptor>       serv;
+    boost::asio::io_service            io;
+    std::vector<IOServiceT*>           iovec;
+    boost::barrier                     barrier;
+    std::atomic<int>                   stopped;
+    Logger                             logger_;
 
     TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
 

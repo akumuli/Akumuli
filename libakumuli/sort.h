@@ -29,13 +29,10 @@ namespace Akumuli {
   * @param TIter random access iterator type
   * @param TComp compare predicate (work on values, not on iterators)
   */
-template< typename TIter
-        , typename TComp>
-void insertion_sort( TIter        begin
-                   , TIter        end
-                   , TComp const& cmp)
-{
-    if (begin == end) return;
+template <typename TIter, typename TComp>
+void insertion_sort(TIter begin, TIter end, TComp const& cmp) {
+    if (begin == end)
+        return;
 
     for (auto i = begin + 1; i != end; ++i) {
         if (cmp(*i, *begin)) {
@@ -43,16 +40,15 @@ void insertion_sort( TIter        begin
             std::copy_backward(begin, i, i + 1);
             *begin = value;
         } else {
-            auto val = *i;
+            auto val  = *i;
             auto next = i - 1;
             while (cmp(val, *next)) {
                 *i = *next;
-                i = next;
+                i  = next;
                 --next;
             }
             *i = val;
         }
     }
 }
-
 }

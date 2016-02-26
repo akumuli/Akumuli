@@ -9,9 +9,9 @@ namespace QP {
 
 struct Limiter : Node {
 
-    uint64_t limit_;
-    uint64_t offset_;
-    uint64_t counter_;
+    uint64_t              limit_;
+    uint64_t              offset_;
+    uint64_t              counter_;
     std::shared_ptr<Node> next_;
 
     Limiter(uint64_t limit, uint64_t offset, std::shared_ptr<Node> next);
@@ -24,6 +24,5 @@ struct Limiter : Node {
 
     virtual int get_requirements() const;
 };
-
-}}  // namespace
-
+}
+}  // namespace

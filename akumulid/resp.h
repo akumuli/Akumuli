@@ -27,13 +27,12 @@ struct RESPError : StreamError {
 /**
   * REdis Serialization Protocol implementation.
   */
-struct RESPStream
-{
+struct RESPStream {
     enum {
-        KB = 1024,
-        MB = 1024*KB,
-        STRING_LENGTH_MAX = 1*KB,  //< Longest possible string
-        BULK_LENGTH_MAX   = 1*MB,  //< Longest possible bulk string
+        KB                = 1024,
+        MB                = 1024 * KB,
+        STRING_LENGTH_MAX = 1 * KB,  //< Longest possible string
+        BULK_LENGTH_MAX   = 1 * MB,  //< Longest possible bulk string
     };
 
     enum Type {
@@ -45,9 +44,9 @@ struct RESPStream
         BAD,
     };
 
-    ByteStreamReader *stream_;  //< Stream
+    ByteStreamReader* stream_;  //< Stream
 
-    RESPStream(ByteStreamReader *stream);
+    RESPStream(ByteStreamReader* stream);
 
     /** Read next element's type.
       */
@@ -72,10 +71,10 @@ struct RESPStream
       * @param buffer_size size of the buffer
       * @return number of bytes copied or negative value on error
       */
-    int read_string(Byte *buffer, size_t buffer_size);
+    int read_string(Byte* buffer, size_t buffer_size);
 
     /** Read string implementation */
-    int _read_string_body(Byte *buffer, size_t buffer_size);
+    int _read_string_body(Byte* buffer, size_t buffer_size);
 
     /** Read bulk string element.
       * Result is undefined unless next element in a stream is a bulk string.
@@ -83,7 +82,7 @@ struct RESPStream
       * @param buffer_size size of the buffer
       * @return number of bytes copied or negative value on error
       */
-    int read_bulkstr(Byte *buffer, size_t buffer_size);
+    int read_bulkstr(Byte* buffer, size_t buffer_size);
 
     /** Read size of the array element.
       * Exception is thrown unless next element in a stream is an array.
@@ -92,6 +91,4 @@ struct RESPStream
       */
     uint64_t read_array_size();
 };
-
 }
-

@@ -11,19 +11,16 @@ namespace QP {
 
 
 //! Generic piecewise aggregate approximation
-template<class State>
-struct PAA : Node {
+template <class State> struct PAA : Node {
     std::shared_ptr<Node> next_;
     std::unordered_map<aku_ParamId, State> counters_;
 
     PAA(std::shared_ptr<Node> next)
-        : next_(next)
-    {
-    }
+        : next_(next) {}
 
     bool average_samples(aku_Sample const& margin) {
         std::vector<aku_ParamId> ids;
-        for (auto& pair: counters_) {
+        for (auto& pair : counters_) {
             ids.push_back(pair.first);
         }
         if (margin.payload.type == aku_PData::LO_MARGIN) {
@@ -33,15 +30,15 @@ struct PAA : Node {
             // Moving forward
             std::sort(ids.begin(), ids.end(), std::less<aku_ParamId>());
         }
-        for (auto id: ids) {
+        for (auto id : ids) {
             State& state = counters_[id];
             if (state.ready()) {
                 aku_Sample sample;
-                sample.paramid = id;
+                sample.paramid         = id;
                 sample.payload.float64 = state.value();
-                sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.payload.size = sizeof(aku_Sample);
-                sample.timestamp = margin.timestamp;
+                sample.payload.type    = AKU_PAYLOAD_FLOAT;
+                sample.payload.size    = sizeof(aku_Sample);
+                sample.timestamp       = margin.timestamp;
                 state.reset();
                 if (!next_->put(sample)) {
                     return false;
@@ -54,11 +51,9 @@ struct PAA : Node {
         return true;
     }
 
-    virtual void complete() {
-        next_->complete();
-    }
+    virtual void complete() { next_->complete(); }
 
-    virtual bool put(const aku_Sample &sample) {
+    virtual bool put(const aku_Sample& sample) {
         if (sample.payload.type > aku_PData::MARGIN) {
             if (!average_samples(sample)) {
                 return false;
@@ -70,13 +65,9 @@ struct PAA : Node {
         return true;
     }
 
-    virtual void set_error(aku_Status status) {
-        next_->set_error(status);
-    }
+    virtual void set_error(aku_Status status) { next_->set_error(status); }
 
-    virtual int get_requirements() const {
-        return GROUP_BY_REQUIRED;
-    }
+    virtual int get_requirements() const { return GROUP_BY_REQUIRED; }
 };
 
 
@@ -119,8 +110,7 @@ struct MedianPAA : PAA<MedianCounter> {
     MedianPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next);
 };
 
-template< class SelectFn >
-struct ValueSelector {
+template <class SelectFn> struct ValueSelector {
     double acc;
     size_t num;
 
@@ -129,13 +119,9 @@ struct ValueSelector {
         num = 0;
     }
 
-    double value() const {
-        return acc;
-    }
+    double value() const { return acc; }
 
-    bool ready() const {
-        return num != 0;
-    }
+    bool ready() const { return num != 0; }
 
     void add(aku_Sample const& value) {
         if (!num) {
@@ -148,19 +134,12 @@ struct ValueSelector {
     }
 };
 
-template<class SelectFn>
-struct GenericPAA : PAA<ValueSelector<SelectFn>> {
+template <class SelectFn> struct GenericPAA : PAA<ValueSelector<SelectFn>> {
     GenericPAA(std::shared_ptr<Node> next)
-        : PAA<ValueSelector<SelectFn>>(next)
-    {
-    }
+        : PAA<ValueSelector<SelectFn>>(next) {}
 
     GenericPAA(boost::property_tree::ptree const&, std::shared_ptr<Node> next)
-        : PAA<ValueSelector<SelectFn>>(next)
-    {
-    }
+        : PAA<ValueSelector<SelectFn>>(next) {}
 };
-
-
-
-}}  // namespace
+}
+}  // namespace

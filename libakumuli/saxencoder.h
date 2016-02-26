@@ -35,54 +35,46 @@ struct SAXWord {
     // 11110 - 1E bits
     // 111110 - error
 
-    enum {
-        SIZE = 16
-    };
+    enum { SIZE = 16 };
 
     char buffer[SIZE];
 
     /** C-tor.
      */
-    SAXWord() : buffer{0}
-    {
-    }
+    SAXWord()
+        : buffer{ 0 } {}
 
     //! C-tor for unit-tests
     SAXWord(const char* str)
-        : SAXWord(str, str + strlen(str))
-    {
-    }
+        : SAXWord(str, str + strlen(str)) {}
 
     //! Copy c-tor
-    SAXWord(const SAXWord& other) {
-        memcpy(buffer, other.buffer, SIZE);
-    }
+    SAXWord(const SAXWord& other) { memcpy(buffer, other.buffer, SIZE); }
 
-    SAXWord& operator = (const SAXWord& other) {
+    SAXWord& operator=(const SAXWord& other) {
         if (&other != this) {
             memcpy(buffer, other.buffer, SIZE);
         }
         return *this;
     }
 
-    bool operator != (const SAXWord& other) const {
-        return !std::equal(buffer, buffer+SIZE, other.buffer);
+    bool operator!=(const SAXWord& other) const {
+        return !std::equal(buffer, buffer + SIZE, other.buffer);
     }
 
-    bool operator == (const SAXWord& other) const {
-        return std::equal(buffer, buffer+SIZE, other.buffer);
+    bool operator==(const SAXWord& other) const {
+        return std::equal(buffer, buffer + SIZE, other.buffer);
     }
 
     //! Copy data from sequence
-    template<class FwdIt>
+    template <class FwdIt>
     SAXWord(FwdIt begin, FwdIt end)
-        : SAXWord()
-    {
-        int ix = 0;
+        : SAXWord() {
+        int ix    = 0;
         int shift = 0;
-        for(auto payload: boost::make_iterator_range(begin, end)) {
+        for (auto payload : boost::make_iterator_range(begin, end)) {
             int zerobits = leading_zeroes((int)payload);
-            int signbits = 8*sizeof(int) - zerobits;
+            int signbits = 8 * sizeof(int) - zerobits;
             // Store mask
             if (signbits == 0) {
                 // just update indexes
@@ -107,7 +99,7 @@ struct SAXWord {
                     nmask    = 5;
                     signbits = 0x1E;
                 }
-                for (int i = nmask; i --> 0;) {
+                for (int i = nmask; i-- > 0;) {
                     if (shift == 8) {
                         ix++;
                         shift = 0;
@@ -121,7 +113,7 @@ struct SAXWord {
                 }
             }
             // Store payload
-            for (int i = signbits; i --> 0;) {
+            for (int i = signbits; i-- > 0;) {
                 if (shift == 8) {
                     ix++;
                     shift = 0;
@@ -136,12 +128,11 @@ struct SAXWord {
         }
     }
 
-    template<class It>
-    void read_n(int N, It it) const {
-        int ix = 0;
-        int shift = 0;
-        int mask = 0;
-        int nbits = 0;
+    template <class It> void read_n(int N, It it) const {
+        int  ix           = 0;
+        int  shift        = 0;
+        int  mask         = 0;
+        int  nbits        = 0;
         bool read_payload = false;
         for (int i = 0; i < N;) {
             mask <<= 1;
@@ -155,26 +146,26 @@ struct SAXWord {
                     BOOST_THROW_EXCEPTION(error);
                 }
             }
-            switch(mask) {
+            switch (mask) {
             case 0:
                 read_payload = true;
-                nbits = 0;
+                nbits        = 0;
                 break;
             case 2:
                 read_payload = true;
-                nbits = 2;
+                nbits        = 2;
                 break;
             case 6:
                 read_payload = true;
-                nbits = 6;
+                nbits        = 6;
                 break;
             case 0xE:
                 read_payload = true;
-                nbits = 0xE;
+                nbits        = 0xE;
                 break;
             case 0x1E:
                 read_payload = true;
-                nbits = 0x1E;
+                nbits        = 0x1E;
                 break;
             default:
                 if (mask > 0x1E) {
@@ -185,7 +176,7 @@ struct SAXWord {
             }
             if (read_payload) {
                 int payload = 0;
-                for(int j = 0; j < nbits; j++) {
+                for (int j = 0; j < nbits; j++) {
                     payload <<= 1;
                     payload |= (buffer[ix] >> shift) & 0x1;
                     shift++;
@@ -198,27 +189,25 @@ struct SAXWord {
                         }
                     }
                 }
-                *it++ = payload;
+                *it++        = payload;
                 read_payload = false;
-                mask = 0;
-                nbits = 0;
+                mask         = 0;
+                nbits        = 0;
                 i++;
             }
         }
-
     }
 };
 
 
 //! Symbolic Aggregate approXimmation encoder.
-struct SAXEncoder
-{
+struct SAXEncoder {
     int alphabet_;      //! alphabet size
     int window_width_;  //! sliding window width
 
     boost::circular_buffer<double> input_samples_;
-    std::string buffer_;
-    std::string last_;
+    std::string                    buffer_;
+    std::string                    last_;
 
     SAXEncoder();
 
@@ -232,9 +221,7 @@ struct SAXEncoder
      * @param outword receives new sax word if true returned
      * @returns true if new sax word returned; false otherwise
      */
-    bool encode(double sample, char *outword, size_t outword_size);
+    bool encode(double sample, char* outword, size_t outword_size);
 };
-
 }
 }
-

@@ -15,14 +15,14 @@
  */
 
 #pragma once
-#include <string>
 #include <memory>
+#include <string>
 #include <tuple>
 
 #include <microhttpd.h>
 
-#include "logger.h"
 #include "akumuli.h"
+#include "logger.h"
 #include "server.h"
 
 namespace Akumuli {
@@ -30,20 +30,18 @@ namespace Http {
 
 struct AccessControlList {};  // TODO: implement ACL
 
-struct HttpServer : std::enable_shared_from_this<HttpServer>, Server
-{
-    AccessControlList                       acl_;
-    std::shared_ptr<ReadOperationBuilder>   proc_;
-    unsigned short                          port_;
-    MHD_Daemon                             *daemon_;
+struct HttpServer : std::enable_shared_from_this<HttpServer>, Server {
+    AccessControlList                     acl_;
+    std::shared_ptr<ReadOperationBuilder> proc_;
+    unsigned short                        port_;
+    MHD_Daemon*                           daemon_;
 
     HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc);
-    HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl);
+    HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc,
+               AccessControlList const& acl);
 
     virtual void start(SignalHandler* handler, int id);
     void stop();
 };
-
 }
 }
-

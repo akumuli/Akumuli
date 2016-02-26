@@ -21,13 +21,12 @@
 #pragma once
 
 #ifdef __GNUC__
-#define AKU_LIKELY(x)       __builtin_expect((x),1)
-#define AKU_UNLIKELY(x)     __builtin_expect((x),0)
+#define AKU_LIKELY(x) __builtin_expect((x), 1)
+#define AKU_UNLIKELY(x) __builtin_expect((x), 0)
 #else
-#define AKU_LIKELY(x)       (x)
-#define AKU_UNLIKELY(x)     (x)
+#define AKU_LIKELY(x) (x)
+#define AKU_UNLIKELY(x) (x)
 #endif
 
 //! Macro to supress `variable unused` warnings for variables that is unused for a reason.
 #define AKU_UNUSED(x) (void)(x)
-

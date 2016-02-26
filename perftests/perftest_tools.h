@@ -19,12 +19,12 @@
 
 namespace Akumuli {
 
-class PerfTimer
-{
+class PerfTimer {
 public:
     PerfTimer();
     void   restart();
     double elapsed() const;
+
 private:
     timespec _start_time;
 };
@@ -33,5 +33,4 @@ private:
  * `GRAPHITE_HOST` environment variable.
  */
 void push_metric_to_graphite(std::string metric, double value);
-
 }

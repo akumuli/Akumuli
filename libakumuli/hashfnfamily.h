@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <random>
 #include <vector>
-#include <cstdint>
 
 namespace Akumuli {
 

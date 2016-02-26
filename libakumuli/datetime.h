@@ -61,5 +61,4 @@ struct DateTimeUtil {
       */
     static aku_Duration parse_duration(const char* str, size_t size);
 };
-
 }
