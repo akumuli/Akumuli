@@ -19,9 +19,9 @@
 #include <memory>
 
 #include "akumuli.h"
-#include "stringpool.h"
 #include "queryprocessor_framework.h"
 #include "seriesparser.h"
+#include "stringpool.h"
 
 #include <boost/property_tree/ptree_fwd.hpp>
 
@@ -36,20 +36,18 @@ struct Builder {
       * @param terminal_node should contain valid pointer to terminal(final) node
       * @param logger should contain valid pointer to logging function
       */
-    static std::shared_ptr<QP::IQueryProcessor> build_query_processor(const char* query,
-                                                                      std::shared_ptr<QP::Node> terminal_node,
-                                                                      const SeriesMatcher& matcher,
-                                                                      aku_logger_cb_t logger);
+    static std::shared_ptr<QP::IQueryProcessor>
+    build_query_processor(const char* query, std::shared_ptr<QP::Node> terminal_node,
+                          const SeriesMatcher& matcher, aku_logger_cb_t logger);
 };
-
 
 
 /** Group-by time statement processor */
 struct GroupByTime {
-    aku_Timestamp   step_;
-    bool            first_hit_;
-    aku_Timestamp   lowerbound_;
-    aku_Timestamp   upperbound_;
+    aku_Timestamp step_;
+    bool          first_hit_;
+    aku_Timestamp lowerbound_;
+    aku_Timestamp upperbound_;
 
     GroupByTime();
 
@@ -57,7 +55,7 @@ struct GroupByTime {
 
     GroupByTime(const GroupByTime& other);
 
-    GroupByTime& operator = (const GroupByTime& other);
+    GroupByTime& operator=(const GroupByTime& other);
 
     bool put(aku_Sample const& sample, Node& next);
 
@@ -98,24 +96,24 @@ struct GroupByTag {
 struct ScanQueryProcessor : IQueryProcessor {
 
     typedef StringTools::StringT StringT;
-    typedef StringTools::TableT TableT;
+    typedef StringTools::TableT  TableT;
 
     //! Query range clause data (upperbound, lowerbound, direction, query type)
-    QueryRange                         range_;
+    QueryRange range_;
     //! Name of the metrics of interest
-    const std::string                  metric_;
+    const std::string metric_;
     //! Name to id mapping
-    TableT                             namesofinterest_;
+    TableT namesofinterest_;
     //! Group-by-time statement
-    GroupByTime                        groupby_;
+    GroupByTime groupby_;
     //! Filter
-    std::shared_ptr<IQueryFilter>      filter_;
+    std::shared_ptr<IQueryFilter> filter_;
     //! Root of the processing topology
-    std::shared_ptr<Node>              root_node_;
+    std::shared_ptr<Node> root_node_;
     //! Final of the processing topology
-    std::shared_ptr<Node>              last_node_;
+    std::shared_ptr<Node> last_node_;
     //! Group-by-tag
-    std::unique_ptr<GroupByTag>        groupby_tag_;
+    std::unique_ptr<GroupByTag> groupby_tag_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -124,13 +122,9 @@ struct ScanQueryProcessor : IQueryProcessor {
       * @param end is a timestamp to end with
       *        (depending on a scan direction can be greater or smaller then lo)
       */
-    ScanQueryProcessor(std::vector<std::shared_ptr<Node> > nodes,
-                       std::string metric,
-                       aku_Timestamp begin,
-                       aku_Timestamp end,
-                       QueryRange::QueryRangeType type,
-                       std::shared_ptr<IQueryFilter> filter,
-                       GroupByTime groupby,
+    ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, std::string metric,
+                       aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type,
+                       std::shared_ptr<IQueryFilter> filter, GroupByTime groupby,
                        std::unique_ptr<GroupByTag> groupbytag);
 
     QueryRange range() const;
@@ -154,18 +148,18 @@ struct ScanQueryProcessor : IQueryProcessor {
 
 struct MetadataQueryProcessor : IQueryProcessor {
 
-    std::shared_ptr<IQueryFilter>   filter_;
-    std::shared_ptr<Node>           root_;
+    std::shared_ptr<IQueryFilter> filter_;
+    std::shared_ptr<Node>         root_;
 
     MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt, std::shared_ptr<Node> node);
 
-    QueryRange range() const;
-    IQueryFilter& filter();
+    QueryRange     range() const;
+    IQueryFilter&  filter();
     SeriesMatcher* matcher();
-    bool start();
-    bool put(const aku_Sample &sample);
+    bool           start();
+    bool put(const aku_Sample& sample);
     void stop();
     void set_error(aku_Status error);
 };
-
-}}  // namespaces
+}
+}  // namespaces

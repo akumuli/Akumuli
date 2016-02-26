@@ -1,6 +1,6 @@
 #pragma once
-#include <stdexcept>
 #include <memory>
+#include <stdexcept>
 
 #include "akumuli.h"
 #include "seriesparser.h"
@@ -12,13 +12,18 @@ namespace QP {
 
 //! Exception triggered by query parser
 struct QueryParserError : std::runtime_error {
-    QueryParserError(const char* parser_message) : std::runtime_error(parser_message) {}
+    QueryParserError(const char* parser_message)
+        : std::runtime_error(parser_message) {}
 };
 
-static const aku_Sample NO_DATA = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::EMPTY}};
+static const aku_Sample NO_DATA = { 0u, 0u, { 0.0, sizeof(aku_Sample), aku_PData::EMPTY } };
 
-static const aku_Sample SAMPLING_LO_MARGIN = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::LO_MARGIN}};
-static const aku_Sample SAMPLING_HI_MARGIN = {0u, 0u, {0.0, sizeof(aku_Sample), aku_PData::HI_MARGIN}};
+static const aku_Sample SAMPLING_LO_MARGIN = { 0u,
+                                               0u,
+                                               { 0.0, sizeof(aku_Sample), aku_PData::LO_MARGIN } };
+static const aku_Sample SAMPLING_HI_MARGIN = { 0u,
+                                               0u,
+                                               { 0.0, sizeof(aku_Sample), aku_PData::HI_MARGIN } };
 
 struct Node {
 
@@ -37,9 +42,9 @@ struct Node {
     // Query validation
 
     enum QueryFlags {
-        EMPTY = 0,
+        EMPTY             = 0,
         GROUP_BY_REQUIRED = 1,
-        TERMINAL = 2,
+        TERMINAL          = 2,
     };
 
     /** This method returns set of flags that describes its functioning.
@@ -50,9 +55,7 @@ struct Node {
 
 struct NodeException : std::runtime_error {
     NodeException(const char* msg)
-        : std::runtime_error(msg)
-    {
-    }
+        : std::runtime_error(msg) {}
 };
 
 
@@ -62,7 +65,7 @@ struct IQueryFilter {
         SKIP_ALL,
         PROCESS,
     };
-    virtual ~IQueryFilter() = default;
+    virtual ~IQueryFilter()                    = default;
     virtual FilterResult apply(aku_ParamId id) = 0;
     virtual std::vector<aku_ParamId> get_ids() = 0;
 };
@@ -70,20 +73,16 @@ struct IQueryFilter {
 
 //! Query filter that doesn't block anything (for testing purposes)
 struct BypassFilter : QP::IQueryFilter {
-    virtual FilterResult apply(aku_ParamId id) {
-        return PROCESS;
-    }
-    std::vector<aku_ParamId> get_ids() {
-        throw std::runtime_error("not implemented");
-    }
+    virtual FilterResult apply(aku_ParamId id) { return PROCESS; }
+    std::vector<aku_ParamId> get_ids() { throw std::runtime_error("not implemented"); }
 };
 
 
 struct QueryRange {
 
     enum QueryRangeType {
-        INSTANT,        // If upperbound is in the future - query should be executed untill most recent data were reached
-        CONTINUOUS,     // If upperbound is in the future - query should wait
+        INSTANT,  // If upperbound is in the future - query should be executed untill most recent data were reached
+        CONTINUOUS,  // If upperbound is in the future - query should wait
     };
 
     aku_Timestamp  lowerbound;
@@ -92,9 +91,7 @@ struct QueryRange {
     QueryRangeType type;
 
     //! Return true if query should scan data backward in time
-    bool is_backward() const {
-        return direction == AKU_CURSOR_DIR_BACKWARD;
-    }
+    bool is_backward() const { return direction == AKU_CURSOR_DIR_BACKWARD; }
 
     //! Return timestamp from wich scan starts
     aku_Timestamp begin() const {
@@ -146,32 +143,32 @@ struct IQueryProcessor {
 
 
 struct BaseQueryParserToken {
-    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const = 0;
-    virtual std::string get_tag() const = 0;
+    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         std::shared_ptr<Node>              next) const = 0;
+    virtual std::string get_tag() const                                                 = 0;
 };
 
 //! Register QueryParserToken
 void add_queryparsertoken_to_registry(BaseQueryParserToken const* ptr);
 
 //! Create new node using token registry
-std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree,
+                                  std::shared_ptr<Node> next);
 
 /** Register new query type
   * NOTE: Each template instantination should be used only once, to create query parser for type.
   */
-template<class Target>
-struct QueryParserToken : BaseQueryParserToken {
+template <class Target> struct QueryParserToken : BaseQueryParserToken {
     std::string tag;
-    QueryParserToken(const char* tag) : tag(tag) {
+    QueryParserToken(const char* tag)
+        : tag(tag) {
         add_queryparsertoken_to_registry(this);
     }
-    virtual std::string get_tag() const {
-        return tag;
-    }
-    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) const {
+    virtual std::string           get_tag() const { return tag; }
+    virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         std::shared_ptr<Node>              next) const {
         return std::make_shared<Target>(ptree, next);
     }
 };
-
-
-}}  // namespaces
+}
+}  // namespaces

@@ -16,8 +16,8 @@
 
 #pragma once
 #include <cstddef>
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include <apr.h>
 #include <apr_dbd.h>
@@ -29,12 +29,12 @@
 namespace Akumuli {
 
 //! Delete apr pool
-void delete_apr_pool(apr_pool_t *p);
+void delete_apr_pool(apr_pool_t* p);
 
 //! APR DBD handle deleter
 struct AprHandleDeleter {
-    const apr_dbd_driver_t *driver;
-    AprHandleDeleter(const apr_dbd_driver_t *driver);
+    const apr_dbd_driver_t* driver;
+    AprHandleDeleter(const apr_dbd_driver_t* driver);
     void operator()(apr_dbd_t* handle);
 };
 
@@ -47,11 +47,11 @@ struct AprHandleDeleter {
   */
 struct MetadataStorage {
     // Typedefs
-    typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)>         PoolT;
-    typedef const apr_dbd_driver_t*                                         DriverT;
-    typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter>                    HandleT;
-    typedef std::pair<int, std::string>                                     VolumeDesc;
-    typedef apr_dbd_prepared_t*                                             PreparedT;
+    typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)> PoolT;
+    typedef const apr_dbd_driver_t* DriverT;
+    typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
+    typedef std::pair<int, std::string>                  VolumeDesc;
+    typedef apr_dbd_prepared_t* PreparedT;
 
     // Members
     PoolT           pool_;
@@ -77,7 +77,7 @@ struct MetadataStorage {
       */
     void init_volumes(std::vector<VolumeDesc> volumes);
 
-    void init_config(const char *creation_datetime);
+    void init_config(const char* creation_datetime);
 
     // Retreival //
 
@@ -86,7 +86,7 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
-    void get_configs(std::string *creation_datetime);
+    void get_configs(std::string* creation_datetime);
 
     /** Read larges series id */
     uint64_t get_prev_largest_id();

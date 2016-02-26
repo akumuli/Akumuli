@@ -21,15 +21,15 @@
 
 
 #pragma once
-#include "page.h"
 #include "cursor.h"
+#include "page.h"
 #include "queryprocessor_framework.h"
 
-#include <tuple>
-#include <vector>
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <tuple>
+#include <vector>
 
 namespace Akumuli {
 
@@ -41,9 +41,9 @@ struct TimeSeriesValue {
     };
 
     // Data members
-    aku_Timestamp                           key_ts_;  // Key value (time)
-    aku_ParamId                             key_id_;  // Key value (id)
-    double                                  value;    // Numeric payload
+    aku_Timestamp key_ts_;  // Key value (time)
+    aku_ParamId   key_id_;  // Key value (id)
+    double        value;    // Numeric payload
 
     TimeSeriesValue();
 
@@ -55,13 +55,12 @@ struct TimeSeriesValue {
 
     aku_Sample to_result() const;
 
-    void add_to_header(UncompressedChunk *chunk_header) const;
+    void add_to_header(UncompressedChunk* chunk_header) const;
 
-    friend bool operator < (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
+    friend bool operator<(TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 
     //! Chunk order less then operator (id goes first, then goes timestamp)
-    friend bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
-
+    friend bool chunk_order_LT(TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
 
 
@@ -78,25 +77,26 @@ struct Sequencer {
     typedef std::unique_lock<Mutex>      Lock;
 
     static const int RUN_LOCK_MAX_BACKOFF = 0x100;
-    static const int RUN_LOCK_BUSY_COUNT = 0xFFF;
-    static const int RUN_LOCK_FLAGS_MASK = 0x0FF;
-    static const int RUN_LOCK_FLAGS_SIZE = 0x100;
+    static const int RUN_LOCK_BUSY_COUNT  = 0xFFF;
+    static const int RUN_LOCK_FLAGS_MASK  = 0x0FF;
+    static const int RUN_LOCK_FLAGS_SIZE  = 0x100;
 
     // TODO: space usage should be limited
 
-    std::vector<PSortedRun>      runs_;             //< Active sorted runs
-    std::vector<PSortedRun>      ready_;            //< Ready to merge
-    PSortedRun                   key_;
-    const aku_Duration           window_size_;
-    aku_Timestamp                top_timestamp_;    //< Largest timestamp ever seen
-    aku_Timestamp                checkpoint_;       //< Last checkpoint timestamp
-    mutable std::atomic_int      sequence_number_;  //< Flag indicates that merge operation is in progress and
-                                                    //< search will return inaccurate results.
-                                                    //< If progress_flag_ is odd - merge is in progress if it is
-                                                    //< even - there is no merge and search will work correctly.
-    mutable Mutex                runs_resize_lock_;
-    mutable std::vector<RWLock>  run_locks_;
-    const size_t                 c_threshold_;      //< Compression threshold
+    std::vector<PSortedRun> runs_;   //< Active sorted runs
+    std::vector<PSortedRun> ready_;  //< Ready to merge
+    PSortedRun              key_;
+    const aku_Duration      window_size_;
+    aku_Timestamp           top_timestamp_;  //< Largest timestamp ever seen
+    aku_Timestamp           checkpoint_;     //< Last checkpoint timestamp
+    mutable std::atomic_int
+        sequence_number_;  //< Flag indicates that merge operation is in progress and
+                           //< search will return inaccurate results.
+                           //< If progress_flag_ is odd - merge is in progress if it is
+                           //< even - there is no merge and search will work correctly.
+    mutable Mutex               runs_resize_lock_;
+    mutable std::vector<RWLock> run_locks_;
+    const size_t                c_threshold_;  //< Compression threshold
 
     Sequencer(aku_FineTuneParams const& config);
 
@@ -113,7 +113,7 @@ struct Sequencer {
       * and write it to target page.
       * caller and cur parameters used for communication with storage (error reporting).
       */
-    aku_Status merge_and_compress(PageHeader* target, bool enforce_write=false);
+    aku_Status merge_and_compress(PageHeader* target, bool enforce_write = false);
 
     //! Close cache for writing, merge everything to page header.
     aku_Status close(PageHeader* target);
@@ -153,6 +153,7 @@ private:
       */
     std::tuple<aku_Status, int> check_timestamp_(aku_Timestamp ts);
 
-    void filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query, std::vector<PSortedRun>* results) const;
+    void filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> query,
+                std::vector<PSortedRun>* results) const;
 };
 }

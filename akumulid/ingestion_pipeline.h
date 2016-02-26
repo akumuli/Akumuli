@@ -15,16 +15,16 @@
  */
 
 #pragma once
-#include <string>
-#include <memory>
 #include <atomic>
 #include <functional>
+#include <memory>
+#include <string>
 
 #include <boost/lockfree/queue.hpp>
 #include <boost/thread/barrier.hpp>
 
-#include "protocol_consumer.h"
 #include "logger.h"
+#include "protocol_consumer.h"
 // akumuli-storage API
 #include "akumuli.h"
 #include "akumuli_config.h"
@@ -34,8 +34,7 @@ namespace Akumuli {
 //! Abstraction layer above aku_Cursor
 struct DbCursor {
     //! Read data from cursor
-    virtual size_t read( void   *dest
-                       , size_t  dest_size) = 0;
+    virtual size_t read(void* dest, size_t dest_size) = 0;
 
     //! Check is cursor is done reading
     virtual int is_done() = 0;
@@ -55,7 +54,7 @@ struct DbConnection {
     virtual void close() = 0;
 
     //! Write value to DB
-    virtual aku_Status write(const aku_Sample &sample) = 0;
+    virtual aku_Status write(const aku_Sample& sample) = 0;
 
     //! Execute search query
     virtual std::shared_ptr<DbCursor> search(std::string query) = 0;
@@ -70,29 +69,31 @@ struct DbConnection {
 
 
 //! Object of this class writes everything to the database
-class AkumuliConnection : public DbConnection
-{
+class AkumuliConnection : public DbConnection {
 public:
     enum Durability {
-        MaxDurability = 1,
+        MaxDurability     = 1,
         RelaxedDurability = 2,
-        MaxThroughput = 4,
+        MaxThroughput     = 4,
     };
+
 private:
-    std::string     dbpath_;
-    aku_Database   *db_;
+    std::string   dbpath_;
+    aku_Database* db_;
+
 public:
-    AkumuliConnection(const char* path, bool hugetlb, Durability durability, uint32_t compression_threshold, uint64_t window_width, uint64_t cache_size);
+    AkumuliConnection(const char* path, bool hugetlb, Durability durability,
+                      uint32_t compression_threshold, uint64_t window_width, uint64_t cache_size);
 
     virtual void close();
 
-    virtual aku_Status write(const aku_Sample &sample);
+    virtual aku_Status write(const aku_Sample& sample);
 
     virtual std::shared_ptr<DbCursor> search(std::string query);
 
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size);
 
-    virtual aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample);
+    virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample);
 
     virtual std::string get_all_stats();
 };
@@ -130,39 +131,39 @@ struct PipelineSpout : ProtocolConsumer {
     };
 
     // Typedefs
-    typedef struct { char emptybits[64]; }       Padding;        //< Padding
-    typedef std::atomic<uint64_t>                SpoutCounter;   //< Shared counter
+    typedef struct { char emptybits[64]; } Padding;  //< Padding
+    typedef std::atomic<uint64_t> SpoutCounter;      //< Shared counter
     typedef struct {
-        aku_Sample             sample;                           //< Value
-        SpoutCounter          *cnt;                              //< Pointer to spout's shared counter
-        PipelineErrorCb       *on_error;                         //< On error callback
-    }                                            TVal;           //< Value
-    typedef std::shared_ptr<TVal>                PVal;           //< Pointer to value
-    typedef queue<TVal*>                         Queue;          //< Queue class
-    typedef std::shared_ptr<Queue>               PQueue;         //< Pointer to queue
-    typedef std::shared_ptr<DbConnection>        PDatabase;      //< Database "connection"
+        aku_Sample       sample;                      //< Value
+        SpoutCounter*    cnt;                         //< Pointer to spout's shared counter
+        PipelineErrorCb* on_error;                    //< On error callback
+    } TVal;                                           //< Value
+    typedef std::shared_ptr<TVal>         PVal;       //< Pointer to value
+    typedef queue<TVal*>                  Queue;      //< Queue class
+    typedef std::shared_ptr<Queue>        PQueue;     //< Pointer to queue
+    typedef std::shared_ptr<DbConnection> PDatabase;  //< Database "connection"
 
     // Data
-    SpoutCounter        created_;                                //< Created elements counter
+    SpoutCounter        created_;  //< Created elements counter
     Padding             pad0;
-    SpoutCounter        deleted_;                                //< Deleted elements counter
-    std::vector<PVal>   pool_;                                   //< TVal pool
+    SpoutCounter        deleted_;  //< Deleted elements counter
+    std::vector<PVal>   pool_;     //< TVal pool
     Padding             pad1;
-    PQueue              queue_;                                  //< Queue
+    PQueue              queue_;  //< Queue
     const BackoffPolicy backoff_;
-    Logger              logger_;                                 //< Logger instance
-    PipelineErrorCb     on_error_;                               //< Session callback
+    Logger              logger_;    //< Logger instance
+    PipelineErrorCb     on_error_;  //< Session callback
     PDatabase           db_;
 
     // C-tor
     PipelineSpout(std::shared_ptr<Queue> q, BackoffPolicy bp, std::shared_ptr<DbConnection> con);
-   ~PipelineSpout();
+    ~PipelineSpout();
 
     void set_error_cb(PipelineErrorCb cb);
 
     // ProtocolConsumer
     virtual void write(const aku_Sample& sample);
-    virtual void add_bulk_string(const Byte *buffer, size_t n);
+    virtual void add_bulk_string(const Byte* buffer, size_t n);
 
     // Utility
     //! Reserve index for the next TVal in the pool or negative value on error.
@@ -173,27 +174,26 @@ struct PipelineSpout : ProtocolConsumer {
       */
     void get_error(std::ostream& ostr);
 
-    aku_Status series_to_param_id(const char *str, size_t strlen, aku_Sample *sample);
+    aku_Status series_to_param_id(const char* str, size_t strlen, aku_Sample* sample);
 
     /** Returns true if all TVal's is processed */
     bool is_empty() const;
 };
 
-class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline>
-{
+class IngestionPipeline : public std::enable_shared_from_this<IngestionPipeline> {
     enum {
         N_QUEUES = 8,
     };
     typedef boost::barrier             Barr;
-    std::shared_ptr<DbConnection>      con_;        //< DB connection
-    std::vector<PipelineSpout::PQueue> queues_;     //< Queues collection
-    std::atomic<int>                   ixmake_;     //< Index for the make_spout mehtod
-    Barr                               stopbar_;    //< Stopping barrier
-    Barr                               startbar_;   //< Stopping barrier
-    static PipelineSpout::TVal        *POISON;      //< Poisoned object to stop worker thread
-    static int                         TIMEOUT;     //< Close timeout
-    const BackoffPolicy                backoff_;    //< Back-pressure policy
-    Logger                             logger_;     //< Logger instance
+    std::shared_ptr<DbConnection>      con_;       //< DB connection
+    std::vector<PipelineSpout::PQueue> queues_;    //< Queues collection
+    std::atomic<int>                   ixmake_;    //< Index for the make_spout mehtod
+    Barr                               stopbar_;   //< Stopping barrier
+    Barr                               startbar_;  //< Stopping barrier
+    static PipelineSpout::TVal*        POISON;     //< Poisoned object to stop worker thread
+    static int                         TIMEOUT;    //< Close timeout
+    const BackoffPolicy                backoff_;   //< Back-pressure policy
+    Logger                             logger_;    //< Logger instance
 public:
     /** Create new pipeline topology.
       */
@@ -210,4 +210,3 @@ public:
 };
 
 }  // namespace Akumuli
-

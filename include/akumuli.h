@@ -20,14 +20,14 @@
  */
 
 #pragma once
-#include <stdint.h>
-#include <apr_errno.h>
 #include "akumuli_config.h"
 #include "akumuli_def.h"
+#include <apr_errno.h>
+#include <stdint.h>
 
 #ifdef __unix__
 #ifdef __cplusplus
-#define AKU_EXPORT  extern "C" __attribute__((visibility("default")))
+#define AKU_EXPORT extern "C" __attribute__((visibility("default")))
 #else
 #define AKU_EXPORT
 #endif
@@ -39,8 +39,8 @@
 // Data structures
 //-----------------
 
-typedef uint64_t    aku_Timestamp;    //< Timestamp
-typedef uint64_t    aku_ParamId;      //< Parameter (or sequence) id
+typedef uint64_t aku_Timestamp;  //< Timestamp
+typedef uint64_t aku_ParamId;    //< Parameter (or sequence) id
 
 //! Structure represents memory region
 typedef struct {
@@ -65,19 +65,20 @@ typedef struct {
 
     //! Data element flags
     enum {
-        EMPTY                = 0,
-        URGENT               = 1 << 8,  /** urgent flag (anomaly or error) */
-        PARAMID_BIT          = 1,
-        TIMESTAMP_BIT        = 1 << 1,
-        CUSTOM_TIMESTAMP     = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
-        FLOAT_BIT            = 1 << 4,
-        ERROR_CLIPPING       = 1 << 9,  /** indicates that some data was lost due to clipping
+        EMPTY         = 0,
+        URGENT        = 1 << 8, /** urgent flag (anomaly or error) */
+        PARAMID_BIT   = 1,
+        TIMESTAMP_BIT = 1 << 1,
+        CUSTOM_TIMESTAMP =
+            1 << 2, /** indicates that timestamp shouldn't be formatted during output */
+        FLOAT_BIT      = 1 << 4,
+        ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
                                             (extra payload stored in `data` was lost) */
-        SAX_WORD             = 1 << 10, /** indicates that SAX word is stored in extra payload */
+        SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
 
-        MARGIN               = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
-        LO_MARGIN            = 1 << 14, /** backward direction margin */
-        HI_MARGIN            = 1 << 15, /** forward direction margin */
+        MARGIN    = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
+        LO_MARGIN = 1 << 14, /** backward direction margin */
+        HI_MARGIN = 1 << 15, /** forward direction margin */
     };
     uint16_t type;
 
@@ -90,20 +91,18 @@ typedef struct {
 
 } aku_PData;
 
-#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::FLOAT_BIT)
+#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
 
 //! Cursor result type
 typedef struct {
     aku_Timestamp timestamp;
-    aku_ParamId     paramid;
-    aku_PData       payload;
+    aku_ParamId   paramid;
+    aku_PData     payload;
 } aku_Sample;
 
 
 //! Database instance.
-typedef struct {
-    int padding;
-} aku_Database;
+typedef struct { int padding; } aku_Database;
 
 
 /**
@@ -124,42 +123,40 @@ typedef struct {
 /**
  * @brief The aku_Cursor struct
  */
-typedef struct {
-    int padding;
-} aku_Cursor;
+typedef struct { int padding; } aku_Cursor;
 
 
 //! Search stats
 typedef struct {
     struct {
-        uint64_t n_times;               //< How many times interpolation search was performed
-        uint64_t n_steps;               //< How many interpolation search steps was performed
-        uint64_t n_overshoots;          //< Number of overruns
-        uint64_t n_undershoots;         //< Number of underruns
-        uint64_t n_matches;             //< Number of matches by interpolation search only
+        uint64_t n_times;        //< How many times interpolation search was performed
+        uint64_t n_steps;        //< How many interpolation search steps was performed
+        uint64_t n_overshoots;   //< Number of overruns
+        uint64_t n_undershoots;  //< Number of underruns
+        uint64_t n_matches;      //< Number of matches by interpolation search only
         uint64_t n_reduced_to_one_page;
-        uint64_t n_page_in_core_checks; //< Number of page in core checks
-        uint64_t n_page_in_core_errors; //< Number of page in core check errors
-        uint64_t n_pages_in_core_found; //< Number of page in core found
-        uint64_t n_pages_in_core_miss;  //< Number of page misses
+        uint64_t n_page_in_core_checks;  //< Number of page in core checks
+        uint64_t n_page_in_core_errors;  //< Number of page in core check errors
+        uint64_t n_pages_in_core_found;  //< Number of page in core found
+        uint64_t n_pages_in_core_miss;   //< Number of page misses
     } istats;
     struct {
-        uint64_t n_times;               //< How many times binary search was performed
-        uint64_t n_steps;               //< How many binary search steps was performed
+        uint64_t n_times;  //< How many times binary search was performed
+        uint64_t n_steps;  //< How many binary search steps was performed
     } bstats;
     struct {
-        uint64_t fwd_bytes;             //< Number of scanned bytes in forward direction
-        uint64_t bwd_bytes;             //< Number of scanned bytes in backward direction
+        uint64_t fwd_bytes;  //< Number of scanned bytes in forward direction
+        uint64_t bwd_bytes;  //< Number of scanned bytes in backward direction
     } scan;
 } aku_SearchStats;
 
 
 //! Storage stats
 typedef struct {
-    uint64_t n_entries;       //< Total number of entries
-    uint64_t n_volumes;       //< Total number of volumes
-    uint64_t free_space;      //< Free space total
-    uint64_t used_space;      //< Space in use
+    uint64_t n_entries;   //< Total number of entries
+    uint64_t n_volumes;   //< Total number of volumes
+    uint64_t free_space;  //< Free space total
+    uint64_t used_space;  //< Space in use
 } aku_StorageStats;
 
 
@@ -204,13 +201,9 @@ AKU_EXPORT void aku_destroy(void* any);
  * @return APR errorcode or APR_SUCCESS
  * TODO: move from apr_status_t to aku_Status
  */
-AKU_EXPORT apr_status_t aku_create_database
-                                ( const char     *file_name
-                                , const char     *metadata_path
-                                , const char     *volumes_path
-                                , int32_t         num_volumes
-                                , aku_logger_cb_t logger
-                                );
+AKU_EXPORT apr_status_t aku_create_database(const char* file_name, const char* metadata_path,
+                                            const char* volumes_path, int32_t num_volumes,
+                                            aku_logger_cb_t logger);
 
 /**
  * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
@@ -221,14 +214,9 @@ AKU_EXPORT apr_status_t aku_create_database
  * @return APR errorcode or APR_SUCCESS
  * TODO: move from apr_status_t to aku_Status
  */
-AKU_EXPORT apr_status_t aku_create_database_ex
-                                ( const char     *file_name
-                                , const char     *metadata_path
-                                , const char     *volumes_path
-                                , int32_t         num_volumes
-                                , uint64_t        page_size
-                                , aku_logger_cb_t logger
-                                );
+AKU_EXPORT apr_status_t aku_create_database_ex(const char* file_name, const char* metadata_path,
+                                               const char* volumes_path, int32_t num_volumes,
+                                               uint64_t page_size, aku_logger_cb_t logger);
 
 
 /** Remove all volumes.
@@ -244,7 +232,7 @@ AKU_EXPORT apr_status_t aku_remove_database(const char* file_name, aku_logger_cb
   * @param parameters open parameters
   * @return pointer to new db instance, null if db doesn't exists.
   */
-AKU_EXPORT aku_Database* aku_open_database(const char *path, aku_FineTuneParams parameters);
+AKU_EXPORT aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters);
 
 
 /** Check status of previous open operation
@@ -274,7 +262,8 @@ AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sampl
   * @param sample is an output parameter
   * @returns AKU_SUCCESS on success, error code otherwise
   */
-AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample);
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end,
+                                             aku_Sample* sample);
 
 /** Try to parse duration.
   * @param str should point to the begining of the string
@@ -295,7 +284,8 @@ AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value);
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id,
+                                           aku_Timestamp timestamp, double value);
 
 /** Write measurement to DB
   * @param db opened database instance
@@ -328,9 +318,7 @@ AKU_EXPORT void aku_cursor_close(aku_Cursor* pcursor);
   * @param dest_size is an output buffer size
   * @returns number of overwriten bytes
   */
-AKU_EXPORT size_t aku_cursor_read(aku_Cursor       *cursor
-                                 , void *dest
-                                 , size_t            dest_size);
+AKU_EXPORT size_t aku_cursor_read(aku_Cursor* cursor, void* dest, size_t dest_size);
 
 //! Check cursor state. Returns zero value if not done yet, non zero value otherwise.
 AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
@@ -350,7 +338,8 @@ AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffe
   * @param buffer_size is a destination buffer size
   * @return 0 if no such id, -LEN if buffer is too small, LEN on success
   */
-AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer, size_t buffer_size);
+AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer,
+                                      size_t buffer_size);
 
 //--------------------
 // Stats and counters
@@ -368,9 +357,8 @@ AKU_EXPORT void aku_global_search_stats(aku_SearchStats* rcv_stats, int reset);
   * @param db database instance.
   * @param rcv_stats pointer to destination
   */
-AKU_EXPORT void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats);
+AKU_EXPORT void aku_global_storage_stats(aku_Database* db, aku_StorageStats* rcv_stats);
 
-AKU_EXPORT void aku_debug_print(aku_Database *db);
+AKU_EXPORT void aku_debug_print(aku_Database* db);
 
-AKU_EXPORT int aku_json_stats(aku_Database *db, char* buffer, size_t size);
-
+AKU_EXPORT int aku_json_stats(aku_Database* db, char* buffer, size_t size);

@@ -16,7 +16,5 @@ struct BitHacks {
         return (((bitmap + (bitmap >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
 #endif
     }
-
 };
-
 }

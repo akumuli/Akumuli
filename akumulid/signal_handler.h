@@ -20,5 +20,4 @@ struct SignalHandler {
 
     std::vector<int> wait();
 };
-
 }

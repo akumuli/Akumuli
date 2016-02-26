@@ -22,166 +22,166 @@
 
 #pragma once
 
+#include "akumuli.h"
 #include <apr_general.h>
 #include <apr_mmap.h>
-#include <stdexcept>
-#include <ostream>
 #include <atomic>
-#include <vector>
-#include <tuple>
-#include <random>
 #include <boost/throw_exception.hpp>
-#include "akumuli.h"
+#include <ostream>
+#include <random>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
 
-namespace Akumuli
-{
-    /** APR error converter */
-    std::string apr_error_message(apr_status_t status);
+namespace Akumuli {
+/** APR error converter */
+std::string apr_error_message(apr_status_t status);
 
-    /** Set global panic handler */
-    void set_panic_handler(aku_panic_handler_t new_panic_handler);
+/** Set global panic handler */
+void set_panic_handler(aku_panic_handler_t new_panic_handler);
 
-    /** APR error wrapper.
+/** APR error wrapper.
       * Code doesn't need to throw this exception directly, it must use AKU_APR_PANIC macro.
       */
-    struct AprException : public std::runtime_error
-    {
-        apr_status_t status;
+struct AprException : public std::runtime_error {
+    apr_status_t status;
 
-        /** C-tor
+    /** C-tor
           * @param status APR status
           * @param message APR error message
           */
-        AprException(apr_status_t status, const char* message);
-    };
+    AprException(apr_status_t status, const char* message);
+};
 
-    /** Akumuli exception type.
+/** Akumuli exception type.
      *  Code doesn't need to throw it directly, it must use AKU_PANIC macro.
      */
-    struct Exception : public std::runtime_error
-    {
-        /** C-tor
+struct Exception : public std::runtime_error {
+    /** C-tor
           * @param message error message
           */
-        Exception(const char* message);
-    };
+    Exception(const char* message);
+};
 
-    std::ostream& operator << (std::ostream& str, Exception const& except);
+std::ostream& operator<<(std::ostream& str, Exception const& except);
 
 
-    /** Memory mapped file
+/** Memory mapped file
       * maps all file on construction
       */
-    class MemoryMappedFile
-    {
-        apr_pool_t* mem_pool_;  //< local memory pool
-        apr_mmap_t *mmap_;
-        apr_file_t *fp_;
-        apr_finfo_t finfo_;
-        apr_status_t status_;
-        std::string path_;
-        aku_logger_cb_t logger_;
-        const bool enable_huge_tlb_;
-    public:
-        MemoryMappedFile(const char* file_name, bool enable_huge_tlb, aku_logger_cb_t logger);
-        ~MemoryMappedFile();
-        void move_file(const char* new_name);
-        void delete_file();
-        void* get_pointer() const;
-        size_t get_size() const;
-        //! Flush only part of the page
-        apr_status_t flush(size_t from, size_t to);
-        //! Flush full page
-        apr_status_t flush();
-        bool is_bad() const;
-        std::string error_message() const;
-        void panic_if_bad();
-        apr_status_t status_code() const;
-        //! Remap file in a destructive way (all file content is lost)
-        void remap_file_destructive();
-        //! Protect page from writing
-        aku_Status protect_all();
-        //! Make page available for writing
-        aku_Status unprotect_all();
-    private:
-        //! Map file into virtual address space
-        apr_status_t map_file();
-        //! Free OS resources associated with object
-        void free_resources(int cnt);
-    };
+class MemoryMappedFile {
+    apr_pool_t*     mem_pool_;  //< local memory pool
+    apr_mmap_t*     mmap_;
+    apr_file_t*     fp_;
+    apr_finfo_t     finfo_;
+    apr_status_t    status_;
+    std::string     path_;
+    aku_logger_cb_t logger_;
+    const bool      enable_huge_tlb_;
 
-    //! Fast integer logarithm
-    int64_t log2(int64_t value);
+public:
+    MemoryMappedFile(const char* file_name, bool enable_huge_tlb, aku_logger_cb_t logger);
+    ~MemoryMappedFile();
+    void move_file(const char* new_name);
+    void   delete_file();
+    void*  get_pointer() const;
+    size_t get_size() const;
+    //! Flush only part of the page
+    apr_status_t flush(size_t from, size_t to);
+    //! Flush full page
+    apr_status_t flush();
+    bool         is_bad() const;
+    std::string  error_message() const;
+    void         panic_if_bad();
+    apr_status_t status_code() const;
+    //! Remap file in a destructive way (all file content is lost)
+    void remap_file_destructive();
+    //! Protect page from writing
+    aku_Status protect_all();
+    //! Make page available for writing
+    aku_Status unprotect_all();
 
-    std::tuple<bool, aku_Status> page_in_core(const void* addr);
+private:
+    //! Map file into virtual address space
+    apr_status_t map_file();
+    //! Free OS resources associated with object
+    void free_resources(int cnt);
+};
 
-    size_t get_page_size();
+//! Fast integer logarithm
+int64_t log2(int64_t value);
 
-    const void* align_to_page(const void* ptr, size_t get_page_size);
+std::tuple<bool, aku_Status> page_in_core(const void* addr);
 
-    void* align_to_page(void* ptr, size_t get_page_size);
+size_t get_page_size();
 
-    void prefetch_mem(const void* ptr, size_t mem_size);
+const void* align_to_page(const void* ptr, size_t get_page_size);
 
-    /** Wrapper for mincore syscall.
+void* align_to_page(void* ptr, size_t get_page_size);
+
+void prefetch_mem(const void* ptr, size_t mem_size);
+
+/** Wrapper for mincore syscall.
      * If everything is OK works as simple wrapper
      * (memory needed for mincore syscall managed by wrapper itself).
      * If non-fatal error occured - acts as in case when all memory is
      * in core (optimistically).
      */
-    class PageInfo {
-        std::vector<unsigned char> data_;
-        size_t page_size_;
-        const void* base_addr_;
-        size_t len_bytes_;
+class PageInfo {
+    std::vector<unsigned char> data_;
+    size_t                     page_size_;
+    const void*                base_addr_;
+    size_t                     len_bytes_;
 
-        void fill_mem();
-    public:
+    void fill_mem();
 
-        /** C-tor.
+public:
+    /** C-tor.
          * @param start_addr start address of the monitored memory region
          * @param len_bytes length (in bytes) of the monitored region
          */
-        PageInfo(const void* addr, size_t len_bytes);
+    PageInfo(const void* addr, size_t len_bytes);
 
-        //! Query data from OS
-        aku_Status refresh(const void* addr);
+    //! Query data from OS
+    aku_Status refresh(const void* addr);
 
-        //! Check if memory address is in core
-        bool in_core(const void* addr);
+    //! Check if memory address is in core
+    bool in_core(const void* addr);
 
-        //! Check if underlying memory is swapped to disk
-        bool swapped();
-    };
+    //! Check if underlying memory is swapped to disk
+    bool swapped();
+};
 
-    class Rand {
-        std::ranlux48_base rand_;
-    public:
-        Rand();
-        uint32_t operator () ();
-    };
+class Rand {
+    std::ranlux48_base rand_;
 
-    /** Reader writer lock
+public:
+    Rand();
+    uint32_t operator()();
+};
+
+/** Reader writer lock
      *  mutex.
      */
-    class RWLock {
-        // TODO: specializations for different platforms
-        pthread_rwlock_t rwlock_;
-    public:
-        RWLock();
+class RWLock {
+    // TODO: specializations for different platforms
+    pthread_rwlock_t rwlock_;
 
-        ~RWLock();
+public:
+    RWLock();
 
-        void rdlock();
+    ~RWLock();
 
-        bool try_rdlock();
+    void rdlock();
 
-        void wrlock();
+    bool try_rdlock();
 
-        bool try_wrlock();
+    void wrlock();
 
-        void unlock();
-    };
+    bool try_wrlock();
+
+    void unlock();
+};
 }
 
 /** Panic macro.
@@ -201,10 +201,9 @@ namespace Akumuli
 #define AKU_UNUSED(x) (void)(x)
 
 #ifdef __GNUC__
-#define AKU_LIKELY(x)       __builtin_expect((x),1)
-#define AKU_UNLIKELY(x)     __builtin_expect((x),0)
+#define AKU_LIKELY(x) __builtin_expect((x), 1)
+#define AKU_UNLIKELY(x) __builtin_expect((x), 0)
 #else
-#define AKU_LIKELY(x)       (x)
-#define AKU_UNLIKELY(x)     (x)
+#define AKU_LIKELY(x) (x)
+#define AKU_UNLIKELY(x) (x)
 #endif
-

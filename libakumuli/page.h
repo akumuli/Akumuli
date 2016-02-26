@@ -21,42 +21,42 @@
  */
 
 #pragma once
+#include "akumuli.h"
+#include "buffer_cache.h"
+#include "compression.h"
+#include "internal_cursor.h"
+#include "queryprocessor_framework.h"
+#include "util.h"
 #include <cstdint>
 #include <functional>
-#include <vector>
 #include <mutex>
-#include "akumuli.h"
-#include "util.h"
-#include "internal_cursor.h"
-#include "compression.h"
-#include "queryprocessor_framework.h"
-#include "buffer_cache.h"
+#include <vector>
 
-const int64_t AKU_MAX_PAGE_SIZE   = 0x100000000;
+const int64_t AKU_MAX_PAGE_SIZE = 0x100000000;
 
 namespace Akumuli {
 
-typedef uint64_t aku_Duration;     //< Time duration
+typedef uint64_t aku_Duration;  //< Time duration
 
 //! Entry index record
 struct aku_EntryIndexRecord {
-    aku_Timestamp   timestamp;
-    uint32_t        offset;
+    aku_Timestamp timestamp;
+    uint32_t      offset;
 } __attribute__((packed));
 
 struct CompressedChunkDesc {
-    uint32_t n_elements;        //< Number of elements in a chunk
-    uint32_t begin_offset;      //< Data begin offset
-    uint32_t end_offset;        //< Data end offset
-    uint32_t checksum;          //< Checksum
+    uint32_t n_elements;    //< Number of elements in a chunk
+    uint32_t begin_offset;  //< Data begin offset
+    uint32_t end_offset;    //< Data end offset
+    uint32_t checksum;      //< Checksum
 } __attribute__((packed));
 
 
 struct aku_Entry {
     //aku_Timestamp  time;      //< Entry timestamp
-    aku_ParamId    param_id;  //< Parameter ID
-    uint32_t       length;    //< Entry length: constant + variable sized parts
-    uint32_t       value[];   //< Data begining
+    aku_ParamId param_id;  //< Parameter ID
+    uint32_t    length;    //< Entry length: constant + variable sized parts
+    uint32_t    value[];   //< Data begining
 } __attribute__((packed));
 
 //! PageHeader forward declaration
@@ -68,11 +68,9 @@ struct PageHeader;
 
 struct SearchStats {
     aku_SearchStats stats;
-    std::mutex mutex;
+    std::mutex      mutex;
 
-    SearchStats() {
-        memset(&stats, 0, sizeof(stats));
-    }
+    SearchStats() { memset(&stats, 0, sizeof(stats)); }
 };
 
 SearchStats& get_global_search_stats();
@@ -87,19 +85,18 @@ SearchStats& get_global_search_stats();
  */
 class PageHeader {
     // metadata
-    const uint32_t version;     //< format version
-    uint32_t count;             //< number of elements stored
-    uint32_t next_offset;       //< offset of the last added record in payload array
-    uint32_t checkpoint;        //< page checkpoint index
-    uint32_t open_count;        //< how many times page was open for write
-    uint32_t close_count;       //< how many times page was closed for write
-    uint32_t page_id;           //< page index in storage
-    uint32_t numpages;          //< total number or pages
-    uint64_t length;            //< payload size
-    char payload[];             //< page payload
+    const uint32_t version;      //< format version
+    uint32_t       count;        //< number of elements stored
+    uint32_t       next_offset;  //< offset of the last added record in payload array
+    uint32_t       checkpoint;   //< page checkpoint index
+    uint32_t       open_count;   //< how many times page was open for write
+    uint32_t       close_count;  //< how many times page was closed for write
+    uint32_t       page_id;      //< page index in storage
+    uint32_t       numpages;     //< total number or pages
+    uint64_t       length;       //< payload size
+    char           payload[];    //< page payload
 
 public:
-
     //! Get length of the page
     uint64_t get_page_length() const;
 
@@ -159,9 +156,8 @@ public:
      * @param entry entry
      * @returns operation status
      */
-    aku_Status add_entry( const aku_ParamId param
-                        , const aku_Timestamp timestamp
-                        , const aku_MemRange& range );
+    aku_Status add_entry(const aku_ParamId param, const aku_Timestamp timestamp,
+                         const aku_MemRange& range);
 
     /**
      * Add some data to last entry. (without length)
@@ -169,7 +165,8 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    aku_Status add_chunk(const aku_MemRange data, const uint32_t free_space_required, uint32_t *out_offset);
+    aku_Status add_chunk(const aku_MemRange data, const uint32_t free_space_required,
+                         uint32_t* out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.
@@ -244,9 +241,10 @@ public:
     /**
       * @brief Search matches inside the volume
       */
-    void search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache = std::shared_ptr<ChunkCache>()) const;
+    void search(std::shared_ptr<QP::IQueryProcessor> query,
+                std::shared_ptr<ChunkCache>          cache = std::shared_ptr<ChunkCache>()) const;
 
-    static void get_search_stats(aku_SearchStats* stats, bool reset=false);
+    static void get_search_stats(aku_SearchStats* stats, bool reset = false);
 
     //! Get page status
     void get_stats(aku_StorageStats* rcv_stats);

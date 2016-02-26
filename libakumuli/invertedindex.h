@@ -18,18 +18,18 @@
 #include "akumuli.h"
 #include "hashfnfamily.h"
 
-#include <vector>
-#include <unordered_map>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
 namespace Akumuli {
 
 struct TwoUnivHashFnFamily {
-    const int INTERNAL_CARDINALITY_;
+    const int             INTERNAL_CARDINALITY_;
     std::vector<uint64_t> a;
     std::vector<uint64_t> b;
-    uint64_t prime;
-    uint64_t modulo;
+    uint64_t              prime;
+    uint64_t              modulo;
 
     TwoUnivHashFnFamily(int cardinality, size_t modulo);
 
@@ -49,7 +49,7 @@ struct Postings {
 
     size_t get_size() const;
 
-    void merge(const Postings &other);
+    void merge(const Postings& other);
 };
 
 
@@ -71,8 +71,7 @@ struct InvertedIndex {
     //! Add value to index
     void append(aku_ParamId id, const char* begin, const char* end);
 
-    std::vector<std::pair<aku_ParamId, size_t> > get_count(const char* begin, const char* end);
+    std::vector<std::pair<aku_ParamId, size_t>> get_count(const char* begin, const char* end);
 };
 
 }  // namespace
-

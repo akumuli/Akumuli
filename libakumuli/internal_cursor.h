@@ -31,7 +31,7 @@ struct InternalCursor;
 
 
 // NOTE: obsolete
-typedef boost::coroutines::coroutine< void(InternalCursor*) > Coroutine;
+typedef boost::coroutines::coroutine<void(InternalCursor*)> Coroutine;
 // NOTE: obsolete
 typedef typename Coroutine::caller_type Caller;
 
@@ -45,5 +45,4 @@ struct InternalCursor {
     //! Set error and stop execution
     virtual void set_error(Caller&, aku_Status error_code) = 0;
 };
-
 }

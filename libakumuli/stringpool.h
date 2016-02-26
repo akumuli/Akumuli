@@ -16,12 +16,12 @@
 
 #pragma once
 
-#include <vector>
+#include <atomic>
 #include <deque>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
-#include <mutex>
-#include <atomic>
+#include <vector>
 
 #include "akumuli_def.h"
 
@@ -39,13 +39,13 @@ struct StringPoolOffset {
 struct StringPool {
 
     typedef std::pair<const char*, int> StringT;
-    const int MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME*0x1000;
+    const int MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME * 0x1000;
 
     std::deque<std::vector<char>> pool;
-    mutable std::mutex pool_mutex;
-    std::atomic<size_t> counter;
+    mutable std::mutex            pool_mutex;
+    std::atomic<size_t>           counter;
 
-    StringT add(const char* begin, const char *end, uint64_t payload);
+    StringT add(const char* begin, const char* end, uint64_t payload);
 
     //! Get number of stored strings atomically
     size_t size() const;
@@ -55,7 +55,8 @@ struct StringPool {
       * @param outoffset can be used to retreive offset of the processed data or start search from
       *        particullar point in the string-pool
       */
-    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr, size_t* psize = nullptr) const;
+    std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr,
+                                     size_t* psize = nullptr) const;
 };
 
 struct StringTools {
@@ -65,13 +66,12 @@ struct StringTools {
     static size_t hash(StringT str);
     static bool equal(StringT lhs, StringT rhs);
 
-    typedef std::unordered_map<StringT, uint64_t,
-                               decltype(&StringTools::hash),
-                               decltype(&StringTools::equal)> TableT;
+    typedef std::unordered_map<StringT, uint64_t, decltype(&StringTools::hash),
+                               decltype(&StringTools::equal)>
+        TableT;
 
-    typedef std::unordered_set<StringT,
-                               decltype(&StringTools::hash),
-                               decltype(&StringTools::equal)> SetT;
+    typedef std::unordered_set<StringT, decltype(&StringTools::hash), decltype(&StringTools::equal)>
+        SetT;
 
     //! Inverted table type (id to string mapping)
     typedef std::unordered_map<uint64_t, StringT> InvT;
@@ -82,5 +82,4 @@ struct StringTools {
 
     static uint64_t extract_id_from_pool(StringPool::StringT res);
 };
-
 }

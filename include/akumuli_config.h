@@ -24,9 +24,9 @@
 #include <stdint.h>
 
 // Values for durability parameter
-#define AKU_MAX_DURABILITY            1  // default value
+#define AKU_MAX_DURABILITY 1  // default value
 #define AKU_DURABILITY_SPEED_TRADEOFF 2
-#define AKU_MAX_WRITE_SPEED           4
+#define AKU_MAX_WRITE_SPEED 4
 
 
 // Log levels
@@ -38,17 +38,16 @@ typedef enum {
 
 
 //! Logging function type
-typedef void (*aku_logger_cb_t) (aku_LogLevel level, const char * msg);
+typedef void (*aku_logger_cb_t)(aku_LogLevel level, const char* msg);
 
 
 //! Panic handler function type
-typedef void (*aku_panic_handler_t) (const char * msg);
+typedef void (*aku_panic_handler_t)(const char* msg);
 
 
 /** Library configuration.
  */
-typedef struct
-{
+typedef struct {
     //! Debug mode trigger
     uint32_t debug_mode;
 
@@ -71,4 +70,3 @@ typedef struct
     uint64_t max_cache_size;
 
 } aku_FineTuneParams;
-

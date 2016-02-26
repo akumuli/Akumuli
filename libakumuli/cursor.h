@@ -22,8 +22,8 @@
 
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include "akumuli.h"
 #include "internal_cursor.h"
@@ -31,18 +31,18 @@
 
 namespace Akumuli {
 
-std::ostream& operator << (std::ostream& st, aku_Sample res);
+std::ostream& operator<<(std::ostream& st, aku_Sample res);
 
 class CursorFSM {
     // user data
-    void             *usr_buffer_;        //! User owned buffer for output
-    size_t            usr_buffer_len_;    //! Size of the user owned buffer
+    void*  usr_buffer_;      //! User owned buffer for output
+    size_t usr_buffer_len_;  //! Size of the user owned buffer
     // cursor state
-    size_t            write_offset_;       //! Current write position in usr_buffer_
-    bool              error_;             //! Error flag
-    aku_Status        error_code_;        //! Error code
-    bool              complete_;          //! Is complete
-    bool              closed_;            //! Used to check that close method was called
+    size_t     write_offset_;  //! Current write position in usr_buffer_
+    bool       error_;         //! Error flag
+    aku_Status error_code_;    //! Error code
+    bool       complete_;      //! Is complete
+    bool       closed_;        //! Used to check that close method was called
 public:
     CursorFSM();
     ~CursorFSM();
@@ -50,13 +50,13 @@ public:
     void put(aku_Sample const& result);
     void complete();
     void set_error(aku_Status error_code);
-    void update_buffer(void *buf, size_t buf_len);
-    void update_buffer(CursorFSM *other_fsm);
+    void update_buffer(void* buf, size_t buf_len);
+    void update_buffer(CursorFSM* other_fsm);
     bool close();
     // accessors
     bool can_put(int size) const;
     bool is_done() const;
-    bool get_error(aku_Status *error_code) const;
+    bool get_error(aku_Status* error_code) const;
     size_t get_data_len() const;
 };
 
@@ -80,7 +80,7 @@ struct ExternalCursor {
     virtual bool is_done() const = 0;
 
     //! Check is error occured and (optionally) get the error code
-    virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const = 0;
+    virtual bool is_error(aku_Status* out_error_code_or_null = nullptr) const = 0;
 
     //! Finalizer
     virtual void close() = 0;
@@ -100,7 +100,7 @@ struct CoroCursorStackAllocator {
 
 struct CoroCursor : Cursor {
     boost::shared_ptr<Coroutine> coroutine_;
-    CursorFSM cursor_fsm_;
+    CursorFSM                    cursor_fsm_;
 
     // External cursor implementation
 
@@ -110,7 +110,7 @@ struct CoroCursor : Cursor {
 
     virtual bool is_done() const;
 
-    virtual bool is_error(aku_Status* out_error_code_or_null=nullptr) const;
+    virtual bool is_error(aku_Status* out_error_code_or_null = nullptr) const;
 
     virtual void close();
 
@@ -122,41 +122,40 @@ struct CoroCursor : Cursor {
 
     void complete(Caller& caller);
 
-    template<class Fn_1arg_caller>
-    void start(Fn_1arg_caller const& fn) {
-        coroutine_.reset(
-                    new Coroutine(
-                        fn,
-                        boost::coroutines::attributes(AKU_STACK_SIZE),
-                        CoroCursorStackAllocator()));
+    template <class Fn_1arg_caller> void start(Fn_1arg_caller const& fn) {
+        coroutine_.reset(new Coroutine(fn, boost::coroutines::attributes(AKU_STACK_SIZE),
+                                       CoroCursorStackAllocator()));
     }
 
-    template<class Fn_1arg>
-    static std::unique_ptr<ExternalCursor> make(Fn_1arg const& fn) {
-         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
-         cursor->start(fn);
-         return std::move(cursor);
+    template <class Fn_1arg> static std::unique_ptr<ExternalCursor> make(Fn_1arg const& fn) {
+        std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+        cursor->start(fn);
+        return std::move(cursor);
     }
 
-    template<class Fn_2arg, class Tobj, class T2nd>
+    template <class Fn_2arg, class Tobj, class T2nd>
     static std::unique_ptr<ExternalCursor> make(Fn_2arg const& fn, Tobj obj, T2nd const& arg2) {
-         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
-         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2));
-         return std::move(cursor);
+        std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+        cursor->start(std::bind(fn, obj, std::placeholders::_1 /*caller*/, cursor.get(), arg2));
+        return std::move(cursor);
     }
 
-    template<class Fn_3arg, class Tobj, class T2nd, class T3rd>
-    static std::unique_ptr<ExternalCursor> make(Fn_3arg const& fn, Tobj obj, T2nd const& arg2, T3rd const& arg3) {
-         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
-         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3));
-         return std::move(cursor);
+    template <class Fn_3arg, class Tobj, class T2nd, class T3rd>
+    static std::unique_ptr<ExternalCursor> make(Fn_3arg const& fn, Tobj obj, T2nd const& arg2,
+                                                T3rd const& arg3) {
+        std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+        cursor->start(
+            std::bind(fn, obj, std::placeholders::_1 /*caller*/, cursor.get(), arg2, arg3));
+        return std::move(cursor);
     }
 
-    template<class Fn_4arg, class Tobj, class T2nd, class T3rd, class T4th>
-    static std::unique_ptr<ExternalCursor> make(Fn_4arg const& fn, Tobj obj, T2nd const& arg2, T3rd const& arg3, T4th const& arg4) {
-         std::unique_ptr<CoroCursor> cursor(new CoroCursor());
-         cursor->start(std::bind(fn, obj, std::placeholders::_1/*caller*/, cursor.get(), arg2, arg3, arg4));
-         return std::move(cursor);
+    template <class Fn_4arg, class Tobj, class T2nd, class T3rd, class T4th>
+    static std::unique_ptr<ExternalCursor> make(Fn_4arg const& fn, Tobj obj, T2nd const& arg2,
+                                                T3rd const& arg3, T4th const& arg4) {
+        std::unique_ptr<CoroCursor> cursor(new CoroCursor());
+        cursor->start(
+            std::bind(fn, obj, std::placeholders::_1 /*caller*/, cursor.get(), arg2, arg3, arg4));
+        return std::move(cursor);
     }
 };
 

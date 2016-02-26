@@ -16,8 +16,8 @@
 
 #pragma once
 
-#include <memory>
 #include <atomic>
+#include <memory>
 
 #include <boost/thread/barrier.hpp>
 
@@ -32,18 +32,17 @@ namespace Akumuli {
 
 /** UDP server for data ingestion.
   */
-class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server
-{
+class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server {
     std::shared_ptr<IngestionPipeline> pipeline_;
-    boost::barrier start_barrier_;  //< Barrier to start worker thread
-    boost::barrier stop_barrier_;   //< Barrier to stop worker thread
-    std::atomic<int> stop_;
-    const int port_;
-    const int nworkers_;
+    boost::barrier                     start_barrier_;  //< Barrier to start worker thread
+    boost::barrier                     stop_barrier_;   //< Barrier to stop worker thread
+    std::atomic<int>                   stop_;
+    const int                          port_;
+    const int                          nworkers_;
 
     Logger logger_;
 
-    static const int MSS = 2048-128;
+    static const int MSS      = 2048 - 128;
     static const int NPACKETS = 512;
 
     struct IOBuf {
@@ -52,9 +51,9 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server
         std::atomic<uint64_t> bps;
 
         // Packet recv structs
-        mmsghdr   msgs[NPACKETS];
+        mmsghdr msgs[NPACKETS];
         iovec   iovecs[NPACKETS];
-        char      bufs[NPACKETS][MSS];
+        char    bufs[NPACKETS][MSS];
 
         IOBuf() {
             memset(this, 0, sizeof(IOBuf));
@@ -66,10 +65,10 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server
             }
         }
 
-    } __attribute__((aligned (64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
+    } __attribute__((aligned(
+        64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
 
 public:
-
     /** C-tor.
       * @param nworker number of workers
       * @param port port number
@@ -88,4 +87,3 @@ private:
 };
 
 }  // namespace
-

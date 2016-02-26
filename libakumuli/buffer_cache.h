@@ -2,17 +2,16 @@
 
 #include "compression.h"
 
-#include <map>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 
 namespace Akumuli {
 
-struct ChunkCache
-{
+struct ChunkCache {
     //! Volume id + entry index
-    typedef std::tuple<int, int> KeyT;
+    typedef std::tuple<int, int>     KeyT;
     typedef std::tuple<KeyT, size_t> QueueItemT;
     typedef std::shared_ptr<UncompressedChunk> ItemT;
 
@@ -30,6 +29,4 @@ struct ChunkCache
 
     void put(KeyT key, const std::shared_ptr<UncompressedChunk>& header);
 };
-
 }
-

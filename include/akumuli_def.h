@@ -22,22 +22,22 @@
 // Limits
 
 //! Minimal possible TTL
-#define AKU_LIMITS_MIN_TTL        2
-#define AKU_LIMITS_MAX_ID         0xFFFFFFFFFFFFFFFDul
+#define AKU_LIMITS_MIN_TTL 2
+#define AKU_LIMITS_MAX_ID 0xFFFFFFFFFFFFFFFDul
 //! Max number of tags in series name
-#define AKU_LIMITS_MAX_TAGS      32
+#define AKU_LIMITS_MAX_TAGS 32
 //! Longest possible series name
-#define AKU_LIMITS_MAX_SNAME  0x200
-#define AKU_MIN_TIMESTAMP         0ull
-#define AKU_MAX_TIMESTAMP       (~0ull)
-#define AKU_STACK_SIZE            0x100000
-#define AKU_HISTOGRAM_SIZE        0x10000
-#define AKU_MAX_COLUMNS           8
+#define AKU_LIMITS_MAX_SNAME 0x200
+#define AKU_MIN_TIMESTAMP 0ull
+#define AKU_MAX_TIMESTAMP (~0ull)
+#define AKU_STACK_SIZE 0x100000
+#define AKU_HISTOGRAM_SIZE 0x10000
+#define AKU_MAX_COLUMNS 8
 
 //! Max number of live generations in cache
-#define AKU_LIMITS_MAX_CACHES     8
+#define AKU_LIMITS_MAX_CACHES 8
 //! Prepopulation count for cache
-#define AKU_CACHE_POPULATION     32
+#define AKU_CACHE_POPULATION 32
 
 // General error codes
 
@@ -76,19 +76,19 @@ typedef enum {
 
 
 // Cursor directions
-#define AKU_CURSOR_DIR_FORWARD    0
-#define AKU_CURSOR_DIR_BACKWARD   1
+#define AKU_CURSOR_DIR_FORWARD 0
+#define AKU_CURSOR_DIR_BACKWARD 1
 
 
 // Different tune parameters
 #define AKU_INTERPOLATION_SEARCH_CUTOFF 0x00000100
 
 //! If timestamp is greater or less than this value - entry stores compressed chunk
-#define AKU_ID_COMPRESSED               0xFFFFFFFFFFFFFFFEul
+#define AKU_ID_COMPRESSED 0xFFFFFFFFFFFFFFFEul
 //! Id for forward scanning
-#define AKU_CHUNK_FWD_ID                0xFFFFFFFFFFFFFFFEul
+#define AKU_CHUNK_FWD_ID 0xFFFFFFFFFFFFFFFEul
 //! Id for backward scanning
-#define AKU_CHUNK_BWD_ID                0xFFFFFFFFFFFFFFFFul
+#define AKU_CHUNK_BWD_ID 0xFFFFFFFFFFFFFFFFul
 
 
 //! Default compression threshold - 1000 elements
@@ -98,6 +98,6 @@ typedef enum {
 #define AKU_DEFAULT_WINDOW_SIZE 1000000000ul
 
 //! Default cache size - 128Mb
-#define AKU_DEFAULT_MAX_CACHE_SIZE (1024*1024*128)
+#define AKU_DEFAULT_MAX_CACHE_SIZE (1024 * 1024 * 128)
 
 #endif
