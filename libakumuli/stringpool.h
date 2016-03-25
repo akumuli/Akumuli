@@ -45,6 +45,10 @@ struct StringPool {
     mutable std::mutex            pool_mutex;
     std::atomic<size_t>           counter;
 
+    StringPool();
+    StringPool(StringPool const&) = delete;
+    StringPool& operator = (StringPool const&) = delete;
+
     StringT add(const char* begin, const char* end, uint64_t payload);
 
     //! Get number of stored strings atomically

@@ -553,6 +553,9 @@ aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint6
     auto status = SeriesParser::to_normal_form(begin, end,
                                                buffer, buffer+AKU_LIMITS_MAX_SNAME,
                                                &keystr_begin, &keystr_end);
+    // TODO: remove
+    std::cout << "Storage::series_to_param_id, status = " << aku_error_message(status) << std::endl;
+    // end remove
     if (status == AKU_SUCCESS) {
         auto id = matcher_->match(buffer, keystr_end);
         if (id == 0) {

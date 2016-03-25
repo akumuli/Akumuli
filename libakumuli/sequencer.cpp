@@ -90,6 +90,11 @@ bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
     return lhstup < rhstup;
 }
 
+std::ostream& operator << (std::ostream& str, TimeSeriesValue const& val) {
+    str << "[TimeSeriesValue| " << val.key_id_ << ", " << val.key_ts_ << ", " << val.value << "]";
+    return str;
+}
+
 // Sequencer
 
 Sequencer::Sequencer(const aku_FineTuneParams &config)
@@ -488,11 +493,25 @@ void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, s
         return;
     }
     PSortedRun result(new SortedRun);
+    // TODO: remove
+    std::cout << "Sequencer::filter\n"
+              << q->range() << std::endl;
+    std::cout << "....run <size: " << run->size() << ">" << std::endl;
+    for (auto const& val: *run) {
+        std::cout << "........" << val << std::endl;
+    }
+    // end remove
     auto lkey = TimeSeriesValue(q->range().lowerbound,  0u, 0);
-    auto rkey = TimeSeriesValue(q->range().upperbound, ~0u, 0);
+    auto rkey = TimeSeriesValue(q->range().upperbound, ~0ull, 0);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     std::copy(begin, end, std::back_inserter(*result));
+    // TODO: remove
+    std::cout << "....result <size: " << result->size() << ">" << std::endl;
+    for (auto const& val: *run) {
+        std::cout << "........" << val << std::endl;
+    }
+    // end remove
     results->push_back(move(result));
 }
 

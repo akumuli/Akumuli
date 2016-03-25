@@ -172,6 +172,7 @@ add_executable(
     test_sequencer
     test_sequencer.cpp
     ../libakumuli/sequencer.cpp
+    ../libakumuli/queryprocessor_framework.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/page.cpp
     ../libakumuli/buffer_cache.cpp

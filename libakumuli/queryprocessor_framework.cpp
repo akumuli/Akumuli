@@ -27,5 +27,18 @@ std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree c
     return it->second->create(ptree, next);
 }
 
+std::ostream& operator << (std::ostream& str, QueryRange const& range) {
+    auto qtype2text = [](QueryRange::QueryRangeType t) {
+        if (t == QueryRange::QueryRangeType::CONTINUOUS) {
+            return "CONTINUOUS";
+        }
+        return "INSTANT";
+    };
+    str << "[QueryRange| " << range.lowerbound << ", " << range.upperbound << ", "
+        << (range.direction == AKU_CURSOR_DIR_FORWARD ? "forward" : "backward")
+        << ", " << qtype2text(range.type) << "]";
+    return str;
+}
+
 
 }}  // namespace

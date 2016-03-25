@@ -47,6 +47,10 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
 }
 
 uint64_t SeriesMatcher::add(const char* begin, const char* end) {
+    // TODO: remove
+    std::string tmpstr(begin, end);
+    std::cout << "SeriesMatcher::add(" << tmpstr << ")" << std::endl;
+    // end remove
     auto id = series_id++;
     StringT pstr = pool.add(begin, end, id);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);

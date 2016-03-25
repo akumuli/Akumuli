@@ -23,7 +23,16 @@ namespace Akumuli {
 //      String Pool      //
 //                       //
 
+StringPool::StringPool()
+    : counter{0}
+{
+}
+
 StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t payload) {
+    // TODO: remove
+    std::string tmpstr(begin, end);
+    std::cout << "StringPool::add(" << tmpstr << "," << payload << ")" << std::endl;
+    // end remove
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
@@ -63,6 +72,15 @@ size_t StringPool::size() const {
 }
 
 std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset, size_t* psize) const {
+    // TODO: remove
+    std::cout << "spool: regex_match, size: " << pool.size() << " counter: " << counter << std::endl;
+    int bufix = 0;
+    for (auto const& tmpbuf: pool) {
+        std::string tmp(tmpbuf.begin(), tmpbuf.end());
+        std::cout << "spool item " << bufix << " = " << tmp << std::endl;
+        bufix++;
+    }
+    // end remove
     std::vector<StringPool::StringT> results;
     boost::regex series_regex(regex, boost::regex_constants::optimize);
     typedef std::vector<char> const* PBuffer;
