@@ -1,4 +1,5 @@
-build_image: shippableimages/ubuntu1404_python
+sudo: required
+dist: trusty
 language: python
 compiler: gcc
 
