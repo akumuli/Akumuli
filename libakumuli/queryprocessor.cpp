@@ -522,7 +522,7 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
             metric = "\\w+";
         }
         std::stringstream series_regexp;
-        series_regexp << metric << "(?:\\s\\w+=\\w+)+";
+        series_regexp << metric << "(?:\\s\\w+=\\w+)*";
         std::string regex = series_regexp.str();
         result = std::make_shared<RegexFilter>(regex, pool);
     }

@@ -5,6 +5,7 @@
 
 namespace Akumuli {
 
+
 ProtocolParserError::ProtocolParserError(std::string line, int pos)
     : StreamError(line, pos)
 {
@@ -38,6 +39,7 @@ void ProtocolParser::worker(Caller& caller) {
     // Data to read
     std::string   sid;
     aku_Sample    sample;
+    aku_Status    status = AKU_SUCCESS;
     //
     try {
         RESPStream stream(this);
@@ -50,13 +52,14 @@ void ProtocolParser::worker(Caller& caller) {
                 break;
             case RESPStream::STRING:
                 bytes_read = stream.read_string(buffer, buffer_len);
-                consumer_->series_to_param_id(buffer, bytes_read, &sample);
+                status = consumer_->series_to_param_id(buffer, bytes_read, &sample);
+                if (status != AKU_SUCCESS){
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context(aku_error_message(status));
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                }
                 break;
-            case RESPStream::BULK_STR:
-                // Compressed chunk of data
-                bytes_read = stream.read_bulkstr(buffer, buffer_len);
-                consumer_->add_bulk_string(buffer, bytes_read);
-                continue;
             default:
                 // Bad frame
                 {

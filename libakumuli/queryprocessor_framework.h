@@ -105,6 +105,9 @@ struct QueryRange {
 };
 
 
+std::ostream& operator << (std::ostream& str, QueryRange const& range);
+
+
 //! Query processor interface
 struct IQueryProcessor {
 

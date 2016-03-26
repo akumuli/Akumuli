@@ -23,6 +23,11 @@ namespace Akumuli {
 //      String Pool      //
 //                       //
 
+StringPool::StringPool()
+    : counter{0}
+{
+}
+
 StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t payload) {
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {

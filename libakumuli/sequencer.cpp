@@ -90,6 +90,11 @@ bool chunk_order_LT (TimeSeriesValue const& lhs, TimeSeriesValue const& rhs) {
     return lhstup < rhstup;
 }
 
+std::ostream& operator << (std::ostream& str, TimeSeriesValue const& val) {
+    str << "[TimeSeriesValue| " << val.key_id_ << ", " << val.key_ts_ << ", " << val.value << "]";
+    return str;
+}
+
 // Sequencer
 
 Sequencer::Sequencer(const aku_FineTuneParams &config)
@@ -489,7 +494,7 @@ void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, s
     }
     PSortedRun result(new SortedRun);
     auto lkey = TimeSeriesValue(q->range().lowerbound,  0u, 0);
-    auto rkey = TimeSeriesValue(q->range().upperbound, ~0u, 0);
+    auto rkey = TimeSeriesValue(q->range().upperbound, ~0ull, 0);
     auto begin = std::lower_bound(run->begin(), run->end(), lkey);
     auto end = std::upper_bound(run->begin(), run->end(), rkey);
     std::copy(begin, end, std::back_inserter(*result));

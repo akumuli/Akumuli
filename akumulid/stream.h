@@ -53,7 +53,7 @@ struct ByteStreamReader {
 
     /** Read top element of the stream.
       * If stream is closed or empty StreamError exception is generated.
-      * This method doesn't change state of the stream.
+      * This method doesn't changes the state of the stream.
       */
     virtual Byte pick() const = 0;
 

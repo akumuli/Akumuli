@@ -103,36 +103,6 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
     parser.close();
 }
 
-BOOST_AUTO_TEST_CASE(Test_protocol_parse_bulk_strings) {
-
-    const char *message1 = "$12\r\n123456";
-    const char *message2 = "789ABC\r\n";
-    auto buffer1 = buffer_from_static_string(message1);
-    auto buffer2 = buffer_from_static_string(message2);
-    PDU pdu1 = {
-        buffer1,
-        11,
-        0u
-    };
-    PDU pdu2 = {
-        buffer2,
-        8,
-        0u
-    };
-    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
-    parser.start();
-    parser.parse_next(pdu1);
-
-    BOOST_REQUIRE_EQUAL(cons->bulk_.size(), 0);
-    parser.parse_next(pdu2);
-    BOOST_REQUIRE_EQUAL(cons->bulk_.size(), 1);
-    // 1
-    BOOST_REQUIRE_EQUAL(cons->bulk_[0], "123456789ABC");
-    parser.close();
-}
-
-
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
 
     const char *messages = ":1\r\n:2\r\n+34.5\r\n:d\r\n:7\r\n+8.9\r\n";

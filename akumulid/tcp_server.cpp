@@ -82,15 +82,19 @@ void TcpSession::handle_read(BufferT buffer,
                              size_t buf_size,
                              boost::system::error_code error,
                              size_t nbytes) {
-    if (!error) {
+    if (error) {
+        logger_.error() << error.message();
+        parser_.close();
+        drain_pipeline_spout();
+    } else {
         try {
-            start(buffer, buf_size, pos, nbytes);
             PDU pdu = {
                 buffer,
                 nbytes,
                 pos
             };
             parser_.parse_next(pdu);
+            start(buffer, buf_size, pos, nbytes);
         } catch (RESPError const& resp_err) {
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
@@ -116,11 +120,6 @@ void TcpSession::handle_read(BufferT buffer,
                                                  boost::asio::placeholders::error)
                                      );
         }
-
-    } else {
-        logger_.error() << error.message();
-        parser_.close();
-        drain_pipeline_spout();
     }
 }
 
