@@ -61,6 +61,9 @@ PipelineErrorCb TcpSession::get_error_cb() {
         auto session = weak.lock();
         if (session) {
             const char* msg = aku_error_message(status);
+            // TODO: remove
+            std::cout << "TcpSession::error_callback " << msg << ", counter:" << counter << std::endl;
+            // end remove
             session->logger_.trace() << msg;
             boost::asio::streambuf stream;
             std::ostream os(&stream);
@@ -82,20 +85,27 @@ void TcpSession::handle_read(BufferT buffer,
                              size_t buf_size,
                              boost::system::error_code error,
                              size_t nbytes) {
+    // TODO: remove
+    std::cout << "TcpSession::handler_read" << std::endl;
+    std::cout << "                         - error: " << error.message() << std::endl;
+    // end remove
     if (error) {
         logger_.error() << error.message();
         parser_.close();
         drain_pipeline_spout();
     } else {
         try {
-            start(buffer, buf_size, pos, nbytes);
             PDU pdu = {
                 buffer,
                 nbytes,
                 pos
             };
             parser_.parse_next(pdu);
+            start(buffer, buf_size, pos, nbytes);
         } catch (RESPError const& resp_err) {
+            // TODO: remove
+            std::cout << "TcpSession::handle_read resp error: " << resp_err.what() << std::endl;
+            // end remove
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
             logger_.error() << resp_err.get_bottom_line();
@@ -109,6 +119,9 @@ void TcpSession::handle_read(BufferT buffer,
                                                  boost::asio::placeholders::error)
                                      );
         } catch (...) {
+            // TODO: remove
+            std::cout << "TcpSession::handle_read unexpected error" << std::endl;
+            // end remove
             // Unexpected error
             logger_.error() << boost::current_exception_diagnostic_information();
             boost::asio::streambuf stream;
@@ -130,9 +143,18 @@ void TcpSession::drain_pipeline_spout() {
 }
 
 void TcpSession::handle_write_error(boost::system::error_code error) {
+    // TODO: remove
+    std::cout << "TcpSession::handle_write_error" << std::endl;
+    // end remove
     if (!error) {
         socket_.shutdown(SocketT::shutdown_both);
+        // TODO: remove
+        std::cout << "TcpSession::handle_write_error - shutdown" << std::endl;
+        // end remove
     } else {
+        // TODO: remove
+        std::cout << "TcpSession::handle_write_error - parser_.close(), error: " << error.message() << std::endl;
+        // end remove
         logger_.error() << "Error sending error message to client";
         logger_.error() << error.message();
         parser_.close();

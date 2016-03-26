@@ -126,6 +126,14 @@ void ProtocolParser::worker(Caller& caller) {
         std::cout << "ProtocolParser::worker exception" << std::endl;
         // end   remove
     }
+
+    // TODO: remove
+    catch (...) {
+        std::cout << "ProtocolParser::worker exception leaves worker: " << boost::current_exception_diagnostic_information()
+                  << std::endl;
+        throw;
+    }
+    // end remove
 }
 
 void ProtocolParser::set_caller(Caller& caller) {
