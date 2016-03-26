@@ -163,11 +163,6 @@ struct DatabaseImpl : public aku_Database
         return pcur;
     }
 
-    // TODO: remove obsolete
-    CursorImpl* select(aku_SelectQuery const* query) {
-        throw "depricated";
-    }
-
     aku_Status add_double(aku_ParamId param_id, aku_Timestamp ts, double value) {
         return storage_.write_double(param_id, ts, value);
     }
@@ -306,11 +301,6 @@ aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, u
 
 void aku_destroy(void* any) {
     free(any);
-}
-
-aku_Cursor* aku_select(aku_Database *db, const aku_SelectQuery* query) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->select(query);
 }
 
 aku_Cursor* aku_query(aku_Database* db, const char* query) {

@@ -76,9 +76,6 @@ struct RegexFilter : IQueryFilter {
         , offset_{}
         , prev_size_(0ul)
     {
-        // TODO: remove
-        std::cout << "Series filter regex: " << regex_ << std::endl;
-        // end remove
         refresh();
     }
 
@@ -524,9 +521,6 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
         if (metric.empty()) {
             metric = "\\w+";
         }
-        // TODO: remove
-        std::cout << "Processing `where` clause, `where` not set, metric is: " << metric << std::endl;
-        // end remove
         std::stringstream series_regexp;
         series_regexp << metric << "(?:\\s\\w+=\\w+)*";
         std::string regex = series_regexp.str();

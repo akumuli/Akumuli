@@ -3,7 +3,6 @@
 
 #include <unordered_map>
 #include <algorithm>
-#include <iostream> // TODO: remove me
 
 namespace Akumuli {
 
