@@ -453,11 +453,6 @@ static std::string parse_metric(boost::property_tree::ptree const& ptree,
         auto single = opt->get_value<std::string>();
         return single;
     }
-    auto select = ptree.get_child_optional("select");
-    if (!select) {
-        QueryParserError error("`metric` not set");
-        BOOST_THROW_EXCEPTION(error);
-    }
     return "";
 }
 
@@ -478,14 +473,13 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     BOOST_THROW_EXCEPTION(error);
 }
 
-static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptree const& ptree,
+static std::shared_ptr<IQueryFilter> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                        std::string metric,
                                                        std::string pred,
                                                        StringPool const& pool,
                                                        aku_logger_cb_t logger)
 {
-    std::shared_ptr<RegexFilter> result;
-    bool not_set = false;
+    std::shared_ptr<IQueryFilter> result;
     auto where = ptree.get_child_optional("where");
     if (where) {
         if (metric.empty()) {
@@ -513,18 +507,16 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
             std::string regex = series_regexp.str();
             result = std::make_shared<RegexFilter>(regex, pool);
         }
-    } else {
-        not_set = true;
-    }
-    if (not_set) {
-        // we need to include all series
-        if (metric.empty()) {
-            metric = "\\w+";
-        }
-        std::stringstream series_regexp;
-        series_regexp << metric << "(?:\\s\\w+=\\w+)*";
-        std::string regex = series_regexp.str();
+    } else if (!metric.empty()) {
+        // only metric is specified
+        std::stringstream series_regex;
+        series_regex << metric << "(?:\\s\\w+=\\w+)*";
+        std::string regex = series_regex.str();
         result = std::make_shared<RegexFilter>(regex, pool);
+    } else {
+        // we need to include all series
+        // were stmt is not used
+        result = std::make_shared<BypassFilter>();
     }
     return result;
 }
