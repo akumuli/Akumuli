@@ -18,6 +18,7 @@ file(COPY
     test_restart.py
     test_kill.py
     test_concurrency.py
+    test_ingestion_errors.py
     DESTINATION
     ./
 )

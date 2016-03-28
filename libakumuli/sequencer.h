@@ -63,7 +63,7 @@ struct TimeSeriesValue {
     friend bool chunk_order_LT(TimeSeriesValue const& lhs, TimeSeriesValue const& rhs);
 };
 
-std::ostream& operator << (std::ostream& str, TimeSeriesValue const& val);
+std::ostream& operator<<(std::ostream& str, TimeSeriesValue const& val);
 
 
 /** Time-series sequencer.

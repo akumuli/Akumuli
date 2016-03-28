@@ -91,6 +91,14 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
+std::vector<uint64_t> SeriesMatcher::get_all_ids() const {
+    std::vector<uint64_t> result;
+    for (auto const &tup: inv_table) {
+        result.push_back(tup.first);
+    }
+    return result;
+}
+
 //                         //
 //      Series Parser      //
 //                         //

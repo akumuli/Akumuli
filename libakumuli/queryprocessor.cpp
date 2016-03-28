@@ -453,11 +453,6 @@ static std::string parse_metric(boost::property_tree::ptree const& ptree,
         auto single = opt->get_value<std::string>();
         return single;
     }
-    auto select = ptree.get_child_optional("select");
-    if (!select) {
-        QueryParserError error("`metric` not set");
-        BOOST_THROW_EXCEPTION(error);
-    }
     return "";
 }
 
@@ -478,14 +473,13 @@ static aku_Timestamp parse_range_timestamp(boost::property_tree::ptree const& pt
     BOOST_THROW_EXCEPTION(error);
 }
 
-static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptree const& ptree,
+static std::shared_ptr<IQueryFilter> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                        std::string metric,
                                                        std::string pred,
-                                                       StringPool const& pool,
+                                                       SeriesMatcher const& matcher,
                                                        aku_logger_cb_t logger)
 {
-    std::shared_ptr<RegexFilter> result;
-    bool not_set = false;
+    std::shared_ptr<IQueryFilter> result;
     auto where = ptree.get_child_optional("where");
     if (where) {
         if (metric.empty()) {
@@ -511,20 +505,19 @@ static std::shared_ptr<RegexFilter> parse_where_clause(boost::property_tree::ptr
             }
             series_regexp << ")";
             std::string regex = series_regexp.str();
-            result = std::make_shared<RegexFilter>(regex, pool);
+            result = std::make_shared<RegexFilter>(regex, matcher.pool);
         }
+    } else if (!metric.empty()) {
+        // only metric is specified
+        std::stringstream series_regex;
+        series_regex << metric << "(?:\\s\\w+=\\w+)*";
+        std::string regex = series_regex.str();
+        result = std::make_shared<RegexFilter>(regex, matcher.pool);
     } else {
-        not_set = true;
-    }
-    if (not_set) {
         // we need to include all series
-        if (metric.empty()) {
-            metric = "\\w+";
-        }
-        std::stringstream series_regexp;
-        series_regexp << metric << "(?:\\s\\w+=\\w+)*";
-        std::string regex = series_regexp.str();
-        result = std::make_shared<RegexFilter>(regex, pool);
+        // were stmt is not used
+        auto ids = matcher.get_all_ids();
+        result = std::make_shared<BypassFilter>(ids);
     }
     return result;
 }
@@ -590,7 +583,7 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         auto sampling_params = ptree.get_child_optional("sample");
 
         // Read where clause
-        auto filter = parse_where_clause(ptree, metric, "in", matcher.pool, logger);
+        auto filter = parse_where_clause(ptree, metric, "in", matcher, logger);
 
         if (sampling_params && select) {
             (*logger)(AKU_LOG_ERROR, "Can't combine select and sample statements together");
