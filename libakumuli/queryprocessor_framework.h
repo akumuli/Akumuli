@@ -75,10 +75,8 @@ struct IQueryFilter {
 struct BypassFilter : QP::IQueryFilter {
     std::vector<uint64_t> allids;
 
-    BypassFilter(std::vector<uint64_t> allids=std::vector<uint64_t>())
-        : allids(allids)
-    {
-    }
+    BypassFilter(std::vector<uint64_t> allids = std::vector<uint64_t>())
+        : allids(allids) {}
 
     virtual FilterResult apply(aku_ParamId id) { return PROCESS; }
 
@@ -113,7 +111,7 @@ struct QueryRange {
 };
 
 
-std::ostream& operator << (std::ostream& str, QueryRange const& range);
+std::ostream& operator<<(std::ostream& str, QueryRange const& range);
 
 
 //! Query processor interface
