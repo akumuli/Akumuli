@@ -34,6 +34,7 @@ script:
   - python functests/test_restart.py akumulid/
   - python functests/test_kill.py akumulid/
   - python functests/test_concurrency.py akumulid/
+  - python functests/test_ingestion_errors.py akumulid/
 
 after_script:
   - cp /tmp/akumuli.log shippable/testresults
