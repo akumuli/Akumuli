@@ -73,8 +73,16 @@ struct IQueryFilter {
 
 //! Query filter that doesn't block anything (for testing purposes)
 struct BypassFilter : QP::IQueryFilter {
+    std::vector<uint64_t> allids;
+
+    BypassFilter(std::vector<uint64_t> allids=std::vector<uint64_t>())
+        : allids(allids)
+    {
+    }
+
     virtual FilterResult apply(aku_ParamId id) { return PROCESS; }
-    std::vector<aku_ParamId> get_ids() { throw std::runtime_error("not implemented"); }
+
+    std::vector<aku_ParamId> get_ids() { return allids; }
 };
 
 

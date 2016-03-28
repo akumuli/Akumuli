@@ -76,6 +76,8 @@ struct SeriesMatcher {
       * @param buffer is an output parameter that will receive new elements
       */
     void pull_new_names(std::vector<SeriesNameT>* buffer);
+
+    std::vector<uint64_t> get_all_ids() const;
 };
 
 /** Namespace class to store all parsing related things.
