@@ -6,10 +6,6 @@
 
 namespace Akumuli {
 
-StreamOutOfBounds::StreamOutOfBounds(const char* msg) : std::runtime_error(msg)
-{
-}
-
 struct PrevValPredictor {
     uint64_t last_value;
     PrevValPredictor(int) : last_value(0)
@@ -77,35 +73,51 @@ typedef FcmPredictor PredictorT;
 
 static const int PREDICTOR_N = 1 << 10;
 
-static inline void encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
+static inline bool encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
     switch(nbytes) {
     case 8:
-        wstream.put_raw(diff);
+        if (!wstream.put_raw(diff)) {
+            return false;
+        }
         break;
     case 7:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
         diff >>= 8;
     case 6:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
         diff >>= 8;
     case 5:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
         diff >>= 8;
     case 4:
-        wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF));
+        if (!wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF))) {
+            return false;
+        }
         diff >>= 32;
         break;
     case 3:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
         diff >>= 8;
     case 2:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
         diff >>= 8;
     case 1:
-        wstream.put_raw(static_cast<unsigned char>(diff & 0xFF));
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
     }
 }
 
@@ -119,6 +131,83 @@ static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char 
     int shift_width = (64 - nbytes*8)*(flag >> 3);
     diff <<= shift_width;
     return diff;
+}
+
+
+FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
+    : stream_(stream)
+    , predictor_(PREDICTOR_N)
+    , prev_diff_(0)
+    , prev_flag_(0)
+    , nelements_(0)
+{
+}
+
+bool FcmStreamWriter::put(double value) {
+    union {
+        double real;
+        uint64_t bits;
+    } curr = {};
+    curr.real = value;
+    uint64_t predicted = predictor_.predict_next();
+    predictor_.update(curr.bits);
+    uint64_t diff = curr.bits ^ predicted;
+
+    int leading_zeros = 64;
+    int trailing_zeros = 64;
+
+    if (diff != 0) {
+        trailing_zeros = __builtin_ctzl(diff);
+    }
+    if (diff != 0) {
+        leading_zeros = __builtin_clzl(diff);
+    }
+
+    int nbytes;
+    unsigned char flag;
+
+    if (trailing_zeros > leading_zeros) {
+        // this would be the case with low precision values
+        nbytes = 8 - trailing_zeros / 8;
+        if (nbytes > 0) {
+            nbytes--;
+        }
+        // 4th bit indicates that only leading bytes are stored
+        flag = 8 | (nbytes&7);
+    } else {
+        nbytes = 8 - leading_zeros / 8;
+        if (nbytes > 0) {
+            nbytes--;
+        }
+        // zeroed 4th bit indicates that only trailing bytes are stored
+        flag = nbytes&7;
+    }
+
+    if (ix % 2 == 0) {
+        prev_diff_ = diff;
+        prev_flag_ = flag;
+    } else {
+        // we're storing values by pairs to save space
+        unsigned char flags = (prev_flag_ << 4) | flag;
+        stream_.put_raw(flags);
+        encode_value(stream_, prev_diff_, prev_flag_);
+        encode_value(stream_, diff, flag);
+    }
+    nelements_++;
+}
+
+size_t FcmStreamWriter::size() const { return stream_.size(); }
+
+bool FcmStreamWriter::commit() {
+    if (nelements_ % 2 != 0) {
+        // `input` contains odd number of values so we should use
+        // empty second value that will take one byte in output
+        unsigned char flags = prev_flag_ << 4;
+        stream_.put_raw(flags);
+        encode_value(stream_, prev_diff_, prev_flag_);
+        encode_value(stream_, 0ull, 0);
+    }
+    return stream_.commit();
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
@@ -217,7 +306,8 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         if (it < end) {
             *it++ = curr.real;
         } else {
-            throw StreamOutOfBounds("can't decode doubles, not enough space inside the out buffer");
+            // size of the out-buffer should be known beforehand
+            AKU_PANIC("can't decode doubles, not enough space inside the out buffer");
         }
     }
 }
@@ -252,119 +342,20 @@ aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
     return AKU_SUCCESS;
 }
 
-aku_Status CompressionUtil::encode_chunk2( uint32_t           *n_elements
-                                         , aku_Timestamp      *ts_begin
-                                         , aku_Timestamp      *ts_end
-                                         , ChunkWriter        *writer
-                                         , const UncompressedChunk&  data)
-{
+aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, size_t size) {
     /* Data format:
      *
-     * ------- header -------
-     * u32 - number of elements
-     * u32 - number of elements in dence storage
-     * u32 - number of elements in sparce storage
-     * u32 - dence series storage size
-     * u32 - sparce series storage size
-     * ------- dence series storage --------
-     * [for each dence series in the chunk]
-     * u64 - series id
-     * vbyte - timestamps (compressed)
-     * vbyte - values (compressed)
-     * [end for]
-     * vbyte - indirection vector (offset = chunk_ptr + sizeof(chunk_header) + dence series storage size)
-     *                            (maps ids to offsets inside dence series storage, should be compressed)
-     * ------- sparce series storage --------
-     * vbyte - bloom filter (for ids)
-     * vbyte - array of series ids (compressed,  everything is sorted  by series id and then by timestmp)
-     * vbyte - array of timestamps
-     * vbyte - array of values
+     * u32   - number of elements
+     * u64   - series id
+     * vbyte - timestamps (compressed) interleaved with values (compressed)
+     *
      */
-    aku_MemRange available_space = writer->allocate();
-    unsigned char* begin = (unsigned char*)available_space.address;
-    unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
-    Base128StreamWriter stream(begin, end);
+    Base128StreamWriter stream(buffer, buffer + size);
+    size_t slice_size = slice->size;
+    DeltaRLEWriter tstream(stream);
+    FcmWriter vstream(stream);
+    for (size_t ix = slice->offset; ix < slice_size; i++) {
 
-    // Returns series length if metric is sparce, 0 otherwise
-    auto get_sparce_length = [&data](size_t base) {
-        static const size_t MIN_DENCE_SERIES_SIZE = 10;  // TODO: tune the number
-        for (size_t i = 0; i < MIN_DENCE_SERIES_SIZE; i++) {
-            if (data.paramids[base] != data.paramids[base + i]) {
-                return i;
-            }
-        }
-        return size_t(0ul);
-    };
-
-    // Encode timestamps, return number of encoded elements
-    auto put_timestamps = [&stream, &data](size_t ix_start) {
-        size_t result = 0;
-        DeltaRLEWriter writer(stream);
-        for (size_t ix = ix_start; ix < data.timestamps.size(); ix++) {
-            if (data.paramids[ix_start] == data.paramids[ix]) {
-                // put
-                writer.put(data.timestamps[ix]);
-            } else {
-                // done
-                result = ix - ix_start;
-                break;
-            }
-        }
-        writer.commit();
-        return result;
-    };
-
-    auto put_values = [&stream, &data](size_t ix_start, size_t length) {
-        throw "not implemented";
-    };
-
-
-    try {
-        struct ChunkHeader {
-            uint32_t count;
-            uint32_t dence_count;
-            uint32_t sparce_count;
-            uint32_t dence_storage_size;
-            uint32_t sparce_storage_size;
-        };
-
-        std::vector<size_t> sparce_series_indexes;
-        ChunkHeader* pheader = stream.allocate<ChunkHeader>();
-        pheader->count = (uint32_t)data.paramids.size();
-        // Dence series storage
-        uint32_t dence_cnt = 0;
-        size_t series_start_ix = ~0ull; // index of the current series start
-        for (size_t ix = 0; ix < data.paramids.size(); ix++) {
-            if (data.paramids[ix] != data.paramids[series_start_ix]) {
-                // new series detected
-                series_start_ix = ix;
-                size_t sparce_length = get_sparce_length(series_start_ix);
-                if (sparce_length) {
-                    // skip this series
-                    sparce_series_indexes.push_back(series_start_ix);
-                    ix += sparce_length;
-                    continue;
-                }
-                // put series id
-                stream.put(data.paramids[series_start_ix]);
-                // put timestamps
-                size_t series_length = put_timestamps(series_start_ix);
-                // put values
-                put_values(series_start_ix, series_length);
-                // done
-                ix += series_length;
-                dence_cnt++;
-            } else {
-                // TODO: use panic
-                throw "Internal error";  // This is possible on memory or stack corruption
-            }
-        }
-        pheader->dence_count = dence_cnt;
-        //pheader->dence_storage_size = ???
-        // Sparce series storage
-        throw "not implemented";
-    } catch (StreamOutOfBounds const&) {
-        return AKU_EOVERFLOW;
     }
 
     return writer->commit(stream.size());

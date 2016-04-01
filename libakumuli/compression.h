@@ -30,12 +30,9 @@
 #include <vector>
 
 #include "akumuli.h"
+#include "util.h"
 
 namespace Akumuli {
-
-struct StreamOutOfBounds : std::runtime_error {
-    StreamOutOfBounds(const char* msg);
-};
 
 typedef std::vector<unsigned char> ByteVector;
 
@@ -151,41 +148,45 @@ struct Base128StreamWriter {
 
     /** Put value into stream.
      */
-    template <class TVal> void put(TVal value) {
+    template <class TVal> bool put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char*   p = val.put(pos_, end_);
         if (pos_ == p) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+            return false;
         }
         pos_ = p;
+        return true;
     }
 
-    void put_raw(unsigned char value) {
+    bool put_raw(unsigned char value) {
         if (pos_ == end_) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+            return false;
         }
         *pos_++ = value;
+        return true;
     }
 
-    void put_raw(uint32_t value) {
+    bool put_raw(uint32_t value) {
         if ((end_ - pos_) < (int)sizeof(value)) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+            return false;
         }
         *reinterpret_cast<uint32_t*>(pos_) = value;
         pos_ += sizeof(value);
+        return true;
     }
 
-    void put_raw(uint64_t value) {
+    bool put_raw(uint64_t value) {
         if ((end_ - pos_) < (int)sizeof(value)) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+            return false;
         }
         *reinterpret_cast<uint64_t*>(pos_) = value;
         pos_ += sizeof(value);
+        return true;
     }
 
 
     //! Commit stream
-    void commit() {}
+    bool commit() { return true; }
 
     size_t size() const { return pos_ - begin_; }
 
@@ -193,13 +194,12 @@ struct Base128StreamWriter {
 
     /** Try to allocate space inside a stream in current position without
       * compression (needed for size prefixes).
-      * @returns pointer to the value inside the stream
-      * @throw StreamOutOfBounds if there is not enough space for value
+      * @returns pointer to the value inside the stream or nullptr
       */
     template <class T> T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
-            throw StreamOutOfBounds("can't allocate value, not enough space");
+            return nullptr;
         }
         T* result = reinterpret_cast<T*>(pos_);
         pos_ += sz;
@@ -220,7 +220,7 @@ struct Base128StreamReader {
         Base128Int<TVal> value;
         auto             p = value.get(pos_, end_);
         if (p == pos_) {
-            throw StreamOutOfBounds("can't read value, out of bounds");
+            AKU_PANIC("can't read value, out of bounds");
         }
         pos_ = p;
         return static_cast<TVal>(value);
@@ -230,7 +230,7 @@ struct Base128StreamReader {
     template <class TVal> TVal read_raw() {
         size_t sz = sizeof(TVal);
         if (space_left() < sz) {
-            throw StreamOutOfBounds("can't read value, out of bounds");
+            AKU_PANIC("can't read value, out of bounds");
         }
         auto val = *reinterpret_cast<const TVal*>(pos_);
         pos_ += sz;
@@ -242,19 +242,24 @@ struct Base128StreamReader {
     const unsigned char* pos() const { return pos_; }
 };
 
-template <class Stream, class TVal> struct ZigZagStreamWriter {
+template <class Stream, class TVal>
+struct ZigZagStreamWriter {
     Stream stream_;
 
     ZigZagStreamWriter(Base128StreamWriter& stream)
-        : stream_(stream) {}
-    void put(TVal value) {
+        : stream_(stream)
+    {}
+
+    bool put(TVal value) {
         // TVal should be signed
         const int shift_width = sizeof(TVal) * 8 - 1;
         auto      res         = (value << 1) ^ (value >> shift_width);
-        stream_.put(res);
+        return stream_.put(res);
     }
+
     size_t size() const { return stream_.size(); }
-    void   commit() { stream_.commit(); }
+
+    bool commit() { return stream_.commit(); }
 };
 
 template <class Stream, class TVal> struct ZigZagStreamReader {
@@ -271,7 +276,8 @@ template <class Stream, class TVal> struct ZigZagStreamReader {
     unsigned char* pos() const { return stream_.pos(); }
 };
 
-template <class Stream, typename TVal> struct DeltaStreamWriter {
+template <class Stream, typename TVal>
+struct DeltaStreamWriter {
     Stream stream_;
     TVal   prev_;
 
@@ -279,18 +285,20 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
         : stream_(stream)
         , prev_() {}
 
-    void put(TVal value) {
-        stream_.put(static_cast<TVal>(value) - prev_);
+    bool put(TVal value) {
+        auto result = stream_.put(static_cast<TVal>(value) - prev_);
         prev_ = value;
+        return result;
     }
 
     size_t size() const { return stream_.size(); }
 
-    void commit() { stream_.commit(); }
+    bool commit() { return stream_.commit(); }
 };
 
 
-template <class Stream, typename TVal> struct DeltaStreamReader {
+template <class Stream, typename TVal>
+struct DeltaStreamReader {
     Stream stream_;
     TVal   prev_;
 
@@ -309,7 +317,8 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
 };
 
 
-template <typename TVal> struct RLEStreamWriter {
+template <typename TVal>
+struct RLEStreamWriter {
     Base128StreamWriter& stream_;
     TVal                 prev_;
     TVal                 reps_;
@@ -321,25 +330,28 @@ template <typename TVal> struct RLEStreamWriter {
         , reps_()
         , start_size_(stream.size()) {}
 
-    void put(TVal value) {
+    bool put(TVal value) {
         if (value != prev_) {
             if (reps_) {
                 // commit changes
-                stream_.put(reps_);
-                stream_.put(prev_);
+                if (!stream_.put(reps_)) {
+                    return false;
+                }
+                if (!stream_.put(prev_)) {
+                    return false;
+                }
             }
             prev_ = value;
             reps_ = TVal();
         }
         reps_++;
+        return true;
     }
 
     size_t size() const { return stream_.size() - start_size_; }
 
-    void commit() {
-        stream_.put(reps_);
-        stream_.put(prev_);
-        stream_.commit();
+    bool commit() {
+        return stream_.put(reps_) && stream_.put(prev_) && stream_.commit();
     }
 };
 
@@ -365,17 +377,45 @@ template <typename TVal> struct RLEStreamReader {
     unsigned char* pos() const { return stream_.pos(); }
 };
 
+struct FcmStreamWriter {
+    Base128StreamWriter& stream_;
+    PredictorT predictor_;
+    uint64_t prev_diff_;
+    unsigned char prev_flag_;
+    int nelements_;
+
+    FcmStreamWriter(Base128StreamWriter& stream);
+
+    bool put(double value);
+
+    size_t size() const;
+
+    bool commit();
+};
+
+
+//! SeriesSlice represents consiquent data points from one series
+struct SeriesSlice {
+    //! Series id
+    aku_ParamId id;
+    //! Pointer to the array of timestamps
+    aku_Timestamp const* ts;
+    //! Pointer to the array of values
+    double const* value;
+    //! Array size
+    size_t size;
+    //! Current position
+    size_t offset;
+};
+
 struct CompressionUtil {
 
-    /** Compress and write ChunkHeader to memory stream.
-      * @param n_elements out parameter - number of written elements
-      * @param ts_begin out parameter - first timestamp
-      * @param ts_end out parameter - last timestamp
-      * @param data ChunkHeader to compress
+    /** Compress and write slice into buffer
+      * @param slice is a structure representing time-series state
+      * @param buffer is a pointer to destination buffer
+      * @param buffer_size is a buffer size
       */
-    static aku_Status encode_chunk2(uint32_t* n_elements, aku_Timestamp* ts_begin,
-                                    aku_Timestamp* ts_end, ChunkWriter* writer,
-                                    const UncompressedChunk& data);
+    static aku_Status encode_block(SeriesSlice *slice, uint8_t* buffer, size_t buffer_size);
 
     /** Compress and write ChunkHeader to memory stream.
       * @param n_elements out parameter - number of written elements
