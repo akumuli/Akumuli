@@ -6,70 +6,42 @@
 
 namespace Akumuli {
 
-struct PrevValPredictor {
-    uint64_t last_value;
-    PrevValPredictor(int) : last_value(0)
-    {
-    }
-    uint64_t predict_next() const {
-        return last_value;
-    }
-    void update(uint64_t value) {
-        last_value = value;
-    }
-};
+FcmPredictor::FcmPredictor(size_t table_size)
+    : last_hash(0ull)
+    , MASK_(table_size - 1)
+{
+    assert((table_size & MASK_) == 0);
+    table.resize(table_size);
+}
 
-struct FcmPredictor {
-    std::vector<uint64_t> table;
-    uint64_t last_hash;
-    const uint64_t MASK_;
+uint64_t FcmPredictor::predict_next() const {
+    return table[last_hash];
+}
 
-    FcmPredictor(size_t table_size)
-        : last_hash(0ull)
-        , MASK_(table_size - 1)
-    {
-        assert((table_size & MASK_) == 0);
-        table.resize(table_size);
-    }
+void FcmPredictor::update(uint64_t value) {
+    table[last_hash] = value;
+    last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+}
 
-    uint64_t predict_next() const {
-        return table[last_hash];
-    }
+//! C-tor. `table_size` should be a power of two.
+DfcmPredictor::DfcmPredictor(int table_size)
+    : last_hash (0ul)
+    , last_value(0ul)
+    , MASK_(table_size - 1)
+{
+   assert((table_size & MASK_) == 0);
+   table.resize(table_size);
+}
 
-    void update(uint64_t value) {
-        table[last_hash] = value;
-        last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
-    }
-};
+uint64_t DfcmPredictor::predict_next() const {
+    return table.at(last_hash) + last_value;
+}
 
-struct DfcmPredictor {
-    std::vector<uint64_t> table;
-    uint64_t last_hash;
-    uint64_t last_value;
-    const uint64_t MASK_;
-
-    //! C-tor. `table_size` should be a power of two.
-    DfcmPredictor(int table_size)
-        : last_hash (0ul)
-        , last_value(0ul)
-        , MASK_(table_size - 1)
-    {
-       assert((table_size & MASK_) == 0);
-       table.resize(table_size);
-    }
-
-    uint64_t predict_next() const {
-        return table.at(last_hash) + last_value;
-    }
-
-    void update(uint64_t value) {
-        table[last_hash] = value - last_value;
-        last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
-        last_value = value;
-    }
-};
-
-typedef FcmPredictor PredictorT;
+void DfcmPredictor::update(uint64_t value) {
+    table[last_hash] = value - last_value;
+    last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
+    last_value = value;
+}
 
 static const int PREDICTOR_N = 1 << 10;
 
@@ -119,6 +91,7 @@ static inline bool encode_value(Base128StreamWriter& wstream, uint64_t diff, uns
             return false;
         }
     }
+    return true;
 }
 
 static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char flag) {
@@ -183,17 +156,22 @@ bool FcmStreamWriter::put(double value) {
         flag = nbytes&7;
     }
 
-    if (ix % 2 == 0) {
+    if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
         prev_flag_ = flag;
     } else {
         // we're storing values by pairs to save space
         unsigned char flags = (prev_flag_ << 4) | flag;
         stream_.put_raw(flags);
-        encode_value(stream_, prev_diff_, prev_flag_);
-        encode_value(stream_, diff, flag);
+        if (!encode_value(stream_, prev_diff_, prev_flag_)) {
+            return false;
+        }
+        if (!encode_value(stream_, diff, flag)) {
+            return false;
+        }
     }
     nelements_++;
+    return true;
 }
 
 size_t FcmStreamWriter::size() const { return stream_.size(); }
@@ -277,6 +255,35 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     }
     return input.size();
 }
+
+FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
+    : stream_(stream)
+    , predictor_(PREDICTOR_N)
+    , flags_(0)
+    , iter_(0)
+{
+}
+
+double FcmStreamReader::next() {
+    unsigned char flag = 0;
+    if (iter_ % 2 == 0) {
+        flags_ = (int)stream.read_raw<unsigned char>();
+        flag = static_cast<unsigned char>(flags_ >> 4);
+    } else {
+        flag = static_cast<unsigned char>(flags_ & 0xF);
+    }
+    uint64_t diff = decode_value(stream, flag);
+    union {
+        uint64_t bits;
+        double real;
+    } curr = {};
+    uint64_t predicted = predictor.predict_next();
+    curr.bits = predicted ^ diff;
+    predictor.update(curr.bits);
+    return curr.real;
+}
+
+unsigned char* FcmStreamReader::pos() const { return stream_.pos(); }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
                                          size_t                   numvalues,

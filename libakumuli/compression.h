@@ -377,6 +377,34 @@ template <typename TVal> struct RLEStreamReader {
     unsigned char* pos() const { return stream_.pos(); }
 };
 
+struct FcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    const uint64_t MASK_;
+
+    FcmPredictor(size_t table_size);
+
+    uint64_t predict_next() const;
+
+    void update(uint64_t value);
+};
+
+struct DfcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    uint64_t last_value;
+    const uint64_t MASK_;
+
+    //! C-tor. `table_size` should be a power of two.
+    DfcmPredictor(int table_size);
+
+    uint64_t predict_next() const;
+
+    void update(uint64_t value);
+};
+
+typedef FcmPredictor PredictorT;
+
 struct FcmStreamWriter {
     Base128StreamWriter& stream_;
     PredictorT predictor_;
@@ -391,6 +419,19 @@ struct FcmStreamWriter {
     size_t size() const;
 
     bool commit();
+};
+
+struct FcmStreamReader {
+    Base128StreamReader& stream_;
+    PredictorT predictor_;
+    int flags_;
+    int iter_;
+
+    FcmStreamReader(Base128StreamReader& stream);
+
+    double next();
+
+    unsigned char* pos() const;
 };
 
 
