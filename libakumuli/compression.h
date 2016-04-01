@@ -373,6 +373,16 @@ struct CompressionUtil {
       * @param ts_end out parameter - last timestamp
       * @param data ChunkHeader to compress
       */
+    static aku_Status encode_chunk2(uint32_t* n_elements, aku_Timestamp* ts_begin,
+                                    aku_Timestamp* ts_end, ChunkWriter* writer,
+                                    const UncompressedChunk& data);
+
+    /** Compress and write ChunkHeader to memory stream.
+      * @param n_elements out parameter - number of written elements
+      * @param ts_begin out parameter - first timestamp
+      * @param ts_end out parameter - last timestamp
+      * @param data ChunkHeader to compress
+      */
     static aku_Status encode_chunk(uint32_t* n_elements, aku_Timestamp* ts_begin,
                                    aku_Timestamp* ts_end, ChunkWriter* writer,
                                    const UncompressedChunk& data);

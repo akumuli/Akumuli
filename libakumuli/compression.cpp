@@ -252,6 +252,125 @@ aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
     return AKU_SUCCESS;
 }
 
+aku_Status CompressionUtil::encode_chunk2( uint32_t           *n_elements
+                                         , aku_Timestamp      *ts_begin
+                                         , aku_Timestamp      *ts_end
+                                         , ChunkWriter        *writer
+                                         , const UncompressedChunk&  data)
+{
+    /* Data format:
+     *
+     * ------- header -------
+     * u32 - number of elements
+     * u32 - number of elements in dence storage
+     * u32 - number of elements in sparce storage
+     * u32 - dence series storage size
+     * u32 - sparce series storage size
+     * ------- dence series storage --------
+     * [for each dence series in the chunk]
+     * u64 - series id
+     * vbyte - timestamps (compressed)
+     * vbyte - values (compressed)
+     * [end for]
+     * vbyte - indirection vector (offset = chunk_ptr + sizeof(chunk_header) + dence series storage size)
+     *                            (maps ids to offsets inside dence series storage, should be compressed)
+     * ------- sparce series storage --------
+     * vbyte - bloom filter (for ids)
+     * vbyte - array of series ids (compressed,  everything is sorted  by series id and then by timestmp)
+     * vbyte - array of timestamps
+     * vbyte - array of values
+     */
+    aku_MemRange available_space = writer->allocate();
+    unsigned char* begin = (unsigned char*)available_space.address;
+    unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
+    Base128StreamWriter stream(begin, end);
+
+    // Returns series length if metric is sparce, 0 otherwise
+    auto get_sparce_length = [&data](size_t base) {
+        static const size_t MIN_DENCE_SERIES_SIZE = 10;  // TODO: tune the number
+        for (size_t i = 0; i < MIN_DENCE_SERIES_SIZE; i++) {
+            if (data.paramids[base] != data.paramids[base + i]) {
+                return i;
+            }
+        }
+        return size_t(0ul);
+    };
+
+    // Encode timestamps, return number of encoded elements
+    auto put_timestamps = [&stream, &data](size_t ix_start) {
+        size_t result = 0;
+        DeltaRLEWriter writer(stream);
+        for (size_t ix = ix_start; ix < data.timestamps.size(); ix++) {
+            if (data.paramids[ix_start] == data.paramids[ix]) {
+                // put
+                writer.put(data.timestamps[ix]);
+            } else {
+                // done
+                result = ix - ix_start;
+                break;
+            }
+        }
+        writer.commit();
+        return result;
+    };
+
+    auto put_values = [&stream, &data](size_t ix_start, size_t length) {
+        throw "not implemented";
+    };
+
+
+    try {
+        struct ChunkHeader {
+            uint32_t count;
+            uint32_t dence_count;
+            uint32_t sparce_count;
+            uint32_t dence_storage_size;
+            uint32_t sparce_storage_size;
+        };
+
+        std::vector<size_t> sparce_series_indexes;
+        ChunkHeader* pheader = stream.allocate<ChunkHeader>();
+        pheader->count = (uint32_t)data.paramids.size();
+        // Dence series storage
+        uint32_t dence_cnt = 0;
+        size_t series_start_ix = ~0ull; // index of the current series start
+        for (size_t ix = 0; ix < data.paramids.size(); ix++) {
+            if (data.paramids[ix] != data.paramids[series_start_ix]) {
+                // new series detected
+                series_start_ix = ix;
+                size_t sparce_length = get_sparce_length(series_start_ix);
+                if (sparce_length) {
+                    // skip this series
+                    sparce_series_indexes.push_back(series_start_ix);
+                    ix += sparce_length;
+                    continue;
+                }
+                // put series id
+                stream.put(data.paramids[series_start_ix]);
+                // put timestamps
+                size_t series_length = put_timestamps(series_start_ix);
+                // put values
+                put_values(series_start_ix, series_length);
+                // done
+                ix += series_length;
+                dence_cnt++;
+            } else {
+                // TODO: use panic
+                throw "Internal error";  // This is possible on memory or stack corruption
+            }
+        }
+        pheader->dence_count = dence_cnt;
+        //pheader->dence_storage_size = ???
+        // Sparce series storage
+        throw "not implemented";
+    } catch (StreamOutOfBounds const&) {
+        return AKU_EOVERFLOW;
+    }
+
+    return writer->commit(stream.size());
+}
+
+
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_Timestamp      *ts_begin
                                         , aku_Timestamp      *ts_end
