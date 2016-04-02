@@ -357,11 +357,15 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
      * vbyte - timestamps (compressed) interleaved with values (compressed)
      *
      */
-    static const size_t SPACE_THRESHOLD = 32;  // TODO: get threshold from specific stream
+    static const size_t SPACE_THRESHOLD = 64;  // TODO: get threshold from specific stream
     Base128StreamWriter stream(buffer, buffer + size);
+    auto pcount = stream.allocate<uint32_t>();
+    auto pseries = stream.allocate<aku_ParamId>();
+    *pseries = slice->id;
     size_t slice_size = slice->size;
     DeltaRLEWriter tstream(stream);
     FcmStreamWriter vstream(stream);
+    uint32_t count = 0;
     for (size_t ix = slice->offset; ix < slice_size; ix++) {
         aku_Timestamp ts = slice->ts[ix];
         double value = slice->value[ix];
@@ -371,6 +375,7 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
         if (error) {
             return AKU_EOVERFLOW;
         }
+        count++;
         if (stream.space_left() < SPACE_THRESHOLD) {
             error = tstream.commit();
             error = vstream.commit() | error;
@@ -382,6 +387,38 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
             break;
         }
     }
+    *pcount = count;
+    return AKU_SUCCESS;
+}
+
+uint32_t CompressionUtil::number_of_elements_in_block(uint8_t const* buffer, size_t buffer_size) {
+    Base128StreamReader rdr(buffer, buffer + buffer_size);
+    return rdr.read_raw<uint32_t>();
+}
+
+aku_Status CompressionUtil::decode_block(uint8_t const* buffer, size_t buffer_size,
+                                         SeriesSlice* dest) {
+    // `dest` should have enough space to store the data
+    Base128StreamReader stream(buffer, buffer + buffer_size);
+    uint32_t nitems = stream.read_raw<uint32_t>();
+    aku_ParamId id = stream.read_raw<aku_ParamId>();
+    dest->id = id;
+    size_t offset = dest->offset;
+    if (dest->size < dest->offset || (dest->size - offset) < nitems) {
+        return AKU_EBAD_ARG;
+    }
+
+    DeltaRLEReader tstream(stream);   // timestamps stream
+    FcmStreamReader vstream(stream);  // values stream
+
+    for (size_t i = 0; i < nitems; i++) {
+        aku_Timestamp ts = tstream.next();
+        double value = vstream.next();
+        dest->ts[offset + i] = ts;
+        dest->value[offset + i] = value;
+    }
+    dest->offset = offset + nitems;
+
     return AKU_SUCCESS;
 }
 

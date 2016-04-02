@@ -245,6 +245,81 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
     test_float_compression(-1E100);
 }
 
+void test_block_compression(double start) {
+    RandomWalk rwalk(start, 1., .11);
+    int N = 10000;
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<double> values;
+    std::vector<uint8_t> block;
+    block.resize(4096);
+
+    for (int i = 0; i < N; i++) {
+        values.push_back(rwalk.generate());
+        timestamps.push_back(i);
+    }
+
+    // compress
+
+    SeriesSlice slice;
+    slice.id = 42;
+    slice.offset = 0;
+    slice.ts = timestamps.data();
+    slice.value = values.data();
+    slice.size = N;
+
+    auto status = CompressionUtil::encode_block(&slice, block.data(), block.size());
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_NE(slice.offset, 0);
+
+    // decompress
+
+    std::vector<aku_Timestamp> out_timestamps;
+    std::vector<double> out_values;
+
+    // gen number of elements stored in block
+    uint32_t nelem = CompressionUtil::number_of_elements_in_block(block.data(), block.size());
+    out_timestamps.resize(nelem);
+    out_values.resize(nelem);
+
+    SeriesSlice out_slice;
+    out_slice.id = 0;
+    out_slice.offset = 0;
+    out_slice.size = nelem;
+    out_slice.ts = out_timestamps.data();
+    out_slice.value = out_values.data();
+
+    status = CompressionUtil::decode_block(block.data(), block.size(), &out_slice);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_NE(out_slice.offset, nelem);
+    BOOST_REQUIRE_NE(out_slice.id, 42);
+
+    for (size_t i = 0; i < nelem; i++) {
+        BOOST_REQUIRE(timestamps.at(i) == out_timestamps.at(i));
+        BOOST_REQUIRE(values.at(i) == out_values.at(i));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
+    test_block_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_1) {
+    test_block_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_2) {
+    test_block_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
+    test_block_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
+    test_block_compression(-1E100);
+}
+
+
 void test_chunk_header_compression(double start) {
 
     UncompressedChunk expected;

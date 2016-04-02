@@ -442,9 +442,9 @@ struct SeriesSlice {
     //! Series id
     aku_ParamId id;
     //! Pointer to the array of timestamps
-    aku_Timestamp const* ts;
+    aku_Timestamp* ts;
     //! Pointer to the array of values
-    double const* value;
+    double* value;
     //! Array size
     size_t size;
     //! Current position
@@ -459,6 +459,20 @@ struct CompressionUtil {
       * @param buffer_size is a buffer size
       */
     static aku_Status encode_block(SeriesSlice *slice, uint8_t* buffer, size_t buffer_size);
+
+    /** Return number of elements stored in the block
+      */
+    static uint32_t number_of_elements_in_block(uint8_t const* buffer, size_t buffer_size);
+
+    /** Decode block and write result into slice
+      * @param buffer is a pointer to buffer that stores encoded data
+      * @param buffer_size is a size of the buffer
+      * @param dest is a pointer to slice that should receive all results
+      */
+    static aku_Status decode_block(uint8_t const* buffer, size_t buffer_size, SeriesSlice* dest);
+
+
+    // Old depricated functions
 
     /** Compress and write ChunkHeader to memory stream.
       * @param n_elements out parameter - number of written elements
