@@ -70,6 +70,7 @@ BOOST_AUTO_TEST_CASE(Test_base128) {
     test_stream_read(reader);
 }
 
+
 BOOST_AUTO_TEST_CASE(Test_delta_rle) {
 
     std::vector<unsigned char> data;
@@ -182,10 +183,10 @@ struct RandomWalk {
     std::normal_distribution<double>    distribution;
     double                              value;
 
-    RandomWalk(double mean, double stddev)
+    RandomWalk(double start, double mean, double stddev)
         : generator(randdev())
         , distribution(mean, stddev)
-        , value(0)
+        , value(start)
     {
     }
 
@@ -195,13 +196,62 @@ struct RandomWalk {
     }
 };
 
-void test_chunk_header_compression() {
+
+void test_float_compression(double start) {
+    RandomWalk rwalk(start, 1., .11);
+    int N = 10000;
+    std::vector<double> samples;
+    std::vector<uint8_t> block;
+    block.resize(N*9, 0);
+
+    // Compress
+    Base128StreamWriter wstream(block.data(), block.data() + block.size());
+    FcmStreamWriter writer(wstream);
+    for (int ix = 0; ix < N; ix++) {
+        double val = rwalk.generate();
+        writer.put(val);
+        samples.push_back(val);
+    }
+    writer.commit();
+
+    // Decompress
+    Base128StreamReader rstream(block.data(), block.data() + block.size());
+    FcmStreamReader reader(rstream);
+    for (int ix = 0; ix < N; ix++) {
+        double val = reader.next();
+        if (val != samples.at(ix)) {
+            BOOST_REQUIRE(val == samples.at(ix));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_0) {
+    test_float_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_1) {
+    test_float_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_2) {
+    test_float_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_3) {
+    test_float_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
+    test_float_compression(-1E100);
+}
+
+void test_chunk_header_compression(double start) {
 
     UncompressedChunk expected;
 
     const int NROWS = 10000;  // number of rows in one series
     const int NSER = 2;  // number of series
-    RandomWalk rwalk(1, .11);
+    RandomWalk rwalk(start, 1., .11);
 
     // Fill chunk header
     for (int i = 0; i < NROWS; i++) {
@@ -279,6 +329,22 @@ void test_chunk_header_compression() {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression) {
-    test_chunk_header_compression();
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_0) {
+    test_chunk_header_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_1) {
+    test_chunk_header_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_2) {
+    test_chunk_header_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_3) {
+    test_chunk_header_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_4) {
+    test_chunk_header_compression(-1E100);
 }

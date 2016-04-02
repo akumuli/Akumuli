@@ -240,10 +240,13 @@ add_executable(
     test_compression
     test_compression.cpp
     ../libakumuli/compression.cpp
+    ../libakumuli/util.cpp
 )
 
 target_link_libraries(
     test_compression
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 
