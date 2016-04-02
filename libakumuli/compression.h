@@ -214,7 +214,8 @@ struct Base128StreamReader {
 
     Base128StreamReader(const unsigned char* begin, const unsigned char* end)
         : pos_(begin)
-        , end_(end) {}
+        , end_(end)
+    {}
 
     template <class TVal> TVal next() {
         Base128Int<TVal> value;
@@ -241,6 +242,7 @@ struct Base128StreamReader {
 
     const unsigned char* pos() const { return pos_; }
 };
+
 
 template <class Stream, class TVal>
 struct ZigZagStreamWriter {
@@ -273,7 +275,7 @@ template <class Stream, class TVal> struct ZigZagStreamReader {
         return (n >> 1) ^ (-(n & 1));
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
 template <class Stream, typename TVal>
@@ -313,7 +315,7 @@ struct DeltaStreamReader {
         return value;
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
 
@@ -374,7 +376,7 @@ template <typename TVal> struct RLEStreamReader {
         return prev_;
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
 struct FcmPredictor {
@@ -431,7 +433,7 @@ struct FcmStreamReader {
 
     double next();
 
-    unsigned char* pos() const;
+    const unsigned char* pos() const;
 };
 
 

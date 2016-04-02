@@ -266,24 +266,24 @@ FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
 
 double FcmStreamReader::next() {
     unsigned char flag = 0;
-    if (iter_ % 2 == 0) {
-        flags_ = (int)stream.read_raw<unsigned char>();
+    if (iter_++ % 2 == 0) {
+        flags_ = (int)stream_.read_raw<unsigned char>();
         flag = static_cast<unsigned char>(flags_ >> 4);
     } else {
         flag = static_cast<unsigned char>(flags_ & 0xF);
     }
-    uint64_t diff = decode_value(stream, flag);
+    uint64_t diff = decode_value(stream_, flag);
     union {
         uint64_t bits;
         double real;
     } curr = {};
-    uint64_t predicted = predictor.predict_next();
+    uint64_t predicted = predictor_.predict_next();
     curr.bits = predicted ^ diff;
-    predictor.update(curr.bits);
+    predictor_.update(curr.bits);
     return curr.real;
 }
 
-unsigned char* FcmStreamReader::pos() const { return stream_.pos(); }
+const unsigned char* FcmStreamReader::pos() const { return stream_.pos(); }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
                                          size_t                   numvalues,
@@ -357,15 +357,32 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
      * vbyte - timestamps (compressed) interleaved with values (compressed)
      *
      */
+    static const size_t SPACE_THRESHOLD = 32;  // TODO: get threshold from specific stream
     Base128StreamWriter stream(buffer, buffer + size);
     size_t slice_size = slice->size;
     DeltaRLEWriter tstream(stream);
-    FcmWriter vstream(stream);
-    for (size_t ix = slice->offset; ix < slice_size; i++) {
-
+    FcmStreamWriter vstream(stream);
+    for (size_t ix = slice->offset; ix < slice_size; ix++) {
+        aku_Timestamp ts = slice->ts[ix];
+        double value = slice->value[ix];
+        bool error = false;
+        error = tstream.put(ts);
+        error = vstream.put(value) | error;
+        if (error) {
+            return AKU_EOVERFLOW;
+        }
+        if (stream.space_left() < SPACE_THRESHOLD) {
+            error = tstream.commit();
+            error = vstream.commit() | error;
+            if (error) {
+                // Error during commit phase, buffer is unrecoverable
+                return AKU_EOVERFLOW;
+            }
+            slice->offset = ix + 1;
+            break;
+        }
     }
-
-    return writer->commit(stream.size());
+    return AKU_SUCCESS;
 }
 
 
@@ -410,7 +427,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         *doubles_stream_size = (uint32_t)CompressionUtil::compress_doubles(data.values, stream);
 
         *n_elements = static_cast<uint32_t>(data.paramids.size());
-    } catch (StreamOutOfBounds const& e) {
+    } catch (...) {
         return AKU_EOVERFLOW;
     }
 
@@ -455,7 +472,7 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
         header->values.resize(nelements);
         const uint32_t nblocks = rstream.read_raw<uint32_t>();
         CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
-    } catch (StreamOutOfBounds const&) {
+    } catch (...) {
         return AKU_EBAD_DATA;
     }
     return AKU_SUCCESS;

@@ -116,11 +116,14 @@ add_executable(
     perf_compression.cpp
     perftest_tools.cpp
     ../libakumuli/compression.cpp
+    ../libakumuli/util.cpp
 )
 
 target_link_libraries(
     perf_compression
     z
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_compression PROPERTIES EXCLUDE_FROM_ALL 1)
