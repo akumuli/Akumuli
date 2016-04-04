@@ -116,6 +116,15 @@ FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
 {
 }
 
+bool FcmStreamWriter::tput(double const* values, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if (!put(values[i])) {
+            return false;
+        }
+    }
+    return commit();
+}
+
 bool FcmStreamWriter::put(double value) {
     union {
         double real;
@@ -162,7 +171,9 @@ bool FcmStreamWriter::put(double value) {
     } else {
         // we're storing values by pairs to save space
         unsigned char flags = (prev_flag_ << 4) | flag;
-        stream_.put_raw(flags);
+        if (!stream_.put_raw(flags)) {
+            return false;
+        }
         if (!encode_value(stream_, prev_diff_, prev_flag_)) {
             return false;
         }
@@ -181,9 +192,15 @@ bool FcmStreamWriter::commit() {
         // `input` contains odd number of values so we should use
         // empty second value that will take one byte in output
         unsigned char flags = prev_flag_ << 4;
-        stream_.put_raw(flags);
-        encode_value(stream_, prev_diff_, prev_flag_);
-        encode_value(stream_, 0ull, 0);
+        if (!stream_.put_raw(flags)) {
+            return false;
+        }
+        if (!encode_value(stream_, prev_diff_, prev_flag_)) {
+            return false;
+        }
+        if (!encode_value(stream_, 0ull, 0)) {
+            return false;
+        }
     }
     return stream_.commit();
 }
@@ -369,17 +386,17 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
     for (size_t ix = slice->offset; ix < slice_size; ix++) {
         aku_Timestamp ts = slice->ts[ix];
         double value = slice->value[ix];
-        bool error = false;
-        error = tstream.put(ts);
-        error = vstream.put(value) | error;
-        if (error) {
+        bool success = false;
+        success = tstream.put(ts);
+        success = vstream.put(value) & success;
+        if (!success) {
             return AKU_EOVERFLOW;
         }
         count++;
         if (stream.space_left() < SPACE_THRESHOLD) {
-            error = tstream.commit();
-            error = vstream.commit() | error;
-            if (error) {
+            success = tstream.commit();
+            success = vstream.commit() & success;
+            if (!success) {
                 // Error during commit phase, buffer is unrecoverable
                 return AKU_EOVERFLOW;
             }

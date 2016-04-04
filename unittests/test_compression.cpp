@@ -290,12 +290,19 @@ void test_block_compression(double start) {
 
     status = CompressionUtil::decode_block(block.data(), block.size(), &out_slice);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-    BOOST_REQUIRE_NE(out_slice.offset, nelem);
-    BOOST_REQUIRE_NE(out_slice.id, 42);
+    BOOST_REQUIRE_NE(out_slice.offset, 0);
+    BOOST_REQUIRE_EQUAL(out_slice.offset, nelem);
+    BOOST_REQUIRE_EQUAL(out_slice.id, 42);
 
     for (size_t i = 0; i < nelem; i++) {
-        BOOST_REQUIRE(timestamps.at(i) == out_timestamps.at(i));
-        BOOST_REQUIRE(values.at(i) == out_values.at(i));
+        if (timestamps.at(i) != out_timestamps.at(i)) {
+            BOOST_FAIL("Bad timestamp at " << i << ", expected: " << timestamps.at(i) <<
+                       ", actual: " << out_timestamps.at(i));
+        }
+        if (values.at(i) != out_values.at(i)) {
+            BOOST_FAIL("Bad value at " << i << ", expected: " << values.at(i) <<
+                       ", actual: " << out_values.at(i));
+        }
     }
 }
 
