@@ -35,6 +35,43 @@ void test_stream_write(TStreamWriter& writer) {
     BOOST_REQUIRE_GT(USED_SIZE, EXPECTED_SIZE);
 }
 
+template<class TVal, class TStreamWriter, class TStreamReader>
+void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t nsteps, bool sort_input=false) {
+    std::vector<TVal> input = {0};
+    const size_t step_size = 16;
+    const size_t input_size = step_size*nsteps;
+    TVal value = 100000;
+
+    // Generate
+    for (int i = 0; i < (input_size-1); i++) {
+        int delta = TVal(rand() % 1000 - 500);
+        value += delta;
+        input.push_back(value);
+    }
+
+    if (sort_input) {
+        std::sort(input.begin(), input.end());
+    }
+
+    // Encode
+    for (auto offset = 0u; offset < input_size; offset += step_size) {
+        auto success = writer.tput(input.data() + offset, step_size);
+        if (!success) {
+            BOOST_REQUIRE(success);
+        }
+    }
+
+    // Decode and compare results
+    std::vector<TVal> results;
+    for (auto offset = 0ul; offset < input_size; offset++) {
+        auto next = reader.next();
+        results.push_back(next);
+    }
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(input.begin(), input.end(),
+                                    results.begin(), results.end());
+}
+
 template<class TStreamReader>
 void test_stream_read(TStreamReader& reader) {
     // Read it back
@@ -84,6 +121,55 @@ BOOST_AUTO_TEST_CASE(Test_delta_rle) {
     DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
     test_stream_read(delta_reader);
 }
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(10*1024);  // 10KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(10*1024);  // 10KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaRLEWriter delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaRLEReader delta_reader(rstream);
+
+    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 100, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaRLEWriter delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaRLEReader delta_reader(rstream);
+
+    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 10000, false);
+}
+
 
 BOOST_AUTO_TEST_CASE(Test_rle) {
     std::vector<unsigned char> data;
@@ -306,6 +392,7 @@ void test_block_compression(double start) {
     }
 }
 
+/*
 BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
     test_block_compression(0);
 }
@@ -325,6 +412,7 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
 BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
     test_block_compression(-1E100);
 }
+*/
 
 
 void test_chunk_header_compression(double start) {

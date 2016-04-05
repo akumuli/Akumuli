@@ -321,6 +321,7 @@ struct DeltaStreamWriter {
             auto value  = iter[i];
             auto result = static_cast<TVal>(value) - prev_;
             outbuf[i]   = result;
+            prev_       = value;
         }
         return stream_.tput(outbuf, n);
     }
@@ -356,6 +357,8 @@ struct DeltaStreamReader {
     const unsigned char* pos() const { return stream_.pos(); }
 };
 
+
+
 template <typename TVal>
 struct RLEStreamWriter {
     Base128StreamWriter& stream_;
@@ -390,6 +393,8 @@ struct RLEStreamWriter {
             outbuf[outpos++] = reps_;
             outbuf[outpos++] = prev_;
         }
+        prev_ = TVal();
+        reps_ = TVal();
         // continue
         return stream_.tput(outbuf, outpos);
     }
@@ -420,7 +425,8 @@ struct RLEStreamWriter {
     }
 };
 
-template <typename TVal> struct RLEStreamReader {
+template <typename TVal>
+struct RLEStreamReader {
     Base128StreamReader& stream_;
     TVal                 prev_;
     TVal                 reps_;
