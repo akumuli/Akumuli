@@ -358,6 +358,53 @@ struct DeltaStreamReader {
 };
 
 
+template <size_t Step, class Stream, typename TVal>
+struct DeltaDeltaStreamWriter {
+    Stream stream_;
+    TVal   prev_;
+
+    DeltaDeltaStreamWriter(Base128StreamWriter& stream)
+        : stream_(stream)
+        , prev_() {}
+
+    bool tput(TVal const* iter, size_t n) {
+        assert(n == Step);
+        TVal outbuf[n];
+        for (size_t i = 0; i < n; i++) {
+            auto value  = iter[i];
+            auto result = static_cast<TVal>(value) - prev_;
+            outbuf[i]   = result;
+            prev_       = value;
+        }
+        TVal min = outbuf[0];
+        for (size_t i = 1; i < n; i++) {
+            min = std::min(outbuf[i], min);
+        }
+        for (size_t i = 0; i < n; i++) {
+            outbuf[i] -= min;
+        }
+        // encode min value
+        if (!stream_.put(min)) {
+            return false;
+        }
+        return stream_.tput(outbuf, n);
+    }
+
+    bool put(TVal value) {
+        // TODO: this wouldn't work with delta-delta encoding
+        // we should put min=0 to the underlying stream first
+        // and then we can use simple `put` method to write
+        // values (less then Step times).
+        auto result = stream_.put(static_cast<TVal>(value) - prev_);
+        prev_ = value;
+        return result;
+    }
+
+    size_t size() const { return stream_.size(); }
+
+    bool commit() { return stream_.commit(); }
+};
+
 
 template <typename TVal>
 struct RLEStreamWriter {
