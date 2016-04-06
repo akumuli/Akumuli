@@ -260,7 +260,6 @@ struct Base128StreamReader {
     const unsigned char* pos() const { return pos_; }
 };
 
-
 template <class Stream, class TVal>
 struct ZigZagStreamWriter {
     Stream stream_;
@@ -358,21 +357,24 @@ struct DeltaStreamReader {
 };
 
 
-template <size_t Step, class Stream, typename TVal>
+template <size_t Step, typename TVal>
 struct DeltaDeltaStreamWriter {
-    Stream stream_;
+    Base128StreamWriter& stream_;
     TVal   prev_;
+    int put_calls_;
 
     DeltaDeltaStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
-        , prev_() {}
+        , prev_()
+        , put_calls_(0)
+    {}
 
     bool tput(TVal const* iter, size_t n) {
         assert(n == Step);
         TVal outbuf[n];
         for (size_t i = 0; i < n; i++) {
             auto value  = iter[i];
-            auto result = static_cast<TVal>(value) - prev_;
+            auto result = value - prev_;
             outbuf[i]   = result;
             prev_       = value;
         }
@@ -391,13 +393,17 @@ struct DeltaDeltaStreamWriter {
     }
 
     bool put(TVal value) {
-        // TODO: this wouldn't work with delta-delta encoding
-        // we should put min=0 to the underlying stream first
-        // and then we can use simple `put` method to write
-        // values (less then Step times).
-        auto result = stream_.put(static_cast<TVal>(value) - prev_);
+        bool success = false;
+        if (put_calls_ == 0) {
+            success = stream_.put(0);
+            if (!success) {
+                return false;
+            }
+        }
+        put_calls_++;
+        success = stream_.put(value - prev_);
         prev_ = value;
-        return result;
+        return success;
     }
 
     size_t size() const { return stream_.size(); }
@@ -405,6 +411,34 @@ struct DeltaDeltaStreamWriter {
     bool commit() { return stream_.commit(); }
 };
 
+template <size_t Step, typename TVal>
+struct DeltaDeltaStreamReader {
+    Base128StreamReader& stream_;
+    TVal   prev_;
+    TVal   min_;
+    int    counter_;
+
+    DeltaDeltaStreamReader(Base128StreamReader& stream)
+        : stream_(stream)
+        , prev_()
+        , min_()
+        , counter_()
+    {}
+
+    TVal next() {
+        if (counter_ % Step == 0) {
+            // read min
+            min_ = stream_.next<TVal>();
+        }
+        counter_++;
+        TVal delta = stream_.next<TVal>();
+        TVal value = prev_ + delta + min_;
+        prev_      = value;
+        return value;
+    }
+
+    const unsigned char* pos() const { return stream_.pos(); }
+};
 
 template <typename TVal>
 struct RLEStreamWriter {

@@ -170,6 +170,30 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
     test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 10000, false);
 }
 
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(4*1024);  // 4KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+}
+
 
 BOOST_AUTO_TEST_CASE(Test_rle) {
     std::vector<unsigned char> data;
