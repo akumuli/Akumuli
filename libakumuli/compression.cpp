@@ -422,6 +422,7 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
         count += tailsize;
     } while (false);
     *pcount = count;
+    slice->offset += count;
     return AKU_SUCCESS;
 }
 
