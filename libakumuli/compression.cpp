@@ -366,6 +366,8 @@ aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
     return AKU_SUCCESS;
 }
 
+static const size_t BATCH_SIZE = 16;
+
 aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, size_t size) {
     /* Data format:
      *
@@ -374,36 +376,51 @@ aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, si
      * vbyte - timestamps (compressed) interleaved with values (compressed)
      *
      */
-    static const size_t SPACE_THRESHOLD = 64;  // TODO: get threshold from specific stream
     Base128StreamWriter stream(buffer, buffer + size);
     auto pcount = stream.allocate<uint32_t>();
     auto pseries = stream.allocate<aku_ParamId>();
     *pseries = slice->id;
-    size_t slice_size = slice->size;
     DeltaRLEWriter tstream(stream);
     FcmStreamWriter vstream(stream);
     uint32_t count = 0;
-    for (size_t ix = slice->offset; ix < slice_size; ix++) {
-        aku_Timestamp ts = slice->ts[ix];
-        double value = slice->value[ix];
-        bool success = false;
-        success = tstream.put(ts);
-        success = vstream.put(value) & success;
-        if (!success) {
-            return AKU_EOVERFLOW;
-        }
-        count++;
-        if (stream.space_left() < SPACE_THRESHOLD) {
-            success = tstream.commit();
-            success = vstream.commit() & success;
-            if (!success) {
-                // Error during commit phase, buffer is unrecoverable
-                return AKU_EOVERFLOW;
-            }
-            slice->offset = ix + 1;
+    size_t nbatches = (slice->size - slice->offset) / BATCH_SIZE;
+    size_t tailsize = (slice->size - slice->offset) % BATCH_SIZE;
+    size_t batchend = slice->offset + nbatches*BATCH_SIZE;
+    // large loop
+    for (size_t ix = slice->offset; ix < batchend; ix += BATCH_SIZE) {
+        // put timestamps
+        if (!tstream.tput(slice->ts + ix, BATCH_SIZE)) {
             break;
         }
+        // put values
+        if (!vstream.tput(slice->value + ix, BATCH_SIZE)) {
+            break;
+        }
+        //
+        count += BATCH_SIZE;
     }
+    // small loop (block is not full and we have less then BATCH_SIZE elements)
+    // compress timestamps
+    do {
+        for (size_t ix = slice->offset + count; ix < slice->size; ix++) {
+            if (!tstream.put(slice->ts[ix])) {
+                break;
+            }
+        }
+        if (!tstream.commit()) {
+            break;
+        }
+        // compress values
+        for (size_t ix = slice->offset + count; ix < slice->size; ix++) {
+            if (!vstream.put(slice->value[ix])) {
+                break;
+            }
+        }
+        if (!vstream.commit()) {
+            break;
+        }
+        count += tailsize;
+    } while (false);
     *pcount = count;
     return AKU_SUCCESS;
 }
@@ -428,13 +445,36 @@ aku_Status CompressionUtil::decode_block(uint8_t const* buffer, size_t buffer_si
     DeltaRLEReader tstream(stream);   // timestamps stream
     FcmStreamReader vstream(stream);  // values stream
 
-    for (size_t i = 0; i < nitems; i++) {
-        aku_Timestamp ts = tstream.next();
-        double value = vstream.next();
-        dest->ts[offset + i] = ts;
-        dest->value[offset + i] = value;
+    size_t nbatches = (dest->size - dest->offset) / BATCH_SIZE;
+    size_t tailsize = (dest->size - dest->offset) % BATCH_SIZE;
+    size_t batchend = dest->offset + nbatches*BATCH_SIZE;
+
+    // large loop
+    for (size_t ix = offset; ix < batchend; ix += BATCH_SIZE) {
+        // Read timestamps
+        for (size_t i = 0; i < BATCH_SIZE; i++) {
+            aku_Timestamp ts = tstream.next();
+            dest->ts[ix + i] = ts;
+        }
+        // Read values
+        for (size_t i = 0; i < BATCH_SIZE; i++) {
+            double value = vstream.next();
+            dest->value[ix + i] = value;
+        }
     }
-    dest->offset = offset + nitems;
+
+    // read tail timestamps
+    for (size_t ix = 0; ix < tailsize; ix++) {
+        aku_Timestamp ts = tstream.next();
+        dest->ts[batchend + ix] = ts;
+    }
+    // read tail values
+    for (size_t ix = 0; ix < tailsize; ix++) {
+        double value = vstream.next();
+        dest->value[batchend + ix] = value;
+    }
+
+    dest->offset += batchend + tailsize;
 
     return AKU_SUCCESS;
 }

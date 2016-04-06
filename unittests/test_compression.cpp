@@ -151,9 +151,9 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
     data.resize(10*1024);  // 10KB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaRLEWriter delta_writer(wstream);
+    ZDeltaRLEWriter delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaRLEReader delta_reader(rstream);
+    ZDeltaRLEReader delta_reader(rstream);
 
     test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 100, false);
 }
@@ -163,9 +163,9 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
     data.resize(1*1024*1024);  // 1MB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaRLEWriter delta_writer(wstream);
+    ZDeltaRLEWriter delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaRLEReader delta_reader(rstream);
+    ZDeltaRLEReader delta_reader(rstream);
 
     test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 10000, false);
 }
@@ -416,7 +416,6 @@ void test_block_compression(double start) {
     }
 }
 
-/*
 BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
     test_block_compression(0);
 }
@@ -436,8 +435,6 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
 BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
     test_block_compression(-1E100);
 }
-*/
-
 
 void test_chunk_header_compression(double start) {
 

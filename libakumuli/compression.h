@@ -688,10 +688,15 @@ typedef RLEStreamReader<uint32_t> RLELenReader;
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
 typedef RLEStreamWriter<int64_t> __RLEWriter;
 typedef ZigZagStreamWriter<__RLEWriter, int64_t>   __ZigZagWriter;
-typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, int64_t> ZDeltaRLEWriter;
 
 // Base128 -> RLE -> ZigZag -> Delta -> int64_t
 typedef RLEStreamReader<int64_t> __RLEReader;
 typedef ZigZagStreamReader<__RLEReader, int64_t>   __ZigZagReader;
-typedef DeltaStreamReader<__ZigZagReader, int64_t> DeltaRLEReader;
+typedef DeltaStreamReader<__ZigZagReader, int64_t> ZDeltaRLEReader;
+
+// uint64_t -> Delta -> RLE -> Base128
+typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
+// Base128 -> RLE -> Delta -> uint64_t
+typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
 }
