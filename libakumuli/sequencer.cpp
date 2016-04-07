@@ -33,6 +33,45 @@ using namespace std;
 
 namespace Akumuli {
 
+namespace V2 {
+
+PatienceSort::PatienceSort() {
+    key_ = std::make_shared<SortedRun>();
+}
+
+void PatienceSort::add(aku_Timestamp ts, double value) {
+    key_->timestamps.pop_back();
+    key_->timestamps.push_back(ts);
+    key_->values.pop_back();
+    key_->values.push_back(value);
+
+    auto top_element_more = [](const PSortedRun& x, const PSortedRun& y)
+    {
+        return y->timestamps.back() < x->timestamps.back();
+    };
+
+    auto begin = runs_.begin();
+    auto end = runs_.end();
+    auto insert_it = lower_bound(begin, end, key_, top_element_more);
+    bool new_run_needed = insert_it == runs_.end();
+    SortedRun* run = nullptr;
+    if (!new_run_needed) {
+        run = insert_it->get();
+    }
+
+    if (!new_run_needed) {
+        run->timestamps.push_back(ts);
+        run->values.push_back(value);
+    } else {
+        PSortedRun new_pile(new SortedRun());
+        new_pile->timestamps.push_back(ts);
+        new_pile->values.push_back(value);
+        runs_.push_back(move(new_pile));
+    }
+}
+
+}  // namespace V2
+
 template<typename RunType>
 bool top_element_less(const RunType& x, const RunType& y)
 {

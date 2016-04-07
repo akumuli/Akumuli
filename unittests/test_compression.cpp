@@ -363,9 +363,12 @@ void test_block_compression(double start) {
     std::vector<uint8_t> block;
     block.resize(4096);
 
+    aku_Timestamp ts = rand();
     for (int i = 0; i < N; i++) {
         values.push_back(rwalk.generate());
-        timestamps.push_back(i);
+        int skew = rand() % 100;
+        ts += skew;
+        timestamps.push_back(ts);
     }
 
     // compress
@@ -388,6 +391,7 @@ void test_block_compression(double start) {
 
     // gen number of elements stored in block
     uint32_t nelem = CompressionUtil::number_of_elements_in_block(block.data(), block.size());
+    BOOST_REQUIRE_NE(nelem, 0);
     out_timestamps.resize(nelem);
     out_values.resize(nelem);
 
