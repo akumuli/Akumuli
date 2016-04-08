@@ -49,6 +49,7 @@ namespace V2 {
 
         void add(aku_Timestamp ts, double value);
     };
+
 }
 
 struct TimeSeriesValue {
