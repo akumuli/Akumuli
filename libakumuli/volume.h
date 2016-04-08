@@ -20,6 +20,7 @@ class Volume
     AprPoolPtr apr_pool_;
     AprFilePtr apr_file_handle_;
     size_t file_size_;
+    uint32_t pos_;
 
     Volume(const char* path);
 public:
@@ -31,13 +32,18 @@ public:
     /** Create new volume.
       * @throw std::runtime_exception
       */
-    static void create_new(const char* path, uint64_t size);
+    static void create_new(const char* path);
 
     /** Open volume.
       * @throw std::runtime_error
       * @return new instance of V2::Volume.
       */
     static std::unique_ptr<Volume> open_existing(const char* path);
+
+    // Mutators
+
+    //! Append block to file
+    //void append_block(const uint8_t* source);
 };
 
 }  // namespace V2

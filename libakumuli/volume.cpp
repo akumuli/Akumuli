@@ -32,7 +32,9 @@ static AprPoolPtr _make_apr_pool() {
     return std::move(pool);
 }
 
-static AprFilePtr _create_empty_file(const* file_name, apr_pool_t* pool) {
+static AprFilePtr _create_empty_file(const* file_name) {
+    Logger::msg(AKU_LOG_INFO, "Create empty " + std::string(file_name));
+    AprPoolPtr pool = _make_apr_pool();
     apr_file_t* pfile = nullptr;
     apr_status_t status = apr_file_open(&pfile, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, pool);
     throw_on_error(status);
@@ -58,9 +60,7 @@ static size_t _get_file_size(apr_file_t* file) {
 /** This function creates file with specified size
   */
 static void _create_file(const char* file_name, uint64_t size) {
-    Logger::msg(AKU_LOG_INFO, "Create " + std::string(file_name) + ", size: " + std::to_string(size));
-    AprPoolPtr pool = _make_apr_pool();
-    AprFilePtr file = _create_empty_file(file_name, pool.get());
+    AprFilePtr file = _create_empty_file(file_name);
     apr_status_t status = apr_file_trunc(file.get(), size);
     throw_on_error(status);
 }
@@ -72,11 +72,8 @@ Volume::Volume(const char* path)
 {
 }
 
-std::unique_ptr<Volume> Volume::create_new(const char* path, uint64_t size) {
-    _create_file(path, size);
-    std::unique_ptr<Volume> result;
-    result.reset(new Volume(path));
-    return std::move(result);
+void Volume::create_new(const char* path) {
+    _create_empty_file(path);
 }
 
 std::unique_ptr<Volume> Volume::open_existing(const char* path) {
