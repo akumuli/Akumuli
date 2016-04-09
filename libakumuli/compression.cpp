@@ -1,5 +1,6 @@
 #include "compression.h"
 #include "util.h"
+#include "akumuli_version.h"
 
 #include <unordered_map>
 #include <algorithm>
@@ -371,14 +372,17 @@ static const size_t BATCH_SIZE = 16;
 aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, size_t size) {
     /* Data format:
      *
+     * u16   - version info
      * u32   - number of elements
      * u64   - series id
      * vbyte - timestamps (compressed) interleaved with values (compressed)
      *
      */
     Base128StreamWriter stream(buffer, buffer + size);
+    auto version = stream.allocate<uint16_t>();
     auto pcount = stream.allocate<uint32_t>();
     auto pseries = stream.allocate<aku_ParamId>();
+    *version = AKUMULI_VERSION;
     *pseries = slice->id;
     DeltaRLEWriter tstream(stream);
     FcmStreamWriter vstream(stream);
@@ -435,8 +439,13 @@ aku_Status CompressionUtil::decode_block(uint8_t const* buffer, size_t buffer_si
                                          SeriesSlice* dest) {
     // `dest` should have enough space to store the data
     Base128StreamReader stream(buffer, buffer + buffer_size);
+    uint16_t version = stream.read_raw<uint16_t>();
     uint32_t nitems = stream.read_raw<uint32_t>();
     aku_ParamId id = stream.read_raw<aku_ParamId>();
+    if (version != AKUMULI_VERSION) {
+        // TODO: backward compatibility with older versions
+        AKU_PANIC("version mismatch");
+    }
     dest->id = id;
     size_t offset = dest->offset;
     if (dest->size < dest->offset || (dest->size - offset) < nitems) {

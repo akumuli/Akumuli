@@ -3,6 +3,8 @@ add_library(akumuli SHARED
     ../include/akumuli_config.h
     ../include/akumuli.h
     ../include/akumuli_def.h
+    logger.h
+    volume.h
     storage.h
     page.h
     util.h
@@ -15,6 +17,8 @@ add_library(akumuli SHARED
     compression.h
     metadatastorage.h
     stringpool.h
+    logger.cpp
+    volume.cpp
     storage.cpp
     seriesparser.cpp
     page.cpp
