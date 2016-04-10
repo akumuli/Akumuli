@@ -76,11 +76,10 @@ class MemoryMappedFile {
     apr_finfo_t     finfo_;
     apr_status_t    status_;
     std::string     path_;
-    aku_logger_cb_t logger_;
     const bool      enable_huge_tlb_;
 
 public:
-    MemoryMappedFile(const char* file_name, bool enable_huge_tlb, aku_logger_cb_t logger);
+    MemoryMappedFile(const char* file_name, bool enable_huge_tlb);
     ~MemoryMappedFile();
     void move_file(const char* new_name);
     void   delete_file();
