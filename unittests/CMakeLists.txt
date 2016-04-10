@@ -151,6 +151,7 @@ add_executable(
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/compression.cpp
 )
 
@@ -177,6 +178,7 @@ add_executable(
     ../libakumuli/page.cpp
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/compression.cpp
 )
 
@@ -201,6 +203,7 @@ add_executable(
     ../libakumuli/page.cpp
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/compression.cpp
 )
 
@@ -222,6 +225,7 @@ add_executable(
     test_mmap
     test_mmap.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
@@ -241,6 +245,7 @@ add_executable(
     test_compression.cpp
     ../libakumuli/compression.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
@@ -258,6 +263,7 @@ add_executable(
     test_storage.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
 )
@@ -282,6 +288,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
 )
 
@@ -306,6 +313,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
     # query_processing folder
     ../libakumuli/query_processing/anomaly.cpp

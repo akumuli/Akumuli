@@ -5,7 +5,7 @@
 
 #include <boost/exception/all.hpp>
 
-#include "logger.h"
+#include "log_iface.h"
 #include "akumuli_version.h"
 
 namespace Akumuli {
@@ -85,7 +85,7 @@ MetaVolume::MetaVolume(const char *path)
 void MetaVolume::create_new(const char* path, size_t capacity, const uint32_t *vol_capacities) {
     size_t size = capacity * BLOCK_SIZE;
     _create_file(path, size);
-    MemoryMappedFile mmap(path);
+    MemoryMappedFile mmap(path, false);
     uint8_t* it = (uint8_t*)mmap.get_pointer();
     uint8_t* end = it + mmap.get_size();
     uint32_t id = 0;
@@ -120,7 +120,8 @@ static VolumeRef* get_volref(uint8_t* p, uint32_t id) {
 std::tuple<aku_Status, uint32_t> MetaVolume::get_nblocks(uint32_t id) const {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
-        return std::make_tuple(AKU_SUCCESS, pvol->nblocks);
+        uint32_t nblocks = pvol->nblocks;
+        return std::make_tuple(AKU_SUCCESS, nblocks);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
@@ -128,7 +129,8 @@ std::tuple<aku_Status, uint32_t> MetaVolume::get_nblocks(uint32_t id) const {
 std::tuple<aku_Status, uint32_t> MetaVolume::get_capacity(uint32_t id) const {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
-        return std::make_tuple(AKU_SUCCESS, pvol->capacity);
+        uint32_t cap = pvol->capacity;
+        return std::make_tuple(AKU_SUCCESS, cap);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
@@ -136,7 +138,8 @@ std::tuple<aku_Status, uint32_t> MetaVolume::get_capacity(uint32_t id) const {
 std::tuple<aku_Status, uint32_t> MetaVolume::get_generation(uint32_t id) const {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
-        return std::make_tuple(AKU_SUCCESS, pvol->generation);
+        uint32_t gen = pvol->generation;
+        return std::make_tuple(AKU_SUCCESS, gen);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
@@ -196,7 +199,7 @@ aku_Status MetaVolume::flush(uint32_t id) {
 Volume::Volume(const char* path, size_t write_pos)
     : apr_pool_(_make_apr_pool())
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
-    , file_size_(_get_file_size(apr_file_handle_.get()))
+    , file_size_(_get_file_size(apr_file_handle_.get())/BLOCK_SIZE)
     , write_pos_(write_pos)
 {
 }
@@ -214,10 +217,10 @@ std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
 
 //! Append block to file (source size should be 4 at least BLOCK_SIZE)
 aku_Status Volume::append_block(const uint8_t* source) {
-    if (write_pos_ >= file_offset_) {
+    if (write_pos_ >= file_size_) {
         return AKU_EOVERFLOW;
     }
-    apr_off_t seek_off = write_pos_*BLOCK_SIZE;
+    apr_off_t seek_off = write_pos_ * BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
     panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
@@ -229,10 +232,10 @@ aku_Status Volume::append_block(const uint8_t* source) {
 
 //! Read filxed size block from file
 aku_Status Volume::read_block(uint32_t ix, uint8_t* dest) const {
-    apr_off_t offset = ix * BLOCK_SIZE;
     if (ix >= file_size_) {
         return AKU_EBAD_ARG;
     }
+    apr_off_t offset = ix * BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &offset);
     panic_on_error(status, "Volume seek error");
     apr_size_t outsize = 0;

@@ -48,7 +48,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 Volume::Volume(const char* file_name,
                aku_FineTuneParams conf,
                aku_logger_cb_t logger)
-    : mmap_(file_name, conf.enable_huge_tlb != 0, logger)
+    : mmap_(file_name, conf.enable_huge_tlb != 0)
     , window_(conf.window_size)
     , max_cache_size_(conf.max_cache_size)
     , file_path_(file_name)
@@ -668,7 +668,7 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
         return status;
     }
 
-    MemoryMappedFile mfile(file_name, false, logger);
+    MemoryMappedFile mfile(file_name, false);
     if (mfile.is_bad())
         return mfile.status_code();
 

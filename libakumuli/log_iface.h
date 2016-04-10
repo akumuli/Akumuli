@@ -1,3 +1,5 @@
+/** Logging interface for the library.
+  */
 #pragma once
 #include <akumuli.h>
 #include <string>

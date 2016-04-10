@@ -26,7 +26,7 @@
 #include "akumuli.h"
 #include "storage.h"
 #include "datetime.h"
-#include "logger.h"
+#include "log_iface.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
