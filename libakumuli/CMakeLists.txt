@@ -3,21 +3,23 @@ add_library(akumuli SHARED
     ../include/akumuli_config.h
     ../include/akumuli.h
     ../include/akumuli_def.h
-    log_iface.h
     storage_engine/volume.h
+    storage_engine/volume.cpp
+    storage_engine/compression.h
+    storage_engine/compression.cpp
+    storage_engine/blockstore.h
+    storage_engine/blockstore.cpp
+    log_iface.h
     storage.h
     page.h
     util.h
     sort.h
     sequencer.h
     cursor.h
-    storage_engine/compression.h
-    storage_engine/compression.cpp
     internal_cursor.h
     metadatastorage.h
     stringpool.h
     log_iface.cpp
-    storage_engine/volume.cpp
     storage.cpp
     seriesparser.cpp
     page.cpp
