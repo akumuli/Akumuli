@@ -216,9 +216,9 @@ std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
 }
 
 //! Append block to file (source size should be 4 at least BLOCK_SIZE)
-aku_Status Volume::append_block(const uint8_t* source) {
+std::tuple<aku_Status, BlockAddr> Volume::append_block(const uint8_t* source) {
     if (write_pos_ >= file_size_) {
-        return AKU_EOVERFLOW;
+        return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
     apr_off_t seek_off = write_pos_ * BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
@@ -226,8 +226,8 @@ aku_Status Volume::append_block(const uint8_t* source) {
     apr_size_t bytes_written = 0;
     status = apr_file_write_full(apr_file_handle_.get(), source, BLOCK_SIZE, &bytes_written);
     panic_on_error(status, "Volume write error");
-    write_pos_++;
-    return AKU_SUCCESS;
+    auto result = write_pos_++;
+    return std::make_tuple(AKU_SUCCESS, result);
 }
 
 //! Read filxed size block from file

@@ -16,6 +16,9 @@
 namespace Akumuli {
 namespace V2 {
 
+//! Address of the block inside volume (index of the block)
+typedef uint32_t BlockAddr;
+
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
 
@@ -120,7 +123,7 @@ public:
     // Mutators
 
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
-    aku_Status append_block(const uint8_t* source);
+    std::tuple<aku_Status, BlockAddr> append_block(const uint8_t* source);
 
     //! Flush volume
     void flush();
