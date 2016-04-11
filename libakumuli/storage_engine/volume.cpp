@@ -82,6 +82,10 @@ MetaVolume::MetaVolume(const char *path)
 {
 }
 
+size_t MetaVolume::get_nvolumes() const {
+    return file_size_/BLOCK_SIZE;
+}
+
 void MetaVolume::create_new(const char* path, size_t capacity, const uint32_t *vol_capacities) {
     size_t size = capacity * BLOCK_SIZE;
     _create_file(path, size);

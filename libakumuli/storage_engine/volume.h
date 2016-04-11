@@ -70,6 +70,8 @@ public:
     //! Get volume's generation.
     std::tuple<aku_Status, uint32_t> get_generation(uint32_t id) const;
 
+    size_t get_nvolumes() const;
+
     // Mutators
 
     aku_Status update(uint32_t id, uint32_t nblocks, uint32_t capacity, uint32_t gen);

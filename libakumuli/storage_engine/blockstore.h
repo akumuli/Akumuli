@@ -23,7 +23,7 @@ private:
 
     static std::shared_ptr<BlockStore> open(std::string metapath, std::vector<std::string> volpaths);
 
-    std::tuple<aku_Status, std::unique_ptr<Block>> read_block(LogicAddr addr);
+    std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
 };
 
 }}  // namespace

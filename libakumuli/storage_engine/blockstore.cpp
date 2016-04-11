@@ -12,12 +12,11 @@ class Block {
     std::vector<uint8_t> data_;
     LogicAddr addr_;
 public:
-    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr)
+    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t> data)
         : store_(bs)
-        , data_(Volume::BLOCK_SIZE, 0)
+        , data_(std::move(data))
         , addr_(addr)
     {
-        // TODO: read data from datastore
     }
 
     const uint8_t* get_data() const {
@@ -61,10 +60,18 @@ static BlockAddr extract_vol(LogicAddr addr) {
     return addr & 0xFFFFFFFF;
 }
 
-std::tuple<aku_Status, std::unique_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
+std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
-    throw "not implemented";
+    auto volix = gen % volumes_.size();
+    std::vector<uint8_t> dest(Volume::BLOCK_SIZE, 0);
+    auto status = volumes_[volix]->read_data(vol, dest.data());
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, std::unique_ptr<Block>());
+    }
+    auto self = shared_from_this();
+    auto block = std::make_shared(Block(self, addr, std::move(data)));
+    return std::make_tuple(status, std::move(block));
 }
 
 }}  // namespace
