@@ -98,14 +98,43 @@ static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
     return static_cast<uint64_t>(gen) << 32 | addr;
 }
 
+void BlockStore::advance_volume() {
+    Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
+    current_volume_ = (current_volume_ + 1) % volumes_.size();
+    current_gen_++;
+    auto status = meta_->set_generation(current_volume_, current_gen_);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't set generation on volume");
+        AKU_PANIC("Invalid BlockStore state, can't reset volume's generation");
+    }
+    // Rest selected volume
+    status = meta_->set_nblocks(current_volume_, 0);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't reset nblocks on volume");
+        AKU_PANIC("Invalid BlockStore state, can't reset volume's nblocks");
+    }
+    meta_->flush();
+}
+
 std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) {
-    // TODO: add notion of Volume order and current volume
-    throw "not implemented";
     BlockAddr block_addr;
     aku_Status status;
-    do {
+    std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
+    if (status == AKU_EOVERFLOW) {
+        // Move to next generation
+        advance_volume();
         std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
-    } while(status == AKU_EOVERFLOW);
+        if (status != AKU_SUCCESS) {
+            return std::make_pair(status, 0ull);
+        }
+    }
+    volumes_[current_volume_]->flush();
+    status = meta_->set_nblocks(current_volume_, block_addr + 1);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Invalid BlockStore state");
+    }
+    // TODO: don't flush too often
+    meta_->flush();
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 

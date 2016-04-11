@@ -21,6 +21,7 @@ class BlockStore : public std::enable_shared_from_this<BlockStore>
 
     BlockStore(std::string metapath, std::vector<std::string> volpaths);
 
+    void advance_volume();
 public:
     /** Create BlockStore instance (can be created only on heap).
       */
