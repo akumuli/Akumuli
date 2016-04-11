@@ -40,7 +40,9 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, std::string("Can't open blockstore, volume " +
                                                    std::to_string(ix) + " failure: " +
-                                                   aku_error_message(status)));
+                                                   // TODO: create errors.h/errors/cpp and move
+                                                   // aku_error_message and error codes there
+                                                   std::to_string(status)));
             AKU_PANIC("Can't open blockstore");
         }
         auto uptr = Volume::open_existing(volpath.c_str(), nblocks);
@@ -123,6 +125,7 @@ std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) 
     if (status == AKU_EOVERFLOW) {
         // Move to next generation
         advance_volume();
+        volumes_.at(current_volume_)->reset();
         std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
         if (status != AKU_SUCCESS) {
             return std::make_pair(status, 0ull);

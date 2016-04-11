@@ -124,6 +124,8 @@ public:
 
     // Mutators
 
+    void reset();
+
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
     std::tuple<aku_Status, BlockAddr> append_block(const uint8_t* source);
 

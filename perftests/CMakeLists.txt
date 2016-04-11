@@ -202,3 +202,23 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# Blockstore perftest
+add_executable(
+    perf_blockstore
+    perf_blockstore.cpp
+    perftest_tools.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+)
+
+target_link_libraries(
+    perf_blockstore
+    jemalloc
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_blockstore PROPERTIES EXCLUDE_FROM_ALL 1)

@@ -32,16 +32,6 @@ static AprPoolPtr _make_apr_pool() {
     return std::move(pool);
 }
 
-static AprFilePtr _create_empty_file(const char* file_name) {
-    Logger::msg(AKU_LOG_INFO, "Create empty " + std::string(file_name));
-    AprPoolPtr pool = _make_apr_pool();
-    apr_file_t* pfile = nullptr;
-    apr_status_t status = apr_file_open(&pfile, file_name, APR_CREATE|APR_WRITE, APR_OS_DEFAULT, pool.get());
-    panic_on_error(status, "Can't create file");
-    AprFilePtr file(pfile, &_close_apr_file);
-    return std::move(file);
-}
-
 static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
     apr_file_t* pfile = nullptr;
     apr_status_t status = apr_file_open(&pfile, file_name, APR_READ|APR_WRITE, APR_OS_DEFAULT, pool);
@@ -60,8 +50,13 @@ static size_t _get_file_size(apr_file_t* file) {
 /** This function creates file with specified size
   */
 static void _create_file(const char* file_name, uint64_t size) {
-    AprFilePtr file = _create_empty_file(file_name);
-    apr_status_t status = apr_file_trunc(file.get(), size);
+    Logger::msg(AKU_LOG_INFO, "Create " + std::string(file_name) + " size: " + std::to_string(size));
+    AprPoolPtr pool = _make_apr_pool();
+    apr_file_t* pfile = nullptr;
+    apr_status_t status = apr_file_open(&pfile, file_name, APR_TRUNCATE|APR_CREATE|APR_WRITE, APR_OS_DEFAULT, pool.get());
+    panic_on_error(status, "Can't create file");
+    AprFilePtr file(pfile, &_close_apr_file);
+    status = apr_file_trunc(file.get(), size);
     panic_on_error(status, "Can't truncate file");
 }
 
@@ -154,6 +149,7 @@ aku_Status MetaVolume::update(uint32_t id, uint32_t nblocks, uint32_t capacity, 
         pvol->nblocks = nblocks;
         pvol->capacity = capacity;
         pvol->generation = gen;
+        return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
 }
@@ -162,6 +158,7 @@ aku_Status MetaVolume::set_nblocks(uint32_t id, uint32_t nblocks) {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
         pvol->nblocks = nblocks;
+        return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
 }
@@ -170,6 +167,7 @@ aku_Status MetaVolume::set_capacity(uint32_t id, uint32_t cap) {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
         pvol->capacity = cap;
+        return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
 }
@@ -178,6 +176,7 @@ aku_Status MetaVolume::set_generation(uint32_t id, uint32_t gen) {
     if (id < file_size_/BLOCK_SIZE) {
         auto pvol = get_volref(mmap_ptr_, id);
         pvol->generation = gen;
+        return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
 }
@@ -206,6 +205,10 @@ Volume::Volume(const char* path, size_t write_pos)
     , file_size_(_get_file_size(apr_file_handle_.get())/BLOCK_SIZE)
     , write_pos_(write_pos)
 {
+}
+
+void Volume::reset() {
+    write_pos_ = 0;
 }
 
 void Volume::create_new(const char* path, size_t capacity) {
