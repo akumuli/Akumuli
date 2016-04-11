@@ -23,7 +23,7 @@
 #pragma once
 #include "akumuli.h"
 #include "buffer_cache.h"
-#include "compression.h"
+#include "storage_engine/compression.h"
 #include "internal_cursor.h"
 #include "queryprocessor_framework.h"
 #include "util.h"

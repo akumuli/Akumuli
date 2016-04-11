@@ -18,7 +18,7 @@
 #include "akumuli_def.h"
 #include "sequencer.h"
 #include "util.h"
-#include "compression.h"
+#include "storage_engine/compression.h"
 
 #include <future>
 

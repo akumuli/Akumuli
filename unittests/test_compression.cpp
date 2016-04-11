@@ -5,7 +5,7 @@
 #include <boost/test/unit_test.hpp>
 #include <vector>
 
-#include "compression.h"
+#include "storage_engine/compression.h"
 
 
 using namespace Akumuli;

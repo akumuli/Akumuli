@@ -22,7 +22,7 @@
 #include <apr_time.h>
 #include "timsort.hpp"
 #include "page.h"
-#include "compression.h"
+#include "storage_engine/compression.h"
 #include "akumuli_def.h"
 #include "search.h"
 #include "buffer_cache.h"

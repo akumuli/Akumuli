@@ -152,7 +152,7 @@ add_executable(
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -179,7 +179,7 @@ add_executable(
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -204,7 +204,7 @@ add_executable(
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -243,7 +243,7 @@ add_test(mmap test_mmap)
 add_executable(
     test_compression
     test_compression.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
 )

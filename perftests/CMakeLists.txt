@@ -115,7 +115,7 @@ add_executable(
     perf_compression
     perf_compression.cpp
     perftest_tools.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/util.cpp
 )
 
@@ -169,7 +169,7 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/sequencer.cpp
     ../libakumuli/cursor.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp

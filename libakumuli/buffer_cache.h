@@ -1,6 +1,6 @@
 #pragma once
 
-#include "compression.h"
+#include "storage_engine/compression.h"
 
 #include <list>
 #include <map>
