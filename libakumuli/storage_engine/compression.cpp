@@ -623,4 +623,55 @@ bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, U
     return reorder_chunk_header(header, out, fn);
 }
 
+namespace V2 {
+
+DataBlock::DataBlock(aku_ParamId id, int size, int offset)
+    : id_(id)
+    , offset_(offset)
+    , buffer_(size, 0)
+    , stream_(buffer_.data(), buffer_.data() + size)
+    , writebuf_index_(0)
+{
+    /* TODO: Allocate space for:
+     * [offset bytes to store SubtreRef]
+     * u16   - version info
+     * u16   - number of chunks
+     * u16   - number of elements in tail
+     * u64   - series id
+     */
+}
+
+aku_Status DataBlock::append(aku_Timestamp ts, double value) {
+    if (room_for_chunk()) {
+        ts_writebuf_[write_index_ & CHUNK_MASK] = ts;
+        val_writebuf_[write_index_ & CHUNK_MASK] = value;
+        write_index_++;
+        if ((write_index_ & CHUNK_MASK) == 0) {
+            // put timestamps
+            if (!ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
+                // TODO: !! do something with this !!
+                break;
+            }
+            // put values
+            if (!val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
+                // TODO: !! and this !!
+                break;
+            }
+        }
+    } else {
+        // TODO: put values by one
+    }
+}
+
+bool DataBlock::room_for_chunk() const {
+    static const size_t MARGIN = 10*16 + 9*16;  // worst case
+    auto free_space = stream_.space_left();
+    if (free_space < MARGIN) {
+        return false;
+    }
+    return true;
+}
+
+}
+
 }

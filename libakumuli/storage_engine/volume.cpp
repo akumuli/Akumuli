@@ -92,7 +92,7 @@ void MetaVolume::create_new(const char* path, size_t capacity, const uint32_t *v
     while(it < end) {
         VolumeRef* pvolume = (VolumeRef*)it;
         pvolume->capacity = vol_capacities[id];
-        pvolume->generation = 0;
+        pvolume->generation = id;
         pvolume->id = id;
         pvolume->nblocks = 0;
         pvolume->version = AKUMULI_VERSION;
@@ -254,6 +254,10 @@ aku_Status Volume::read_block(uint32_t ix, uint8_t* dest) const {
 void Volume::flush() {
     apr_status_t status = apr_file_flush(apr_file_handle_.get());
     panic_on_error(status, "Volume flush error");
+}
+
+uint32_t Volume::get_size() const {
+    return file_size_;
 }
 
 }}  // namespace

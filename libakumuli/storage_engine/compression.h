@@ -679,6 +679,46 @@ struct CompressionUtil {
     static bool convert_from_time_order(const UncompressedChunk& header, UncompressedChunk* out);
 };
 
+namespace V2 {
+
+struct DataBlock {
+    enum {
+        CHUNK_SIZE = 16,
+        CHUNK_MASK = 15,
+    };
+    aku_ParamId id_;
+    int offset_;
+    std::vector<uint8_t> buffer_;
+    Base128StreamWriter stream_;
+    DeltaRLEWriter ts_stream_;
+    FcmStreamWriter val_stream_;
+    int write_index_;
+    aku_Timestamp ts_writebuf_;  //! Write buffer for timestamps
+    double val_writebuf_;  //! Write buffer for values
+
+    /** C-tor
+      * @param id Series id.
+      * @param size Block size.
+      * @param offset Compressed data offset in the block (first bytes should be used by NBTree).
+      */
+    DataBlock(aku_ParamId id, int size, int offset);
+
+    /** Append value to block.
+      * @param ts Timestamp.
+      * @param value Value.
+      * @return AKU_EOVERFLOW when block is full or AKU_SUCCESS.
+      */
+    aku_Status append(aku_Timestamp ts, double value);
+
+    void close();
+
+private:
+    //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
+    bool room_for_chunk() const;
+};
+
+}  // namespace V2
+
 // Length -> RLE -> Base128
 typedef RLEStreamWriter<uint32_t> RLELenWriter;
 

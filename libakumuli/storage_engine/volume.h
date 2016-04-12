@@ -136,6 +136,9 @@ public:
 
     //! Read filxed size block from file
     aku_Status read_block(uint32_t ix, uint8_t* dest) const;
+
+    //! Return size in blocks
+    uint32_t get_size() const;
 };
 
 }  // namespace V2

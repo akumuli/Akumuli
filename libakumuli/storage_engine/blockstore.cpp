@@ -47,26 +47,27 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
         }
         auto uptr = Volume::open_existing(volpath.c_str(), nblocks);
         volumes_.push_back(std::move(uptr));
+        dirty_.push_back(0);
     }
 
-    // set current volume, current volume is a volume with minimal generation
-    uint32_t minix = 0u;
-    uint32_t mingen = 0u;
+    // set current volume, current volume is a first volume with free space available
     for (size_t i = 0u; i < volumes_.size(); i++) {
-        uint32_t curr_gen;
+        uint32_t curr_gen, nblocks;
         aku_Status status;
         std::tie(status, curr_gen) = meta_->get_generation(i);
+        if (status == AKU_SUCCESS) {
+            std::tie(status, nblocks) = meta_->get_nblocks(i);
+        }
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted");
             AKU_PANIC("Meta-volume corrupted");
         }
-        if (mingen > curr_gen) {
-            mingen = curr_gen;
-            minix = i;
+        if (volumes_[i]->get_size() > nblocks) {
+            // Free space available
+            current_volume_ = i;
+            current_gen_ = curr_gen;
         }
     }
-    current_volume_ = minix;
-    current_gen_ = mingen;
 }
 
 std::shared_ptr<BlockStore> BlockStore::open(std::string metapath, std::vector<std::string> volpaths) {
@@ -103,42 +104,65 @@ static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
 void BlockStore::advance_volume() {
     Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
     current_volume_ = (current_volume_ + 1) % volumes_.size();
-    current_gen_++;
-    auto status = meta_->set_generation(current_volume_, current_gen_);
+    aku_Status status;
+    std::tie(status, current_gen_) = meta_->get_generation(current_volume_);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't set generation on volume");
-        AKU_PANIC("Invalid BlockStore state, can't reset volume's generation");
+        Logger::msg(AKU_LOG_ERROR, "Can't read generation of next volume");
+        AKU_PANIC("Can't read generation of the next volume");
     }
-    // Rest selected volume
-    status = meta_->set_nblocks(current_volume_, 0);
+    // If volume is not empty - reset it and change generation
+    uint32_t nblocks;
+    std::tie(status, nblocks) = meta_->get_nblocks(current_volume_);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't reset nblocks on volume");
-        AKU_PANIC("Invalid BlockStore state, can't reset volume's nblocks");
+        Logger::msg(AKU_LOG_ERROR, "Can't read nblocks of next volume");
+        AKU_PANIC("Can't read nblocks of the next volume");
     }
-    meta_->flush();
+    if (nblocks != 0) {
+        current_gen_ += volumes_.size();
+        auto status = meta_->set_generation(current_volume_, current_gen_);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Can't set generation on volume");
+            AKU_PANIC("Invalid BlockStore state, can't reset volume's generation");
+        }
+        // Rest selected volume
+        status = meta_->set_nblocks(current_volume_, 0);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Can't reset nblocks on volume");
+            AKU_PANIC("Invalid BlockStore state, can't reset volume's nblocks");
+        }
+        volumes_[current_volume_]->reset();
+        dirty_[current_volume_]++;
+    }
 }
 
 std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) {
     BlockAddr block_addr;
     aku_Status status;
-    std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
+    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);
     if (status == AKU_EOVERFLOW) {
         // Move to next generation
         advance_volume();
-        volumes_.at(current_volume_)->reset();
         std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
         if (status != AKU_SUCCESS) {
             return std::make_pair(status, 0ull);
         }
     }
-    volumes_[current_volume_]->flush();
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Invalid BlockStore state");
     }
-    // TODO: don't flush too often
-    meta_->flush();
+    dirty_[current_volume_]++;
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
+}
+
+void BlockStore::flush() {
+    for (size_t ix = 0; ix < dirty_.size(); ix++) {
+        if (dirty_[ix]) {
+            dirty_[ix] = 0;
+            volumes_[ix]->flush();
+        }
+    }
+    meta_->flush();
 }
 
 }}  // namespace
