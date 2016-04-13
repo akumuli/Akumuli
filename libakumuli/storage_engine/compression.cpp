@@ -625,25 +625,22 @@ bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, U
 
 namespace V2 {
 
-DataBlock::DataBlock(aku_ParamId id, int size, int offset)
-    : id_(id)
-    , offset_(offset)
-    , buffer_(size, 0)
-    , stream_(buffer_.data(), buffer_.data() + size)
+DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
+    : stream_(buf, buf + size)
     , ts_stream_(stream_)
     , val_stream_(stream_)
     , write_index_(0)
 {
-    /* TODO: Allocate space for:
-     * [offset bytes to store SubtreRef]
-     * u16   - version info
-     * u16   - number of chunks
-     * u16   - number of elements in tail
-     * u64   - series id
-     */
+    auto success = stream_.put_raw<uint16_t>(AKUMULI_VERSION);
+    pmain_size_ = stream_.allocate<uint16_t>();
+    ptail_size_ = stream_.allocate<uint16_t>();
+    success = stream_.put_raw(id) && success;
+    if (!success || pmain_size_ == nullptr || ptail_size_ == nullptr) {
+        AKU_PANIC("Buffer is too small");
+    }
 }
 
-aku_Status DataBlock::append(aku_Timestamp ts, double value) {
+aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
     if (room_for_chunk()) {
         ts_writebuf_[write_index_ & CHUNK_MASK] = ts;
         val_writebuf_[write_index_ & CHUNK_MASK] = value;
@@ -652,6 +649,7 @@ aku_Status DataBlock::append(aku_Timestamp ts, double value) {
             // put timestamps
             if (ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
                 if (val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
+                    pmain_size_ += CHUNK_SIZE;
                     return AKU_SUCCESS;
                 }
             }
@@ -667,6 +665,7 @@ aku_Status DataBlock::append(aku_Timestamp ts, double value) {
         write_index_++;
         if (stream_.put_raw(ts)) {
             if (stream_.put_raw(value)) {
+                *ptail_size_ += 1;
                 return AKU_SUCCESS;
             }
         }
@@ -675,7 +674,11 @@ aku_Status DataBlock::append(aku_Timestamp ts, double value) {
     return AKU_SUCCESS;
 }
 
-bool DataBlock::room_for_chunk() const {
+void DataBlockWriter::close() {
+    // fill version info, nchunk, ntail
+}
+
+bool DataBlockWriter::room_for_chunk() const {
     static const size_t MARGIN = 10*16 + 9*16;  // worst case
     auto free_space = stream_.space_left();
     if (free_space < MARGIN) {

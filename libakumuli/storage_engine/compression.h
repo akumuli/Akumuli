@@ -686,40 +686,48 @@ typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
 
 namespace V2 {
 
-struct DataBlock {
+struct DataBlockWriter {
     enum {
         CHUNK_SIZE = 16,
         CHUNK_MASK = 15,
     };
-    aku_ParamId id_;
-    int offset_;
-    std::vector<uint8_t> buffer_;
     Base128StreamWriter stream_;
     DeltaRLEWriter ts_stream_;
     FcmStreamWriter val_stream_;
     int write_index_;
     aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
     double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
+    uint16_t* pmain_size_;
+    uint16_t* ptail_size_;
+    uint64_t* pseires_id_;
 
     /** C-tor
       * @param id Series id.
       * @param size Block size.
-      * @param offset Compressed data offset in the block (first bytes should be used by NBTree).
+      * @param buf Pointer to buffer.
       */
-    DataBlock(aku_ParamId id, int size, int offset);
+    DataBlockWriter(aku_ParamId id, uint8_t* buf, int size);
 
     /** Append value to block.
       * @param ts Timestamp.
       * @param value Value.
       * @return AKU_EOVERFLOW when block is full or AKU_SUCCESS.
       */
-    aku_Status append(aku_Timestamp ts, double value);
+    aku_Status put(aku_Timestamp ts, double value);
 
     void close();
 
 private:
     //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
     bool room_for_chunk() const;
+};
+
+struct DataBlockReader {
+    enum {
+        CHUNK_SIZE = 16,
+        CHUNK_MASK = 15,
+    };
+
 };
 
 }  // namespace V2
