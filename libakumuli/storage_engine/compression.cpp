@@ -630,7 +630,9 @@ DataBlock::DataBlock(aku_ParamId id, int size, int offset)
     , offset_(offset)
     , buffer_(size, 0)
     , stream_(buffer_.data(), buffer_.data() + size)
-    , writebuf_index_(0)
+    , ts_stream_(stream_)
+    , val_stream_(stream_)
+    , write_index_(0)
 {
     /* TODO: Allocate space for:
      * [offset bytes to store SubtreRef]
@@ -648,19 +650,29 @@ aku_Status DataBlock::append(aku_Timestamp ts, double value) {
         write_index_++;
         if ((write_index_ & CHUNK_MASK) == 0) {
             // put timestamps
-            if (!ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
-                // TODO: !! do something with this !!
-                break;
+            if (ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
+                if (val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
+                    return AKU_SUCCESS;
+                }
             }
-            // put values
-            if (!val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
-                // TODO: !! and this !!
-                break;
-            }
+            // Content of the write buffer was lost, this can happen only if `room_for_chunk`
+            // function estimates required space incorrectly.
+            assert(false);
+            return AKU_EOVERFLOW;
         }
     } else {
-        // TODO: put values by one
+        // Put values to the end of the stream without compression.
+        // This can happen only when write buffer is empty.
+        assert((write_index_ & CHUNK_MASK) == 0);
+        write_index_++;
+        if (stream_.put_raw(ts)) {
+            if (stream_.put_raw(value)) {
+                return AKU_SUCCESS;
+            }
+        }
+        return AKU_EOVERFLOW;
     }
+    return AKU_SUCCESS;
 }
 
 bool DataBlock::room_for_chunk() const {

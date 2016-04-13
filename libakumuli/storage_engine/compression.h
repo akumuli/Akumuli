@@ -174,32 +174,15 @@ struct Base128StreamWriter {
         return true;
     }
 
-    bool put_raw(unsigned char value) {
-        if (pos_ == end_) {
+    template<class TVal>
+    bool put_raw(TVal value) {
+        if ((end_ - pos_) < (int)sizeof(TVal)) {
             return false;
         }
-        *pos_++ = value;
-        return true;
-    }
-
-    bool put_raw(uint32_t value) {
-        if ((end_ - pos_) < (int)sizeof(value)) {
-            return false;
-        }
-        *reinterpret_cast<uint32_t*>(pos_) = value;
+        *reinterpret_cast<TVal*>(pos_) = value;
         pos_ += sizeof(value);
         return true;
     }
-
-    bool put_raw(uint64_t value) {
-        if ((end_ - pos_) < (int)sizeof(value)) {
-            return false;
-        }
-        *reinterpret_cast<uint64_t*>(pos_) = value;
-        pos_ += sizeof(value);
-        return true;
-    }
-
 
     //! Commit stream
     bool commit() { return true; }
@@ -679,6 +662,28 @@ struct CompressionUtil {
     static bool convert_from_time_order(const UncompressedChunk& header, UncompressedChunk* out);
 };
 
+
+// Length -> RLE -> Base128
+typedef RLEStreamWriter<uint32_t> RLELenWriter;
+
+// Base128 -> RLE -> Length
+typedef RLEStreamReader<uint32_t> RLELenReader;
+
+// int64_t -> Delta -> ZigZag -> RLE -> Base128
+typedef RLEStreamWriter<int64_t> __RLEWriter;
+typedef ZigZagStreamWriter<__RLEWriter, int64_t>   __ZigZagWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, int64_t> ZDeltaRLEWriter;
+
+// Base128 -> RLE -> ZigZag -> Delta -> int64_t
+typedef RLEStreamReader<int64_t> __RLEReader;
+typedef ZigZagStreamReader<__RLEReader, int64_t>   __ZigZagReader;
+typedef DeltaStreamReader<__ZigZagReader, int64_t> ZDeltaRLEReader;
+
+// uint64_t -> Delta -> RLE -> Base128
+typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
+// Base128 -> RLE -> Delta -> uint64_t
+typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
+
 namespace V2 {
 
 struct DataBlock {
@@ -693,8 +698,8 @@ struct DataBlock {
     DeltaRLEWriter ts_stream_;
     FcmStreamWriter val_stream_;
     int write_index_;
-    aku_Timestamp ts_writebuf_;  //! Write buffer for timestamps
-    double val_writebuf_;  //! Write buffer for values
+    aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
+    double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
 
     /** C-tor
       * @param id Series id.
@@ -718,25 +723,4 @@ private:
 };
 
 }  // namespace V2
-
-// Length -> RLE -> Base128
-typedef RLEStreamWriter<uint32_t> RLELenWriter;
-
-// Base128 -> RLE -> Length
-typedef RLEStreamReader<uint32_t> RLELenReader;
-
-// int64_t -> Delta -> ZigZag -> RLE -> Base128
-typedef RLEStreamWriter<int64_t> __RLEWriter;
-typedef ZigZagStreamWriter<__RLEWriter, int64_t>   __ZigZagWriter;
-typedef DeltaStreamWriter<__ZigZagWriter, int64_t> ZDeltaRLEWriter;
-
-// Base128 -> RLE -> ZigZag -> Delta -> int64_t
-typedef RLEStreamReader<int64_t> __RLEReader;
-typedef ZigZagStreamReader<__RLEReader, int64_t>   __ZigZagReader;
-typedef DeltaStreamReader<__ZigZagReader, int64_t> ZDeltaRLEReader;
-
-// uint64_t -> Delta -> RLE -> Base128
-typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
-// Base128 -> RLE -> Delta -> uint64_t
-typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
 }
