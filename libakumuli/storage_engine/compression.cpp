@@ -638,6 +638,8 @@ DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
     if (!success || pmain_size_ == nullptr || ptail_size_ == nullptr) {
         AKU_PANIC("Buffer is too small");
     }
+    *ptail_size_ = 0;
+    *pmain_size_ = 0;
 }
 
 aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
@@ -660,9 +662,8 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
         }
     } else {
         // Put values to the end of the stream without compression.
-        // This can happen only when write buffer is empty.
+        // This can happen first only when write buffer is empty.
         assert((write_index_ & CHUNK_MASK) == 0);
-        write_index_++;
         if (stream_.put_raw(ts)) {
             if (stream_.put_raw(value)) {
                 *ptail_size_ += 1;
@@ -676,6 +677,7 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
 
 void DataBlockWriter::close() {
     // fill version info, nchunk, ntail
+    *pmain_size_ = write_index_;
 }
 
 bool DataBlockWriter::room_for_chunk() const {
@@ -685,6 +687,49 @@ bool DataBlockWriter::room_for_chunk() const {
         return false;
     }
     return true;
+}
+
+// ////////////////////////////// //
+// DataBlockReader implementation //
+// ////////////////////////////// //
+
+DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
+    : begin_(buf)
+    , stream_(buf, buf + bufsize)
+    , ts_stream_(stream_)
+    , val_stream_(stream_)
+    , read_buffer_{}
+    , read_index_(0)
+{
+    assert(bufsize > 128);
+}
+
+static uint16_t get_main_size(const uint8_t* pdata) {
+    AKU_UNUSED(pdata);
+    throw "not implemented";
+}
+
+std::tuple<aku_Status, aku_Timestamp, double> DataBlockReader::next() {
+    if (read_index_ < get_main_size(begin_)) {
+        auto chunk_index = read_index_++ & CHUNK_MASK;
+        if (chunk_index == 0) {
+            // read all timestamps
+            for (int i = 0; i < CHUNK_SIZE; i++) {
+                read_buffer_[i] = ts_stream_.next();
+            }
+        }
+        double value = val_stream_.next();
+        return std::make_tuple(AKU_SUCCESS, read_buffer_[chunk_index], value);
+    } else {
+        // handle tail values
+        if (read_index_ < get_total_size(begin_)) {
+            read_index_++;
+            auto ts = stream_.read_raw<aku_Timestamp>();
+            auto value = stream_.read_raw<double>();
+            return std::make_tuple(AKU_SUCCESS, ts, value);
+        }
+    }
+    return std::make_tuple(AKU_ENO_DATA, 0ull, 0.0);
 }
 
 }

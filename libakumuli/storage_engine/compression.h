@@ -727,7 +727,16 @@ struct DataBlockReader {
         CHUNK_SIZE = 16,
         CHUNK_MASK = 15,
     };
+    const uint8_t* begin_;
+    Base128StreamReader stream_;
+    DeltaRLEReader ts_stream_;
+    FcmStreamWriter val_stream_;
+    aku_Timestamp read_buffer_[CHUNK_SIZE];
+    uint32_t read_index_;
 
+    DataBlockReader(uint8_t const* buf, size_t bufsize);
+
+    std::tuple<aku_Status, aku_Timestamp, double> next();
 };
 
 }  // namespace V2
