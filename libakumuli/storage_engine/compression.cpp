@@ -526,6 +526,8 @@ DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
 
 aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
     if (room_for_chunk()) {
+        // Invariant 1: number of elements stored in write buffer (ts_writebuf_ val_writebuf_)
+        // equals `write_index_ % CHUNK_SIZE`.
         ts_writebuf_[write_index_ & CHUNK_MASK] = ts;
         val_writebuf_[write_index_ & CHUNK_MASK] = value;
         write_index_++;
@@ -560,7 +562,28 @@ void DataBlockWriter::close() {
     // It should be possible to store up to one million chunks in one block,
     // for 4K block size this is more then enough.
     auto nchunks = write_index_ / CHUNK_SIZE;
-    assert(write_index_ % CHUNK_SIZE == 0);
+    auto buftail = write_index_ % CHUNK_SIZE;
+    // Invariant 2: if DataBlockWriter was closed after `put` method overflowed (return AKU_EOVERFLOW),
+    // then `ntail_` should be GE then zero and write buffer should be empty (write_index_ = multiple of CHUNK_SIZE).
+    // Otherwise, `ntail_` should be zero.
+    if (buftail) {
+        // Write buffer is not empty
+        if (*ntail_ != 0) {
+            // invariant is broken
+            AKU_PANIC("Write buffer is not empty but can't be flushed");
+        }
+        for (int ix = 0; ix < buftail; ix++) {
+            auto success = stream_.put_raw(ts_writebuf_[ix]);
+            success = stream_.put_raw(val_writebuf_[ix]) && success;
+            if (!success) {
+                // Data loss. This should never happen at this point. If this error
+                // occures then `room_for_chunk` estimates space requirements incorrectly.
+                assert(false);
+                break;
+            }
+            *ntail_ += 1;
+        }
+    }
     assert(nchunks <= 0xFFFF);
     *nchunks_ = static_cast<uint16_t>(nchunks);
 }

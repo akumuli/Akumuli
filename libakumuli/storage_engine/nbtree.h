@@ -1,5 +1,6 @@
 #pragma once
 #include "blockstore.h"
+#include "compression.h"
 
 namespace Akumuli {
 namespace V2 {
@@ -30,16 +31,27 @@ struct SubtreeRef {
 };
 
 
-//! NBTree root
-class NBTree
-{
+//! Configuration options for
+struct NBTreeConfiguration {
+    
+};
+
+/** This object represents BlockStore backed tree.
+  * It contains data from one time-series.
+  */
+class NBTree {
     std::shared_ptr<BlockStore> bstore_;
+    //! Series id
+    aku_ParamId id_;
+    //! Root address
     LogicAddr root_;
 public:
 
-    NBTree(std::shared_ptr<BlockStore> bstore, LogicAddr root);
+    NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore, LogicAddr root);
 
-    //aku_Status append(????);
+    // TODO: backfill and delete functions
+
+    aku_Status append(aku_Timestamp ts, double value);
 };
 
 }}  // namespaces
