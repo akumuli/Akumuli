@@ -367,128 +367,6 @@ aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
     return AKU_SUCCESS;
 }
 
-static const size_t BATCH_SIZE = 16;
-
-aku_Status CompressionUtil::encode_block(SeriesSlice* slice, uint8_t* buffer, size_t size) {
-    /* Data format:
-     *
-     * u16   - version info
-     * u32   - number of elements
-     * u64   - series id
-     * vbyte - timestamps (compressed) interleaved with values (compressed)
-     *
-     */
-    Base128StreamWriter stream(buffer, buffer + size);
-    auto version = stream.allocate<uint16_t>();
-    auto pcount = stream.allocate<uint32_t>();
-    auto pseries = stream.allocate<aku_ParamId>();
-    *version = AKUMULI_VERSION;
-    *pseries = slice->id;
-    DeltaRLEWriter tstream(stream);
-    FcmStreamWriter vstream(stream);
-    uint32_t count = 0;
-    size_t nbatches = (slice->size - slice->offset) / BATCH_SIZE;
-    size_t tailsize = (slice->size - slice->offset) % BATCH_SIZE;
-    size_t batchend = slice->offset + nbatches*BATCH_SIZE;
-    // large loop
-    for (size_t ix = slice->offset; ix < batchend; ix += BATCH_SIZE) {
-        // put timestamps
-        if (!tstream.tput(slice->ts + ix, BATCH_SIZE)) {
-            break;
-        }
-        // put values
-        if (!vstream.tput(slice->value + ix, BATCH_SIZE)) {
-            break;
-        }
-        //
-        count += BATCH_SIZE;
-    }
-    // small loop (block is not full and we have less then BATCH_SIZE elements)
-    // compress timestamps
-    do {
-        for (size_t ix = slice->offset + count; ix < slice->size; ix++) {
-            if (!tstream.put(slice->ts[ix])) {
-                break;
-            }
-        }
-        if (!tstream.commit()) {
-            break;
-        }
-        // compress values
-        for (size_t ix = slice->offset + count; ix < slice->size; ix++) {
-            if (!vstream.put(slice->value[ix])) {
-                break;
-            }
-        }
-        if (!vstream.commit()) {
-            break;
-        }
-        count += tailsize;
-    } while (false);
-    *pcount = count;
-    slice->offset += count;
-    return AKU_SUCCESS;
-}
-
-uint32_t CompressionUtil::number_of_elements_in_block(uint8_t const* buffer, size_t buffer_size) {
-    Base128StreamReader rdr(buffer, buffer + buffer_size);
-    return rdr.read_raw<uint32_t>();
-}
-
-aku_Status CompressionUtil::decode_block(uint8_t const* buffer, size_t buffer_size,
-                                         SeriesSlice* dest) {
-    // `dest` should have enough space to store the data
-    Base128StreamReader stream(buffer, buffer + buffer_size);
-    uint16_t version = stream.read_raw<uint16_t>();
-    uint32_t nitems = stream.read_raw<uint32_t>();
-    aku_ParamId id = stream.read_raw<aku_ParamId>();
-    if (version != AKUMULI_VERSION) {
-        // TODO: backward compatibility with older versions
-        AKU_PANIC("version mismatch");
-    }
-    dest->id = id;
-    size_t offset = dest->offset;
-    if (dest->size < dest->offset || (dest->size - offset) < nitems) {
-        return AKU_EBAD_ARG;
-    }
-
-    DeltaRLEReader tstream(stream);   // timestamps stream
-    FcmStreamReader vstream(stream);  // values stream
-
-    size_t nbatches = (dest->size - dest->offset) / BATCH_SIZE;
-    size_t tailsize = (dest->size - dest->offset) % BATCH_SIZE;
-    size_t batchend = dest->offset + nbatches*BATCH_SIZE;
-
-    // large loop
-    for (size_t ix = offset; ix < batchend; ix += BATCH_SIZE) {
-        // Read timestamps
-        for (size_t i = 0; i < BATCH_SIZE; i++) {
-            aku_Timestamp ts = tstream.next();
-            dest->ts[ix + i] = ts;
-        }
-        // Read values
-        for (size_t i = 0; i < BATCH_SIZE; i++) {
-            double value = vstream.next();
-            dest->value[ix + i] = value;
-        }
-    }
-
-    // read tail timestamps
-    for (size_t ix = 0; ix < tailsize; ix++) {
-        aku_Timestamp ts = tstream.next();
-        dest->ts[batchend + ix] = ts;
-    }
-    // read tail values
-    for (size_t ix = 0; ix < tailsize; ix++) {
-        double value = vstream.next();
-        dest->value[batchend + ix] = value;
-    }
-
-    dest->offset += batchend + tailsize;
-
-    return AKU_SUCCESS;
-}
-
 
 aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
                                         , aku_Timestamp      *ts_begin
@@ -631,15 +509,19 @@ DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
     , val_stream_(stream_)
     , write_index_(0)
 {
+    // offset 0
     auto success = stream_.put_raw<uint16_t>(AKUMULI_VERSION);
-    pmain_size_ = stream_.allocate<uint16_t>();
-    ptail_size_ = stream_.allocate<uint16_t>();
+    // offset 2
+    nchunks_ = stream_.allocate<uint16_t>();
+    // offset 4
+    ntail_ = stream_.allocate<uint16_t>();
+    // offset 6
     success = stream_.put_raw(id) && success;
-    if (!success || pmain_size_ == nullptr || ptail_size_ == nullptr) {
+    if (!success || nchunks_ == nullptr || ntail_ == nullptr) {
         AKU_PANIC("Buffer is too small");
     }
-    *ptail_size_ = 0;
-    *pmain_size_ = 0;
+    *ntail_ = 0;
+    *nchunks_ = 0;
 }
 
 aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
@@ -651,7 +533,6 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
             // put timestamps
             if (ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
                 if (val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
-                    pmain_size_ += CHUNK_SIZE;
                     return AKU_SUCCESS;
                 }
             }
@@ -666,7 +547,7 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
         assert((write_index_ & CHUNK_MASK) == 0);
         if (stream_.put_raw(ts)) {
             if (stream_.put_raw(value)) {
-                *ptail_size_ += 1;
+                *ntail_ += 1;
                 return AKU_SUCCESS;
             }
         }
@@ -676,8 +557,12 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
 }
 
 void DataBlockWriter::close() {
-    // fill version info, nchunk, ntail
-    *pmain_size_ = write_index_;
+    // It should be possible to store up to one million chunks in one block,
+    // for 4K block size this is more then enough.
+    auto nchunks = write_index_ / CHUNK_SIZE;
+    assert(write_index_ % CHUNK_SIZE == 0);
+    assert(nchunks <= 0xFFFF);
+    *nchunks_ = static_cast<uint16_t>(nchunks);
 }
 
 bool DataBlockWriter::room_for_chunk() const {
@@ -695,7 +580,7 @@ bool DataBlockWriter::room_for_chunk() const {
 
 DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
     : begin_(buf)
-    , stream_(buf, buf + bufsize)
+    , stream_(buf + DataBlockWriter::HEADER_SIZE, buf + bufsize)
     , ts_stream_(stream_)
     , val_stream_(stream_)
     , read_buffer_{}
@@ -704,9 +589,25 @@ DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
     assert(bufsize > 128);
 }
 
-static uint16_t get_main_size(const uint8_t* pdata) {
-    AKU_UNUSED(pdata);
-    throw "not implemented";
+static uint16_t get_block_version(const uint8_t* pdata) {
+    uint16_t version = *reinterpret_cast<const uint16_t*>(pdata);
+    return version;
+}
+
+static uint32_t get_main_size(const uint8_t* pdata) {
+    uint16_t main = *reinterpret_cast<const uint16_t*>(pdata + 2);
+    return static_cast<uint32_t>(main) * DataBlockReader::CHUNK_SIZE;
+}
+
+static uint32_t get_total_size(const uint8_t* pdata) {
+    uint16_t main = *reinterpret_cast<const uint16_t*>(pdata + 2);
+    uint16_t tail = *reinterpret_cast<const uint16_t*>(pdata + 4);
+    return tail + static_cast<uint32_t>(main) * DataBlockReader::CHUNK_SIZE;
+}
+
+static aku_ParamId get_block_id(const uint8_t* pdata) {
+    aku_ParamId id = *reinterpret_cast<const aku_ParamId*>(pdata + 6);
+    return id;
 }
 
 std::tuple<aku_Status, aku_Timestamp, double> DataBlockReader::next() {
@@ -730,6 +631,18 @@ std::tuple<aku_Status, aku_Timestamp, double> DataBlockReader::next() {
         }
     }
     return std::make_tuple(AKU_ENO_DATA, 0ull, 0.0);
+}
+
+size_t DataBlockReader::nelements() const {
+    return get_total_size(begin_);
+}
+
+aku_ParamId DataBlockReader::get_id() const {
+    return get_block_id(begin_);
+}
+
+uint16_t DataBlockReader::version() const {
+    return get_block_version(begin_);
 }
 
 }

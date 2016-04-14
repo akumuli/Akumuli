@@ -357,56 +357,64 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
 
 void test_block_compression(double start) {
     RandomWalk rwalk(start, 1., .11);
-    int N = 10000;
+    unsigned N = 10000;
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
     std::vector<uint8_t> block;
     block.resize(4096);
 
-    aku_Timestamp ts = rand();
-    for (int i = 0; i < N; i++) {
+    aku_Timestamp its = rand();
+    for (unsigned i = 0; i < N; i++) {
         values.push_back(rwalk.generate());
         int skew = rand() % 100;
-        ts += skew;
-        timestamps.push_back(ts);
+        its += skew;
+        timestamps.push_back(its);
     }
 
     // compress
 
-    SeriesSlice slice;
-    slice.id = 42;
-    slice.offset = 0;
-    slice.ts = timestamps.data();
-    slice.value = values.data();
-    slice.size = N;
+    V2::DataBlockWriter writer(42, block.data(), block.size());
 
-    auto status = CompressionUtil::encode_block(&slice, block.data(), block.size());
-    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-    BOOST_REQUIRE_NE(slice.offset, 0);
+    size_t actual_nelements = 0ull;
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            actual_nelements = ix;
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    writer.close();
 
     // decompress
+    V2::DataBlockReader reader(block.data(), block.size());
 
     std::vector<aku_Timestamp> out_timestamps;
     std::vector<double> out_values;
 
     // gen number of elements stored in block
-    uint32_t nelem = CompressionUtil::number_of_elements_in_block(block.data(), block.size());
+    uint32_t nelem = reader.nelements();
+    BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
     BOOST_REQUIRE_NE(nelem, 0);
-    out_timestamps.resize(nelem);
-    out_values.resize(nelem);
 
-    SeriesSlice out_slice;
-    out_slice.id = 0;
-    out_slice.offset = 0;
-    out_slice.size = nelem;
-    out_slice.ts = out_timestamps.data();
-    out_slice.value = out_values.data();
+    BOOST_REQUIRE_EQUAL(reader.get_id(), 42);
+    for (size_t ix = 0ull; ix < reader.nelements(); ix++) {
+        aku_Status status;
+        aku_Timestamp  ts;
+        double      value;
+        std::tie(status, ts, value) = reader.next();
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        out_timestamps.push_back(ts);
+        out_values.push_back(value);
+    }
 
-    status = CompressionUtil::decode_block(block.data(), block.size(), &out_slice);
-    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-    BOOST_REQUIRE_NE(out_slice.offset, 0);
-    BOOST_REQUIRE_EQUAL(out_slice.offset, nelem);
-    BOOST_REQUIRE_EQUAL(out_slice.id, 42);
+    // nelements() + 1 call should result in error
+    aku_Status status;
+    aku_Timestamp  ts;
+    double      value;
+    std::tie(status, ts, value) = reader.next();
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
 
     for (size_t i = 0; i < nelem; i++) {
         if (timestamps.at(i) != out_timestamps.at(i)) {

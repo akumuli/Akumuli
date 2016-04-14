@@ -586,28 +586,8 @@ struct SeriesSlice {
     size_t offset;
 };
 
+// Old depricated functions
 struct CompressionUtil {
-
-    /** Compress and write slice into buffer
-      * @param slice is a structure representing time-series state
-      * @param buffer is a pointer to destination buffer
-      * @param buffer_size is a buffer size
-      */
-    static aku_Status encode_block(SeriesSlice *slice, uint8_t* buffer, size_t buffer_size);
-
-    /** Return number of elements stored in the block
-      */
-    static uint32_t number_of_elements_in_block(uint8_t const* buffer, size_t buffer_size);
-
-    /** Decode block and write result into slice
-      * @param buffer is a pointer to buffer that stores encoded data
-      * @param buffer_size is a size of the buffer
-      * @param dest is a pointer to slice that should receive all results
-      */
-    static aku_Status decode_block(uint8_t const* buffer, size_t buffer_size, SeriesSlice* dest);
-
-
-    // Old depricated functions
 
     /** Compress and write ChunkHeader to memory stream.
       * @param n_elements out parameter - number of written elements
@@ -690,6 +670,7 @@ struct DataBlockWriter {
     enum {
         CHUNK_SIZE = 16,
         CHUNK_MASK = 15,
+        HEADER_SIZE = 14, // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
     Base128StreamWriter stream_;
     DeltaRLEWriter ts_stream_;
@@ -697,9 +678,8 @@ struct DataBlockWriter {
     int write_index_;
     aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
     double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
-    uint16_t* pmain_size_;
-    uint16_t* ptail_size_;
-    uint64_t* pseires_id_;
+    uint16_t* nchunks_;
+    uint16_t* ntail_;
 
     /** C-tor
       * @param id Series id.
@@ -730,13 +710,19 @@ struct DataBlockReader {
     const uint8_t* begin_;
     Base128StreamReader stream_;
     DeltaRLEReader ts_stream_;
-    FcmStreamWriter val_stream_;
+    FcmStreamReader val_stream_;
     aku_Timestamp read_buffer_[CHUNK_SIZE];
     uint32_t read_index_;
 
     DataBlockReader(uint8_t const* buf, size_t bufsize);
 
     std::tuple<aku_Status, aku_Timestamp, double> next();
+
+    size_t nelements() const;
+
+    aku_ParamId get_id() const;
+
+    uint16_t version() const;
 };
 
 }  // namespace V2
