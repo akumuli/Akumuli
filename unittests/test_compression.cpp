@@ -389,7 +389,7 @@ void test_block_compression(double start, unsigned N=10000) {
     if (!writer_overflow) {
         actual_nelements = N;
     }
-    writer.close();
+    writer.commit();
 
     // decompress
     V2::DataBlockReader reader(block.data(), block.size());

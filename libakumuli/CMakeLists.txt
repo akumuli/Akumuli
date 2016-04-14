@@ -9,6 +9,8 @@ add_library(akumuli SHARED
     storage_engine/compression.cpp
     storage_engine/blockstore.h
     storage_engine/blockstore.cpp
+    storage_engine/nbtree.h
+    storage_engine/nbtree.cpp
     log_iface.h
     storage.h
     page.h

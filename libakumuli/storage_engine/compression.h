@@ -695,7 +695,7 @@ struct DataBlockWriter {
       */
     aku_Status put(aku_Timestamp ts, double value);
 
-    void close();
+    void commit();
 
 private:
     //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values

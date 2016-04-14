@@ -558,7 +558,7 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
     return AKU_SUCCESS;
 }
 
-void DataBlockWriter::close() {
+void DataBlockWriter::commit() {
     // It should be possible to store up to one million chunks in one block,
     // for 4K block size this is more then enough.
     auto nchunks = write_index_ / CHUNK_SIZE;
