@@ -355,9 +355,8 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
     test_float_compression(-1E100);
 }
 
-void test_block_compression(double start) {
+void test_block_compression(double start, unsigned N=10000) {
     RandomWalk rwalk(start, 1., .11);
-    unsigned N = 10000;
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
     std::vector<uint8_t> block;
@@ -376,14 +375,19 @@ void test_block_compression(double start) {
     V2::DataBlockWriter writer(42, block.data(), block.size());
 
     size_t actual_nelements = 0ull;
+    bool writer_overflow = false;
     for (size_t ix = 0; ix < N; ix++) {
         aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
         if (status == AKU_EOVERFLOW) {
             // Block is full
             actual_nelements = ix;
+            writer_overflow = true;
             break;
         }
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    if (!writer_overflow) {
+        actual_nelements = N;
     }
     writer.close();
 
@@ -446,6 +450,26 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
 
 BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
     test_block_compression(-1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_5) {
+    test_block_compression(0, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_6) {
+    test_block_compression(0, 16);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_7) {
+    test_block_compression(0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_8) {
+    test_block_compression(0, 0x100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_9) {
+    test_block_compression(0, 0x111);
 }
 
 void test_chunk_header_compression(double start) {
