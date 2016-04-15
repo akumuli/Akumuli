@@ -558,7 +558,7 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
     return AKU_SUCCESS;
 }
 
-void DataBlockWriter::commit() {
+size_t DataBlockWriter::commit() {
     // It should be possible to store up to one million chunks in one block,
     // for 4K block size this is more then enough.
     auto nchunks = write_index_ / CHUNK_SIZE;
@@ -586,6 +586,7 @@ void DataBlockWriter::commit() {
     }
     assert(nchunks <= 0xFFFF);
     *nchunks_ = static_cast<uint16_t>(nchunks);
+    return stream_.size();
 }
 
 bool DataBlockWriter::room_for_chunk() const {
@@ -609,7 +610,7 @@ DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
     , read_buffer_{}
     , read_index_(0)
 {
-    assert(bufsize > 128);
+    assert(bufsize > 14);
 }
 
 static uint16_t get_block_version(const uint8_t* pdata) {

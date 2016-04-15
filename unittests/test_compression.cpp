@@ -389,10 +389,10 @@ void test_block_compression(double start, unsigned N=10000) {
     if (!writer_overflow) {
         actual_nelements = N;
     }
-    writer.commit();
+    size_t size_used = writer.commit();
 
     // decompress
-    V2::DataBlockReader reader(block.data(), block.size());
+    V2::DataBlockReader reader(block.data(), size_used);
 
     std::vector<aku_Timestamp> out_timestamps;
     std::vector<double> out_values;
