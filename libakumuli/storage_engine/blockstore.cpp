@@ -87,7 +87,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr 
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
-    std::vector<uint8_t> dest(Volume::BLOCK_SIZE, 0);
+    std::vector<uint8_t> dest(AKU_BLOCK_SIZE, 0);
     auto status = volumes_[volix]->read_block(vol, dest.data());
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<Block>());

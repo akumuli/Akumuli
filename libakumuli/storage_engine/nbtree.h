@@ -59,9 +59,6 @@ namespace V2 {
   * Can be commited to block store when full.
   */
 class NBTreeNode {
-    enum {
-        BLOCK_SIZE = 4096,
-    };
     std::shared_ptr<BlockStore> bstore_;
     //! Series id
     aku_ParamId id_;

@@ -18,6 +18,9 @@ namespace V2 {
 
 //! Address of the block inside volume (index of the block)
 typedef uint32_t BlockAddr;
+enum {
+    AKU_BLOCK_SIZE = 4096
+};
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
@@ -39,10 +42,6 @@ class MetaVolume {
 
     MetaVolume(const char* path);
 public:
-
-    enum {
-        BLOCK_SIZE=4096,
-    };
 
     /** Create new meta-volume.
       * @param path Path to created file.
@@ -102,10 +101,6 @@ class Volume
 
     Volume(const char* path, size_t write_pos);
 public:
-
-    enum {
-        BLOCK_SIZE=4096,
-    };
 
     /** Create new volume.
       * @param path Path to volume.

@@ -33,6 +33,7 @@ public:
     std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
 
     /** Add block to blockstore.
+      * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
     std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data);
