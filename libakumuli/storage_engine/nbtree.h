@@ -58,10 +58,8 @@ namespace V2 {
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
   */
-class NBTreeNode {
+class NBTreeLeaf {
     std::shared_ptr<BlockStore> bstore_;
-    //! Series id
-    aku_ParamId id_;
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
@@ -75,7 +73,7 @@ public:
       * @param link to block store.
       * @param prev Prev element of the tree.
       */
-    NBTreeNode(aku_ParamId id, std::shared_ptr<BlockStore> bstore, LogicAddr prev);
+    NBTreeLeaf(aku_ParamId id, std::shared_ptr<BlockStore> bstore, LogicAddr prev);
 
     //! Append values to NBTree
     aku_Status append(aku_Timestamp ts, double value);
@@ -83,7 +81,7 @@ public:
     /** Flush all pending changes to block store and close.
       * Calling this function too often can result in unoptimal space usage.
       */
-    aku_Status commit();
+    std::tuple<aku_Status, LogicAddr> commit();
 };
 
 
@@ -93,8 +91,17 @@ public:
   * other operations (delete/insert) can be implemented if
   * needed.
   */
-class NBTreeNode {
+class NBTree {
+    // NOTE: supernodes not implemented at this point so, generaly speaking,
+    // database is a set of linked lists. Each one of those linked lists is
+    // represented by NBTree instance and a set of NBTreeLeaf objects.
 
+    //! Blockstore
+    std::shared_ptr<BlockStore> bstore_;
+    LogicAddr last_;
+    std::unique_ptr<NBTreeLeaf> leaf_;
+public:
+    NBTree(std::shared_ptr<BlockStore> bstore);
 };
 
 
