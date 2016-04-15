@@ -14,7 +14,7 @@
 #include "util.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 //! Address of the block inside volume (index of the block)
 typedef uint32_t BlockAddr;
@@ -39,6 +39,7 @@ class MetaVolume {
     MemoryMappedFile mmap_;
     size_t file_size_;
     uint8_t* mmap_ptr_;
+    mutable std::vector<uint8_t> double_write_buffer_;
 
     MetaVolume(const char* path);
 public:

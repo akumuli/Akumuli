@@ -3,30 +3,23 @@
 #include "util.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 
-//! Represents memory block
-class Block {
-    std::weak_ptr<BlockStore> store_;
-    std::vector<uint8_t> data_;
-    LogicAddr addr_;
-public:
-    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t>&& data)
-        : store_(bs)
-        , data_(std::move(data))
-        , addr_(addr)
-    {
-    }
+Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t>&& data)
+    : store_(bs)
+    , data_(std::move(data))
+    , addr_(addr)
+{
+}
 
-    const uint8_t* get_data() const {
-        return data_.data();
-    }
+const uint8_t* Block::get_data() const {
+    return data_.data();
+}
 
-    size_t get_size() const {
-        return data_.size();
-    }
-};
+size_t Block::get_size() const {
+    return data_.size();
+}
 
 
 BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)

@@ -374,3 +374,22 @@ target_link_libraries(
 )
 
 add_test(invertedindex test_invertedindex)
+
+# Blockstore test
+add_executable(
+    test_blockstore
+    test_blockstore.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    test_blockstore
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(blockstore test_blockstore)

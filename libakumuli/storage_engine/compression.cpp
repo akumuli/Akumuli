@@ -501,7 +501,7 @@ bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, U
     return reorder_chunk_header(header, out, fn);
 }
 
-namespace V2 {
+namespace StorageEngine {
 
 DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
     : stream_(buf, buf + size)

@@ -11,7 +11,7 @@
 #include "storage_engine/volume.h"
 
 
-using namespace Akumuli::V2;
+using namespace Akumuli::StorageEngine;
 
 class Timer
 {

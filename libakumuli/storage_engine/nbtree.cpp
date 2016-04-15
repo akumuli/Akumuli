@@ -2,7 +2,7 @@
 #include "akumuli_version.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 //! This value represents empty addr. It's too large to be used as a real block addr.
 static const LogicAddr EMPTY = std::numeric_limits<LogicAddr>::max();

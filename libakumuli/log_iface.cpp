@@ -1,7 +1,6 @@
 #include "log_iface.h"
 
 namespace Akumuli {
-namespace V2 {
 
 // default logger is console
 static aku_logger_cb_t logger_callback = nullptr;
@@ -24,4 +23,4 @@ void Logger::msg(aku_LogLevel lvl, std::string msg) {
     }
 }
 
-}}  // namespaces
+}  // namespace

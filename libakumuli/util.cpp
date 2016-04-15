@@ -93,7 +93,7 @@ void MemoryMappedFile::delete_file() {
     if (status_ != APR_SUCCESS) {
         stringstream fmt;
         fmt << "Can't remove file " << path_ << " error " << error_message();
-        V2::Logger::msg(AKU_LOG_ERROR, fmt.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, fmt.str().c_str());
     }
 }
 
@@ -124,7 +124,7 @@ apr_status_t MemoryMappedFile::map_file() {
         free_resources(success_count);
         stringstream err;
         err << "Can't mmap file " << path_ << ", error " << error_message() << " on step " << success_count;
-        V2::Logger::msg(AKU_LOG_ERROR, err.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, err.str().c_str());
     }
     return status_;
 }
@@ -164,14 +164,14 @@ void MemoryMappedFile::remap_file_destructive() {
     if (status != APR_SUCCESS) {
         stringstream err;
         err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
-        V2::Logger::msg(AKU_LOG_ERROR, err.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, err.str().c_str());
         AKU_PANIC("can't remap file");
     }
     status = map_file();
     if (status != APR_SUCCESS) {
         stringstream err;
         err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
-        V2::Logger::msg(AKU_LOG_ERROR, err.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, err.str().c_str());
         AKU_PANIC("can't remap file");
     }
 }
@@ -280,14 +280,14 @@ apr_status_t MemoryMappedFile::flush(size_t from, size_t to) {
     int e = errno;
     switch(e) {
     case EBUSY:
-        V2::Logger::msg(AKU_LOG_ERROR, "Can't msync, busy");
+        Logger::msg(AKU_LOG_ERROR, "Can't msync, busy");
         return AKU_EBUSY;
     case EINVAL:
     case ENOMEM:
-        V2::Logger::msg(AKU_LOG_ERROR, "Invalid args passed to msync");
+        Logger::msg(AKU_LOG_ERROR, "Invalid args passed to msync");
         return AKU_EBAD_ARG;
     default:
-        V2::Logger::msg(AKU_LOG_ERROR, "Unknown msync error");
+        Logger::msg(AKU_LOG_ERROR, "Unknown msync error");
     };
     return AKU_EGENERAL;
 }

@@ -3,7 +3,7 @@
 #include "compression.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 /** Necklace B-tree data-structure implementation.
   * Outline:

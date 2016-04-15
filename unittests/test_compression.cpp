@@ -372,7 +372,7 @@ void test_block_compression(double start, unsigned N=10000) {
 
     // compress
 
-    V2::DataBlockWriter writer(42, block.data(), block.size());
+    StorageEngine::DataBlockWriter writer(42, block.data(), block.size());
 
     size_t actual_nelements = 0ull;
     bool writer_overflow = false;
@@ -392,7 +392,7 @@ void test_block_compression(double start, unsigned N=10000) {
     size_t size_used = writer.commit();
 
     // decompress
-    V2::DataBlockReader reader(block.data(), size_used);
+    StorageEngine::DataBlockReader reader(block.data(), size_used);
 
     std::vector<aku_Timestamp> out_timestamps;
     std::vector<double> out_values;

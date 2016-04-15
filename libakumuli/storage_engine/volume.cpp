@@ -9,7 +9,7 @@
 #include "akumuli_version.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 static void panic_on_error(apr_status_t status, const char* msg) {
     if (status != APR_SUCCESS) {
@@ -74,7 +74,9 @@ MetaVolume::MetaVolume(const char *path)
     : mmap_(path, false)
     , file_size_(mmap_.get_size())
     , mmap_ptr_((uint8_t*)mmap_.get_pointer())
+    , double_write_buffer_(mmap_.get_size(), 0)
 {
+    memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_.get_size());
 }
 
 size_t MetaVolume::get_nvolumes() const {
@@ -118,7 +120,7 @@ static VolumeRef* get_volref(uint8_t* p, uint32_t id) {
 
 std::tuple<aku_Status, uint32_t> MetaVolume::get_nblocks(uint32_t id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         uint32_t nblocks = pvol->nblocks;
         return std::make_tuple(AKU_SUCCESS, nblocks);
     }
@@ -127,7 +129,7 @@ std::tuple<aku_Status, uint32_t> MetaVolume::get_nblocks(uint32_t id) const {
 
 std::tuple<aku_Status, uint32_t> MetaVolume::get_capacity(uint32_t id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         uint32_t cap = pvol->capacity;
         return std::make_tuple(AKU_SUCCESS, cap);
     }
@@ -136,7 +138,7 @@ std::tuple<aku_Status, uint32_t> MetaVolume::get_capacity(uint32_t id) const {
 
 std::tuple<aku_Status, uint32_t> MetaVolume::get_generation(uint32_t id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         uint32_t gen = pvol->generation;
         return std::make_tuple(AKU_SUCCESS, gen);
     }
@@ -145,7 +147,7 @@ std::tuple<aku_Status, uint32_t> MetaVolume::get_generation(uint32_t id) const {
 
 aku_Status MetaVolume::update(uint32_t id, uint32_t nblocks, uint32_t capacity, uint32_t gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
         pvol->capacity = capacity;
         pvol->generation = gen;
@@ -156,7 +158,7 @@ aku_Status MetaVolume::update(uint32_t id, uint32_t nblocks, uint32_t capacity, 
 
 aku_Status MetaVolume::set_nblocks(uint32_t id, uint32_t nblocks) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
         return AKU_SUCCESS;
     }
@@ -165,7 +167,7 @@ aku_Status MetaVolume::set_nblocks(uint32_t id, uint32_t nblocks) {
 
 aku_Status MetaVolume::set_capacity(uint32_t id, uint32_t cap) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->capacity = cap;
         return AKU_SUCCESS;
     }
@@ -174,7 +176,7 @@ aku_Status MetaVolume::set_capacity(uint32_t id, uint32_t cap) {
 
 aku_Status MetaVolume::set_generation(uint32_t id, uint32_t gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(mmap_ptr_, id);
+        auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->generation = gen;
         return AKU_SUCCESS;
     }
@@ -182,12 +184,14 @@ aku_Status MetaVolume::set_generation(uint32_t id, uint32_t gen) {
 }
 
 void MetaVolume::flush() {
+    memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_.get_size());
     auto status = mmap_.flush();
     panic_on_error(status, "Flush error");
 }
 
 aku_Status MetaVolume::flush(uint32_t id) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
+        memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_.get_size());
         size_t from = id * AKU_BLOCK_SIZE;
         size_t to = from + AKU_BLOCK_SIZE;
         auto status = mmap_.flush(from, to);
@@ -239,7 +243,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const uint8_t* source) {
 
 //! Read filxed size block from file
 aku_Status Volume::read_block(uint32_t ix, uint8_t* dest) const {
-    if (ix >= file_size_) {
+    if (ix >= write_pos_) {
         return AKU_EBAD_ARG;
     }
     apr_off_t offset = ix * AKU_BLOCK_SIZE;

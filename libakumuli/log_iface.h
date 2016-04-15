@@ -5,7 +5,6 @@
 #include <string>
 
 namespace Akumuli {
-namespace V2 {
 
 struct Logger
 {
@@ -14,4 +13,4 @@ struct Logger
     static void msg(aku_LogLevel lvl, std::string msg);
 };
 
-}}  // namespaces
+}  // namespace

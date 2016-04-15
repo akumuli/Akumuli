@@ -664,7 +664,8 @@ typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
 // Base128 -> RLE -> Delta -> uint64_t
 typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
 
-namespace V2 {
+
+namespace StorageEngine {
 
 struct DataBlockWriter {
     enum {

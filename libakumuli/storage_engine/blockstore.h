@@ -2,7 +2,7 @@
 #include "volume.h"
 
 namespace Akumuli {
-namespace V2 {
+namespace StorageEngine {
 
 //! Address of the block inside storage
 typedef uint64_t LogicAddr;
@@ -39,6 +39,21 @@ public:
     std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data);
 
     void flush();
+
+    // TODO: add static create fn
+};
+
+//! Represents memory block
+class Block {
+    std::weak_ptr<BlockStore> store_;
+    std::vector<uint8_t> data_;
+    LogicAddr addr_;
+public:
+    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t>&& data);
+
+    const uint8_t* get_data() const;
+
+    size_t get_size() const;
 };
 
 }}  // namespace
