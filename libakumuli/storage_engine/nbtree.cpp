@@ -82,10 +82,50 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit() {
 
 }
 
+// //////////////////////// //
+//          NBTree          //
+// //////////////////////// //
 
-NBTree::NBTree(std::shared_ptr<BlockStore> bstore)
+
+NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
+    , id_(id)
+    , last_(EMPTY)
 {
+    reset_leaf();
+}
+
+void NBTree::reset_leaf() {
+    leaf_.reset(new NBTreeLeaf(id_, bstore_, last_));
+}
+
+void NBTree::append(aku_Timestamp ts, double value) {
+    // Invariant: leaf_ should be initialized, if leaf_ is full and pushed to block-store, reset_leaf should be called
+    aku_Status status = leaf_->append(ts, value);
+    if (status == AKU_EOVERFLOW) {
+        LogicAddr addr;
+        std::tie(status, addr) = leaf_->commit();
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't append data to the NBTree instance");
+        }
+        last_ = addr;
+        reset_leaf();
+        // There should be only one level of recursion, no looping.
+        // Stack overflow here means that there is a logic error in
+        // the program that results in NBTreeLeaf::append always
+        // returning AKU_EOVERFLOW.
+        append(ts, value);
+    }
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Unexpected error from NBTreeLeaf");  // it should return only AKU_EOVERFLOW
+    }
+}
+
+std::vector<LogicAddr> NBTree::roots() const {
+    // NOTE: at this development stage implementation tracks only leaf nodes.
+    // This is enough to test performance and build server and ingestion.
+    std::vector<LogicAddr> rv = { last_ };
+    return rv;
 }
 
 }}

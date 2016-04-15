@@ -19,16 +19,22 @@ namespace V2 {
   *     +--------+---------+          +---------+---------+
   *     |        |         |          |         |         |
   *     v        v         v          v         v         v
-  * [leaaf0]<--[....]<--[leafK]<--[leafK+1]<--[....]<--[leaf2K]<--~
+  * [leaaf0]<--[....]<--[leafK]   [leafK+1]<--[....]<--[leaf2K]
   *
   * K is a fan-out range (Akumuli uses K=64).
   *
   * NBTree don't have one single root. Instead of that tree height is limited and
-  * all nodes on one level are linked in backward direction (new node has pointer
+  * nodes on one level are linked in backward direction (new node has pointer
   * to previous). Useful data stored only in leaf nodes.
+  *
+  * Leaf nodes and superblocks from one subtree don't have links to previous subtree.
+  * They can be connected only through upper level superblock that have links to all
+  * existing subtrees.
+  *
   * Important property: superblock at level N are linked directly (using links to
   * underlying nodes only) to K^N nodes. All nodes a of the same size and all such
-  * subtrees are full trees so space taken by each subtree are the same.
+  * subtrees are full trees so space taken by each subtree are the same (but there could
+  * be some internal fragmentation though).
   * In this implementation nodes are stored in underlying block store. In this block
   * store old pages can be deleted to reclaim space. This process shouldn't corrupt
   * NBTree because only last node from each hierarchy level is needed to traverse
@@ -44,7 +50,8 @@ namespace V2 {
   * - Add link to  newly saved block to the current superblock on level 2, etc.
   *
   * Application should store somewhere root of the NBTree (the rightmost superblock in
-  * the top layer).
+  * the top layer) and links to all nonfinished subtrees (these subtrees shouldn't be
+  * connected to top superblock).
   *
   * Application should  maintain metadata inside each superblock. Each node link should
   * contain the following information about pointee: version, tree level, number of
@@ -98,10 +105,24 @@ class NBTree {
 
     //! Blockstore
     std::shared_ptr<BlockStore> bstore_;
+    aku_ParamId id_;
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
+
+    //! leaf_ is guaranteed to be initialized after call to this method
+    void reset_leaf();
 public:
-    NBTree(std::shared_ptr<BlockStore> bstore);
+    /** C-tor
+      * @param id Series id.
+      * @param bstore Pointer to block-store.
+      */
+    NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore);
+
+    //! Append data-point to NBTree
+    void append(aku_Timestamp ts, double value);
+
+    //! Return list of roots starting from leaf node
+    std::vector<LogicAddr> roots() const;
 };
 
 
