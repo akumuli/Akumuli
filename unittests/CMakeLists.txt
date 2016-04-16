@@ -393,3 +393,24 @@ target_link_libraries(
 )
 
 add_test(blockstore test_blockstore)
+
+# Blockstore test
+add_executable(
+    test_nbtree
+    test_nbtree.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    test_nbtree
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(nbtree test_nbtree)

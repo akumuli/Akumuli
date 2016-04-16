@@ -40,7 +40,7 @@ static SubtreeRef* subtree_cast(uint8_t* p) {
 NBTreeLeaf::NBTreeLeaf(aku_ParamId id, std::shared_ptr<BlockStore> bstore, LogicAddr prev)
     : bstore_(bstore)
     , prev_(prev)
-    , buffer_(BLOCK_SIZE, 0)
+    , buffer_(AKU_BLOCK_SIZE, 0)
     , writer_(id, buffer_.data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
 {
     SubtreeRef* subtree = subtree_cast(buffer_.data());
