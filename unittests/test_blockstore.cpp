@@ -87,3 +87,42 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     delete_blockstore();
 }
 
+BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
+    delete_blockstore();
+    create_blockstore();
+    auto bstore = open_blockstore();
+
+
+    // Fill data in
+    std::vector<uint8_t> buffer(4096, 0);
+
+
+    LogicAddr addr;
+    aku_Status status;
+
+    for (int i = 0; i < 17; i++) {
+        buffer.at(0) = (uint8_t)i;
+        std::tie(status, addr) = bstore->append_block(buffer.data());
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    BOOST_REQUIRE_EQUAL(addr, (2ull << 32));
+
+    std::shared_ptr<Block> block;
+
+    // Should be unreadable now
+    std::tie(status, block) = bstore->read_block(0);
+    BOOST_REQUIRE_NE(status, AKU_EBAD_ARG);
+
+    // Reada this block
+    std::tie(status, block) = bstore->read_block(2ull << 32);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    const uint8_t* block_data = block->get_data();
+    size_t block_size = block->get_size();
+
+    BOOST_REQUIRE_EQUAL(block_size, 4096);
+    BOOST_REQUIRE_EQUAL(block_data[0], 16);
+
+    delete_blockstore();
+}
+

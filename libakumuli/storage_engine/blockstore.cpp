@@ -59,6 +59,7 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
             // Free space available
             current_volume_ = i;
             current_gen_ = curr_gen;
+            break;
         }
     }
 }
