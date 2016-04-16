@@ -222,3 +222,25 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_blockstore PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# NBTree perftest
+add_executable(
+    perf_nbtree
+    perf_nbtree.cpp
+    perftest_tools.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+)
+
+target_link_libraries(
+    perf_nbtree
+    jemalloc
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_nbtree PROPERTIES EXCLUDE_FROM_ALL 1)
