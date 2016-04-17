@@ -91,6 +91,27 @@ public:
     std::tuple<aku_Status, LogicAddr> commit();
 };
 
+class NBTree;
+
+class NBTreeCursor {
+public:
+    NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
+    NBTreeCursor(NBTreeCursor const& other);
+    NBTreeCursor(NBTreeCursor && other);
+    NBTreeCursor& operator = (NBTreeCursor const& other);
+
+    //! Returns number of elements in cursor
+    size_t size();
+
+    //! Return true if read operation is completed and elements stored in this cursor
+    //! are the last ones.
+    bool is_eof();
+
+    //! Read element from cursor (not all elements can be loaded to cursor)
+    std::tuple<aku_Status, aku_Timestamp, double> at(size_t ix);
+
+    void proceed_next();
+};
 
 /** This object represents block store backed tree.
   * It contains data from one time-series.
@@ -123,6 +144,15 @@ public:
 
     //! Return list of roots starting from leaf node
     std::vector<LogicAddr> roots() const;
+
+    /** Iterate through the tree.
+      * If `start` is less then `stop` - iterate in forward direction,
+      * if `start` is greater then the `stop` - iterate in backward direction.
+      * Interval [start, stop) is semi-open.
+      * @param start Timestamp of the starting point of the range.
+      * @param stop Timestamp of the first point out of the range.
+      */
+    NBTreeCursor iter(aku_Timestamp start, aku_Timestamp stop);
 };
 
 

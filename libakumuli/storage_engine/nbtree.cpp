@@ -128,4 +128,8 @@ std::vector<LogicAddr> NBTree::roots() const {
     return rv;
 }
 
+void NBTree::iter(NBTreeCursor& cursor) {
+    throw "not implemented";
+}
+
 }}
