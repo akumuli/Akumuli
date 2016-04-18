@@ -66,7 +66,25 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
         tree.append(i, i*0.1);
     }
 
-    // Read operation not ready yet
+    NBTreeCursor cursor(tree, 0, N);
+    aku_Timestamp curr = 0ull;
+    while(!cursor.is_eof()) {
+        for (size_t ix = 0; ix < cursor.size(); ix++) {
+            aku_Timestamp ts;
+            double value;
+            aku_Status status;
+            std::tie(status, ts, value) = cursor.at(ix);
+
+            BOOST_REQUIRE(status != AKU_SUCCESS);
+
+            BOOST_REQUIRE_EQUAL(curr, ts);
+
+            BOOST_REQUIRE_EQUAL(curr*0.1, value);
+
+            curr++;
+        }
+    }
+    BOOST_REQUIRE_NE(curr, 0ull);
 
     delete_blockstore();
 }

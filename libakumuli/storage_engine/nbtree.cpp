@@ -51,6 +51,10 @@ static SubtreeRef* subtree_cast(uint8_t* p) {
     return reinterpret_cast<SubtreeRef*>(p);
 }
 
+static SubtreeRef const* subtree_cast(uint8_t const* p) {
+    return reinterpret_cast<SubtreeRef const*>(p);
+}
+
 NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev)
     : prev_(prev)
     , buffer_(AKU_BLOCK_SIZE, 0)
@@ -100,7 +104,7 @@ size_t NBTreeLeaf::nelements() {
 
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeLeaf::get_timestamps() const {
-    SubtreeRef* subtree = subtree_cast(buffer_.data());
+    SubtreeRef const* subtree = subtree_cast(buffer_.data());
     return std::make_tuple(subtree->begin, subtree->end);
 }
 
@@ -171,7 +175,7 @@ NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
 }
 
 void NBTree::reset_leaf() {
-    leaf_.reset(new NBTreeLeaf(id_, bstore_, last_));
+    leaf_.reset(new NBTreeLeaf(id_, last_));
 }
 
 void NBTree::append(aku_Timestamp ts, double value) {
@@ -225,6 +229,7 @@ std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) con
         // Save address of the current leaf and move to the next one
         addresses.push_back(addr);
         addr = leaf->get_prev_addr();
+        throw "not implemented";
     }
     return addresses;
 }
@@ -268,7 +273,7 @@ std::tuple<aku_Status, aku_Timestamp, double> NBTreeCursor::at(size_t ix) {
     return std::make_tuple(AKU_EBAD_ARG, 0, 0);  // Index out of range
 }
 
-void NBtreeCursor::proceed_next() {
+void NBTreeCursor::proceed() {
     throw "not implemented";
 }
 

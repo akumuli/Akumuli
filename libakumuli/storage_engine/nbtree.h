@@ -127,7 +127,7 @@ class NBTreeCursor {
     NBTree const& tree_;
     aku_Timestamp start_;
     aku_Timestamp stop_;
-    std::stack<LogicAddr> backpath_;
+    std::vector<LogicAddr> backpath_;
     bool eof_;
     aku_ParamId id_;
 
@@ -136,7 +136,7 @@ class NBTreeCursor {
         SPACE_RESERVE=1024,
     };
     std::vector<aku_Timestamp> ts_;
-    std::vector<double>        vaue_;
+    std::vector<double>        value_;
 public:
     NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
 
