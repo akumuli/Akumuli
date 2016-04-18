@@ -503,6 +503,14 @@ bool CompressionUtil::convert_from_time_order(UncompressedChunk const& header, U
 
 namespace StorageEngine {
 
+DataBlockWriter::DataBlockWriter()
+    : stream_(nullptr, nullptr)
+    , ts_stream_(stream_)
+    , val_stream_(stream_)
+    , write_index_(0)
+{
+}
+
 DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
     : stream_(buf, buf + size)
     , ts_stream_(stream_)

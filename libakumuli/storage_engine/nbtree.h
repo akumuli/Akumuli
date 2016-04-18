@@ -1,4 +1,8 @@
 #pragma once
+// C++ headers
+#include <stack>
+
+// App headers
 #include "blockstore.h"
 #include "compression.h"
 
@@ -66,7 +70,6 @@ namespace StorageEngine {
   * Can be commited to block store when full.
   */
 class NBTreeLeaf {
-    std::shared_ptr<BlockStore> bstore_;
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
@@ -74,13 +77,40 @@ class NBTreeLeaf {
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
 public:
+    enum class LeafLoadMethod {
+        FULL_PAGE_LOAD, ONLY_HEADER,
+    };
 
-    /** C-tor.
+    /** Create empty leaf node.
       * @param id Series id.
       * @param link to block store.
       * @param prev Prev element of the tree.
       */
-    NBTreeLeaf(aku_ParamId id, std::shared_ptr<BlockStore> bstore, LogicAddr prev);
+    NBTreeLeaf(aku_ParamId id, LogicAddr prev);
+
+    /** Load from block store.
+      * @param bstore Block store.
+      * @param curr Address of the current leaf-node.
+      * @param load Load method.
+      */
+    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr,
+               LeafLoadMethod load=LeafLoadMethod::FULL_PAGE_LOAD);
+
+    //! Returns number of elements.
+    size_t nelements();
+
+    //! Read timestamps
+    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
+
+    //! Get logic address of the previous node
+    LogicAddr get_prev_addr() const;
+
+    /** Read all elements from the leaf node.
+      * @param timestamps Destination for timestamps.
+      * @param values Destination for values.
+      * @return status.
+      */
+    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values);
 
     //! Append values to NBTree
     aku_Status append(aku_Timestamp ts, double value);
@@ -88,17 +118,27 @@ public:
     /** Flush all pending changes to block store and close.
       * Calling this function too often can result in unoptimal space usage.
       */
-    std::tuple<aku_Status, LogicAddr> commit();
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
 };
 
 class NBTree;
 
 class NBTreeCursor {
+    NBTree const& tree_;
+    aku_Timestamp start_;
+    aku_Timestamp stop_;
+    std::stack<LogicAddr> backpath_;
+    bool eof_;
+    aku_ParamId id_;
+
+    enum {
+        // On average each 4KB page will contain less then 1024 elements.
+        SPACE_RESERVE=1024,
+    };
+    std::vector<aku_Timestamp> ts_;
+    std::vector<double>        vaue_;
 public:
     NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
-    NBTreeCursor(NBTreeCursor const& other);
-    NBTreeCursor(NBTreeCursor && other);
-    NBTreeCursor& operator = (NBTreeCursor const& other);
 
     //! Returns number of elements in cursor
     size_t size();
@@ -110,7 +150,7 @@ public:
     //! Read element from cursor (not all elements can be loaded to cursor)
     std::tuple<aku_Status, aku_Timestamp, double> at(size_t ix);
 
-    void proceed_next();
+    void proceed();
 };
 
 /** This object represents block store backed tree.
@@ -139,11 +179,17 @@ public:
       */
     NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore);
 
+    //! Return series id
+    aku_ParamId get_id() const;
+
     //! Append data-point to NBTree
     void append(aku_Timestamp ts, double value);
 
     //! Return list of roots starting from leaf node
     std::vector<LogicAddr> roots() const;
+
+    //! Load Leaf node from block-store
+    std::unique_ptr<NBTreeLeaf> load(LogicAddr addr) const;
 
     /** Iterate through the tree.
       * If `start` is less then `stop` - iterate in forward direction,
@@ -152,7 +198,7 @@ public:
       * @param start Timestamp of the starting point of the range.
       * @param stop Timestamp of the first point out of the range.
       */
-    NBTreeCursor iter(aku_Timestamp start, aku_Timestamp stop);
+    std::vector<LogicAddr> iter(aku_Timestamp start, aku_Timestamp stop) const;
 };
 
 

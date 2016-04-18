@@ -682,6 +682,9 @@ struct DataBlockWriter {
     uint16_t* nchunks_;
     uint16_t* ntail_;
 
+    //! Empty c-tor. Constructs unwritable object.
+    DataBlockWriter();
+
     /** C-tor
       * @param id Series id.
       * @param size Block size.
