@@ -96,7 +96,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
         }
         cursor.proceed();
     }
-    BOOST_REQUIRE_NE(curr, 0ull);
+    BOOST_REQUIRE_EQUAL(curr, N);
 
     delete_blockstore();
 }

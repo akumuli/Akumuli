@@ -114,13 +114,16 @@ LogicAddr NBTreeLeaf::get_prev_addr() const {
 }
 
 
-aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) {
+aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values, size_t size_override) {
     if (buffer_.size() == sizeof(SubtreeRef)) {
         // Error. Page is not fully loaded
         return AKU_ENO_DATA;
     }
     DataBlockReader reader(buffer_.data() + sizeof(SubtreeRef), buffer_.size());
-    size_t sz = reader.nelements();
+    size_t sz = size_override;
+    if (size_override == 0) {
+        sz = reader.nelements();
+    }
     timestamps->reserve(sz);
     values->reserve(sz);
     for (size_t ix = 0; ix < sz; ix++) {
@@ -170,11 +173,13 @@ NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
     , id_(id)
     , last_(EMPTY)
+    , ix_write_(0)
 {
     reset_leaf();
 }
 
 void NBTree::reset_leaf() {
+    ix_write_ = 0;
     leaf_.reset(new NBTreeLeaf(id_, last_));
 }
 
@@ -198,6 +203,10 @@ void NBTree::append(aku_Timestamp ts, double value) {
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Unexpected error from NBTreeLeaf");  // it should return only AKU_EOVERFLOW
     }
+    // On success update write buffer
+    ts_write_[ix_write_ & WB_MASK] = ts;
+    xs_write_[ix_write_ & WB_MASK] = value;
+    ix_write_++;
 }
 
 std::vector<LogicAddr> NBTree::roots() const {
@@ -209,6 +218,11 @@ std::vector<LogicAddr> NBTree::roots() const {
 
 aku_ParamId NBTree::get_id() const {
     return id_;
+}
+
+aku_Status NBTree::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const {
+    return leaf_->read_all(timestamps, values, ix_write_ / WB_SIZE * WB_SIZE);
+    // TODO: read_all then read up to WB_SIZE values from write buffers
 }
 
 std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) const {
@@ -261,7 +275,8 @@ NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestam
 
 aku_Status NBTreeCursor::load_page() {
     if (backpath_.empty()) {
-        return AKU_ENO_DATA;
+        eof_ = true;
+        return tree_.read_all(&ts_, &value_);
     }
     LogicAddr addr = backpath_.back();
     backpath_.pop_back();
