@@ -68,6 +68,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
 
     NBTreeCursor cursor(tree, 0, N);
     aku_Timestamp curr = 0ull;
+    bool first = true;
+    int index = 0;
     while(!cursor.is_eof()) {
         for (size_t ix = 0; ix < cursor.size(); ix++) {
             aku_Timestamp ts;
@@ -75,14 +77,24 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
             aku_Status status;
             std::tie(status, ts, value) = cursor.at(ix);
 
-            BOOST_REQUIRE(status != AKU_SUCCESS);
+            BOOST_REQUIRE(status == AKU_SUCCESS);
 
-            BOOST_REQUIRE_EQUAL(curr, ts);
+            if (first) {
+                first = false;
+                curr = ts;
+            }
+
+            if (curr != ts) {
+                BOOST_FAIL("Invalid timestamp, expected: " << curr  <<
+                           " actual " << ts << " index " << index);
+            }
 
             BOOST_REQUIRE_EQUAL(curr*0.1, value);
 
             curr++;
+            index++;
         }
+        cursor.proceed();
     }
     BOOST_REQUIRE_NE(curr, 0ull);
 

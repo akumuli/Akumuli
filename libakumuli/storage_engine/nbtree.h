@@ -137,6 +137,9 @@ class NBTreeCursor {
     };
     std::vector<aku_Timestamp> ts_;
     std::vector<double>        value_;
+
+    //! Load next page into memory
+    aku_Status load_page();
 public:
     NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
 

@@ -14,12 +14,20 @@ class Block;
   */
 class BlockStore : public std::enable_shared_from_this<BlockStore>
 {
+    //! Metadata volume.
     std::unique_ptr<MetaVolume> meta_;
+    //! Array of volumes.
     std::vector<std::unique_ptr<Volume>> volumes_;
+    //! "Dirty" flags.
     std::vector<int> dirty_;
+    //! Current volume.
     uint32_t current_volume_;
+    //! Current generation.
     uint32_t current_gen_;
+    //! Size of the blockstore in blocks.
+    size_t total_size_;
 
+    //! Secret c-tor.
     BlockStore(std::string metapath, std::vector<std::string> volpaths);
 
     void advance_volume();
@@ -39,6 +47,8 @@ public:
     std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data);
 
     void flush();
+
+    bool exists(LogicAddr addr) const;
 
     // TODO: add static create fn
 };

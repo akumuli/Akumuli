@@ -43,6 +43,11 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
         dirty_.push_back(0);
     }
 
+    total_size_ = 0ull;
+    for (const auto& vol: volumes_) {
+        total_size_ += vol->get_size();
+    }
+
     // set current volume, current volume is a first volume with free space available
     for (size_t i = 0u; i < volumes_.size(); i++) {
         uint32_t curr_gen, nblocks;
@@ -77,22 +82,54 @@ static BlockAddr extract_vol(LogicAddr addr) {
     return addr & 0xFFFFFFFF;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
+static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
+    return static_cast<uint64_t>(gen) << 32 | addr;
+}
+
+bool BlockStore::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
+    aku_Status status;
+    uint32_t actual_gen;
+    std::tie(status, actual_gen) = meta_->get_generation(volix);
+    if (status != AKU_SUCCESS) {
+        return false;
+    }
+    uint32_t nblocks;
+    std::tie(status, nblocks) = meta_->get_nblocks(volix);
+    if (status != AKU_SUCCESS) {
+        return false;
+    }
+    return actual_gen == gen && vol < nblocks;
+}
+
+std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
+    aku_Status status;
+    auto gen = extract_gen(addr);
+    auto vol = extract_vol(addr);
+    auto volix = gen % volumes_.size();
+    uint32_t actual_gen;
+    uint32_t nblocks;
+    std::tie(status, actual_gen) = meta_->get_generation(volix);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    std::tie(status, nblocks) = meta_->get_nblocks(volix);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    if (actual_gen != gen || vol >= nblocks) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
     std::vector<uint8_t> dest(AKU_BLOCK_SIZE, 0);
-    auto status = volumes_[volix]->read_block(vol, dest.data());
+    status = volumes_[volix]->read_block(vol, dest.data());
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<Block>());
     }
     auto self = shared_from_this();
     auto block = std::make_shared<Block>(self, addr, std::move(dest));
     return std::make_tuple(status, std::move(block));
-}
-
-static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
-    return static_cast<uint64_t>(gen) << 32 | addr;
 }
 
 void BlockStore::advance_volume() {
@@ -138,8 +175,9 @@ std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) 
         advance_volume();
         std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
         if (status != AKU_SUCCESS) {
-            return std::make_pair(status, 0ull);
+            return std::make_tuple(status, 0ull);
         }
+        return std::make_tuple(status, make_logic(current_gen_, block_addr));
     }
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {

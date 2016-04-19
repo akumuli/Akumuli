@@ -217,21 +217,27 @@ std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) con
     aku_Timestamp max = std::max(start, stop);
     LogicAddr addr = last_;
     std::vector<LogicAddr> addresses;
-    while (addr != EMPTY) {
+    // Stop when EMPTY is hit or cycle detected.
+    while (bstore_->exists(addr)) {
         std::unique_ptr<NBTreeLeaf> leaf;
-        leaf.reset(new NBTreeLeaf(bstore_, last_, NBTreeLeaf::LeafLoadMethod::ONLY_HEADER));
+        leaf.reset(new NBTreeLeaf(bstore_, addr, NBTreeLeaf::LeafLoadMethod::ONLY_HEADER));
         aku_Timestamp begin, end;
         std::tie(begin, end) = leaf->get_timestamps();
         if (min > end || max < begin) {
             addr = leaf->get_prev_addr();
             continue;
         }
-        // Save address of the current leaf and move to the next one
+        // Save address of the current leaf and move to the next one.
         addresses.push_back(addr);
         addr = leaf->get_prev_addr();
-        throw "not implemented";
     }
     return addresses;
+}
+
+std::unique_ptr<NBTreeLeaf> NBTree::load(LogicAddr addr) const {
+    std::unique_ptr<NBTreeLeaf> leaf;
+    leaf.reset(new NBTreeLeaf(bstore_, addr));
+    return std::move(leaf);
 }
 
 NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop)
@@ -244,14 +250,25 @@ NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestam
     ts_.reserve(SPACE_RESERVE);
     value_.reserve(SPACE_RESERVE);
     auto addrlist = tree.iter(start, stop);
-    if (start < stop) {
+    if (start > stop) {
         // Forward direction. Method tree.iter always return path in
         // backward direction so we need to reverse it.
         std::reverse(addrlist.begin(), addrlist.end());
     }
     std::swap(addrlist, backpath_);
+    proceed();
+}
 
-    // TODO: load first page from backpath_ into ts_ and value_.
+aku_Status NBTreeCursor::load_page() {
+    if (backpath_.empty()) {
+        return AKU_ENO_DATA;
+    }
+    LogicAddr addr = backpath_.back();
+    backpath_.pop_back();
+    std::unique_ptr<NBTreeLeaf> leaf = tree_.load(addr);
+    ts_.clear();
+    value_.clear();
+    return leaf->read_all(&ts_, &value_);
 }
 
 //! Returns number of elements in cursor
@@ -274,7 +291,12 @@ std::tuple<aku_Status, aku_Timestamp, double> NBTreeCursor::at(size_t ix) {
 }
 
 void NBTreeCursor::proceed() {
-    throw "not implemented";
+    aku_Status status = load_page();
+    if (status == AKU_ENO_DATA) {
+        eof_ = true;
+    } else if (status != AKU_SUCCESS) {
+        AKU_PANIC("Page load error");  // TODO: translate error message from `status`
+    }
 }
 
 }}
