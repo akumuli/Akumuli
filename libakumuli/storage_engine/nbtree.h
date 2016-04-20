@@ -131,6 +131,7 @@ class NBTreeCursor {
     aku_Timestamp stop_;
     std::vector<LogicAddr> backpath_;
     bool eof_;
+    int proceed_calls_;
     aku_ParamId id_;
 
     enum {
@@ -141,7 +142,7 @@ class NBTreeCursor {
     std::vector<double>        value_;
 
     //! Load next page into memory
-    aku_Status load_page();
+    aku_Status load_next_page();
 public:
     NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
 
@@ -184,7 +185,7 @@ class NBTree {
     //! Write buffer for timestamps
     std::array<aku_Timestamp, WB_SIZE> ts_write_;  // FIXME: magic constants
     //! Write buffer for values
-    std::array<aku_Timestamp, WB_SIZE> xs_write_;
+    std::array<double, WB_SIZE> xs_write_;
     //! Write index
     size_t ix_write_;
 

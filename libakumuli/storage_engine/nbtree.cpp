@@ -221,8 +221,20 @@ aku_ParamId NBTree::get_id() const {
 }
 
 aku_Status NBTree::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const {
-    return leaf_->read_all(timestamps, values, ix_write_ / WB_SIZE * WB_SIZE);
-    // TODO: read_all then read up to WB_SIZE values from write buffers
+    timestamps->reserve(ix_write_);
+    values->reserve(ix_write_);
+    auto main_size = ix_write_ / WB_SIZE * WB_SIZE;
+    auto tail_size = ix_write_ % WB_SIZE;
+    aku_Status status = leaf_->read_all(timestamps, values, main_size);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    // Read data from write buffers
+    for (auto ix = (main_size + 1) & WB_MASK; ix < tail_size; ix++) {
+        timestamps->push_back(ts_write_[ix]);
+        values->push_back(xs_write_[ix]);
+    }
+    return status;
 }
 
 std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) const {
@@ -259,6 +271,7 @@ NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestam
     , start_(start)
     , stop_(stop)
     , eof_(false)
+    , proceed_calls_(0)
     , id_(tree.get_id())
 {
     ts_.reserve(SPACE_RESERVE);
@@ -273,10 +286,9 @@ NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestam
     proceed();
 }
 
-aku_Status NBTreeCursor::load_page() {
+aku_Status NBTreeCursor::load_next_page() {
     if (backpath_.empty()) {
-        eof_ = true;
-        return tree_.read_all(&ts_, &value_);
+        return AKU_ENO_DATA;
     }
     LogicAddr addr = backpath_.back();
     backpath_.pop_back();
@@ -306,12 +318,45 @@ std::tuple<aku_Status, aku_Timestamp, double> NBTreeCursor::at(size_t ix) {
 }
 
 void NBTreeCursor::proceed() {
-    aku_Status status = load_page();
+    aku_Status status = AKU_SUCCESS;
+    if (start_ > stop_) {
+        // Forward direction
+        if (proceed_calls_ == 0) {
+            // First call to proceed, need to push data from
+            // tree_ first.
+            ts_.clear();
+            value_.clear();
+            status = tree_.read_all(&ts_, &value_);
+            // Ignore ENO_DATA error
+            if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
+                AKU_PANIC("Page load error");  // TODO: error translation
+            }
+            proceed_calls_++;
+            return;
+        }
+    } else {
+        // If backpath_ is empty we need to read data from tree_.
+        if (backpath_.empty() && proceed_calls_ > 0) {
+            ts_.clear();
+            value_.clear();
+            status = tree_.read_all(&ts_, &value_);
+            if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
+                AKU_PANIC("Page load error");  // TODO: error translation
+            }
+            proceed_calls_ = -1;
+            return;
+        } else if (backpath_.empty() && proceed_calls_ < 0) {
+            eof_ = true;
+            return;
+        }
+    }
+    status = load_next_page();
     if (status == AKU_ENO_DATA) {
         eof_ = true;
     } else if (status != AKU_SUCCESS) {
         AKU_PANIC("Page load error");  // TODO: translate error message from `status`
     }
+    proceed_calls_++;
 }
 
 }}

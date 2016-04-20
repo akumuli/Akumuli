@@ -543,6 +543,7 @@ aku_Status DataBlockWriter::put(aku_Timestamp ts, double value) {
             // put timestamps
             if (ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
                 if (val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
+                    *nchunks_ += 1;
                     return AKU_SUCCESS;
                 }
             }

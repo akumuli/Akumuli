@@ -54,14 +54,13 @@ static void delete_blockstore() {
     apr_pool_destroy(pool);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
+void test_nbtree_forward(const int N) {
     delete_blockstore();
     create_blockstore();
 
     auto bstore = open_blockstore();
     NBTree tree(42, bstore);
 
-    const int N = 100000;
     for (int i = 0; i < N; i++) {
         tree.append(i, i*0.1);
     }
@@ -99,4 +98,20 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_0) {
     BOOST_REQUIRE_EQUAL(curr, N);
 
     delete_blockstore();
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_forward_0) {
+    test_nbtree_forward(11);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_forward_1) {
+    test_nbtree_forward(117);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_forward_2) {
+    test_nbtree_forward(11771);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_forward_3) {
+    test_nbtree_forward(100000);
 }
