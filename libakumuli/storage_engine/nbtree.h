@@ -108,11 +108,9 @@ public:
     /** Read all elements from the leaf node.
       * @param timestamps Destination for timestamps.
       * @param values Destination for values.
-      * @param size_override Can be used to read data before commit (override disabled on zero).
       * @return status.
       */
-    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values,
-                        size_t size_override=0);
+    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
 
     //! Append values to NBTree
     aku_Status append(aku_Timestamp ts, double value);
@@ -175,19 +173,6 @@ class NBTree {
     aku_ParamId id_;
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
-
-    // write buffer
-
-    enum {
-        WB_SIZE = 16,
-        WB_MASK = 15,
-    };
-    //! Write buffer for timestamps
-    std::array<aku_Timestamp, WB_SIZE> ts_write_;  // FIXME: magic constants
-    //! Write buffer for values
-    std::array<double, WB_SIZE> xs_write_;
-    //! Write index
-    size_t ix_write_;
 
     //! leaf_ is guaranteed to be initialized after call to this method
     void reset_leaf();

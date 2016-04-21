@@ -146,6 +146,10 @@ struct Base128StreamWriter {
         , end_(other.end_)
         , pos_(other.pos_) {}
 
+    bool empty() const {
+        return begin_ == end_;
+    }
+
     /** Put value into stream (transactional).
       */
     template <class TVal>
@@ -701,6 +705,10 @@ struct DataBlockWriter {
 
     size_t commit();
 
+    //! Read tail elements (the ones not yet written to output stream)
+    void read_tail_elements(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
+
+    int get_write_index() const;
 private:
     //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
     bool room_for_chunk() const;

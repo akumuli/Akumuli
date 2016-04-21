@@ -607,6 +607,28 @@ bool DataBlockWriter::room_for_chunk() const {
     return true;
 }
 
+void DataBlockWriter::read_tail_elements(std::vector<aku_Timestamp>* timestamps,
+                                         std::vector<double>* values) const {
+    // Note: this method can be used to read values from
+    // write buffer. It sort of breaks incapsulation but
+    // we don't need  to maintain  another  write buffer
+    // anywhere else.
+    auto tailsize = write_index_ & CHUNK_MASK;
+    for (int i = 0; i < tailsize; i++) {
+        timestamps->push_back(ts_writebuf_[i]);
+        values->push_back(val_writebuf_[i]);
+    }
+}
+
+int DataBlockWriter::get_write_index() const {
+    // Note: we need to be able to read this index to
+    // get rid of write index inside NBTreeLeaf.
+    if (!stream_.empty()) {
+        return *ntail_ + write_index_;
+    }
+    return 0;
+}
+
 // ////////////////////////////// //
 // DataBlockReader implementation //
 // ////////////////////////////// //

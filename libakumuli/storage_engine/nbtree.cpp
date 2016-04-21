@@ -114,16 +114,16 @@ LogicAddr NBTreeLeaf::get_prev_addr() const {
 }
 
 
-aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values, size_t size_override) {
+aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
+                                std::vector<double>* values) const
+{
     if (buffer_.size() == sizeof(SubtreeRef)) {
         // Error. Page is not fully loaded
         return AKU_ENO_DATA;
     }
+    int windex = writer_.get_write_index();
     DataBlockReader reader(buffer_.data() + sizeof(SubtreeRef), buffer_.size());
-    size_t sz = size_override;
-    if (size_override == 0) {
-        sz = reader.nelements();
-    }
+    size_t sz = reader.nelements();
     timestamps->reserve(sz);
     values->reserve(sz);
     for (size_t ix = 0; ix < sz; ix++) {
@@ -136,6 +136,10 @@ aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps, std::vec
         }
         timestamps->push_back(ts);
         values->push_back(value);
+    }
+    // Read tail elements from `writer_`
+    if (windex != 0) {
+        writer_.read_tail_elements(timestamps, values);
     }
     return AKU_SUCCESS;
 }
@@ -173,13 +177,11 @@ NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
     , id_(id)
     , last_(EMPTY)
-    , ix_write_(0)
 {
     reset_leaf();
 }
 
 void NBTree::reset_leaf() {
-    ix_write_ = 0;
     leaf_.reset(new NBTreeLeaf(id_, last_));
 }
 
@@ -203,10 +205,6 @@ void NBTree::append(aku_Timestamp ts, double value) {
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Unexpected error from NBTreeLeaf");  // it should return only AKU_EOVERFLOW
     }
-    // On success update write buffer
-    ts_write_[ix_write_ & WB_MASK] = ts;
-    xs_write_[ix_write_ & WB_MASK] = value;
-    ix_write_++;
 }
 
 std::vector<LogicAddr> NBTree::roots() const {
@@ -221,20 +219,7 @@ aku_ParamId NBTree::get_id() const {
 }
 
 aku_Status NBTree::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const {
-    timestamps->reserve(ix_write_);
-    values->reserve(ix_write_);
-    auto main_size = ix_write_ / WB_SIZE * WB_SIZE;
-    auto tail_size = ix_write_ % WB_SIZE;
-    aku_Status status = leaf_->read_all(timestamps, values, main_size);
-    if (status != AKU_SUCCESS) {
-        return status;
-    }
-    // Read data from write buffers
-    for (auto ix = (main_size + 1) & WB_MASK; ix < tail_size; ix++) {
-        timestamps->push_back(ts_write_[ix]);
-        values->push_back(xs_write_[ix]);
-    }
-    return status;
+    return leaf_->read_all(timestamps, values);
 }
 
 std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) const {
@@ -336,7 +321,7 @@ void NBTreeCursor::proceed() {
         }
     } else {
         // If backpath_ is empty we need to read data from tree_.
-        if (backpath_.empty() && proceed_calls_ > 0) {
+        if (backpath_.empty() && proceed_calls_ >= 0) {
             ts_.clear();
             value_.clear();
             status = tree_.read_all(&ts_, &value_);
