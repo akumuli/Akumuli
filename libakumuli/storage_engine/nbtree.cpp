@@ -12,41 +12,6 @@ namespace StorageEngine {
 //! This value represents empty addr. It's too large to be used as a real block addr.
 static const LogicAddr EMPTY = std::numeric_limits<LogicAddr>::max();
 
-/** Reference to tree node.
-  * Ref contains some metadata: version, level, payload_size, id.
-  * This metadata corresponds to the current node.
-  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
-  * This aggregates corresponds to the current node if leve=0 (current node is a
-  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
-  * leafa node and all this fields describes this leaf node. If level is 2 or more
-  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
-  * in leaf nodes in pointee subtree).
-  */
-struct SubtreeRef {
-    //! Node version
-    uint16_t      version;
-    //! Node level in the tree
-    uint16_t      level;
-    //! Number of elements in the subtree
-    uint32_t      count;
-    //! Payload size (real)
-    uint32_t      payload_size;
-    //! Series Id
-    aku_ParamId   id;
-    //! First element's timestamp
-    aku_Timestamp begin;
-    //! Last element's timestamp
-    aku_Timestamp end;
-    //! Object addr in blockstore
-    LogicAddr     addr;
-    //! Smalles value
-    double        min;
-    //! Largest value
-    double        max;
-    //! Summ of all elements in subtree
-    double        sum;
-} __attribute__((packed));
-
 static SubtreeRef* subtree_cast(uint8_t* p) {
     return reinterpret_cast<SubtreeRef*>(p);
 }
@@ -166,6 +131,53 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->payload_size = size;
     return bstore->append_block(buffer_.data());
 
+}
+
+
+// //////////////////////// //
+//     NBTreeSuperblock     //
+// //////////////////////// //
+
+NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id)
+    : buffer_(AKU_BLOCK_SIZE, 0)
+    , id_(id)
+{
+}
+
+aku_Status NBTreeSuperblock::append(LogicAddr addr, const NBTreeLeaf& leaf) {
+    SubtreeRef ref;
+    ref.addr = addr;
+    // calculate leaf stats
+    std::vector<aku_Timestamp> ts;
+    std::vector<double> xs;
+    aku_Status status = leaf.read_all(&ts, &xs);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    if (xs.empty()) {
+        // Can't add empty leaf node to the node!
+        return AKU_ENO_DATA;
+    }
+    double min = std::numeric_limits<double>::max();
+    double max = std::numeric_limits<double>::min();
+    double sum = 0;
+    for (auto x: xs) {
+        min = std::min(min, x);
+        max = std::max(max, x);
+        sum = sum + x;
+    }
+    ref.max = max;
+    ref.min = min;
+    ref.sum = sum;
+    ref.begin = ts.front();
+    ref.end = ts.back();
+    ref.level = 1;  // because leaf node was added
+    ref.version = AKUMULI_VERSION;
+    ref.payload_size = 0;  // Not used in supernodes
+    ref.id = id_;
+    ref.count = (uint32_t)xs.size();
+    AKU_UNUSED(ref); // TODO: write it into buffer
+    return AKU_SUCCESS;
 }
 
 // //////////////////////// //

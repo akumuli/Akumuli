@@ -1,14 +1,3 @@
-#pragma once
-// C++ headers
-#include <stack>
-
-// App headers
-#include "blockstore.h"
-#include "compression.h"
-
-namespace Akumuli {
-namespace StorageEngine {
-
 /** Necklace B-tree data-structure implementation.
   * Outline:
   *
@@ -65,6 +54,53 @@ namespace StorageEngine {
   * count(), avg(), sum() etc.
   */
 
+#pragma once
+// C++ headers
+#include <stack>
+
+// App headers
+#include "blockstore.h"
+#include "compression.h"
+
+namespace Akumuli {
+namespace StorageEngine {
+
+
+/** Reference to tree node.
+  * Ref contains some metadata: version, level, payload_size, id.
+  * This metadata corresponds to the current node.
+  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
+  * This aggregates corresponds to the current node if leve=0 (current node is a
+  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
+  * leafa node and all this fields describes this leaf node. If level is 2 or more
+  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
+  * in leaf nodes in pointee subtree).
+  */
+struct SubtreeRef {
+    //! Node version
+    uint16_t      version;
+    //! Node level in the tree
+    uint16_t      level;
+    //! Number of elements in the subtree
+    uint32_t      count;
+    //! Payload size (real)
+    uint32_t      payload_size;
+    //! Series Id
+    aku_ParamId   id;
+    //! First element's timestamp
+    aku_Timestamp begin;
+    //! Last element's timestamp
+    aku_Timestamp end;
+    //! Object addr in blockstore
+    LogicAddr     addr;
+    //! Smalles value
+    double        min;
+    //! Largest value
+    double        max;
+    //! Summ of all elements in subtree
+    double        sum;
+} __attribute__((packed));
+
 
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
@@ -119,6 +155,18 @@ public:
       * Calling this function too often can result in unoptimal space usage.
       */
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+};
+
+
+/** NBTree superblock. Stores links to other nodes.
+ */
+class NBTreeSuperblock {
+    std::vector<uint8_t> buffer_;
+    aku_ParamId id_;
+public:
+    NBTreeSuperblock(aku_ParamId id);
+
+    aku_Status append(LogicAddr addr, const NBTreeLeaf& leaf);
 };
 
 class NBTree;
