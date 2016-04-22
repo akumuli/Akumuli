@@ -14,7 +14,7 @@ void logger_stub(aku_LogLevel tag, const char* msg) {}
 
 struct AkumuliInitializer {
     AkumuliInitializer() {
-        aku_initialize(nullptr);
+        aku_initialize(nullptr, nullptr);
     }
 };
 

@@ -26,6 +26,7 @@
 #include "akumuli.h"
 #include "storage.h"
 #include "datetime.h"
+#include "log_iface.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -35,8 +36,28 @@ using namespace Akumuli;
 //! Pool for `apr_dbd_init`
 static apr_pool_t* g_dbd_pool = nullptr;
 
-void aku_initialize(aku_panic_handler_t optional_panic_handler) {
+void aku_console_logger(aku_LogLevel tag, const char* msg) {
+    apr_time_t now = apr_time_now();
+    char ts[APR_RFC822_DATE_LEN];
+    if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
+        memset(ts, ' ', APR_RFC822_DATE_LEN);
+        ts[sizeof(ts) - 1] = 0;
+    }
+    char tagstr[9];                    // I don't want to use manipulators on cerr here
+    snprintf(tagstr, 9, "%08X", tag);  // because this can break formatting in host application.
+    std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
+}
+
+void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t logger) {
+    // initialize logger
+    if (logger == nullptr) {
+        logger = &aku_console_logger;
+        aku_console_logger(AKU_LOG_ERROR, "Logger not set, console logger will be used");
+    }
+    Logger::set_logger(logger);
+    // initialize libapr
     apr_initialize();
+    // initialize aprdbd
     if (optional_panic_handler != nullptr) {
         set_panic_handler(optional_panic_handler);
     }
@@ -73,18 +94,6 @@ const char* aku_error_message(int error_code) {
         return g_error_messages[error_code];
     }
     return g_error_messages[AKU_EMAX_ERROR];
-}
-
-void aku_console_logger(aku_LogLevel tag, const char* msg) {
-    apr_time_t now = apr_time_now();
-    char ts[APR_RFC822_DATE_LEN];
-    if (apr_rfc822_date(ts, now) != APR_SUCCESS) {
-        memset(ts, ' ', APR_RFC822_DATE_LEN);
-        ts[sizeof(ts) - 1] = 0;
-    }
-    char tagstr[9];                    // I don't want to use manipulators on cerr here
-    snprintf(tagstr, 9, "%08X", tag);  // because this can break formatting in host application.
-    std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
 }
 
 

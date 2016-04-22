@@ -5,7 +5,7 @@
 #include <boost/test/unit_test.hpp>
 #include <vector>
 
-#include "compression.h"
+#include "storage_engine/compression.h"
 
 
 using namespace Akumuli;
@@ -33,6 +33,43 @@ void test_stream_write(TStreamWriter& writer) {
             USED_SIZE = writer.size();
     BOOST_REQUIRE_LT(USED_SIZE, sizeof(EXPECTED));
     BOOST_REQUIRE_GT(USED_SIZE, EXPECTED_SIZE);
+}
+
+template<class TVal, class TStreamWriter, class TStreamReader>
+void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t nsteps, bool sort_input=false) {
+    std::vector<TVal> input = {0};
+    const size_t step_size = 16;
+    const size_t input_size = step_size*nsteps;
+    TVal value = 100000;
+
+    // Generate
+    for (int i = 0; i < (input_size-1); i++) {
+        int delta = TVal(rand() % 1000 - 500);
+        value += delta;
+        input.push_back(value);
+    }
+
+    if (sort_input) {
+        std::sort(input.begin(), input.end());
+    }
+
+    // Encode
+    for (auto offset = 0u; offset < input_size; offset += step_size) {
+        auto success = writer.tput(input.data() + offset, step_size);
+        if (!success) {
+            BOOST_REQUIRE(success);
+        }
+    }
+
+    // Decode and compare results
+    std::vector<TVal> results;
+    for (auto offset = 0ul; offset < input_size; offset++) {
+        auto next = reader.next();
+        results.push_back(next);
+    }
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(input.begin(), input.end(),
+                                    results.begin(), results.end());
 }
 
 template<class TStreamReader>
@@ -70,6 +107,7 @@ BOOST_AUTO_TEST_CASE(Test_base128) {
     test_stream_read(reader);
 }
 
+
 BOOST_AUTO_TEST_CASE(Test_delta_rle) {
 
     std::vector<unsigned char> data;
@@ -83,6 +121,79 @@ BOOST_AUTO_TEST_CASE(Test_delta_rle) {
     DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
     test_stream_read(delta_reader);
 }
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(10*1024);  // 10KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(10*1024);  // 10KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    ZDeltaRLEWriter delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    ZDeltaRLEReader delta_reader(rstream);
+
+    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 100, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    ZDeltaRLEWriter delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    ZDeltaRLEReader delta_reader(rstream);
+
+    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 10000, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
+    std::vector<unsigned char> data;
+    data.resize(4*1024);  // 4KB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
+    std::vector<unsigned char> data;
+    data.resize(1*1024*1024);  // 1MB of storage
+
+    Base128StreamWriter wstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
+    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+
+    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+}
+
 
 BOOST_AUTO_TEST_CASE(Test_rle) {
     std::vector<unsigned char> data;
@@ -182,10 +293,10 @@ struct RandomWalk {
     std::normal_distribution<double>    distribution;
     double                              value;
 
-    RandomWalk(double mean, double stddev)
+    RandomWalk(double start, double mean, double stddev)
         : generator(randdev())
         , distribution(mean, stddev)
-        , value(0)
+        , value(start)
     {
     }
 
@@ -195,13 +306,179 @@ struct RandomWalk {
     }
 };
 
-void test_chunk_header_compression() {
+
+void test_float_compression(double start) {
+    RandomWalk rwalk(start, 1., .11);
+    int N = 10000;
+    std::vector<double> samples;
+    std::vector<uint8_t> block;
+    block.resize(N*9, 0);
+
+    // Compress
+    Base128StreamWriter wstream(block.data(), block.data() + block.size());
+    FcmStreamWriter writer(wstream);
+    for (int ix = 0; ix < N; ix++) {
+        double val = rwalk.generate();
+        writer.put(val);
+        samples.push_back(val);
+    }
+    writer.commit();
+
+    // Decompress
+    Base128StreamReader rstream(block.data(), block.data() + block.size());
+    FcmStreamReader reader(rstream);
+    for (int ix = 0; ix < N; ix++) {
+        double val = reader.next();
+        if (val != samples.at(ix)) {
+            BOOST_REQUIRE(val == samples.at(ix));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_0) {
+    test_float_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_1) {
+    test_float_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_2) {
+    test_float_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_3) {
+    test_float_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
+    test_float_compression(-1E100);
+}
+
+void test_block_compression(double start, unsigned N=10000) {
+    RandomWalk rwalk(start, 1., .11);
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<double> values;
+    std::vector<uint8_t> block;
+    block.resize(4096);
+
+    aku_Timestamp its = rand();
+    for (unsigned i = 0; i < N; i++) {
+        values.push_back(rwalk.generate());
+        int skew = rand() % 100;
+        its += skew;
+        timestamps.push_back(its);
+    }
+
+    // compress
+
+    StorageEngine::DataBlockWriter writer(42, block.data(), block.size());
+
+    size_t actual_nelements = 0ull;
+    bool writer_overflow = false;
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            actual_nelements = ix;
+            writer_overflow = true;
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    if (!writer_overflow) {
+        actual_nelements = N;
+    }
+    size_t size_used = writer.commit();
+
+    // decompress
+    StorageEngine::DataBlockReader reader(block.data(), size_used);
+
+    std::vector<aku_Timestamp> out_timestamps;
+    std::vector<double> out_values;
+
+    // gen number of elements stored in block
+    uint32_t nelem = reader.nelements();
+    BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
+    BOOST_REQUIRE_NE(nelem, 0);
+
+    BOOST_REQUIRE_EQUAL(reader.get_id(), 42);
+    for (size_t ix = 0ull; ix < reader.nelements(); ix++) {
+        aku_Status status;
+        aku_Timestamp  ts;
+        double      value;
+        std::tie(status, ts, value) = reader.next();
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        out_timestamps.push_back(ts);
+        out_values.push_back(value);
+    }
+
+    // nelements() + 1 call should result in error
+    aku_Status status;
+    aku_Timestamp  ts;
+    double      value;
+    std::tie(status, ts, value) = reader.next();
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
+
+    for (size_t i = 0; i < nelem; i++) {
+        if (timestamps.at(i) != out_timestamps.at(i)) {
+            BOOST_FAIL("Bad timestamp at " << i << ", expected: " << timestamps.at(i) <<
+                       ", actual: " << out_timestamps.at(i));
+        }
+        if (values.at(i) != out_values.at(i)) {
+            BOOST_FAIL("Bad value at " << i << ", expected: " << values.at(i) <<
+                       ", actual: " << out_values.at(i));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
+    test_block_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_1) {
+    test_block_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_2) {
+    test_block_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
+    test_block_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
+    test_block_compression(-1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_5) {
+    test_block_compression(0, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_6) {
+    test_block_compression(0, 16);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_7) {
+    test_block_compression(0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_8) {
+    test_block_compression(0, 0x100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_9) {
+    test_block_compression(0, 0x111);
+}
+
+void test_chunk_header_compression(double start) {
 
     UncompressedChunk expected;
 
     const int NROWS = 10000;  // number of rows in one series
     const int NSER = 2;  // number of series
-    RandomWalk rwalk(1, .11);
+    RandomWalk rwalk(start, 1., .11);
 
     // Fill chunk header
     for (int i = 0; i < NROWS; i++) {
@@ -279,6 +556,22 @@ void test_chunk_header_compression() {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression) {
-    test_chunk_header_compression();
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_0) {
+    test_chunk_header_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_1) {
+    test_chunk_header_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_2) {
+    test_chunk_header_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_3) {
+    test_chunk_header_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_chunk_compression_4) {
+    test_chunk_header_compression(-1E100);
 }

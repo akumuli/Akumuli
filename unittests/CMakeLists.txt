@@ -151,7 +151,8 @@ add_executable(
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -177,7 +178,8 @@ add_executable(
     ../libakumuli/page.cpp
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -201,7 +203,8 @@ add_executable(
     ../libakumuli/page.cpp
     ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/compression.cpp
 )
 
 target_link_libraries(
@@ -222,6 +225,7 @@ add_executable(
     test_mmap
     test_mmap.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
@@ -239,11 +243,15 @@ add_test(mmap test_mmap)
 add_executable(
     test_compression
     test_compression.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
     test_compression
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 
@@ -255,6 +263,7 @@ add_executable(
     test_storage.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
 )
@@ -279,6 +288,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
 )
 
@@ -303,6 +313,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
     # query_processing folder
     ../libakumuli/query_processing/anomaly.cpp
@@ -363,3 +374,43 @@ target_link_libraries(
 )
 
 add_test(invertedindex test_invertedindex)
+
+# Blockstore test
+add_executable(
+    test_blockstore
+    test_blockstore.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    test_blockstore
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(blockstore test_blockstore)
+
+# Blockstore test
+add_executable(
+    test_nbtree
+    test_nbtree.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    test_nbtree
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(nbtree test_nbtree)

@@ -30,12 +30,9 @@
 #include <vector>
 
 #include "akumuli.h"
+#include "util.h"
 
 namespace Akumuli {
-
-struct StreamOutOfBounds : std::runtime_error {
-    StreamOutOfBounds(const char* msg);
-};
 
 typedef std::vector<unsigned char> ByteVector;
 
@@ -149,43 +146,50 @@ struct Base128StreamWriter {
         , end_(other.end_)
         , pos_(other.pos_) {}
 
+    bool empty() const {
+        return begin_ == end_;
+    }
+
+    /** Put value into stream (transactional).
+      */
+    template <class TVal>
+    bool tput(TVal const* iter, size_t n) {
+        auto oldpos = pos_;
+        for (size_t i = 0; i < n; i++) {
+            if (!put(iter[i])) {
+                // restore old pos_ value
+                pos_ = oldpos;
+                return false;
+            }
+        }
+        return commit();  // no-op
+    }
+
     /** Put value into stream.
      */
-    template <class TVal> void put(TVal value) {
+    template <class TVal>
+    bool put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char*   p = val.put(pos_, end_);
         if (pos_ == p) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+            return false;
         }
         pos_ = p;
+        return true;
     }
 
-    void put_raw(unsigned char value) {
-        if (pos_ == end_) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
+    template<class TVal>
+    bool put_raw(TVal value) {
+        if ((end_ - pos_) < (int)sizeof(TVal)) {
+            return false;
         }
-        *pos_++ = value;
-    }
-
-    void put_raw(uint32_t value) {
-        if ((end_ - pos_) < (int)sizeof(value)) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
-        }
-        *reinterpret_cast<uint32_t*>(pos_) = value;
+        *reinterpret_cast<TVal*>(pos_) = value;
         pos_ += sizeof(value);
+        return true;
     }
-
-    void put_raw(uint64_t value) {
-        if ((end_ - pos_) < (int)sizeof(value)) {
-            throw StreamOutOfBounds("can't write value, out of bounds");
-        }
-        *reinterpret_cast<uint64_t*>(pos_) = value;
-        pos_ += sizeof(value);
-    }
-
 
     //! Commit stream
-    void commit() {}
+    bool commit() { return true; }
 
     size_t size() const { return pos_ - begin_; }
 
@@ -193,13 +197,13 @@ struct Base128StreamWriter {
 
     /** Try to allocate space inside a stream in current position without
       * compression (needed for size prefixes).
-      * @returns pointer to the value inside the stream
-      * @throw StreamOutOfBounds if there is not enough space for value
+      * @returns pointer to the value inside the stream or nullptr
       */
-    template <class T> T* allocate() {
+    template <class T>
+    T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
-            throw StreamOutOfBounds("can't allocate value, not enough space");
+            return nullptr;
         }
         T* result = reinterpret_cast<T*>(pos_);
         pos_ += sz;
@@ -214,13 +218,14 @@ struct Base128StreamReader {
 
     Base128StreamReader(const unsigned char* begin, const unsigned char* end)
         : pos_(begin)
-        , end_(end) {}
+        , end_(end)
+    {}
 
     template <class TVal> TVal next() {
         Base128Int<TVal> value;
         auto             p = value.get(pos_, end_);
         if (p == pos_) {
-            throw StreamOutOfBounds("can't read value, out of bounds");
+            AKU_PANIC("can't read value, out of bounds");
         }
         pos_ = p;
         return static_cast<TVal>(value);
@@ -230,7 +235,7 @@ struct Base128StreamReader {
     template <class TVal> TVal read_raw() {
         size_t sz = sizeof(TVal);
         if (space_left() < sz) {
-            throw StreamOutOfBounds("can't read value, out of bounds");
+            AKU_PANIC("can't read value, out of bounds");
         }
         auto val = *reinterpret_cast<const TVal*>(pos_);
         pos_ += sz;
@@ -242,19 +247,35 @@ struct Base128StreamReader {
     const unsigned char* pos() const { return pos_; }
 };
 
-template <class Stream, class TVal> struct ZigZagStreamWriter {
+template <class Stream, class TVal>
+struct ZigZagStreamWriter {
     Stream stream_;
 
     ZigZagStreamWriter(Base128StreamWriter& stream)
-        : stream_(stream) {}
-    void put(TVal value) {
+        : stream_(stream)
+    {}
+
+    bool tput(TVal const* iter, size_t n) {
+        TVal outbuf[n];
+        for (size_t i = 0; i < n; i++) {
+            auto      value       = iter[i];
+            const int shift_width = sizeof(TVal) * 8 - 1;
+            auto      res         = (value << 1) ^ (value >> shift_width);
+            outbuf[i]             = res;
+        }
+        return stream_.tput(outbuf, n);
+    }
+
+    bool put(TVal value) {
         // TVal should be signed
         const int shift_width = sizeof(TVal) * 8 - 1;
         auto      res         = (value << 1) ^ (value >> shift_width);
-        stream_.put(res);
+        return stream_.put(res);
     }
+
     size_t size() const { return stream_.size(); }
-    void   commit() { stream_.commit(); }
+
+    bool commit() { return stream_.commit(); }
 };
 
 template <class Stream, class TVal> struct ZigZagStreamReader {
@@ -268,10 +289,11 @@ template <class Stream, class TVal> struct ZigZagStreamReader {
         return (n >> 1) ^ (-(n & 1));
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
-template <class Stream, typename TVal> struct DeltaStreamWriter {
+template <class Stream, typename TVal>
+struct DeltaStreamWriter {
     Stream stream_;
     TVal   prev_;
 
@@ -279,18 +301,31 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
         : stream_(stream)
         , prev_() {}
 
-    void put(TVal value) {
-        stream_.put(static_cast<TVal>(value) - prev_);
+    bool tput(TVal const* iter, size_t n) {
+        TVal outbuf[n];
+        for (size_t i = 0; i < n; i++) {
+            auto value  = iter[i];
+            auto result = static_cast<TVal>(value) - prev_;
+            outbuf[i]   = result;
+            prev_       = value;
+        }
+        return stream_.tput(outbuf, n);
+    }
+
+    bool put(TVal value) {
+        auto result = stream_.put(static_cast<TVal>(value) - prev_);
         prev_ = value;
+        return result;
     }
 
     size_t size() const { return stream_.size(); }
 
-    void commit() { stream_.commit(); }
+    bool commit() { return stream_.commit(); }
 };
 
 
-template <class Stream, typename TVal> struct DeltaStreamReader {
+template <class Stream, typename TVal>
+struct DeltaStreamReader {
     Stream stream_;
     TVal   prev_;
 
@@ -305,11 +340,95 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
         return value;
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
 
-template <typename TVal> struct RLEStreamWriter {
+template <size_t Step, typename TVal>
+struct DeltaDeltaStreamWriter {
+    Base128StreamWriter& stream_;
+    TVal   prev_;
+    int put_calls_;
+
+    DeltaDeltaStreamWriter(Base128StreamWriter& stream)
+        : stream_(stream)
+        , prev_()
+        , put_calls_(0)
+    {}
+
+    bool tput(TVal const* iter, size_t n) {
+        assert(n == Step);
+        TVal outbuf[n];
+        for (size_t i = 0; i < n; i++) {
+            auto value  = iter[i];
+            auto result = value - prev_;
+            outbuf[i]   = result;
+            prev_       = value;
+        }
+        TVal min = outbuf[0];
+        for (size_t i = 1; i < n; i++) {
+            min = std::min(outbuf[i], min);
+        }
+        for (size_t i = 0; i < n; i++) {
+            outbuf[i] -= min;
+        }
+        // encode min value
+        if (!stream_.put(min)) {
+            return false;
+        }
+        return stream_.tput(outbuf, n);
+    }
+
+    bool put(TVal value) {
+        bool success = false;
+        if (put_calls_ == 0) {
+            success = stream_.put(0);
+            if (!success) {
+                return false;
+            }
+        }
+        put_calls_++;
+        success = stream_.put(value - prev_);
+        prev_ = value;
+        return success;
+    }
+
+    size_t size() const { return stream_.size(); }
+
+    bool commit() { return stream_.commit(); }
+};
+
+template <size_t Step, typename TVal>
+struct DeltaDeltaStreamReader {
+    Base128StreamReader& stream_;
+    TVal   prev_;
+    TVal   min_;
+    int    counter_;
+
+    DeltaDeltaStreamReader(Base128StreamReader& stream)
+        : stream_(stream)
+        , prev_()
+        , min_()
+        , counter_()
+    {}
+
+    TVal next() {
+        if (counter_ % Step == 0) {
+            // read min
+            min_ = stream_.next<TVal>();
+        }
+        counter_++;
+        TVal delta = stream_.next<TVal>();
+        TVal value = prev_ + delta + min_;
+        prev_      = value;
+        return value;
+    }
+
+    const unsigned char* pos() const { return stream_.pos(); }
+};
+
+template <typename TVal>
+struct RLEStreamWriter {
     Base128StreamWriter& stream_;
     TVal                 prev_;
     TVal                 reps_;
@@ -321,29 +440,61 @@ template <typename TVal> struct RLEStreamWriter {
         , reps_()
         , start_size_(stream.size()) {}
 
-    void put(TVal value) {
+    bool tput(TVal const* iter, size_t  n) {
+        size_t outpos = 0;
+        TVal outbuf[n*2];
+        for (size_t i = 0; i < n; i++) {
+            auto value = iter[i];
+            if (value != prev_) {
+                if (reps_) {
+                    // commit changes
+                    outbuf[outpos++] = reps_;
+                    outbuf[outpos++] = prev_;
+                }
+                prev_ = value;
+                reps_ = TVal();
+            }
+            reps_++;
+        }
+        // commit RLE if needed
+        if (outpos < n*2) {
+            outbuf[outpos++] = reps_;
+            outbuf[outpos++] = prev_;
+        }
+        prev_ = TVal();
+        reps_ = TVal();
+        // continue
+        return stream_.tput(outbuf, outpos);
+    }
+
+    bool put(TVal value) {
+        //
         if (value != prev_) {
             if (reps_) {
                 // commit changes
-                stream_.put(reps_);
-                stream_.put(prev_);
+                if (!stream_.put(reps_)) {
+                    return false;
+                }
+                if (!stream_.put(prev_)) {
+                    return false;
+                }
             }
             prev_ = value;
             reps_ = TVal();
         }
         reps_++;
+        return true;
     }
 
     size_t size() const { return stream_.size() - start_size_; }
 
-    void commit() {
-        stream_.put(reps_);
-        stream_.put(prev_);
-        stream_.commit();
+    bool commit() {
+        return stream_.put(reps_) && stream_.put(prev_) && stream_.commit();
     }
 };
 
-template <typename TVal> struct RLEStreamReader {
+template <typename TVal>
+struct RLEStreamReader {
     Base128StreamReader& stream_;
     TVal                 prev_;
     TVal                 reps_;
@@ -362,9 +513,84 @@ template <typename TVal> struct RLEStreamReader {
         return prev_;
     }
 
-    unsigned char* pos() const { return stream_.pos(); }
+    const unsigned char* pos() const { return stream_.pos(); }
 };
 
+struct FcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    const uint64_t MASK_;
+
+    FcmPredictor(size_t table_size);
+
+    uint64_t predict_next() const;
+
+    void update(uint64_t value);
+};
+
+struct DfcmPredictor {
+    std::vector<uint64_t> table;
+    uint64_t last_hash;
+    uint64_t last_value;
+    const uint64_t MASK_;
+
+    //! C-tor. `table_size` should be a power of two.
+    DfcmPredictor(int table_size);
+
+    uint64_t predict_next() const;
+
+    void update(uint64_t value);
+};
+
+typedef FcmPredictor PredictorT;
+
+struct FcmStreamWriter {
+    Base128StreamWriter& stream_;
+    PredictorT predictor_;
+    uint64_t prev_diff_;
+    unsigned char prev_flag_;
+    int nelements_;
+
+    FcmStreamWriter(Base128StreamWriter& stream);
+
+    bool tput(double const* values, size_t n);
+
+    bool put(double value);
+
+    size_t size() const;
+
+    bool commit();
+};
+
+struct FcmStreamReader {
+    Base128StreamReader& stream_;
+    PredictorT predictor_;
+    int flags_;
+    int iter_;
+
+    FcmStreamReader(Base128StreamReader& stream);
+
+    double next();
+
+    const unsigned char* pos() const;
+};
+
+
+//! SeriesSlice represents consiquent data points from one series
+struct SeriesSlice {
+    //! Series id
+    aku_ParamId id;
+    //! Pointer to the array of timestamps
+    aku_Timestamp* ts;
+    //! Pointer to the array of values
+    double* value;
+    //! Array size
+    size_t size;
+    //! Current position
+    size_t offset;
+};
+
+// Old depricated functions
 struct CompressionUtil {
 
     /** Compress and write ChunkHeader to memory stream.
@@ -420,6 +646,7 @@ struct CompressionUtil {
     static bool convert_from_time_order(const UncompressedChunk& header, UncompressedChunk* out);
 };
 
+
 // Length -> RLE -> Base128
 typedef RLEStreamWriter<uint32_t> RLELenWriter;
 
@@ -429,10 +656,86 @@ typedef RLEStreamReader<uint32_t> RLELenReader;
 // int64_t -> Delta -> ZigZag -> RLE -> Base128
 typedef RLEStreamWriter<int64_t> __RLEWriter;
 typedef ZigZagStreamWriter<__RLEWriter, int64_t>   __ZigZagWriter;
-typedef DeltaStreamWriter<__ZigZagWriter, int64_t> DeltaRLEWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, int64_t> ZDeltaRLEWriter;
 
 // Base128 -> RLE -> ZigZag -> Delta -> int64_t
 typedef RLEStreamReader<int64_t> __RLEReader;
 typedef ZigZagStreamReader<__RLEReader, int64_t>   __ZigZagReader;
-typedef DeltaStreamReader<__ZigZagReader, int64_t> DeltaRLEReader;
+typedef DeltaStreamReader<__ZigZagReader, int64_t> ZDeltaRLEReader;
+
+// uint64_t -> Delta -> RLE -> Base128
+typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
+// Base128 -> RLE -> Delta -> uint64_t
+typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
+
+
+namespace StorageEngine {
+
+struct DataBlockWriter {
+    enum {
+        CHUNK_SIZE = 16,
+        CHUNK_MASK = 15,
+        HEADER_SIZE = 14, // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
+    };
+    Base128StreamWriter stream_;
+    DeltaRLEWriter ts_stream_;
+    FcmStreamWriter val_stream_;
+    int write_index_;
+    aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
+    double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
+    uint16_t* nchunks_;
+    uint16_t* ntail_;
+
+    //! Empty c-tor. Constructs unwritable object.
+    DataBlockWriter();
+
+    /** C-tor
+      * @param id Series id.
+      * @param size Block size.
+      * @param buf Pointer to buffer.
+      */
+    DataBlockWriter(aku_ParamId id, uint8_t* buf, int size);
+
+    /** Append value to block.
+      * @param ts Timestamp.
+      * @param value Value.
+      * @return AKU_EOVERFLOW when block is full or AKU_SUCCESS.
+      */
+    aku_Status put(aku_Timestamp ts, double value);
+
+    size_t commit();
+
+    //! Read tail elements (the ones not yet written to output stream)
+    void read_tail_elements(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
+
+    int get_write_index() const;
+private:
+    //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
+    bool room_for_chunk() const;
+};
+
+struct DataBlockReader {
+    enum {
+        CHUNK_SIZE = 16,
+        CHUNK_MASK = 15,
+    };
+    const uint8_t* begin_;
+    Base128StreamReader stream_;
+    DeltaRLEReader ts_stream_;
+    FcmStreamReader val_stream_;
+    aku_Timestamp read_buffer_[CHUNK_SIZE];
+    uint32_t read_index_;
+
+    DataBlockReader(uint8_t const* buf, size_t bufsize);
+
+    std::tuple<aku_Status, aku_Timestamp, double> next();
+
+    size_t nelements() const;
+
+    aku_ParamId get_id() const;
+
+    uint16_t version() const;
+};
+
+}  // namespace V2
 }

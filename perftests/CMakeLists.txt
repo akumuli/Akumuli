@@ -115,12 +115,15 @@ add_executable(
     perf_compression
     perf_compression.cpp
     perftest_tools.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/util.cpp
 )
 
 target_link_libraries(
     perf_compression
     z
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_compression PROPERTIES EXCLUDE_FROM_ALL 1)
@@ -166,7 +169,7 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/sequencer.cpp
     ../libakumuli/cursor.cpp
-    ../libakumuli/compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
@@ -199,3 +202,45 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# Blockstore perftest
+add_executable(
+    perf_blockstore
+    perf_blockstore.cpp
+    perftest_tools.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+)
+
+target_link_libraries(
+    perf_blockstore
+    jemalloc
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_blockstore PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# NBTree perftest
+add_executable(
+    perf_nbtree
+    perf_nbtree.cpp
+    perftest_tools.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+)
+
+target_link_libraries(
+    perf_nbtree
+    jemalloc
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_nbtree PROPERTIES EXCLUDE_FROM_ALL 1)

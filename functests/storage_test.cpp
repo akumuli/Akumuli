@@ -631,7 +631,7 @@ int main(int argc, const char** argv) {
         dir.pop_back();
     }
     std::cout << "Working directory: " << dir << std::endl;
-    aku_initialize(nullptr);
+    aku_initialize(nullptr, nullptr);
 
     uint32_t compression_threshold = 5;
     uint64_t windowsize = 1;

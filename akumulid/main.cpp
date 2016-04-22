@@ -479,7 +479,7 @@ void panic_handler(const char * msg) {
 
 int main(int argc, char** argv) {
 
-    aku_initialize(&panic_handler);
+    aku_initialize(&panic_handler, &static_logger);
 
     try {
         // Init logger

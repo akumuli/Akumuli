@@ -1,4 +1,4 @@
-#include "compression.h"
+#include "storage_engine/compression.h"
 #include "perftest_tools.h"
 
 #include <iostream>

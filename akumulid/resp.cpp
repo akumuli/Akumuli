@@ -45,7 +45,10 @@ uint64_t RESPStream::_read_int_body() {
     int quota = MAX_DIGITS;
     while(quota) {
         Byte c = stream_->get();
-        if (c == '\r') {
+        if (c == '\n') {
+            // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
+            return result;
+        } else if (c == '\r') {
             c = stream_->get();
             if (c == '\n') {
                 return result;
@@ -80,7 +83,9 @@ int RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
     int quota = std::min(byte_buffer_size, (size_t)RESPStream::STRING_LENGTH_MAX);
     while(quota) {
         Byte c = stream_->get();
-        if (c == '\r') {
+        if (c == '\n') {
+            return p - buffer;
+        } else if (c == '\r') {
             c = stream_->get();
             if (c == '\n') {
                 return p - buffer;
@@ -127,9 +132,17 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
         // stream error
         return nread;
     }
+    bool bad_eos = false;
     Byte cr = stream_->get();
-    Byte lf = stream_->get();
-    if (cr != '\r' || lf != '\n') {
+    if (cr == '\r') {
+        Byte lf = stream_->get();
+        if (cr != '\r' || lf != '\n') {
+            bad_eos = true;
+        }
+    } else if (cr != '\n') {
+        bad_eos = true;
+    }
+    if (bad_eos) {
         auto ctx = stream_->get_error_context("bad end of stream");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }

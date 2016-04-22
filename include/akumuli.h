@@ -165,9 +165,10 @@ typedef struct {
 //-------------------
 
 /** This function must be called before any other library function.
-  * @param optional_panic_handler function to alternative panic handler
+  * @param optional_panic_handler Panic handler.
+  * @param logger Logger callback function.
   */
-AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler);
+AKU_EXPORT void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t logger);
 
 /** Convert error code to error message.
   * Function returns pointer to statically allocated string
