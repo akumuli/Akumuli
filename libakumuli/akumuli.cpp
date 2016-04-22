@@ -54,7 +54,7 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t 
         logger = &aku_console_logger;
         aku_console_logger(AKU_LOG_ERROR, "Logger not set, console logger will be used");
     }
-    V2::Logger::set_logger(logger);
+    Logger::set_logger(logger);
     // initialize libapr
     apr_initialize();
     // initialize aprdbd

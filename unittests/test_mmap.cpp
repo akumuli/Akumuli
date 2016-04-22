@@ -18,7 +18,7 @@ void test_logger(aku_LogLevel tag, const char* msg) {
 struct AkumuliInitializer {
     AkumuliInitializer() {
         apr_initialize();
-        Akumuli::V2::Logger::set_logger(&test_logger);
+        Akumuli::Logger::set_logger(&test_logger);
     }
 };
 
