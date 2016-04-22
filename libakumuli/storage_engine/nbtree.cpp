@@ -31,6 +31,7 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev)
     subtree->id = id;
     subtree->version = AKUMULI_VERSION;
     subtree->payload_size = 0;
+    subtree->fan_out_index = 0; // TODO: set correct value
     // values that should be updated by insert
     subtree->begin = std::numeric_limits<aku_Timestamp>::max();
     subtree->end = 0;
@@ -125,10 +126,11 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
     return status;
 }
 
-std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore) {
+std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore, uint16_t fan_out) {
     size_t size = writer_.commit();
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     subtree->payload_size = size;
+    subtree->fan_out_index = fan_out;
     return bstore->append_block(buffer_.data());
 
 }
@@ -145,10 +147,47 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id)
 {
 }
 
-aku_Status NBTreeSuperblock::append(LogicAddr addr, const NBTreeLeaf& leaf) {
+aku_Status NBTreeSuperblock::append(SubtreeRefPayload const& p) {
     SubtreeRef ref;
-    ref.addr = addr;
-    // calculate leaf stats
+    ref.version = AKUMULI_VERSION;
+    ref.level = 1;  // because leaf node was added
+    ref.payload_size = 0;  // Not used in supernodes
+
+    ref.addr = p.addr;
+    ref.max = p.max;
+    ref.min = p.min;
+    ref.sum = p.sum;
+    ref.begin = p.begin;
+    ref.end = p.end;
+    ref.id = p.id;
+    ref.count = p.count;
+
+    // Write data into buffer
+    SubtreeRef* pref = subtree_cast(buffer_.data());
+    pref += (1 + write_pos_);
+    *pref = ref;
+    write_pos_++;
+    return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<BlockStore> bstore) {
+    SubtreeRef* backref = subtree_cast(buffer_.data());
+    // Fill data
+    throw "not implemented";
+}
+
+bool NBTreeSuperblock::is_full() const {
+    throw "not implemented";
+}
+
+
+// //////////////////////// //
+//        NBTreeRoot        //
+// //////////////////////// //
+
+
+//! Initialize object from leaf node
+static aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRefPayload& out) {
     std::vector<aku_Timestamp> ts;
     std::vector<double> xs;
     aku_Status status = leaf.read_all(&ts, &xs);
@@ -167,32 +206,131 @@ aku_Status NBTreeSuperblock::append(LogicAddr addr, const NBTreeLeaf& leaf) {
         max = std::max(max, x);
         sum = sum + x;
     }
-    ref.max = max;
-    ref.min = min;
-    ref.sum = sum;
-    ref.begin = ts.front();
-    ref.end = ts.back();
-    ref.level = 1;  // because leaf node was added
-    ref.version = AKUMULI_VERSION;
-    ref.payload_size = 0;  // Not used in supernodes
-    ref.id = id_;
-    ref.count = (uint32_t)xs.size();
-
-    // Write data into buffer
-    SubtreeRef* pref = subtree_cast(buffer_.data());
-    pref += write_pos_;
-    *pref = ref;
-    write_pos_++;
+    out.max = max;
+    out.min = min;
+    out.sum = sum;
+    out.begin = ts.front();
+    out.end = ts.back();
+    out.count = xs.size();
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<BlockStore> bstore) {
-    throw "not implemented";
-}
 
-bool NBTreeSuperblock::is_full() const {
-    throw "not implemented";
-}
+struct NBTreeRoot {
+    virtual ~NBTreeRoot() = default;
+    virtual void append(aku_Timestamp ts, double value) = 0;
+    virtual void commit() = 0;
+    virtual void append(SubtreeRefPayload const& pl) = 0;
+};
+
+
+struct NBTreeLeafRoot : NBTreeRoot {
+    std::shared_ptr<BlockStore> bstore_;
+    std::shared_ptr<NBTreeRoot> root_;
+    aku_ParamId id_;
+    LogicAddr last_;
+    std::unique_ptr<NBTreeLeaf> leaf_;
+    uint16_t fan_out_index_;
+
+    NBTreeLeafRoot(std::shared_ptr<BlockStore> bstore,
+                   std::shared_ptr<NBTreeRoot> root,
+                   aku_ParamId id,
+                   LogicAddr last)
+        : bstore_(bstore)
+        , root_(root)
+        , id_(id)
+        , last_(last)
+        , fan_out_index_(0)
+    {
+        if (last_ != EMPTY) {
+            // Tricky part - load previous node and calculate fanout.
+            // Higher level should be initialized as well.
+            aku_Status status;
+            std::shared_ptr<Block> block;
+            std::tie(status, block) = bstore_->read_block(last_);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Invalid argument");
+            }
+            auto psubtree = subtree_cast(block->get_data());
+            fan_out_index_ = psubtree->fan_out_index + 1;
+            if (fan_out_index_ == AKU_NBTREE_FANOUT) {
+                fan_out_index_ = 0;
+                // TODO: implement. Something like this should work:
+                // tmp = load(last_)
+                // NBTreeLeafSubtree sub(tmp, last_);
+                // this->root_->append(sub);
+                AKU_PANIC("Not implemented (1)");
+            }
+        }
+        reset_leaf();
+    }
+
+    virtual void append(aku_Timestamp ts, double value) {
+        // Invariant: leaf_ should be initialized, if leaf_ is full
+        // and pushed to block-store, reset_leaf should be called
+        aku_Status status = leaf_->append(ts, value);
+        if (status == AKU_EOVERFLOW) {
+            LogicAddr addr;
+            std::tie(status, addr) = leaf_->commit(bstore_, fan_out_index_++);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Can't append data to the NBTree instance");
+            }
+            if (fan_out_index_ == AKU_NBTREE_FANOUT) {
+                fan_out_index_ = 0;
+                last_ = EMPTY;
+                SubtreeRefPayload payload;
+                status = init_subtree_from_leaf(leaf_, payload);
+                if (status != AKU_SUCCESS) {
+                    // This shouldn't happen because leaf node can't be
+                    // empty just after overflow.
+                    AKU_PANIC("Leaf shouldn't be empty");
+                }
+                payload.addr = addr;
+                payload.id = id_;
+                root_->append(subtree);
+            }
+            last_ = addr;
+            reset_leaf();
+            // There should be only one level of recursion, no looping.
+            // Stack overflow here means that there is a logic error in
+            // the program that results in NBTreeLeaf::append always
+            // returning AKU_EOVERFLOW.
+            append(ts, value);
+        }
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Unexpected error from NBTreeLeaf");  // it should return only AKU_EOVERFLOW
+        }
+    }
+
+    void reset_leaf() {
+        leaf_.reset(new NBTreeLeaf(id_, last_));
+    }
+
+    virtual void commit() {
+        // Forcibly commit changes, even if current page is not full
+        AKU_PANIC("Not implemented (3)");
+    }
+};
+
+
+struct NBSuperblockRoot : NBTreeRoot {
+    std::shared_ptr<BlockStore> bstore_;
+    std::unique_ptr<NBTreeSuperblock> curr_;
+    uint16_t fan_out_index_;
+
+    virtual void append(aku_Timestamp ts, double value) {
+        AKU_PANIC("Data should be added to the root 0");
+    }
+
+    virtual void append(SubtreeRefPayload const& pl) {
+        auto status = curr_->append(pl);
+        if (status == AKU_EOVERFLOW) {
+            // TODO: handle overflow
+        }
+        AKU_PANIC("Not implemented (4)");
+    }
+};
+
 
 // //////////////////////// //
 //          NBTree          //
