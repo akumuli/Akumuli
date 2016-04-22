@@ -141,6 +141,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
 NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id)
     : buffer_(AKU_BLOCK_SIZE, 0)
     , id_(id)
+    , write_pos_(0)
 {
 }
 
@@ -176,8 +177,21 @@ aku_Status NBTreeSuperblock::append(LogicAddr addr, const NBTreeLeaf& leaf) {
     ref.payload_size = 0;  // Not used in supernodes
     ref.id = id_;
     ref.count = (uint32_t)xs.size();
-    AKU_UNUSED(ref); // TODO: write it into buffer
+
+    // Write data into buffer
+    SubtreeRef* pref = subtree_cast(buffer_.data());
+    pref += write_pos_;
+    *pref = ref;
+    write_pos_++;
     return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<BlockStore> bstore) {
+    throw "not implemented";
+}
+
+bool NBTreeSuperblock::is_full() const {
+    throw "not implemented";
 }
 
 // //////////////////////// //

@@ -65,6 +65,9 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+enum {
+    AKU_NBTREE_FANOUT=64,
+};
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
@@ -163,10 +166,15 @@ public:
 class NBTreeSuperblock {
     std::vector<uint8_t> buffer_;
     aku_ParamId id_;
+    uint32_t write_pos_;
 public:
     NBTreeSuperblock(aku_ParamId id);
 
     aku_Status append(LogicAddr addr, const NBTreeLeaf& leaf);
+
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    bool is_full() const;
 };
 
 class NBTree;
