@@ -177,7 +177,6 @@ std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) 
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, 0ull);
         }
-        return std::make_tuple(status, make_logic(current_gen_, block_addr));
     }
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
