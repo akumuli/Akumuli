@@ -6,7 +6,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t>&& data)
+Block::Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<uint8_t>&& data)
     : store_(bs)
     , data_(std::move(data))
     , addr_(addr)
@@ -22,7 +22,7 @@ size_t Block::get_size() const {
 }
 
 
-BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
+FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
 {
     for (uint32_t ix = 0ul; ix < volpaths.size(); ix++) {
@@ -69,9 +69,23 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
     }
 }
 
-std::shared_ptr<BlockStore> BlockStore::open(std::string metapath, std::vector<std::string> volpaths) {
-    auto bs = new BlockStore(metapath, volpaths);
-    return std::shared_ptr<BlockStore>(bs);
+std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
+    auto bs = new FixedSizeFileStorage(metapath, volpaths);
+    return std::shared_ptr<FixedSizeFileStorage>(bs);
+}
+
+void FixedSizeFileStorage::create(std::string metapath,
+                                  std::vector<std::tuple<uint32_t, std::string>> vols)
+{
+    std::vector<uint32_t> caps;
+    for (auto cp: vols) {
+        std::string path;
+        uint32_t capacity;
+        std::tie(capacity, path) = cp;
+        Volume::create_new(path.c_str(), capacity);
+        caps.push_back(capacity);
+    }
+    MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
 static uint32_t extract_gen(LogicAddr addr) {
@@ -86,7 +100,7 @@ static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
     return static_cast<uint64_t>(gen) << 32 | addr;
 }
 
-bool BlockStore::exists(LogicAddr addr) const {
+bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
@@ -104,7 +118,7 @@ bool BlockStore::exists(LogicAddr addr) const {
     return actual_gen == gen && vol < nblocks;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
+std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
@@ -132,7 +146,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr 
     return std::make_tuple(status, std::move(block));
 }
 
-void BlockStore::advance_volume() {
+void FixedSizeFileStorage::advance_volume() {
     Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
     current_volume_ = (current_volume_ + 1) % volumes_.size();
     aku_Status status;
@@ -166,7 +180,7 @@ void BlockStore::advance_volume() {
     }
 }
 
-std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) {
+std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(uint8_t const* data) {
     BlockAddr block_addr;
     aku_Status status;
     std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);
@@ -186,7 +200,7 @@ std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) 
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 
-void BlockStore::flush() {
+void FixedSizeFileStorage::flush() {
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
         if (dirty_[ix]) {
             dirty_[ix] = 0;

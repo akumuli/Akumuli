@@ -40,7 +40,7 @@ int main() {
     Volume::create_new(paths[0].c_str(), caps[0]);
     Volume::create_new(paths[1].c_str(), caps[1]);
     MetaVolume::create_new(metapath.c_str(), 2, caps);
-    auto bstore = BlockStore::open(metapath, paths);
+    auto bstore = FixedSizeFileStorage::open(metapath, paths);
 
     NBTree tree_a(42, bstore);
     NBTree tree_b(24, bstore);
