@@ -20,10 +20,11 @@ static SubtreeRef const* subtree_cast(uint8_t const* p) {
     return reinterpret_cast<SubtreeRef const*>(p);
 }
 
-NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev)
+NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index)
     : prev_(prev)
     , buffer_(AKU_BLOCK_SIZE, 0)
     , writer_(id, buffer_.data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
+    , fanout_index_(fanout_index)
 {
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     subtree->addr = prev;
@@ -31,7 +32,7 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev)
     subtree->id = id;
     subtree->version = AKUMULI_VERSION;
     subtree->payload_size = 0;
-    subtree->fan_out_index = 0; // TODO: set correct value
+    subtree->fanout_index = 0; // TODO: set correct value
     // values that should be updated by insert
     subtree->begin = std::numeric_limits<aku_Timestamp>::max();
     subtree->end = 0;
@@ -61,6 +62,7 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafL
     }
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     prev_ = subtree->addr;
+    fanout_index_ = subtree->fanout_index;
 }
 
 size_t NBTreeLeaf::nelements() {
@@ -126,11 +128,10 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
     return status;
 }
 
-std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore, uint16_t fan_out) {
+std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore) {
     size_t size = writer_.commit();
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     subtree->payload_size = size;
-    subtree->fan_out_index = fan_out;
     return bstore->append_block(buffer_.data());
 
 }
@@ -171,7 +172,7 @@ aku_Status NBTreeSuperblock::append(SubtreeRefPayload const& p) {
 }
 
 std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<BlockStore> bstore) {
-    SubtreeRef* backref = subtree_cast(buffer_.data());
+    //SubtreeRef* backref = subtree_cast(buffer_.data());
     // Fill data
     throw "not implemented";
 }
@@ -230,7 +231,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     aku_ParamId id_;
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
-    uint16_t fan_out_index_;
+    uint16_t fanout_index_;
 
     NBTreeLeafRoot(std::shared_ptr<BlockStore> bstore,
                    std::shared_ptr<NBTreeRoot> root,
@@ -240,7 +241,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         , root_(root)
         , id_(id)
         , last_(last)
-        , fan_out_index_(0)
+        , fanout_index_(0)
     {
         if (last_ != EMPTY) {
             // Tricky part - load previous node and calculate fanout.
@@ -252,9 +253,9 @@ struct NBTreeLeafRoot : NBTreeRoot {
                 AKU_PANIC("Invalid argument");
             }
             auto psubtree = subtree_cast(block->get_data());
-            fan_out_index_ = psubtree->fan_out_index + 1;
-            if (fan_out_index_ == AKU_NBTREE_FANOUT) {
-                fan_out_index_ = 0;
+            fanout_index_ = psubtree->fanout_index + 1;
+            if (fanout_index_ == AKU_NBTREE_FANOUT) {
+                fanout_index_ = 0;
                 // TODO: implement. Something like this should work:
                 // tmp = load(last_)
                 // NBTreeLeafSubtree sub(tmp, last_);
@@ -271,15 +272,16 @@ struct NBTreeLeafRoot : NBTreeRoot {
         aku_Status status = leaf_->append(ts, value);
         if (status == AKU_EOVERFLOW) {
             LogicAddr addr;
-            std::tie(status, addr) = leaf_->commit(bstore_, fan_out_index_++);
+            std::tie(status, addr) = leaf_->commit(bstore_);
+            fanout_index_++;
             if (status != AKU_SUCCESS) {
                 AKU_PANIC("Can't append data to the NBTree instance");
             }
-            if (fan_out_index_ == AKU_NBTREE_FANOUT) {
-                fan_out_index_ = 0;
+            if (fanout_index_ == AKU_NBTREE_FANOUT) {
+                fanout_index_ = 0;
                 last_ = EMPTY;
                 SubtreeRefPayload payload;
-                status = init_subtree_from_leaf(leaf_, payload);
+                status = init_subtree_from_leaf(*leaf_, payload);
                 if (status != AKU_SUCCESS) {
                     // This shouldn't happen because leaf node can't be
                     // empty just after overflow.
@@ -287,7 +289,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
                 }
                 payload.addr = addr;
                 payload.id = id_;
-                root_->append(subtree);
+                root_->append(payload);
             }
             last_ = addr;
             reset_leaf();
@@ -303,7 +305,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     }
 
     void reset_leaf() {
-        leaf_.reset(new NBTreeLeaf(id_, last_));
+        leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
 
     virtual void commit() {
@@ -346,7 +348,8 @@ NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
 }
 
 void NBTree::reset_leaf() {
-    leaf_.reset(new NBTreeLeaf(id_, last_));
+    // TODO: this should be replaced with NBTreeRoot's logic
+    leaf_.reset(new NBTreeLeaf(id_, last_, 0));
 }
 
 void NBTree::append(aku_Timestamp ts, double value) {

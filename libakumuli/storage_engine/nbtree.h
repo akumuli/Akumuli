@@ -107,7 +107,7 @@ struct SubtreeRef : SubtreeRefPayload {
     //! Payload size (real)
     uint16_t      payload_size;
     //! Fan out index of the element (current)
-    uint16_t      fan_out_index;
+    uint16_t      fanout_index;
 } __attribute__((packed));
 
 
@@ -121,6 +121,8 @@ class NBTreeLeaf {
     std::vector<uint8_t> buffer_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
+    //! Fanout index
+    uint16_t fanout_index_;
 public:
     enum class LeafLoadMethod {
         FULL_PAGE_LOAD, ONLY_HEADER,
@@ -130,8 +132,9 @@ public:
       * @param id Series id.
       * @param link to block store.
       * @param prev Prev element of the tree.
+      * @param fanout_index Index inside current fanout
       */
-    NBTreeLeaf(aku_ParamId id, LogicAddr prev);
+    NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -163,7 +166,7 @@ public:
     /** Flush all pending changes to block store and close.
       * Calling this function too often can result in unoptimal space usage.
       */
-    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore, uint16_t fan_out);
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
 };
 
 

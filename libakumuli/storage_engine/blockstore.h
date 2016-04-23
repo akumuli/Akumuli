@@ -9,6 +9,27 @@ typedef uint64_t LogicAddr;
 
 class Block;
 
+//struct BlockStore {
+
+//    ~BlockStore() = default;
+
+//    /** Read block from blockstore
+//      */
+//    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr) = 0;
+
+//    /** Add block to blockstore.
+//      * @param data Pointer to buffer.
+//      * @return Status and block's logic address.
+//      */
+//    virtual std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data) = 0;
+
+//    //! Flush all pending changes.
+//    virtual void flush() = 0;
+
+//    //! Check if addr exists in block-store
+//    virtual bool exists(LogicAddr addr) const = 0;
+//};
+
 /** Blockstore. Contains collection of volumes.
   * Translates logic adresses into physical ones.
   */
