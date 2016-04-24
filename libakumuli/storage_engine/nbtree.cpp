@@ -5,6 +5,17 @@
 #include "nbtree.h"
 #include "akumuli_version.h"
 
+/** NOTE:
+  * BlockStore should have cache. This cache should be implemented on
+  * _this_ level because importance of each block should be taken into
+  * account. Eviction algorithm should check whether or not block was
+  * actually deleted. Alg. for this:
+  * 1. Get weak ptr for the block.
+  * 2. Remove block from cache.
+  * 3. Try to lock weak ptr. On success try to remove another block.
+  * 4. Otherwise we done.
+  */
+
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -227,18 +238,18 @@ struct NBTreeRoot {
 
 struct NBTreeLeafRoot : NBTreeRoot {
     std::shared_ptr<BlockStore> bstore_;
-    std::shared_ptr<NBTreeRoot> root_;
+    std::weak_ptr<NBTreeRootsCollection> roots_;
     aku_ParamId id_;
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
     uint16_t fanout_index_;
 
     NBTreeLeafRoot(std::shared_ptr<BlockStore> bstore,
-                   std::shared_ptr<NBTreeRoot> root,
+                   std::shared_ptr<NBTreeRootsCollection> roots,
                    aku_ParamId id,
                    LogicAddr last)
         : bstore_(bstore)
-        , root_(root)
+        , roots_(roots)
         , id_(id)
         , last_(last)
         , fanout_index_(0)
@@ -289,7 +300,11 @@ struct NBTreeLeafRoot : NBTreeRoot {
                 }
                 payload.addr = addr;
                 payload.id = id_;
-                root_->append(payload);
+                auto ptr = roots_.lock();
+                if (ptr) {
+                    auto root = ptr->get_root_at(1);
+                    root->append(payload);
+                }
             }
             last_ = addr;
             reset_leaf();

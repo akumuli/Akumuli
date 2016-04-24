@@ -222,7 +222,18 @@ public:
     void proceed();
 };
 
+
+//! Fwd ref. Implemented in nbtree.cpp.
 class NBTreeRoot;
+
+
+/** This class represents set of roots
+  * of the NBTree.
+  */
+class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
+public:
+    std::unique_ptr<NBTreeRoot> get_root_at(uint32_t level);
+};
 
 /** This object represents block store backed tree.
   * It contains data from one time-series.
