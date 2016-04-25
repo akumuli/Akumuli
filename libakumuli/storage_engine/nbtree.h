@@ -227,12 +227,19 @@ public:
 class NBTreeRoot;
 
 
-/** This class represents set of roots
-  * of the NBTree.
+/** @brief This class represents set of roots of the NBTree.
+  * It serves two purposes:
+  * @li store all roots of the NBTree
+  * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
   */
 class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
+    std::shared_ptr<BlockStore> bstore_;
 public:
-    std::unique_ptr<NBTreeRoot> get_root_at(uint32_t level);
+    //! Acquire tree root (removes root from collection)
+    std::unique_ptr<NBTreeRoot> lease(uint32_t level);
+
+    //! Release tree root.
+    void release(std::unique_ptr<NBTreeRoot> root);
 };
 
 /** This object represents block store backed tree.
