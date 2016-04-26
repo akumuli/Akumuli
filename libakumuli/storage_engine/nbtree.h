@@ -170,20 +170,33 @@ public:
 };
 
 
-/** NBTree superblock. Stores links to other nodes.
+/** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
     std::vector<uint8_t> buffer_;
     aku_ParamId id_;
     uint32_t write_pos_;
+    uint16_t fanout_index_;
+    uint16_t level_;
+    LogicAddr prev_;
+    bool immutable_;
 public:
-    NBTreeSuperblock(aku_ParamId id);
+    //! Create new writable node.
+    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, uint16_t fanout, uint16_t lvl);
 
+    //! Create node from block-store (node is immutable).
+    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+
+    //! Append subtree ref
     aku_Status append(SubtreeRefPayload const& p);
 
+    //! Commit changes (even if node is not full)
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
 
+    //! Check if node is full (always true if node is immutable - c-tor #2)
     bool is_full() const;
+
+    aku_Status read_all(std::vector<SubtreeRef>* refs) const;
 };
 
 class NBTree;
