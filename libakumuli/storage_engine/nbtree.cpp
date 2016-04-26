@@ -404,7 +404,6 @@ struct NBTreeLeafRoot : NBTreeRoot {
         LogicAddr addr;
         aku_Status status;
         std::tie(status, addr) = leaf_->commit(bstore_);
-        fanout_index_++;
         if (status != AKU_SUCCESS) {
             AKU_PANIC("Can't write leaf-node to block-store");
         }
@@ -431,6 +430,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
             // stops.
             AKU_PANIC("Roots collection destroyed");
         }
+        fanout_index_++;
         if (fanout_index_ == AKU_NBTREE_FANOUT) {
             fanout_index_ = 0;
             last_ = EMPTY;
@@ -494,7 +494,45 @@ struct NBSuperblockRoot : NBTreeRoot {
     }
 
     virtual void commit() {
-        throw "not implemented";
+        // Invariant: after call to this method data from `curr_` should
+        // endup in block store, upper level root node should be updated
+        // and `curr_` variable should be reset.
+        // Otherwise: panic should be triggered.
+
+        LogicAddr addr;
+        aku_Status status;
+        std::tie(status, addr) = curr_->commit(bstore_);
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't write leaf-node to block-store");
+        }
+        // Gather stats and send them to upper-level node
+        SubtreeRefPayload payload;
+        status = init_subtree_from_subtree(*curr_, payload);
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can summarize current node");  // TODO: status code to msg
+        }
+        payload.addr = addr;
+        payload.id = id_;
+        auto roots_collection = roots_.lock();
+        if (roots_collection) {
+            auto root = roots_collection->lease(level_ + 1);
+            root->append(payload);
+
+            BOOST_SCOPE_EXIT_ALL(&) { roots_collection->release(std::move(root)); };
+
+        } else {
+            // Invariant broken.
+            // Roots collection was destroyed before write process
+            // stops.
+            AKU_PANIC("Roots collection destroyed");
+        }
+        fanout_index_++;
+        if (fanout_index_ == AKU_NBTREE_FANOUT) {
+            fanout_index_ = 0;
+            last_ = EMPTY;
+        }
+        last_ = addr;
+        reset_subtree();
     }
 };
 
