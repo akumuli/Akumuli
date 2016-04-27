@@ -42,17 +42,17 @@ template <class Derived, int SEARCH_QUOTA = 4> struct InterpolationSearch {
             return false;
         }
         u32 probe_index                = 0u;
-        int      interpolation_search_quota = SEARCH_QUOTA;
-        int      steps_count                = 0;
-        int      small_range_finish         = 0;
-        int      page_scan_steps_num        = 0;
-        int      page_scan_errors           = 0;
-        int      page_scan_success          = 0;
-        int      page_miss                  = 0;
+        int interpolation_search_quota = SEARCH_QUOTA;
+        int steps_count                = 0;
+        int small_range_finish         = 0;
+        int page_scan_steps_num        = 0;
+        int page_scan_errors           = 0;
+        int page_scan_success          = 0;
+        int page_miss                  = 0;
 
-        u64      overshoot     = 0u;
-        u64      undershoot    = 0u;
-        u64      exact_match   = 0u;
+        u64           overshoot     = 0u;
+        u64           undershoot    = 0u;
+        u64           exact_match   = 0u;
         aku_Timestamp prev_step_err = 0u;
         I10nState     state         = NONE;
 

@@ -15,7 +15,7 @@ struct BlockStore {
 
     /** Read block from blockstore
       */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr) = 0;
+    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) = 0;
 
     /** Add block to blockstore.
       * @param data Pointer to buffer.
@@ -34,8 +34,7 @@ struct BlockStore {
   * Translates logic adresses into physical ones.
   */
 class FixedSizeFileStorage : public BlockStore,
-                             public std::enable_shared_from_this<FixedSizeFileStorage>
-{
+                             public std::enable_shared_from_this<FixedSizeFileStorage> {
     //! Metadata volume.
     std::unique_ptr<MetaVolume> meta_;
     //! Array of volumes.
@@ -53,16 +52,18 @@ class FixedSizeFileStorage : public BlockStore,
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
 
     void advance_volume();
+
 public:
     /** Create BlockStore instance (can be created only on heap).
       */
-    static std::shared_ptr<FixedSizeFileStorage> open(std::string metapath, std::vector<std::string> volpaths);
+    static std::shared_ptr<FixedSizeFileStorage> open(std::string              metapath,
+                                                      std::vector<std::string> volpaths);
 
     static void create(std::string metapath, std::vector<std::tuple<u32, std::string>> vols);
 
     /** Read block from blockstore
       */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
 
     /** Add block to blockstore.
       * @param data Pointer to buffer.
@@ -80,8 +81,9 @@ public:
 //! Represents memory block
 class Block {
     std::weak_ptr<FixedSizeFileStorage> store_;
-    std::vector<u8> data_;
-    LogicAddr addr_;
+    std::vector<u8>                     data_;
+    LogicAddr                           addr_;
+
 public:
     Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<u8>&& data);
 
@@ -89,5 +91,5 @@ public:
 
     size_t get_size() const;
 };
-
-}}  // namespace
+}
+}  // namespace

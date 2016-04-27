@@ -1,13 +1,13 @@
 #pragma once
 // stdlib
-#include <memory>
 #include <cstdint>
 #include <future>
+#include <memory>
 
 // libraries
 #include <apr.h>
-#include <apr_general.h>
 #include <apr_file_io.h>
+#include <apr_general.h>
 
 // project
 #include "akumuli.h"
@@ -18,9 +18,7 @@ namespace StorageEngine {
 
 //! Address of the block inside volume (index of the block)
 typedef u32 BlockAddr;
-enum {
-    AKU_BLOCK_SIZE = 4096
-};
+enum { AKU_BLOCK_SIZE = 4096 };
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
@@ -36,14 +34,14 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    MemoryMappedFile mmap_;
-    size_t file_size_;
-    u8* mmap_ptr_;
+    MemoryMappedFile        mmap_;
+    size_t                  file_size_;
+    u8*                     mmap_ptr_;
     mutable std::vector<u8> double_write_buffer_;
 
     MetaVolume(const char* path);
-public:
 
+public:
     /** Create new meta-volume.
       * @param path Path to created file.
       * @param capacity Size of the created file (in blocks).
@@ -93,16 +91,15 @@ public:
 };
 
 
-class Volume
-{
+class Volume {
     AprPoolPtr apr_pool_;
     AprFilePtr apr_file_handle_;
-    u32 file_size_;
-    u32 write_pos_;
+    u32        file_size_;
+    u32        write_pos_;
 
     Volume(const char* path, size_t write_pos);
-public:
 
+public:
     /** Create new volume.
       * @param path Path to volume.
       * @param capacity Size of the volume in blocks.

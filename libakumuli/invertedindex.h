@@ -25,7 +25,7 @@
 namespace Akumuli {
 
 struct TwoUnivHashFnFamily {
-    const int             INTERNAL_CARDINALITY_;
+    const int        INTERNAL_CARDINALITY_;
     std::vector<u64> a;
     std::vector<u64> b;
     u64              prime;

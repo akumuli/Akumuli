@@ -23,9 +23,9 @@
 #pragma once
 #include "akumuli.h"
 #include "buffer_cache.h"
-#include "storage_engine/compression.h"
 #include "internal_cursor.h"
 #include "queryprocessor_framework.h"
+#include "storage_engine/compression.h"
 #include "util.h"
 #include <cstdint>
 #include <functional>
@@ -41,7 +41,7 @@ typedef u64 aku_Duration;  //< Time duration
 //! Entry index record
 struct aku_EntryIndexRecord {
     aku_Timestamp timestamp;
-    u32      offset;
+    u32           offset;
 } __attribute__((packed));
 
 struct CompressedChunkDesc {
@@ -55,8 +55,8 @@ struct CompressedChunkDesc {
 struct aku_Entry {
     //aku_Timestamp  time;      //< Entry timestamp
     aku_ParamId param_id;  //< Parameter ID
-    u32    length;    //< Entry length: constant + variable sized parts
-    u32    value[];   //< Data begining
+    u32         length;    //< Entry length: constant + variable sized parts
+    u32         value[];   //< Data begining
 } __attribute__((packed));
 
 //! PageHeader forward declaration
@@ -94,7 +94,7 @@ class PageHeader {
     u32       page_id;      //< page index in storage
     u32       numpages;     //< total number or pages
     u64       length;       //< payload size
-    char           payload[];    //< page payload
+    char      payload[];    //< page payload
 
 public:
     //! Get length of the page
@@ -165,8 +165,7 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    aku_Status add_chunk(const aku_MemRange data, const u32 free_space_required,
-                         u32* out_offset);
+    aku_Status add_chunk(const aku_MemRange data, const u32 free_space_required, u32* out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.

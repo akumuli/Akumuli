@@ -10,7 +10,7 @@ namespace Akumuli {
 namespace QP {
 
 struct RandomSamplingNode : std::enable_shared_from_this<RandomSamplingNode>, Node {
-    const u32          buffer_size_;
+    const u32               buffer_size_;
     std::vector<aku_Sample> samples_;
     Rand                    random_;
     std::shared_ptr<Node>   next_;

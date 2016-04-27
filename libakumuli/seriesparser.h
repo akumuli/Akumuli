@@ -49,7 +49,7 @@ struct SeriesMatcher {
     StringPool               pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
-    u64                 series_id;  //! Series ID counter
+    u64                      series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
     std::mutex               mutex;      //! Mutex for shared data
 

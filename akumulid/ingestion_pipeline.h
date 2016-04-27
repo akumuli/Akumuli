@@ -132,7 +132,7 @@ struct PipelineSpout : ProtocolConsumer {
 
     // Typedefs
     typedef struct { char emptybits[64]; } Padding;  //< Padding
-    typedef std::atomic<u64> SpoutCounter;      //< Shared counter
+    typedef std::atomic<u64> SpoutCounter;           //< Shared counter
     typedef struct {
         aku_Sample       sample;                      //< Value
         SpoutCounter*    cnt;                         //< Pointer to spout's shared counter

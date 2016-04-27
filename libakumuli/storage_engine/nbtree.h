@@ -66,26 +66,26 @@ namespace Akumuli {
 namespace StorageEngine {
 
 enum {
-    AKU_NBTREE_FANOUT=32,
+    AKU_NBTREE_FANOUT = 32,
 };
 
 struct SubtreeRefPayload {
     //! Number of elements in the subtree
-    u64      count;
+    u64 count;
     //! Series Id
-    aku_ParamId   id;
+    aku_ParamId id;
     //! First element's timestamp
     aku_Timestamp begin;
     //! Last element's timestamp
     aku_Timestamp end;
     //! Object addr in blockstore
-    LogicAddr     addr;
+    LogicAddr addr;
     //! Smalles value
-    double        min;
+    double min;
     //! Largest value
-    double        max;
+    double max;
     //! Summ of all elements in subtree
-    double        sum;
+    double sum;
 } __attribute__((packed));
 
 
@@ -101,13 +101,13 @@ struct SubtreeRefPayload {
   */
 struct SubtreeRef : SubtreeRefPayload {
     //! Node version
-    u16      version;
+    u16 version;
     //! Node level in the tree
-    u16      level;
+    u16 level;
     //! Payload size (real)
-    u16      payload_size;
+    u16 payload_size;
     //! Fan out index of the element (current)
-    u16      fanout_index;
+    u16 fanout_index;
 } __attribute__((packed));
 
 
@@ -123,9 +123,11 @@ class NBTreeLeaf {
     DataBlockWriter writer_;
     //! Fanout index
     u16 fanout_index_;
+
 public:
     enum class LeafLoadMethod {
-        FULL_PAGE_LOAD, ONLY_HEADER,
+        FULL_PAGE_LOAD,
+        ONLY_HEADER,
     };
 
     /** Create empty leaf node.
@@ -142,7 +144,7 @@ public:
       * @param load Load method.
       */
     NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr,
-               LeafLoadMethod load=LeafLoadMethod::FULL_PAGE_LOAD);
+               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
 
     //! Returns number of elements.
     size_t nelements();
@@ -174,12 +176,13 @@ public:
  */
 class NBTreeSuperblock {
     std::vector<u8> buffer_;
-    aku_ParamId id_;
-    u32 write_pos_;
-    u16 fanout_index_;
-    u16 level_;
-    LogicAddr prev_;
-    bool immutable_;
+    aku_ParamId     id_;
+    u32             write_pos_;
+    u16             fanout_index_;
+    u16             level_;
+    LogicAddr       prev_;
+    bool            immutable_;
+
 public:
     //! Create new writable node.
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
@@ -202,23 +205,24 @@ public:
 class NBTree;
 
 class NBTreeCursor {
-    NBTree const& tree_;
-    aku_Timestamp start_;
-    aku_Timestamp stop_;
+    NBTree const&          tree_;
+    aku_Timestamp          start_;
+    aku_Timestamp          stop_;
     std::vector<LogicAddr> backpath_;
-    bool eof_;
-    int proceed_calls_;
-    aku_ParamId id_;
+    bool                   eof_;
+    int                    proceed_calls_;
+    aku_ParamId            id_;
 
     enum {
         // On average each 4KB page will contain less then 1024 elements.
-        SPACE_RESERVE=1024,
+        SPACE_RESERVE = 1024,
     };
     std::vector<aku_Timestamp> ts_;
     std::vector<double>        value_;
 
     //! Load next page into memory
     aku_Status load_next_page();
+
 public:
     NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
 
@@ -247,6 +251,7 @@ class NBTreeRoot;
   */
 class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
+
 public:
     //! Acquire tree root (removes root from collection)
     std::unique_ptr<NBTreeRoot> lease(u32 level);
@@ -265,12 +270,13 @@ class NBTree {
 
     //! Blockstore
     std::shared_ptr<BlockStore> bstore_;
-    aku_ParamId id_;
-    LogicAddr last_;
+    aku_ParamId                 id_;
+    LogicAddr                   last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
 
     //! leaf_ is guaranteed to be initialized after call to this method
     void reset_leaf();
+
 public:
     /** C-tor
       * @param id Series id.
@@ -306,7 +312,5 @@ public:
       */
     aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
 };
-
-
-
-}}  // namespaces
+}
+}  // namespaces

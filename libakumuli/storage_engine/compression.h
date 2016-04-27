@@ -146,14 +146,11 @@ struct Base128StreamWriter {
         , end_(other.end_)
         , pos_(other.pos_) {}
 
-    bool empty() const {
-        return begin_ == end_;
-    }
+    bool empty() const { return begin_ == end_; }
 
     /** Put value into stream (transactional).
       */
-    template <class TVal>
-    bool tput(TVal const* iter, size_t n) {
+    template <class TVal> bool tput(TVal const* iter, size_t n) {
         auto oldpos = pos_;
         for (size_t i = 0; i < n; i++) {
             if (!put(iter[i])) {
@@ -167,8 +164,7 @@ struct Base128StreamWriter {
 
     /** Put value into stream.
      */
-    template <class TVal>
-    bool put(TVal value) {
+    template <class TVal> bool put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char*   p = val.put(pos_, end_);
         if (pos_ == p) {
@@ -178,8 +174,7 @@ struct Base128StreamWriter {
         return true;
     }
 
-    template<class TVal>
-    bool put_raw(TVal value) {
+    template <class TVal> bool put_raw(TVal value) {
         if ((end_ - pos_) < (int)sizeof(TVal)) {
             return false;
         }
@@ -199,8 +194,7 @@ struct Base128StreamWriter {
       * compression (needed for size prefixes).
       * @returns pointer to the value inside the stream or nullptr
       */
-    template <class T>
-    T* allocate() {
+    template <class T> T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
             return nullptr;
@@ -218,8 +212,7 @@ struct Base128StreamReader {
 
     Base128StreamReader(const unsigned char* begin, const unsigned char* end)
         : pos_(begin)
-        , end_(end)
-    {}
+        , end_(end) {}
 
     template <class TVal> TVal next() {
         Base128Int<TVal> value;
@@ -247,13 +240,11 @@ struct Base128StreamReader {
     const unsigned char* pos() const { return pos_; }
 };
 
-template <class Stream, class TVal>
-struct ZigZagStreamWriter {
+template <class Stream, class TVal> struct ZigZagStreamWriter {
     Stream stream_;
 
     ZigZagStreamWriter(Base128StreamWriter& stream)
-        : stream_(stream)
-    {}
+        : stream_(stream) {}
 
     bool tput(TVal const* iter, size_t n) {
         TVal outbuf[n];
@@ -292,8 +283,7 @@ template <class Stream, class TVal> struct ZigZagStreamReader {
     const unsigned char* pos() const { return stream_.pos(); }
 };
 
-template <class Stream, typename TVal>
-struct DeltaStreamWriter {
+template <class Stream, typename TVal> struct DeltaStreamWriter {
     Stream stream_;
     TVal   prev_;
 
@@ -314,7 +304,7 @@ struct DeltaStreamWriter {
 
     bool put(TVal value) {
         auto result = stream_.put(static_cast<TVal>(value) - prev_);
-        prev_ = value;
+        prev_       = value;
         return result;
     }
 
@@ -324,8 +314,7 @@ struct DeltaStreamWriter {
 };
 
 
-template <class Stream, typename TVal>
-struct DeltaStreamReader {
+template <class Stream, typename TVal> struct DeltaStreamReader {
     Stream stream_;
     TVal   prev_;
 
@@ -344,17 +333,15 @@ struct DeltaStreamReader {
 };
 
 
-template <size_t Step, typename TVal>
-struct DeltaDeltaStreamWriter {
+template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
     Base128StreamWriter& stream_;
-    TVal   prev_;
-    int put_calls_;
+    TVal                 prev_;
+    int                  put_calls_;
 
     DeltaDeltaStreamWriter(Base128StreamWriter& stream)
         : stream_(stream)
         , prev_()
-        , put_calls_(0)
-    {}
+        , put_calls_(0) {}
 
     bool tput(TVal const* iter, size_t n) {
         assert(n == Step);
@@ -389,7 +376,7 @@ struct DeltaDeltaStreamWriter {
         }
         put_calls_++;
         success = stream_.put(value - prev_);
-        prev_ = value;
+        prev_   = value;
         return success;
     }
 
@@ -398,19 +385,17 @@ struct DeltaDeltaStreamWriter {
     bool commit() { return stream_.commit(); }
 };
 
-template <size_t Step, typename TVal>
-struct DeltaDeltaStreamReader {
+template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
     Base128StreamReader& stream_;
-    TVal   prev_;
-    TVal   min_;
-    int    counter_;
+    TVal                 prev_;
+    TVal                 min_;
+    int                  counter_;
 
     DeltaDeltaStreamReader(Base128StreamReader& stream)
         : stream_(stream)
         , prev_()
         , min_()
-        , counter_()
-    {}
+        , counter_() {}
 
     TVal next() {
         if (counter_ % Step == 0) {
@@ -427,8 +412,7 @@ struct DeltaDeltaStreamReader {
     const unsigned char* pos() const { return stream_.pos(); }
 };
 
-template <typename TVal>
-struct RLEStreamWriter {
+template <typename TVal> struct RLEStreamWriter {
     Base128StreamWriter& stream_;
     TVal                 prev_;
     TVal                 reps_;
@@ -440,9 +424,9 @@ struct RLEStreamWriter {
         , reps_()
         , start_size_(stream.size()) {}
 
-    bool tput(TVal const* iter, size_t  n) {
+    bool tput(TVal const* iter, size_t n) {
         size_t outpos = 0;
-        TVal outbuf[n*2];
+        TVal   outbuf[n * 2];
         for (size_t i = 0; i < n; i++) {
             auto value = iter[i];
             if (value != prev_) {
@@ -457,7 +441,7 @@ struct RLEStreamWriter {
             reps_++;
         }
         // commit RLE if needed
-        if (outpos < n*2) {
+        if (outpos < n * 2) {
             outbuf[outpos++] = reps_;
             outbuf[outpos++] = prev_;
         }
@@ -488,13 +472,10 @@ struct RLEStreamWriter {
 
     size_t size() const { return stream_.size() - start_size_; }
 
-    bool commit() {
-        return stream_.put(reps_) && stream_.put(prev_) && stream_.commit();
-    }
+    bool commit() { return stream_.put(reps_) && stream_.put(prev_) && stream_.commit(); }
 };
 
-template <typename TVal>
-struct RLEStreamReader {
+template <typename TVal> struct RLEStreamReader {
     Base128StreamReader& stream_;
     TVal                 prev_;
     TVal                 reps_;
@@ -518,8 +499,8 @@ struct RLEStreamReader {
 
 struct FcmPredictor {
     std::vector<u64> table;
-    u64 last_hash;
-    const u64 MASK_;
+    u64              last_hash;
+    const u64        MASK_;
 
     FcmPredictor(size_t table_size);
 
@@ -530,9 +511,9 @@ struct FcmPredictor {
 
 struct DfcmPredictor {
     std::vector<u64> table;
-    u64 last_hash;
-    u64 last_value;
-    const u64 MASK_;
+    u64              last_hash;
+    u64              last_value;
+    const u64        MASK_;
 
     //! C-tor. `table_size` should be a power of two.
     DfcmPredictor(int table_size);
@@ -546,10 +527,10 @@ typedef FcmPredictor PredictorT;
 
 struct FcmStreamWriter {
     Base128StreamWriter& stream_;
-    PredictorT predictor_;
-    u64 prev_diff_;
-    unsigned char prev_flag_;
-    int nelements_;
+    PredictorT           predictor_;
+    u64                  prev_diff_;
+    unsigned char        prev_flag_;
+    int                  nelements_;
 
     FcmStreamWriter(Base128StreamWriter& stream);
 
@@ -564,9 +545,9 @@ struct FcmStreamWriter {
 
 struct FcmStreamReader {
     Base128StreamReader& stream_;
-    PredictorT predictor_;
-    int flags_;
-    int iter_;
+    PredictorT           predictor_;
+    int                  flags_;
+    int                  iter_;
 
     FcmStreamReader(Base128StreamReader& stream);
 
@@ -599,9 +580,8 @@ struct CompressionUtil {
       * @param ts_end out parameter - last timestamp
       * @param data ChunkHeader to compress
       */
-    static aku_Status encode_chunk(u32* n_elements, aku_Timestamp* ts_begin,
-                                   aku_Timestamp* ts_end, ChunkWriter* writer,
-                                   const UncompressedChunk& data);
+    static aku_Status encode_chunk(u32* n_elements, aku_Timestamp* ts_begin, aku_Timestamp* ts_end,
+                                   ChunkWriter* writer, const UncompressedChunk& data);
 
     /** Decompress ChunkHeader.
       * @brief Decode part of the ChunkHeader structure depending on stage and steps values.
@@ -673,18 +653,18 @@ namespace StorageEngine {
 
 struct DataBlockWriter {
     enum {
-        CHUNK_SIZE = 16,
-        CHUNK_MASK = 15,
-        HEADER_SIZE = 14, // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
+        CHUNK_SIZE  = 16,
+        CHUNK_MASK  = 15,
+        HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
     Base128StreamWriter stream_;
-    DeltaRLEWriter ts_stream_;
-    FcmStreamWriter val_stream_;
-    int write_index_;
-    aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
-    double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
-    u16* nchunks_;
-    u16* ntail_;
+    DeltaRLEWriter      ts_stream_;
+    FcmStreamWriter     val_stream_;
+    int                 write_index_;
+    aku_Timestamp       ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
+    double              val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
+    u16*                nchunks_;
+    u16*                ntail_;
 
     //! Empty c-tor. Constructs unwritable object.
     DataBlockWriter();
@@ -706,9 +686,11 @@ struct DataBlockWriter {
     size_t commit();
 
     //! Read tail elements (the ones not yet written to output stream)
-    void read_tail_elements(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
+    void read_tail_elements(std::vector<aku_Timestamp>* timestamps,
+                            std::vector<double>*        values) const;
 
     int get_write_index() const;
+
 private:
     //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
     bool room_for_chunk() const;
@@ -719,12 +701,12 @@ struct DataBlockReader {
         CHUNK_SIZE = 16,
         CHUNK_MASK = 15,
     };
-    const u8* begin_;
+    const u8*           begin_;
     Base128StreamReader stream_;
-    DeltaRLEReader ts_stream_;
-    FcmStreamReader val_stream_;
-    aku_Timestamp read_buffer_[CHUNK_SIZE];
-    u32 read_index_;
+    DeltaRLEReader      ts_stream_;
+    FcmStreamReader     val_stream_;
+    aku_Timestamp       read_buffer_[CHUNK_SIZE];
+    u32                 read_index_;
 
     DataBlockReader(u8 const* buf, size_t bufsize);
 

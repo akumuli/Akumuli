@@ -9,9 +9,9 @@ namespace QP {
 
 struct Limiter : Node {
 
-    u64              limit_;
-    u64              offset_;
-    u64              counter_;
+    u64                   limit_;
+    u64                   offset_;
+    u64                   counter_;
     std::shared_ptr<Node> next_;
 
     Limiter(u64 limit, u64 offset, std::shared_ptr<Node> next);
