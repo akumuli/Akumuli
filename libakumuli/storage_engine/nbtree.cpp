@@ -7,6 +7,7 @@
 // App
 #include "nbtree.h"
 #include "akumuli_version.h"
+#include "status_util.h"
 
 /** NOTE:
   * BlockStore should have cache. This cache should be implemented on
@@ -98,7 +99,7 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index)
     subtree->id = id;
     subtree->version = AKUMULI_VERSION;
     subtree->payload_size = 0;
-    subtree->fanout_index = 0; // TODO: set correct value
+    subtree->fanout_index = fanout_index;
     // values that should be updated by insert
     subtree->begin = std::numeric_limits<aku_Timestamp>::max();
     subtree->end = 0;
@@ -115,7 +116,7 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafL
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(curr);
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Can't read block");  // TODO: translate status to error code
+        AKU_PANIC("Can't read block - " + StatusUtil::str(status));
     }
     if (load == LeafLoadMethod::FULL_PAGE_LOAD) {
         buffer_.reserve(block->get_size());
@@ -244,7 +245,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(addr);
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Bad arg, can't read data from block store");
+        AKU_PANIC("Bad arg, can't read data from block store, " + StatusUtil::str(status));
     }
     SubtreeRef const* ref = subtree_cast(block->get_data());
     id_ = ref->id;
@@ -297,8 +298,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
         backref->payload_size = write_pos_;
         backref->fanout_index = fanout_index_;
         backref->id = id_;
-        //!!!
-        // TODO: backref->level = level_;
+        backref->level = level_;
         backref->version = AKUMULI_VERSION;
     }
     return bstore->append_block(buffer_.data());
@@ -359,7 +359,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
             std::shared_ptr<Block> block;
             std::tie(status, block) = bstore_->read_block(last_);
             if (status != AKU_SUCCESS) {
-                AKU_PANIC("Invalid argument");
+                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             }
             auto psubtree = subtree_cast(block->get_data());
             fanout_index_ = psubtree->fanout_index + 1;
@@ -386,7 +386,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         }
         if (status != AKU_SUCCESS) {
             // it should return only AKU_EOVERFLOW
-            AKU_PANIC("Unexpected error from NBTreeLeaf");
+            AKU_PANIC("Unexpected error from NBTreeLeaf, " + StatusUtil::str(status));
         }
     }
 
@@ -405,7 +405,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         aku_Status status;
         std::tie(status, addr) = leaf_->commit(bstore_);
         if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't write leaf-node to block-store");
+            AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
         }
         // Gather stats and send them to upper-level node
         SubtreeRefPayload payload;
@@ -413,7 +413,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         if (status != AKU_SUCCESS) {
             // This shouldn't happen because leaf node can't be
             // empty just after overflow.
-            AKU_PANIC("Can summarize leaf-node");  // TODO: status code to msg
+            AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
         }
         payload.addr = addr;
         payload.id = id_;
@@ -466,7 +466,9 @@ struct NBSuperblockRoot : NBTreeRoot {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = bstore_->read_block(last_);
-            if (status != AKU_SUCCESS) { AKU_PANIC("Invalid argument"); }
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
+            }
             auto psubtree = subtree_cast(block->get_data());
             fanout_index_ = psubtree->fanout_index + 1;
             if (fanout_index_ == AKU_NBTREE_FANOUT) {
@@ -489,10 +491,10 @@ struct NBSuperblockRoot : NBTreeRoot {
         auto status = curr_->append(pl);
         if (status == AKU_EOVERFLOW) {
             commit();
-            status = append(pl);
+            append(pl);
         }
         if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't append payload to superblock");  // TODO: translate error message
+            AKU_PANIC("Can't append payload to superblock " + StatusUtil::str(status));
         }
     }
 
@@ -506,13 +508,13 @@ struct NBSuperblockRoot : NBTreeRoot {
         aku_Status status;
         std::tie(status, addr) = curr_->commit(bstore_);
         if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't write leaf-node to block-store");
+            AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
         }
         // Gather stats and send them to upper-level node
         SubtreeRefPayload payload;
         status = init_subtree_from_subtree(*curr_, payload);
         if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can summarize current node");  // TODO: status code to msg
+            AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
         }
         payload.addr = addr;
         payload.id = id_;
@@ -565,7 +567,7 @@ void NBTree::append(aku_Timestamp ts, double value) {
         LogicAddr addr;
         std::tie(status, addr) = leaf_->commit(bstore_);
         if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't append data to the NBTree instance");
+            AKU_PANIC("Can't append data to the NBTree instance, " + StatusUtil::str(status));
         }
         last_ = addr;
         reset_leaf();
@@ -576,7 +578,8 @@ void NBTree::append(aku_Timestamp ts, double value) {
         append(ts, value);
     }
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Unexpected error from NBTreeLeaf");  // it should return only AKU_EOVERFLOW
+        // it should return only AKU_EOVERFLOW
+        AKU_PANIC("Unexpected error from NBTreeLeaf, " + StatusUtil::str(status));
     }
 }
 
@@ -687,7 +690,7 @@ void NBTreeCursor::proceed() {
             status = tree_.read_all(&ts_, &value_);
             // Ignore ENO_DATA error
             if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
-                AKU_PANIC("Page load error");  // TODO: error translation
+                AKU_PANIC("Page load error - " + StatusUtil::str(status));
             }
             proceed_calls_++;
             return;
@@ -699,7 +702,7 @@ void NBTreeCursor::proceed() {
             value_.clear();
             status = tree_.read_all(&ts_, &value_);
             if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
-                AKU_PANIC("Page load error");  // TODO: error translation
+                AKU_PANIC("Page load error - " + StatusUtil::str(status));
             }
             proceed_calls_ = -1;
             return;
@@ -712,7 +715,7 @@ void NBTreeCursor::proceed() {
     if (status == AKU_ENO_DATA) {
         eof_ = true;
     } else if (status != AKU_SUCCESS) {
-        AKU_PANIC("Page load error");  // TODO: translate error message from `status`
+        AKU_PANIC("Page load error - " + StatusUtil::str(status));
     }
     proceed_calls_++;
 }
