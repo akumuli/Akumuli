@@ -1,12 +1,13 @@
 #include "blockstore.h"
 #include "log_iface.h"
 #include "util.h"
+#include "status_util.h"
 
 namespace Akumuli {
 namespace StorageEngine {
 
 
-Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<uint8_t>&& data)
+Block::Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<uint8_t>&& data)
     : store_(bs)
     , data_(std::move(data))
     , addr_(addr)
@@ -22,7 +23,7 @@ size_t Block::get_size() const {
 }
 
 
-BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
+FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
 {
     for (uint32_t ix = 0ul; ix < volpaths.size(); ix++) {
@@ -33,10 +34,8 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, std::string("Can't open blockstore, volume " +
                                                    std::to_string(ix) + " failure: " +
-                                                   // TODO: create errors.h/errors/cpp and move
-                                                   // aku_error_message and error codes there
-                                                   std::to_string(status)));
-            AKU_PANIC("Can't open blockstore");
+                                                   StatusUtil::str(status)));
+            AKU_PANIC("Can't open blockstore - " + StatusUtil::str(status));
         }
         auto uptr = Volume::open_existing(volpath.c_str(), nblocks);
         volumes_.push_back(std::move(uptr));
@@ -57,8 +56,9 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
             std::tie(status, nblocks) = meta_->get_nblocks(i);
         }
         if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted");
-            AKU_PANIC("Meta-volume corrupted");
+            Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted, error: "
+                        + StatusUtil::str(status));
+            AKU_PANIC("Meta-volume corrupted, " + StatusUtil::str(status));
         }
         if (volumes_[i]->get_size() > nblocks) {
             // Free space available
@@ -69,9 +69,23 @@ BlockStore::BlockStore(std::string metapath, std::vector<std::string> volpaths)
     }
 }
 
-std::shared_ptr<BlockStore> BlockStore::open(std::string metapath, std::vector<std::string> volpaths) {
-    auto bs = new BlockStore(metapath, volpaths);
-    return std::shared_ptr<BlockStore>(bs);
+std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
+    auto bs = new FixedSizeFileStorage(metapath, volpaths);
+    return std::shared_ptr<FixedSizeFileStorage>(bs);
+}
+
+void FixedSizeFileStorage::create(std::string metapath,
+                                  std::vector<std::tuple<uint32_t, std::string>> vols)
+{
+    std::vector<uint32_t> caps;
+    for (auto cp: vols) {
+        std::string path;
+        uint32_t capacity;
+        std::tie(capacity, path) = cp;
+        Volume::create_new(path.c_str(), capacity);
+        caps.push_back(capacity);
+    }
+    MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
 static uint32_t extract_gen(LogicAddr addr) {
@@ -86,7 +100,7 @@ static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
     return static_cast<uint64_t>(gen) << 32 | addr;
 }
 
-bool BlockStore::exists(LogicAddr addr) const {
+bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
@@ -104,7 +118,7 @@ bool BlockStore::exists(LogicAddr addr) const {
     return actual_gen == gen && vol < nblocks;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr addr) {
+std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
@@ -132,41 +146,41 @@ std::tuple<aku_Status, std::shared_ptr<Block>> BlockStore::read_block(LogicAddr 
     return std::make_tuple(status, std::move(block));
 }
 
-void BlockStore::advance_volume() {
+void FixedSizeFileStorage::advance_volume() {
     Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
     current_volume_ = (current_volume_ + 1) % volumes_.size();
     aku_Status status;
     std::tie(status, current_gen_) = meta_->get_generation(current_volume_);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't read generation of next volume");
-        AKU_PANIC("Can't read generation of the next volume");
+        Logger::msg(AKU_LOG_ERROR, "Can't read generation of next volume, " + StatusUtil::str(status));
+        AKU_PANIC("Can't read generation of the next volume, " + StatusUtil::str(status));
     }
     // If volume is not empty - reset it and change generation
     uint32_t nblocks;
     std::tie(status, nblocks) = meta_->get_nblocks(current_volume_);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't read nblocks of next volume");
-        AKU_PANIC("Can't read nblocks of the next volume");
+        Logger::msg(AKU_LOG_ERROR, "Can't read nblocks of next volume, " + StatusUtil::str(status));
+        AKU_PANIC("Can't read nblocks of the next volume, " + StatusUtil::str(status));
     }
     if (nblocks != 0) {
         current_gen_ += volumes_.size();
         auto status = meta_->set_generation(current_volume_, current_gen_);
         if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Can't set generation on volume");
-            AKU_PANIC("Invalid BlockStore state, can't reset volume's generation");
+            Logger::msg(AKU_LOG_ERROR, "Can't set generation on volume, " + StatusUtil::str(status));
+            AKU_PANIC("Invalid BlockStore state, can't reset volume's generation, " + StatusUtil::str(status));
         }
         // Rest selected volume
         status = meta_->set_nblocks(current_volume_, 0);
         if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Can't reset nblocks on volume");
-            AKU_PANIC("Invalid BlockStore state, can't reset volume's nblocks");
+            Logger::msg(AKU_LOG_ERROR, "Can't reset nblocks on volume, " + StatusUtil::str(status));
+            AKU_PANIC("Invalid BlockStore state, can't reset volume's nblocks, " + StatusUtil::str(status));
         }
         volumes_[current_volume_]->reset();
         dirty_[current_volume_]++;
     }
 }
 
-std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) {
+std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(uint8_t const* data) {
     BlockAddr block_addr;
     aku_Status status;
     std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);
@@ -180,13 +194,13 @@ std::tuple<aku_Status, LogicAddr> BlockStore::append_block(uint8_t const* data) 
     }
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Invalid BlockStore state");
+        AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
     }
     dirty_[current_volume_]++;
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 
-void BlockStore::flush() {
+void FixedSizeFileStorage::flush() {
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
         if (dirty_[ix]) {
             dirty_[ix] = 0;

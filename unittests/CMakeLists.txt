@@ -383,6 +383,7 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
 )
 
 target_link_libraries(
@@ -403,6 +404,7 @@ add_executable(
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
 )
 

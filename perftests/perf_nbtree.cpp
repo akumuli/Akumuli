@@ -33,14 +33,19 @@ int main() {
     apr_initialize();
 
     // Create volumes
-    uint32_t caps[] = {1024*1024, 1024*1024};
-    std::vector<std::string> paths = { "/tmp/volume1", "/tmp/volume2" };
-    std::string metapath = "/tmp/metavol";
+    std::string metapath = "/tmp/metavol.db";
+    std::vector<std::string> paths = {
+        "/tmp/volume0.db",
+        "/tmp/volume1.db",
+    };
+    std::vector<std::tuple<uint32_t, std::string>> volumes {
+        std::make_tuple(1024, paths[0]),
+        std::make_tuple(1024, paths[1])
+    };
 
-    Volume::create_new(paths[0].c_str(), caps[0]);
-    Volume::create_new(paths[1].c_str(), caps[1]);
-    MetaVolume::create_new(metapath.c_str(), 2, caps);
-    auto bstore = BlockStore::open(metapath, paths);
+    FixedSizeFileStorage::create(metapath, volumes);
+
+    auto bstore = FixedSizeFileStorage::open(metapath, paths);
 
     NBTree tree_a(42, bstore);
     NBTree tree_b(24, bstore);

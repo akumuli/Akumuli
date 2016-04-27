@@ -11,6 +11,8 @@ add_library(akumuli SHARED
     storage_engine/blockstore.cpp
     storage_engine/nbtree.h
     storage_engine/nbtree.cpp
+    status_util.cpp
+    status_util.h
     log_iface.h
     storage.h
     page.h

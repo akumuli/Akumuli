@@ -58,9 +58,14 @@ struct AprException : public std::runtime_error {
      */
 struct Exception : public std::runtime_error {
     /** C-tor
-          * @param message error message
-          */
+      * @param message Error message
+      */
     Exception(const char* message);
+
+    /** C-tor
+      * @param message Error message
+      */
+    Exception(std::string message);
 };
 
 std::ostream& operator<<(std::ostream& str, Exception const& except);
@@ -187,7 +192,7 @@ public:
   * @param msg error message
   * @throws Exception.
   */
-#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(msg));
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(std::move(msg)));
 
 /** Panic macro that can use APR error code to panic more informative.
   * @param msg error message

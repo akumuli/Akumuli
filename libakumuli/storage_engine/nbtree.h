@@ -2,19 +2,19 @@
   * Outline:
   *
   *
-  *                                                   [superblock0]
+  *                                                   [superblock1]
   *                                                         |
   *              +------------------------------+---....----+----~
   *              |                              |
   *              v                              v
-  *        [superblock0]<-----------------[superblock1]<--....
+  *        [superblock1]<-----------------[superblock2]<--....
   *              |                              |
   *     +--------+---------+          +---------+---------+
   *     |        |         |          |         |         |
   *     v        v         v          v         v         v
-  * [leaaf0]<--[....]<--[leafK]   [leafK+1]<--[....]<--[leaf2K]
+  * [leaaf1]<--[....]<--[leafK]   [leafK+1]<--[....]<--[leaf2K]
   *
-  * K is a fan-out range (Akumuli uses K=64).
+  * K is a fan-out range (Akumuli uses K=32).
   *
   * NBTree don't have one single root. Instead of that tree height is limited and
   * nodes on one level are linked in backward direction (new node has pointer
@@ -65,26 +65,13 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+enum {
+    AKU_NBTREE_FANOUT=32,
+};
 
-/** Reference to tree node.
-  * Ref contains some metadata: version, level, payload_size, id.
-  * This metadata corresponds to the current node.
-  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
-  * This aggregates corresponds to the current node if leve=0 (current node is a
-  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
-  * leafa node and all this fields describes this leaf node. If level is 2 or more
-  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
-  * in leaf nodes in pointee subtree).
-  */
-struct SubtreeRef {
-    //! Node version
-    uint16_t      version;
-    //! Node level in the tree
-    uint16_t      level;
+struct SubtreeRefPayload {
     //! Number of elements in the subtree
-    uint32_t      count;
-    //! Payload size (real)
-    uint32_t      payload_size;
+    uint64_t      count;
     //! Series Id
     aku_ParamId   id;
     //! First element's timestamp
@@ -102,6 +89,28 @@ struct SubtreeRef {
 } __attribute__((packed));
 
 
+/** Reference to tree node.
+  * Ref contains some metadata: version, level, payload_size, id.
+  * This metadata corresponds to the current node.
+  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
+  * This aggregates corresponds to the current node if leve=0 (current node is a
+  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
+  * leafa node and all this fields describes this leaf node. If level is 2 or more
+  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
+  * in leaf nodes in pointee subtree).
+  */
+struct SubtreeRef : SubtreeRefPayload {
+    //! Node version
+    uint16_t      version;
+    //! Node level in the tree
+    uint16_t      level;
+    //! Payload size (real)
+    uint16_t      payload_size;
+    //! Fan out index of the element (current)
+    uint16_t      fanout_index;
+} __attribute__((packed));
+
+
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
   */
@@ -112,6 +121,8 @@ class NBTreeLeaf {
     std::vector<uint8_t> buffer_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
+    //! Fanout index
+    uint16_t fanout_index_;
 public:
     enum class LeafLoadMethod {
         FULL_PAGE_LOAD, ONLY_HEADER,
@@ -121,8 +132,9 @@ public:
       * @param id Series id.
       * @param link to block store.
       * @param prev Prev element of the tree.
+      * @param fanout_index Index inside current fanout
       */
-    NBTreeLeaf(aku_ParamId id, LogicAddr prev);
+    NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -158,15 +170,33 @@ public:
 };
 
 
-/** NBTree superblock. Stores links to other nodes.
+/** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
     std::vector<uint8_t> buffer_;
     aku_ParamId id_;
+    uint32_t write_pos_;
+    uint16_t fanout_index_;
+    uint16_t level_;
+    LogicAddr prev_;
+    bool immutable_;
 public:
-    NBTreeSuperblock(aku_ParamId id);
+    //! Create new writable node.
+    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, uint16_t fanout, uint16_t lvl);
 
-    aku_Status append(LogicAddr addr, const NBTreeLeaf& leaf);
+    //! Create node from block-store (node is immutable).
+    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+
+    //! Append subtree ref
+    aku_Status append(SubtreeRefPayload const& p);
+
+    //! Commit changes (even if node is not full)
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    //! Check if node is full (always true if node is immutable - c-tor #2)
+    bool is_full() const;
+
+    aku_Status read_all(std::vector<SubtreeRef>* refs) const;
 };
 
 class NBTree;
@@ -205,6 +235,26 @@ public:
     void proceed();
 };
 
+
+//! Fwd ref. Implemented in nbtree.cpp.
+class NBTreeRoot;
+
+
+/** @brief This class represents set of roots of the NBTree.
+  * It serves two purposes:
+  * @li store all roots of the NBTree
+  * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
+  */
+class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
+    std::shared_ptr<BlockStore> bstore_;
+public:
+    //! Acquire tree root (removes root from collection)
+    std::unique_ptr<NBTreeRoot> lease(uint32_t level);
+
+    //! Release tree root.
+    void release(std::unique_ptr<NBTreeRoot> root);
+};
+
 /** This object represents block store backed tree.
   * It contains data from one time-series.
   * This data-structure supports only append operation but
@@ -212,9 +262,6 @@ public:
   * needed.
   */
 class NBTree {
-    // NOTE: supernodes not implemented at this point so, generaly speaking,
-    // database is a set of linked lists. Each one of those linked lists is
-    // represented by NBTree instance and a set of NBTreeLeaf objects.
 
     //! Blockstore
     std::shared_ptr<BlockStore> bstore_;
