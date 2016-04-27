@@ -5,11 +5,11 @@
 
 namespace Akumuli {
 
-static uint32_t combine(uint32_t hi, uint32_t lo) {
-    return (uint32_t)(2 - (int)hi + (int)lo);
+static u32 combine(u32 hi, u32 lo) {
+    return (u32)(2 - (int)hi + (int)lo);
 }
 
-HashFnFamily::HashFnFamily(uint32_t N, uint32_t K)
+HashFnFamily::HashFnFamily(u32 N, u32 K)
     : N(N)
     , K(K)
 {
@@ -28,18 +28,18 @@ HashFnFamily::HashFnFamily(uint32_t N, uint32_t K)
     std::random_device randdev;
     std::mt19937 generator(randdev());
     std::uniform_int_distribution<> distribution;
-    for (uint32_t i = 0; i < N; i++) {
+    for (u32 i = 0; i < N; i++) {
         std::vector<unsigned short> col;
         auto mask = K-1;
         for (int j = 0; j < 0x10000; j++) {
             int value = distribution(generator);
-            col.push_back((uint32_t)mask&value);
+            col.push_back((u32)mask&value);
         }
         table_.push_back(col);
     }
 }
 
-uint32_t HashFnFamily::hash(int ix, uint64_t key) const {
+u32 HashFnFamily::hash(int ix, u64 key) const {
     auto hi32 = key >> 32;
     auto lo32 = key & 0xFFFFFFFF;
     auto hilo = combine(hi32, lo32);
@@ -51,7 +51,7 @@ uint32_t HashFnFamily::hash(int ix, uint64_t key) const {
     return hi32hash ^ lo32hash ^ hilohash;
 }
 
-uint32_t HashFnFamily::hash32(int ix, uint32_t key) const {
+u32 HashFnFamily::hash32(int ix, u32 key) const {
     auto hi16 = key >> 16;
     auto lo16 = key & 0xFFFF;
     auto hilo = combine(hi16, lo16);

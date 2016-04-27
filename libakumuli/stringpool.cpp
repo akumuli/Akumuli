@@ -28,7 +28,7 @@ StringPool::StringPool()
 {
 }
 
-StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t payload) {
+StringPool::StringT StringPool::add(const char* begin, const char* end, u64 payload) {
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
@@ -38,7 +38,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     if (size == 0) {
         return std::make_pair("", 0);
     }
-    size += 2 + sizeof(uint64_t);  // 2 is for two \0 characters
+    size += 2 + sizeof(u64);  // 2 is for two \0 characters
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
         // New bin
@@ -54,7 +54,7 @@ StringPool::StringT StringPool::add(const char* begin, const char* end, uint64_t
     for(int i = 0; i < 8; i++) {
         bin->push_back(0);
     }
-    *reinterpret_cast<uint64_t*>(payload_ptr) = payload;
+    *reinterpret_cast<u64*>(payload_ptr) = payload;
     bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
@@ -153,12 +153,12 @@ StringTools::SetT StringTools::create_set(size_t size) {
     return SetT(size, &StringTools::hash, &StringTools::equal);
 }
 
-uint64_t StringTools::extract_id_from_pool(StringPool::StringT res) {
+u64 StringTools::extract_id_from_pool(StringPool::StringT res) {
     // Series name in string pool should be followed by \0 character and 64-bit series id.
     auto p = res.first + res.second;
     assert(p[0] == '\0');
-    p += 1;  // zero terminator + sizeof(uint64_t)
-    return *reinterpret_cast<uint64_t const*>(p);
+    p += 1;  // zero terminator + sizeof(u64)
+    return *reinterpret_cast<u64 const*>(p);
 }
 
 }

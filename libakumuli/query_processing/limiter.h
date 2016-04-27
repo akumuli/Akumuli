@@ -9,12 +9,12 @@ namespace QP {
 
 struct Limiter : Node {
 
-    uint64_t              limit_;
-    uint64_t              offset_;
-    uint64_t              counter_;
+    u64              limit_;
+    u64              offset_;
+    u64              counter_;
     std::shared_ptr<Node> next_;
 
-    Limiter(uint64_t limit, uint64_t offset, std::shared_ptr<Node> next);
+    Limiter(u64 limit, u64 offset, std::shared_ptr<Node> next);
 
     virtual void complete();
 

@@ -4,7 +4,7 @@
 namespace Akumuli {
 namespace QP {
 
-RandomSamplingNode::RandomSamplingNode(uint32_t buffer_size, std::shared_ptr<Node> next)
+RandomSamplingNode::RandomSamplingNode(u32 buffer_size, std::shared_ptr<Node> next)
     : buffer_size_(buffer_size)
     , next_(next)
 {
@@ -15,8 +15,8 @@ RandomSamplingNode::RandomSamplingNode(boost::property_tree::ptree const& ptree,
     : buffer_size_(0)
     , next_(next)
 {
-    uint32_t size = ptree.get<uint32_t>("size");
-    auto pbs = const_cast<uint32_t*>(&buffer_size_);
+    u32 size = ptree.get<u32>("size");
+    auto pbs = const_cast<u32*>(&buffer_size_);
     *pbs = size;
     samples_.reserve(size);
 }
@@ -57,7 +57,7 @@ bool RandomSamplingNode::put(const aku_Sample& sample) {
             samples_.push_back(sample);
         } else {
             // Flip a coin
-            uint32_t ix = random_() % samples_.size();
+            u32 ix = random_() % samples_.size();
             if (ix < buffer_size_) {
                 samples_.at(ix) = sample;
             }

@@ -27,7 +27,7 @@ using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
 
 
-static const std::vector<uint32_t> CAPACITIES = { 8, 8 };  // two 64KB volumes
+static const std::vector<u32> CAPACITIES = { 8, 8 };  // two 64KB volumes
 static const std::vector<std::string> VOLPATH = { "volume0", "volume1" };
 static const std::string METAPATH = "metavolume";
 
@@ -65,7 +65,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
 
     // Append first block
-    std::vector<uint8_t> buffer(4096, 0);
+    std::vector<u8> buffer(4096, 0);
     buffer.at(0) = 1;
     LogicAddr addr;
     std::tie(status, addr) = bstore->append_block(buffer.data());
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     std::tie(status, block) = bstore->read_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const uint8_t* block_data = block->get_data();
+    const u8* block_data = block->get_data();
     size_t block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
@@ -94,14 +94,14 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 
 
     // Fill data in
-    std::vector<uint8_t> buffer(4096, 0);
+    std::vector<u8> buffer(4096, 0);
 
 
     LogicAddr addr;
     aku_Status status;
 
     for (int i = 0; i < 17; i++) {
-        buffer.at(0) = (uint8_t)i;
+        buffer.at(0) = (u8)i;
         std::tie(status, addr) = bstore->append_block(buffer.data());
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     }
@@ -117,7 +117,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
     std::tie(status, block) = bstore->read_block(2ull << 32);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const uint8_t* block_data = block->get_data();
+    const u8* block_data = block->get_data();
     size_t block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);

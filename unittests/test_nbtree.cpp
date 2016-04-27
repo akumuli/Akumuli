@@ -28,7 +28,7 @@ using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
 
 
-static const std::vector<uint32_t> CAPACITIES = { 8, 8 };  // two 64KB volumes
+static const std::vector<u32> CAPACITIES = { 8, 8 };  // two 64KB volumes
 static const std::vector<std::string> VOLPATH = { "volume0", "volume1" };
 static const std::string METAPATH = "metavolume";
 

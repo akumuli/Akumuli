@@ -37,7 +37,7 @@ namespace Akumuli {
 
 static const SeriesMatcher::StringT EMPTY = std::make_pair(nullptr, 0);
 
-SeriesMatcher::SeriesMatcher(uint64_t starting_id)
+SeriesMatcher::SeriesMatcher(u64 starting_id)
     : table(StringTools::create_table(0x1000))
     , series_id(starting_id)
 {
@@ -46,7 +46,7 @@ SeriesMatcher::SeriesMatcher(uint64_t starting_id)
     }
 }
 
-uint64_t SeriesMatcher::add(const char* begin, const char* end) {
+u64 SeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
     StringT pstr = pool.add(begin, end, id);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
@@ -56,7 +56,7 @@ uint64_t SeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
-void SeriesMatcher::_add(std::string series, uint64_t id) {
+void SeriesMatcher::_add(std::string series, u64 id) {
     if (series.empty()) {
         return;
     }
@@ -67,7 +67,7 @@ void SeriesMatcher::_add(std::string series, uint64_t id) {
     inv_table[id] = pstr;
 }
 
-uint64_t SeriesMatcher::match(const char* begin, const char* end) {
+u64 SeriesMatcher::match(const char* begin, const char* end) {
 
     int len = end - begin;
     StringT str = std::make_pair(begin, len);
@@ -79,7 +79,7 @@ uint64_t SeriesMatcher::match(const char* begin, const char* end) {
     return it->second;
 }
 
-SeriesMatcher::StringT SeriesMatcher::id2str(uint64_t tokenid) const {
+SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
         return EMPTY;
@@ -91,8 +91,8 @@ void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buff
     std::swap(names, *buffer);
 }
 
-std::vector<uint64_t> SeriesMatcher::get_all_ids() const {
-    std::vector<uint64_t> result;
+std::vector<u64> SeriesMatcher::get_all_ids() const {
+    std::vector<u64> result;
     for (auto const &tup: inv_table) {
         result.push_back(tup.first);
     }

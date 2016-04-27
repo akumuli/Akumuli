@@ -57,7 +57,7 @@ PipelineErrorCb TcpSession::get_error_cb() {
     logger_.info() << "Creating error handler for session";
     auto self = shared_from_this();
     auto weak = std::weak_ptr<TcpSession>(self);
-    auto fn = [weak](aku_Status status, uint64_t counter) {
+    auto fn = [weak](aku_Status status, u64 counter) {
         auto session = weak.lock();
         if (session) {
             const char* msg = aku_error_message(status);

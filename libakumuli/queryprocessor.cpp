@@ -433,15 +433,15 @@ static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost
     return std::make_tuple(QP::GroupByTime(duration), tags);
 }
 
-static std::pair<uint64_t, uint64_t> parse_limit_offset(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
-    uint64_t limit = 0ul, offset = 0ul;
+static std::pair<u64, u64> parse_limit_offset(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    u64 limit = 0ul, offset = 0ul;
     auto optlimit = ptree.get_child_optional("limit");
     if (optlimit) {
-        limit = optlimit->get_value<uint64_t>();
+        limit = optlimit->get_value<u64>();
     }
     auto optoffset = ptree.get_child_optional("offset");
     if (optoffset) {
-        limit = optoffset->get_value<uint64_t>();
+        limit = optoffset->get_value<u64>();
     }
     return std::make_pair(limit, offset);
 }

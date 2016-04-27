@@ -17,7 +17,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 //! Address of the block inside volume (index of the block)
-typedef uint32_t BlockAddr;
+typedef u32 BlockAddr;
 enum {
     AKU_BLOCK_SIZE = 4096
 };
@@ -38,8 +38,8 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
 class MetaVolume {
     MemoryMappedFile mmap_;
     size_t file_size_;
-    uint8_t* mmap_ptr_;
-    mutable std::vector<uint8_t> double_write_buffer_;
+    u8* mmap_ptr_;
+    mutable std::vector<u8> double_write_buffer_;
 
     MetaVolume(const char* path);
 public:
@@ -50,7 +50,7 @@ public:
       * @param vol_capacities Array of capacities of all volumes.
       * @throw std::runtime_exception
       */
-    static void create_new(const char* path, size_t capacity, uint32_t const* vol_capacities);
+    static void create_new(const char* path, size_t capacity, u32 const* vol_capacities);
 
     /** Open existing meta-volume.
       * @param path Path to meta-volume.
@@ -62,34 +62,34 @@ public:
     // Accessors
 
     //! Get number of blocks in the volume.
-    std::tuple<aku_Status, uint32_t> get_nblocks(uint32_t id) const;
+    std::tuple<aku_Status, u32> get_nblocks(u32 id) const;
 
     //! Get total capacity of the volume.
-    std::tuple<aku_Status, uint32_t> get_capacity(uint32_t id) const;
+    std::tuple<aku_Status, u32> get_capacity(u32 id) const;
 
     //! Get volume's generation.
-    std::tuple<aku_Status, uint32_t> get_generation(uint32_t id) const;
+    std::tuple<aku_Status, u32> get_generation(u32 id) const;
 
     size_t get_nvolumes() const;
 
     // Mutators
 
-    aku_Status update(uint32_t id, uint32_t nblocks, uint32_t capacity, uint32_t gen);
+    aku_Status update(u32 id, u32 nblocks, u32 capacity, u32 gen);
 
     //! Set number of used blocks for the volume.
-    aku_Status set_nblocks(uint32_t id, uint32_t nblocks);
+    aku_Status set_nblocks(u32 id, u32 nblocks);
 
     //! Set volume capacity
-    aku_Status set_capacity(uint32_t id, uint32_t nblocks);
+    aku_Status set_capacity(u32 id, u32 nblocks);
 
     //! Set generation
-    aku_Status set_generation(uint32_t id, uint32_t nblocks);
+    aku_Status set_generation(u32 id, u32 nblocks);
 
     //! Flush entire file
     void flush();
 
     //! Flush one entry
-    aku_Status flush(uint32_t id);
+    aku_Status flush(u32 id);
 };
 
 
@@ -97,8 +97,8 @@ class Volume
 {
     AprPoolPtr apr_pool_;
     AprFilePtr apr_file_handle_;
-    uint32_t file_size_;
-    uint32_t write_pos_;
+    u32 file_size_;
+    u32 write_pos_;
 
     Volume(const char* path, size_t write_pos);
 public:
@@ -123,7 +123,7 @@ public:
     void reset();
 
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
-    std::tuple<aku_Status, BlockAddr> append_block(const uint8_t* source);
+    std::tuple<aku_Status, BlockAddr> append_block(const u8* source);
 
     //! Flush volume
     void flush();
@@ -131,10 +131,10 @@ public:
     // Accessors
 
     //! Read filxed size block from file
-    aku_Status read_block(uint32_t ix, uint8_t* dest) const;
+    aku_Status read_block(u32 ix, u8* dest) const;
 
     //! Return size in blocks
-    uint32_t get_size() const;
+    u32 get_size() const;
 };
 
 }  // namespace V2

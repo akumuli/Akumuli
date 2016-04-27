@@ -517,29 +517,29 @@ struct RLEStreamReader {
 };
 
 struct FcmPredictor {
-    std::vector<uint64_t> table;
-    uint64_t last_hash;
-    const uint64_t MASK_;
+    std::vector<u64> table;
+    u64 last_hash;
+    const u64 MASK_;
 
     FcmPredictor(size_t table_size);
 
-    uint64_t predict_next() const;
+    u64 predict_next() const;
 
-    void update(uint64_t value);
+    void update(u64 value);
 };
 
 struct DfcmPredictor {
-    std::vector<uint64_t> table;
-    uint64_t last_hash;
-    uint64_t last_value;
-    const uint64_t MASK_;
+    std::vector<u64> table;
+    u64 last_hash;
+    u64 last_value;
+    const u64 MASK_;
 
     //! C-tor. `table_size` should be a power of two.
     DfcmPredictor(int table_size);
 
-    uint64_t predict_next() const;
+    u64 predict_next() const;
 
-    void update(uint64_t value);
+    void update(u64 value);
 };
 
 typedef FcmPredictor PredictorT;
@@ -547,7 +547,7 @@ typedef FcmPredictor PredictorT;
 struct FcmStreamWriter {
     Base128StreamWriter& stream_;
     PredictorT predictor_;
-    uint64_t prev_diff_;
+    u64 prev_diff_;
     unsigned char prev_flag_;
     int nelements_;
 
@@ -599,7 +599,7 @@ struct CompressionUtil {
       * @param ts_end out parameter - last timestamp
       * @param data ChunkHeader to compress
       */
-    static aku_Status encode_chunk(uint32_t* n_elements, aku_Timestamp* ts_begin,
+    static aku_Status encode_chunk(u32* n_elements, aku_Timestamp* ts_begin,
                                    aku_Timestamp* ts_end, ChunkWriter* writer,
                                    const UncompressedChunk& data);
 
@@ -615,7 +615,7 @@ struct CompressionUtil {
       * @return current stage number
       */
     static aku_Status decode_chunk(UncompressedChunk* header, const unsigned char* pbegin,
-                                   const unsigned char* pend, uint32_t nelements);
+                                   const unsigned char* pend, u32 nelements);
 
     /** Compress list of doubles.
       * @param input array of doubles
@@ -648,25 +648,25 @@ struct CompressionUtil {
 
 
 // Length -> RLE -> Base128
-typedef RLEStreamWriter<uint32_t> RLELenWriter;
+typedef RLEStreamWriter<u32> RLELenWriter;
 
 // Base128 -> RLE -> Length
-typedef RLEStreamReader<uint32_t> RLELenReader;
+typedef RLEStreamReader<u32> RLELenReader;
 
-// int64_t -> Delta -> ZigZag -> RLE -> Base128
-typedef RLEStreamWriter<int64_t> __RLEWriter;
-typedef ZigZagStreamWriter<__RLEWriter, int64_t>   __ZigZagWriter;
-typedef DeltaStreamWriter<__ZigZagWriter, int64_t> ZDeltaRLEWriter;
+// i64 -> Delta -> ZigZag -> RLE -> Base128
+typedef RLEStreamWriter<i64> __RLEWriter;
+typedef ZigZagStreamWriter<__RLEWriter, i64>   __ZigZagWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, i64> ZDeltaRLEWriter;
 
-// Base128 -> RLE -> ZigZag -> Delta -> int64_t
-typedef RLEStreamReader<int64_t> __RLEReader;
-typedef ZigZagStreamReader<__RLEReader, int64_t>   __ZigZagReader;
-typedef DeltaStreamReader<__ZigZagReader, int64_t> ZDeltaRLEReader;
+// Base128 -> RLE -> ZigZag -> Delta -> i64
+typedef RLEStreamReader<i64> __RLEReader;
+typedef ZigZagStreamReader<__RLEReader, i64>   __ZigZagReader;
+typedef DeltaStreamReader<__ZigZagReader, i64> ZDeltaRLEReader;
 
-// uint64_t -> Delta -> RLE -> Base128
-typedef DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> DeltaRLEWriter;
-// Base128 -> RLE -> Delta -> uint64_t
-typedef DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> DeltaRLEReader;
+// u64 -> Delta -> RLE -> Base128
+typedef DeltaStreamWriter<RLEStreamWriter<u64>, u64> DeltaRLEWriter;
+// Base128 -> RLE -> Delta -> u64
+typedef DeltaStreamReader<RLEStreamReader<u64>, u64> DeltaRLEReader;
 
 
 namespace StorageEngine {
@@ -683,8 +683,8 @@ struct DataBlockWriter {
     int write_index_;
     aku_Timestamp ts_writebuf_[CHUNK_SIZE];  //! Write buffer for timestamps
     double val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
-    uint16_t* nchunks_;
-    uint16_t* ntail_;
+    u16* nchunks_;
+    u16* ntail_;
 
     //! Empty c-tor. Constructs unwritable object.
     DataBlockWriter();
@@ -694,7 +694,7 @@ struct DataBlockWriter {
       * @param size Block size.
       * @param buf Pointer to buffer.
       */
-    DataBlockWriter(aku_ParamId id, uint8_t* buf, int size);
+    DataBlockWriter(aku_ParamId id, u8* buf, int size);
 
     /** Append value to block.
       * @param ts Timestamp.
@@ -719,14 +719,14 @@ struct DataBlockReader {
         CHUNK_SIZE = 16,
         CHUNK_MASK = 15,
     };
-    const uint8_t* begin_;
+    const u8* begin_;
     Base128StreamReader stream_;
     DeltaRLEReader ts_stream_;
     FcmStreamReader val_stream_;
     aku_Timestamp read_buffer_[CHUNK_SIZE];
-    uint32_t read_index_;
+    u32 read_index_;
 
-    DataBlockReader(uint8_t const* buf, size_t bufsize);
+    DataBlockReader(u8 const* buf, size_t bufsize);
 
     std::tuple<aku_Status, aku_Timestamp, double> next();
 
@@ -734,7 +734,7 @@ struct DataBlockReader {
 
     aku_ParamId get_id() const;
 
-    uint16_t version() const;
+    u16 version() const;
 };
 
 }  // namespace V2

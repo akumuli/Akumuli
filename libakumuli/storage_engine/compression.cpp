@@ -15,11 +15,11 @@ FcmPredictor::FcmPredictor(size_t table_size)
     table.resize(table_size);
 }
 
-uint64_t FcmPredictor::predict_next() const {
+u64 FcmPredictor::predict_next() const {
     return table[last_hash];
 }
 
-void FcmPredictor::update(uint64_t value) {
+void FcmPredictor::update(u64 value) {
     table[last_hash] = value;
     last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
 }
@@ -34,11 +34,11 @@ DfcmPredictor::DfcmPredictor(int table_size)
    table.resize(table_size);
 }
 
-uint64_t DfcmPredictor::predict_next() const {
+u64 DfcmPredictor::predict_next() const {
     return table.at(last_hash) + last_value;
 }
 
-void DfcmPredictor::update(uint64_t value) {
+void DfcmPredictor::update(u64 value) {
     table[last_hash] = value - last_value;
     last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
     last_value = value;
@@ -46,7 +46,7 @@ void DfcmPredictor::update(uint64_t value) {
 
 static const int PREDICTOR_N = 1 << 10;
 
-static inline bool encode_value(Base128StreamWriter& wstream, uint64_t diff, unsigned char flag) {
+static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
@@ -72,7 +72,7 @@ static inline bool encode_value(Base128StreamWriter& wstream, uint64_t diff, uns
         }
         diff >>= 8;
     case 4:
-        if (!wstream.put_raw(static_cast<uint32_t>(diff & 0xFFFFFFFF))) {
+        if (!wstream.put_raw(static_cast<u32>(diff & 0xFFFFFFFF))) {
             return false;
         }
         diff >>= 32;
@@ -95,11 +95,11 @@ static inline bool encode_value(Base128StreamWriter& wstream, uint64_t diff, uns
     return true;
 }
 
-static inline uint64_t decode_value(Base128StreamReader& rstream, unsigned char flag) {
-    uint64_t diff = 0ul;
+static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag) {
+    u64 diff = 0ul;
     int nbytes = (flag & 7) + 1;
     for (int i = 0; i < nbytes; i++) {
-        uint64_t delta = rstream.read_raw<unsigned char>();
+        u64 delta = rstream.read_raw<unsigned char>();
         diff |= delta << (i*8);
     }
     int shift_width = (64 - nbytes*8)*(flag >> 3);
@@ -129,12 +129,12 @@ bool FcmStreamWriter::tput(double const* values, size_t n) {
 bool FcmStreamWriter::put(double value) {
     union {
         double real;
-        uint64_t bits;
+        u64 bits;
     } curr = {};
     curr.real = value;
-    uint64_t predicted = predictor_.predict_next();
+    u64 predicted = predictor_.predict_next();
     predictor_.update(curr.bits);
-    uint64_t diff = curr.bits ^ predicted;
+    u64 diff = curr.bits ^ predicted;
 
     int leading_zeros = 64;
     int trailing_zeros = 64;
@@ -210,17 +210,17 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
                                          Base128StreamWriter&       wstream)
 {
     PredictorT predictor(PREDICTOR_N);
-    uint64_t prev_diff = 0;
+    u64 prev_diff = 0;
     unsigned char prev_flag = 0;
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
-            uint64_t bits;
+            u64 bits;
         } curr = {};
         curr.real = input.at(ix);
-        uint64_t predicted = predictor.predict_next();
+        u64 predicted = predictor.predict_next();
         predictor.update(curr.bits);
-        uint64_t diff = curr.bits ^ predicted;
+        u64 diff = curr.bits ^ predicted;
 
         int leading_zeros = 64;
         int trailing_zeros = 64;
@@ -290,12 +290,12 @@ double FcmStreamReader::next() {
     } else {
         flag = static_cast<unsigned char>(flags_ & 0xF);
     }
-    uint64_t diff = decode_value(stream_, flag);
+    u64 diff = decode_value(stream_, flag);
     union {
-        uint64_t bits;
+        u64 bits;
         double real;
     } curr = {};
-    uint64_t predicted = predictor_.predict_next();
+    u64 predicted = predictor_.predict_next();
     curr.bits = predicted ^ diff;
     predictor_.update(curr.bits);
     return curr.real;
@@ -319,12 +319,12 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         } else {
             flag = static_cast<unsigned char>(flags & 0xF);
         }
-        uint64_t diff = decode_value(rstream, flag);
+        u64 diff = decode_value(rstream, flag);
         union {
-            uint64_t bits;
+            u64 bits;
             double real;
         } curr = {};
-        uint64_t predicted = predictor.predict_next();
+        u64 predicted = predictor.predict_next();
         curr.bits = predicted ^ diff;
         predictor.update(curr.bits);
         // put
@@ -359,16 +359,16 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
 
 template<class StreamType, class Fn>
 aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
-    uint32_t* length_prefix = stream.allocate<uint32_t>();
+    u32* length_prefix = stream.allocate<u32>();
     StreamType wstream(stream);
     writer(wstream);
     wstream.commit();
-    *length_prefix = (uint32_t)wstream.size();
+    *length_prefix = (u32)wstream.size();
     return AKU_SUCCESS;
 }
 
 
-aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
+aku_Status CompressionUtil::encode_chunk( u32           *n_elements
                                         , aku_Timestamp      *ts_begin
                                         , aku_Timestamp      *ts_end
                                         , ChunkWriter        *writer
@@ -376,7 +376,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 {
     aku_MemRange available_space = writer->allocate();
     unsigned char* begin = (unsigned char*)available_space.address;
-    unsigned char* end = begin + (available_space.length - 2*sizeof(uint32_t));  // 2*sizeof(aku_EntryOffset)
+    unsigned char* end = begin + (available_space.length - 2*sizeof(u32));  // 2*sizeof(aku_EntryOffset)
     Base128StreamWriter stream(begin, end);
 
     try {
@@ -401,14 +401,14 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
         });
 
         // Save number of columns (always 1)
-        uint32_t* ncolumns = stream.allocate<uint32_t>();
+        u32* ncolumns = stream.allocate<u32>();
         *ncolumns = 1;
 
         // Doubles stream
-        uint32_t* doubles_stream_size = stream.allocate<uint32_t>();
-        *doubles_stream_size = (uint32_t)CompressionUtil::compress_doubles(data.values, stream);
+        u32* doubles_stream_size = stream.allocate<u32>();
+        *doubles_stream_size = (u32)CompressionUtil::compress_doubles(data.values, stream);
 
-        *n_elements = static_cast<uint32_t>(data.paramids.size());
+        *n_elements = static_cast<u32>(data.paramids.size());
     } catch (...) {
         return AKU_EOVERFLOW;
     }
@@ -418,7 +418,7 @@ aku_Status CompressionUtil::encode_chunk( uint32_t           *n_elements
 
 template<class Stream, class Fn>
 void read_from_stream(Base128StreamReader& reader, const Fn& func) {
-    uint32_t size_prefix = reader.read_raw<uint32_t>();
+    u32 size_prefix = reader.read_raw<u32>();
     Stream stream(reader);
     func(stream, size_prefix);
 }
@@ -426,12 +426,12 @@ void read_from_stream(Base128StreamReader& reader, const Fn& func) {
 aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
                                         , const unsigned char *pbegin
                                         , const unsigned char *pend
-                                        , uint32_t             nelements)
+                                        , u32             nelements)
 {
     try {
         Base128StreamReader rstream(pbegin, pend);
         // Paramids
-        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, u32 size) {
             for (auto i = nelements; i --> 0;) {
                 auto paramid = reader.next();
                 header->paramids.push_back(paramid);
@@ -439,7 +439,7 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
         });
 
         // Timestamps
-        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, uint32_t size) {
+        read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, u32 size) {
             for (auto i = nelements; i--> 0;) {
                 auto timestamp = reader.next();
                 header->timestamps.push_back(timestamp);
@@ -447,12 +447,12 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
         });
 
         // Payload
-        const uint32_t ncolumns = rstream.read_raw<uint32_t>();
+        const u32 ncolumns = rstream.read_raw<u32>();
         AKU_UNUSED(ncolumns);
 
         // Doubles stream
         header->values.resize(nelements);
-        const uint32_t nblocks = rstream.read_raw<uint32_t>();
+        const u32 nblocks = rstream.read_raw<u32>();
         CompressionUtil::decompress_doubles(rstream, nblocks, &header->values);
     } catch (...) {
         return AKU_EBAD_DATA;
@@ -511,18 +511,18 @@ DataBlockWriter::DataBlockWriter()
 {
 }
 
-DataBlockWriter::DataBlockWriter(aku_ParamId id, uint8_t *buf, int size)
+DataBlockWriter::DataBlockWriter(aku_ParamId id, u8 *buf, int size)
     : stream_(buf, buf + size)
     , ts_stream_(stream_)
     , val_stream_(stream_)
     , write_index_(0)
 {
     // offset 0
-    auto success = stream_.put_raw<uint16_t>(AKUMULI_VERSION);
+    auto success = stream_.put_raw<u16>(AKUMULI_VERSION);
     // offset 2
-    nchunks_ = stream_.allocate<uint16_t>();
+    nchunks_ = stream_.allocate<u16>();
     // offset 4
-    ntail_ = stream_.allocate<uint16_t>();
+    ntail_ = stream_.allocate<u16>();
     // offset 6
     success = stream_.put_raw(id) && success;
     if (!success || nchunks_ == nullptr || ntail_ == nullptr) {
@@ -594,7 +594,7 @@ size_t DataBlockWriter::commit() {
         }
     }
     assert(nchunks <= 0xFFFF);
-    *nchunks_ = static_cast<uint16_t>(nchunks);
+    *nchunks_ = static_cast<u16>(nchunks);
     return stream_.size();
 }
 
@@ -633,7 +633,7 @@ int DataBlockWriter::get_write_index() const {
 // DataBlockReader implementation //
 // ////////////////////////////// //
 
-DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
+DataBlockReader::DataBlockReader(u8 const* buf, size_t bufsize)
     : begin_(buf)
     , stream_(buf + DataBlockWriter::HEADER_SIZE, buf + bufsize)
     , ts_stream_(stream_)
@@ -644,23 +644,23 @@ DataBlockReader::DataBlockReader(uint8_t const* buf, size_t bufsize)
     assert(bufsize > 14);
 }
 
-static uint16_t get_block_version(const uint8_t* pdata) {
-    uint16_t version = *reinterpret_cast<const uint16_t*>(pdata);
+static u16 get_block_version(const u8* pdata) {
+    u16 version = *reinterpret_cast<const u16*>(pdata);
     return version;
 }
 
-static uint32_t get_main_size(const uint8_t* pdata) {
-    uint16_t main = *reinterpret_cast<const uint16_t*>(pdata + 2);
-    return static_cast<uint32_t>(main) * DataBlockReader::CHUNK_SIZE;
+static u32 get_main_size(const u8* pdata) {
+    u16 main = *reinterpret_cast<const u16*>(pdata + 2);
+    return static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
 }
 
-static uint32_t get_total_size(const uint8_t* pdata) {
-    uint16_t main = *reinterpret_cast<const uint16_t*>(pdata + 2);
-    uint16_t tail = *reinterpret_cast<const uint16_t*>(pdata + 4);
-    return tail + static_cast<uint32_t>(main) * DataBlockReader::CHUNK_SIZE;
+static u32 get_total_size(const u8* pdata) {
+    u16 main = *reinterpret_cast<const u16*>(pdata + 2);
+    u16 tail = *reinterpret_cast<const u16*>(pdata + 4);
+    return tail + static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
 }
 
-static aku_ParamId get_block_id(const uint8_t* pdata) {
+static aku_ParamId get_block_id(const u8* pdata) {
     aku_ParamId id = *reinterpret_cast<const aku_ParamId*>(pdata + 6);
     return id;
 }
@@ -696,7 +696,7 @@ aku_ParamId DataBlockReader::get_id() const {
     return get_block_id(begin_);
 }
 
-uint16_t DataBlockReader::version() const {
+u16 DataBlockReader::version() const {
     return get_block_version(begin_);
 }
 

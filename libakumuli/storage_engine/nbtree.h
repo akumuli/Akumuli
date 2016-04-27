@@ -71,7 +71,7 @@ enum {
 
 struct SubtreeRefPayload {
     //! Number of elements in the subtree
-    uint64_t      count;
+    u64      count;
     //! Series Id
     aku_ParamId   id;
     //! First element's timestamp
@@ -101,13 +101,13 @@ struct SubtreeRefPayload {
   */
 struct SubtreeRef : SubtreeRefPayload {
     //! Node version
-    uint16_t      version;
+    u16      version;
     //! Node level in the tree
-    uint16_t      level;
+    u16      level;
     //! Payload size (real)
-    uint16_t      payload_size;
+    u16      payload_size;
     //! Fan out index of the element (current)
-    uint16_t      fanout_index;
+    u16      fanout_index;
 } __attribute__((packed));
 
 
@@ -118,11 +118,11 @@ class NBTreeLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::vector<uint8_t> buffer_;
+    std::vector<u8> buffer_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
     //! Fanout index
-    uint16_t fanout_index_;
+    u16 fanout_index_;
 public:
     enum class LeafLoadMethod {
         FULL_PAGE_LOAD, ONLY_HEADER,
@@ -134,7 +134,7 @@ public:
       * @param prev Prev element of the tree.
       * @param fanout_index Index inside current fanout
       */
-    NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index);
+    NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -173,16 +173,16 @@ public:
 /** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
-    std::vector<uint8_t> buffer_;
+    std::vector<u8> buffer_;
     aku_ParamId id_;
-    uint32_t write_pos_;
-    uint16_t fanout_index_;
-    uint16_t level_;
+    u32 write_pos_;
+    u16 fanout_index_;
+    u16 level_;
     LogicAddr prev_;
     bool immutable_;
 public:
     //! Create new writable node.
-    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, uint16_t fanout, uint16_t lvl);
+    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
     //! Create node from block-store (node is immutable).
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
@@ -249,7 +249,7 @@ class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection
     std::shared_ptr<BlockStore> bstore_;
 public:
     //! Acquire tree root (removes root from collection)
-    std::unique_ptr<NBTreeRoot> lease(uint32_t level);
+    std::unique_ptr<NBTreeRoot> lease(u32 level);
 
     //! Release tree root.
     void release(std::unique_ptr<NBTreeRoot> root);

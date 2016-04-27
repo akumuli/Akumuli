@@ -7,14 +7,14 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-Block::Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<uint8_t>&& data)
+Block::Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<u8>&& data)
     : store_(bs)
     , data_(std::move(data))
     , addr_(addr)
 {
 }
 
-const uint8_t* Block::get_data() const {
+const u8* Block::get_data() const {
     return data_.data();
 }
 
@@ -26,9 +26,9 @@ size_t Block::get_size() const {
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
 {
-    for (uint32_t ix = 0ul; ix < volpaths.size(); ix++) {
+    for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
-        uint32_t nblocks = 0;
+        u32 nblocks = 0;
         aku_Status status = AKU_SUCCESS;
         std::tie(status, nblocks) = meta_->get_nblocks(ix);
         if (status != AKU_SUCCESS) {
@@ -49,7 +49,7 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
 
     // set current volume, current volume is a first volume with free space available
     for (size_t i = 0u; i < volumes_.size(); i++) {
-        uint32_t curr_gen, nblocks;
+        u32 curr_gen, nblocks;
         aku_Status status;
         std::tie(status, curr_gen) = meta_->get_generation(i);
         if (status == AKU_SUCCESS) {
@@ -75,12 +75,12 @@ std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string met
 }
 
 void FixedSizeFileStorage::create(std::string metapath,
-                                  std::vector<std::tuple<uint32_t, std::string>> vols)
+                                  std::vector<std::tuple<u32, std::string>> vols)
 {
-    std::vector<uint32_t> caps;
+    std::vector<u32> caps;
     for (auto cp: vols) {
         std::string path;
-        uint32_t capacity;
+        u32 capacity;
         std::tie(capacity, path) = cp;
         Volume::create_new(path.c_str(), capacity);
         caps.push_back(capacity);
@@ -88,7 +88,7 @@ void FixedSizeFileStorage::create(std::string metapath,
     MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
-static uint32_t extract_gen(LogicAddr addr) {
+static u32 extract_gen(LogicAddr addr) {
     return addr >> 32;
 }
 
@@ -96,8 +96,8 @@ static BlockAddr extract_vol(LogicAddr addr) {
     return addr & 0xFFFFFFFF;
 }
 
-static LogicAddr make_logic(uint32_t gen, BlockAddr addr) {
-    return static_cast<uint64_t>(gen) << 32 | addr;
+static LogicAddr make_logic(u32 gen, BlockAddr addr) {
+    return static_cast<u64>(gen) << 32 | addr;
 }
 
 bool FixedSizeFileStorage::exists(LogicAddr addr) const {
@@ -105,12 +105,12 @@ bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
     aku_Status status;
-    uint32_t actual_gen;
+    u32 actual_gen;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
     if (status != AKU_SUCCESS) {
         return false;
     }
-    uint32_t nblocks;
+    u32 nblocks;
     std::tie(status, nblocks) = meta_->get_nblocks(volix);
     if (status != AKU_SUCCESS) {
         return false;
@@ -123,8 +123,8 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % volumes_.size();
-    uint32_t actual_gen;
-    uint32_t nblocks;
+    u32 actual_gen;
+    u32 nblocks;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
@@ -136,7 +136,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     if (actual_gen != gen || vol >= nblocks) {
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
-    std::vector<uint8_t> dest(AKU_BLOCK_SIZE, 0);
+    std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[volix]->read_block(vol, dest.data());
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<Block>());
@@ -156,7 +156,7 @@ void FixedSizeFileStorage::advance_volume() {
         AKU_PANIC("Can't read generation of the next volume, " + StatusUtil::str(status));
     }
     // If volume is not empty - reset it and change generation
-    uint32_t nblocks;
+    u32 nblocks;
     std::tie(status, nblocks) = meta_->get_nblocks(current_volume_);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read nblocks of next volume, " + StatusUtil::str(status));
@@ -180,7 +180,7 @@ void FixedSizeFileStorage::advance_volume() {
     }
 }
 
-std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(uint8_t const* data) {
+std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(u8 const* data) {
     BlockAddr block_addr;
     aku_Status status;
     std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);

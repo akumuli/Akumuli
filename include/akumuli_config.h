@@ -21,7 +21,7 @@
 
 
 #pragma once
-#include <stdint.h>
+#include "akumuli_def.h"
 
 // Values for durability parameter
 #define AKU_MAX_DURABILITY 1  // default value
@@ -49,24 +49,24 @@ typedef void (*aku_panic_handler_t)(const char* msg);
  */
 typedef struct {
     //! Debug mode trigger
-    uint32_t debug_mode;
+    u32 debug_mode;
 
     //! Pointer to logging function, can be null
     aku_logger_cb_t logger;
 
     //! 0 - huge tlbs disabled, other value - enabled
-    uint32_t enable_huge_tlb;
+    u32 enable_huge_tlb;
 
     //! Consistency-speed tradeoff, 1 - max durability, 2 - tradeoff some durability for speed, 4 - max speed
-    uint32_t durability;
+    u32 durability;
 
     //! Number of data points that should be stored in one compressed chunk
-    uint32_t compression_threshold;
+    u32 compression_threshold;
 
     //! Windth of the sliding window
-    uint64_t window_size;
+    u64 window_size;
 
     //! Cache size limit
-    uint64_t max_cache_size;
+    u64 max_cache_size;
 
 } aku_FineTuneParams;

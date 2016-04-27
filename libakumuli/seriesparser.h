@@ -40,7 +40,7 @@ struct SeriesMatcher {
     //! Pooled string
     typedef StringTools::StringT StringT;
     //! Series name descriptor - pointer to string, length, series id.
-    typedef std::tuple<const char*, int, uint64_t> SeriesNameT;
+    typedef std::tuple<const char*, int, u64> SeriesNameT;
 
     typedef StringTools::TableT TableT;
     typedef StringTools::InvT   InvT;
@@ -49,35 +49,35 @@ struct SeriesMatcher {
     StringPool               pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
-    uint64_t                 series_id;  //! Series ID counter
+    u64                 series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
     std::mutex               mutex;      //! Mutex for shared data
 
-    SeriesMatcher(uint64_t starting_id);
+    SeriesMatcher(u64 starting_id);
 
     /** Add new string to matcher.
       */
-    uint64_t add(const char* begin, const char* end);
+    u64 add(const char* begin, const char* end);
 
     /** Add value from DB to matcher. This function should be
       * used only to load data from database to matcher. Internal
       * `series_id` counter shouldn't be affected by this call.
       */
-    void _add(std::string series, uint64_t id);
+    void _add(std::string series, u64 id);
 
     /** Match string and return it's id. If string is new return 0.
       */
-    uint64_t match(const char* begin, const char* end);
+    u64 match(const char* begin, const char* end);
 
     //! Convert id to string
-    StringT id2str(uint64_t tokenid) const;
+    StringT id2str(u64 tokenid) const;
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements
       */
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
-    std::vector<uint64_t> get_all_ids() const;
+    std::vector<u64> get_all_ids() const;
 };
 
 /** Namespace class to store all parsing related things.

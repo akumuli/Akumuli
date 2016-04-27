@@ -89,13 +89,13 @@ struct MetadataStorage {
     void get_configs(std::string* creation_datetime);
 
     /** Read larges series id */
-    uint64_t get_prev_largest_id();
+    u64 get_prev_largest_id();
 
     aku_Status load_matcher_data(SeriesMatcher& matcher);
 
     // Writing //
 
-    typedef std::tuple<const char*, int, uint64_t> SeriesT;
+    typedef std::tuple<const char*, int, u64> SeriesT;
 
     /** Add new series to the metadata storage.
       */

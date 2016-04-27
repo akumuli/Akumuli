@@ -26,14 +26,14 @@ namespace Akumuli {
 
 struct TwoUnivHashFnFamily {
     const int             INTERNAL_CARDINALITY_;
-    std::vector<uint64_t> a;
-    std::vector<uint64_t> b;
-    uint64_t              prime;
-    uint64_t              modulo;
+    std::vector<u64> a;
+    std::vector<u64> b;
+    u64              prime;
+    u64              modulo;
 
     TwoUnivHashFnFamily(int cardinality, size_t modulo);
 
-    uint64_t hash(int ix, uint64_t value) const;
+    u64 hash(int ix, u64 value) const;
 };
 
 /** Posting list.

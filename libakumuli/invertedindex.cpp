@@ -40,7 +40,7 @@ TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
     }
 }
 
-uint64_t TwoUnivHashFnFamily::hash(int ix, uint64_t value) const {
+u64 TwoUnivHashFnFamily::hash(int ix, u64 value) const {
     return ((a[ix]*value + b[ix]) % prime) % modulo;
 }
 
@@ -88,7 +88,7 @@ InvertedIndex::InvertedIndex(const size_t table_size)
     }
 }
 
-static uint64_t sdbm(const char* begin, const char* end) {
+static u64 sdbm(const char* begin, const char* end) {
     unsigned long hash = 0;
     for (auto it = begin; it != end; it++) {
         hash = *it + (hash << 6) + (hash << 16) - hash;

@@ -10,7 +10,7 @@ namespace Http {
 
 //! Microhttpd callback functions
 namespace MHD {
-static ssize_t read_callback(void *data, uint64_t pos, char *buf, size_t max) {
+static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
     ReadOperation* cur = (ReadOperation*)data;
     auto status = cur->get_error();

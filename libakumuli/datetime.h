@@ -29,7 +29,7 @@ namespace Akumuli {
 using aku_Duration = aku_Timestamp;
 
 /** aku_TimeStamp is a main datatype to represent date-time values.
-  * It stores number of nanoseconds since epoch so it can fit uint64_t and doesn't prone to year 2038
+  * It stores number of nanoseconds since epoch so it can fit u64 and doesn't prone to year 2038
   * problem.
   */
 

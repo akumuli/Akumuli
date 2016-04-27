@@ -27,11 +27,11 @@ namespace StorageEngine {
 //! This value represents empty addr. It's too large to be used as a real block addr.
 static const LogicAddr EMPTY = std::numeric_limits<LogicAddr>::max();
 
-static SubtreeRef* subtree_cast(uint8_t* p) {
+static SubtreeRef* subtree_cast(u8* p) {
     return reinterpret_cast<SubtreeRef*>(p);
 }
 
-static SubtreeRef const* subtree_cast(uint8_t const* p) {
+static SubtreeRef const* subtree_cast(u8 const* p) {
     return reinterpret_cast<SubtreeRef const*>(p);
 }
 
@@ -87,7 +87,7 @@ static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, Subtre
     return AKU_SUCCESS;
 }
 
-NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index)
+NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     : prev_(prev)
     , buffer_(AKU_BLOCK_SIZE, 0)
     , writer_(id, buffer_.data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
@@ -225,7 +225,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
 //     NBTreeSuperblock     //
 // //////////////////////// //
 
-NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, uint16_t fanout, uint16_t lvl)
+NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
     : buffer_(AKU_BLOCK_SIZE, 0)
     , id_(id)
     , write_pos_(0)
@@ -310,7 +310,7 @@ bool NBTreeSuperblock::is_full() const {
 }
 
 aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
-    for(uint32_t ix = 0u; ix < write_pos_; ix++) {
+    for(u32 ix = 0u; ix < write_pos_; ix++) {
         SubtreeRef const* ref = subtree_cast(buffer_.data());
         ref += (1 + ix);
         refs->push_back(*ref);
@@ -341,7 +341,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     aku_ParamId id_;
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
-    uint16_t fanout_index_;
+    u16 fanout_index_;
 
     NBTreeLeafRoot(std::shared_ptr<BlockStore> bstore,
                    std::shared_ptr<NBTreeRootsCollection> roots,
@@ -447,14 +447,14 @@ struct NBSuperblockRoot : NBTreeRoot {
     std::unique_ptr<NBTreeSuperblock> curr_;
     aku_ParamId id_;
     LogicAddr last_;
-    uint16_t fanout_index_;
-    uint16_t level_;
+    u16 fanout_index_;
+    u16 level_;
 
     NBSuperblockRoot(std::shared_ptr<BlockStore> bstore,
                      std::shared_ptr<NBTreeRootsCollection> roots,
                      aku_ParamId id,
                      LogicAddr last,
-                     uint16_t level)
+                     u16 level)
         : bstore_(bstore)
         , roots_(roots)
         , id_(id)

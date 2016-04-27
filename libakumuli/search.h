@@ -5,8 +5,8 @@
 namespace Akumuli {
 
 struct SearchRange {
-    uint32_t begin;  //< Begin index
-    uint32_t end;    //< End index
+    u32 begin;  //< Begin index
+    u32 end;    //< End index
 };
 
 /** This is a searcher base class. It is supposed to be used in
@@ -15,7 +15,7 @@ struct SearchRange {
   */
 template <class Derived, int SEARCH_QUOTA = 4> struct InterpolationSearch {
     // Derived class must implement:
-    // - bool read_at(aku_TimeStamp* out_timestamp, uint32_t ix);
+    // - bool read_at(aku_TimeStamp* out_timestamp, u32 ix);
     // - bool is_small(SearchRange range);
     // - get_search_stats();
 
@@ -41,7 +41,7 @@ template <class Derived, int SEARCH_QUOTA = 4> struct InterpolationSearch {
         if (!success) {
             return false;
         }
-        uint32_t probe_index                = 0u;
+        u32 probe_index                = 0u;
         int      interpolation_search_quota = SEARCH_QUOTA;
         int      steps_count                = 0;
         int      small_range_finish         = 0;
@@ -50,9 +50,9 @@ template <class Derived, int SEARCH_QUOTA = 4> struct InterpolationSearch {
         int      page_scan_success          = 0;
         int      page_miss                  = 0;
 
-        uint64_t      overshoot     = 0u;
-        uint64_t      undershoot    = 0u;
-        uint64_t      exact_match   = 0u;
+        u64      overshoot     = 0u;
+        u64      undershoot    = 0u;
+        u64      exact_match   = 0u;
         aku_Timestamp prev_step_err = 0u;
         I10nState     state         = NONE;
 
@@ -64,7 +64,7 @@ template <class Derived, int SEARCH_QUOTA = 4> struct InterpolationSearch {
                 break;
             }
 
-            uint64_t numerator = 0u;
+            u64 numerator = 0u;
 
             switch (state) {
             case UNDERSHOOT:

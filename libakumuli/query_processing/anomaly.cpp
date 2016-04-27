@@ -26,8 +26,8 @@ static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_
 }
 
 static void validate_sketch_params(boost::property_tree::ptree const& ptree) {
-    uint32_t bits = ptree.get<uint32_t>("bits", 8);
-    uint32_t hashes = ptree.get<uint32_t>("hashes", 1);
+    u32 bits = ptree.get<u32>("bits", 8);
+    u32 hashes = ptree.get<u32>("hashes", 1);
     // bits should be in range
     if (bits < 8 || bits > 16) {
         QueryParserError err("Anomaly detector parameter `bits` out of range");
@@ -97,8 +97,8 @@ AnomalyDetector::AnomalyDetector(boost::property_tree::ptree const& ptree, std::
 {
     validate_anomaly_detector_params(ptree);
     double threshold = ptree.get<double>("threshold");
-    uint32_t bits = ptree.get<uint32_t>("bits", 10u);
-    uint32_t nhashes = ptree.get<uint32_t>("hashes", 3u);
+    u32 bits = ptree.get<u32>("bits", 10u);
+    u32 nhashes = ptree.get<u32>("hashes", 3u);
     AnomalyDetector::FcastMethod method = parse_anomaly_detector_type(ptree);
     double alpha = ptree.get<double>("alpha", 0.0);
     double beta = ptree.get<double>("beta", 0.0);
@@ -139,8 +139,8 @@ AnomalyDetector::AnomalyDetector(boost::property_tree::ptree const& ptree, std::
 }
 
 AnomalyDetector::AnomalyDetector(
-        uint32_t nhashes,
-        uint32_t bits,
+        u32 nhashes,
+        u32 bits,
         double   threshold,
         double   alpha,
         double   beta,

@@ -39,9 +39,9 @@ RESPStream::Type RESPStream::next_type() const {
     return result;
 }
 
-uint64_t RESPStream::_read_int_body() {
-    uint64_t result = 0;
-    const int MAX_DIGITS = 84;  // Maximum number of decimal digits in uint64_t
+u64 RESPStream::_read_int_body() {
+    u64 result = 0;
+    const int MAX_DIGITS = 84;  // Maximum number of decimal digits in u64
     int quota = MAX_DIGITS;
     while(quota) {
         Byte c = stream_->get();
@@ -69,7 +69,7 @@ uint64_t RESPStream::_read_int_body() {
     BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
-uint64_t RESPStream::read_int() {
+u64 RESPStream::read_int() {
     Byte c = stream_->get();
     if (c != ':') {
         auto ctx = stream_->get_error_context("bad call");
@@ -117,7 +117,7 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     // parse "{value}\r\n"
-    uint64_t n = _read_int_body();
+    u64 n = _read_int_body();
     if (n > RESPStream::BULK_LENGTH_MAX) {
         auto ctx = stream_->get_error_context("declared object size is too large");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
@@ -149,7 +149,7 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
     return nread;
 }
 
-uint64_t RESPStream::read_array_size() {
+u64 RESPStream::read_array_size() {
     Byte c = stream_->get();
     if (c != '*') {
         auto ctx = stream_->get_error_context("bad call");

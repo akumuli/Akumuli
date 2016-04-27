@@ -5,7 +5,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 //! Address of the block inside storage
-typedef uint64_t LogicAddr;
+typedef u64 LogicAddr;
 
 class Block;
 
@@ -21,7 +21,7 @@ struct BlockStore {
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data) = 0;
+    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data) = 0;
 
     //! Flush all pending changes.
     virtual void flush() = 0;
@@ -43,9 +43,9 @@ class FixedSizeFileStorage : public BlockStore,
     //! "Dirty" flags.
     std::vector<int> dirty_;
     //! Current volume.
-    uint32_t current_volume_;
+    u32 current_volume_;
     //! Current generation.
-    uint32_t current_gen_;
+    u32 current_gen_;
     //! Size of the blockstore in blocks.
     size_t total_size_;
 
@@ -58,7 +58,7 @@ public:
       */
     static std::shared_ptr<FixedSizeFileStorage> open(std::string metapath, std::vector<std::string> volpaths);
 
-    static void create(std::string metapath, std::vector<std::tuple<uint32_t, std::string>> vols);
+    static void create(std::string metapath, std::vector<std::tuple<u32, std::string>> vols);
 
     /** Read block from blockstore
       */
@@ -68,7 +68,7 @@ public:
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(uint8_t const* data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data);
 
     virtual void flush();
 
@@ -80,12 +80,12 @@ public:
 //! Represents memory block
 class Block {
     std::weak_ptr<FixedSizeFileStorage> store_;
-    std::vector<uint8_t> data_;
+    std::vector<u8> data_;
     LogicAddr addr_;
 public:
-    Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<uint8_t>&& data);
+    Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<u8>&& data);
 
-    const uint8_t* get_data() const;
+    const u8* get_data() const;
 
     size_t get_size() const;
 };

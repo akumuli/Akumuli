@@ -3,8 +3,9 @@
  *
  * Akumuli API.
  * Contains only POD definitions that can be used from "C" code.
+ * Should be included only by client code, not by the library itself!
  *
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,89 +36,14 @@
 #define AKU_EXPORT __declspec(dllexport)
 #endif
 
+
 //-----------------
 // Data structures
 //-----------------
 
-typedef uint64_t aku_Timestamp;  //< Timestamp
-typedef uint64_t aku_ParamId;    //< Parameter (or sequence) id
-
-//! Structure represents memory region
-typedef struct {
-    const void* address;
-    uint32_t    length;
-} aku_MemRange;
-
-
-//! Payload data
-typedef struct {
-    //------------------------------------------//
-    //       Normal payload (float value)       //
-    //------------------------------------------//
-
-    //! Value
-    double float64;
-
-    /** Payload size (payload can be variably sized)
-     *  size = 0 means size = sizeof(aku_Sample)
-     */
-    uint16_t size;
-
-    //! Data element flags
-    enum {
-        EMPTY         = 0,
-        URGENT        = 1 << 8, /** urgent flag (anomaly or error) */
-        PARAMID_BIT   = 1,
-        TIMESTAMP_BIT = 1 << 1,
-        CUSTOM_TIMESTAMP =
-            1 << 2, /** indicates that timestamp shouldn't be formatted during output */
-        FLOAT_BIT      = 1 << 4,
-        ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
-                                            (extra payload stored in `data` was lost) */
-        SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
-
-        MARGIN    = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
-        LO_MARGIN = 1 << 14, /** backward direction margin */
-        HI_MARGIN = 1 << 15, /** forward direction margin */
-    };
-    uint16_t type;
-
-    //---------------------------//
-    //       Extra payload       //
-    //---------------------------//
-
-    //! Extra payload data
-    char data[0];
-
-} aku_PData;
-
-#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
-
-//! Cursor result type
-typedef struct {
-    aku_Timestamp timestamp;
-    aku_ParamId   paramid;
-    aku_PData     payload;
-} aku_Sample;
-
 
 //! Database instance.
 typedef struct { int padding; } aku_Database;
-
-
-/**
- * @brief Select search query.
- */
-typedef struct {
-    //! Begining of the search range
-    aku_Timestamp begin;
-    //! End of the search range
-    aku_Timestamp end;
-    //! Number of parameters to search
-    uint32_t n_params;
-    //! Array of parameters to search
-    aku_ParamId params[];
-} aku_SelectQuery;
 
 
 /**
@@ -129,34 +55,34 @@ typedef struct { int padding; } aku_Cursor;
 //! Search stats
 typedef struct {
     struct {
-        uint64_t n_times;        //< How many times interpolation search was performed
-        uint64_t n_steps;        //< How many interpolation search steps was performed
-        uint64_t n_overshoots;   //< Number of overruns
-        uint64_t n_undershoots;  //< Number of underruns
-        uint64_t n_matches;      //< Number of matches by interpolation search only
-        uint64_t n_reduced_to_one_page;
-        uint64_t n_page_in_core_checks;  //< Number of page in core checks
-        uint64_t n_page_in_core_errors;  //< Number of page in core check errors
-        uint64_t n_pages_in_core_found;  //< Number of page in core found
-        uint64_t n_pages_in_core_miss;   //< Number of page misses
+        u64 n_times;        //< How many times interpolation search was performed
+        u64 n_steps;        //< How many interpolation search steps was performed
+        u64 n_overshoots;   //< Number of overruns
+        u64 n_undershoots;  //< Number of underruns
+        u64 n_matches;      //< Number of matches by interpolation search only
+        u64 n_reduced_to_one_page;
+        u64 n_page_in_core_checks;  //< Number of page in core checks
+        u64 n_page_in_core_errors;  //< Number of page in core check errors
+        u64 n_pages_in_core_found;  //< Number of page in core found
+        u64 n_pages_in_core_miss;   //< Number of page misses
     } istats;
     struct {
-        uint64_t n_times;  //< How many times binary search was performed
-        uint64_t n_steps;  //< How many binary search steps was performed
+        u64 n_times;  //< How many times binary search was performed
+        u64 n_steps;  //< How many binary search steps was performed
     } bstats;
     struct {
-        uint64_t fwd_bytes;  //< Number of scanned bytes in forward direction
-        uint64_t bwd_bytes;  //< Number of scanned bytes in backward direction
+        u64 fwd_bytes;  //< Number of scanned bytes in forward direction
+        u64 bwd_bytes;  //< Number of scanned bytes in backward direction
     } scan;
 } aku_SearchStats;
 
 
 //! Storage stats
 typedef struct {
-    uint64_t n_entries;   //< Total number of entries
-    uint64_t n_volumes;   //< Total number of volumes
-    uint64_t free_space;  //< Free space total
-    uint64_t used_space;  //< Space in use
+    u64 n_entries;   //< Total number of entries
+    u64 n_volumes;   //< Total number of volumes
+    u64 free_space;  //< Free space total
+    u64 used_space;  //< Space in use
 } aku_StorageStats;
 
 
@@ -203,7 +129,7 @@ AKU_EXPORT void aku_destroy(void* any);
  * TODO: move from apr_status_t to aku_Status
  */
 AKU_EXPORT apr_status_t aku_create_database(const char* file_name, const char* metadata_path,
-                                            const char* volumes_path, int32_t num_volumes,
+                                            const char* volumes_path, i32 num_volumes,
                                             aku_logger_cb_t logger);
 
 /**
@@ -216,8 +142,8 @@ AKU_EXPORT apr_status_t aku_create_database(const char* file_name, const char* m
  * TODO: move from apr_status_t to aku_Status
  */
 AKU_EXPORT apr_status_t aku_create_database_ex(const char* file_name, const char* metadata_path,
-                                               const char* volumes_path, int32_t num_volumes,
-                                               uint64_t page_size, aku_logger_cb_t logger);
+                                               const char* volumes_path, i32 num_volumes,
+                                               u64 page_size, aku_logger_cb_t logger);
 
 
 /** Remove all volumes.

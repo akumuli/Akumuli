@@ -113,7 +113,7 @@ private:
 };
 
 //! Fast integer logarithm
-int64_t log2(int64_t value);
+i64 log2(i64 value);
 
 std::tuple<bool, aku_Status> page_in_core(const void* addr);
 
@@ -161,7 +161,7 @@ class Rand {
 
 public:
     Rand();
-    uint32_t operator()();
+    u32 operator()();
 };
 
 /** Reader writer lock

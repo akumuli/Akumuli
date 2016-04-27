@@ -14,7 +14,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer) {
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
-    uint64_t result = resp.read_int();
+    u64 result = resp.read_int();
     BOOST_REQUIRE_EQUAL(result, 1234567890);
 }
 

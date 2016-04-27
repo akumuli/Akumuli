@@ -298,8 +298,8 @@ apr_status_t MemoryMappedFile::flush(size_t from, size_t to) {
     return AKU_EGENERAL;
 }
 
-int64_t log2(int64_t value) {
-    return static_cast<int64_t>(8*sizeof(uint64_t) - __builtin_clzll((uint64_t)value) - 1);
+i64 log2(i64 value) {
+    return static_cast<i64>(8*sizeof(u64) - __builtin_clzll((u64)value) - 1);
 }
 
 
@@ -435,8 +435,8 @@ Rand::Rand()
     rand_.seed(init_seed);
 }
 
-uint32_t Rand::operator () () {
-    return (uint32_t)rand_();
+u32 Rand::operator () () {
+    return (u32)rand_();
 }
 
 

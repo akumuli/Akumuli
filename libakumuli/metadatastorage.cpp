@@ -311,7 +311,7 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
     execute_query("END TRANSACTION;");
 }
 
-uint64_t MetadataStorage::get_prev_largest_id() {
+u64 MetadataStorage::get_prev_largest_id() {
     auto query = "SELECT max(storage_id) FROM akumuli_series;";
     try {
         auto results = select_query(query);
@@ -324,7 +324,7 @@ uint64_t MetadataStorage::get_prev_largest_id() {
             // Table is empty
             return 1ul;
         }
-        return boost::lexical_cast<uint64_t>(id);
+        return boost::lexical_cast<u64>(id);
     } catch(...) {
         (*logger_)(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
         AKU_PANIC("Can't get max storage id");
@@ -341,7 +341,7 @@ aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
                 continue;
             }
             auto series = row.at(0);
-            auto id = boost::lexical_cast<uint64_t>(row.at(1));
+            auto id = boost::lexical_cast<u64>(row.at(1));
             matcher._add(series, id);
         }
     } catch(...) {

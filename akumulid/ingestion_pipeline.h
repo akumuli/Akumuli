@@ -83,7 +83,7 @@ private:
 
 public:
     AkumuliConnection(const char* path, bool hugetlb, Durability durability,
-                      uint32_t compression_threshold, uint64_t window_width, uint64_t cache_size);
+                      u32 compression_threshold, u64 window_width, u64 cache_size);
 
     virtual void close();
 
@@ -109,7 +109,7 @@ enum BackoffPolicy {
 
 
 //! Callback from pipeline to session
-typedef std::function<void(aku_Status, uint64_t)> PipelineErrorCb;
+typedef std::function<void(aku_Status, u64)> PipelineErrorCb;
 
 
 /** Pipeline's spout.
@@ -132,7 +132,7 @@ struct PipelineSpout : ProtocolConsumer {
 
     // Typedefs
     typedef struct { char emptybits[64]; } Padding;  //< Padding
-    typedef std::atomic<uint64_t> SpoutCounter;      //< Shared counter
+    typedef std::atomic<u64> SpoutCounter;      //< Shared counter
     typedef struct {
         aku_Sample       sample;                      //< Value
         SpoutCounter*    cnt;                         //< Pointer to spout's shared counter
