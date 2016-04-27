@@ -488,9 +488,12 @@ struct NBSuperblockRoot : NBTreeRoot {
     virtual void append(SubtreeRefPayload const& pl) {
         auto status = curr_->append(pl);
         if (status == AKU_EOVERFLOW) {
-            // TODO: handle overflow
+            commit();
+            status = append(pl);
         }
-        AKU_PANIC("Not implemented (4)");
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't append payload to superblock");  // TODO: translate error message
+        }
     }
 
     virtual void commit() {
