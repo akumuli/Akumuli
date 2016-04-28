@@ -251,14 +251,26 @@ class NBTreeRoot;
   */
 class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
+    std::vector<std::unique_ptr<NBTreeRoot>> roots_;
+    aku_ParamId id_;
+    std::vector<LogicAddr> rootaddr_;
+    bool initialized_;
 
+    void init();
 public:
+    /** C-tor
+      * @param addresses List of root addresses in blockstore.
+      * @param bstore Block-store.
+      */
+    NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
+
     //! Acquire tree root (removes root from collection)
-    std::unique_ptr<NBTreeRoot> lease(u32 level);
+    std::unique_ptr<NBTreeRoot> lease(u16 level);
 
     //! Release tree root.
-    void release(std::unique_ptr<NBTreeRoot> root);
+    void release(std::unique_ptr<NBTreeRoot> root, u16 level);
 };
+
 
 /** This object represents block store backed tree.
   * It contains data from one time-series.

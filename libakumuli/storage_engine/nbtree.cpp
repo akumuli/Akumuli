@@ -371,6 +371,10 @@ struct NBTreeLeafRoot : NBTreeRoot {
         reset_leaf();
     }
 
+    virtual void append(SubtreeRefPayload const& pl) {
+        AKU_PANIC("Can't append subtree to leaf node");
+    }
+
     virtual void append(aku_Timestamp ts, double value) {
         // Invariant: leaf_ should be initialized, if leaf_ is full
         // and pushed to block-store, reset_leaf should be called
@@ -422,7 +426,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
             auto root = roots_collection->lease(1);
             root->append(payload);
 
-            BOOST_SCOPE_EXIT_ALL(&) { roots_collection->release(std::move(root)); };
+            BOOST_SCOPE_EXIT_ALL(&) { roots_collection->release(std::move(root), 1); };
 
         } else {
             // Invariant broken.
@@ -523,7 +527,7 @@ struct NBSuperblockRoot : NBTreeRoot {
             auto root = roots_collection->lease(level_ + 1);
             root->append(payload);
 
-            BOOST_SCOPE_EXIT_ALL(&) { roots_collection->release(std::move(root)); };
+            BOOST_SCOPE_EXIT_ALL(&) { roots_collection->release(std::move(root), level_ + 1); };
 
         } else {
             // Invariant broken.
@@ -540,6 +544,77 @@ struct NBSuperblockRoot : NBTreeRoot {
         reset_subtree();
     }
 };
+
+
+
+// //////////////////////// //
+//  NBTreeRootsCollection   //
+// //////////////////////// //
+
+
+NBTreeRootsCollection::NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
+    : bstore_(bstore)
+    , id_(id)
+    , rootaddr_(std::move(addresses))
+    , initialized_(false)
+{
+    if (rootaddr_.size() >= std::numeric_limits<u16>::max()) {
+        AKU_PANIC("Tree depth is too large");
+    }
+}
+
+void NBTreeRootsCollection::init() {
+    for(u32 i = 0; i < rootaddr_.size(); i++) {
+        if (i == 0) {
+            // special case, leaf node
+            std::unique_ptr<NBTreeRoot> leaf;
+            leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, rootaddr_[i]));
+            roots_.push_back(std::move(leaf));
+        } else {
+            // create superblock root
+            std::unique_ptr<NBTreeRoot> root;
+            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
+                                            id_, rootaddr_[i], (u16)i));
+            roots_.push_back(std::move(root));
+        }
+    }
+    initialized_ = true;
+}
+
+//! Acquire tree root (removes root from collection)
+std::unique_ptr<NBTreeRoot> NBTreeRootsCollection::lease(u16 level) {
+    if (!initialized_) {
+        init();
+    }
+    if (roots_.size() > level) {
+        return std::move(roots_.at(level));
+    } else if (roots_.size() == level) {
+        if (level == 0) {
+            roots_.emplace_back();  // create empty slot in roots_ list
+            std::unique_ptr<NBTreeRoot> leaf;
+            leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, EMPTY));
+            return std::move(leaf);
+        } else {
+            roots_.emplace_back();  // create empty slot in roots_ list
+            std::unique_ptr<NBTreeRoot> root;
+            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
+                                            id_, EMPTY, level));
+            return std::move(root);
+        }
+    }
+    return std::unique_ptr<NBTreeRoot>();
+}
+
+//! Release tree root.
+void NBTreeRootsCollection::release(std::unique_ptr<NBTreeRoot> root, u16 level) {
+    if (level >= roots_.size()) {
+        AKU_PANIC("Bad level");
+    }
+    if (roots_.at(level)) {
+        AKU_PANIC("Bad level, slot already ocupied");
+    }
+    roots_.at(level) = std::move(root);
+}
 
 
 // //////////////////////// //
