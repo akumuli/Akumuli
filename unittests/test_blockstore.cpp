@@ -38,8 +38,8 @@ static void create_blockstore() {
     MetaVolume::create_new(METAPATH.c_str(), 2, CAPACITIES.data());
 }
 
-static std::shared_ptr<BlockStore> open_blockstore() {
-    auto bstore = BlockStore::open(METAPATH, VOLPATH);
+static std::shared_ptr<FixedSizeFileStorage> open_blockstore() {
+    auto bstore = FixedSizeFileStorage::open(METAPATH, VOLPATH);
     return bstore;
 }
 

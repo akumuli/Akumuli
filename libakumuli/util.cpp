@@ -68,6 +68,12 @@ Exception::Exception(const char* message)
     (*g_panic_handler)(message);
 }
 
+Exception::Exception(std::string message)
+    : std::runtime_error(message)
+{
+    (*g_panic_handler)(message.c_str());
+}
+
 std::ostream& operator << (std::ostream& str, Exception const& e) {
     str << e.what();
     return str;

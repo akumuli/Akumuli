@@ -212,6 +212,7 @@ add_executable(
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/status_util.cpp
 )
 
 target_link_libraries(
@@ -234,6 +235,7 @@ add_executable(
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/status_util.cpp
 )
 
 target_link_libraries(

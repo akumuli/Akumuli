@@ -27,6 +27,7 @@
 #include "storage.h"
 #include "datetime.h"
 #include "log_iface.h"
+#include "status_util.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -71,29 +72,8 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t 
     }
 }
 
-static const char* g_error_messages[] = {
-    "OK",
-    "no data",
-    "not enough memory",
-    "device is busy",
-    "not found",
-    "bad argument",
-    "overflow",
-    "invalid data",
-    "unknown error",
-    "late write",
-    "not implemented",
-    "query parsing error",
-    "anomaly detector can't work with negative values",
-    "merge required",
-    "unknown error code"
-};
-
 const char* aku_error_message(int error_code) {
-    if (error_code >= 0 && error_code < AKU_EMAX_ERROR) {
-        return g_error_messages[error_code];
-    }
-    return g_error_messages[AKU_EMAX_ERROR];
+    return StatusUtil::c_str((aku_Status)error_code);
 }
 
 
