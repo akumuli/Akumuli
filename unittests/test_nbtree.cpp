@@ -120,8 +120,8 @@ void test_nbtree_roots_collection() {
     int N = 1000*32;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
-    NBTreeRootsCollection collection(42, addrlist, bstore);
-    std::shared_ptr<NBTreeRoot> leaf = collection.lease(0);
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+    std::shared_ptr<NBTreeRoot> leaf = collection->lease(0);
     for (int i = 0; i < N; i++) {
         leaf->append(i, 0.5*i);
     }

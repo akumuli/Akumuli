@@ -257,7 +257,7 @@ struct NBTreeRoot {
   * @li store all roots of the NBTree
   * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
   */
-class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
+class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
     std::vector<std::unique_ptr<NBTreeRoot>> roots_;
     aku_ParamId id_;

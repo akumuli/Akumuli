@@ -305,8 +305,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
 }
 
 bool NBTreeSuperblock::is_full() const {
-    static const size_t maxsize = AKU_BLOCK_SIZE / sizeof(SubtreeRef) - 1;
-    return write_pos_ < maxsize;
+    return write_pos_ >= AKU_NBTREE_FANOUT;
 }
 
 aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
@@ -376,10 +375,6 @@ struct NBTreeLeafRoot : NBTreeRoot {
             // the program that results in NBTreeLeaf::append always
             // returning AKU_EOVERFLOW.
             append(ts, value);
-        }
-        if (status != AKU_SUCCESS) {
-            // it should return only AKU_EOVERFLOW
-            AKU_PANIC("Unexpected error from NBTreeLeaf, " + StatusUtil::str(status));
         }
     }
 
@@ -485,9 +480,6 @@ struct NBSuperblockRoot : NBTreeRoot {
         if (status == AKU_EOVERFLOW) {
             commit();
             append(pl);
-        }
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't append payload to superblock " + StatusUtil::str(status));
         }
     }
 
