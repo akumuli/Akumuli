@@ -80,16 +80,22 @@ public:
 
 //! Represents memory block
 class Block {
-    std::weak_ptr<FixedSizeFileStorage> store_;
-    std::vector<u8>                     data_;
-    LogicAddr                           addr_;
+    std::weak_ptr<BlockStore> store_;
+    std::vector<u8>           data_;
+    LogicAddr                 addr_;
 
 public:
-    Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<u8>&& data);
+    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data);
 
     const u8* get_data() const;
 
     size_t get_size() const;
 };
+
+//! Should be used to create blockstore
+struct BlockStoreBuilder {
+    static std::shared_ptr<BlockStore> create_memstore(size_t sz);
+};
+
 }
 }  // namespace

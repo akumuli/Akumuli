@@ -115,3 +115,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_forward_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_forward_3) {
     test_nbtree_forward(100000);
 }
+
+void test_nbtree_roots_collection() {
+    // TODO: implement memory resident blockstore
+}

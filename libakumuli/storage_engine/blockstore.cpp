@@ -7,7 +7,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-Block::Block(std::shared_ptr<FixedSizeFileStorage> bs, LogicAddr addr, std::vector<u8>&& data)
+Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data)
     : store_(bs)
     , data_(std::move(data))
     , addr_(addr)
@@ -208,6 +208,52 @@ void FixedSizeFileStorage::flush() {
         }
     }
     meta_->flush();
+}
+
+
+// Memory resident blockstore for tests
+
+struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
+    std::vector<u8> buffer_;
+    u32 write_pos_;
+    MemStore(size_t size)
+        : buffer_(size * AKU_BLOCK_SIZE, 0)
+        , write_pos_(0)
+    {
+    }
+
+    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) {
+        if (addr > write_pos_) {
+            return std::make_tuple(AKU_EOVERFLOW, std::shared_ptr<Block>());
+        }
+        std::shared_ptr<Block> block;
+        std::vector<u8> data;
+        u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
+        std::copy(buffer_.begin() + offset, buffer_.begin() + offset + AKU_BLOCK_SIZE,
+                  std::back_inserter(data));
+        block.reset(new Block(shared_from_this(), addr, std::move(data)));
+        return std::make_tuple(AKU_SUCCESS, block);
+    }
+
+    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data) {
+        u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * write_pos_);
+        std::copy(data, data + AKU_BLOCK_SIZE, buffer_.data() + offset);
+        write_pos_++;
+        return std::make_tuple(AKU_SUCCESS, offset/AKU_BLOCK_SIZE);
+    }
+
+    virtual void flush() {
+        // no-op
+    }
+
+    virtual bool exists(LogicAddr addr) const {
+        return addr < write_pos_;
+    }
+};
+
+
+std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore(size_t sz) {
+    return std::make_shared<MemStore>(sz);
 }
 
 }}  // namespace
