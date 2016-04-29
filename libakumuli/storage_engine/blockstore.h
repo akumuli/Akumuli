@@ -94,7 +94,7 @@ public:
 
 //! Should be used to create blockstore
 struct BlockStoreBuilder {
-    static std::shared_ptr<BlockStore> create_memstore(size_t sz);
+    static std::shared_ptr<BlockStore> create_memstore();
 };
 
 }

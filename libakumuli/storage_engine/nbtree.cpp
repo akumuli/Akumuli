@@ -324,17 +324,6 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
 // //////////////////////// //
 
 
-struct NBTreeRoot {
-    virtual ~NBTreeRoot() = default;
-    //! Append new data to the root (doesn't work with superblocks)
-    virtual void append(aku_Timestamp ts, double value) = 0;
-    //! Append subtree metadata to the root (doesn't work with leaf nodes)
-    virtual void append(SubtreeRefPayload const& pl) = 0;
-    //! Write all changes to the block-store, even if node is not full.
-    virtual void commit() = 0;
-};
-
-
 struct NBTreeLeafRoot : NBTreeRoot {
     std::shared_ptr<BlockStore> bstore_;
     std::weak_ptr<NBTreeRootsCollection> roots_;

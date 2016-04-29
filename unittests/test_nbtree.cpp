@@ -117,5 +117,18 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_forward_3) {
 }
 
 void test_nbtree_roots_collection() {
-    // TODO: implement memory resident blockstore
+    int N = 1000*32;
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    NBTreeRootsCollection collection(42, addrlist, bstore);
+    std::shared_ptr<NBTreeRoot> leaf = collection.lease(0);
+    for (int i = 0; i < N; i++) {
+        leaf->append(i, 0.5*i);
+    }
+    // TODO: check results when implementation will be ready
+    // TODO: check start with non-empty tree
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
+    test_nbtree_roots_collection();
 }

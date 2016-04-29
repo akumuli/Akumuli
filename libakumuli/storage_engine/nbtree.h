@@ -240,8 +240,16 @@ public:
 };
 
 
-//! Fwd ref. Implemented in nbtree.cpp.
-class NBTreeRoot;
+//! NBTree root (leaf or superblock)
+struct NBTreeRoot {
+    virtual ~NBTreeRoot() = default;
+    //! Append new data to the root (doesn't work with superblocks)
+    virtual void append(aku_Timestamp ts, double value) = 0;
+    //! Append subtree metadata to the root (doesn't work with leaf nodes)
+    virtual void append(SubtreeRefPayload const& pl) = 0;
+    //! Write all changes to the block-store, even if node is not full.
+    virtual void commit() = 0;
+};
 
 
 /** @brief This class represents set of roots of the NBTree.
