@@ -568,6 +568,9 @@ void NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
 }
 
 void NBTreeRootsCollection::append(const SubtreeRef &pl) {
+    if (!initialized_) {
+        init();
+    }
     u32 lvl = pl.level + 1;
     NBTreeRoot* root = nullptr;
     if (roots_.size() > lvl) {
@@ -601,41 +604,6 @@ void NBTreeRootsCollection::init() {
         }
     }
     initialized_ = true;
-}
-
-//! Acquire tree root (removes root from collection)
-std::unique_ptr<NBTreeRoot> NBTreeRootsCollection::lease(u16 level) {
-    if (!initialized_) {
-        init();
-    }
-    if (roots_.size() > level) {
-        return std::move(roots_.at(level));
-    } else if (roots_.size() == level) {
-        if (level == 0) {
-            roots_.emplace_back();  // create empty slot in roots_ list
-            std::unique_ptr<NBTreeRoot> leaf;
-            leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, EMPTY));
-            return std::move(leaf);
-        } else {
-            roots_.emplace_back();  // create empty slot in roots_ list
-            std::unique_ptr<NBTreeRoot> root;
-            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
-                                            id_, EMPTY, level));
-            return std::move(root);
-        }
-    }
-    return std::unique_ptr<NBTreeRoot>();
-}
-
-//! Release tree root.
-void NBTreeRootsCollection::release(std::unique_ptr<NBTreeRoot> root, u16 level) {
-    if (level >= roots_.size()) {
-        AKU_PANIC("Bad level");
-    }
-    if (roots_.at(level)) {
-        AKU_PANIC("Bad level, slot already ocupied");
-    }
-    roots_.at(level) = std::move(root);
 }
 
 

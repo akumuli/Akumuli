@@ -285,13 +285,6 @@ public:
       */
     NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
-    //! Acquire tree root (removes root from collection)
-    std::unique_ptr<NBTreeRoot> lease(u16 level);
-
-    //! Release tree root.
-    void release(std::unique_ptr<NBTreeRoot> root, u16 level);
-
-    // TODO: move from lease/release interface to complete fasade
     void append(SubtreeRef const& pl);
 
     void append(aku_Timestamp ts, double value);
