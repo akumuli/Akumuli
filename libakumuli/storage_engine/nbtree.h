@@ -65,11 +65,23 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+
 enum {
     AKU_NBTREE_FANOUT = 32,
 };
 
-struct SubtreeRefPayload {
+
+/** Reference to tree node.
+  * Ref contains some metadata: version, level, payload_size, id.
+  * This metadata corresponds to the current node.
+  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
+  * This aggregates corresponds to the current node if leve=0 (current node is a
+  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
+  * leafa node and all this fields describes this leaf node. If level is 2 or more
+  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
+  * in leaf nodes in pointee subtree).
+  */
+struct SubtreeRef {
     //! Number of elements in the subtree
     u64 count;
     //! Series Id
@@ -86,20 +98,6 @@ struct SubtreeRefPayload {
     double max;
     //! Summ of all elements in subtree
     double sum;
-} __attribute__((packed));
-
-
-/** Reference to tree node.
-  * Ref contains some metadata: version, level, payload_size, id.
-  * This metadata corresponds to the current node.
-  * Also, reference contains some aggregates: count, begin, end, min, max, sum.
-  * This aggregates corresponds to the current node if leve=0 (current node is a
-  * leaf node) or to the pointee if level > 0. If level is 1 then pointee is a
-  * leafa node and all this fields describes this leaf node. If level is 2 or more
-  * then all this aggregates comes from entire subtree (e.g. min is a minimal value
-  * in leaf nodes in pointee subtree).
-  */
-struct SubtreeRef : SubtreeRefPayload {
     //! Node version
     u16 version;
     //! Node level in the tree
@@ -147,7 +145,7 @@ public:
                LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
 
     //! Returns number of elements.
-    size_t nelements();
+    size_t nelements() const;
 
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
@@ -169,6 +167,12 @@ public:
       * Calling this function too often can result in unoptimal space usage.
       */
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    //! Return node's fanout index
+    u16 get_fanout() const;
+
+    //! Return id of the tree
+    aku_ParamId get_id() const;
 };
 
 
@@ -191,7 +195,7 @@ public:
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
     //! Append subtree ref
-    aku_Status append(SubtreeRefPayload const& p);
+    aku_Status append(SubtreeRef const& p);
 
     //! Commit changes (even if node is not full)
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
@@ -200,6 +204,15 @@ public:
     bool is_full() const;
 
     aku_Status read_all(std::vector<SubtreeRef>* refs) const;
+
+    //! Get node's level
+    u16 get_level() const;
+
+    //! Get fanout index of the node
+    u16 get_fanout() const;
+
+    //! Return id of the tree
+    aku_ParamId get_id() const;
 };
 
 class NBTree;
@@ -246,7 +259,7 @@ struct NBTreeRoot {
     //! Append new data to the root (doesn't work with superblocks)
     virtual void append(aku_Timestamp ts, double value) = 0;
     //! Append subtree metadata to the root (doesn't work with leaf nodes)
-    virtual void append(SubtreeRefPayload const& pl) = 0;
+    virtual void append(SubtreeRef const& pl) = 0;
     //! Write all changes to the block-store, even if node is not full.
     virtual void commit() = 0;
 };
@@ -277,6 +290,11 @@ public:
 
     //! Release tree root.
     void release(std::unique_ptr<NBTreeRoot> root, u16 level);
+
+    // TODO: move from lease/release interface to complete fasade
+    void append(SubtreeRef const& pl);
+
+    void append(aku_Timestamp ts, double value);
 };
 
 

@@ -121,9 +121,8 @@ void test_nbtree_roots_collection() {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
-    std::shared_ptr<NBTreeRoot> leaf = collection->lease(0);
     for (int i = 0; i < N; i++) {
-        leaf->append(i, 0.5*i);
+        collection->append(i, 0.5*i);
     }
     // TODO: check results when implementation will be ready
     // TODO: check start with non-empty tree
