@@ -109,6 +109,35 @@ struct SubtreeRef {
 } __attribute__((packed));
 
 
+/** NBTree iterator.
+  * @note all ranges is semi-open. This means that if we're
+  *       reading data from A to B, iterator should return
+  *       data in range [A, B), and B timestamp should be
+  *       greater (or less if we're reading data in backward
+  *       direction) then all timestamps that we've read before.
+  */
+struct NBTreeIterator {
+
+    //! Iteration direction
+    enum class Direction {
+        FORWARD, BACKWARD,
+    };
+
+    //! D-tor
+    virtual ~NBTreeIterator() = default;
+
+    /** Read data from iterator.
+      * @param destts Timestamps destination buffer. On success timestamps will be written here.
+      * @param destval Values destination buffer.
+      * @param size Size of the  destts and destval buffers (should be the same).
+      * @return status and number of elements written to both buffers.
+      */
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp* destts, double* destval, size_t size) = 0;
+
+    virtual Direction get_direction() = 0;
+};
+
+
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
   */
@@ -173,6 +202,9 @@ public:
 
     //! Return id of the tree
     aku_ParamId get_id() const;
+
+    //! Search for values in a range.
+    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end);
 };
 
 

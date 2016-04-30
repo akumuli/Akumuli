@@ -101,6 +101,65 @@ static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, Subtre
     return AKU_SUCCESS;
 }
 
+
+/** NBTreeIterator implementation for leaf node.
+  * This is very basic. All node's data is copied to
+  * the internal buffer by c-tor.
+  */
+struct NBTreeLeafIterator : NBTreeIterator {
+    //! Starting timestamp
+    aku_Timestamp              begin_;
+    //! Final timestamp
+    aku_Timestamp              end_;
+    //! Timestamps
+    std::vector<aku_Timestamp> tsbuf_;
+    //! Values
+    std::vector<double>        xsbuf_;
+    //! Status of the iterator initialization process
+    aku_Status                 status_;
+    //! Range begin
+    size_t                     from_;
+    //! Range end
+    size_t                     to_;
+
+    NBTreeLeafIterator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node)
+        : begin_(begin)
+        , end_(end)
+    {
+        status_ = node.read_all(&tsbuf_, &xsbuf_);
+        if (status_ == AKU_SUCCESS) {
+            if (begin > end) {
+                // Backward direction
+                std::reverse(tsbuf_.begin(), tsbuf_.end());
+                std::reverse(xsbuf_.begin(), xsbuf_.end());
+            }
+            from_ = std::distance(std::lower_bound(tsbuf_.begin(), tsbuf_.end(), begin_), tsbuf_.begin());
+            to_   = std::distance(std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_), tsbuf_.begin());
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
+        if (status_ != AKU_SUCCESS) {
+            return std::make_tuple(status_, 0);
+        }
+        size_t toread = to_ - from_;
+        if (toread > size) {
+            toread = size;
+        }
+        std::copy(tsbuf_.begin() + from_, tsbuf_.begin() + to_, destts);
+        std::copy(xsbuf_.begin() + from_, xsbuf_.begin() + to_, destval);
+        from_ += toread;
+        return std::make_tuple(AKU_SUCCESS, toread);
+    }
+
+    virtual Direction get_direction() {
+        if (begin_ < end_) {
+            return Direction::FORWARD;
+        }
+        return Direction::BACKWARD;
+    }
+};
+
 NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     : prev_(prev)
     , buffer_(AKU_BLOCK_SIZE, 0)
@@ -240,6 +299,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->level = 0;
     subtree->fanout_index = fanout_index_;
     return bstore->append_block(buffer_.data());
+}
+
+
+std::unique_ptr<NBTreeIterator> NBTreeLeaf::range(aku_Timestamp begin, aku_Timestamp end) {
+    std::unique_ptr<NBTreeIterator> it;
+    it.reset(new NBTreeLeafIterator(begin, end, *this));
+    return std::move(it);
 }
 
 
