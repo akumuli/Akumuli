@@ -160,6 +160,71 @@ struct NBTreeLeafIterator : NBTreeIterator {
     }
 };
 
+
+// ////////////////////////////// //
+//  NBTreeIterator concatenation  //
+// ////////////////////////////// //
+
+/** Concatenating iterator.
+  * Accepts list of iterators in the c-tor. All iterators then
+  * can be seen as one iterator. Iterators should be in correct
+  * order.
+  */
+struct IteratorConcat : NBTreeIterator {
+    typedef std::vector<std::unique_ptr<NBTreeIterator>> IterVec;
+    IterVec   iter_;
+    Direction dir_;
+    u32       iter_index_;
+
+    //! C-tor. Create iterator from list of iterators.
+    template<class TVec>
+    IteratorConcat(TVec&& iter)
+        : iter_(std::move(iter))
+        , iter_index_(0)
+    {
+        if (iter_.empty()) {
+            dir_ = Direction::FORWARD;
+        } else {
+            dir_ = iter_.front()->get_direction();
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
+        aku_Status status = AKU_SUCCESS;
+        size_t ressz = 0;  // current size
+        size_t accsz = 0;  // accumulated size
+        while(iter_index_ < iter_.size()) {
+            std::tie(status, ressz) = iter_[iter_index_]->read(destts, destval, size);
+            if (status == AKU_ENO_DATA) {
+                // this leaf node is empty, continue with next
+                iter_index_++;
+                continue;
+            }
+            if (status != AKU_SUCCESS) {
+                // Stop iteration or error!
+                return std::tie(status, ressz);
+            }
+            if (ressz < size) {
+                destts += ressz;
+                destval += ressz;
+                size -= ressz;
+                accsz += ressz;
+                iter_index_++;
+            }
+        }
+        return std::tie(status, accsz);
+    }
+
+    virtual Direction get_direction() {
+        return dest_;
+    }
+};
+
+
+// //////////////// //
+//    NBTreeLeaf    //
+// //////////////// //
+
 NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     : prev_(prev)
     , buffer_(AKU_BLOCK_SIZE, 0)
@@ -401,6 +466,15 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
         refs->push_back(*ref);
     }
     return AKU_SUCCESS;
+}
+
+std::unique_ptr<NBTreeIterator> NBTreeSuperblock::range(aku_Timestamp begin, aku_Timestamp end) {
+    /* Algorithm outline:
+     * - enumerate subtrees in right direction;
+     * - call `range` recoursively
+     * - concatenate iterators.
+     */
+    throw "not implemented";
 }
 
 

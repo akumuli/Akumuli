@@ -245,6 +245,8 @@ public:
 
     //! Return id of the tree
     aku_ParamId get_id() const;
+
+    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end);
 };
 
 class NBTree;
