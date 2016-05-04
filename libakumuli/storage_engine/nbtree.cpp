@@ -122,6 +122,11 @@ struct NBTreeLeafIterator : NBTreeIterator {
     //! Range end
     size_t                     to_;
 
+    NBTreeLeafIterator(aku_Status status)
+        : status_(status)
+    {
+    }
+
     NBTreeLeafIterator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node)
         : begin_(begin)
         , end_(end)
@@ -216,7 +221,7 @@ struct IteratorConcat : NBTreeIterator {
     }
 
     virtual Direction get_direction() {
-        return dest_;
+        return dir_;
     }
 };
 
@@ -468,13 +473,49 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
     return AKU_SUCCESS;
 }
 
-std::unique_ptr<NBTreeIterator> NBTreeSuperblock::range(aku_Timestamp begin, aku_Timestamp end) {
+//! Create subtree iterator
+static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& ref,
+                                                            aku_Timestamp begin,
+                                                            aku_Timestamp end,
+                                                            std::shared_ptr<BlockStore> bstore)
+{
+    throw "not implemented";
+}
+
+//! Return true if referenced subtree in [begin, end) range.
+static bool subtree_in_range(SubtreeRef const& ref, aku_Timestamp begin, aku_Timestamp end) {
+    if (end < ref.begin || begin > ref.end) {
+        return false;
+    }
+    return true;
+}
+
+std::unique_ptr<NBTreeIterator> NBTreeSuperblock::range(aku_Timestamp begin,
+                                                        aku_Timestamp end,
+                                                        std::shared_ptr<BlockStore> bstore)
+{
     /* Algorithm outline:
      * - enumerate subtrees in right direction;
      * - call `range` recoursively
      * - concatenate iterators.
      */
-    throw "not implemented";
+    std::vector<SubtreeRef> refs;
+    aku_Status status = read_all(&refs);
+    if (status != AKU_SUCCESS) {
+        // Create bad iterator that always returns error.
+        std::unique_ptr<NBTreeIterator> p;
+        p.reset(new NBTreeLeafIterator(status));
+        return std::move(p);
+    }
+    std::vector<std::unique_ptr<NBTreeIterator>> iters;
+    for (auto const& ref: refs) {
+        if (subtree_in_range(ref, begin, end)) {
+            iters.push_back(std::move(get_subtree_iterator(ref, begin, end, bstore)));
+        }
+    }
+    std::unique_ptr<NBTreeIterator> iter;
+    iter.reset(new IteratorConcat(std::move(iters)));
+    return std::move(iter);
 }
 
 
