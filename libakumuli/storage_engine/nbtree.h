@@ -203,8 +203,11 @@ public:
     //! Return id of the tree
     aku_ParamId get_id() const;
 
-    //! Search for values in a range.
-    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end);
+    //! Return iterator that outputs all values in time range that is stored in this leaf.
+    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end) const;
+
+    //! Search for values in a range (in this and connected leaf nodes).
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 };
 
 
@@ -246,7 +249,7 @@ public:
     //! Return id of the tree
     aku_ParamId get_id() const;
 
-    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore);
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 };
 
 class NBTree;
@@ -296,6 +299,8 @@ struct NBTreeRoot {
     virtual void append(SubtreeRef const& pl) = 0;
     //! Write all changes to the block-store, even if node is not full.
     virtual void commit() = 0;
+    //! Return iterator
+    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
 };
 
 
@@ -322,6 +327,8 @@ public:
     void append(SubtreeRef const& pl);
 
     void append(aku_Timestamp ts, double value);
+
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
 

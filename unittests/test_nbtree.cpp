@@ -116,18 +116,35 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_forward_3) {
     test_nbtree_forward(100000);
 }
 
-void test_nbtree_roots_collection() {
-    int N = 1000*32;
+void test_nbtree_roots_collection(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
-    for (int i = 0; i < N; i++) {
+    for (u32 i = 0; i < N; i++) {
         collection->append(i, 0.5*i);
     }
-    // TODO: check results when implementation will be ready
-    // TODO: check start with non-empty tree
+    // Read data back
+    std::vector<aku_Timestamp> ts(N, 0);
+    std::vector<double> xs(N, 0);
+    auto it = collection->search(0, N);
+    aku_Status status;
+    size_t sz;
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+
+    BOOST_REQUIRE_EQUAL(sz, N);
+
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    for (u32 i = 0; i < N; i++) {
+        if (ts[i] != i) {
+            BOOST_FAIL("Invalid timestamp at " << i << ", actual: " << ts[i]);
+        }
+        if (xs[i] != 0.5*i) {
+            BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*i) << ", actual: " << xs[i]);
+        }
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
-    test_nbtree_roots_collection();
+    test_nbtree_roots_collection(100);
 }
