@@ -131,6 +131,14 @@ struct NBTreeLeafIterator : NBTreeIterator {
         : begin_(begin)
         , end_(end)
     {
+        aku_Timestamp min = std::min(begin, end);
+        aku_Timestamp max = std::max(begin, end);
+        aku_Timestamp nb, ne;
+        std::tie(nb, ne) = node.get_timestamps();
+        if (max < nb || ne < min) {
+            status_ = AKU_ENO_DATA;
+            return;
+        }
         status_ = node.read_all(&tsbuf_, &xsbuf_);
         if (status_ == AKU_SUCCESS) {
             if (begin > end) {
@@ -138,8 +146,17 @@ struct NBTreeLeafIterator : NBTreeIterator {
                 std::reverse(tsbuf_.begin(), tsbuf_.end());
                 std::reverse(xsbuf_.begin(), xsbuf_.end());
             }
-            from_ = std::distance(std::lower_bound(tsbuf_.begin(), tsbuf_.end(), begin_), tsbuf_.begin());
-            to_   = std::distance(std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_), tsbuf_.begin());
+            auto it_begin = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
+            if (it_begin != tsbuf_.end()) {
+                from_ = it_begin - tsbuf_.begin();
+            } else {
+                // begin is less/greater then tsbuf_.front();
+                from_ = 0;
+                assert(begin < end ? (tsbuf_.front() > begin)
+                                   : (tsbuf_.front() < begin));
+            }
+            auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+            to_ = it_end - tsbuf_.begin();
         }
     }
 
@@ -200,21 +217,21 @@ struct IteratorConcat : NBTreeIterator {
         size_t accsz = 0;  // accumulated size
         while(iter_index_ < iter_.size()) {
             std::tie(status, ressz) = iter_[iter_index_]->read(destts, destval, size);
+            iter_index_++;
+            destts += ressz;
+            destval += ressz;
+            size -= ressz;
+            accsz += ressz;
             if (status == AKU_ENO_DATA) {
                 // this leaf node is empty, continue with next
-                iter_index_++;
                 continue;
             }
             if (status != AKU_SUCCESS) {
                 // Stop iteration or error!
-                return std::tie(status, ressz);
+                return std::tie(status, accsz);
             }
-            if (ressz < size) {
-                destts += ressz;
-                destval += ressz;
-                size -= ressz;
-                accsz += ressz;
-                iter_index_++;
+            if (size == 0) {
+                break;
             }
         }
         return std::tie(status, accsz);
