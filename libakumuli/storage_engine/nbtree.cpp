@@ -504,19 +504,23 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     if (immutable_) {
         return std::make_tuple(AKU_EBAD_DATA, EMPTY);
     }
+    SubtreeRef* backref = subtree_cast(buffer_.data());
     if (fanout_index_ != 0) {
-        SubtreeRef* backref = subtree_cast(buffer_.data());
         NBTreeSuperblock subtree(prev_, bstore);
         aku_Status status = init_subtree_from_subtree(subtree, *backref);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, EMPTY);
         }
-        backref->payload_size = write_pos_;
-        backref->fanout_index = fanout_index_;
-        backref->id = id_;
-        backref->level = level_;
-        backref->version = AKUMULI_VERSION;
+        backref->addr = prev_;
+    } else {
+        backref->addr = EMPTY;
     }
+    // This fields should be rewrited to store node's own information
+    backref->payload_size = write_pos_;
+    backref->fanout_index = fanout_index_;
+    backref->id = id_;
+    backref->level = level_;
+    backref->version = AKUMULI_VERSION;
     return bstore->append_block(buffer_.data());
 }
 
