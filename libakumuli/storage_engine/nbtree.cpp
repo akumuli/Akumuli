@@ -549,7 +549,8 @@ static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& re
         NBTreeLeaf leaf(bstore, ref.addr);
         return std::move(leaf.range(begin, end));
     }
-    throw "not implemented";
+    NBTreeSuperblock sblock(ref.addr, bstore);
+    return std::move(sblock.search(begin, end, bstore));
 }
 
 //! Return true if referenced subtree in [begin, end) range.
