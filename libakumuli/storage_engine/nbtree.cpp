@@ -539,6 +539,12 @@ static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& re
                                                             aku_Timestamp end,
                                                             std::shared_ptr<BlockStore> bstore)
 {
+    // Use BFS to iterate through the tree
+    if (ref.level == 0) {
+        // Points to leaf node
+        NBTreeLeaf leaf(bstore, ref.addr);
+        return std::move(leaf.range(begin, end));
+    }
     throw "not implemented";
 }
 
@@ -862,7 +868,19 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
         it.reset(new NBTreeLeafIterator(AKU_ENO_DATA));
         return std::move(it);
     }
-    return std::move(roots_.back()->search(begin, end));
+    std::vector<std::unique_ptr<NBTreeIterator>> iterators;
+    if (begin < end) {
+        for (auto const& root: roots_) {
+            iterators.push_back(std::move(root->search(begin, end)));
+        }
+    } else {
+        for (auto it = roots_.rbegin(); it != roots_.rend(); it++) {
+            iterators.push_back(std::move((*it)->search(begin, end)));
+        }
+    }
+    std::unique_ptr<NBTreeIterator> concat;
+    concat.reset(new IteratorConcat(std::move(iterators)));
+    return std::move(concat);
 }
 
 
