@@ -152,3 +152,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_2) {
     test_nbtree_roots_collection(2000);
 }
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_3) {
+    test_nbtree_roots_collection(200000);
+}
