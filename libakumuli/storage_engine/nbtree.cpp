@@ -201,7 +201,7 @@ struct IteratorConcat : NBTreeIterator {
     //! C-tor. Create iterator from list of iterators.
     template<class TVec>
     IteratorConcat(TVec&& iter)
-        : iter_(std::move(iter))
+        : iter_(std::forward<TVec>(iter))
         , iter_index_(0)
     {
         if (iter_.empty()) {
