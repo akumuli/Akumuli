@@ -181,8 +181,10 @@ struct NBTreeLeafIterator : NBTreeIterator {
         if (toread > size) {
             toread = size;
         }
-        std::copy(tsbuf_.begin() + from_, tsbuf_.begin() + to_, destts);
-        std::copy(xsbuf_.begin() + from_, xsbuf_.begin() + to_, destval);
+        auto begin = from_;
+        auto end = from_ + toread;
+        std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);
+        std::copy(xsbuf_.begin() + begin, xsbuf_.begin() + end, destval);
         from_ += toread;
         return std::make_tuple(AKU_SUCCESS, toread);
     }

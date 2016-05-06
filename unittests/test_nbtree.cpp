@@ -120,48 +120,47 @@ enum class ScanDir {
     FWD, BWD
 };
 
-void test_nbtree_roots_collection(u32 N, ScanDir dir=ScanDir::FWD) {
+void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
+    ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
     for (u32 i = 0; i < N; i++) {
-        collection->append(i+1, 0.5*(i+1));
+        collection->append(i, 0.5*i);
     }
+
     // Read data back
-    std::vector<aku_Timestamp> ts(N, 0);
-    std::vector<double> xs(N, 0);
-    std::unique_ptr<NBTreeIterator> it;
-    if (dir == ScanDir::FWD) {
-        it = collection->search(0, N);
-    } else {
-        it = collection->search(N, 0);
-    }
+    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+
     aku_Status status;
     size_t sz;
-    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
+    std::vector<aku_Timestamp> ts(outsz, 0);
+    std::vector<double> xs(outsz, 0);
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), outsz);
 
-    BOOST_REQUIRE_EQUAL(sz, N);
+    BOOST_REQUIRE_EQUAL(sz, outsz);
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     if (dir == ScanDir::FWD) {
-        for (u32 i = 0; i < N; i++) {
-            const auto curr = i + 1;
+        for (u32 i = 0; i < outsz; i++) {
+            const auto curr = i + begin;
             if (ts[i] != curr) {
-                BOOST_FAIL("Invalid timestamp at " << curr << ", actual: " << ts[i]);
+                BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
             }
             if (xs[i] != 0.5*curr) {
-                BOOST_FAIL("Invalid value at " << curr << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
+                BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
             }
         }
     } else {
-        for (u32 i = 0; i < N; i++) {
-            const auto max = N;
-            if (ts[i] != (max - i)) {
-                BOOST_FAIL("Invalid timestamp at " << (max - i) << ", actual: " << ts[i]);
+        for (u32 i = 0; i < outsz; i++) {
+            const auto curr = begin - i;
+            if (ts[i] != curr) {
+                BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
             }
-            if (xs[i] != 0.5*(max - i)) {
-                BOOST_FAIL("Invalid value at " << (max - i) << ", expected: " << (0.5*(max - i)) << ", actual: " << xs[i]);
+            if (xs[i] != 0.5*curr) {
+                BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
             }
         }
 
@@ -169,25 +168,34 @@ void test_nbtree_roots_collection(u32 N, ScanDir dir=ScanDir::FWD) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
-    test_nbtree_roots_collection(100, ScanDir::FWD);
+    test_nbtree_roots_collection(100, 0, 100);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_2) {
-    test_nbtree_roots_collection(2000, ScanDir::FWD);
+    test_nbtree_roots_collection(2000, 0, 2000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_3) {
-    test_nbtree_roots_collection(200000, ScanDir::FWD);
+    test_nbtree_roots_collection(200000, 0, 200000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_4) {
-    test_nbtree_roots_collection(100, ScanDir::BWD);
+    test_nbtree_roots_collection(100, 99, 0);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_5) {
-    test_nbtree_roots_collection(2000, ScanDir::BWD);
+    test_nbtree_roots_collection(2000, 1999, 0);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_6) {
-    test_nbtree_roots_collection(200000, ScanDir::BWD);
+    test_nbtree_roots_collection(200000, 199999, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
+    for (int i = 0; i < 100; i++) {
+        auto N = rand() % 200000;
+        auto from = rand() % 199999;
+        auto to = rand() % 199999;
+        test_nbtree_roots_collection(N, from, to);
+    }
 }
