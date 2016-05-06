@@ -504,6 +504,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     prev_ = ref->addr;
     write_pos_ = ref->payload_size;
     level_ = ref->level;
+    memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
 }
 
 aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
@@ -864,11 +865,13 @@ void NBTreeRootsCollection::append(const SubtreeRef &pl) {
         init();
     }
     u32 lvl = pl.level + 1;
+    std::cout << "Push [" << pl.begin << ", " << pl.end << "] to level " << lvl << std::endl;
     NBTreeRoot* root = nullptr;
     if (roots_.size() > lvl) {
         // Fast path
         root = roots_[lvl].get();
     } else if (roots_.size() == lvl) {
+        std::cout << "<> Create new level! " << lvl << std::endl;
         std::unique_ptr<NBTreeRoot> p;
         p.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
                                      id_, EMPTY, lvl));
