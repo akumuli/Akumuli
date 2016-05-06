@@ -141,22 +141,35 @@ struct NBTreeLeafIterator : NBTreeIterator {
         }
         status_ = node.read_all(&tsbuf_, &xsbuf_);
         if (status_ == AKU_SUCCESS) {
-            if (begin > end) {
-                // Backward direction
+            if (begin < end) {
+                // FWD direction
+                auto it_begin = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
+                if (it_begin != tsbuf_.end()) {
+                    from_ = std::distance(tsbuf_.begin(), it_begin);
+                } else {
+                    from_ = 0;
+                    assert(tsbuf_.front() > begin);
+                }
+                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                if (it_end == tsbuf_.end()) {
+                    to_ = tsbuf_.size();
+                } else {
+                    to_ = std::distance(tsbuf_.begin(), it_end);
+                }
+            } else {
+                // BWD direction
+                auto it_begin = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
+                from_ = std::distance(it_begin, tsbuf_.end());
+
+                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                if (it_end == tsbuf_.end()) {
+                    to_ = tsbuf_.size();
+                } else {
+                    to_ = std::distance(it_end, tsbuf_.end());
+                }
                 std::reverse(tsbuf_.begin(), tsbuf_.end());
                 std::reverse(xsbuf_.begin(), xsbuf_.end());
             }
-            auto it_begin = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
-            if (it_begin != tsbuf_.end()) {
-                from_ = it_begin - tsbuf_.begin();
-            } else {
-                // begin is less/greater then tsbuf_.front();
-                from_ = 0;
-                assert(begin < end ? (tsbuf_.front() > begin)
-                                   : (tsbuf_.front() < begin));
-            }
-            auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
-            to_ = it_end - tsbuf_.begin();
         }
     }
 
@@ -406,7 +419,7 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
     if (end <= begin) {
         // Backward direction - read data from this node at the beginning
         std::tie(b, e) = get_timestamps();
-        if (!(min < e || max < b)) {
+        if (!(e < min || max < b)) {
             results.push_back(std::move(range(begin, end)));
         }
     }

@@ -116,17 +116,26 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_forward_3) {
     test_nbtree_forward(100000);
 }
 
-void test_nbtree_roots_collection(u32 N) {
+enum class ScanDir {
+    FWD, BWD
+};
+
+void test_nbtree_roots_collection(u32 N, ScanDir dir=ScanDir::FWD) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
     for (u32 i = 0; i < N; i++) {
-        collection->append(i, 0.5*i);
+        collection->append(i+1, 0.5*(i+1));
     }
     // Read data back
     std::vector<aku_Timestamp> ts(N, 0);
     std::vector<double> xs(N, 0);
-    auto it = collection->search(0, N);
+    std::unique_ptr<NBTreeIterator> it;
+    if (dir == ScanDir::FWD) {
+        it = collection->search(0, N);
+    } else {
+        it = collection->search(N, 0);
+    }
     aku_Status status;
     size_t sz;
     std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
@@ -135,24 +144,50 @@ void test_nbtree_roots_collection(u32 N) {
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    for (u32 i = 0; i < N; i++) {
-        if (ts[i] != i) {
-            BOOST_FAIL("Invalid timestamp at " << i << ", actual: " << ts[i]);
+    if (dir == ScanDir::FWD) {
+        for (u32 i = 0; i < N; i++) {
+            const auto curr = i + 1;
+            if (ts[i] != curr) {
+                BOOST_FAIL("Invalid timestamp at " << curr << ", actual: " << ts[i]);
+            }
+            if (xs[i] != 0.5*curr) {
+                BOOST_FAIL("Invalid value at " << curr << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
+            }
         }
-        if (xs[i] != 0.5*i) {
-            BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*i) << ", actual: " << xs[i]);
+    } else {
+        for (u32 i = 0; i < N; i++) {
+            const auto max = N;
+            if (ts[i] != (max - i)) {
+                BOOST_FAIL("Invalid timestamp at " << (max - i) << ", actual: " << ts[i]);
+            }
+            if (xs[i] != 0.5*(max - i)) {
+                BOOST_FAIL("Invalid value at " << (max - i) << ", expected: " << (0.5*(max - i)) << ", actual: " << xs[i]);
+            }
         }
+
     }
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
-    test_nbtree_roots_collection(100);
+    test_nbtree_roots_collection(100, ScanDir::FWD);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_2) {
-    test_nbtree_roots_collection(2000);
+    test_nbtree_roots_collection(2000, ScanDir::FWD);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_3) {
-    test_nbtree_roots_collection(200000);
+    test_nbtree_roots_collection(200000, ScanDir::FWD);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_4) {
+    test_nbtree_roots_collection(100, ScanDir::BWD);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_5) {
+    test_nbtree_roots_collection(2000, ScanDir::BWD);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_6) {
+    test_nbtree_roots_collection(200000, ScanDir::BWD);
 }
