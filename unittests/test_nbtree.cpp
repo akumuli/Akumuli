@@ -166,7 +166,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
 
     }
 }
-
+/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
     test_nbtree_roots_collection(100, 0, 100);
 }
@@ -190,6 +190,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_5) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_6) {
     test_nbtree_roots_collection(200000, 199999, 0);
 }
+*/
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
     for (int i = 0; i < 100; i++) {

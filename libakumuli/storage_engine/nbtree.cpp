@@ -411,6 +411,7 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::range(aku_Timestamp begin, aku_Times
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
+    std::cout << "NBTreeLeaf::search " << begin << ", " << end << std::endl;
     // Traverse tree from largest timestamp to smallest
     aku_Timestamp min = std::min(begin, end);
     aku_Timestamp max = std::max(begin, end);
@@ -421,6 +422,7 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
     if (end <= begin) {
         // Backward direction - read data from this node at the beginning
         std::tie(b, e) = get_timestamps();
+        std::cout << "        timestamps " << b << ", " << e << std::endl;
         if (!(e < min || max < b)) {
             results.push_back(std::move(range(begin, end)));
         }
@@ -444,9 +446,13 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
         // Forward direction - reverce results and read data from this node at the end
         std::reverse(results.begin(), results.end());
         std::tie(b, e) = get_timestamps();
+        std::cout << "        timestamps " << b << ", " << e << std::endl;
         if (!(e < min || max < b)) {
             results.push_back(std::move(range(begin, end)));
         }
+    }
+    if (results.size() == 1) {
+        return std::move(results.front());
     }
     std::unique_ptr<NBTreeIterator> res_iter;
     res_iter.reset(new IteratorConcat(std::move(results)));
@@ -569,10 +575,14 @@ static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& re
 }
 
 //! Return true if referenced subtree in [begin, end) range.
+//! @note Begin should be less then end.
 static bool subtree_in_range(SubtreeRef const& ref, aku_Timestamp begin, aku_Timestamp end) {
-    if (end < ref.begin || begin > ref.end) {
+    std::cout << "range: " << begin << ", " << end << std::endl;
+    if (ref.end < begin || end < ref.begin) {
+        std::cout << "subtree not in range: " << ref.begin << ", " << ref.end << ", level: " << ref.level << std::endl;
         return false;
     }
+    std::cout << "subtree in range: " << ref.begin << ", " << ref.end << std::endl;
     return true;
 }
 
@@ -593,11 +603,16 @@ std::unique_ptr<NBTreeIterator> NBTreeSuperblock::search(aku_Timestamp begin,
         p.reset(new NBTreeLeafIterator(status));
         return std::move(p);
     }
+    auto min = std::min(begin, end);
+    auto max = std::max(begin, end);
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
     for (auto const& ref: refs) {
-        if (subtree_in_range(ref, begin, end)) {
+        if (subtree_in_range(ref, min, max)) {
             iters.push_back(std::move(get_subtree_iterator(ref, begin, end, bstore)));
         }
+    }
+    if (iters.size() == 1) {
+        return std::move(iters.front());
     }
     std::unique_ptr<NBTreeIterator> iter;
     iter.reset(new IteratorConcat(std::move(iters)));
@@ -710,6 +725,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
+        std::cout << "NBTreeLeafRoot::search: " << begin << ", " << end << std::endl;
         return std::move(leaf_->search(begin, end, bstore_));
     }
 };
@@ -807,6 +823,7 @@ struct NBSuperblockRoot : NBTreeRoot {
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
+        std::cout << "NBTreeSuperblockRoot::search: " << begin << ", " << end << ", level: " << level_ << std::endl;
         return std::move(curr_->search(begin, end, bstore_));
     }
 };
@@ -894,9 +911,15 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
             iterators.push_back(std::move(root->search(begin, end)));
         }
     } else {
+        int cnt = 0;
         for (auto it = roots_.rbegin(); it != roots_.rend(); it++) {
+            std::cout << "Roots collection " << cnt << std::endl;
             iterators.push_back(std::move((*it)->search(begin, end)));
+            cnt++;
         }
+    }
+    if (iterators.size() == 1) {
+        return std::move(iterators.front());
     }
     std::unique_ptr<NBTreeIterator> concat;
     concat.reset(new IteratorConcat(std::move(iterators)));
