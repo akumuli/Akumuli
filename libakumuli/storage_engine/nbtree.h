@@ -249,44 +249,10 @@ public:
     //! Return id of the tree
     aku_ParamId get_id() const;
 
+    //! Read timestamps
+    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
+
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
-};
-
-class NBTree;
-
-class NBTreeCursor {
-    NBTree const&          tree_;
-    aku_Timestamp          start_;
-    aku_Timestamp          stop_;
-    std::vector<LogicAddr> backpath_;
-    bool                   eof_;
-    int                    proceed_calls_;
-    aku_ParamId            id_;
-
-    enum {
-        // On average each 4KB page will contain less then 1024 elements.
-        SPACE_RESERVE = 1024,
-    };
-    std::vector<aku_Timestamp> ts_;
-    std::vector<double>        value_;
-
-    //! Load next page into memory
-    aku_Status load_next_page();
-
-public:
-    NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
-
-    //! Returns number of elements in cursor
-    size_t size();
-
-    //! Return true if read operation is completed and elements stored in this cursor
-    //! are the last ones.
-    bool is_eof();
-
-    //! Read element from cursor (not all elements can be loaded to cursor)
-    std::tuple<aku_Status, aku_Timestamp, double> at(size_t ix);
-
-    void proceed();
 };
 
 
@@ -332,57 +298,5 @@ public:
 };
 
 
-/** This object represents block store backed tree.
-  * It contains data from one time-series.
-  * This data-structure supports only append operation but
-  * other operations (delete/insert) can be implemented if
-  * needed.
-  */
-class NBTree {
-
-    //! Blockstore
-    std::shared_ptr<BlockStore> bstore_;
-    aku_ParamId                 id_;
-    LogicAddr                   last_;
-    std::unique_ptr<NBTreeLeaf> leaf_;
-
-    //! leaf_ is guaranteed to be initialized after call to this method
-    void reset_leaf();
-
-public:
-    /** C-tor
-      * @param id Series id.
-      * @param bstore Pointer to block-store.
-      */
-    NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore);
-
-    //! Return series id
-    aku_ParamId get_id() const;
-
-    //! Append data-point to NBTree
-    void append(aku_Timestamp ts, double value);
-
-    //! Return list of roots starting from leaf node
-    std::vector<LogicAddr> roots() const;
-
-    //! Load Leaf node from block-store
-    std::unique_ptr<NBTreeLeaf> load(LogicAddr addr) const;
-
-    /** Iterate through the tree.
-      * If `start` is less then `stop` - iterate in forward direction,
-      * if `start` is greater then the `stop` - iterate in backward direction.
-      * Interval [start, stop) is semi-open.
-      * @param start Timestamp of the starting point of the range.
-      * @param stop Timestamp of the first point out of the range.
-      */
-    std::vector<LogicAddr> iter(aku_Timestamp start, aku_Timestamp stop) const;
-
-    /** Read all elements from the not yet built leaf node.
-      * @param timestamps Destination for timestamps.
-      * @param values Destination for values.
-      * @return status.
-      */
-    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
-};
 }
 }  // namespaces

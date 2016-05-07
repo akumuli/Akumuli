@@ -107,6 +107,9 @@ static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, Subtre
   * the internal buffer by c-tor.
   */
 struct NBTreeLeafIterator : NBTreeIterator {
+
+    // TODO: Leaf iterator should be lazy!
+
     //! Starting timestamp
     aku_Timestamp              begin_;
     //! Final timestamp
@@ -411,7 +414,6 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::range(aku_Timestamp begin, aku_Times
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
-    std::cout << "NBTreeLeaf::search " << begin << ", " << end << std::endl;
     // Traverse tree from largest timestamp to smallest
     aku_Timestamp min = std::min(begin, end);
     aku_Timestamp max = std::max(begin, end);
@@ -422,7 +424,6 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
     if (end <= begin) {
         // Backward direction - read data from this node at the beginning
         std::tie(b, e) = get_timestamps();
-        std::cout << "        timestamps " << b << ", " << e << std::endl;
         if (!(e < min || max < b)) {
             results.push_back(std::move(range(begin, end)));
         }
@@ -446,7 +447,6 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
         // Forward direction - reverce results and read data from this node at the end
         std::reverse(results.begin(), results.end());
         std::tie(b, e) = get_timestamps();
-        std::cout << "        timestamps " << b << ", " << e << std::endl;
         if (!(e < min || max < b)) {
             results.push_back(std::move(range(begin, end)));
         }
@@ -475,18 +475,6 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u
 {
 }
 
-u16 NBTreeSuperblock::get_level() const {
-    return level_;
-}
-
-u16 NBTreeSuperblock::get_fanout() const {
-    return fanout_index_;
-}
-
-aku_ParamId NBTreeSuperblock::get_id() const {
-    return id_;
-}
-
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore)
     : buffer_(AKU_BLOCK_SIZE, 0)
     , immutable_(true)
@@ -507,6 +495,18 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
 }
 
+u16 NBTreeSuperblock::get_level() const {
+    return level_;
+}
+
+u16 NBTreeSuperblock::get_fanout() const {
+    return fanout_index_;
+}
+
+aku_ParamId NBTreeSuperblock::get_id() const {
+    return id_;
+}
+
 aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
     if (is_full()) {
         return AKU_EOVERFLOW;
@@ -516,8 +516,12 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
     }
     // Write data into buffer
     SubtreeRef* pref = subtree_cast(buffer_.data());
-    pref += (1 + write_pos_);
-    *pref = p;
+    auto it = pref + 1 + write_pos_;
+    *it = p;
+    if (write_pos_ == 0) {
+        pref->begin = p.begin;
+    }
+    pref->end = p.end;
     write_pos_++;
     return AKU_SUCCESS;
 }
@@ -559,6 +563,11 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
     return AKU_SUCCESS;
 }
 
+std::tuple<aku_Timestamp, aku_Timestamp> NBTreeSuperblock::get_timestamps() const {
+    SubtreeRef const* pref = subtree_cast(buffer_.data());
+    return std::tie(pref->begin, pref->end);
+}
+
 //! Create subtree iterator
 static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& ref,
                                                             aku_Timestamp begin,
@@ -578,14 +587,12 @@ static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& re
 //! Return true if referenced subtree in [begin, end) range.
 //! @note Begin should be less then end.
 static bool subtree_in_range(SubtreeRef const& ref, aku_Timestamp begin, aku_Timestamp end) {
-    std::cout << "range: " << begin << ", " << end << std::endl;
     if (ref.end < begin || end < ref.begin) {
-        std::cout << "subtree not in range: " << ref.begin << ", " << ref.end << ", level: " << ref.level << std::endl;
         return false;
     }
-    std::cout << "subtree in range: " << ref.begin << ", " << ref.end << std::endl;
     return true;
 }
+
 
 std::unique_ptr<NBTreeIterator> NBTreeSuperblock::search(aku_Timestamp begin,
                                                          aku_Timestamp end,
@@ -607,9 +614,17 @@ std::unique_ptr<NBTreeIterator> NBTreeSuperblock::search(aku_Timestamp begin,
     auto min = std::min(begin, end);
     auto max = std::max(begin, end);
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
-    for (auto const& ref: refs) {
-        if (subtree_in_range(ref, min, max)) {
-            iters.push_back(std::move(get_subtree_iterator(ref, begin, end, bstore)));
+    if (begin < end) {
+        for (auto const& ref: refs) {
+            if (subtree_in_range(ref, min, max)) {
+                iters.push_back(std::move(get_subtree_iterator(ref, begin, end, bstore)));
+            }
+        }
+    } else {
+        for (auto it = refs.rbegin(); it < refs.rend(); it++) {
+            if (subtree_in_range(*it, min, max)) {
+                iters.push_back(std::move(get_subtree_iterator(*it, begin, end, bstore)));
+            }
         }
     }
     if (iters.size() == 1) {
@@ -726,8 +741,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
-        std::cout << "NBTreeLeafRoot::search: " << begin << ", " << end << std::endl;
-        return std::move(leaf_->search(begin, end, bstore_));
+        return std::move(leaf_->range(begin, end));
     }
 };
 
@@ -824,7 +838,6 @@ struct NBSuperblockRoot : NBTreeRoot {
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
-        std::cout << "NBTreeSuperblockRoot::search: " << begin << ", " << end << ", level: " << level_ << std::endl;
         return std::move(curr_->search(begin, end, bstore_));
     }
 };
@@ -865,13 +878,11 @@ void NBTreeRootsCollection::append(const SubtreeRef &pl) {
         init();
     }
     u32 lvl = pl.level + 1;
-    std::cout << "Push [" << pl.begin << ", " << pl.end << "] to level " << lvl << std::endl;
     NBTreeRoot* root = nullptr;
     if (roots_.size() > lvl) {
         // Fast path
         root = roots_[lvl].get();
     } else if (roots_.size() == lvl) {
-        std::cout << "<> Create new level! " << lvl << std::endl;
         std::unique_ptr<NBTreeRoot> p;
         p.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
                                      id_, EMPTY, lvl));
@@ -902,7 +913,6 @@ void NBTreeRootsCollection::init() {
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begin, aku_Timestamp end) const {
-    // NOTE: Very simplistic implementation to start from
     if (!initialized_) {
         std::unique_ptr<NBTreeIterator> it;
         it.reset(new NBTreeLeafIterator(AKU_ENO_DATA));
@@ -910,15 +920,12 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
     }
     std::vector<std::unique_ptr<NBTreeIterator>> iterators;
     if (begin < end) {
-        for (auto const& root: roots_) {
-            iterators.push_back(std::move(root->search(begin, end)));
+        for (auto it = roots_.rbegin(); it != roots_.rend(); it++) {
+            iterators.push_back(std::move((*it)->search(begin, end)));
         }
     } else {
-        int cnt = 0;
-        for (auto it = roots_.rbegin(); it != roots_.rend(); it++) {
-            std::cout << "Roots collection " << cnt << std::endl;
-            iterators.push_back(std::move((*it)->search(begin, end)));
-            cnt++;
+        for (auto const& root: roots_) {
+            iterators.push_back(std::move(root->search(begin, end)));
         }
     }
     if (iterators.size() == 1) {
@@ -929,183 +936,5 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
     return std::move(concat);
 }
 
-
-// //////////////////////// //
-//          NBTree          //
-// //////////////////////// //
-
-
-NBTree::NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore)
-    : bstore_(bstore)
-    , id_(id)
-    , last_(EMPTY)
-{
-    reset_leaf();
-}
-
-void NBTree::reset_leaf() {
-    // TODO: this should be replaced with NBTreeRoot's logic
-    leaf_.reset(new NBTreeLeaf(id_, last_, 0));
-}
-
-void NBTree::append(aku_Timestamp ts, double value) {
-    // Invariant: leaf_ should be initialized, if leaf_ is full and pushed to block-store, reset_leaf should be called
-    aku_Status status = leaf_->append(ts, value);
-    if (status == AKU_EOVERFLOW) {
-        LogicAddr addr;
-        std::tie(status, addr) = leaf_->commit(bstore_);
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't append data to the NBTree instance, " + StatusUtil::str(status));
-        }
-        last_ = addr;
-        reset_leaf();
-        // There should be only one level of recursion, no looping.
-        // Stack overflow here means that there is a logic error in
-        // the program that results in NBTreeLeaf::append always
-        // returning AKU_EOVERFLOW.
-        append(ts, value);
-    }
-    if (status != AKU_SUCCESS) {
-        // it should return only AKU_EOVERFLOW
-        AKU_PANIC("Unexpected error from NBTreeLeaf, " + StatusUtil::str(status));
-    }
-}
-
-std::vector<LogicAddr> NBTree::roots() const {
-    // NOTE: at this development stage implementation tracks only leaf nodes.
-    // This is enough to test performance and build server and ingestion.
-    std::vector<LogicAddr> rv = { last_ };
-    return rv;
-}
-
-aku_ParamId NBTree::get_id() const {
-    return id_;
-}
-
-aku_Status NBTree::read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const {
-    return leaf_->read_all(timestamps, values);
-}
-
-std::vector<LogicAddr> NBTree::iter(aku_Timestamp start, aku_Timestamp stop) const {
-    // Traverse tree from largest timestamp to smallest
-    aku_Timestamp min = std::min(start, stop);
-    aku_Timestamp max = std::max(start, stop);
-    LogicAddr addr = last_;
-    std::vector<LogicAddr> addresses;
-    // Stop when EMPTY is hit or cycle detected.
-    while (bstore_->exists(addr)) {
-        std::unique_ptr<NBTreeLeaf> leaf;
-        leaf.reset(new NBTreeLeaf(bstore_, addr, NBTreeLeaf::LeafLoadMethod::ONLY_HEADER));
-        aku_Timestamp begin, end;
-        std::tie(begin, end) = leaf->get_timestamps();
-        if (min > end || max < begin) {
-            addr = leaf->get_prev_addr();
-            continue;
-        }
-        // Save address of the current leaf and move to the next one.
-        addresses.push_back(addr);
-        addr = leaf->get_prev_addr();
-    }
-    return addresses;
-}
-
-std::unique_ptr<NBTreeLeaf> NBTree::load(LogicAddr addr) const {
-    std::unique_ptr<NBTreeLeaf> leaf;
-    leaf.reset(new NBTreeLeaf(bstore_, addr));
-    return std::move(leaf);
-}
-
-NBTreeCursor::NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop)
-    : tree_(tree)
-    , start_(start)
-    , stop_(stop)
-    , eof_(false)
-    , proceed_calls_(0)
-    , id_(tree.get_id())
-{
-    ts_.reserve(SPACE_RESERVE);
-    value_.reserve(SPACE_RESERVE);
-    auto addrlist = tree.iter(start, stop);
-    if (start > stop) {
-        // Forward direction. Method tree.iter always return path in
-        // backward direction so we need to reverse it.
-        std::reverse(addrlist.begin(), addrlist.end());
-    }
-    std::swap(addrlist, backpath_);
-    proceed();
-}
-
-aku_Status NBTreeCursor::load_next_page() {
-    if (backpath_.empty()) {
-        return AKU_ENO_DATA;
-    }
-    LogicAddr addr = backpath_.back();
-    backpath_.pop_back();
-    std::unique_ptr<NBTreeLeaf> leaf = tree_.load(addr);
-    ts_.clear();
-    value_.clear();
-    return leaf->read_all(&ts_, &value_);
-}
-
-//! Returns number of elements in cursor
-size_t NBTreeCursor::size() {
-    return ts_.size();
-}
-
-//! Return true if read operation is completed and elements stored in this cursor
-//! are the last ones.
-bool NBTreeCursor::is_eof() {
-    return eof_;
-}
-
-//! Read element from cursor (not all elements can be loaded to cursor)
-std::tuple<aku_Status, aku_Timestamp, double> NBTreeCursor::at(size_t ix) {
-    if (ix < ts_.size()) {
-        return std::make_tuple(AKU_SUCCESS, ts_[ix], value_[ix]);
-    }
-    return std::make_tuple(AKU_EBAD_ARG, 0, 0);  // Index out of range
-}
-
-void NBTreeCursor::proceed() {
-    aku_Status status = AKU_SUCCESS;
-    if (start_ > stop_) {
-        // Forward direction
-        if (proceed_calls_ == 0) {
-            // First call to proceed, need to push data from
-            // tree_ first.
-            ts_.clear();
-            value_.clear();
-            status = tree_.read_all(&ts_, &value_);
-            // Ignore ENO_DATA error
-            if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
-                AKU_PANIC("Page load error - " + StatusUtil::str(status));
-            }
-            proceed_calls_++;
-            return;
-        }
-    } else {
-        // If backpath_ is empty we need to read data from tree_.
-        if (backpath_.empty() && proceed_calls_ >= 0) {
-            ts_.clear();
-            value_.clear();
-            status = tree_.read_all(&ts_, &value_);
-            if (status != AKU_ENO_DATA && status != AKU_SUCCESS) {
-                AKU_PANIC("Page load error - " + StatusUtil::str(status));
-            }
-            proceed_calls_ = -1;
-            return;
-        } else if (backpath_.empty() && proceed_calls_ < 0) {
-            eof_ = true;
-            return;
-        }
-    }
-    status = load_next_page();
-    if (status == AKU_ENO_DATA) {
-        eof_ = true;
-    } else if (status != AKU_SUCCESS) {
-        AKU_PANIC("Page load error - " + StatusUtil::str(status));
-    }
-    proceed_calls_++;
-}
 
 }}
