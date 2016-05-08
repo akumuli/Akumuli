@@ -386,16 +386,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     subtree->payload_size = size;
     if (prev_ != EMPTY) {
-        NBTreeLeaf prev(bstore, prev_, LeafLoadMethod::FULL_PAGE_LOAD);
-        // acquire info
-        aku_Status status = init_subtree_from_leaf(prev, *subtree);
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, EMPTY);
-        }
+        subtree->addr = prev_;
     } else {
-        // count = 0 and addr = EMPTY indicates that there is
+        // addr = EMPTY indicates that there is
         // no link to previous node.
-        subtree->count = 0;
         subtree->addr  = EMPTY;
         // Invariant: fanout index should be 0 in this case.
         assert(fanout_index_ == 0);

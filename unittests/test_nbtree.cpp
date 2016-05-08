@@ -108,9 +108,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
         auto N = rand() % 200000;
         auto from = rand() % N;
         auto to = rand() % N;
-        std::cout << "Run " << i << std::endl;
-        std::cout << "N = " << N << std::endl;
-        std::cout << "from " << from << " to " << to << std::endl;
         test_nbtree_roots_collection(N, from, to);
     }
 }
