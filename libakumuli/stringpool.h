@@ -49,7 +49,7 @@ struct StringPool {
     StringPool(StringPool const&) = delete;
     StringPool& operator=(StringPool const&) = delete;
 
-    StringT add(const char* begin, const char* end, uint64_t payload);
+    StringT add(const char* begin, const char* end, u64 payload);
 
     //! Get number of stored strings atomically
     size_t size() const;
@@ -70,7 +70,7 @@ struct StringTools {
     static size_t hash(StringT str);
     static bool equal(StringT lhs, StringT rhs);
 
-    typedef std::unordered_map<StringT, uint64_t, decltype(&StringTools::hash),
+    typedef std::unordered_map<StringT, u64, decltype(&StringTools::hash),
                                decltype(&StringTools::equal)>
         TableT;
 
@@ -78,12 +78,12 @@ struct StringTools {
         SetT;
 
     //! Inverted table type (id to string mapping)
-    typedef std::unordered_map<uint64_t, StringT> InvT;
+    typedef std::unordered_map<u64, StringT> InvT;
 
     static TableT create_table(size_t size);
 
     static SetT create_set(size_t size);
 
-    static uint64_t extract_id_from_pool(StringPool::StringT res);
+    static u64 extract_id_from_pool(StringPool::StringT res);
 };
 }

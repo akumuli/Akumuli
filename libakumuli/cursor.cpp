@@ -64,7 +64,7 @@ bool CursorFSM::can_put(int size) const {
 }
 
 void CursorFSM::put(const aku_Sample &result) {
-    auto len = std::max(result.payload.size, (uint16_t)sizeof(aku_Sample));
+    auto len = std::max(result.payload.size, (u16)sizeof(aku_Sample));
     auto ptr = (char*)usr_buffer_ + write_offset_;
     assert(len >= sizeof(aku_Sample));
     assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
@@ -152,7 +152,7 @@ bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
     if (cursor_fsm_.is_done()) {
         return false;
     }
-    if (!cursor_fsm_.can_put(std::max(result.payload.size, (uint16_t)sizeof(aku_Sample)))) {
+    if (!cursor_fsm_.can_put(std::max(result.payload.size, (u16)sizeof(aku_Sample)))) {
         caller();
         if (cursor_fsm_.is_done()) {
             return false;

@@ -38,7 +38,7 @@ int main() {
         "/tmp/volume0.db",
         "/tmp/volume1.db",
     };
-    std::vector<std::tuple<uint32_t, std::string>> volumes {
+    std::vector<std::tuple<u32, std::string>> volumes {
         std::make_tuple(1024, paths[0]),
         std::make_tuple(1024, paths[1])
     };

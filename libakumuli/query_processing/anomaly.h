@@ -26,7 +26,7 @@ struct AnomalyDetector : Node {
     std::shared_ptr<Node> next_;
     PDetector             detector_;
 
-    AnomalyDetector(uint32_t nhashes, uint32_t bits, double threshold, double alpha, double beta,
+    AnomalyDetector(u32 nhashes, u32 bits, double threshold, double alpha, double beta,
                     double gamma, int period, FcastMethod method, std::shared_ptr<Node> next);
 
     AnomalyDetector(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);

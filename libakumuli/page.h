@@ -23,40 +23,40 @@
 #pragma once
 #include "akumuli.h"
 #include "buffer_cache.h"
-#include "storage_engine/compression.h"
 #include "internal_cursor.h"
 #include "queryprocessor_framework.h"
+#include "storage_engine/compression.h"
 #include "util.h"
 #include <cstdint>
 #include <functional>
 #include <mutex>
 #include <vector>
 
-const int64_t AKU_MAX_PAGE_SIZE = 0x100000000;
+const i64 AKU_MAX_PAGE_SIZE = 0x100000000;
 
 namespace Akumuli {
 
-typedef uint64_t aku_Duration;  //< Time duration
+typedef u64 aku_Duration;  //< Time duration
 
 //! Entry index record
 struct aku_EntryIndexRecord {
     aku_Timestamp timestamp;
-    uint32_t      offset;
+    u32           offset;
 } __attribute__((packed));
 
 struct CompressedChunkDesc {
-    uint32_t n_elements;    //< Number of elements in a chunk
-    uint32_t begin_offset;  //< Data begin offset
-    uint32_t end_offset;    //< Data end offset
-    uint32_t checksum;      //< Checksum
+    u32 n_elements;    //< Number of elements in a chunk
+    u32 begin_offset;  //< Data begin offset
+    u32 end_offset;    //< Data end offset
+    u32 checksum;      //< Checksum
 } __attribute__((packed));
 
 
 struct aku_Entry {
     //aku_Timestamp  time;      //< Entry timestamp
     aku_ParamId param_id;  //< Parameter ID
-    uint32_t    length;    //< Entry length: constant + variable sized parts
-    uint32_t    value[];   //< Data begining
+    u32         length;    //< Entry length: constant + variable sized parts
+    u32         value[];   //< Data begining
 } __attribute__((packed));
 
 //! PageHeader forward declaration
@@ -85,38 +85,38 @@ SearchStats& get_global_search_stats();
  */
 class PageHeader {
     // metadata
-    const uint32_t version;      //< format version
-    uint32_t       count;        //< number of elements stored
-    uint32_t       next_offset;  //< offset of the last added record in payload array
-    uint32_t       checkpoint;   //< page checkpoint index
-    uint32_t       open_count;   //< how many times page was open for write
-    uint32_t       close_count;  //< how many times page was closed for write
-    uint32_t       page_id;      //< page index in storage
-    uint32_t       numpages;     //< total number or pages
-    uint64_t       length;       //< payload size
-    char           payload[];    //< page payload
+    const u32 version;      //< format version
+    u32       count;        //< number of elements stored
+    u32       next_offset;  //< offset of the last added record in payload array
+    u32       checkpoint;   //< page checkpoint index
+    u32       open_count;   //< how many times page was open for write
+    u32       close_count;  //< how many times page was closed for write
+    u32       page_id;      //< page index in storage
+    u32       numpages;     //< total number or pages
+    u64       length;       //< payload size
+    char      payload[];    //< page payload
 
 public:
     //! Get length of the page
-    uint64_t get_page_length() const;
+    u64 get_page_length() const;
 
     //! Get page ID
-    uint32_t get_page_id() const;
+    u32 get_page_id() const;
 
     //! Get number of pages
-    uint32_t get_numpages() const;
+    u32 get_numpages() const;
 
     //! Number of times page was opened for writing
-    uint32_t get_open_count() const;
+    u32 get_open_count() const;
 
     //! Number of times page was closed for writing
-    uint32_t get_close_count() const;
+    u32 get_close_count() const;
 
     //! Set open count
-    void set_open_count(uint32_t cnt);
+    void set_open_count(u32 cnt);
 
     //! Set open count
-    void set_close_count(uint32_t cnt);
+    void set_close_count(u32 cnt);
 
     ///     Checkpoint and restore      ///
 
@@ -128,14 +128,14 @@ public:
 
 
     //! Convert entry index to entry offset
-    std::pair<aku_EntryIndexRecord, int> index_to_offset(uint32_t index) const;
+    std::pair<aku_EntryIndexRecord, int> index_to_offset(u32 index) const;
 
     aku_EntryIndexRecord* page_index(int index);
 
     const aku_EntryIndexRecord* page_index(int index) const;
 
     //! C-tor
-    PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32_t numpages);
+    PageHeader(u32 count, u64 length, u32 page_id, u32 numpages);
 
     //! Clear all page conent (open_count += 1)
     void reuse();
@@ -144,7 +144,7 @@ public:
     void close();
 
     //! Return number of entries stored in page
-    uint32_t get_entries_count() const;
+    u32 get_entries_count() const;
 
     //! Returns amount of free space in bytes
     size_t get_free_space() const;
@@ -165,8 +165,7 @@ public:
      * @param free_space_required minimum amount of space inside the page
      * @returns operation status
      */
-    aku_Status add_chunk(const aku_MemRange data, const uint32_t free_space_required,
-                         uint32_t* out_offset);
+    aku_Status add_chunk(const aku_MemRange data, const u32 free_space_required, u32* out_offset);
 
     /**
      * Complete chunk. Add compressed header and index.
@@ -187,7 +186,7 @@ public:
      * @param offset offset of the entry.
      * @returns 0 if index is out of range, entry length otherwise.
      */
-    int get_entry_length(uint32_t offset) const;
+    int get_entry_length(u32 offset) const;
 
     /**
      * Copy entry from page to receiving buffer using index.
@@ -207,28 +206,28 @@ public:
      * @returns 0 if index out of range, -1*entry[index].length
      * if buffer is to small, entry[index].length on success.
      */
-    int copy_entry(uint32_t offset, aku_Entry* receiver) const;
+    int copy_entry(u32 offset, aku_Entry* receiver) const;
 
     /**
      * Get pointer to entry without copying using index
      * @param index entry index
      * @returns pointer to entry or NULL
      */
-    const aku_Entry* read_entry_at(uint32_t index) const;
+    const aku_Entry* read_entry_at(u32 index) const;
 
     /**
      * Get entry timefstamp by index
      * @param index entry index
      * @return timestamp
      */
-    const aku_Timestamp read_timestamp_at(uint32_t index) const;
+    const aku_Timestamp read_timestamp_at(u32 index) const;
 
     /**
      * Get pointer to entry without copying using offset
      * @param entry offset
      * @returns pointer to entry or NULL
      */
-    const aku_Entry* read_entry(uint32_t offset) const;
+    const aku_Entry* read_entry(u32 offset) const;
 
     /**
      * Get pointer to entry data without copying using
@@ -236,7 +235,7 @@ public:
      * @param data offset
      * @returns pointer to entry data or NULL
      */
-    const void* read_entry_data(uint32_t offset) const;
+    const void* read_entry_data(u32 offset) const;
 
     /**
       * @brief Search matches inside the volume

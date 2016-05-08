@@ -43,14 +43,14 @@ struct AkumuliCursor : DbCursor {
 AkumuliConnection::AkumuliConnection(const char *path,
                                      bool hugetlb,
                                      Durability durability,
-                                     uint32_t compression_threshold,
-                                     uint64_t window_width,
-                                     uint64_t cache_size)
+                                     u32 compression_threshold,
+                                     u64 window_width,
+                                     u64 cache_size)
     : dbpath_(path)
 {
     aku_FineTuneParams params = {};
     params.debug_mode = 0;
-    params.durability = (uint32_t)durability;
+    params.durability = (u32)durability;
     params.enable_huge_tlb = hugetlb ? 1u : 0u;
     params.logger = &db_logger;
     params.compression_threshold = compression_threshold;

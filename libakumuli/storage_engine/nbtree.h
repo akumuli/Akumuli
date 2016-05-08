@@ -65,28 +65,10 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-enum {
-    AKU_NBTREE_FANOUT=32,
-};
 
-struct SubtreeRefPayload {
-    //! Number of elements in the subtree
-    uint64_t      count;
-    //! Series Id
-    aku_ParamId   id;
-    //! First element's timestamp
-    aku_Timestamp begin;
-    //! Last element's timestamp
-    aku_Timestamp end;
-    //! Object addr in blockstore
-    LogicAddr     addr;
-    //! Smalles value
-    double        min;
-    //! Largest value
-    double        max;
-    //! Summ of all elements in subtree
-    double        sum;
-} __attribute__((packed));
+enum {
+    AKU_NBTREE_FANOUT = 32,
+};
 
 
 /** Reference to tree node.
@@ -99,16 +81,61 @@ struct SubtreeRefPayload {
   * then all this aggregates comes from entire subtree (e.g. min is a minimal value
   * in leaf nodes in pointee subtree).
   */
-struct SubtreeRef : SubtreeRefPayload {
+struct SubtreeRef {
+    //! Number of elements in the subtree
+    u64 count;
+    //! Series Id
+    aku_ParamId id;
+    //! First element's timestamp
+    aku_Timestamp begin;
+    //! Last element's timestamp
+    aku_Timestamp end;
+    //! Object addr in blockstore
+    LogicAddr addr;
+    //! Smalles value
+    double min;
+    //! Largest value
+    double max;
+    //! Summ of all elements in subtree
+    double sum;
     //! Node version
-    uint16_t      version;
+    u16 version;
     //! Node level in the tree
-    uint16_t      level;
+    u16 level;
     //! Payload size (real)
-    uint16_t      payload_size;
+    u16 payload_size;
     //! Fan out index of the element (current)
-    uint16_t      fanout_index;
+    u16 fanout_index;
 } __attribute__((packed));
+
+
+/** NBTree iterator.
+  * @note all ranges is semi-open. This means that if we're
+  *       reading data from A to B, iterator should return
+  *       data in range [A, B), and B timestamp should be
+  *       greater (or less if we're reading data in backward
+  *       direction) then all timestamps that we've read before.
+  */
+struct NBTreeIterator {
+
+    //! Iteration direction
+    enum class Direction {
+        FORWARD, BACKWARD,
+    };
+
+    //! D-tor
+    virtual ~NBTreeIterator() = default;
+
+    /** Read data from iterator.
+      * @param destts Timestamps destination buffer. On success timestamps will be written here.
+      * @param destval Values destination buffer.
+      * @param size Size of the  destts and destval buffers (should be the same).
+      * @return status and number of elements written to both buffers.
+      */
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp* destts, double* destval, size_t size) = 0;
+
+    virtual Direction get_direction() = 0;
+};
 
 
 /** NBTree leaf node. Supports append operation.
@@ -118,14 +145,16 @@ class NBTreeLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::vector<uint8_t> buffer_;
+    std::vector<u8> buffer_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
     //! Fanout index
-    uint16_t fanout_index_;
+    u16 fanout_index_;
+
 public:
     enum class LeafLoadMethod {
-        FULL_PAGE_LOAD, ONLY_HEADER,
+        FULL_PAGE_LOAD,
+        ONLY_HEADER,
     };
 
     /** Create empty leaf node.
@@ -134,7 +163,7 @@ public:
       * @param prev Prev element of the tree.
       * @param fanout_index Index inside current fanout
       */
-    NBTreeLeaf(aku_ParamId id, LogicAddr prev, uint16_t fanout_index);
+    NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -142,10 +171,10 @@ public:
       * @param load Load method.
       */
     NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr,
-               LeafLoadMethod load=LeafLoadMethod::FULL_PAGE_LOAD);
+               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
 
     //! Returns number of elements.
-    size_t nelements();
+    size_t nelements() const;
 
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
@@ -167,28 +196,41 @@ public:
       * Calling this function too often can result in unoptimal space usage.
       */
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    //! Return node's fanout index
+    u16 get_fanout() const;
+
+    //! Return id of the tree
+    aku_ParamId get_id() const;
+
+    //! Return iterator that outputs all values in time range that is stored in this leaf.
+    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end) const;
+
+    //! Search for values in a range (in this and connected leaf nodes).
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 };
 
 
 /** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
-    std::vector<uint8_t> buffer_;
-    aku_ParamId id_;
-    uint32_t write_pos_;
-    uint16_t fanout_index_;
-    uint16_t level_;
-    LogicAddr prev_;
-    bool immutable_;
+    std::vector<u8> buffer_;
+    aku_ParamId     id_;
+    u32             write_pos_;
+    u16             fanout_index_;
+    u16             level_;
+    LogicAddr       prev_;
+    bool            immutable_;
+
 public:
     //! Create new writable node.
-    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, uint16_t fanout, uint16_t lvl);
+    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
     //! Create node from block-store (node is immutable).
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
     //! Append subtree ref
-    aku_Status append(SubtreeRefPayload const& p);
+    aku_Status append(SubtreeRef const& p);
 
     //! Commit changes (even if node is not full)
     std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
@@ -197,47 +239,35 @@ public:
     bool is_full() const;
 
     aku_Status read_all(std::vector<SubtreeRef>* refs) const;
-};
 
-class NBTree;
+    //! Get node's level
+    u16 get_level() const;
 
-class NBTreeCursor {
-    NBTree const& tree_;
-    aku_Timestamp start_;
-    aku_Timestamp stop_;
-    std::vector<LogicAddr> backpath_;
-    bool eof_;
-    int proceed_calls_;
-    aku_ParamId id_;
+    //! Get fanout index of the node
+    u16 get_fanout() const;
 
-    enum {
-        // On average each 4KB page will contain less then 1024 elements.
-        SPACE_RESERVE=1024,
-    };
-    std::vector<aku_Timestamp> ts_;
-    std::vector<double>        value_;
+    //! Return id of the tree
+    aku_ParamId get_id() const;
 
-    //! Load next page into memory
-    aku_Status load_next_page();
-public:
-    NBTreeCursor(NBTree const& tree, aku_Timestamp start, aku_Timestamp stop);
+    //! Read timestamps
+    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
-    //! Returns number of elements in cursor
-    size_t size();
-
-    //! Return true if read operation is completed and elements stored in this cursor
-    //! are the last ones.
-    bool is_eof();
-
-    //! Read element from cursor (not all elements can be loaded to cursor)
-    std::tuple<aku_Status, aku_Timestamp, double> at(size_t ix);
-
-    void proceed();
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 };
 
 
-//! Fwd ref. Implemented in nbtree.cpp.
-class NBTreeRoot;
+//! NBTree root (leaf or superblock)
+struct NBTreeRoot {
+    virtual ~NBTreeRoot() = default;
+    //! Append new data to the root (doesn't work with superblocks)
+    virtual void append(aku_Timestamp ts, double value) = 0;
+    //! Append subtree metadata to the root (doesn't work with leaf nodes)
+    virtual void append(SubtreeRef const& pl) = 0;
+    //! Write all changes to the block-store, even if node is not full.
+    virtual void commit() = 0;
+    //! Return iterator
+    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
+};
 
 
 /** @brief This class represents set of roots of the NBTree.
@@ -245,68 +275,28 @@ class NBTreeRoot;
   * @li store all roots of the NBTree
   * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
   */
-class NBTreeRootsCollection : std::enable_shared_from_this<NBTreeRootsCollection> {
+class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
-public:
-    //! Acquire tree root (removes root from collection)
-    std::unique_ptr<NBTreeRoot> lease(uint32_t level);
-
-    //! Release tree root.
-    void release(std::unique_ptr<NBTreeRoot> root);
-};
-
-/** This object represents block store backed tree.
-  * It contains data from one time-series.
-  * This data-structure supports only append operation but
-  * other operations (delete/insert) can be implemented if
-  * needed.
-  */
-class NBTree {
-
-    //! Blockstore
-    std::shared_ptr<BlockStore> bstore_;
+    std::vector<std::unique_ptr<NBTreeRoot>> roots_;
     aku_ParamId id_;
-    LogicAddr last_;
-    std::unique_ptr<NBTreeLeaf> leaf_;
+    std::vector<LogicAddr> rootaddr_;
+    bool initialized_;
 
-    //! leaf_ is guaranteed to be initialized after call to this method
-    void reset_leaf();
+    void init();
 public:
     /** C-tor
-      * @param id Series id.
-      * @param bstore Pointer to block-store.
+      * @param addresses List of root addresses in blockstore.
+      * @param bstore Block-store.
       */
-    NBTree(aku_ParamId id, std::shared_ptr<BlockStore> bstore);
+    NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
-    //! Return series id
-    aku_ParamId get_id() const;
+    void append(SubtreeRef const& pl);
 
-    //! Append data-point to NBTree
     void append(aku_Timestamp ts, double value);
 
-    //! Return list of roots starting from leaf node
-    std::vector<LogicAddr> roots() const;
-
-    //! Load Leaf node from block-store
-    std::unique_ptr<NBTreeLeaf> load(LogicAddr addr) const;
-
-    /** Iterate through the tree.
-      * If `start` is less then `stop` - iterate in forward direction,
-      * if `start` is greater then the `stop` - iterate in backward direction.
-      * Interval [start, stop) is semi-open.
-      * @param start Timestamp of the starting point of the range.
-      * @param stop Timestamp of the first point out of the range.
-      */
-    std::vector<LogicAddr> iter(aku_Timestamp start, aku_Timestamp stop) const;
-
-    /** Read all elements from the not yet built leaf node.
-      * @param timestamps Destination for timestamps.
-      * @param values Destination for values.
-      * @return status.
-      */
-    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
+    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
 
-
-}}  // namespaces
+}
+}  // namespaces

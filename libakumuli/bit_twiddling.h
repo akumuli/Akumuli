@@ -7,7 +7,7 @@ namespace Akumuli {
 struct BitHacks {
 
     //! Return number of 1-bits in bitmap.
-    static inline int count_bits(uint32_t bitmap) {
+    static inline int count_bits(u32 bitmap) {
 #if __GNUC__
         return __builtin_popcount(bitmap);
 #else

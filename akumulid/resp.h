@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include "akumuli_def.h"
 
 #include "stream.h"
 #include <vector>
@@ -57,13 +58,13 @@ struct RESPStream {
       * @return value
       * @throw on error
       */
-    uint64_t read_int();
+    u64 read_int();
 
     /** Read integer implementation
       * @throw on error
       * @return parsed integer
       */
-    uint64_t _read_int_body();
+    u64 _read_int_body();
 
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.
@@ -89,6 +90,6 @@ struct RESPStream {
       * Funtion reads size of the array and puts stream cursor to the
       * first array element.
       */
-    uint64_t read_array_size();
+    u64 read_array_size();
 };
 }

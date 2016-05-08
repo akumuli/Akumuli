@@ -174,7 +174,7 @@ struct DatabaseImpl : public aku_Database
 apr_status_t aku_create_database( const char     *file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
-                                , int32_t         num_volumes
+                                , i32         num_volumes
                                 , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
@@ -186,8 +186,8 @@ apr_status_t aku_create_database( const char     *file_name
 apr_status_t aku_create_database_ex( const char     *file_name
                                    , const char     *metadata_path
                                    , const char     *volumes_path
-                                   , int32_t         num_volumes
-                                   , uint64_t        page_size
+                                   , i32         num_volumes
+                                   , u64        page_size
                                    , aku_logger_cb_t logger)
 {
     if (logger == nullptr) {
@@ -274,18 +274,6 @@ void aku_close_database(aku_Database* db)
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     dbi->close();
     delete dbi;
-}
-
-aku_SelectQuery* aku_make_select_query(aku_Timestamp begin, aku_Timestamp end, uint32_t n_params, aku_ParamId *params) {
-    size_t s = sizeof(aku_SelectQuery) + n_params*sizeof(aku_ParamId);
-    auto p = malloc(s);
-    auto res = reinterpret_cast<aku_SelectQuery*>(p);
-    res->begin = begin;
-    res->end = end;
-    res->n_params = n_params;
-    memcpy(&res->params, params, n_params*sizeof(aku_ParamId));
-    std::sort(res->params, res->params + n_params);
-    return res;
 }
 
 void aku_destroy(void* any) {

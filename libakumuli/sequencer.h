@@ -35,21 +35,20 @@ namespace Akumuli {
 
 namespace V2 {
 
-    struct PatienceSort {
-        struct SortedRun {
-            std::vector<aku_Timestamp> timestamps;
-            std::vector<double> values;
-        };
-        typedef std::shared_ptr<SortedRun> PSortedRun;
-
-        PSortedRun key_;
-        std::vector<PSortedRun> runs_;
-
-        PatienceSort();
-
-        void add(aku_Timestamp ts, double value);
+struct PatienceSort {
+    struct SortedRun {
+        std::vector<aku_Timestamp> timestamps;
+        std::vector<double>        values;
     };
+    typedef std::shared_ptr<SortedRun> PSortedRun;
 
+    PSortedRun              key_;
+    std::vector<PSortedRun> runs_;
+
+    PatienceSort();
+
+    void add(aku_Timestamp ts, double value);
+};
 }
 
 struct TimeSeriesValue {

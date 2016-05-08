@@ -41,7 +41,7 @@
 
 namespace Akumuli {
 
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, uint64_t page_size=0);
+static apr_status_t create_page_file(const char* file_name, u32 page_index, u32 npages, aku_logger_cb_t logger, u64 page_size=0);
 
 //----------------------------------Volume----------------------------------------------
 
@@ -84,11 +84,11 @@ void Volume::make_writable() {
 }
 
 std::shared_ptr<Volume> Volume::safe_realloc() {
-    uint32_t page_id = page_->get_page_id();
-    uint32_t open_count = page_->get_open_count();
-    uint32_t close_count = page_->get_close_count();
-    uint32_t npages = page_->get_numpages();
-    uint64_t page_size = page_->get_page_length();
+    u32 page_id = page_->get_page_id();
+    u32 open_count = page_->get_open_count();
+    u32 close_count = page_->get_close_count();
+    u32 npages = page_->get_numpages();
+    u64 page_size = page_->get_page_length();
 
     std::string new_file_name = file_path_;
                 new_file_name += ".tmp";
@@ -258,11 +258,11 @@ void Storage::close() {
 void Storage::select_active_page() {
     // volume with max overwrites_count and max index must be active
     int max_index = -1;
-    int64_t max_overwrites = -1;
+    i64 max_overwrites = -1;
     for(int i = 0; i < (int)volumes_.size(); i++) {
         PageHeader* page = volumes_.at(i)->get_page();
-        if (static_cast<int64_t>(page->get_open_count()) >= max_overwrites) {
-            max_overwrites = static_cast<int64_t>(page->get_open_count());
+        if (static_cast<i64>(page->get_open_count()) >= max_overwrites) {
+            max_overwrites = static_cast<i64>(page->get_open_count());
             max_index = i;
         }
     }
@@ -279,7 +279,7 @@ void Storage::select_active_page() {
     }
 }
 
-void Storage::prepopulate_cache(int64_t max_cache_size) {
+void Storage::prepopulate_cache(i64 max_cache_size) {
     // All entries between sync_index (included) and count must
     // be cached.
     if (active_page_->restore()) {
@@ -287,7 +287,7 @@ void Storage::prepopulate_cache(int64_t max_cache_size) {
     }
 
     // Read data from sqlite to series matcher
-    uint64_t nextid = 1 + metadata_->get_prev_largest_id();
+    u64 nextid = 1 + metadata_->get_prev_largest_id();
     matcher_ = std::make_shared<SeriesMatcher>(nextid + 1);
     aku_Status status = metadata_->load_matcher_data(*matcher_);
     if (status != AKU_SUCCESS) {
@@ -348,7 +348,7 @@ void Storage::log_error(const char* message) const {
     (*logger_)(AKU_LOG_ERROR, message);
 }
 
-void Storage::log_message(const char* message, uint64_t value) const {
+void Storage::log_message(const char* message, u64 value) const {
     using namespace std;
     stringstream fmt;
     fmt << message << ", " << value;
@@ -421,10 +421,10 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
         if (query_processor->start()) {
 
             if (!query_processor->range().is_backward()) {
-                uint32_t starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
-                for (uint32_t ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
+                u32 starting_ix = active_volume_->get_page()->get_page_id() + 1;  // Start from oldest volume
+                for (u32 ix = starting_ix; ix < (starting_ix + volumes_.size()); ix++) {
                     // Search volume
-                    uint32_t index = ix % volumes_.size();
+                    u32 index = ix % volumes_.size();
                     PVolume volume = volumes_.at(index);
                     volume->get_page()->search(query_processor, cache_);
                     if (query_processor->range().type == QP::QueryRange::INSTANT) {
@@ -445,7 +445,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                     }
                 }
             } else if (query_processor->range().is_backward()) {
-                uint32_t starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
+                u32 starting_ix = active_volume_->get_page()->get_page_id();  // Start from newest volume
                 // TODO: handle case when `query_processor->range().type == QP::QueryRange::CONTINUOUS`
                 // in this case we should wait until data with timestamp that matches `range.from` timestamp
                 // will be written to disk and then start the query. Until this behavior become implemented
@@ -454,8 +454,8 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
                     SearchError error{"Continuous queries doesn't work in backward direction", AKU_ENOT_IMPLEMENTED};
                     BOOST_THROW_EXCEPTION(error);
                 }
-                for (int64_t ix = (starting_ix + volumes_.size()); ix > starting_ix; ix--) {
-                    uint32_t index = static_cast<uint32_t>(ix % volumes_.size());
+                for (i64 ix = (starting_ix + volumes_.size()); ix > starting_ix; ix--) {
+                    u32 index = static_cast<u32>(ix % volumes_.size());
                     PVolume volume = volumes_.at(index);
                     // Search cache
                     int seq_id;
@@ -546,7 +546,7 @@ aku_Status Storage::write_double(aku_ParamId param, aku_Timestamp ts, double val
     return _write_impl(ts_value, m);
 }
 
-aku_Status Storage::series_to_param_id(const char* begin, const char* end, uint64_t *value) {
+aku_Status Storage::series_to_param_id(const char* begin, const char* end, u64 *value) {
     char buffer[AKU_LIMITS_MAX_SNAME];
     const char* keystr_begin = nullptr;
     const char* keystr_end = nullptr;
@@ -607,7 +607,7 @@ void Storage::debug_print() const {
 
 /** This function creates file with specified size
   */
-static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger_cb_t logger) {
+static apr_status_t create_file(const char* file_name, u64 size, aku_logger_cb_t logger) {
     using namespace std;
     apr_status_t status;
     int success_count = 0;
@@ -655,10 +655,10 @@ static apr_status_t create_file(const char* file_name, uint64_t size, aku_logger
 /** This function creates one of the page files with specified
   * name and index.
   */
-static apr_status_t create_page_file(const char* file_name, uint32_t page_index, uint32_t npages, aku_logger_cb_t logger, uint64_t page_size) {
+static apr_status_t create_page_file(const char* file_name, u32 page_index, u32 npages, aku_logger_cb_t logger, u64 page_size) {
     using namespace std;
     apr_status_t status;
-    int64_t size = page_size == 0 ? AKU_MAX_PAGE_SIZE : page_size;
+    i64 size = page_size == 0 ? AKU_MAX_PAGE_SIZE : page_size;
 
     status = create_file(file_name, size, logger);
     if (status != APR_SUCCESS) {
@@ -685,10 +685,10 @@ static apr_status_t create_page_file(const char* file_name, uint32_t page_index,
 
 /** Create page files, return list of statuses.
   */
-static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, uint64_t page_size) {
+static std::vector<apr_status_t> create_page_files(std::vector<std::string> const& targets, aku_logger_cb_t logger, u64 page_size) {
     std::vector<apr_status_t> results(targets.size(), APR_SUCCESS);
     for (size_t ix = 0; ix < targets.size(); ix++) {
-        apr_status_t res = create_page_file(targets[ix].c_str(), (uint32_t)ix, (uint32_t)targets.size(), logger, page_size);
+        apr_status_t res = create_page_file(targets[ix].c_str(), (u32)ix, (u32)targets.size(), logger, page_size);
         results[ix] = res;
     }
     return results;
@@ -778,7 +778,7 @@ apr_status_t Storage::new_storage(const char     *file_name,
                                   const char     *volumes_path,
                                   int             num_pages,
                                   aku_logger_cb_t logger,
-                                  uint64_t        page_size)
+                                  u64        page_size)
 {
     if (page_size > AKU_MAX_PAGE_SIZE) {
         return APR_EINVAL;

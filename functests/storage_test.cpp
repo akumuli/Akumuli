@@ -174,10 +174,10 @@ struct LocalCursor : Cursor {
 
 struct LocalStorage : Storage {
     const std::string work_dir_;
-    const uint32_t compression_threshold_;
-    const uint64_t sliding_window_size_;
-    const int32_t n_volumes_;
-    const uint32_t durability_;
+    const u32 compression_threshold_;
+    const u64 sliding_window_size_;
+    const i32 n_volumes_;
+    const u32 durability_;
     bool enable_huge_tlb_;
     const char* DBNAME_;
     aku_Database *db_;
@@ -185,11 +185,11 @@ struct LocalStorage : Storage {
     LocalStorage(
             std::string work_dir,
             // Creation parameters, used only to create database
-            uint32_t compression_threshold,
-            uint64_t sliding_window_size,
-            int32_t n_volumes,
+            u32 compression_threshold,
+            u64 sliding_window_size,
+            i32 n_volumes,
             // Open parameters, used unly to open database
-            uint32_t durability = 1u,
+            u32 durability = 1u,
             bool huge_tlb = false
             )
         : work_dir_(work_dir)
@@ -633,8 +633,8 @@ int main(int argc, const char** argv) {
     std::cout << "Working directory: " << dir << std::endl;
     aku_initialize(nullptr, nullptr);
 
-    uint32_t compression_threshold = 5;
-    uint64_t windowsize = 1;
+    u32 compression_threshold = 5;
+    u64 windowsize = 1;
     LocalStorage storage(dir, compression_threshold, windowsize, 2);
 
     // Try to delete old data if any

@@ -30,7 +30,7 @@ void UdpServer::start(SignalHandler *sig, int id) {
     sig->add_handler(boost::bind(&UdpServer::stop, std::move(self)), id);
 
     auto logger = &logger_;
-    auto error_cb = [logger](aku_Status status, uint64_t counter) {
+    auto error_cb = [logger](aku_Status status, u64 counter) {
         const char* msg = aku_error_message(status);
         logger->error() << msg;
     };

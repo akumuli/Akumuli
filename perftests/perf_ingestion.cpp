@@ -18,7 +18,7 @@
 using namespace std;
 
 int DB_SIZE = 8;
-uint64_t NUM_ITERATIONS = 100*1000*1000ul;
+u64 NUM_ITERATIONS = 100*1000*1000ul;
 int CHUNK_SIZE = 5000;
 
 const char* DB_NAME = "db";
@@ -40,19 +40,19 @@ private:
     timeval _start_time;
 };
 
-int format_timestamp(uint64_t ts, char* buffer) {
+int format_timestamp(u64 ts, char* buffer) {
     auto fractional = static_cast<int>(ts %  1000000000);  // up to 9 decimal digits
     auto seconds = static_cast<int>(ts / 1000000000);      // two seconds digits
     return sprintf(buffer, "20150102T0304%02d.%09d", seconds, fractional);
 }
 
-std::string ts2str(uint64_t ts) {
+std::string ts2str(u64 ts) {
     char buffer[0x100];
     auto len = format_timestamp(ts, buffer);
     return std::string(buffer, buffer+len);
 }
 
-std::string build_query(uint64_t begin, uint64_t end) {
+std::string build_query(u64 begin, u64 end) {
     std::stringstream str;
     str << R"({ "sample": "all", )";
     str << R"("range": { "from": ")" << ts2str(begin)
@@ -65,7 +65,7 @@ void delete_storage() {
     aku_remove_database(DB_META_FILE, &aku_console_logger);
 }
 
-bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, uint64_t& counter, Timer& timer, uint64_t mod) {
+bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, u64& counter, Timer& timer, u64 mod) {
     const aku_Timestamp EPOCH = 1420167840000000000;
     const unsigned int NUM_ELEMENTS = 1000;
     std::string query = build_query(begin, end);
@@ -244,10 +244,10 @@ int main(int cnt, const char** args)
 
     aku_debug_print(db);
 
-    uint64_t busy_count = 0;
+    u64 busy_count = 0;
     // Fill in data
     RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
-    for(uint64_t i = 0; i < NUM_ITERATIONS; i++) {
+    for(u64 i = 0; i < NUM_ITERATIONS; i++) {
         aku_Sample sample;
         char buffer[100];
 
@@ -294,7 +294,7 @@ int main(int cnt, const char** args)
     // Search
     std::cout << "Sequential access" << std::endl;
     aku_SearchStats search_stats = {0};
-    uint64_t counter = 0;
+    u64 counter = 0;
 
     timer.restart();
 

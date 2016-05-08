@@ -10,7 +10,7 @@
 
 using namespace Akumuli;
 
-static const uint64_t
+static const u64
     EXPECTED[] = {
     0ul, 1ul, 10ul,
     67ul, 127ul, 128ul,
@@ -19,7 +19,7 @@ static const uint64_t
 };
 
 static const size_t
-        EXPECTED_SIZE = sizeof(EXPECTED)/sizeof(uint64_t);
+        EXPECTED_SIZE = sizeof(EXPECTED)/sizeof(u64);
 
 template<class TStreamWriter>
 void test_stream_write(TStreamWriter& writer) {
@@ -75,7 +75,7 @@ void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t
 template<class TStreamReader>
 void test_stream_read(TStreamReader& reader) {
     // Read it back
-    uint64_t actual[EXPECTED_SIZE];
+    u64 actual[EXPECTED_SIZE];
     for (auto i = 0u; i < EXPECTED_SIZE; i++) {
         actual[i] = reader.next();
     }
@@ -86,9 +86,9 @@ void test_stream_read(TStreamReader& reader) {
 template<>
 void test_stream_read(Base128StreamReader& reader) {
     // Read it back
-    uint64_t actual[EXPECTED_SIZE];
+    u64 actual[EXPECTED_SIZE];
     for (auto i = 0u; i < EXPECTED_SIZE; i++) {
-        actual[i] = reader.next<uint64_t>();
+        actual[i] = reader.next<u64>();
     }
     BOOST_REQUIRE_EQUAL_COLLECTIONS(EXPECTED, EXPECTED + EXPECTED_SIZE,
             actual, actual + EXPECTED_SIZE);
@@ -114,11 +114,11 @@ BOOST_AUTO_TEST_CASE(Test_delta_rle) {
     data.resize(1000);
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
     test_stream_write(delta_writer);
 
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
     test_stream_read(delta_reader);
 }
 
@@ -127,11 +127,11 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_0) {
     data.resize(10*1024);  // 10KB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+    test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true);
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
@@ -139,11 +139,11 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
     data.resize(1*1024*1024);  // 1MB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<uint64_t>, uint64_t> delta_writer(wstream);
+    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<uint64_t>, uint64_t> delta_reader(rstream);
+    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+    test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true);
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
@@ -155,7 +155,7 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
     Base128StreamReader rstream(data.data(), data.data() + data.size());
     ZDeltaRLEReader delta_reader(rstream);
 
-    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 100, false);
+    test_stream_chunked_op<i64>(delta_writer, delta_reader, 100, false);
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
@@ -167,7 +167,7 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
     Base128StreamReader rstream(data.data(), data.data() + data.size());
     ZDeltaRLEReader delta_reader(rstream);
 
-    test_stream_chunked_op<int64_t>(delta_writer, delta_reader, 10000, false);
+    test_stream_chunked_op<i64>(delta_writer, delta_reader, 10000, false);
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
@@ -175,11 +175,11 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
     data.resize(4*1024);  // 4KB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+    DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 100, true);
+    test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true);
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
@@ -187,11 +187,11 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
     data.resize(1*1024*1024);  // 1MB of storage
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamWriter<16, uint64_t> delta_writer(wstream);
+    DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamReader<16, uint64_t> delta_reader(rstream);
+    DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<uint64_t>(delta_writer, delta_reader, 10000, true);
+    test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true);
 }
 
 
@@ -200,22 +200,22 @@ BOOST_AUTO_TEST_CASE(Test_rle) {
     data.resize(1000);
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    RLEStreamWriter<uint64_t> rle_writer(wstream);
+    RLEStreamWriter<u64> rle_writer(wstream);
 
     test_stream_write(rle_writer);
 
     Base128StreamReader rstream(data.data(), data.data() + data.size());
-    RLEStreamReader<uint64_t> rle_reader(rstream);
+    RLEStreamReader<u64> rle_reader(rstream);
     test_stream_read(rle_reader);
 }
 
 BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
 {
     // this replicates real problem //
-    std::vector<uint32_t> actual;
-    const uint32_t BASE_OFFSET = 3221191859u;
-    const uint32_t OFFSET_STEP = 8u;
-    uint32_t current = BASE_OFFSET;
+    std::vector<u32> actual;
+    const u32 BASE_OFFSET = 3221191859u;
+    const u32 OFFSET_STEP = 8u;
+    u32 current = BASE_OFFSET;
     for(int i = 0; i < 10000; i++) {
         actual.push_back(current);
         current -= OFFSET_STEP;
@@ -231,11 +231,11 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     }
     wstream.commit();
 
-    std::vector<uint32_t> expected;
+    std::vector<u32> expected;
     Base128StreamReader rstream(data.data(), data.data() + data.size());
     DeltaRLEReader rlestream(rstream);
     for (int i = 0; i < 10000; i++) {
-        expected.push_back((uint32_t)rlestream.next());
+        expected.push_back((u32)rlestream.next());
     }
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
@@ -311,7 +311,7 @@ void test_float_compression(double start) {
     RandomWalk rwalk(start, 1., .11);
     int N = 10000;
     std::vector<double> samples;
-    std::vector<uint8_t> block;
+    std::vector<u8> block;
     block.resize(N*9, 0);
 
     // Compress
@@ -359,7 +359,7 @@ void test_block_compression(double start, unsigned N=10000) {
     RandomWalk rwalk(start, 1., .11);
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
-    std::vector<uint8_t> block;
+    std::vector<u8> block;
     block.resize(4096);
 
     aku_Timestamp its = rand();
@@ -398,7 +398,7 @@ void test_block_compression(double start, unsigned N=10000) {
     std::vector<double> out_values;
 
     // gen number of elements stored in block
-    uint32_t nelem = reader.nelements();
+    u32 nelem = reader.nelements();
     BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
     BOOST_REQUIRE_NE(nelem, 0);
 
@@ -501,7 +501,7 @@ void test_chunk_header_compression(double start) {
     }
 
     aku_Timestamp tsbegin = 0, tsend = 0;
-    uint32_t cardinality = 0;
+    u32 cardinality = 0;
 
     struct Writer : ChunkWriter {
         std::vector<unsigned char> buffer;
@@ -511,7 +511,7 @@ void test_chunk_header_compression(double start) {
         }
 
         virtual aku_MemRange allocate() {
-            return { (void*)buffer.data(), (uint32_t)buffer.size() };
+            return { (void*)buffer.data(), (u32)buffer.size() };
         }
 
         virtual aku_Status commit(size_t bytes_written) {

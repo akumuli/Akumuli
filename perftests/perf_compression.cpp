@@ -36,16 +36,16 @@ struct RandomWalk {
 };
 
 int main(int argc, char** argv) {
-    const uint64_t N_TIMESTAMPS = 1000;
-    const uint64_t N_PARAMS = 100;
+    const u64 N_TIMESTAMPS = 1000;
+    const u64 N_PARAMS = 100;
     UncompressedChunk header;
     std::cout << "Testing timestamp sequence" << std::endl;
     int c = 100;
     std::vector<aku_ParamId> ids;
-    for (uint64_t id = 0; id < N_PARAMS; id++) { ids.push_back(id); }
+    for (u64 id = 0; id < N_PARAMS; id++) { ids.push_back(id); }
     RandomWalk rwalk(10.0, 0.0, 0.01, N_PARAMS);
-    for (uint64_t id = 0; id < N_PARAMS; id++) {
-        for (uint64_t ts = 0; ts < N_TIMESTAMPS; ts++) {
+    for (u64 id = 0; id < N_PARAMS; id++) {
+        for (u64 ts = 0; ts < N_TIMESTAMPS; ts++) {
             header.paramids.push_back(ids[id]);
             int k = rand() % 2;
             if (k) {
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
         virtual aku_MemRange allocate() {
             aku_MemRange range = {
                 out->data(),
-                static_cast<uint32_t>(out->size())
+                static_cast<u32>(out->size())
             };
             return range;
         }
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
     Writer writer(&out);
 
     aku_Timestamp tsbegin, tsend;
-    uint32_t n;
+    u32 n;
     auto status = CompressionUtil::encode_chunk(&n, &tsbegin, &tsend, &writer, header);
     if (status != AKU_SUCCESS) {
         std::cout << "Encoding error" << std::endl;
@@ -190,13 +190,13 @@ int main(int argc, char** argv) {
         const int NRUNS = 1000;
         PerfTimer tm;
         aku_Status tstatus;
-        volatile uint32_t vn;
+        volatile u32 vn;
         ByteVector vec;
         for (int i = 0; i < NRUNS; i++) {
             vec.resize(N_PARAMS*N_TIMESTAMPS*24);
             Writer w(&vec);
             aku_Timestamp ts;
-            uint32_t n;
+            u32 n;
             tstatus = CompressionUtil::encode_chunk(&n, &ts, &ts, &w, header);
             if (tstatus != AKU_SUCCESS) {
                 std::cout << "Encoding error" << std::endl;

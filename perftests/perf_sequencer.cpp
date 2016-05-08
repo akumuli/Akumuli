@@ -21,7 +21,7 @@
 using namespace Akumuli;
 using namespace std;
 
-const uint32_t NUM_ITERATIONS = 100*1000*1000;
+const u32 NUM_ITERATIONS = 100*1000*1000;
 
 
 //! Simple static buffer cursor
@@ -71,8 +71,8 @@ int main(int cnt, const char** args)
         aku_FineTuneParams params = {};
         params.window_size = 10000;
         Sequencer seq(nullptr, params);
-        for (uint32_t ix = 0u; ix < NUM_ITERATIONS; ix++) {
-            TimeSeriesValue value({(uint64_t)ix}, ix & 0xFF, (double)ix);
+        for (u32 ix = 0u; ix < NUM_ITERATIONS; ix++) {
+            TimeSeriesValue value({(u64)ix}, ix & 0xFF, (double)ix);
             int status = 0;
             int lock = 0;
             tie(status, lock) = seq.add(value);
@@ -103,16 +103,16 @@ int main(int cnt, const char** args)
         boost::timer timer;
         size_t ix_merged = 0;
         const int buffer_size = 10000;
-        uint32_t buffer[buffer_size];
+        u32 buffer[buffer_size];
         int buffer_ix = buffer_size;
         Sequencer seq(nullptr, {10000});
-        for (uint32_t ix = 0u; ix < NUM_ITERATIONS; ix++) {
+        for (u32 ix = 0u; ix < NUM_ITERATIONS; ix++) {
             buffer_ix--;
             buffer[buffer_ix] = ix;
             if (buffer_ix == 0) {
                 buffer_ix = buffer_size;
                 for(auto ixx: buffer) {
-                    TimeSeriesValue value({(uint64_t)ixx}, ixx & 0xFF, (double)ixx);
+                    TimeSeriesValue value({(u64)ixx}, ixx & 0xFF, (double)ixx);
                     int status = 0;
                     int lock = 0;
                     tie(status, lock) = seq.add(value);

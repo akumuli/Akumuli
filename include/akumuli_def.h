@@ -18,6 +18,81 @@
 #ifndef AKUMULI_DEF_H
 #define AKUMULI_DEF_H
 
+#include <stdint.h>
+
+//------------//
+// Data types //
+//------------//
+
+typedef uint8_t  u8;
+typedef int8_t   i8;
+typedef uint16_t u16;
+typedef int16_t  i16;
+typedef uint32_t u32;
+typedef int32_t  i32;
+typedef uint64_t u64;
+typedef int64_t  i64;
+
+typedef u64 aku_Timestamp;  //< Timestamp
+typedef u64 aku_ParamId;    //< Parameter (or sequence) id
+
+//! Structure represents memory region
+typedef struct {
+    const void* address;
+    u32         length;
+} aku_MemRange;
+
+
+//! Payload data
+typedef struct {
+    //------------------------------------------//
+    //       Normal payload (float value)       //
+    //------------------------------------------//
+
+    //! Value
+    double float64;
+
+    /** Payload size (payload can be variably sized)
+     *  size = 0 means size = sizeof(aku_Sample)
+     */
+    u16 size;
+
+    //! Data element flags
+    enum {
+        EMPTY         = 0,
+        URGENT        = 1 << 8, /** urgent flag (anomaly or error) */
+        PARAMID_BIT   = 1,
+        TIMESTAMP_BIT = 1 << 1,
+        CUSTOM_TIMESTAMP =
+            1 << 2, /** indicates that timestamp shouldn't be formatted during output */
+        FLOAT_BIT      = 1 << 4,
+        ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
+                                            (extra payload stored in `data` was lost) */
+        SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
+
+        MARGIN    = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
+        LO_MARGIN = 1 << 14, /** backward direction margin */
+        HI_MARGIN = 1 << 15, /** forward direction margin */
+    };
+    u16 type;
+
+    //---------------------------//
+    //       Extra payload       //
+    //---------------------------//
+
+    //! Extra payload data
+    char data[0];
+
+} aku_PData;
+
+#define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
+
+//! Cursor result type
+typedef struct {
+    aku_Timestamp timestamp;
+    aku_ParamId   paramid;
+    aku_PData     payload;
+} aku_Sample;
 
 // Limits
 

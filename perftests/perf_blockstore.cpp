@@ -32,7 +32,7 @@ int main() {
     apr_initialize();
 
     // Create volumes
-    uint32_t caps[] = {1024*1024, 1024*1024};
+    u32 caps[] = {1024*1024, 1024*1024};
     std::vector<std::string> paths = { "/tmp/volume1", "/tmp/volume2" };
     std::string metapath = "/tmp/metavol";
 
@@ -41,7 +41,7 @@ int main() {
     MetaVolume::create_new(metapath.c_str(), 2, caps);
 
     const size_t NITERS = 4096*1024;
-    std::vector<uint8_t> buffer;
+    std::vector<u8> buffer;
     buffer.resize(4096);
     for (int i = 0; i < 4096; i++) {
         buffer[i] = rand();

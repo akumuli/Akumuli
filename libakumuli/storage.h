@@ -135,13 +135,13 @@ struct Storage {
     void select_active_page();
 
     //! Prepopulate cache
-    void prepopulate_cache(int64_t max_cache_size);
+    void prepopulate_cache(i64 max_cache_size);
 
     void log_message(const char* message) const;
 
     void log_error(const char* message) const;
 
-    void log_message(const char* message, uint64_t value) const;
+    void log_message(const char* message, u64 value) const;
 
     // Writing
 
@@ -164,7 +164,7 @@ struct Storage {
       * @param value is a pointer to output parameter
       * @returns status code
       */
-    aku_Status series_to_param_id(const char* begin, const char* end, uint64_t* value);
+    aku_Status series_to_param_id(const char* begin, const char* end, u64* value);
 
     /** Convert parameter id to series name.
       */
@@ -185,7 +185,7 @@ struct Storage {
       */
     static apr_status_t new_storage(const char* file_name, const char* metadata_path,
                                     const char* volumes_path, int num_pages, aku_logger_cb_t logger,
-                                    uint64_t page_size = 0);
+                                    u64 page_size = 0);
 
     /** Remove all volumes
       * @param file_name

@@ -175,7 +175,7 @@ BOOST_AUTO_TEST_CASE(TestPaging3)
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
-    aku_MemRange range = {nullptr, static_cast<uint32_t>(page_mem.size())};
+    aku_MemRange range = {nullptr, static_cast<u32>(page_mem.size())};
     auto result = page->add_entry(0, 1, range);
     BOOST_CHECK_EQUAL(result, AKU_EOVERFLOW);
 }
@@ -208,7 +208,7 @@ BOOST_AUTO_TEST_CASE(TestPaging6)
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
-    uint32_t buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
+    u32 buffer[] = {0, 1, 2, 3, 4, 5, 6, 7};
     aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
@@ -228,7 +228,7 @@ BOOST_AUTO_TEST_CASE(TestPaging7)
     std::vector<char> page_mem;
     page_mem.resize(sizeof(PageHeader) + 4096);
     auto page = new (page_mem.data()) PageHeader(0, page_mem.size(), 0, 1);
-    uint32_t buffer[] = {1, 2, 3, 4};
+    u32 buffer[] = {1, 2, 3, 4};
     aku_Timestamp inst = 1111L;
     aku_MemRange range = {(void*)buffer, sizeof(buffer)};
     auto result = page->add_entry(3333, inst, range);
@@ -254,7 +254,7 @@ void generic_compression_test
 
     UncompressedChunk header;
     std::vector<UncompressedChunk> expected;
-    uint32_t pos = 0u;
+    u32 pos = 0u;
     for (int i = 1; true; i++) {
         pos++;
         begin += 1 + std::rand() % 50;
@@ -263,8 +263,8 @@ void generic_compression_test
         header.paramids.push_back(param_id);
         header.timestamps.push_back(begin);
         char buffer[100];
-        aku_MemRange range = {buffer, static_cast<uint32_t>(std::rand() % 99 + 1)};
-        uint32_t offset = 0u;
+        aku_MemRange range = {buffer, static_cast<u32>(std::rand() % 99 + 1)};
+        u32 offset = 0u;
         auto status = page->add_chunk(range, header.paramids.size() * 33, &offset);
         if (status != AKU_SUCCESS) {
             break;

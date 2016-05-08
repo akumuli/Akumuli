@@ -1,3 +1,4 @@
+#include "akumuli_def.h"
 #include "anomalydetector.h"
 #include "hashfnfamily.h"
 
@@ -15,8 +16,8 @@ namespace QP {
 
 struct CountingSketch {
     HashFnFamily const& hashes_;
-    const uint32_t N;
-    const uint32_t K;
+    const u32 N;
+    const u32 K;
     double sum_;
     std::vector<std::vector<double>> tables_;
 
@@ -26,7 +27,7 @@ struct CountingSketch {
         , K(hf.K)
         , sum_(0.0)
     {
-        for (uint32_t i = 0u; i < N; i++) {
+        for (u32 i = 0u; i < N; i++) {
             std::vector<double> row;
             row.resize(K, 0.0);
             tables_.push_back(std::move(row));
@@ -57,11 +58,11 @@ struct CountingSketch {
         }
     }
 
-    void add(uint64_t id, double value) {
+    void add(u64 id, double value) {
         sum_ += value;
-        for (uint32_t i = 0; i < N; i++) {
+        for (u32 i = 0; i < N; i++) {
             // calculate hash from id to K
-            uint32_t hash = hashes_.hash(i, id);
+            u32 hash = hashes_.hash(i, id);
             tables_[i][hash] += value;
         }
     }
@@ -70,7 +71,7 @@ struct CountingSketch {
     double estimateF2() const {
         std::vector<double> results;
         auto f = 1./(K - 1);
-        for (uint32_t i = 0u; i < N; i++) {
+        for (u32 i = 0u; i < N; i++) {
             double rowsum = std::accumulate(tables_[i].begin(), tables_[i].end(), 0.0, [](double acc, double val) {
                 return acc + val*val;
             });
@@ -82,10 +83,10 @@ struct CountingSketch {
     }
 
     //! Unbiased value estimator
-    double estimate(uint64_t id) const {
+    double estimate(u64 id) const {
         std::vector<double> results;
-        for (uint32_t i = 0u; i < N; i++) {
-            uint32_t hash = hashes_.hash(i, id);
+        for (u32 i = 0u; i < N; i++) {
+            u32 hash = hashes_.hash(i, id);
             double value = tables_[i][hash];
             double estimate = (value - sum_/K)/(1. - 1./K);
             results.push_back(estimate);
@@ -173,7 +174,7 @@ struct CountingSketch {
 //                          //
 
 struct PreciseCounter {
-    std::unordered_map<uint64_t, double> table_;
+    std::unordered_map<u64, double> table_;
 
     //! C-tor. Parameter `hf` is unused for the sake of interface unification.
     PreciseCounter(HashFnFamily const& hf) {
@@ -184,12 +185,12 @@ struct PreciseCounter {
     {
     }
 
-    void add(uint64_t id, double value) {
+    void add(u64 id, double value) {
         table_[id] += value;
     }
 
     //! Unbiased value estimator
-    double estimate(uint64_t id) const {
+    double estimate(u64 id) const {
         auto it = table_.find(id);
         if (it != table_.end()) {
             return it->second;
@@ -200,7 +201,7 @@ struct PreciseCounter {
     //! Second moment estimator
     double estimateF2() const {
         double sum = std::accumulate(table_.begin(), table_.end(), 0.0,
-                                     [](double acc, std::pair<uint64_t, double> pval) {
+                                     [](double acc, std::pair<u64, double> pval) {
             return acc + pval.second*pval.second;
         });
         return sqrt(sum);
@@ -208,7 +209,7 @@ struct PreciseCounter {
 
     //! current sketch <- absolute difference between two arguments
     void diff(PreciseCounter const& lhs, PreciseCounter const& rhs) {
-        const std::unordered_map<uint64_t, double> *small, *large;
+        const std::unordered_map<u64, double> *small, *large;
         if (lhs.table_.size() < rhs.table_.size()) {
             small = &lhs.table_;
             large = &rhs.table_;
@@ -275,11 +276,11 @@ template<class Frame>
 struct SMASlidingWindow {
     typedef std::unique_ptr<Frame> PFrame;
     PFrame             sma_;
-    const uint32_t     depth_;
+    const u32     depth_;
     const double       mul_;
     std::deque<PFrame> queue_;
 
-    SMASlidingWindow(uint32_t depth)
+    SMASlidingWindow(u32 depth)
         : depth_(depth)
         , mul_(1.0/depth)
     {
@@ -540,15 +541,15 @@ struct AnomalyDetectorPipeline : AnomalyDetectorIface {
     typedef std::unique_ptr<FcastMethod>    PSlidingWindow;
 
     HashFnFamily                hashes_;
-    const uint32_t              N;
-    const uint32_t              K;
+    const u32              N;
+    const u32              K;
     PFrame                      current_;
     PFrame                      error_;
     double                      F2_;
     double                      threshold_;
     PSlidingWindow              sliding_window_;
 
-    AnomalyDetectorPipeline(uint32_t N, uint32_t K, double threshold, PSlidingWindow swindow)
+    AnomalyDetectorPipeline(u32 N, u32 K, double threshold, PSlidingWindow swindow)
         : hashes_(N, K)
         , N(N)
         , K(K)
@@ -559,12 +560,12 @@ struct AnomalyDetectorPipeline : AnomalyDetectorIface {
         current_.reset(new Frame(hashes_));
     }
 
-    void add(uint64_t id, double value) {
+    void add(u64 id, double value) {
         current_->add(id, value);
     }
 
     //! Returns true if series is anomalous (approx)
-    bool is_anomaly_candidate(uint64_t id) const {
+    bool is_anomaly_candidate(u64 id) const {
         if (error_) {
             double estimate = error_->estimate(id);
             return estimate > F2_;
@@ -591,10 +592,10 @@ struct AnomalyDetectorPipeline : AnomalyDetectorIface {
 };
 
 template<class Window, class Detector>
-std::unique_ptr<AnomalyDetectorIface> create_detector(uint32_t N,
-                                                      uint32_t K,
+std::unique_ptr<AnomalyDetectorIface> create_detector(u32 N,
+                                                      u32 K,
                                                       double threshold,
-                                                      uint32_t window_size)
+                                                      u32 window_size)
 {
     std::unique_ptr<AnomalyDetectorIface> result;
     std::unique_ptr<Window> window(new Window(window_size));
@@ -604,10 +605,10 @@ std::unique_ptr<AnomalyDetectorIface> create_detector(uint32_t N,
 
 //! Create approximate anomaly detector based on simple moving-average smothing
 std::unique_ptr<AnomalyDetectorIface>
-    AnomalyDetectorUtil::create_approx_sma(uint32_t N,
-                                           uint32_t K,
+    AnomalyDetectorUtil::create_approx_sma(u32 N,
+                                           u32 K,
                                            double threshold,
-                                           uint32_t window_size)
+                                           u32 window_size)
 {
     typedef AnomalyDetectorPipeline<CountingSketch, SMASlidingWindow>   Detector;
     typedef SMASlidingWindow<CountingSketch>                            Window;
@@ -620,7 +621,7 @@ std::unique_ptr<AnomalyDetectorIface>
 //! Create precise anomaly detector based on simple moving-average smothing
 std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_precise_sma(double threshold,
-                                            uint32_t window_size)
+                                            u32 window_size)
 {
     typedef AnomalyDetectorPipeline<PreciseCounter, SMASlidingWindow>   Detector;
     typedef SMASlidingWindow<PreciseCounter>                            Window;
@@ -632,8 +633,8 @@ std::unique_ptr<AnomalyDetectorIface>
 
 //! Create approximate anomaly detector based on simple moving-average smothing or EWMA
 std::unique_ptr<AnomalyDetectorIface>
-    AnomalyDetectorUtil::create_approx_ewma(uint32_t N,
-                                            uint32_t K,
+    AnomalyDetectorUtil::create_approx_ewma(u32 N,
+                                            u32 K,
                                             double threshold,
                                             double alpha)
 {
@@ -675,8 +676,8 @@ std::unique_ptr<AnomalyDetectorIface>
 
 std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_approx_double_exp_smoothing(
-                                         uint32_t N,
-                                         uint32_t K,
+                                         u32 N,
+                                         u32 K,
                                          double threshold,
                                          double alpha,
                                          double beta)
@@ -709,8 +710,8 @@ std::unique_ptr<AnomalyDetectorIface>
 //! Create precise anomaly detector based on simple moving-average smothing or EWMA
 std::unique_ptr<AnomalyDetectorIface>
     AnomalyDetectorUtil::create_approx_holt_winters(
-                                             uint32_t N,
-                                             uint32_t K,
+                                             u32 N,
+                                             u32 K,
                                              double threshold,
                                              double alpha,
                                              double beta,

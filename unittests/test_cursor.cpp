@@ -16,7 +16,7 @@ void test_cursor(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<aku_Sample> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
+        for (u32 i = 0u; i < (u32)n_iter; i++) {
             aku_Sample r = {};
             r.payload.float64 = i;
             r.payload.type = AKU_PAYLOAD_FLOAT;
@@ -36,7 +36,7 @@ void test_cursor(int n_iter, int buf_size) {
         while(offset < n_read) {
             const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(results + offset);
             actual.push_back(*sample);
-            offset += std::max(sample->payload.size, (uint16_t)sizeof(aku_Sample));
+            offset += std::max(sample->payload.size, (u16)sizeof(aku_Sample));
         }
     }
     cursor.close();
@@ -52,7 +52,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     CoroCursor cursor;
     std::vector<aku_Sample> expected;
     auto generator = [n_iter, &expected, &cursor](Caller& caller) {
-        for (uint32_t i = 0u; i < (uint32_t)n_iter; i++) {
+        for (u32 i = 0u; i < (u32)n_iter; i++) {
             aku_Sample r = {};
             r.payload.float64 = i;
             r.payload.type = AKU_PAYLOAD_FLOAT;
@@ -72,7 +72,7 @@ void test_cursor_error(int n_iter, int buf_size) {
         while(offset < n_read) {
             const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(results + offset);
             actual.push_back(*sample);
-            offset += std::max(sample->payload.size, (uint16_t)sizeof(aku_Sample));
+            offset += std::max(sample->payload.size, (u16)sizeof(aku_Sample));
         }
     }
     BOOST_CHECK(cursor.is_error());

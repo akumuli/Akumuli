@@ -47,8 +47,8 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
 
     struct IOBuf {
         // Counters
-        std::atomic<uint64_t> pps;
-        std::atomic<uint64_t> bps;
+        std::atomic<u64> pps;
+        std::atomic<u64> bps;
 
         // Packet recv structs
         mmsghdr msgs[NPACKETS];

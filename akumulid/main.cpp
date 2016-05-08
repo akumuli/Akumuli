@@ -23,7 +23,7 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
-const int64_t AKU_TEST_PAGE_SIZE  = 0x1000000;
+const i64 AKU_TEST_PAGE_SIZE  = 0x1000000;
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -168,8 +168,8 @@ struct ConfigFile {
         return result;
     }
 
-    static uint64_t get_cache_size(PTree conf) {
-        return conf.get<uint64_t>("max_cache_size");
+    static u64 get_cache_size(PTree conf) {
+        return conf.get<u64>("max_cache_size");
     }
 
     static int get_window(PTree conf) {
@@ -352,8 +352,8 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
 /** Create database if database not exists.
   */
 void create_db_files(const char* path,
-                     int32_t nvolumes,
-                     uint64_t page_size=0)
+                     i32 nvolumes,
+                     u64 page_size=0)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {

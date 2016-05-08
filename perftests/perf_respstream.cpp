@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
         input += pattern;
     }
     std::vector<double> timedeltas;
-    uint64_t intvalue;
+    u64 intvalue;
     Byte buffer[RESPStream::STRING_LENGTH_MAX];
     for (int i = N_TESTS; i --> 0;) {
         PerfTimer tm;

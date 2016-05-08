@@ -82,7 +82,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_1) {
     auto mock = std::make_shared<NodeMock>();
     auto sampler = std::make_shared<RandomSamplingNode>(10, mock);
 
-    for (uint64_t u = 0; u < 100; u++) {
+    for (u64 u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));
     }
     sampler->complete();
@@ -99,7 +99,7 @@ BOOST_AUTO_TEST_CASE(Test_random_sampler_2) {
     auto mock = std::make_shared<NodeMock>();
     auto sampler = std::make_shared<RandomSamplingNode>(100, mock);
 
-    for (uint64_t u = 0; u < 100; u++) {
+    for (u64 u = 0; u < 100; u++) {
         sampler->put(make(100ul - u, 1000ul - u, 1.0));
     }
     sampler->complete();

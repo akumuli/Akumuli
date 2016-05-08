@@ -49,7 +49,7 @@ static size_t _get_file_size(apr_file_t* file) {
 
 /** This function creates file with specified size
   */
-static void _create_file(const char* file_name, uint64_t size) {
+static void _create_file(const char* file_name, u64 size) {
     Logger::msg(AKU_LOG_INFO, "Create " + std::string(file_name) + " size: " + std::to_string(size));
     AprPoolPtr pool = _make_apr_pool();
     apr_file_t* pfile = nullptr;
@@ -63,17 +63,17 @@ static void _create_file(const char* file_name, uint64_t size) {
 //------------------------- MetaVolume ---------------------------------//
 
 struct VolumeRef {
-    uint32_t version;
-    uint32_t id;
-    uint32_t nblocks;
-    uint32_t capacity;
-    uint32_t generation;
+    u32 version;
+    u32 id;
+    u32 nblocks;
+    u32 capacity;
+    u32 generation;
 } __attribute__((packed));
 
 MetaVolume::MetaVolume(const char *path)
     : mmap_(path, false)
     , file_size_(mmap_.get_size())
-    , mmap_ptr_((uint8_t*)mmap_.get_pointer())
+    , mmap_ptr_((u8*)mmap_.get_pointer())
     , double_write_buffer_(mmap_.get_size(), 0)
 {
     memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_.get_size());
@@ -83,13 +83,13 @@ size_t MetaVolume::get_nvolumes() const {
     return file_size_/AKU_BLOCK_SIZE;
 }
 
-void MetaVolume::create_new(const char* path, size_t capacity, const uint32_t *vol_capacities) {
+void MetaVolume::create_new(const char* path, size_t capacity, const u32 *vol_capacities) {
     size_t size = capacity * AKU_BLOCK_SIZE;
     _create_file(path, size);
     MemoryMappedFile mmap(path, false);
-    uint8_t* it = (uint8_t*)mmap.get_pointer();
-    uint8_t* end = it + mmap.get_size();
-    uint32_t id = 0;
+    u8* it = (u8*)mmap.get_pointer();
+    u8* end = it + mmap.get_size();
+    u32 id = 0;
     // Initialization
     while(it < end) {
         VolumeRef* pvolume = (VolumeRef*)it;
@@ -112,40 +112,40 @@ std::unique_ptr<MetaVolume> MetaVolume::open_existing(const char* path) {
 }
 
 //! Helper function
-static VolumeRef* get_volref(uint8_t* p, uint32_t id) {
-    uint8_t* it = p + id * AKU_BLOCK_SIZE;
+static VolumeRef* get_volref(u8* p, u32 id) {
+    u8* it = p + id * AKU_BLOCK_SIZE;
     VolumeRef* vol = (VolumeRef*)it;
     return vol;
 }
 
-std::tuple<aku_Status, uint32_t> MetaVolume::get_nblocks(uint32_t id) const {
+std::tuple<aku_Status, u32> MetaVolume::get_nblocks(u32 id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
-        uint32_t nblocks = pvol->nblocks;
+        u32 nblocks = pvol->nblocks;
         return std::make_tuple(AKU_SUCCESS, nblocks);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
-std::tuple<aku_Status, uint32_t> MetaVolume::get_capacity(uint32_t id) const {
+std::tuple<aku_Status, u32> MetaVolume::get_capacity(u32 id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
-        uint32_t cap = pvol->capacity;
+        u32 cap = pvol->capacity;
         return std::make_tuple(AKU_SUCCESS, cap);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
-std::tuple<aku_Status, uint32_t> MetaVolume::get_generation(uint32_t id) const {
+std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
-        uint32_t gen = pvol->generation;
+        u32 gen = pvol->generation;
         return std::make_tuple(AKU_SUCCESS, gen);
     }
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
-aku_Status MetaVolume::update(uint32_t id, uint32_t nblocks, uint32_t capacity, uint32_t gen) {
+aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
@@ -156,7 +156,7 @@ aku_Status MetaVolume::update(uint32_t id, uint32_t nblocks, uint32_t capacity, 
     return AKU_EBAD_ARG;  // id out of range
 }
 
-aku_Status MetaVolume::set_nblocks(uint32_t id, uint32_t nblocks) {
+aku_Status MetaVolume::set_nblocks(u32 id, u32 nblocks) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
@@ -165,7 +165,7 @@ aku_Status MetaVolume::set_nblocks(uint32_t id, uint32_t nblocks) {
     return AKU_EBAD_ARG;  // id out of range
 }
 
-aku_Status MetaVolume::set_capacity(uint32_t id, uint32_t cap) {
+aku_Status MetaVolume::set_capacity(u32 id, u32 cap) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->capacity = cap;
@@ -174,7 +174,7 @@ aku_Status MetaVolume::set_capacity(uint32_t id, uint32_t cap) {
     return AKU_EBAD_ARG;  // id out of range
 }
 
-aku_Status MetaVolume::set_generation(uint32_t id, uint32_t gen) {
+aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->generation = gen;
@@ -189,7 +189,7 @@ void MetaVolume::flush() {
     panic_on_error(status, "Flush error");
 }
 
-aku_Status MetaVolume::flush(uint32_t id) {
+aku_Status MetaVolume::flush(u32 id) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_.get_size());
         size_t from = id * AKU_BLOCK_SIZE;
@@ -227,7 +227,7 @@ std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
 }
 
 //! Append block to file (source size should be 4 at least BLOCK_SIZE)
-std::tuple<aku_Status, BlockAddr> Volume::append_block(const uint8_t* source) {
+std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     if (write_pos_ >= file_size_) {
         return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
@@ -242,7 +242,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const uint8_t* source) {
 }
 
 //! Read filxed size block from file
-aku_Status Volume::read_block(uint32_t ix, uint8_t* dest) const {
+aku_Status Volume::read_block(u32 ix, u8* dest) const {
     if (ix >= write_pos_) {
         return AKU_EBAD_ARG;
     }
@@ -260,7 +260,7 @@ void Volume::flush() {
     panic_on_error(status, "Volume flush error");
 }
 
-uint32_t Volume::get_size() const {
+u32 Volume::get_size() const {
     return file_size_;
 }
 

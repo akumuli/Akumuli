@@ -39,7 +39,7 @@ namespace Akumuli {
 // ----
 
 
-PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32_t numpages)
+PageHeader::PageHeader(u32 count, u64 length, u32 page_id, u32 numpages)
     : version(0)
     , count(0)
     , next_offset(0)
@@ -51,31 +51,31 @@ PageHeader::PageHeader(uint32_t count, uint64_t length, uint32_t page_id, uint32
 {
 }
 
-uint64_t PageHeader::get_page_length() const {
+u64 PageHeader::get_page_length() const {
     return length + sizeof(PageHeader);
 }
 
-uint32_t PageHeader::get_page_id() const {
+u32 PageHeader::get_page_id() const {
     return page_id;
 }
 
-uint32_t PageHeader::get_numpages() const {
+u32 PageHeader::get_numpages() const {
     return numpages;
 }
 
-uint32_t PageHeader::get_open_count() const {
+u32 PageHeader::get_open_count() const {
     return open_count;
 }
 
-uint32_t PageHeader::get_close_count() const {
+u32 PageHeader::get_close_count() const {
     return close_count;
 }
 
-void PageHeader::set_open_count(uint32_t cnt) {
+void PageHeader::set_open_count(u32 cnt) {
     open_count = cnt;
 }
 
-void PageHeader::set_close_count(uint32_t cnt) {
+void PageHeader::set_close_count(u32 cnt) {
     close_count = cnt;
 }
 
@@ -105,14 +105,14 @@ const aku_EntryIndexRecord* PageHeader::page_index(int index) const {
     return entry;
 }
 
-std::pair<aku_EntryIndexRecord, int> PageHeader::index_to_offset(uint32_t index) const {
+std::pair<aku_EntryIndexRecord, int> PageHeader::index_to_offset(u32 index) const {
     if (index > count) {
         return std::make_pair(aku_EntryIndexRecord(), AKU_EBAD_ARG);
     }
     return std::make_pair(*page_index(index), AKU_SUCCESS);
 }
 
-uint32_t PageHeader::get_entries_count() const {
+u32 PageHeader::get_entries_count() const {
     return count;
 }
 
@@ -170,7 +170,7 @@ aku_Status PageHeader::add_entry( const aku_ParamId param
     return AKU_SUCCESS;
 }
 
-aku_Status PageHeader::add_chunk(const aku_MemRange range, const uint32_t free_space_required, uint32_t* out_offset) {
+aku_Status PageHeader::add_chunk(const aku_MemRange range, const u32 free_space_required, u32* out_offset) {
     const auto
         SPACE_REQUIRED = range.length + free_space_required,
         SPACE_NEEDED = range.length;
@@ -201,7 +201,7 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
             size_t bytes_free = header->get_free_space();
             char* data = header->payload + header->next_offset;
             begin = data;
-            return {(void*)data, (uint32_t)bytes_free};
+            return {(void*)data, (u32)bytes_free};
         }
 
         virtual aku_Status commit(size_t bytes_written) {
@@ -240,11 +240,11 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
     return status;
 }
 
-const aku_Timestamp PageHeader::read_timestamp_at(uint32_t index) const {
+const aku_Timestamp PageHeader::read_timestamp_at(u32 index) const {
     return page_index(index)->timestamp;
 }
 
-const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
+const aku_Entry *PageHeader::read_entry_at(u32 index) const {
     if (index < count) {
         auto offset = page_index(index)->offset;
         return read_entry(offset);
@@ -252,13 +252,13 @@ const aku_Entry *PageHeader::read_entry_at(uint32_t index) const {
     return 0;
 }
 
-const aku_Entry *PageHeader::read_entry(uint32_t offset) const {
+const aku_Entry *PageHeader::read_entry(u32 offset) const {
     auto ptr = payload + offset;
     auto entry_ptr = reinterpret_cast<const aku_Entry*>(ptr);
     return entry_ptr;
 }
 
-const void* PageHeader::read_entry_data(uint32_t offset) const {
+const void* PageHeader::read_entry_data(u32 offset) const {
     return payload + offset;
 }
 
@@ -270,7 +270,7 @@ int PageHeader::get_entry_length_at(int entry_index) const {
     return 0;
 }
 
-int PageHeader::get_entry_length(uint32_t offset) const {
+int PageHeader::get_entry_length(u32 offset) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         return entry_ptr->length;
@@ -291,7 +291,7 @@ int PageHeader::copy_entry_at(int index, aku_Entry *receiver) const {
     return 0;
 }
 
-int PageHeader::copy_entry(uint32_t offset, aku_Entry *receiver) const {
+int PageHeader::copy_entry(u32 offset, aku_Entry *receiver) const {
     auto entry_ptr = read_entry(offset);
     if (entry_ptr) {
         if (entry_ptr->length > receiver->length) {
@@ -314,7 +314,7 @@ namespace {
         ChunkHeaderSearcher(UncompressedChunk const& h) : header(h) {}
 
         // Interpolation search supporting functions
-        bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
+        bool read_at(aku_Timestamp* out_timestamp, u32 ix) const {
             if (ix < header.timestamps.size()) {
                 *out_timestamp = header.timestamps[ix];
                 return true;
@@ -359,7 +359,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         }
     }
 
-    uint32_t max_index() const {
+    u32 max_index() const {
         return page_->get_entries_count();
     }
 
@@ -403,7 +403,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     // Interpolation search supporting functions
-    bool read_at(aku_Timestamp* out_timestamp, uint32_t ix) const {
+    bool read_at(aku_Timestamp* out_timestamp, u32 ix) const {
         if (ix < page_->get_entries_count()) {
             *out_timestamp = page_->page_index(ix)->timestamp;
             return true;
@@ -431,11 +431,11 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
     }
 
     void binary_search() {
-        uint64_t steps = 0ul;
+        u64 steps = 0ul;
         if (search_range_.begin == search_range_.end) {
             return;
         }
-        uint32_t probe_index = 0u;
+        u32 probe_index = 0u;
         while (search_range_.end >= search_range_.begin) {
             steps++;
             probe_index = search_range_.begin + ((search_range_.end - search_range_.begin) / 2u);
@@ -478,7 +478,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         INTERRUPTED,
     };
 
-    ScanResultT scan_compressed_entries(uint32_t current_index,
+    ScanResultT scan_compressed_entries(u32 current_index,
                                         aku_Entry const* probe_entry,
                                         bool binary_search=false)
     {
@@ -537,7 +537,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto queryproc = query_;
         auto page = page_;
 
-        auto put_entry = [&header, queryproc, page] (uint32_t i) {
+        auto put_entry = [&header, queryproc, page] (u32 i) {
             auto id = header->paramids.at(i);
             if (queryproc->filter().apply(id) == QP::IQueryFilter::PROCESS) {
                 aku_PData pdata;
@@ -614,7 +614,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
      * @param probe_index is an index to start with
      * @return tuple{fwd-bytes, bwd-bytes}
      */
-    std::tuple<uint64_t, uint64_t> scan_impl(uint32_t probe_index) {
+    std::tuple<u64, u64> scan_impl(u32 probe_index) {
         int index_increment = query_range_.is_backward() ? -1 : 1;
         ScanResultT proceed = IN_RANGE;
         aku_Timestamp last_valid_timestamp = 0ul;
@@ -695,7 +695,7 @@ void PageHeader::search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_
 }
 
 void PageHeader::get_stats(aku_StorageStats* rcv_stats) {
-    uint64_t used_space = 0,
+    u64 used_space = 0,
              free_space = 0,
               n_entries = 0;
 

@@ -37,7 +37,7 @@ aku_Timestamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_poin
 
 aku_Timestamp DateTimeUtil::from_boost_ptime(boost::posix_time::ptime timestamp) {
     boost::posix_time::time_duration duration = timestamp - EPOCH;
-    uint64_t ns = duration.total_nanoseconds();
+    u64 ns = duration.total_nanoseconds();
     return ns;
 }
 
