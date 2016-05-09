@@ -184,6 +184,9 @@ struct NBTreeLeafIterator : NBTreeIterator {
         if (toread > size) {
             toread = size;
         }
+        if (toread == 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
         auto begin = from_;
         auto end = from_ + toread;
         std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);

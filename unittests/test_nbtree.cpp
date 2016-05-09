@@ -79,6 +79,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     }
 }
 
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
     test_nbtree_roots_collection(100, 0, 100);
 }
@@ -109,5 +110,82 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
         auto from = rand() % N;
         auto to = rand() % N;
         test_nbtree_roots_collection(N, from, to);
+    }
+}
+
+
+// TODO: check chunked read
+// TODO: check termination of the iteration process
+// TODO: check reopen
+// TODO: check commit/close
+
+void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
+    ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        collection->append(i, i);
+    }
+
+    // Read data back
+    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+
+    aku_Status status;
+    size_t sz;
+    std::vector<aku_Timestamp> ts(chunk_size, 0xF0F0F0F0);
+    std::vector<double> xs(chunk_size, -1);
+
+    u32 total_size = 0u;
+    aku_Timestamp ts_seen = begin;
+    while(status != AKU_ENO_DATA) {
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), chunk_size);
+
+        if (sz == 0 && status != AKU_ENO_DATA) {
+            BOOST_FAIL("Invalid iterator output, sz=0, status=" << status);
+        }
+        total_size += sz;
+
+        BOOST_REQUIRE(status == AKU_SUCCESS || status == AKU_ENO_DATA);
+
+        if (dir == ScanDir::FWD) {
+            for (u32 i = 0; i < sz; i++) {
+                const auto curr = ts_seen + i;
+                if (ts[i] != curr) {
+                    BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
+                }
+                if (xs[i] != curr) {
+                    BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
+                }
+            }
+            ts_seen += sz;
+            BOOST_REQUIRE(ts_seen < end);
+        } else {
+            for (u32 i = 0; i < sz; i++) {
+                const auto curr = ts_seen - i;
+                if (ts[i] != curr) {
+                    BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
+                }
+                if (xs[i] != curr) {
+                    BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
+                }
+            }
+            ts_seen -= sz;
+            BOOST_REQUIRE(ts_seen > end);
+        }
+
+    }
+    //size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
+    //BOOST_REQUIRE_EQUAL(total_size, outsz);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
+    for (int i = 0; i < 100; i++) {
+        auto N = rand() % 20000;
+        auto from = rand() % N;
+        auto to = rand() % N;
+        auto chunk = rand() % N;
+        test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
