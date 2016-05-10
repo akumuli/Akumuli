@@ -153,7 +153,7 @@ struct NBTreeLeafIterator : NBTreeIterator {
                     from_ = 0;
                     assert(tsbuf_.front() > begin);
                 }
-                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
                 if (it_end == tsbuf_.end()) {
                     to_ = tsbuf_.size();
                 } else {
@@ -164,7 +164,7 @@ struct NBTreeLeafIterator : NBTreeIterator {
                 auto it_begin = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
                 from_ = std::distance(it_begin, tsbuf_.end());
 
-                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
                 if (it_end == tsbuf_.end()) {
                     to_ = tsbuf_.size();
                 } else {
@@ -238,11 +238,14 @@ struct IteratorConcat : NBTreeIterator {
         size_t accsz = 0;  // accumulated size
         while(iter_index_ < iter_.size()) {
             std::tie(status, ressz) = iter_[iter_index_]->read(destts, destval, size);
-            iter_index_++;
             destts += ressz;
             destval += ressz;
             size -= ressz;
             accsz += ressz;
+            if (size == 0) {
+                break;
+            }
+            iter_index_++;
             if (status == AKU_ENO_DATA) {
                 // this leaf node is empty, continue with next
                 continue;
@@ -250,9 +253,6 @@ struct IteratorConcat : NBTreeIterator {
             if (status != AKU_SUCCESS) {
                 // Stop iteration or error!
                 return std::tie(status, accsz);
-            }
-            if (size == 0) {
-                break;
             }
         }
         return std::tie(status, accsz);

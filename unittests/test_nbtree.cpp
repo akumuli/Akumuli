@@ -114,8 +114,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
 }
 
 
-// TODO: check chunked read
-// TODO: check termination of the iteration process
 // TODO: check reopen
 // TODO: check commit/close
 
@@ -139,7 +137,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
 
     u32 total_size = 0u;
     aku_Timestamp ts_seen = begin;
-    while(status != AKU_ENO_DATA) {
+    while(true) {
         std::tie(status, sz) = it->read(ts.data(), xs.data(), chunk_size);
 
         if (sz == 0 && status != AKU_ENO_DATA) {
@@ -160,7 +158,6 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
                 }
             }
             ts_seen += sz;
-            BOOST_REQUIRE(ts_seen < end);
         } else {
             for (u32 i = 0; i < sz; i++) {
                 const auto curr = ts_seen - i;
@@ -172,17 +169,22 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
                 }
             }
             ts_seen -= sz;
-            BOOST_REQUIRE(ts_seen > end);
         }
 
+        if (status == AKU_ENO_DATA || ts_seen == end) {
+            break;
+        }
     }
-    //size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
-    //BOOST_REQUIRE_EQUAL(total_size, outsz);
+    if (ts_seen != end) {
+        BOOST_FAIL("Bad range, expected: " << end << ", actual: " << ts_seen);
+    }
+    size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
+    BOOST_REQUIRE_EQUAL(total_size, outsz);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
     for (int i = 0; i < 100; i++) {
-        auto N = rand() % 20000;
+        auto N = rand() % 200000;
         auto from = rand() % N;
         auto to = rand() % N;
         auto chunk = rand() % N;
