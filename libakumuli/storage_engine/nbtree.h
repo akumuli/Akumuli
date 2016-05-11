@@ -229,6 +229,8 @@ public:
     //! Create node from block-store (node is immutable).
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
+    // TODO: COW c-tor
+
     //! Append subtree ref
     aku_Status append(SubtreeRef const& p);
 
@@ -263,8 +265,8 @@ struct NBTreeRoot {
     virtual void append(aku_Timestamp ts, double value) = 0;
     //! Append subtree metadata to the root (doesn't work with leaf nodes)
     virtual void append(SubtreeRef const& pl) = 0;
-    //! Write all changes to the block-store, even if node is not full.
-    virtual void commit() = 0;
+    //! Write all changes to the block-store, even if node is not full. Return root address.
+    virtual LogicAddr commit() = 0;
     //! Return iterator
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
 };
@@ -295,6 +297,9 @@ public:
     void append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+
+    //! Commit changes to btree (do not call blockstore.flush), return list of addresses.
+    std::vector<LogicAddr> commit();
 };
 
 

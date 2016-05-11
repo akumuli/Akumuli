@@ -191,3 +191,22 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
+
+void test_reopen_storage(u32 N) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        collection->append(i, i);
+    }
+
+    addrlist = collection->commit();
+
+    collection.reset();
+
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
+    test_reopen_storage(100);
+}

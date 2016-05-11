@@ -698,7 +698,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
     }
 
     //! Forcibly commit changes, even if current page is not full
-    virtual void commit() {
+    virtual LogicAddr commit() {
         // Invariant: after call to this method data from `leaf_` should
         // endup in block store, upper level root node should be updated
         // and `leaf_` variable should be reset.
@@ -735,6 +735,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         }
         last_ = addr;
         reset_leaf();
+        return addr;
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
@@ -756,7 +757,8 @@ struct NBSuperblockRoot : NBTreeRoot {
                      std::shared_ptr<NBTreeRootsCollection> roots,
                      aku_ParamId id,
                      LogicAddr last,
-                     u16 level)
+                     u16 level,
+                     bool cow=false)
         : bstore_(bstore)
         , roots_(roots)
         , id_(id)
@@ -770,6 +772,15 @@ struct NBSuperblockRoot : NBTreeRoot {
             std::tie(status, block) = bstore_->read_block(last_);
             if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
+            }
+            // Copy on write should be used here (if node not full), otherwise tree height
+            // will grow after each reopen!
+            // COW should be disabled if superblock on lower level was created from scratch.
+            if (cow) {
+                // Copy node data to the new place
+                // Remove last entry
+                curr_.reset(new NBTreeSuperblock(last_, bstore_));
+                throw "not implemented";
             }
             auto psubtree = subtree_cast(block->get_data());
             fanout_index_ = psubtree->fanout_index + 1;
@@ -797,7 +808,7 @@ struct NBSuperblockRoot : NBTreeRoot {
         }
     }
 
-    virtual void commit() {
+    virtual LogicAddr commit() {
         // Invariant: after call to this method data from `curr_` should
         // endup in block store, upper level root node should be updated
         // and `curr_` variable should be reset.
@@ -832,6 +843,7 @@ struct NBSuperblockRoot : NBTreeRoot {
         }
         last_ = addr;
         reset_subtree();
+        return addr;
     }
 
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
@@ -931,6 +943,18 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
     std::unique_ptr<NBTreeIterator> concat;
     concat.reset(new IteratorConcat(std::move(iterators)));
     return std::move(concat);
+}
+
+
+std::vector<LogicAddr> NBTreeRootsCollection::commit() {
+    std::vector<LogicAddr> roots;
+    if (initialized_) {
+        for (auto& root: roots_) {
+            auto addr = root->commit();
+            roots.push_back(addr);
+        }
+    }
+    return roots;
 }
 
 
