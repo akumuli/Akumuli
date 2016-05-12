@@ -492,6 +492,28 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
 }
 
+NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last)
+    : buffer_(AKU_BLOCK_SIZE, 0)
+    , immutable_(false)
+{
+    aku_Status status;
+    std::shared_ptr<Block> block;
+    std::tie(status, block) = bstore->read_block(addr);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Bad arg, can't read data from block store, " + StatusUtil::str(status));
+    }
+    SubtreeRef const* ref = subtree_cast(block->get_data());
+    id_ = ref->id;
+    fanout_index_ = ref->fanout_index;
+    prev_ = ref->addr;
+    level_ = ref->level;
+    write_pos_ = ref->payload_size;
+    if (remove_last && write_pos_ != 0) {
+        write_pos_--;
+    }
+    memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
+}
+
 u16 NBTreeSuperblock::get_level() const {
     return level_;
 }
@@ -539,7 +561,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
         backref->addr = EMPTY;
     }
     // This fields should be rewrited to store node's own information
-    backref->payload_size = write_pos_;
+    backref->payload_size = static_cast<u16>(write_pos_);
     backref->fanout_index = fanout_index_;
     backref->id = id_;
     backref->level = level_;
@@ -645,6 +667,9 @@ struct NBTreeLeafRoot : NBTreeRoot {
     LogicAddr last_;
     std::unique_ptr<NBTreeLeaf> leaf_;
     u16 fanout_index_;
+    // padding
+    u16 pad0_;
+    u32 pad1_;
 
     NBTreeLeafRoot(std::shared_ptr<BlockStore> bstore,
                    std::shared_ptr<NBTreeRootsCollection> roots,
@@ -674,75 +699,83 @@ struct NBTreeLeafRoot : NBTreeRoot {
         reset_leaf();
     }
 
-    virtual void append(SubtreeRef const&) {
-        AKU_PANIC("Can't append subtree to leaf node");
-    }
-
-    virtual void append(aku_Timestamp ts, double value) {
-        // Invariant: leaf_ should be initialized, if leaf_ is full
-        // and pushed to block-store, reset_leaf should be called
-        aku_Status status = leaf_->append(ts, value);
-        if (status == AKU_EOVERFLOW) {
-            // Commit full node
-            commit();
-            // There should be only one level of recursion, no looping.
-            // Stack overflow here means that there is a logic error in
-            // the program that results in NBTreeLeaf::append always
-            // returning AKU_EOVERFLOW.
-            append(ts, value);
-        }
-    }
-
     void reset_leaf() {
         leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
 
-    //! Forcibly commit changes, even if current page is not full
-    virtual LogicAddr commit() {
-        // Invariant: after call to this method data from `leaf_` should
-        // endup in block store, upper level root node should be updated
-        // and `leaf_` variable should be reset.
-        // Otherwise: panic should be triggered.
-
-        LogicAddr addr;
-        aku_Status status;
-        std::tie(status, addr) = leaf_->commit(bstore_);
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
-        }
-        // Gather stats and send them to upper-level node
-        SubtreeRef payload;
-        status = init_subtree_from_leaf(*leaf_, payload);
-        if (status != AKU_SUCCESS) {
-            // This shouldn't happen because leaf node can't be
-            // empty just after overflow.
-            AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
-        }
-        payload.addr = addr;
-        auto roots_collection = roots_.lock();
-        if (roots_collection) {
-            roots_collection->append(payload);
-        } else {
-            // Invariant broken.
-            // Roots collection was destroyed before write process
-            // stops.
-            AKU_PANIC("Roots collection destroyed");
-        }
-        fanout_index_++;
-        if (fanout_index_ == AKU_NBTREE_FANOUT) {
-            fanout_index_ = 0;
-            last_ = EMPTY;
-        }
-        last_ = addr;
-        reset_leaf();
-        return addr;
-    }
-
-    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
-        return std::move(leaf_->range(begin, end));
-    }
+    virtual void append(aku_Timestamp ts, double value);
+    virtual void append(const SubtreeRef &pl);
+    virtual LogicAddr commit();
+    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
+void NBTreeLeafRoot::append(SubtreeRef const&) {
+    AKU_PANIC("Can't append subtree to leaf node");
+}
+
+void NBTreeLeafRoot::append(aku_Timestamp ts, double value) {
+    // Invariant: leaf_ should be initialized, if leaf_ is full
+    // and pushed to block-store, reset_leaf should be called
+    aku_Status status = leaf_->append(ts, value);
+    if (status == AKU_EOVERFLOW) {
+        // Commit full node
+        commit();
+        // There should be only one level of recursion, no looping.
+        // Stack overflow here means that there is a logic error in
+        // the program that results in NBTreeLeaf::append always
+        // returning AKU_EOVERFLOW.
+        append(ts, value);
+    }
+}
+
+//! Forcibly commit changes, even if current page is not full
+LogicAddr NBTreeLeafRoot::commit() {
+    // Invariant: after call to this method data from `leaf_` should
+    // endup in block store, upper level root node should be updated
+    // and `leaf_` variable should be reset.
+    // Otherwise: panic should be triggered.
+
+    LogicAddr addr;
+    aku_Status status;
+    std::tie(status, addr) = leaf_->commit(bstore_);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
+    }
+    // Gather stats and send them to upper-level node
+    SubtreeRef payload;
+    status = init_subtree_from_leaf(*leaf_, payload);
+    if (status != AKU_SUCCESS) {
+        // This shouldn't happen because leaf node can't be
+        // empty just after overflow.
+        AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
+    }
+    payload.addr = addr;
+    auto roots_collection = roots_.lock();
+    if (roots_collection) {
+        roots_collection->append(payload);
+    } else {
+        // Invariant broken.
+        // Roots collection was destroyed before write process
+        // stops.
+        AKU_PANIC("Roots collection destroyed");
+    }
+    fanout_index_++;
+    if (fanout_index_ == AKU_NBTREE_FANOUT) {
+        fanout_index_ = 0;
+        last_ = EMPTY;
+    }
+    last_ = addr;
+    reset_leaf();
+    return addr;
+}
+
+std::unique_ptr<NBTreeIterator> NBTreeLeafRoot::search(aku_Timestamp begin, aku_Timestamp end) const {
+    return std::move(leaf_->range(begin, end));
+}
+
+// //////////////////// //
+//   NBSuperblockRoot   //
+// //////////////////// //
 
 struct NBSuperblockRoot : NBTreeRoot {
     std::shared_ptr<BlockStore> bstore_;
@@ -752,35 +785,27 @@ struct NBSuperblockRoot : NBTreeRoot {
     LogicAddr last_;
     u16 fanout_index_;
     u16 level_;
+    // padding
+    u32 pad_;
 
     NBSuperblockRoot(std::shared_ptr<BlockStore> bstore,
                      std::shared_ptr<NBTreeRootsCollection> roots,
                      aku_ParamId id,
-                     LogicAddr last,
-                     u16 level,
-                     bool cow=false)
+                     LogicAddr addr,
+                     u16 level)
         : bstore_(bstore)
         , roots_(roots)
         , id_(id)
-        , last_(last)
+        , last_(EMPTY)
         , fanout_index_(0)
         , level_(level)
     {
-        if (last_ != EMPTY) {
+        if (addr != EMPTY) {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = bstore_->read_block(last_);
             if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
-            }
-            // Copy on write should be used here (if node not full), otherwise tree height
-            // will grow after each reopen!
-            // COW should be disabled if superblock on lower level was created from scratch.
-            if (cow) {
-                // Copy node data to the new place
-                // Remove last entry
-                curr_.reset(new NBTreeSuperblock(last_, bstore_));
-                throw "not implemented";
             }
             auto psubtree = subtree_cast(block->get_data());
             fanout_index_ = psubtree->fanout_index + 1;
@@ -788,68 +813,85 @@ struct NBSuperblockRoot : NBTreeRoot {
                 fanout_index_ = 0;
                 last_ = EMPTY;
             }
+            last_ = psubtree->addr;
+            if (level_ == 1) {
+                // CoW constructor should be used here.
+                // Because lower level node is leaf node - we shouldn't remove
+                // last element from superblock.
+                curr_.reset(new NBTreeSuperblock(addr, bstore_, false));
+            } else {
+                // For all higher level nodes we should use CoW and remove last
+                // element from the superblock.
+                curr_.reset(new NBTreeSuperblock(addr, bstore_, true));
+            }
         }
-        reset_subtree();
     }
 
     void reset_subtree() {
         curr_.reset(new NBTreeSuperblock(id_, last_, fanout_index_, level_));
     }
 
-    virtual void append(aku_Timestamp ts, double value) {
-        AKU_PANIC("Data should be added to the root 0");
-    }
-
-    virtual void append(SubtreeRef const& pl) {
-        auto status = curr_->append(pl);
-        if (status == AKU_EOVERFLOW) {
-            commit();
-            append(pl);
-        }
-    }
-
-    virtual LogicAddr commit() {
-        // Invariant: after call to this method data from `curr_` should
-        // endup in block store, upper level root node should be updated
-        // and `curr_` variable should be reset.
-        // Otherwise: panic should be triggered.
-
-        LogicAddr addr;
-        aku_Status status;
-        std::tie(status, addr) = curr_->commit(bstore_);
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
-        }
-        // Gather stats and send them to upper-level node
-        SubtreeRef payload;
-        status = init_subtree_from_subtree(*curr_, payload);
-        if (status != AKU_SUCCESS) {
-            AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
-        }
-        payload.addr = addr;
-        auto roots_collection = roots_.lock();
-        if (roots_collection) {
-            roots_collection->append(payload);
-        } else {
-            // Invariant broken.
-            // Roots collection was destroyed before write process
-            // stops.
-            AKU_PANIC("Roots collection destroyed");
-        }
-        fanout_index_++;
-        if (fanout_index_ == AKU_NBTREE_FANOUT) {
-            fanout_index_ = 0;
-            last_ = EMPTY;
-        }
-        last_ = addr;
-        reset_subtree();
-        return addr;
-    }
-
-    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const {
-        return std::move(curr_->search(begin, end, bstore_));
-    }
+    virtual void append(aku_Timestamp ts, double value);
+    virtual void append(const SubtreeRef &pl);
+    virtual LogicAddr commit();
+    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
+
+void NBSuperblockRoot::append(aku_Timestamp ts, double value) {
+    AKU_UNUSED(ts);
+    AKU_UNUSED(value);
+    AKU_PANIC("Data should be added to the root 0");
+}
+
+void NBSuperblockRoot::append(SubtreeRef const& pl) {
+    auto status = curr_->append(pl);
+    if (status == AKU_EOVERFLOW) {
+        commit();
+        append(pl);
+    }
+}
+
+LogicAddr NBSuperblockRoot::commit() {
+    // Invariant: after call to this method data from `curr_` should
+    // endup in block store, upper level root node should be updated
+    // and `curr_` variable should be reset.
+    // Otherwise: panic should be triggered.
+
+    LogicAddr addr;
+    aku_Status status;
+    std::tie(status, addr) = curr_->commit(bstore_);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
+    }
+    // Gather stats and send them to upper-level node
+    SubtreeRef payload;
+    status = init_subtree_from_subtree(*curr_, payload);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
+    }
+    payload.addr = addr;
+    auto roots_collection = roots_.lock();
+    if (roots_collection) {
+        roots_collection->append(payload);
+    } else {
+        // Invariant broken.
+        // Roots collection was destroyed before write process
+        // stops.
+        AKU_PANIC("Roots collection destroyed");
+    }
+    fanout_index_++;
+    if (fanout_index_ == AKU_NBTREE_FANOUT) {
+        fanout_index_ = 0;
+        last_ = EMPTY;
+    }
+    last_ = addr;
+    reset_subtree();
+    return addr;
+}
+
+std::unique_ptr<NBTreeIterator> NBSuperblockRoot::search(aku_Timestamp begin, aku_Timestamp end) const {
+    return std::move(curr_->search(begin, end, bstore_));
+}
 
 
 
@@ -866,6 +908,25 @@ NBTreeRootsCollection::NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAd
 {
     if (rootaddr_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
+    }
+    if (rootaddr_.empty() == false) {
+        // Construct roots using CoW
+        for (u32 i = 0; i < rootaddr_.size(); i++) {
+            if (i == 0) {
+                // create leaf
+                std::unique_ptr<NBTreeRoot> leaf;
+                auto addr = rootaddr_[i];
+                leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, addr));
+                roots_.push_back(std::move(leaf));
+            } else {
+                // create superblock
+                std::unique_ptr<NBTreeRoot> p;
+                u16 lvl = static_cast<u16>(i);
+                auto addr = rootaddr_[i];
+                p.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, addr, lvl));
+                roots_.push_back(std::move(p));
+            }
+        }
     }
 }
 

@@ -226,10 +226,11 @@ public:
     //! Create new writable node.
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
-    //! Create node from block-store (node is immutable).
+    //! Read immutable node from block-store.
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
-    // TODO: COW c-tor
+    //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
+    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
 
     //! Append subtree ref
     aku_Status append(SubtreeRef const& p);
