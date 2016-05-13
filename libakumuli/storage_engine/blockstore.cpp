@@ -6,6 +6,76 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+static u64 hash32(u32 value, u32 bits, u64 seed) {
+    // hashes x strongly universally into N bits
+    // using the random seed.
+    static const u64 a = (1ul << 32) - 1;
+    return (a * value + seed) >> (64-bits);
+}
+
+static u64 hash(u64 value, u32 bits) {
+    auto a = hash32(value & 0xFFFFFFFF, bits, 277);
+    auto b = hash32(value >> 32, bits, 337);
+    return a ^ b;
+}
+
+BlockCache::BlockCache(u32 Nbits)
+    : block_cache_(1 << Nbits, PBlock())
+    , bits_(Nbits)
+    , gen_(dev_())
+    , dist_(0, 1 << Nbits)
+{
+}
+
+int BlockCache::probe(LogicAddr addr) {
+    auto h = hash(addr, bits_);
+    auto b = block_cache_.at(h);
+    if (b) {
+        return b->get_addr() == addr ? 2 : 1;
+    }
+    return 0;
+}
+
+void BlockCache::insert(PBlock block) {
+    auto addr = block->get_addr();
+    auto pr = probe(addr);
+    if (pr == 2) {
+        // No need to insert, addr already sits in the cache.
+        return;
+    }
+    if (pr == 0) {
+        // Eviction. Generate two random hashes. Evict least accessed.
+        auto h1 = dist_(gen_);
+        auto h2 = dist_(gen_);
+        auto p1 = block_cache_.at(h1);
+        auto p2 = block_cache_.at(h2);
+        if (p1 && p2) {
+            if (p1.use_count() > p2.use_count()) {
+                block_cache_.at(h2).reset();
+            } else if (p1.use_count() < p2.use_count()) {
+                block_cache_.at(h1).reset();
+            } else {
+                if (p1->get_addr() < p2->get_addr()) {
+                    block_cache_.at(h1).reset();
+                } else {
+                    block_cache_.at(h2).reset();
+                }
+            }
+        }
+    }
+    auto h = hash(addr, bits_);
+    block_cache_.at(h) = block;
+}
+
+BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
+    auto it = hash(addr, bits_);
+    auto p = block_cache_.at(it);
+    if (p->get_addr() != addr) {
+        p.reset();
+    }
+    return p;
+}
+
 
 Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data)
     : store_(bs)
@@ -22,9 +92,13 @@ size_t Block::get_size() const {
     return data_.size();
 }
 
+LogicAddr Block::get_addr() const {
+    return addr_;
+}
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
+    , cache_(16)  // FIXME: use value from configuration
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -48,14 +122,13 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
     }
 
     // set current volume, current volume is a first volume with free space available
-    for (size_t i = 0u; i < volumes_.size(); i++) {
+    for (u32 i = 0u; i < volumes_.size(); i++) {
         u32 curr_gen, nblocks;
         aku_Status status;
         std::tie(status, curr_gen) = meta_->get_generation(i);
         if (status == AKU_SUCCESS) {
             std::tie(status, nblocks) = meta_->get_nblocks(i);
-        }
-        if (status != AKU_SUCCESS) {
+        } else {
             Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted, error: "
                         + StatusUtil::str(status));
             AKU_PANIC("Meta-volume corrupted, " + StatusUtil::str(status));
@@ -103,7 +176,7 @@ static LogicAddr make_logic(u32 gen, BlockAddr addr) {
 bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
-    auto volix = gen % volumes_.size();
+    auto volix = gen % static_cast<u32>(volumes_.size());
     aku_Status status;
     u32 actual_gen;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
@@ -122,7 +195,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
-    auto volix = gen % volumes_.size();
+    auto volix = gen % static_cast<u32>(volumes_.size());
     u32 actual_gen;
     u32 nblocks;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
@@ -136,6 +209,17 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     if (actual_gen != gen || vol >= nblocks) {
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
+    // We need to make all those checks before accessing cache because
+    // cached element can become obsolete (deleted in underlying storage
+    // because of retention policy).
+    // If this is the case address wouldn't pass existence check and error
+    // code will be returned even if the block sits in the cache. This obsolete
+    // block will be evicted soon (cache eviction strategy is biased towards
+    // older blocks, they got evicted more frequently).
+    auto cached_block = cache_.loockup(addr);
+    if (cached_block) {
+        return std::make_tuple(status, cached_block);
+    }
     std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[volix]->read_block(vol, dest.data());
     if (status != AKU_SUCCESS) {
@@ -143,6 +227,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     }
     auto self = shared_from_this();
     auto block = std::make_shared<Block>(self, addr, std::move(dest));
+    cache_.insert(block);
     return std::make_tuple(status, std::move(block));
 }
 
