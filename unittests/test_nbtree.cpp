@@ -201,7 +201,7 @@ void test_reopen_storage(u32 N) {
         collection->append(i, i);
     }
 
-    addrlist = collection->commit();
+    addrlist = collection->close();
 
     collection.reset();
 

@@ -25,7 +25,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 //! This value represents empty addr. It's too large to be used as a real block addr.
-static const LogicAddr EMPTY = std::numeric_limits<LogicAddr>::max();
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 static SubtreeRef* subtree_cast(u8* p) {
     return reinterpret_cast<SubtreeRef*>(p);
@@ -291,7 +291,7 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
 }
 
 NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafLoadMethod load)
-    : prev_(EMPTY)
+    : prev_(EMPTY_ADDR)
 {
     aku_Status status;
     std::shared_ptr<Block> block;
@@ -388,12 +388,12 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     size_t size = writer_.commit();
     SubtreeRef* subtree = subtree_cast(buffer_.data());
     subtree->payload_size = size;
-    if (prev_ != EMPTY) {
+    if (prev_ != EMPTY_ADDR) {
         subtree->addr = prev_;
     } else {
         // addr = EMPTY indicates that there is
         // no link to previous node.
-        subtree->addr  = EMPTY;
+        subtree->addr  = EMPTY_ADDR;
         // Invariant: fanout index should be 0 in this case.
         assert(fanout_index_ == 0);
     }
@@ -547,18 +547,18 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
 
 std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<BlockStore> bstore) {
     if (immutable_) {
-        return std::make_tuple(AKU_EBAD_DATA, EMPTY);
+        return std::make_tuple(AKU_EBAD_DATA, EMPTY_ADDR);
     }
     SubtreeRef* backref = subtree_cast(buffer_.data());
     if (fanout_index_ != 0) {
         NBTreeSuperblock subtree(prev_, bstore);
         aku_Status status = init_subtree_from_subtree(subtree, *backref);
         if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, EMPTY);
+            return std::make_tuple(status, EMPTY_ADDR);
         }
         backref->addr = prev_;
     } else {
-        backref->addr = EMPTY;
+        backref->addr = EMPTY_ADDR;
     }
     // This fields should be rewrited to store node's own information
     backref->payload_size = static_cast<u16>(write_pos_);
@@ -681,7 +681,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
         , last_(last)
         , fanout_index_(0)
     {
-        if (last_ != EMPTY) {
+        if (last_ != EMPTY_ADDR) {
             // Load previous node and calculate fanout.
             aku_Status status;
             std::shared_ptr<Block> block;
@@ -693,7 +693,7 @@ struct NBTreeLeafRoot : NBTreeRoot {
             fanout_index_ = psubtree->fanout_index + 1;
             if (fanout_index_ == AKU_NBTREE_FANOUT) {
                 fanout_index_ = 0;
-                last_ = EMPTY;
+                last_ = EMPTY_ADDR;
             }
         }
         reset_leaf();
@@ -703,29 +703,31 @@ struct NBTreeLeafRoot : NBTreeRoot {
         leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
 
-    virtual void append(aku_Timestamp ts, double value);
-    virtual void append(const SubtreeRef &pl);
+    virtual LogicAddr append(aku_Timestamp ts, double value);
+    virtual LogicAddr append(const SubtreeRef &pl);
     virtual LogicAddr commit();
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
-void NBTreeLeafRoot::append(SubtreeRef const&) {
+LogicAddr NBTreeLeafRoot::append(SubtreeRef const&) {
     AKU_PANIC("Can't append subtree to leaf node");
 }
 
-void NBTreeLeafRoot::append(aku_Timestamp ts, double value) {
+LogicAddr NBTreeLeafRoot::append(aku_Timestamp ts, double value) {
     // Invariant: leaf_ should be initialized, if leaf_ is full
     // and pushed to block-store, reset_leaf should be called
+    LogicAddr addr = EMPTY_ADDR;
     aku_Status status = leaf_->append(ts, value);
     if (status == AKU_EOVERFLOW) {
         // Commit full node
-        commit();
+        addr = commit();
         // There should be only one level of recursion, no looping.
         // Stack overflow here means that there is a logic error in
         // the program that results in NBTreeLeaf::append always
         // returning AKU_EOVERFLOW.
         append(ts, value);
     }
+    return addr;
 }
 
 //! Forcibly commit changes, even if current page is not full
@@ -762,7 +764,7 @@ LogicAddr NBTreeLeafRoot::commit() {
     fanout_index_++;
     if (fanout_index_ == AKU_NBTREE_FANOUT) {
         fanout_index_ = 0;
-        last_ = EMPTY;
+        last_ = EMPTY_ADDR;
     }
     last_ = addr;
     reset_leaf();
@@ -796,11 +798,11 @@ struct NBSuperblockRoot : NBTreeRoot {
         : bstore_(bstore)
         , roots_(roots)
         , id_(id)
-        , last_(EMPTY)
+        , last_(EMPTY_ADDR)
         , fanout_index_(0)
         , level_(level)
     {
-        if (addr != EMPTY) {
+        if (addr != EMPTY_ADDR) {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = bstore_->read_block(last_);
@@ -811,7 +813,7 @@ struct NBSuperblockRoot : NBTreeRoot {
             fanout_index_ = psubtree->fanout_index + 1;
             if (fanout_index_ == AKU_NBTREE_FANOUT) {
                 fanout_index_ = 0;
-                last_ = EMPTY;
+                last_ = EMPTY_ADDR;
             }
             last_ = psubtree->addr;
             if (level_ == 1) {
@@ -831,24 +833,26 @@ struct NBSuperblockRoot : NBTreeRoot {
         curr_.reset(new NBTreeSuperblock(id_, last_, fanout_index_, level_));
     }
 
-    virtual void append(aku_Timestamp ts, double value);
-    virtual void append(const SubtreeRef &pl);
+    virtual LogicAddr append(aku_Timestamp ts, double value);
+    virtual LogicAddr append(const SubtreeRef &pl);
     virtual LogicAddr commit();
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
-void NBSuperblockRoot::append(aku_Timestamp ts, double value) {
+LogicAddr NBSuperblockRoot::append(aku_Timestamp ts, double value) {
     AKU_UNUSED(ts);
     AKU_UNUSED(value);
     AKU_PANIC("Data should be added to the root 0");
 }
 
-void NBSuperblockRoot::append(SubtreeRef const& pl) {
+LogicAddr NBSuperblockRoot::append(SubtreeRef const& pl) {
+    LogicAddr addr = EMPTY_ADDR;
     auto status = curr_->append(pl);
     if (status == AKU_EOVERFLOW) {
-        commit();
+        addr = commit();
         append(pl);
     }
+    return addr;
 }
 
 LogicAddr NBSuperblockRoot::commit() {
@@ -882,7 +886,7 @@ LogicAddr NBSuperblockRoot::commit() {
     fanout_index_++;
     if (fanout_index_ == AKU_NBTREE_FANOUT) {
         fanout_index_ = 0;
-        last_ = EMPTY;
+        last_ = EMPTY_ADDR;
     }
     last_ = addr;
     reset_subtree();
@@ -930,24 +934,24 @@ NBTreeRootsCollection::NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAd
     }
 }
 
-void NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
+LogicAddr NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
     if (!initialized_) {
         init();
     }
     if (roots_.size() == 0) {
         // create first leaf node
         std::unique_ptr<NBTreeRoot> leaf;
-        leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, EMPTY));
+        leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, EMPTY_ADDR));
         roots_.push_back(std::move(leaf));
     }
-    roots_.front()->append(ts, value);
+    return roots_.front()->append(ts, value);
 }
 
-void NBTreeRootsCollection::append(const SubtreeRef &pl) {
+LogicAddr NBTreeRootsCollection::append(const SubtreeRef &pl) {
     if (!initialized_) {
         init();
     }
-    u32 lvl = pl.level + 1;
+    u16 lvl = static_cast<u16>(pl.level + 1);
     NBTreeRoot* root = nullptr;
     if (roots_.size() > lvl) {
         // Fast path
@@ -955,13 +959,13 @@ void NBTreeRootsCollection::append(const SubtreeRef &pl) {
     } else if (roots_.size() == lvl) {
         std::unique_ptr<NBTreeRoot> p;
         p.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
-                                     id_, EMPTY, lvl));
+                                     id_, EMPTY_ADDR, lvl));
         root = p.get();
         roots_.push_back(std::move(p));
     } else {
         AKU_PANIC("Invalid node level");
     }
-    root->append(pl);
+    return root->append(pl);
 }
 
 void NBTreeRootsCollection::init() {
@@ -974,8 +978,8 @@ void NBTreeRootsCollection::init() {
         } else {
             // create superblock root
             std::unique_ptr<NBTreeRoot> root;
-            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(),
-                                            id_, rootaddr_[i], (u16)i));
+            u16 level = static_cast<u16>(i);
+            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, rootaddr_[i], level));
             roots_.push_back(std::move(root));
         }
     }
@@ -1007,7 +1011,7 @@ std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begi
 }
 
 
-std::vector<LogicAddr> NBTreeRootsCollection::commit() {
+std::vector<LogicAddr> NBTreeRootsCollection::close() {
     std::vector<LogicAddr> roots;
     if (initialized_) {
         for (auto& root: roots_) {
