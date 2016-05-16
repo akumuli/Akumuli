@@ -721,7 +721,6 @@ LogicAddr NBTreeLeafRoot::append(aku_Timestamp ts, double value) {
     if (status == AKU_EOVERFLOW) {
         // Commit full node
         addr = commit();
-        // There should be only one level of recursion, no looping.
         // Stack overflow here means that there is a logic error in
         // the program that results in NBTreeLeaf::append always
         // returning AKU_EOVERFLOW.
@@ -803,6 +802,8 @@ struct NBSuperblockRoot : NBTreeRoot {
         , level_(level)
     {
         if (addr != EMPTY_ADDR) {
+            // `addr` is not empty. Node should be restored from
+            // block-store.
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = bstore_->read_block(last_);
@@ -826,6 +827,9 @@ struct NBSuperblockRoot : NBTreeRoot {
                 // element from the superblock.
                 curr_.reset(new NBTreeSuperblock(addr, bstore_, true));
             }
+        } else {
+            // `addr` is not set. Node should be created from scratch.
+            curr_.reset(new NBTreeSuperblock(id, EMPTY_ADDR, 0, level));
         }
     }
 
@@ -913,28 +917,9 @@ NBTreeRootsCollection::NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAd
     if (rootaddr_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
     }
-    if (rootaddr_.empty() == false) {
-        // Construct roots using CoW
-        for (u32 i = 0; i < rootaddr_.size(); i++) {
-            if (i == 0) {
-                // create leaf
-                std::unique_ptr<NBTreeRoot> leaf;
-                auto addr = rootaddr_[i];
-                leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, addr));
-                roots_.push_back(std::move(leaf));
-            } else {
-                // create superblock
-                std::unique_ptr<NBTreeRoot> p;
-                u16 lvl = static_cast<u16>(i);
-                auto addr = rootaddr_[i];
-                p.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, addr, lvl));
-                roots_.push_back(std::move(p));
-            }
-        }
-    }
 }
 
-LogicAddr NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
+bool NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
     if (!initialized_) {
         init();
     }
@@ -944,10 +929,19 @@ LogicAddr NBTreeRootsCollection::append(aku_Timestamp ts, double value) {
         leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, EMPTY_ADDR));
         roots_.push_back(std::move(leaf));
     }
-    return roots_.front()->append(ts, value);
+    auto addr = roots_.front()->append(ts, value);
+    if (addr != EMPTY_ADDR) {
+        if (rootaddr_.size() > 0) {
+            rootaddr_.at(0) = addr;
+        } else {
+            rootaddr_.push_back(addr);
+        }
+        return true;
+    }
+    return false;
 }
 
-LogicAddr NBTreeRootsCollection::append(const SubtreeRef &pl) {
+bool NBTreeRootsCollection::append(const SubtreeRef &pl) {
     if (!initialized_) {
         init();
     }
@@ -965,22 +959,38 @@ LogicAddr NBTreeRootsCollection::append(const SubtreeRef &pl) {
     } else {
         AKU_PANIC("Invalid node level");
     }
-    return root->append(pl);
+    auto addr = root->append(pl);
+    if (addr != EMPTY_ADDR) {
+        if (rootaddr_.size() > lvl) {
+            rootaddr_.at(lvl) = addr;
+        } else if (rootaddr_.size() == lvl) {
+            rootaddr_.push_back(addr);
+        } else {
+            AKU_PANIC("Out of order commit!");
+        }
+        return true;
+    }
+    return false;
 }
 
 void NBTreeRootsCollection::init() {
-    for(u32 i = 0; i < rootaddr_.size(); i++) {
-        if (i == 0) {
-            // special case, leaf node
-            std::unique_ptr<NBTreeRoot> leaf;
-            leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, rootaddr_[i]));
-            roots_.push_back(std::move(leaf));
-        } else {
-            // create superblock root
-            std::unique_ptr<NBTreeRoot> root;
-            u16 level = static_cast<u16>(i);
-            root.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, rootaddr_[i], level));
-            roots_.push_back(std::move(root));
+    if (rootaddr_.empty() == false) {
+        // Construct roots using CoW
+        for (u32 i = 0; i < rootaddr_.size(); i++) {
+            if (i == 0) {
+                // create leaf
+                std::unique_ptr<NBTreeRoot> leaf;
+                auto addr = rootaddr_[i];
+                leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, addr));
+                roots_.push_back(std::move(leaf));
+            } else {
+                // create superblock
+                std::unique_ptr<NBTreeRoot> p;
+                u16 lvl = static_cast<u16>(i);
+                auto addr = rootaddr_[i];
+                p.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, addr, lvl));
+                roots_.push_back(std::move(p));
+            }
         }
     }
     initialized_ = true;

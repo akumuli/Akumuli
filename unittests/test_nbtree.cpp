@@ -183,11 +183,11 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
-    for (int i = 0; i < 100; i++) {
-        auto N = rand() % 200000;
-        auto from = rand() % N;
-        auto to = rand() % N;
-        auto chunk = rand() % N;
+    for (u32 i = 0; i < 100; i++) {
+        auto N = static_cast<u32>(rand() % 200000);
+        auto from = static_cast<u32>(rand()) % N;
+        auto to = static_cast<u32>(rand()) % N;
+        auto chunk = static_cast<u32>(rand()) % N;
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }

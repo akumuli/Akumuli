@@ -282,6 +282,14 @@ struct NBTreeRoot {
 };
 
 
+/** NBTreeRoot to NBTreeRootsCollection bridge.
+  * Used by roots to manipulate collection's internal state.
+  */
+struct NBTreeRootsBridge {
+    virtual void append(SubtreeRef const& pl);
+};
+
+
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
   * @li store all roots of the NBTree
@@ -296,15 +304,16 @@ class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCol
 
     void init();
 public:
+
     /** C-tor
       * @param addresses List of root addresses in blockstore.
       * @param bstore Block-store.
       */
     NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
-    LogicAddr append(SubtreeRef const& pl);
+    bool append(SubtreeRef const& pl);
 
-    LogicAddr append(aku_Timestamp ts, double value);
+    bool append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
