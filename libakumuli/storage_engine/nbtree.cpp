@@ -998,9 +998,8 @@ void NBTreeRootsCollection::init() {
 
 std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begin, aku_Timestamp end) const {
     if (!initialized_) {
-        std::unique_ptr<NBTreeIterator> it;
-        it.reset(new NBTreeLeafIterator(AKU_ENO_DATA));
-        return std::move(it);
+        // FIXME: so ugly!
+        const_cast<NBTreeRootsCollection*>(this)->init();
     }
     std::vector<std::unique_ptr<NBTreeIterator>> iterators;
     if (begin < end) {
@@ -1030,6 +1029,10 @@ std::vector<LogicAddr> NBTreeRootsCollection::close() {
         }
     }
     return roots;
+}
+
+std::vector<LogicAddr> NBTreeRootsCollection::get_roots() const {
+    return rootaddr_;
 }
 
 

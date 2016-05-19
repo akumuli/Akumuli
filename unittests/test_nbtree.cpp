@@ -116,6 +116,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
 
 // TODO: check reopen
 // TODO: check commit/close
+// TODO: check crash-recovery
 
 void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
@@ -198,13 +199,37 @@ void test_reopen_storage(u32 N) {
     auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
 
     for (u32 i = 0; i < N; i++) {
-        collection->append(i, i);
+        if (collection->append(i, i)) {
+            // addrlist changed
+            auto newroots = collection->get_roots();
+            if (newroots == addrlist) {
+                BOOST_FAIL("Roots collection must change");
+            }
+            std::swap(newroots, addrlist);
+        }
     }
 
     addrlist = collection->close();
 
-    collection.reset();
+    // TODO: check attempt to open tree using wrong id!
+    collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
 
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
+    std::vector<aku_Timestamp> ts(N, 0);
+    std::vector<double> xs(N, 0);
+    aku_Status status = AKU_SUCCESS;
+    size_t sz = 0;
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    BOOST_REQUIRE(sz == N);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+    for (u32 i = 0; i < N; i++) {
+        if (ts[i] != i) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+        if (xs[i] != static_cast<double>(i)) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
