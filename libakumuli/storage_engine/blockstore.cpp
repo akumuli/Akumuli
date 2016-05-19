@@ -98,7 +98,6 @@ LogicAddr Block::get_addr() const {
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
-    , cache_(16)  // FIXME: use value from configuration
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -209,17 +208,6 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     if (actual_gen != gen || vol >= nblocks) {
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
-    // We need to make all those checks before accessing cache because
-    // cached element can become obsolete (deleted in underlying storage
-    // because of retention policy).
-    // If this is the case address wouldn't pass existence check and error
-    // code will be returned even if the block sits in the cache. This obsolete
-    // block will be evicted soon (cache eviction strategy is biased towards
-    // older blocks, they got evicted more frequently).
-    auto cached_block = cache_.loockup(addr);
-    if (cached_block) {
-        return std::make_tuple(status, cached_block);
-    }
     std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[volix]->read_block(vol, dest.data());
     if (status != AKU_SUCCESS) {
@@ -227,7 +215,6 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     }
     auto self = shared_from_this();
     auto block = std::make_shared<Block>(self, addr, std::move(dest));
-    cache_.insert(block);
     return std::make_tuple(status, std::move(block));
 }
 

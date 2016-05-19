@@ -72,8 +72,6 @@ class FixedSizeFileStorage : public BlockStore,
     u32 current_gen_;
     //! Size of the blockstore in blocks.
     size_t total_size_;
-    //! Block cache
-    BlockCache cache_;
 
     //! Secret c-tor.
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
