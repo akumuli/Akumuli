@@ -240,3 +240,60 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
     test_reopen_storage(200000);
 }
+
+//! Reopen storage that has been closed without final commit.
+void test_storage_recovery(u32 N) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        if (collection->append(i, i)) {
+            // addrlist changed
+            auto newroots = collection->get_roots();
+            if (newroots == addrlist) {
+                BOOST_FAIL("Roots collection must change");
+            }
+            std::swap(newroots, addrlist);
+        }
+    }
+
+    addrlist = collection->get_roots();
+
+    // delete roots collection
+    collection.reset();
+
+    // TODO: check attempt to open tree using wrong id!
+    collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
+    std::vector<aku_Timestamp> ts(N, 0);
+    std::vector<double> xs(N, 0);
+    aku_Status status = AKU_SUCCESS;
+    size_t sz = 0;
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    if (addrlist.empty()) {
+        // Expect zero, data was stored in single leaf-node.
+        BOOST_REQUIRE(sz == 0);
+    } else {
+        // `sz` value can't be equal to N because some data should be lost!
+        BOOST_REQUIRE(sz < N);
+    }
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+    for (u32 i = 0; i < sz; i++) {
+        if (ts[i] != i) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+        if (xs[i] != static_cast<double>(i)) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
+    test_storage_recovery(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
+    test_storage_recovery(2000);
+}
