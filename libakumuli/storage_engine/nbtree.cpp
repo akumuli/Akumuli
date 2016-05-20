@@ -1009,7 +1009,7 @@ void NBTreeRootsCollection::init() {
                 auto addr = rootaddr_[i];
                 leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, addr));
                 NBTreeLeafRoot* proot = leaf.get();
-                roots_.push_back(std::move(leaf));
+                roots_.push_front(std::move(leaf));
                 aku_Status status;
                 SubtreeRef payload;
                 status = proot->get_prev_subtreeref(payload);
@@ -1024,7 +1024,7 @@ void NBTreeRootsCollection::init() {
                 u16 lvl = static_cast<u16>(i);
                 auto addr = rootaddr_[i];
                 p.reset(new NBSuperblockRoot(bstore_, shared_from_this(), id_, addr, lvl));
-                roots_.push_back(std::move(p));
+                roots_.push_front(std::move(p));
             }
         }
     }

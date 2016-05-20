@@ -56,7 +56,7 @@
 
 #pragma once
 // C++ headers
-#include <stack>
+#include <deque>
 
 // App headers
 #include "blockstore.h"
@@ -296,7 +296,7 @@ struct NBTreeRoot {
   */
 class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
-    std::vector<std::unique_ptr<NBTreeRoot>> roots_;
+    std::deque<std::unique_ptr<NBTreeRoot>> roots_;
     aku_ParamId id_;
     std::vector<LogicAddr> rootaddr_;
     bool initialized_;

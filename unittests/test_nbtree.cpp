@@ -113,8 +113,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
 }
 
 
-// TODO: check reopen
-// TODO: check commit/close
 // TODO: check crash-recovery
 
 void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
@@ -237,4 +235,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
     test_reopen_storage(2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
+    test_reopen_storage(200000);
 }
