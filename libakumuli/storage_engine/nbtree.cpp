@@ -825,7 +825,7 @@ struct NBSuperblockRoot : NBTreeRoot {
             // block-store.
             aku_Status status;
             std::shared_ptr<Block> block;
-            std::tie(status, block) = bstore_->read_block(last_);
+            std::tie(status, block) = bstore_->read_block(addr);
             if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             }

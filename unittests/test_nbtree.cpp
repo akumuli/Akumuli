@@ -234,3 +234,7 @@ void test_reopen_storage(u32 N) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
     test_reopen_storage(100);
 }
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
+    test_reopen_storage(2000);
+}
