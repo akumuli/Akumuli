@@ -290,15 +290,26 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     subtree->sum = 0;
 }
 
-NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafLoadMethod load)
-    : prev_(EMPTY_ADDR)
-{
+
+//! Read block from blockstoroe.
+static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(curr);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Can't read block - " + StatusUtil::str(status));
     }
+    return block;
+}
+
+NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafLoadMethod load)
+    : NBTreeLeaf(read_block_from_bstore(bstore, curr), load)
+{
+}
+
+NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block, LeafLoadMethod load)
+    : prev_(EMPTY_ADDR)
+{
     if (load == LeafLoadMethod::FULL_PAGE_LOAD) {
         buffer_.reserve(block->get_size());
         std::copy(block->get_data(), block->get_data() + block->get_size(),
@@ -699,6 +710,14 @@ struct NBTreeLeafRoot : NBTreeRoot {
         reset_leaf();
     }
 
+    aku_Status get_prev_subtreeref(SubtreeRef &payload) {
+        aku_Status status = AKU_SUCCESS;
+        NBTreeLeaf leaf(bstore_, last_, NBTreeLeaf::LeafLoadMethod::FULL_PAGE_LOAD);
+        status = init_subtree_from_leaf(leaf, payload);
+        payload.addr = last_;
+        return status;
+    }
+
     void reset_leaf() {
         leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
@@ -974,15 +993,31 @@ bool NBTreeRootsCollection::append(const SubtreeRef &pl) {
 }
 
 void NBTreeRootsCollection::init() {
+    /* Tree made from one node should produce tree made from 3 nodes:
+     * - previous node (persisted on disk)
+     * - new empty node (current root 0)
+     * - new level 1 root that contains link to previous node.
+     */
+    initialized_ = true;
     if (rootaddr_.empty() == false) {
         // Construct roots using CoW
-        for (u32 i = 0; i < rootaddr_.size(); i++) {
+        int i = static_cast<int>(rootaddr_.size());
+        while (i --> 0) {
             if (i == 0) {
                 // create leaf
-                std::unique_ptr<NBTreeRoot> leaf;
+                std::unique_ptr<NBTreeLeafRoot> leaf;
                 auto addr = rootaddr_[i];
                 leaf.reset(new NBTreeLeafRoot(bstore_, shared_from_this(), id_, addr));
+                NBTreeLeafRoot* proot = leaf.get();
                 roots_.push_back(std::move(leaf));
+                aku_Status status;
+                SubtreeRef payload;
+                status = proot->get_prev_subtreeref(payload);
+                if (status == AKU_SUCCESS) {
+                    append(payload);
+                } else {
+                    AKU_PANIC("Can't restore tree at " + std::to_string(addr) + " error: " + StatusUtil::str(status));
+                }
             } else {
                 // create superblock
                 std::unique_ptr<NBTreeRoot> p;
@@ -993,7 +1028,6 @@ void NBTreeRootsCollection::init() {
             }
         }
     }
-    initialized_ = true;
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeRootsCollection::search(aku_Timestamp begin, aku_Timestamp end) const {

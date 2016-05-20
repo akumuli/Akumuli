@@ -166,6 +166,13 @@ public:
     NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
 
     /** Load from block store.
+      * @param block Leaf's serialized data.
+      * @param load Load method.
+      */
+    NBTreeLeaf(std::shared_ptr<Block> bstore,
+               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+
+    /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
       * @param load Load method.

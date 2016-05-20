@@ -79,7 +79,6 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     }
 }
 
-
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
     test_nbtree_roots_collection(100, 0, 100);
 }
