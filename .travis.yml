@@ -15,8 +15,8 @@ addons:
       name: "akumuli/Akumuli"
       description: "Time-series database"
     notification_email: 4lazin@gmail.com
-    build_command_prepend: "mkdir build; cd build; cmake .."
-    build_command:   "make -j4"
+    build_command_prepend: ""  # we are curently inside initialized ./build dir, all that we need is to start a build process.
+    build_command:   "make -j2"
     branch_pattern: coverity_scan
 
 before_install:
