@@ -279,7 +279,10 @@ void test_storage_recovery(u32 N) {
         // `sz` value can't be equal to N because some data should be lost!
         BOOST_REQUIRE(sz < N);
     }
-    BOOST_REQUIRE(status == AKU_SUCCESS);
+    // Note: `status` should be equal to AKU_SUCCESS if size of the destination
+    // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
+    // as an indication that all data-elements have ben read.
+    BOOST_REQUIRE(status == AKU_ENO_DATA || status  == AKU_SUCCESS);
     for (u32 i = 0; i < sz; i++) {
         if (ts[i] != i) {
             BOOST_FAIL("Invalid timestamp at " << i);
@@ -296,4 +299,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
     test_storage_recovery(2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
+    test_storage_recovery(200000);
 }
