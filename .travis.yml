@@ -15,8 +15,6 @@ before_install:
 
 
 before_script:
-  - mkdir -p shippable/testresults
-  - mkdir -p shippable/codecoverage
   - mkdir build
   - cd build
   - cmake ..
@@ -38,3 +36,19 @@ script:
 
 after_script:
   - cp /tmp/akumuli.log shippable/testresults
+
+env:
+  global:
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8="
+
+addons:
+  coverity_scan:
+    project:
+      name: "akumuli/Akumuli"
+      description: "Time-series database"
+    notification_email: 4lazin@gmail.com
+    build_command_prepend: "mkdir build; cd build; cmake .."
+    build_command:   "make -j4"
+    branch_pattern: coverity_scan
