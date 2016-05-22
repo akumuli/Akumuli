@@ -3,6 +3,22 @@ dist: trusty
 language: python
 compiler: gcc
 
+env:
+  global:
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8="
+
+addons:
+  coverity_scan:
+    project:
+      name: "akumuli/Akumuli"
+      description: "Time-series database"
+    notification_email: 4lazin@gmail.com
+    build_command_prepend: "mkdir build; cd build; cmake .."
+    build_command:   "make -j4"
+    branch_pattern: coverity_scan
+
 before_install:
   - sudo apt-get update
   - sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev libboost-program-options-dev libboost-regex-dev
@@ -33,22 +49,3 @@ script:
   - python functests/test_kill.py akumulid/
   - python functests/test_concurrency.py akumulid/
   - python functests/test_ingestion_errors.py akumulid/
-
-after_script:
-  - cp /tmp/akumuli.log shippable/testresults
-
-env:
-  global:
-   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
-   #   via the "travis encrypt" command using the project repo's public key
-   - secure: "DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8="
-
-addons:
-  coverity_scan:
-    project:
-      name: "akumuli/Akumuli"
-      description: "Time-series database"
-    notification_email: 4lazin@gmail.com
-    build_command_prepend: "mkdir build; cd build; cmake .."
-    build_command:   "make -j4"
-    branch_pattern: coverity_scan
