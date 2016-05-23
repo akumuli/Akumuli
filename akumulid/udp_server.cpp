@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include <boost/bind.hpp>
+#include <boost/scope_exit.hpp>
 
 namespace Akumuli {
 
@@ -56,7 +57,7 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
     start_barrier_.wait();
 
     int sockfd, retval;
-    sockaddr_in sa;
+    sockaddr_in sa{};
 
     ProtocolParser parser(spout);
     try {
@@ -72,6 +73,10 @@ void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
             std::runtime_error err(fmt.str());
             BOOST_THROW_EXCEPTION(err);
         }
+
+        BOOST_SCOPE_EXIT_ALL(sockfd) {
+            close(sockfd);
+        };
 
         // Set socket options
         int optval = 1;

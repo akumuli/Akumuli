@@ -540,7 +540,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto put_entry = [&header, queryproc, page] (u32 i) {
             auto id = header->paramids.at(i);
             if (queryproc->filter().apply(id) == QP::IQueryFilter::PROCESS) {
-                aku_PData pdata;
+                aku_PData pdata{};
                 pdata.type = AKU_PAYLOAD_FLOAT;
                 pdata.float64 = header->values.at(i);
                 pdata.size = sizeof(aku_Sample);
@@ -555,13 +555,13 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         };
 
         if (query_range_.is_backward()) {
-            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                result = check_timestamp(header->timestamps[i]);
+            for (int i = start_pos; i >= 0; i--) {
+                result = check_timestamp(header->timestamps[static_cast<size_t>(i)]);
                 if (result == OVERSHOOT) {
                     break;
                 }
                 if (result == IN_RANGE) {
-                    if (!put_entry(i)) {
+                    if (!put_entry(static_cast<u32>(i))) {
                         // Scaning process interrupted by the user (connection closed)
                         result = INTERRUPTED;
                         break;
@@ -569,14 +569,14 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 }
             }
         } else {
-            auto end_pos = (int)header->timestamps.size();
+            auto end_pos = static_cast<int>(header->timestamps.size());
             for (auto i = start_pos; i != end_pos; i++) {
-                result = check_timestamp(header->timestamps[i]);
+                result = check_timestamp(header->timestamps[static_cast<size_t>(i)]);
                 if (result == OVERSHOOT) {
                     break;
                 }
                 if (result == IN_RANGE) {
-                    if (!put_entry(i)) {
+                    if (!put_entry(static_cast<u32>(i))) {
                         result = INTERRUPTED;
                         break;
                     }

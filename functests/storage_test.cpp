@@ -224,128 +224,132 @@ struct LocalStorage : Storage {
         return path;
     }
 
-    // Storage interface
-    virtual void close() {
-        if (db_ == nullptr) {
-            std::logic_error err("Database allready closed");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        aku_close_database(db_);
-        db_ = nullptr;
-    }
-
-    virtual void create_new()
-    {
-        apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
-                                                  nullptr);
-        throw_on_error(result);
-    }
-
-    virtual void open()
-    {
-        if (db_ != nullptr) {
-            std::logic_error err("Database allready opened");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        aku_FineTuneParams params;
-
-        params.durability = durability_;
-        params.enable_huge_tlb = enable_huge_tlb_ ? 1 : 0;
-        params.logger = &aku_console_logger;
-        params.compression_threshold = compression_threshold_;
-        params.window_size = sliding_window_size_;
-
-        std::string path = get_db_file_path();
-        db_ = aku_open_database(path.c_str(), params);
-        auto status = aku_open_status(db_);
-        throw_on_error(status);
-    }
-
-    virtual void delete_all()
-    {
-        std::string path = get_db_file_path();
-        auto status = aku_remove_database(path.c_str(), &aku_console_logger);
-        throw_on_error(status);
-    }
-
-    virtual void add(std::string ts, std::string id, double value) {
-        aku_Status status = AKU_EBUSY;
-        while(status == AKU_EBUSY) {
-            aku_Sample sample;
-            if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
-                std::runtime_error err("invalid timestamp");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
-                std::runtime_error err("invalid series name");
-                BOOST_THROW_EXCEPTION(err);
-            }
-            sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.float64 = value;
-            status = aku_write(db_, &sample);
-        }
-        throw_on_error(status);
-    }
-
-    virtual std::unique_ptr<Cursor> query(std::string begin,
-                                          std::string end,
-                                          std::vector<std::string> ids)
-    {
-        boost::property_tree::ptree query;
-        // Add metric name
-        query.add("metric", "cpu");
-        // Add time constraints
-        boost::property_tree::ptree range;
-        range.add("from", begin);
-        range.add("to", end);
-        query.add_child("range", range);
-        // Where clause
-        // Where clause
-        boost::property_tree::ptree where;
-        boost::property_tree::ptree array;
-        for (auto series: ids) {
-            auto val = series.substr(8, 1);
-            boost::property_tree::ptree elem;
-            elem.put("", val);
-            array.push_back(std::make_pair("", elem));
-        }
-        where.add_child("key", array);
-        query.add_child("where", where);
-        std::stringstream stream;
-        boost::property_tree::json_parser::write_json(stream, query, true);
-        std::string query_text = stream.str();
-
-        auto cursor = aku_query(db_, query_text.c_str());
-        std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
-        return std::move(ptr);
-    }
-
-    virtual std::unique_ptr<Cursor> metadata_query(std::string metric, std::string where_clause) {
-        boost::property_tree::ptree query;
-
-        // No (re)sampling
-        query.add("select", "names");
-
-        // Add metric name
-        if (!metric.empty()) {
-            query.add("metric", metric);
-        }
-
-        // Where clause
-        if (!where_clause.empty()) {
-            boost::property_tree::ptree where = from_json(where_clause);
-            query.add_child("where", where);
-        }
-
-        std::stringstream stream;
-        boost::property_tree::json_parser::write_json(stream, query, true);
-        std::string query_text = stream.str();
-
-        auto cursor = aku_query(db_, query_text.c_str());
-        std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
-        return std::move(ptr);
-    }
+    virtual void create_new();
+    virtual void open();
+    virtual void close();
+    virtual void delete_all();
+    virtual void add(std::string ts, std::string id, double value);
+    virtual std::unique_ptr<Cursor> query(std::string begin, std::string end, std::vector<std::string> ids);
+    virtual std::unique_ptr<Cursor> metadata_query(std::string metric, std::string where_clause);
 };
+
+// Storage interface
+void LocalStorage::close() {
+    if (db_ == nullptr) {
+        std::logic_error err("Database allready closed");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    aku_close_database(db_);
+    db_ = nullptr;
+}
+
+void LocalStorage::create_new() {
+    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
+                                              nullptr);
+    throw_on_error(result);
+}
+
+void LocalStorage::open() {
+    if (db_ != nullptr) {
+        std::logic_error err("Database allready opened");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    aku_FineTuneParams params = {};
+    params.durability = durability_;
+    params.enable_huge_tlb = enable_huge_tlb_ ? 1 : 0;
+    params.logger = &aku_console_logger;
+    params.compression_threshold = compression_threshold_;
+    params.window_size = sliding_window_size_;
+
+    std::string path = get_db_file_path();
+    db_ = aku_open_database(path.c_str(), params);
+    auto status = aku_open_status(db_);
+    throw_on_error(status);
+}
+
+void LocalStorage::delete_all() {
+    std::string path = get_db_file_path();
+    auto status = aku_remove_database(path.c_str(), &aku_console_logger);
+    throw_on_error(status);
+}
+
+void LocalStorage::add(std::string ts, std::string id, double value) {
+    aku_Status status = AKU_EBUSY;
+    while(status == AKU_EBUSY) {
+        aku_Sample sample;
+        if (aku_parse_timestamp(ts.c_str(), &sample) != AKU_SUCCESS) {
+            std::runtime_error err("invalid timestamp");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+            std::runtime_error err("invalid series name");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.float64 = value;
+        status = aku_write(db_, &sample);
+    }
+    throw_on_error(status);
+}
+
+std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
+                                            std::string end,
+                                            std::vector<std::string> ids)
+{
+    boost::property_tree::ptree query;
+    // Add metric name
+    query.add("metric", "cpu");
+    // Add time constraints
+    boost::property_tree::ptree range;
+    range.add("from", begin);
+    range.add("to", end);
+    query.add_child("range", range);
+    // Where clause
+    // Where clause
+    boost::property_tree::ptree where;
+    boost::property_tree::ptree array;
+    for (auto series: ids) {
+        auto val = series.substr(8, 1);
+        boost::property_tree::ptree elem;
+        elem.put("", val);
+        array.push_back(std::make_pair("", elem));
+    }
+    where.add_child("key", array);
+    query.add_child("where", where);
+    std::stringstream stream;
+    boost::property_tree::json_parser::write_json(stream, query, true);
+    std::string query_text = stream.str();
+
+    auto cursor = aku_query(db_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    return std::move(ptr);
+}
+
+std::unique_ptr<Cursor> LocalStorage::metadata_query(std::string metric, std::string where_clause) {
+    boost::property_tree::ptree query;
+
+    // No (re)sampling
+    query.add("select", "names");
+
+    // Add metric name
+    if (!metric.empty()) {
+        query.add("metric", metric);
+    }
+
+    // Where clause
+    if (!where_clause.empty()) {
+        boost::property_tree::ptree where = from_json(where_clause);
+        query.add_child("where", where);
+    }
+
+    std::stringstream stream;
+    boost::property_tree::json_parser::write_json(stream, query, true);
+    std::string query_text = stream.str();
+
+    auto cursor = aku_query(db_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    return std::move(ptr);
+}
 
 
 struct DataPoint {
@@ -355,7 +359,7 @@ struct DataPoint {
 };
 
 
-std::vector<DataPoint> TEST_DATA = {
+static std::vector<DataPoint> TEST_DATA = {
     { "20150101T000000.000000000", "cpu key=0", 0.0 },
     { "20150101T000001.000000000", "cpu key=1", 1.1 },
     { "20150101T000002.000000000", "cpu key=2", 2.2 },
@@ -384,7 +388,7 @@ void add_element(Storage *storage, DataPoint& td) {
 }
 
 void fill_data(Storage *storage) {
-    for(int i = 0; i < (int)TEST_DATA.size(); i++) {
+    for(size_t i = 0; i < TEST_DATA.size(); i++) {
         auto td = TEST_DATA[i];
         add_element(storage, td);
     }
@@ -398,7 +402,7 @@ struct Query {
 
 void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) {
     std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
-    int ix = 0;
+    size_t ix = 0;
     while(!cursor->done()) {
         Cursor::RowT row;
         if (!cursor->get_next_row(row)) {
@@ -420,7 +424,9 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             BOOST_THROW_EXCEPTION(err);
         }
         // payload
+        #ifdef VERBOSE_OUTPUT
         std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        #endif
         if (row.value != exp.float_value) {
             std::cout << "Error at " << ix << std::endl;
             std::cout << "bad float, get " << row.value
@@ -429,7 +435,7 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
             BOOST_THROW_EXCEPTION(err);
         }
     }
-    if (ix != (int)expected.size()) {
+    if (ix != expected.size()) {
         std::cout << "Not enough data read" << std::endl;
         std::cout << "expected " << expected.size() << " values but only "
                   << ix << " was read from DB" << std::endl;
@@ -455,7 +461,9 @@ void continous_query(Storage *storage, Query query, std::vector<DataPoint> expec
             BOOST_THROW_EXCEPTION(err);
         }
         // payload
+        #ifdef VERBOSE_OUTPUT
         std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
+        #endif
         if (row.value != exp.float_value) {
             std::cout << "Error" << std::endl;
             std::cout << "bad float, get " << row.value
@@ -534,6 +542,9 @@ std::string to_string(aku_Timestamp ts) {
   * @param ids should contain list of ids that we interested in
   */
 void query_subset(Storage* storage, std::string begin, std::string end, bool invert, bool expect_empty, std::vector<std::string> ids) {
+    auto begin_ts = to_timestamp(begin);
+    auto end_ts = to_timestamp(end);
+#ifdef VERBOSE_OUTPUT
     std::cout << "===============" << std::endl;
     std::cout << "   Query subset" << std::endl;
     std::cout << "          begin = " << begin << std::endl;
@@ -541,8 +552,6 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     std::cout << "         invert = " << invert << std::endl;
     std::cout << "   expect_empty = " << expect_empty << std::endl;
     std::cout << "            ids = ";
-    auto begin_ts = to_timestamp(begin);
-    auto end_ts = to_timestamp(end);
     bool firstid = true;
     for(auto x: ids) {
         if (!firstid) {
@@ -553,10 +562,11 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
     }
     std::cout << std::endl;
     std::cout << "===============" << std::endl;
+#endif
     assert(to_timestamp(begin) < to_timestamp(end));
     std::set<std::string>  idsmap(ids.begin(), ids.end());
     std::vector<DataPoint> expected;
-    for (int i = 0; i < (int)TEST_DATA.size(); i++) {
+    for (size_t i = 0; i < TEST_DATA.size(); i++) {
         auto point = TEST_DATA[i];
         auto id_match = idsmap.count(point.id);
         auto point_ts = to_timestamp(point.timestamp);

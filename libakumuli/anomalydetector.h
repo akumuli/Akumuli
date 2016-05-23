@@ -14,6 +14,7 @@ namespace QP {
 
 /** Anomaly detector interface */
 struct AnomalyDetectorIface {
+    virtual ~AnomalyDetectorIface() = default;
     virtual void add(u64 id, double value) = 0;
     virtual bool is_anomaly_candidate(u64 id) const = 0;
     virtual void move_sliding_window()              = 0;
