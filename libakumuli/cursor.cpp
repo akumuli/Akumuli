@@ -111,6 +111,7 @@ size_t CursorFSM::get_data_len() const {
 void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const
 {
     ctx.size = size;
+    // TODO: this is not an error, add to coverity mapping
     ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
 }
 

@@ -247,7 +247,9 @@ template <class Stream, class TVal> struct ZigZagStreamWriter {
         : stream_(stream) {}
 
     bool tput(TVal const* iter, size_t n) {
+        assert(n < 1000);  // 1000 is too high for most uses but it woun't cause stack overflow
         TVal outbuf[n];
+        memset(outbuf, 0, n);
         for (size_t i = 0; i < n; i++) {
             auto      value       = iter[i];
             const int shift_width = sizeof(TVal) * 8 - 1;
@@ -292,7 +294,9 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
         , prev_() {}
 
     bool tput(TVal const* iter, size_t n) {
+        assert(n < 1000);
         TVal outbuf[n];
+        memset(outbuf, 0, n);
         for (size_t i = 0; i < n; i++) {
             auto value  = iter[i];
             auto result = static_cast<TVal>(value) - prev_;
@@ -346,6 +350,7 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
     bool tput(TVal const* iter, size_t n) {
         assert(n == Step);
         TVal outbuf[n];
+        memset(outbuf, 0, n);
         for (size_t i = 0; i < n; i++) {
             auto value  = iter[i];
             auto result = value - prev_;
@@ -427,6 +432,7 @@ template <typename TVal> struct RLEStreamWriter {
     bool tput(TVal const* iter, size_t n) {
         size_t outpos = 0;
         TVal   outbuf[n * 2];
+        memset(outbuf, 0, n);
         for (size_t i = 0; i < n; i++) {
             auto value = iter[i];
             if (value != prev_) {

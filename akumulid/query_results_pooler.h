@@ -8,6 +8,7 @@ namespace Akumuli {
 
 //! Output formatter interface
 struct OutputFormatter {
+    virtual ~OutputFormatter() = default;
     virtual char* format(char* begin, char* end, const aku_Sample& sample) = 0;
 };
 
