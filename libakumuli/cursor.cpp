@@ -108,6 +108,7 @@ size_t CursorFSM::get_data_len() const {
 
 // CoroCursor
 
+// coverity[+alloc]
 void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const
 {
     ctx.size = size;
@@ -115,6 +116,7 @@ void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, s
     ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
 }
 
+// coverity[+free : arg-1]
 void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx) const {
     free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
 }
