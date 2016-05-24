@@ -536,6 +536,11 @@ int main(int argc, char** argv) {
         fmt << "**FAILURE** " << e.what();
         std::cerr << cli_format(fmt.str()) << std::endl;
         exit(EXIT_FAILURE);
+    } catch(...) {
+        std::stringstream fmt;
+        fmt << "**FAILURE** " << boost::current_exception_diagnostic_information(true);
+        std::cerr << cli_format(fmt.str()) << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     exit(EXIT_SUCCESS);
