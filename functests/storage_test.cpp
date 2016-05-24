@@ -97,6 +97,7 @@ struct LocalCursor : Cursor {
     LocalCursor(aku_Database *db, aku_Cursor *cursor)
         : db_(db)
         , cursor_(cursor)
+        , sample_()
     {
         can_proceed();
     }
@@ -623,39 +624,39 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
 }
 
 int main(int argc, const char** argv) {
-    std::string dir;
-    if (argc == 1) {
-        dir = DEFAULT_DIR;
-    } else if (argc == 2) {
-        dir = argv[1];
-        if (dir == "--help") {
-            print_help();
-            return 0;
-        }
-        if (!check_path_exists(dir)) {
-            std::cout << "Invalid path" << std::endl;
-            return 2;
-        }
-    }
-    if (boost::ends_with(dir, "/")) {
-        dir.pop_back();
-    }
-    std::cout << "Working directory: " << dir << std::endl;
-    aku_initialize(nullptr, nullptr);
-
-    u32 compression_threshold = 5;
-    u64 windowsize = 1;
-    LocalStorage storage(dir, compression_threshold, windowsize, 2);
-
-    // Try to delete old data if any
-    try {
-        storage.delete_all();
-    } catch(std::runtime_error const&) {
-        // No old data
-    }
     int retcode = 0;
-    storage.create_new();
     try {
+        std::string dir;
+        if (argc == 1) {
+            dir = DEFAULT_DIR;
+        } else if (argc == 2) {
+            dir = argv[1];
+            if (dir == "--help") {
+                print_help();
+                return 0;
+            }
+            if (!check_path_exists(dir)) {
+                std::cout << "Invalid path" << std::endl;
+                return 2;
+            }
+        }
+        if (boost::ends_with(dir, "/")) {
+            dir.pop_back();
+        }
+        std::cout << "Working directory: " << dir << std::endl;
+        aku_initialize(nullptr, nullptr);
+
+        u32 compression_threshold = 5;
+        u64 windowsize = 1;
+        LocalStorage storage(dir, compression_threshold, windowsize, 2);
+
+        // Try to delete old data if any
+        try {
+            storage.delete_all();
+        } catch(std::runtime_error const&) {
+            // No old data
+        }
+        storage.create_new();
         storage.open();
         fill_data(&storage);
 
@@ -851,10 +852,10 @@ int main(int argc, const char** argv) {
 
         std::cout << "OK!" << std::endl;
 
+        storage.delete_all();
     } catch (...) {
         std::cout << boost::current_exception_diagnostic_information() << std::endl;
         retcode = -1;
     }
-    storage.delete_all();
     return retcode;
 }

@@ -39,10 +39,11 @@ namespace Akumuli {
 // ----
 
 
-PageHeader::PageHeader(u32 count, u64 length, u32 page_id, u32 numpages)
+PageHeader::PageHeader(u32, u64 length, u32 page_id, u32 numpages)
     : version(0)
     , count(0)
     , next_offset(0)
+    , checkpoint(0)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
@@ -195,7 +196,12 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
         char* begin;
         char* end;
 
-        Writer(PageHeader *h) : header(h) {}
+        Writer(PageHeader *h)
+            : header(h)
+            , begin(nullptr)
+            , end(nullptr)
+        {
+        }
 
         virtual aku_MemRange allocate() {
             size_t bytes_free = header->get_free_space();

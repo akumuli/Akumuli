@@ -508,6 +508,8 @@ DataBlockWriter::DataBlockWriter()
     , ts_stream_(stream_)
     , val_stream_(stream_)
     , write_index_(0)
+    , nchunks_(nullptr)
+    , ntail_(nullptr)
 {
 }
 
