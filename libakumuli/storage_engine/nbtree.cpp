@@ -174,43 +174,36 @@ struct NBTreeLeafIterator : NBTreeIterator {
         }
     }
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
-        if (status_ != AKU_SUCCESS) {
-            return std::make_tuple(status_, 0);
-        }
-        size_t toread = to_ - from_;
-        if (toread > size) {
-            toread = size;
-        }
-        if (toread == 0) {
-            return std::make_tuple(AKU_ENO_DATA, 0);
-        }
-        auto begin = from_;
-        auto end = from_ + toread;
-        std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);
-        std::copy(xsbuf_.begin() + begin, xsbuf_.begin() + end, destval);
-        from_ += toread;
-        return std::make_tuple(AKU_SUCCESS, toread);
-    }
-
-    virtual Direction get_direction() {
-        if (begin_ < end_) {
-            return Direction::FORWARD;
-        }
-        return Direction::BACKWARD;
-    }
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    virtual Direction get_direction();
 };
 
 
-// ////////////////////////////// //
-//  NBTreeIterator concatenation  //
-// ////////////////////////////// //
-
-/** Concatenating iterator.
-  * Accepts list of iterators in the c-tor. All iterators then
+std::tuple<aku_Status, size_t> NBTreeLeafIterator::read(aku_Timestamp *destts, double *destval, size_t size) {
+    if (status_ != AKU_SUCCESS) {
+        return std::make_tuple(status_, 0);
     }
-};
+    size_t toread = to_ - from_;
+    if (toread > size) {
+        toread = size;
+    }
+    if (toread == 0) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    auto begin = from_;
+    auto end = from_ + toread;
+    std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);
+    std::copy(xsbuf_.begin() + begin, xsbuf_.begin() + end, destval);
+    from_ += toread;
+    return std::make_tuple(AKU_SUCCESS, toread);
+}
 
+NBTreeIterator::Direction NBTreeLeafIterator::get_direction() {
+    if (begin_ < end_) {
+        return Direction::FORWARD;
+    }
+    return Direction::BACKWARD;
+}
 
 // ////////////////////////////// //
 //  NBTreeIterator concatenation  //
@@ -240,37 +233,39 @@ struct IteratorConcat : NBTreeIterator {
         }
     }
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
-        aku_Status status = AKU_SUCCESS;
-        size_t ressz = 0;  // current size
-        size_t accsz = 0;  // accumulated size
-        while(iter_index_ < iter_.size()) {
-            std::tie(status, ressz) = iter_[iter_index_]->read(destts, destval, size);
-            destts += ressz;
-            destval += ressz;
-            size -= ressz;
-            accsz += ressz;
-            if (size == 0) {
-                break;
-            }
-            iter_index_++;
-            if (status == AKU_ENO_DATA) {
-                // this leaf node is empty, continue with next
-                continue;
-            }
-            if (status != AKU_SUCCESS) {
-                // Stop iteration or error!
-                return std::tie(status, accsz);
-            }
-        }
-        return std::tie(status, accsz);
-    }
-
-    virtual Direction get_direction() {
-        return dir_;
-    }
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    virtual Direction get_direction();
 };
 
+std::tuple<aku_Status, size_t> IteratorConcat::read(aku_Timestamp *destts, double *destval, size_t size) {
+    aku_Status status = AKU_SUCCESS;
+    size_t ressz = 0;  // current size
+    size_t accsz = 0;  // accumulated size
+    while(iter_index_ < iter_.size()) {
+        std::tie(status, ressz) = iter_[iter_index_]->read(destts, destval, size);
+        destts += ressz;
+        destval += ressz;
+        size -= ressz;
+        accsz += ressz;
+        if (size == 0) {
+            break;
+        }
+        iter_index_++;
+        if (status == AKU_ENO_DATA) {
+            // this leaf node is empty, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration or error!
+            return std::tie(status, accsz);
+        }
+    }
+    return std::tie(status, accsz);
+}
+
+NBTreeIterator::Direction IteratorConcat::get_direction() {
+    return dir_;
+}
 
 // //////////////// //
 //    NBTreeLeaf    //
