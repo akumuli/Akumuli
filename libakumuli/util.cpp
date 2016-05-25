@@ -49,7 +49,7 @@ void set_panic_handler(aku_panic_handler_t new_panic_handler) {
     g_panic_handler = new_panic_handler;
 }
 
-
+// coverity[+kill]
 AprException::AprException(apr_status_t status, const char* message)
     : std::runtime_error(message)
     , status(status)
@@ -62,12 +62,14 @@ std::ostream& operator << (std::ostream& str, AprException const& e) {
     return str;
 }
 
+// coverity[+kill]
 Exception::Exception(const char* message)
     : std::runtime_error(message)
 {
     (*g_panic_handler)(message);
 }
 
+// coverity[+kill]
 Exception::Exception(std::string message)
     : std::runtime_error(message)
 {
@@ -80,7 +82,12 @@ std::ostream& operator << (std::ostream& str, Exception const& e) {
 }
 
 MemoryMappedFile::MemoryMappedFile(const char* file_name, bool enable_huge_tlb)
-    : path_(file_name)
+    : mem_pool_()
+    , mmap_()
+    , fp_()
+    , finfo_()
+    , status_(APR_EINIT)
+    , path_(file_name)
     , enable_huge_tlb_(enable_huge_tlb)
 {
     map_file();
@@ -319,12 +326,9 @@ void prefetch_mem(const void* ptr, size_t mem_size) {
     switch(err) {
     case EBADF:
         AKU_PANIC("(madvise) the map exists, but the area maps something that isn't a file");
-        break;
     case EINVAL:
         // Severe error - panic!
         AKU_PANIC("(madvise) the value is negative | addr is not page-aligned | advice is not a valid value |...");
-        break;
-
     case EAGAIN: //  A kernel resource was temporarily unavailable.
     case EIO:    // Paging  in  this  area  would  exceed  the process's maximum resident set size.
     case ENOMEM: // Not enough memory: paging in failed.
@@ -341,10 +345,18 @@ void prefetch_mem(const void* ptr, size_t mem_size) {
     }
 }
 
+size_t get_page_size() {
+    auto page_size = sysconf(_SC_PAGESIZE);
+    if (AKU_UNLIKELY(page_size < 0)) {
+        AKU_PANIC("sysconf error, can't get _SC_PAGESIZE");
+    }
+    return static_cast<size_t>(page_size);
+}
+
 static const unsigned char MINCORE_MASK = 1;
 
 PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
-    : page_size_(sysconf(_SC_PAGESIZE))
+    : page_size_(get_page_size())
     , base_addr_(align_to_page(start_addr, page_size_))
     , len_bytes_(len_bytes)
 {
@@ -400,13 +412,8 @@ void PageInfo::fill_mem() {
     std::fill(data_.begin(), data_.end(), MINCORE_MASK);
 }
 
-size_t get_page_size() {
-    auto page_size = sysconf(_SC_PAGESIZE);
-    return page_size;
-}
-
 std::tuple<bool, aku_Status> page_in_core(const void* addr) {
-    auto page_size = sysconf(_SC_PAGESIZE);
+    auto page_size = get_page_size();
     auto base_addr = align_to_page(addr, page_size);
     unsigned char val;
     int error = mincore(const_cast<void*>(base_addr), 1, &val);

@@ -267,6 +267,11 @@ void Storage::select_active_page() {
         }
     }
 
+    if (max_index < 0) {
+        // Can't select active page!
+        AKU_PANIC("Can't select active page!");
+    }
+
     active_volume_index_ = max_index;
     active_volume_ = volumes_.at(max_index);
     active_page_ = active_volume_->get_page();

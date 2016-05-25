@@ -118,21 +118,27 @@ struct NBTreeLeafIterator : NBTreeIterator {
     std::vector<aku_Timestamp> tsbuf_;
     //! Values
     std::vector<double>        xsbuf_;
+    //! Range begin
+    ssize_t                    from_;
+    //! Range end
+    ssize_t                    to_;
     //! Status of the iterator initialization process
     aku_Status                 status_;
-    //! Range begin
-    size_t                     from_;
-    //! Range end
-    size_t                     to_;
 
     NBTreeLeafIterator(aku_Status status)
-        : status_(status)
+        : begin_()
+        , end_()
+        , from_()
+        , to_()
+        , status_(status)
     {
     }
 
     NBTreeLeafIterator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node)
         : begin_(begin)
         , end_(end)
+        , from_()
+        , to_()
     {
         aku_Timestamp min = std::min(begin, end);
         aku_Timestamp max = std::max(begin, end);
@@ -153,23 +159,15 @@ struct NBTreeLeafIterator : NBTreeIterator {
                     from_ = 0;
                     assert(tsbuf_.front() > begin);
                 }
-                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
-                if (it_end == tsbuf_.end()) {
-                    to_ = tsbuf_.size();
-                } else {
-                    to_ = std::distance(tsbuf_.begin(), it_end);
-                }
+                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                to_ = std::distance(tsbuf_.begin(), it_end);
             } else {
                 // BWD direction
                 auto it_begin = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
                 from_ = std::distance(it_begin, tsbuf_.end());
 
-                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
-                if (it_end == tsbuf_.end()) {
-                    to_ = tsbuf_.size();
-                } else {
-                    to_ = std::distance(it_end, tsbuf_.end());
-                }
+                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                to_ = std::distance(it_end, tsbuf_.end());
                 std::reverse(tsbuf_.begin(), tsbuf_.end());
                 std::reverse(xsbuf_.begin(), xsbuf_.end());
             }
@@ -200,6 +198,16 @@ struct NBTreeLeafIterator : NBTreeIterator {
             return Direction::FORWARD;
         }
         return Direction::BACKWARD;
+    }
+};
+
+
+// ////////////////////////////// //
+//  NBTreeIterator concatenation  //
+// ////////////////////////////// //
+
+/** Concatenating iterator.
+  * Accepts list of iterators in the c-tor. All iterators then
     }
 };
 
