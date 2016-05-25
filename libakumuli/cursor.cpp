@@ -67,7 +67,7 @@ void CursorFSM::put(const aku_Sample &result) {
     auto len = std::max(result.payload.size, (u16)sizeof(aku_Sample));
     auto ptr = (char*)usr_buffer_ + write_offset_;
     assert(len >= sizeof(aku_Sample));
-    assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
+    assert((result.payload.type & aku_PData::SAX_WORD) == 0 ?
            result.payload.size == sizeof(aku_Sample) :
            result.payload.size >= sizeof(aku_Sample));
     memcpy(ptr, &result, len);

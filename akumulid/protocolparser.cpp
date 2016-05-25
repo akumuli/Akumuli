@@ -17,7 +17,8 @@ const PDU ProtocolParser::POISON_ = {
 };
 
 ProtocolParser::ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer)
-    : done_(false)
+    : caller_(nullptr)
+    , done_(false)
     , consumer_(consumer)
     , logger_("protocol-parser", 32)
 {

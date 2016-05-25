@@ -25,6 +25,9 @@ size_t Block::get_size() const {
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
+    , current_volume_(0)
+    , current_gen_(0)
+    , total_size_(0)
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -42,7 +45,6 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
         dirty_.push_back(0);
     }
 
-    total_size_ = 0ull;
     for (const auto& vol: volumes_) {
         total_size_ += vol->get_size();
     }

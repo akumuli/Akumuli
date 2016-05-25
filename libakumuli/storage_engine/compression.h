@@ -552,14 +552,14 @@ struct FcmStreamWriter {
 struct FcmStreamReader {
     Base128StreamReader& stream_;
     PredictorT           predictor_;
-    int                  flags_;
-    int                  iter_;
+    u32                  flags_;
+    u32                  iter_;
 
     FcmStreamReader(Base128StreamReader& stream);
 
     double next();
 
-    const unsigned char* pos() const;
+    const u8* pos() const;
 };
 
 
