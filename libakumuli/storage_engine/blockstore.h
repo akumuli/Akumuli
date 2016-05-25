@@ -1,5 +1,6 @@
 #pragma once
 #include "volume.h"
+#include <random>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -7,11 +8,35 @@ namespace StorageEngine {
 //! Address of the block inside storage
 typedef u64 LogicAddr;
 
+
 class Block;
+
+struct BlockCache {
+    typedef std::shared_ptr<Block> PBlock;
+    std::vector<PBlock> block_cache_;
+    const u32 bits_;
+    // RNG
+    std::random_device dev_;
+    std::mt19937 gen_;
+    std::uniform_int_distribution<u32> dist_;
+
+    /** Check status of the cache cell.
+      * Return 0 if there is no such addr in the cache and slot is free.
+      * Return 1 if addr is not present in the cache but slot is occupied by the other block.
+      * Return 2 if addr is already present in the cache.
+      */
+    int probe(LogicAddr addr);
+
+    BlockCache(u32 Nbits);
+
+    void insert(PBlock block);
+
+    PBlock loockup(LogicAddr addr);
+};
 
 struct BlockStore {
 
-    ~BlockStore() = default;
+    virtual ~BlockStore() = default;
 
     /** Read block from blockstore
       */
@@ -90,6 +115,8 @@ public:
     const u8* get_data() const;
 
     size_t get_size() const;
+
+    LogicAddr get_addr() const;
 };
 
 //! Should be used to create blockstore

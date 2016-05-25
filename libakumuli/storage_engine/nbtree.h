@@ -56,7 +56,7 @@
 
 #pragma once
 // C++ headers
-#include <stack>
+#include <deque>
 
 // App headers
 #include "blockstore.h"
@@ -166,6 +166,13 @@ public:
     NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
 
     /** Load from block store.
+      * @param block Leaf's serialized data.
+      * @param load Load method.
+      */
+    NBTreeLeaf(std::shared_ptr<Block> bstore,
+               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+
+    /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
       * @param load Load method.
@@ -226,8 +233,11 @@ public:
     //! Create new writable node.
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
-    //! Create node from block-store (node is immutable).
+    //! Read immutable node from block-store.
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+
+    //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
+    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
 
     //! Append subtree ref
     aku_Status append(SubtreeRef const& p);
@@ -258,13 +268,22 @@ public:
 
 //! NBTree root (leaf or superblock)
 struct NBTreeRoot {
+
     virtual ~NBTreeRoot() = default;
-    //! Append new data to the root (doesn't work with superblocks)
-    virtual void append(aku_Timestamp ts, double value) = 0;
-    //! Append subtree metadata to the root (doesn't work with leaf nodes)
-    virtual void append(SubtreeRef const& pl) = 0;
-    //! Write all changes to the block-store, even if node is not full.
-    virtual void commit() = 0;
+
+    /** Append new data to the root (doesn't work with superblocks)
+      * If new root created - return address of the previous root, otherwise return EMPTY
+      */
+    virtual LogicAddr append(aku_Timestamp ts, double value) = 0;
+
+    /** Append subtree metadata to the root (doesn't work with leaf nodes)
+      * If new root created - return address of the previous root, otherwise return EMPTY
+      */
+    virtual LogicAddr append(SubtreeRef const& pl) = 0;
+
+    //! Write all changes to the block-store, even if node is not full. Return root address.
+    virtual LogicAddr commit() = 0;
+
     //! Return iterator
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
 };
@@ -277,24 +296,31 @@ struct NBTreeRoot {
   */
 class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
     std::shared_ptr<BlockStore> bstore_;
-    std::vector<std::unique_ptr<NBTreeRoot>> roots_;
+    std::deque<std::unique_ptr<NBTreeRoot>> roots_;
     aku_ParamId id_;
     std::vector<LogicAddr> rootaddr_;
     bool initialized_;
 
     void init();
 public:
+
     /** C-tor
       * @param addresses List of root addresses in blockstore.
       * @param bstore Block-store.
       */
     NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
-    void append(SubtreeRef const& pl);
+    bool append(SubtreeRef const& pl);
 
-    void append(aku_Timestamp ts, double value);
+    bool append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+
+    //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
+    std::vector<LogicAddr> close();
+
+    //! Get roots of the tree
+    std::vector<LogicAddr> get_roots() const;
 };
 
 

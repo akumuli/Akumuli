@@ -22,6 +22,7 @@ SAXNode::SAXNode(int alphabet_size, int window_width, bool disable_original_valu
 
 SAXNode::SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
     : next_(next)
+    , inverse_(false)
 {
     alphabet_size_ = ptree.get<int>("alphabet_size");
     window_width_  = ptree.get<int>("window_width");

@@ -1,6 +1,7 @@
 #include "akumuli_def.h"
 #include "anomalydetector.h"
 #include "hashfnfamily.h"
+#include "queryprocessor_framework.h"
 
 #include <random>
 #include <stdexcept>
@@ -270,19 +271,26 @@ struct PreciseCounter {
 //      SMASlidingWindow        //
 //                              //
 
+static double checked_inv(u32 depth) {
+    if (depth == 0) {
+        NodeException err("Sliding window depth can't be zero.");
+        BOOST_THROW_EXCEPTION(err);
+    }
+    return 1.0/depth;
+}
 
 //! Simple moving average implementation
 template<class Frame>
 struct SMASlidingWindow {
     typedef std::unique_ptr<Frame> PFrame;
     PFrame             sma_;
-    const u32     depth_;
+    const u32          depth_;
     const double       mul_;
     std::deque<PFrame> queue_;
 
     SMASlidingWindow(u32 depth)
         : depth_(depth)
-        , mul_(1.0/depth)
+        , mul_(checked_inv(depth))
     {
     }
 

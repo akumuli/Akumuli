@@ -111,3 +111,196 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
         test_nbtree_roots_collection(N, from, to);
     }
 }
+
+
+// TODO: check crash-recovery
+
+void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
+    ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        collection->append(i, i);
+    }
+
+    // Read data back
+    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+
+    aku_Status status;
+    size_t sz;
+    std::vector<aku_Timestamp> ts(chunk_size, 0xF0F0F0F0);
+    std::vector<double> xs(chunk_size, -1);
+
+    u32 total_size = 0u;
+    aku_Timestamp ts_seen = begin;
+    while(true) {
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), chunk_size);
+
+        if (sz == 0 && status != AKU_ENO_DATA) {
+            BOOST_FAIL("Invalid iterator output, sz=0, status=" << status);
+        }
+        total_size += sz;
+
+        BOOST_REQUIRE(status == AKU_SUCCESS || status == AKU_ENO_DATA);
+
+        if (dir == ScanDir::FWD) {
+            for (u32 i = 0; i < sz; i++) {
+                const auto curr = ts_seen + i;
+                if (ts[i] != curr) {
+                    BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
+                }
+                if (xs[i] != curr) {
+                    BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
+                }
+            }
+            ts_seen += sz;
+        } else {
+            for (u32 i = 0; i < sz; i++) {
+                const auto curr = ts_seen - i;
+                if (ts[i] != curr) {
+                    BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
+                }
+                if (xs[i] != curr) {
+                    BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
+                }
+            }
+            ts_seen -= sz;
+        }
+
+        if (status == AKU_ENO_DATA || ts_seen == end) {
+            break;
+        }
+    }
+    if (ts_seen != end) {
+        BOOST_FAIL("Bad range, expected: " << end << ", actual: " << ts_seen);
+    }
+    size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
+    BOOST_REQUIRE_EQUAL(total_size, outsz);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
+    for (u32 i = 0; i < 100; i++) {
+        auto N = static_cast<u32>(rand() % 200000);
+        auto from = static_cast<u32>(rand()) % N;
+        auto to = static_cast<u32>(rand()) % N;
+        auto chunk = static_cast<u32>(rand()) % N;
+        test_nbtree_chunked_read(N, from, to, chunk);
+    }
+}
+
+void test_reopen_storage(u32 N) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        if (collection->append(i, i)) {
+            // addrlist changed
+            auto newroots = collection->get_roots();
+            if (newroots == addrlist) {
+                BOOST_FAIL("Roots collection must change");
+            }
+            std::swap(newroots, addrlist);
+        }
+    }
+
+    addrlist = collection->close();
+
+    // TODO: check attempt to open tree using wrong id!
+    collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
+    std::vector<aku_Timestamp> ts(N, 0);
+    std::vector<double> xs(N, 0);
+    aku_Status status = AKU_SUCCESS;
+    size_t sz = 0;
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    BOOST_REQUIRE(sz == N);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+    for (u32 i = 0; i < N; i++) {
+        if (ts[i] != i) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+        if (xs[i] != static_cast<double>(i)) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
+    test_reopen_storage(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
+    test_reopen_storage(2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
+    test_reopen_storage(200000);
+}
+
+//! Reopen storage that has been closed without final commit.
+void test_storage_recovery(u32 N) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    for (u32 i = 0; i < N; i++) {
+        if (collection->append(i, i)) {
+            // addrlist changed
+            auto newroots = collection->get_roots();
+            if (newroots == addrlist) {
+                BOOST_FAIL("Roots collection must change");
+            }
+            std::swap(newroots, addrlist);
+        }
+    }
+
+    addrlist = collection->get_roots();
+
+    // delete roots collection
+    collection.reset();
+
+    // TODO: check attempt to open tree using wrong id!
+    collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
+    std::vector<aku_Timestamp> ts(N, 0);
+    std::vector<double> xs(N, 0);
+    aku_Status status = AKU_SUCCESS;
+    size_t sz = 0;
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    if (addrlist.empty()) {
+        // Expect zero, data was stored in single leaf-node.
+        BOOST_REQUIRE(sz == 0);
+    } else {
+        // `sz` value can't be equal to N because some data should be lost!
+        BOOST_REQUIRE(sz < N);
+    }
+    // Note: `status` should be equal to AKU_SUCCESS if size of the destination
+    // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
+    // as an indication that all data-elements have ben read.
+    BOOST_REQUIRE(status == AKU_ENO_DATA || status  == AKU_SUCCESS);
+    for (u32 i = 0; i < sz; i++) {
+        if (ts[i] != i) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+        if (xs[i] != static_cast<double>(i)) {
+            BOOST_FAIL("Invalid timestamp at " << i);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
+    test_storage_recovery(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
+    test_storage_recovery(2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
+    test_storage_recovery(200000);
+}
