@@ -112,7 +112,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
     }
 }
 
-
 // TODO: check crash-recovery
 
 void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
@@ -138,7 +137,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     while(true) {
         std::tie(status, sz) = it->read(ts.data(), xs.data(), chunk_size);
 
-        if (sz == 0 && status != AKU_ENO_DATA) {
+        if (sz == 0 && status == AKU_SUCCESS) {
             BOOST_FAIL("Invalid iterator output, sz=0, status=" << status);
         }
         total_size += sz;
@@ -147,26 +146,26 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
 
         if (dir == ScanDir::FWD) {
             for (u32 i = 0; i < sz; i++) {
-                const auto curr = ts_seen + i;
+                const auto curr = ts_seen;
                 if (ts[i] != curr) {
                     BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
                 }
                 if (xs[i] != curr) {
                     BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
                 }
+                ts_seen = ts[i] + 1;
             }
-            ts_seen += sz;
         } else {
             for (u32 i = 0; i < sz; i++) {
-                const auto curr = ts_seen - i;
+                const auto curr = ts_seen;
                 if (ts[i] != curr) {
                     BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
                 }
                 if (xs[i] != curr) {
                     BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
                 }
+                ts_seen = ts[i] - 1;
             }
-            ts_seen -= sz;
         }
 
         if (status == AKU_ENO_DATA || ts_seen == end) {
@@ -174,7 +173,8 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
         }
     }
     if (ts_seen != end) {
-        BOOST_FAIL("Bad range, expected: " << end << ", actual: " << ts_seen);
+        BOOST_FAIL("Bad range, expected: " << end << ", actual: " << ts_seen <<
+                   " dir: " << (dir == ScanDir::FWD ? "forward" : "backward"));
     }
     size_t outsz = dir == ScanDir::FWD ? end - begin : begin - end;
     BOOST_REQUIRE_EQUAL(total_size, outsz);
@@ -304,3 +304,4 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
     test_storage_recovery(200000);
 }
+
