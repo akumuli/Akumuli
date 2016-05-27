@@ -159,14 +159,14 @@ struct NBTreeLeafIterator : NBTreeIterator {
                     from_ = 0;
                     assert(tsbuf_.front() > begin);
                 }
-                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
                 to_ = std::distance(tsbuf_.begin(), it_end);
             } else {
                 // BWD direction
                 auto it_begin = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), begin_);
                 from_ = std::distance(it_begin, tsbuf_.end());
 
-                auto it_end = std::lower_bound(tsbuf_.begin(), tsbuf_.end(), end_);
+                auto it_end = std::upper_bound(tsbuf_.begin(), tsbuf_.end(), end_);
                 to_ = std::distance(it_end, tsbuf_.end());
                 std::reverse(tsbuf_.begin(), tsbuf_.end());
                 std::reverse(xsbuf_.begin(), xsbuf_.end());
@@ -694,6 +694,8 @@ struct NBTreeLeafRoot : NBTreeRoot {
         , id_(id)
         , last_(last)
         , fanout_index_(0)
+        , pad0_{}
+        , pad1_{}
     {
         if (last_ != EMPTY_ADDR) {
             // Load previous node and calculate fanout.
@@ -822,6 +824,7 @@ struct NBSuperblockRoot : NBTreeRoot {
         , last_(EMPTY_ADDR)
         , fanout_index_(0)
         , level_(level)
+        , pad_{}
     {
         if (addr != EMPTY_ADDR) {
             // `addr` is not empty. Node should be restored from
