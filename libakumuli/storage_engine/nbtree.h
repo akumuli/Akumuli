@@ -66,6 +66,11 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
+enum class NBTreeBlockType {
+    LEAF,   // data block
+    INNER,  // super block
+};
+
 enum {
     AKU_NBTREE_FANOUT = 32,
 };
@@ -259,6 +264,9 @@ public:
     //! Return id of the tree
     aku_ParamId get_id() const;
 
+    //! Return addr of the previous node
+    LogicAddr get_prev_addr() const;
+
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
@@ -266,10 +274,10 @@ public:
 };
 
 
-//! NBTree root (leaf or superblock)
-struct NBTreeRoot {
+//! NBTree extent
+struct NBTreeExtent {
 
-    virtual ~NBTreeRoot() = default;
+    virtual ~NBTreeExtent() = default;
 
     /** Append new data to the root (doesn't work with superblocks)
       * If new root created - return address of the previous root, otherwise return EMPTY
@@ -294,21 +302,21 @@ struct NBTreeRoot {
   * @li store all roots of the NBTree
   * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
   */
-class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
+class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::deque<std::unique_ptr<NBTreeRoot>> roots_;
+    std::deque<std::unique_ptr<NBTreeExtent>> roots_;
     aku_ParamId id_;
-    std::vector<LogicAddr> rootaddr_;
+    std::vector<LogicAddr> rescue_points_;
     bool initialized_;
 
     void init();
 public:
 
     /** C-tor
-      * @param addresses List of root addresses in blockstore.
+      * @param addresses List of root addresses in blockstore or list of resque points.
       * @param bstore Block-store.
       */
-    NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
+    NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
     bool append(SubtreeRef const& pl);
 
@@ -321,6 +329,20 @@ public:
 
     //! Get roots of the tree
     std::vector<LogicAddr> get_roots() const;
+
+    enum class RepairStatus {
+        OK,
+        SKIP,
+        REPAIR
+    };
+
+    //! Calculate repair status for each rescue point.
+    static std::vector<RepairStatus> repair_status(std::vector<LogicAddr> rescue_points, std::shared_ptr<BlockStore> bstore);
+
+    // Debug
+
+    //! Walk the tree from the root and print it to the stdout
+    static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
 };
 
 
