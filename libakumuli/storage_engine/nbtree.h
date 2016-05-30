@@ -282,12 +282,12 @@ struct NBTreeExtent {
     /** Append new data to the root (doesn't work with superblocks)
       * If new root created - return address of the previous root, otherwise return EMPTY
       */
-    virtual LogicAddr append(aku_Timestamp ts, double value) = 0;
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) = 0;
 
     /** Append subtree metadata to the root (doesn't work with leaf nodes)
       * If new root created - return address of the previous root, otherwise return EMPTY
       */
-    virtual LogicAddr append(SubtreeRef const& pl) = 0;
+    virtual std::tuple<bool, LogicAddr> append(SubtreeRef const& pl) = 0;
 
     //! Write all changes to the block-store, even if node is not full. Return root address.
     virtual LogicAddr commit() = 0;
@@ -337,7 +337,7 @@ public:
     };
 
     //! Calculate repair status for each rescue point.
-    static std::vector<RepairStatus> repair_status(std::vector<LogicAddr> rescue_points, std::shared_ptr<BlockStore> bstore);
+    static RepairStatus repair_status(std::vector<LogicAddr> rescue_points);
 
     // Debug
 

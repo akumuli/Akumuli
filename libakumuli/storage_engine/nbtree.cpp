@@ -733,30 +733,30 @@ struct NBTreeLeafExtent : NBTreeExtent {
         leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
 
-    virtual LogicAddr append(aku_Timestamp ts, double value);
-    virtual LogicAddr append(const SubtreeRef &pl);
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
+    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual LogicAddr commit();
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
-LogicAddr NBTreeLeafExtent::append(SubtreeRef const&) {
+std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(SubtreeRef const&) {
     AKU_PANIC("Can't append subtree to leaf node");
 }
 
-LogicAddr NBTreeLeafExtent::append(aku_Timestamp ts, double value) {
+std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(aku_Timestamp ts, double value) {
     // Invariant: leaf_ should be initialized, if leaf_ is full
     // and pushed to block-store, reset_leaf should be called
-    LogicAddr addr = EMPTY_ADDR;
     aku_Status status = leaf_->append(ts, value);
     if (status == AKU_EOVERFLOW) {
         // Commit full node
-        addr = commit();
+        auto addr = commit();
         // Stack overflow here means that there is a logic error in
         // the program that results in NBTreeLeaf::append always
         // returning AKU_EOVERFLOW.
         append(ts, value);
+        return std::make_tuple(true, addr);
     }
-    return addr;
+    return std::make_tuple(false, EMPTY_ADDR);
 }
 
 //! Forcibly commit changes, even if current page is not full
@@ -781,9 +781,10 @@ LogicAddr NBTreeLeafExtent::commit() {
         AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
     }
     payload.addr = addr;
+    bool parent_saved = false;
     auto roots_collection = roots_.lock();
     if (roots_collection) {
-        roots_collection->append(payload);
+        parent_saved = roots_collection->append(payload);
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process
@@ -797,7 +798,11 @@ LogicAddr NBTreeLeafExtent::commit() {
     }
     last_ = addr;
     reset_leaf();
-    return addr;
+    // NOTE: we should reset current extent's rescue point because parent node was saved and
+    // already has a link to current extent (e.g. leaf node was saved and new leaf
+    // address was added to level 1 node, level 1 node becomes full and was written to disk).
+    // If we won't do this - we will read the same information twice during crash recovery process.
+    return parent_saved ? EMPTY_ADDR : addr;
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeLeafExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
@@ -880,26 +885,24 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         return curr_->get_prev_addr();
     }
 
-    virtual LogicAddr append(aku_Timestamp ts, double value);
-    virtual LogicAddr append(const SubtreeRef &pl);
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
+    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual LogicAddr commit();
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 };
 
-LogicAddr NBTreeSBlockExtent::append(aku_Timestamp ts, double value) {
-    AKU_UNUSED(ts);
-    AKU_UNUSED(value);
+std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(aku_Timestamp, double) {
     AKU_PANIC("Data should be added to the root 0");
 }
 
-LogicAddr NBTreeSBlockExtent::append(SubtreeRef const& pl) {
-    LogicAddr addr = EMPTY_ADDR;
+std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(SubtreeRef const& pl) {
     auto status = curr_->append(pl);
     if (status == AKU_EOVERFLOW) {
-        addr = commit();
+        auto addr = commit();
         append(pl);
+        return std::make_tuple(true, addr);
     }
-    return addr;
+    return std::make_tuple(false, EMPTY_ADDR);
 }
 
 LogicAddr NBTreeSBlockExtent::commit() {
@@ -921,9 +924,10 @@ LogicAddr NBTreeSBlockExtent::commit() {
         AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
     }
     payload.addr = addr;
+    bool parent_saved = false;
     auto roots_collection = roots_.lock();
     if (roots_collection) {
-        roots_collection->append(payload);
+        parent_saved = roots_collection->append(payload);
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process
@@ -937,7 +941,9 @@ LogicAddr NBTreeSBlockExtent::commit() {
     }
     last_ = addr;
     reset_subtree();
-    return addr;
+    // NOTE: we should reset current extent's rescue point because parent node was saved and
+    // parent node already has a link to this extent.
+    return parent_saved ? EMPTY_ADDR : addr;
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
@@ -972,8 +978,12 @@ bool NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
         roots_.push_back(std::move(leaf));
     }
-    auto addr = roots_.front()->append(ts, value);
-    if (addr != EMPTY_ADDR) {
+    bool new_rescue_point = false;
+    LogicAddr addr = EMPTY_ADDR;
+    std::tie(new_rescue_point, addr) = roots_.front()->append(ts, value);
+    if (new_rescue_point) {
+        // NOTE: `addr` can be EMPTY_ADDR. We don't need to create rescue point if
+        // rescue point for the parent node was created if parent node was saved.
         if (rescue_points_.size() > 0) {
             rescue_points_.at(0) = addr;
         } else {
@@ -1002,13 +1012,18 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     } else {
         AKU_PANIC("Invalid node level");
     }
-    auto addr = root->append(pl);
-    if (addr != EMPTY_ADDR) {
+    bool new_rescue_point = false;
+    LogicAddr addr = EMPTY_ADDR;
+    std::tie(new_rescue_point, addr) = root->append(pl);
+    if (new_rescue_point) {
         if (rescue_points_.size() > lvl) {
             rescue_points_.at(lvl) = addr;
         } else if (rescue_points_.size() == lvl) {
             rescue_points_.push_back(addr);
         } else {
+            // INVARIANT: order of commits - leaf node committed first, then inner node at level 1,
+            // then level 2 and so on. Address of the inner node (or root node) should be greater then addresses
+            // of all its children.
             AKU_PANIC("Out of order commit!");
         }
         return true;
@@ -1115,6 +1130,8 @@ std::vector<LogicAddr> NBTreeExtentsList::close() {
             roots.push_back(addr);
         }
     }
+    // roots should be a list of EMPTY_ADDR values followed by
+    // the address of the root node [E, E, E.., rootaddr].
     return roots;
 }
 
@@ -1122,29 +1139,15 @@ std::vector<LogicAddr> NBTreeExtentsList::get_roots() const {
     return rescue_points_;
 }
 
-std::vector<NBTreeExtentsList::RepairStatus> NBTreeExtentsList::repair_status(std::vector<LogicAddr> rescue_points,
-                                                                              std::shared_ptr<BlockStore> bstore)
+NBTreeExtentsList::RepairStatus NBTreeExtentsList::repair_status(std::vector<LogicAddr> rescue_points)
 {
-    std::vector<RepairStatus> result(rescue_points.size(), RepairStatus::SKIP);
+    RepairStatus result = RepairStatus::OK;
     for (size_t i = 0; i < rescue_points.size(); i++) {
-        aku_Status status;
-        std::shared_ptr<Block> block;
         auto addr = rescue_points[i];
-        std::tie(status, block) = bstore->read_block(addr);
-        if (status == AKU_SUCCESS) {
-            auto subtree = subtree_cast(block->get_data());
-            if (subtree->level == i) {
-                result[i] = RepairStatus::OK;
-            } else if (subtree->level == (i -1)){
-                result[i] = RepairStatus::REPAIR;
-            } else {
-                result[i] = RepairStatus::SKIP;
-                Logger::msg(AKU_LOG_ERROR, "Can't repair extent");  // TODO: add more data to the log
-            }
-        } else if (status == AKU_ENO_DATA) {
-            // page was deleted so the entire extent
-            result[i] = RepairStatus::SKIP;
+        if (addr == EMPTY_ADDR && i != rescue_points.size() - 1) {
+            continue;
         }
+        result = RepairStatus::REPAIR;
     }
     return result;
 }

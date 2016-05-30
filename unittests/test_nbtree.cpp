@@ -241,6 +241,43 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
     test_reopen_storage(200000);
 }
 */
+
+//! Reopen storage that has been closed without final commit.
+void test_storage_recovery_status(u32 N) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+
+    u32 nleafs = 0;
+    u32 nitems = 0;
+    for (u32 i = 0; true; i++) {
+        if (collection->append(i, i)) {
+            // addrlist changed
+            auto newroots = collection->get_roots();
+            if (newroots == addrlist) {
+                BOOST_FAIL("Roots collection must change");
+            }
+            std::swap(newroots, addrlist);
+            auto status = NBTreeExtentsList::repair_status(addrlist);
+            BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::REPAIR);
+            nleafs++;
+            if (nleafs == N) {
+                nitems = i;
+                break;
+            }
+        }
+    }
+    addrlist = collection->close();
+    auto status = NBTreeExtentsList::repair_status(addrlist);
+    BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::OK);
+    AKU_UNUSED(nitems);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_1) {
+    test_storage_recovery_status(33);
+}
+
+
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -305,9 +342,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
     test_storage_recovery(2000);
 }
-*/
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
     test_storage_recovery(200000);
 }
+*/
 
