@@ -32,6 +32,8 @@ enum class ScanDir {
     FWD, BWD
 };
 
+/*
+
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -78,7 +80,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
 
     }
 }
-/*
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_1) {
     test_nbtree_roots_collection(100, 0, 100);
 }
@@ -118,7 +120,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
-    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
     for (u32 i = 0; i < N; i++) {
         collection->append(i, i);
@@ -189,11 +191,12 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
+*/
 
 void test_reopen_storage(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
-    auto collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
     for (u32 i = 0; i < N; i++) {
         if (collection->append(i, i)) {
@@ -209,7 +212,7 @@ void test_reopen_storage(u32 N) {
     addrlist = collection->close();
 
     // TODO: check attempt to open tree using wrong id!
-    collection = std::make_shared<NBTreeRootsCollection>(42, addrlist, bstore);
+    collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
     std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
     std::vector<aku_Timestamp> ts(N, 0);
@@ -232,7 +235,7 @@ void test_reopen_storage(u32 N) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
     test_reopen_storage(100);
 }
-
+/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
     test_reopen_storage(2000);
 }
@@ -240,7 +243,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
     test_reopen_storage(200000);
 }
-*/
 
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery_status(u32 N) {
@@ -274,7 +276,19 @@ void test_storage_recovery_status(u32 N) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_1) {
+    test_storage_recovery_status(32);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_2) {
     test_storage_recovery_status(33);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_3) {
+    test_storage_recovery_status(1024);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
+    test_storage_recovery_status(1025);
 }
 
 
@@ -334,7 +348,7 @@ void test_storage_recovery(u32 N) {
         }
     }
 }
-/*
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
     test_storage_recovery(100);
 }

@@ -261,6 +261,8 @@ public:
     //! Get fanout index of the node
     u16 get_fanout() const;
 
+    size_t nelements() const;
+
     //! Return id of the tree
     aku_ParamId get_id() const;
 
@@ -290,10 +292,13 @@ struct NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> append(SubtreeRef const& pl) = 0;
 
     //! Write all changes to the block-store, even if node is not full. Return root address.
-    virtual LogicAddr commit() = 0;
+    virtual std::tuple<bool, LogicAddr> commit() = 0;
 
     //! Return iterator
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
+
+    //! Returns true if extent was modified after last commit and has some unsaved data.
+    virtual bool is_dirty() const = 0;
 };
 
 
@@ -304,7 +309,7 @@ struct NBTreeExtent {
   */
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::deque<std::unique_ptr<NBTreeExtent>> roots_;
+    std::deque<std::unique_ptr<NBTreeExtent>> extents_;
     aku_ParamId id_;
     std::vector<LogicAddr> rescue_points_;
     bool initialized_;
