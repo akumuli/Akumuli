@@ -1,4 +1,7 @@
 add_executable(storage_test storage_test.cpp)
+
+include_directories(../libakumuli)
+
 target_link_libraries(storage_test
     akumuli
     sqlite3
@@ -22,3 +25,17 @@ file(COPY
     DESTINATION
     ./
 )
+
+add_executable(afl_compression
+    afl_compression.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    )
+
+target_link_libraries(afl_compression
+    pthread
+    "${APR_LIBRARY}"
+)
+
+set_target_properties(afl_compression PROPERTIES EXCLUDE_FROM_ALL 1)
