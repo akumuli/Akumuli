@@ -122,6 +122,7 @@ public:
 //! Should be used to create blockstore
 struct BlockStoreBuilder {
     static std::shared_ptr<BlockStore> create_memstore();
+    static std::shared_ptr<BlockStore> create_memstore(std::function<void(LogicAddr)> append_cb);
 };
 
 }

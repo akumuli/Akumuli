@@ -75,6 +75,8 @@ enum {
     AKU_NBTREE_FANOUT = 32,
 };
 
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.

@@ -288,44 +288,64 @@ void FixedSizeFileStorage::flush() {
 //! Memory resident blockstore for tests (and machines with infinite RAM)
 struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     std::vector<u8> buffer_;
+    std::function<void(LogicAddr)> append_callback_;
     u32 write_pos_;
+    u32 pad_;
+
     MemStore()
         : write_pos_(0)
     {
     }
 
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) {
-        std::shared_ptr<Block> block;
-        u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
-        if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-            return std::make_tuple(AKU_EOVERFLOW, block);
-        }
-        std::vector<u8> data;
-        data.reserve(AKU_BLOCK_SIZE);
-        auto begin = buffer_.begin() + offset;
-        auto end = begin + AKU_BLOCK_SIZE;
-        std::copy(begin, end, std::back_inserter(data));
-        block.reset(new Block(shared_from_this(), addr, std::move(data)));
-        return std::make_tuple(AKU_SUCCESS, block);
+    MemStore(std::function<void(LogicAddr)> append_cb)
+        : append_callback_(append_cb)
+        , write_pos_(0)
+    {
     }
 
-    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data) {
-        std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
-        return std::make_tuple(AKU_SUCCESS, write_pos_++);
-    }
-
-    virtual void flush() {
-        // no-op
-    }
-
-    virtual bool exists(LogicAddr addr) const {
-        return addr < write_pos_;
-    }
+    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data);
+    virtual void flush();
+    virtual bool exists(LogicAddr addr) const;
 };
 
+std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
+    std::shared_ptr<Block> block;
+    u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
+    if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
+        return std::make_tuple(AKU_EOVERFLOW, block);
+    }
+    std::vector<u8> data;
+    data.reserve(AKU_BLOCK_SIZE);
+    auto begin = buffer_.begin() + offset;
+    auto end = begin + AKU_BLOCK_SIZE;
+    std::copy(begin, end, std::back_inserter(data));
+    block.reset(new Block(shared_from_this(), addr, std::move(data)));
+    return std::make_tuple(AKU_SUCCESS, block);
+}
+
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(const u8 *data) {
+    std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
+    if (append_callback_) {
+        append_callback_(write_pos_);
+    }
+    return std::make_tuple(AKU_SUCCESS, write_pos_++);
+}
+
+void MemStore::flush() {
+    // no-op
+}
+
+bool MemStore::exists(LogicAddr addr) const {
+    return addr < write_pos_;
+}
 
 std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore() {
     return std::make_shared<MemStore>();
+}
+
+std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore(std::function<void(LogicAddr)> append_cb) {
+    return std::make_shared<MemStore>(append_cb);
 }
 
 }}  // namespace

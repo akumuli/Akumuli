@@ -194,7 +194,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
 */
 
 void test_reopen_storage(u32 N) {
-    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    LogicAddr last_one = EMPTY_ADDR;
+    std::shared_ptr<BlockStore> bstore =
+        BlockStoreBuilder::create_memstore([&last_one](LogicAddr addr) { last_one = addr; });
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
@@ -210,6 +212,8 @@ void test_reopen_storage(u32 N) {
     }
 
     addrlist = collection->close();
+
+    BOOST_REQUIRE_EQUAL(addrlist.back(), last_one);
 
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
@@ -235,6 +239,7 @@ void test_reopen_storage(u32 N) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
     test_reopen_storage(100);
 }
+
 /*
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
     test_reopen_storage(2000);
@@ -246,7 +251,11 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
 
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery_status(u32 N) {
-    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    LogicAddr last_block = EMPTY_ADDR;
+    auto cb = [&last_block] (LogicAddr addr) {
+        last_block = addr;
+    };
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
@@ -272,6 +281,7 @@ void test_storage_recovery_status(u32 N) {
     addrlist = collection->close();
     auto status = NBTreeExtentsList::repair_status(addrlist);
     BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::OK);
+    BOOST_REQUIRE(addrlist.back() == last_block);
     AKU_UNUSED(nitems);
 }
 
@@ -290,7 +300,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_3) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
     test_storage_recovery_status(1025);
 }
-
 
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery(u32 N) {
