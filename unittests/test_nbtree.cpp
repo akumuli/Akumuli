@@ -193,14 +193,21 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
 }
 */
 
-void test_reopen_storage(u32 N) {
+// TODO: implement
+void check_tree_consistency(std::shared_ptr<NBTreeExtentsList>) {
+    throw "Not implemented";
+}
+
+void test_reopen_storage(i32 Npages, i32 Nitems) {
     LogicAddr last_one = EMPTY_ADDR;
     std::shared_ptr<BlockStore> bstore =
         BlockStoreBuilder::create_memstore([&last_one](LogicAddr addr) { last_one = addr; });
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
-    for (u32 i = 0; i < N; i++) {
+    u32 nleafs = 0;
+    u32 nitems = 0;
+    for (u32 i = 0; true; i++) {
         if (collection->append(i, i)) {
             // addrlist changed
             auto newroots = collection->get_roots();
@@ -208,6 +215,15 @@ void test_reopen_storage(u32 N) {
                 BOOST_FAIL("Roots collection must change");
             }
             std::swap(newroots, addrlist);
+            nleafs++;
+            if (static_cast<i32>(nleafs) == Npages) {
+                nitems = i;
+                break;
+            }
+        }
+        if (static_cast<i32>(i) == Nitems) {
+            nitems = i;
+            break;
         }
     }
 
@@ -218,15 +234,15 @@ void test_reopen_storage(u32 N) {
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
-    std::vector<aku_Timestamp> ts(N, 0);
-    std::vector<double> xs(N, 0);
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::vector<aku_Timestamp> ts(nitems, 0);
+    std::vector<double> xs(nitems, 0);
     aku_Status status = AKU_SUCCESS;
     size_t sz = 0;
-    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
-    BOOST_REQUIRE(sz == N);
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), nitems);
+    BOOST_REQUIRE(sz == nitems);
     BOOST_REQUIRE(status == AKU_SUCCESS);
-    for (u32 i = 0; i < N; i++) {
+    for (u32 i = 0; i < nitems; i++) {
         if (ts[i] != i) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
@@ -235,20 +251,28 @@ void test_reopen_storage(u32 N) {
         }
     }
 }
-
+/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
-    test_reopen_storage(100);
+    test_reopen_storage(1, -1);
 }
 
-/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
-    test_reopen_storage(2000);
+    test_reopen_storage(-1, 1);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
-    test_reopen_storage(200000);
+    test_reopen_storage(2, -1);
+}
+*/
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_4) {
+    test_reopen_storage(32, -1);
 }
 
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_5) {
+    test_reopen_storage(33, -1);
+}
+/*
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery_status(u32 N) {
     LogicAddr last_block = EMPTY_ADDR;
