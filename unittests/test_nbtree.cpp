@@ -251,7 +251,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
         }
     }
 }
-/*
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
     test_reopen_storage(1, -1);
 }
@@ -263,13 +263,16 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
     test_reopen_storage(2, -1);
 }
-*/
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_4) {
-    test_reopen_storage(32, -1);
+    test_reopen_storage(31, -1);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_5) {
+    test_reopen_storage(32, -1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_6) {
     test_reopen_storage(33, -1);
 }
 /*

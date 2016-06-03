@@ -293,8 +293,12 @@ struct NBTreeExtent {
       */
     virtual std::tuple<bool, LogicAddr> append(SubtreeRef const& pl) = 0;
 
-    //! Write all changes to the block-store, even if node is not full. Return root address.
-    virtual std::tuple<bool, LogicAddr> commit() = 0;
+    /** Write all changes to the block-store, even if node is not full.
+      * @param final Should be set to false during normal operation and set to true during commit.
+      * @return boolean value that is set to true when higher level node was saved as a
+      *         result of the `commit` call and address of this node after commit.
+      */
+    virtual std::tuple<bool, LogicAddr> commit(bool final) = 0;
 
     //! Return iterator
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;

@@ -736,7 +736,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
 
     virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
-    virtual std::tuple<bool, LogicAddr> commit();
+    virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
     virtual bool is_dirty() const;
 };
@@ -753,7 +753,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(aku_Timestamp ts, double va
         LogicAddr addr;
         bool parent_saved;
         // Commit full node
-        std::tie(parent_saved, addr) = commit();
+        std::tie(parent_saved, addr) = commit(false);
         // Stack overflow here means that there is a logic error in
         // the program that results in NBTreeLeaf::append always
         // returning AKU_EOVERFLOW.
@@ -764,7 +764,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(aku_Timestamp ts, double va
 }
 
 //! Forcibly commit changes, even if current page is not full
-std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit() {
+std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
     // Invariant: after call to this method data from `leaf_` should
     // endup in block store, upper level root node should be updated
     // and `leaf_` variable should be reset.
@@ -787,8 +787,11 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit() {
     payload.addr = addr;
     bool parent_saved = false;
     auto roots_collection = roots_.lock();
+    size_t next_level = payload.level + 1;
     if (roots_collection) {
-        parent_saved = roots_collection->append(payload);
+        if (!final || roots_collection->get_roots().size() > next_level) {
+            parent_saved = roots_collection->append(payload);
+        }
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process
@@ -890,7 +893,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
 
     virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
-    virtual std::tuple<bool, LogicAddr> commit();
+    virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
     virtual bool is_dirty() const;
 };
@@ -904,14 +907,14 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(SubtreeRef const& pl) {
     if (status == AKU_EOVERFLOW) {
         LogicAddr addr;
         bool parent_saved;
-        std::tie(parent_saved, addr) = commit();
+        std::tie(parent_saved, addr) = commit(false);
         append(pl);
         return std::make_tuple(true, addr);
     }
     return std::make_tuple(false, EMPTY_ADDR);
 }
 
-std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit() {
+std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
     // Invariant: after call to this method data from `curr_` should
     // endup in block store, upper level root node should be updated
     // and `curr_` variable should be reset.
@@ -932,8 +935,12 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit() {
     payload.addr = addr;
     bool parent_saved = false;
     auto roots_collection = roots_.lock();
+    size_t next_level = payload.level + 1;
     if (roots_collection) {
-        parent_saved = roots_collection->append(payload);
+        if (!final || roots_collection->get_roots().size() > next_level) {
+            // We shouldn't create new root if `commit` called from `close` method.
+            parent_saved = roots_collection->append(payload);
+        }
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process
@@ -1023,7 +1030,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     } else if (extents_.size() == lvl) {
         std::unique_ptr<NBTreeExtent> p;
         p.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(),
-                                     id_, EMPTY_ADDR, lvl));
+                                       id_, EMPTY_ADDR, lvl));
         root = p.get();
         extents_.push_back(std::move(p));
         rescue_points_.push_back(EMPTY_ADDR);
@@ -1214,20 +1221,16 @@ std::unique_ptr<NBTreeIterator> NBTreeExtentsList::search(aku_Timestamp begin, a
 
 std::vector<LogicAddr> NBTreeExtentsList::close() {
     if (initialized_) {
-        const auto nextents = extents_.size();
         LogicAddr addr = EMPTY_ADDR;
         bool parent_saved = false;
-        for(size_t index = 0ul; index < nextents; index++) {
+        for(size_t index = 0ul; index < extents_.size(); index++) {
             if (extents_.at(index)->is_dirty()) {
-                std::tie(parent_saved, addr) = extents_.at(index)->commit();
+                std::tie(parent_saved, addr) = extents_.at(index)->commit(true);
             }
         }
         assert(!parent_saved);
         // NOTE: at this point `addr` should contain address of the tree's root.
-        // Because we've called root's `commit` method new parent will be created.
-        // This new root shouldn't be saved because we will truncate `rescue_points_`
-        // later.
-        std::vector<LogicAddr> result(nextents, EMPTY_ADDR);
+        std::vector<LogicAddr> result(rescue_points_.size(), EMPTY_ADDR);
         result.back() = addr;
         std::swap(rescue_points_, result);
     }
