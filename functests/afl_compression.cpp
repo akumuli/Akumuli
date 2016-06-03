@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    ByteVector buffer(32 + header.timestamps.size()*10, 0);
+    ByteVector buffer(32 + header.timestamps.size()*32, 0);
     StorageEngine::DataBlockWriter writer(42, buffer.data(), static_cast<int>(buffer.size()));
 
     for (u32 i = 0; i < header.timestamps.size(); i++) {
