@@ -32,7 +32,6 @@ enum class ScanDir {
     FWD, BWD
 };
 
-/*
 
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
@@ -191,10 +190,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
-*/
 
 // TODO: implement
-void check_tree_consistency(std::shared_ptr<NBTreeExtentsList>) {
+void check_tree_consistency(std::shared_ptr<NBTreeExtent>) {
     throw "Not implemented";
 }
 
