@@ -2,9 +2,11 @@
 
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
+
 #include <boost/test/unit_test.hpp>
 
 #include <apr.h>
+
 #include "akumuli.h"
 #include "storage_engine/blockstore.h"
 #include "storage_engine/volume.h"
@@ -12,7 +14,12 @@
 #include "log_iface.h"
 
 void test_logger(aku_LogLevel tag, const char* msg) {
-    BOOST_MESSAGE(msg);
+    AKU_UNUSED(tag);
+    if (tag == AKU_LOG_ERROR) {
+        std::cerr << msg << std::endl;
+    } else {
+        std::cout << msg << std::endl;
+    }
 }
 
 struct AkumuliInitializer {
@@ -22,7 +29,7 @@ struct AkumuliInitializer {
     }
 };
 
-AkumuliInitializer initializer;
+static AkumuliInitializer initializer;
 
 using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
@@ -39,7 +46,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
     for (u32 i = 0; i < N; i++) {
-        collection->append(i, 0.5*i);
+        collection->append(i, i);
     }
 
     // Read data back
@@ -62,8 +69,8 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
             if (ts[i] != curr) {
                 BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
             }
-            if (xs[i] != 0.5*curr) {
-                BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
+            if (!same_value(xs[i], curr)) {
+                BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
             }
         }
     } else {
@@ -72,8 +79,8 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
             if (ts[i] != curr) {
                 BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
             }
-            if (xs[i] != 0.5*curr) {
-                BOOST_FAIL("Invalid value at " << i << ", expected: " << (0.5*curr) << ", actual: " << xs[i]);
+            if (!same_value(xs[i], curr)) {
+                BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
             }
         }
 
@@ -106,9 +113,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_6) {
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
     for (int i = 0; i < 100; i++) {
-        auto N = rand() % 200000;
-        auto from = rand() % N;
-        auto to = rand() % N;
+        auto N = static_cast<u32>(rand()) % 200000u;
+        auto from = static_cast<u32>(rand()) % N;
+        auto to = static_cast<u32>(rand()) % N;
         test_nbtree_roots_collection(N, from, to);
     }
 }
@@ -151,7 +158,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
                 if (ts[i] != curr) {
                     BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
                 }
-                if (xs[i] != curr) {
+                if (!same_value(xs[i], curr)) {
                     BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
                 }
                 ts_seen = ts[i] + 1;
@@ -162,7 +169,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
                 if (ts[i] != curr) {
                     BOOST_FAIL("Invalid timestamp at " << i << ", expected: " << curr << ", actual: " << ts[i]);
                 }
-                if (xs[i] != curr) {
+                if (!same_value(xs[i], curr)) {
                     BOOST_FAIL("Invalid value at " << i << ", expected: " << curr << ", actual: " << xs[i]);
                 }
                 ts_seen = ts[i] - 1;
@@ -191,9 +198,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
     }
 }
 
-// TODO: implement
-void check_tree_consistency(std::shared_ptr<NBTreeExtent>) {
-    throw "Not implemented";
+void check_tree_consistency(std::shared_ptr<BlockStore> bstore, size_t level, NBTreeExtent const* extent) {
+    NBTreeExtent::check_extent(extent, bstore, level);
 }
 
 void test_reopen_storage(i32 Npages, i32 Nitems) {
@@ -231,6 +237,14 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
 
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+
+    collection->force_init();
+
+    auto extents = collection->get_extents();
+    for (size_t i = 0; i < extents.size(); i++) {
+        auto extent = extents[i];
+        check_tree_consistency(bstore, i, extent);
+    }
 
     std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);

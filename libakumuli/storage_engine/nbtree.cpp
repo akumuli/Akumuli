@@ -1,5 +1,7 @@
 // C++
 #include <algorithm>
+#include <vector>
+#include <sstream>
 
 // Boost
 #include <boost/scope_exit.hpp>
@@ -484,17 +486,11 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u
 {
 }
 
-NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore)
+NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
     : buffer_(AKU_BLOCK_SIZE, 0)
     , immutable_(true)
 {
     // Read content from bstore
-    aku_Status status;
-    std::shared_ptr<Block> block;
-    std::tie(status, block) = bstore->read_block(addr);
-    if (status != AKU_SUCCESS) {
-        AKU_PANIC("Bad arg, can't read data from block store, " + StatusUtil::str(status));
-    }
     SubtreeRef const* ref = subtree_cast(block->get_data());
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
@@ -502,6 +498,11 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     write_pos_ = ref->payload_size;
     level_ = ref->level;
     memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
+}
+
+NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore)
+    : NBTreeSuperblock(read_block_from_bstore(bstore, addr))
+{
 }
 
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last)
@@ -728,6 +729,10 @@ struct NBTreeLeafExtent : NBTreeExtent {
         status = init_subtree_from_leaf(leaf, payload);
         payload.addr = last_;
         return status;
+    }
+
+    u16 get_current_fanout_index() const {
+        return leaf_->get_fanout();
     }
 
     void reset_leaf() {
@@ -971,9 +976,136 @@ bool NBTreeSBlockExtent::is_dirty() const {
 }
 
 
-// //////////////////////// //
-//  NBTreeRootsCollection   //
-// //////////////////////// //
+static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBTreeSuperblock const* sblock, u16 required_level) {
+    Logger::msg(AKU_LOG_TRACE, "Checking level " + std::to_string(required_level));
+    // For each child.
+    std::vector<SubtreeRef> refs;
+    aku_Status status = sblock->read_all(&refs);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("NBTreeSuperblock.read_all failed, exit code: " + StatusUtil::str(status));
+    }
+    std::vector<LogicAddr> nodes2follow;
+    // Check nodes.
+    size_t nelements = sblock->nelements();
+    int nerrors = 0;
+    for (size_t i = 0; i < nelements; i++) {
+        // require refs[i].fanout_index == i.
+        auto fanout = refs[i].fanout_index;
+        if (fanout != i) {
+            std::string error_message = "Faulty superblock found, expected fanout_index = "
+                                      + std::to_string(i) + " actual = "
+                                      + std::to_string(fanout);
+            Logger::msg(AKU_LOG_ERROR, error_message);
+            nerrors++;
+        }
+        if (refs[i].level != required_level) {
+            std::string error_message = "Faulty superblock found, expected level = "
+                                      + std::to_string(required_level) + " actual level = "
+                                      + std::to_string(refs[i].level);
+            Logger::msg(AKU_LOG_ERROR, error_message);
+            nerrors++;
+        }
+        // Try to read block and check stats
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = bstore->read_block(refs[i].addr);
+        if (status == AKU_ENO_DATA) {
+            // block was deleted due to retention.
+            Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
+        } else if (status == AKU_SUCCESS) {
+            SubtreeRef out;
+            if (required_level == 1) {
+                NBTreeLeaf leaf(block);
+                status = init_subtree_from_leaf(leaf, out);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Can't summarize leaf node at " + std::to_string(refs[i].addr) + " error: "
+                                                              + StatusUtil::str(status));
+                }
+            } else {
+                NBTreeSuperblock superblock(block);
+                status = init_subtree_from_subtree(superblock, out);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Can't summarize inner node at " + std::to_string(refs[i].addr) + " error: "
+                                                               + StatusUtil::str(status));
+                }
+            }
+            // Compare metadata refs
+            std::stringstream fmt;
+            int nbadfields = 0;
+            if (refs[i].begin != out.begin) {
+                fmt << ".begin " << refs[i].begin << " != " << out.begin << "; ";
+                nbadfields++;
+            }
+            if (refs[i].end != out.end) {
+                fmt << ".end " << refs[i].end << " != " << out.end << "; ";
+                nbadfields++;
+            }
+            if (refs[i].count != out.count) {
+                fmt << ".count " << refs[i].count << " != " << out.count << "; ";
+                nbadfields++;
+            }
+            if (refs[i].id != out.id) {
+                fmt << ".id " << refs[i].id << " != " << out.id << "; ";
+                nbadfields++;
+            }
+            if (!same_value(refs[i].max, out.max)) {
+                fmt << ".max " << refs[i].max << " != " << out.max << "; ";
+                nbadfields++;
+            }
+            if (!same_value(refs[i].min, out.min)) {
+                fmt << ".min " << refs[i].min << " != " << out.min << "; ";
+                nbadfields++;
+            }
+            if (!same_value(refs[i].sum, out.sum)) {
+                fmt << ".sum " << refs[i].sum << " != " << out.sum << "; ";
+                nbadfields++;
+            }
+            if (refs[i].version != out.version) {
+                fmt << ".version " << refs[i].version << " != " << out.version << "; ";
+                nbadfields++;
+            }
+            if (nbadfields) {
+                Logger::msg(AKU_LOG_ERROR, "Inner node contains bad values: " + fmt.str());
+                nerrors++;
+            } else {
+                nodes2follow.push_back(refs[i].addr);
+            }
+        } else {
+            // Some other error occured.
+            AKU_PANIC("Can't read node from block-store: " + StatusUtil::str(status));
+        }
+    }
+    if (nerrors) {
+        AKU_PANIC("Invalid structure at " + std::to_string(required_level) + " examine log for more details.");
+    }
+
+    // Recur
+    if (required_level > 1) {
+        for (auto addr: nodes2follow) {
+            NBTreeSuperblock child(addr, bstore);
+            check_superblock_consistency(bstore, &child, required_level - 1);
+        }
+    }
+
+    Logger::msg(AKU_LOG_INFO, "Level " + std::to_string(required_level) + " checked.");
+}
+
+
+void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<BlockStore> bstore, size_t level) {
+    if (level == 0) {
+        // Leaf node
+        return;
+    }
+    auto subtree = dynamic_cast<NBTreeSBlockExtent const*>(extent);
+    if (subtree) {
+        // Complex extent.
+        auto const* curr = subtree->curr_.get();
+        check_superblock_consistency(bstore, curr, static_cast<u16>(level - 1));
+    }
+}
+
+// ///////////////////// //
+//   NBTreeExtentsList   //
+// ///////////////////// //
 
 
 NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
@@ -985,6 +1117,20 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
     }
+}
+
+void NBTreeExtentsList::force_init() {
+    if (!initialized_) {
+        init();
+    }
+}
+
+std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
+    std::vector<NBTreeExtent const*> result;
+    for (auto const& ptr: extents_) {
+        result.push_back(ptr.get());
+    }
+    return result;
 }
 
 bool NBTreeExtentsList::append(aku_Timestamp ts, double value) {
@@ -1234,6 +1380,12 @@ std::vector<LogicAddr> NBTreeExtentsList::close() {
         result.back() = addr;
         std::swap(rescue_points_, result);
     }
+    #ifdef AKU_UNIT_TEST_CONTEXT
+    // This code should be executed only from unit-test.
+    if (extents_.size() > 1) {
+        NBTreeExtent::check_extent(extents_.back().get(), bstore_, extents_.size() - 1);
+    }
+    #endif
     // This node is not initialized now but can be restored from `rescue_points_` list.
     extents_.clear();
     initialized_ = false;
@@ -1297,6 +1449,5 @@ void NBTreeExtentsList::debug_print(LogicAddr root, std::shared_ptr<BlockStore> 
         }
     }
 }
-
 
 }}

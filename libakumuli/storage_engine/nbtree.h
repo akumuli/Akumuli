@@ -241,6 +241,9 @@ public:
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
     //! Read immutable node from block-store.
+    NBTreeSuperblock(std::shared_ptr<Block> block);
+
+    //! Read immutable node from block-store.
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
     //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
@@ -305,6 +308,9 @@ struct NBTreeExtent {
 
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
+
+    //! Check extent's internal consitency
+    static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
 };
 
 
@@ -340,6 +346,12 @@ public:
 
     //! Get roots of the tree
     std::vector<LogicAddr> get_roots() const;
+
+    //! Get pointers to extents (for tests).
+    std::vector<NBTreeExtent const*> get_extents() const;
+
+    //! Force lazy initialization process.
+    void force_init();
 
     enum class RepairStatus {
         OK,

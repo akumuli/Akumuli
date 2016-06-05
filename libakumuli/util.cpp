@@ -509,5 +509,17 @@ void RWLock::unlock() {
     }
 }
 
+bool same_value(double a, double b) {
+    union Bits {
+        double d;
+        u64 u;
+    };
+    Bits ba = {};
+    ba.d = a;
+    Bits bb = {};
+    bb.d = b;
+    return ba.u == bb.u;
+}
+
 }
 
