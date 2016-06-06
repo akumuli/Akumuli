@@ -1213,7 +1213,8 @@ void NBTreeExtentsList::init() {
         auto rstat = repair_status(rescue_points_);
         // Tree should be opened normally.
         if (rstat == RepairStatus::OK) {
-            Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - OK, addr: " + std::to_string(rescue_points_.back()));
+            Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - OK, addr: " +
+                                      std::to_string(rescue_points_.back()));
             // NOTE: rescue_points_ list should have at least two elements [EMPTY_ADDR, Root].
             // Because of this `addr` is always an inner node.
             if (rescue_points_.size() < 2) {
@@ -1279,61 +1280,68 @@ void NBTreeExtentsList::init() {
         }
         // Tree should be restored (crush recovery kicks in here).
         else {
-            AKU_PANIC("Not implemented");
+            Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
+                                      std::to_string(rescue_points_.back()));
             // Construct roots using CoW
-            int i = static_cast<int>(rescue_points_.size());
-            while (i --> 0) {
-                if (i == 0) {
-                    // create leaf
-                    std::unique_ptr<NBTreeLeafExtent> leaf;
-                    auto addr = rescue_points_[i];
-                    leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, addr));
-                    NBTreeLeafExtent* proot = leaf.get();
-                    extents_.push_front(std::move(leaf));
-                    aku_Status status;
-                    SubtreeRef payload;
-                    status = proot->get_prev_subtreeref(payload);
-                    if (status == AKU_SUCCESS) {
-                        append(payload);
-                    } else {
-                        AKU_PANIC("Can't restore tree at " + std::to_string(addr) + " error: " + StatusUtil::str(status));
-                    }
-                } else {
-                    // create superblock
-                    std::unique_ptr<NBTreeSBlockExtent> p;
-                    u16 lvl = static_cast<u16>(i);
-                    auto addr = rescue_points_[i];
-                    p.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, addr, lvl));
-                    // Reconstruct upper level node if needed!
-                    LogicAddr prev = p->get_prev_addr();
-                    if (extents_.empty() && prev != EMPTY_ADDR) {
-                        // If there is previous node and there is no higher level node then
-                        // higher level node was stored in memory and was lost.
-                        std::vector<LogicAddr> addrlist;
-                        std::vector<SubtreeRef> reflist;
-                        // We should read up to AKU_NBTREE_FANOUT items!
-                        size_t ix = 0;
-                        while (prev != EMPTY_ADDR) {
-                            if (ix > AKU_NBTREE_FANOUT) {
-                                AKU_PANIC("Ill-formed tree, too many nodes.");
-                            }
-                            NBTreeSuperblock sblock(prev, bstore_);
-                            addrlist.push_back(prev);
-                            SubtreeRef ref;
-                            auto status = init_subtree_from_subtree(sblock, ref);
-                            if (status != AKU_SUCCESS) {
-                                // TODO: we should remove roots collection from the data-set in this case
-                                AKU_PANIC("Can't restore tree");
-                            }
-                            ref.addr = prev;
-                            reflist.push_back(ref);
-                            prev = sblock.get_prev_addr();
-                            ix++;
+            if (rescue_points_.size() < 2) {
+                // All data was lost.
+                std::unique_ptr<NBTreeExtent> leaf;
+                leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
+                extents_.push_back(std::move(leaf));
+            } else {
+                int i = static_cast<int>(rescue_points_.size());
+                while (i --> 0) {
+                    if (rescue_points_.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
+                        if (i == 0) {
+                            // Create empty leaf node
+                            std::unique_ptr<NBTreeLeafExtent> leaf;
+                            leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
+                            extents_.push_back(std::move(leaf));
+                        } else {
+                            // Create empty inner node
+                            std::unique_ptr<NBTreeSBlockExtent> inner;
+                            u16 level = static_cast<u16>(i);
+                            inner.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR, level));
+                            extents_.push_back(std::move(inner));
                         }
-                        // Reconstructed node
-                        //roots_.push_front(std::move(...));
+                        continue;
+                    } else if (i == 1) {
+                        // resestore this level from last saved leaf node
+                        auto leaf_addr = rescue_points_.front();
+                        while(leaf_addr != EMPTY_ADDR) {
+                            NBTreeLeaf leaf(bstore_, leaf_addr);  // FIXME: this c-tor can panic, use `bstore_->read_block` m-thod.
+                            SubtreeRef ref;
+                            aku_Status status = init_subtree_from_leaf(leaf, ref);
+                            if (status != AKU_SUCCESS) {
+                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
+                                                           std::to_string(leaf_addr) + " error: " +
+                                                           StatusUtil::str(status));
+                            }
+                            ref.addr = leaf_addr;
+                            // Higher level nodes are constructed at this point (lower level are not)
+                            // so it's safe to call `append`.
+                            append(ref); // ret value intentionally ignored
+                            leaf_addr = leaf.get_prev_addr();
+                        }
+                    } else if (i > 1) {
+                        // resestore this level from last saved inner node
+                        auto inner_addr = rescue_points_.at(static_cast<size_t>(i - 1));
+                        while(inner_addr != EMPTY_ADDR) {
+                            NBTreeSuperblock sblock(inner_addr, bstore_);  // FIXME: c-tor panics if `inner_addr` was deleted.
+                            SubtreeRef ref;
+                            aku_Status status = init_subtree_from_subtree(sblock, ref);
+                            if (status != AKU_SUCCESS) {
+                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +
+                                                           std::to_string(inner_addr) + " error: " +
+                                                           StatusUtil::str(status));
+                            }
+                            ref.addr = inner_addr;
+                            // Higher level nodes are constructed at this point (lower level are not)
+                            // so it's safe to call `append`.
+                            append(ref);  // ret value intentionally ignored
+                            inner_addr = sblock.get_prev_addr();
+                        }
                     }
-                    extents_.push_front(std::move(p));
                 }
             }
         }
@@ -1415,6 +1423,10 @@ static NBTreeBlockType _dbg_get_block_type(std::shared_ptr<Block> block) {
 
 void NBTreeExtentsList::debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth) {
     std::string pad(depth, ' ');
+    if (root == EMPTY_ADDR) {
+        std::cout << pad << "EMPTY_ADDR" << std::endl;
+        return;
+    }
     aku_Status status;
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(root);

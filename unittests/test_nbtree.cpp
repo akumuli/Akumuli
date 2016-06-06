@@ -35,7 +35,7 @@ enum class ScanDir {
     FWD, BWD
 };
 
-
+/*
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -254,7 +254,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
         if (ts[i] != i) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
-        if (xs[i] != static_cast<double>(i)) {
+        if (!same_value(xs[i], static_cast<double>(i))) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
     }
@@ -335,7 +335,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_3) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
     test_storage_recovery_status(1025);
 }
-/*
+
+*/
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -387,7 +388,7 @@ void test_storage_recovery(u32 N) {
         if (ts[i] != i) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
-        if (xs[i] != static_cast<double>(i)) {
+        if (!same_value(xs[i], static_cast<double>(i))) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
     }
@@ -401,6 +402,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
     test_storage_recovery(2000);
 }
 
+/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
     test_storage_recovery(200000);
 }
