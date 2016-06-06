@@ -15,11 +15,7 @@
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
-    if (tag == AKU_LOG_ERROR) {
-        std::cerr << msg << std::endl;
-    } else {
-        std::cout << msg << std::endl;
-    }
+    BOOST_MESSAGE(msg);
 }
 
 struct AkumuliInitializer {
@@ -287,7 +283,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_5) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_6) {
     test_reopen_storage(33, -1);
 }
-/*
+
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery_status(u32 N) {
     LogicAddr last_block = EMPTY_ADDR;
@@ -339,7 +335,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_3) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
     test_storage_recovery_status(1025);
 }
-
+/*
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();

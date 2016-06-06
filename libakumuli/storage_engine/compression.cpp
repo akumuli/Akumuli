@@ -599,6 +599,7 @@ size_t DataBlockWriter::commit() {
                 break;
             }
             *ntail_ += 1;
+            write_index_--;
         }
     }
     assert(nchunks <= 0xFFFF);

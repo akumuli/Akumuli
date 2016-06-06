@@ -977,7 +977,6 @@ bool NBTreeSBlockExtent::is_dirty() const {
 
 
 static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBTreeSuperblock const* sblock, u16 required_level) {
-    Logger::msg(AKU_LOG_TRACE, "Checking level " + std::to_string(required_level));
     // For each child.
     std::vector<SubtreeRef> refs;
     aku_Status status = sblock->read_all(&refs);
@@ -1013,7 +1012,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
         } else if (status == AKU_SUCCESS) {
             SubtreeRef out;
-            if (required_level == 1) {
+            if (required_level == 0) {
                 NBTreeLeaf leaf(block);
                 status = init_subtree_from_leaf(leaf, out);
                 if (status != AKU_SUCCESS) {
@@ -1079,14 +1078,12 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
     }
 
     // Recur
-    if (required_level > 1) {
+    if (required_level > 0) {
         for (auto addr: nodes2follow) {
             NBTreeSuperblock child(addr, bstore);
             check_superblock_consistency(bstore, &child, required_level - 1);
         }
     }
-
-    Logger::msg(AKU_LOG_INFO, "Level " + std::to_string(required_level) + " checked.");
 }
 
 
@@ -1181,6 +1178,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
         extents_.push_back(std::move(p));
         rescue_points_.push_back(EMPTY_ADDR);
     } else {
+        Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Invalid node level - " + std::to_string(lvl));
         AKU_PANIC("Invalid node level");
     }
     bool parent_saved = false;
@@ -1215,7 +1213,7 @@ void NBTreeExtentsList::init() {
         auto rstat = repair_status(rescue_points_);
         // Tree should be opened normally.
         if (rstat == RepairStatus::OK) {
-            Logger::msg(AKU_LOG_INFO, "Trying to open tree, repair status - OK, addr: " + std::to_string(rescue_points_.back()));
+            Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - OK, addr: " + std::to_string(rescue_points_.back()));
             // NOTE: rescue_points_ list should have at least two elements [EMPTY_ADDR, Root].
             // Because of this `addr` is always an inner node.
             if (rescue_points_.size() < 2) {
@@ -1234,7 +1232,7 @@ void NBTreeExtentsList::init() {
                 if (status != AKU_SUCCESS) {
                     // Tree is old and should be removed, no data was left on the block device.
                     // FIXME: handle obsolete trees correctly!
-                    Logger::msg(AKU_LOG_ERROR, "Obsolete tree handling not implemented");
+                    Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Obsolete tree handling not implemented");
                     initialized_ = false;
                     return;
                 }
@@ -1242,7 +1240,8 @@ void NBTreeExtentsList::init() {
                 SubtreeRef sref = {};
                 status = init_subtree_from_leaf(leaf, sref);
                 if (status != AKU_SUCCESS) {
-                    Logger::msg(AKU_LOG_ERROR, "Can't open tree at: " + std::to_string(addr) + " error: " + StatusUtil::str(status));
+                    Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't open tree at: " + std::to_string(addr) +
+                                " error: " + StatusUtil::str(status));
                     AKU_PANIC("Can't open tree");
                 }
                 root_extent->append(sref);  // this always should return `false` and `EMPTY_ADDR`, no need to check this.
@@ -1367,6 +1366,7 @@ std::unique_ptr<NBTreeIterator> NBTreeExtentsList::search(aku_Timestamp begin, a
 
 std::vector<LogicAddr> NBTreeExtentsList::close() {
     if (initialized_) {
+        Logger::msg(AKU_LOG_TRACE, std::to_string(id_) + " Going to close the tree.");
         LogicAddr addr = EMPTY_ADDR;
         bool parent_saved = false;
         for(size_t index = 0ul; index < extents_.size(); index++) {
