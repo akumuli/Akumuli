@@ -408,6 +408,8 @@ add_executable(
     ../libakumuli/log_iface.cpp
 )
 
+target_compile_definitions(test_nbtree PRIVATE AKU_UNIT_TEST_CONTEXT=1)
+
 target_link_libraries(
     test_nbtree
     "${APRUTIL_LIBRARY}"

@@ -479,9 +479,9 @@ void panic_handler(const char * msg) {
 
 int main(int argc, char** argv) {
 
-    aku_initialize(&panic_handler, &static_logger);
-
     try {
+        aku_initialize(&panic_handler, &static_logger);
+
         // Init logger
         auto path = ConfigFile::default_config_path();
         if (boost::filesystem::exists(path)) {
@@ -534,6 +534,11 @@ int main(int argc, char** argv) {
     } catch(const std::exception& e) {
         std::stringstream fmt;
         fmt << "**FAILURE** " << e.what();
+        std::cerr << cli_format(fmt.str()) << std::endl;
+        exit(EXIT_FAILURE);
+    } catch(...) {
+        std::stringstream fmt;
+        fmt << "**FAILURE** " << boost::current_exception_diagnostic_information(true);
         std::cerr << cli_format(fmt.str()) << std::endl;
         exit(EXIT_FAILURE);
     }

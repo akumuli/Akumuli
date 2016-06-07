@@ -8,6 +8,7 @@ SAXNode::SAXNode(int alphabet_size, int window_width, bool disable_original_valu
     , window_width_(window_width)
     , alphabet_size_(alphabet_size)
     , disable_value_(disable_original_value)
+    , inverse_(false)
 {
     if (alphabet_size_ > 20 || alphabet_size_ < 1) {
         QueryParserError err("`alphabet_size` should be in [1, 20] range");
@@ -21,6 +22,7 @@ SAXNode::SAXNode(int alphabet_size, int window_width, bool disable_original_valu
 
 SAXNode::SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
     : next_(next)
+    , inverse_(false)
 {
     alphabet_size_ = ptree.get<int>("alphabet_size");
     window_width_  = ptree.get<int>("window_width");

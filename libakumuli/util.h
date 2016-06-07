@@ -186,6 +186,10 @@ public:
 
     void unlock();
 };
+
+//! Compare two double values and return true if they are equal at bit-level (needed to supress CLang analyzer warnings).
+bool same_value(double a, double b);
+
 }
 
 /** Panic macro.
@@ -211,3 +215,4 @@ public:
 #define AKU_LIKELY(x) (x)
 #define AKU_UNLIKELY(x) (x)
 #endif
+

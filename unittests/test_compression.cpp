@@ -25,7 +25,9 @@ template<class TStreamWriter>
 void test_stream_write(TStreamWriter& writer) {
     // Encode
     for (auto i = 0u; i < EXPECTED_SIZE; i++) {
-        writer.put(EXPECTED[i]);
+        if (!writer.put(EXPECTED[i])) {
+            BOOST_FAIL("Buffer is too small");
+        }
     }
     writer.commit();
 

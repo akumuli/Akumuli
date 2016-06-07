@@ -84,7 +84,9 @@ bool top_element_more(const RunType& x, const RunType& y)
     return top_element_less(y, x);
 }
 
-TimeSeriesValue::TimeSeriesValue() {}
+TimeSeriesValue::TimeSeriesValue()
+    : TimeSeriesValue(0, 0, 0.0)
+{}
 
 TimeSeriesValue::TimeSeriesValue(aku_Timestamp ts, aku_ParamId id, double value)
     : key_ts_(ts)

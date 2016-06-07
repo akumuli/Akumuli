@@ -60,7 +60,7 @@ struct aku_Entry {
 } __attribute__((packed));
 
 //! PageHeader forward declaration
-struct PageHeader;
+class PageHeader;
 
 /** Page bounding box.
  *  All data is two dimentional: param-timestamp.
