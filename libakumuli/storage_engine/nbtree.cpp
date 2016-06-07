@@ -1289,24 +1289,33 @@ void NBTreeExtentsList::init() {
                 leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
                 extents_.push_back(std::move(leaf));
             } else {
+                // Init `extents_` to make `append` functions work.
+                for (size_t i = 0; i < rescue_points_.size(); i++) {
+                    if (i == 0) {
+                        // Create empty leaf node
+                        std::unique_ptr<NBTreeLeafExtent> leaf;
+                        leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
+                        extents_.push_back(std::move(leaf));
+                    } else {
+                        // Create empty inner node
+                        std::unique_ptr<NBTreeSBlockExtent> inner;
+                        u16 level = static_cast<u16>(i);
+                        inner.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR, level));
+                        extents_.push_back(std::move(inner));
+                    }
+                }
+
                 int i = static_cast<int>(rescue_points_.size());
                 while (i --> 0) {
                     if (rescue_points_.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
-                        if (i == 0) {
-                            // Create empty leaf node
-                            std::unique_ptr<NBTreeLeafExtent> leaf;
-                            leaf.reset(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
-                            extents_.push_back(std::move(leaf));
-                        } else {
-                            // Create empty inner node
-                            std::unique_ptr<NBTreeSBlockExtent> inner;
-                            u16 level = static_cast<u16>(i);
-                            inner.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR, level));
-                            extents_.push_back(std::move(inner));
-                        }
                         continue;
                     } else if (i == 1) {
-                        // resestore this level from last saved leaf node
+                        // Create inner node.
+                        std::unique_ptr<NBTreeSBlockExtent> inner;
+                        u16 level = static_cast<u16>(i);
+                        inner.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR, level));
+                        extents_.push_back(std::move(inner));
+                        // Resestore this level from last saved leaf node.
                         auto leaf_addr = rescue_points_.front();
                         while(leaf_addr != EMPTY_ADDR) {
                             NBTreeLeaf leaf(bstore_, leaf_addr);  // FIXME: this c-tor can panic, use `bstore_->read_block` m-thod.

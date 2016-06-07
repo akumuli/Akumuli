@@ -193,11 +193,13 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
+*/
 
 void check_tree_consistency(std::shared_ptr<BlockStore> bstore, size_t level, NBTreeExtent const* extent) {
     NBTreeExtent::check_extent(extent, bstore, level);
 }
 
+/*
 void test_reopen_storage(i32 Npages, i32 Nitems) {
     LogicAddr last_one = EMPTY_ADDR;
     std::shared_ptr<BlockStore> bstore =
@@ -367,6 +369,14 @@ void test_storage_recovery(u32 N) {
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
+    collection->force_init();
+
+    auto extents = collection->get_extents();
+    for (size_t i = 0; i < extents.size(); i++) {
+        auto extent = extents[i];
+        check_tree_consistency(bstore, i, extent);
+    }
+
     std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
     std::vector<aku_Timestamp> ts(N, 0);
     std::vector<double> xs(N, 0);
@@ -394,6 +404,7 @@ void test_storage_recovery(u32 N) {
     }
 }
 
+/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
     test_storage_recovery(100);
 }
@@ -401,10 +412,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
     test_storage_recovery(2000);
 }
+*/
 
-/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
     test_storage_recovery(200000);
 }
-*/
 
