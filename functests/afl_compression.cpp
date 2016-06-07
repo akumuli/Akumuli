@@ -30,17 +30,25 @@ int main(int argc, char** argv) {
         }
     }
 
+    for (size_t i = 1; i < header.timestamps.size(); i++) {
+        if (header.timestamps.at(i) < header.timestamps.at(i-1)) {
+            return -1;
+        }
+    }
+
     ByteVector buffer(32 + header.timestamps.size()*32, 0);
     StorageEngine::DataBlockWriter writer(42, buffer.data(), static_cast<int>(buffer.size()));
 
+    size_t commit_size = 0;
     for (u32 i = 0; i < header.timestamps.size(); i++) {
         aku_Status status = writer.put(header.timestamps.at(i), header.values.at(i));
         if (status != AKU_SUCCESS) {
             AKU_PANIC("Can't compress data: " + std::to_string(status));
         }
+        commit_size = writer.commit();
     }
 
-    StorageEngine::DataBlockReader reader(buffer.data(), buffer.size());
+    StorageEngine::DataBlockReader reader(buffer.data(), commit_size);
     for (u32 i = 0; i < header.timestamps.size(); i++) {
         aku_Timestamp ts;
         double tx;
