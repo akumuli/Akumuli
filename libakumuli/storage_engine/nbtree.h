@@ -327,6 +327,8 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     bool initialized_;
 
     void init();
+    void open();
+    void repair();
 public:
 
     /** C-tor

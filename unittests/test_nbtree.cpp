@@ -35,7 +35,6 @@ enum class ScanDir {
     FWD, BWD
 };
 
-/*
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -116,8 +115,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_rc_append_rand_read) {
     }
 }
 
-// TODO: check crash-recovery
-
 void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -193,13 +190,11 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_chunked_read) {
         test_nbtree_chunked_read(N, from, to, chunk);
     }
 }
-*/
 
 void check_tree_consistency(std::shared_ptr<BlockStore> bstore, size_t level, NBTreeExtent const* extent) {
     NBTreeExtent::check_extent(extent, bstore, level);
 }
 
-/*
 void test_reopen_storage(i32 Npages, i32 Nitems) {
     LogicAddr last_one = EMPTY_ADDR;
     std::shared_ptr<BlockStore> bstore =
@@ -338,7 +333,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
     test_storage_recovery_status(1025);
 }
 
-*/
 //! Reopen storage that has been closed without final commit.
 void test_storage_recovery(u32 N) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -358,10 +352,10 @@ void test_storage_recovery(u32 N) {
 
     addrlist = collection->get_roots();
 
-    for (auto addr: addrlist) {
-        std::cout << "Dbg print for " << addr << std::endl;
-        NBTreeExtentsList::debug_print(addr, bstore);
-    }
+    //for (auto addr: addrlist) {
+    //    std::cout << "Dbg print for " << addr << std::endl;
+    //    NBTreeExtentsList::debug_print(addr, bstore);
+    //}
 
     // delete roots collection
     collection.reset();
@@ -404,7 +398,6 @@ void test_storage_recovery(u32 N) {
     }
 }
 
-/*
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
     test_storage_recovery(100);
 }
@@ -412,7 +405,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
     test_storage_recovery(2000);
 }
-*/
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
     test_storage_recovery(200000);
