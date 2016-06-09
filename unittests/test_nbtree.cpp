@@ -258,11 +258,11 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_1) {
-    test_reopen_storage(1, -1);
+    test_reopen_storage(-1, 1);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_2) {
-    test_reopen_storage(-1, 1);
+    test_reopen_storage(1, -1);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
@@ -270,19 +270,19 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_3) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_4) {
-    test_reopen_storage(31, -1);
-}
-
-BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_5) {
     test_reopen_storage(32, -1);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_6) {
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_5) {
     test_reopen_storage(33, -1);
 }
 
+BOOST_AUTO_TEST_CASE(Test_nbtree_reopen_6) {
+    test_reopen_storage(32*32, -1);
+}
+
 //! Reopen storage that has been closed without final commit.
-void test_storage_recovery_status(u32 N) {
+void test_storage_recovery_status(u32 N, u32 N_values) {
     LogicAddr last_block = EMPTY_ADDR;
     auto cb = [&last_block] (LogicAddr addr) {
         last_block = addr;
@@ -309,6 +309,10 @@ void test_storage_recovery_status(u32 N) {
                 break;
             }
         }
+        if (i == N_values) {
+            nitems = i;
+            break;
+        }
     }
     addrlist = collection->close();
     auto status = NBTreeExtentsList::repair_status(addrlist);
@@ -318,28 +322,34 @@ void test_storage_recovery_status(u32 N) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_1) {
-    test_storage_recovery_status(32);
+    test_storage_recovery_status(~0u, 32);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_2) {
-    test_storage_recovery_status(33);
+    test_storage_recovery_status(2, ~0u);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_3) {
-    test_storage_recovery_status(1024);
+    test_storage_recovery_status(32, ~0u);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_status_4) {
-    test_storage_recovery_status(1025);
+    test_storage_recovery_status(32*32, ~0u);
 }
 
 //! Reopen storage that has been closed without final commit.
-void test_storage_recovery(u32 N) {
-    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+void test_storage_recovery(u32 N_blocks, u32 N_values) {
+    LogicAddr last_block = EMPTY_ADDR;
+    auto cb = [&last_block] (LogicAddr addr) {
+        last_block = addr;
+    };
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
 
-    for (u32 i = 0; i < N; i++) {
+    u32 nleafs = 0;
+    u32 nitems = 0;
+    for (u32 i = 0; true; i++) {
         if (collection->append(i, i)) {
             // addrlist changed
             auto newroots = collection->get_roots();
@@ -347,6 +357,17 @@ void test_storage_recovery(u32 N) {
                 BOOST_FAIL("Roots collection must change");
             }
             std::swap(newroots, addrlist);
+            auto status = NBTreeExtentsList::repair_status(addrlist);
+            BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::REPAIR);
+            nleafs++;
+            if (nleafs == N_blocks) {
+                nitems = i;
+                break;
+            }
+        }
+        if (i == N_values) {
+            nitems = i;
+            break;
         }
     }
 
@@ -371,18 +392,18 @@ void test_storage_recovery(u32 N) {
         check_tree_consistency(bstore, i, extent);
     }
 
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, N);
-    std::vector<aku_Timestamp> ts(N, 0);
-    std::vector<double> xs(N, 0);
+    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::vector<aku_Timestamp> ts(nitems, 0);
+    std::vector<double> xs(nitems, 0);
     aku_Status status = AKU_SUCCESS;
     size_t sz = 0;
-    std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+    std::tie(status, sz) = it->read(ts.data(), xs.data(), nitems);
     if (addrlist.empty()) {
         // Expect zero, data was stored in single leaf-node.
         BOOST_REQUIRE(sz == 0);
     } else {
         // `sz` value can't be equal to N because some data should be lost!
-        BOOST_REQUIRE(sz < N);
+        BOOST_REQUIRE(sz < nitems);
     }
     // Note: `status` should be equal to AKU_SUCCESS if size of the destination
     // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
@@ -399,14 +420,26 @@ void test_storage_recovery(u32 N) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_1) {
-    test_storage_recovery(100);
+    test_storage_recovery(~0u, 10);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_2) {
-    test_storage_recovery(2000);
+    test_storage_recovery(1, ~0u);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_3) {
-    test_storage_recovery(200000);
+    test_storage_recovery(31, ~0u);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_4) {
+    test_storage_recovery(32, ~0u);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_5) {
+    test_storage_recovery(33, ~0u);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_6) {
+    test_storage_recovery(33*33, ~0u);
 }
 
