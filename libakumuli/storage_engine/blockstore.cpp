@@ -3,6 +3,8 @@
 #include "util.h"
 #include "status_util.h"
 
+#include <boost/crc.hpp>
+
 namespace Akumuli {
 namespace StorageEngine {
 
@@ -284,6 +286,13 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
+u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
+    // TODO: use CRC32C
+    AKU_UNUSED(data);
+    AKU_UNUSED(size);
+    return 0xDEADBEEF;
+}
+
 
 //! Memory resident blockstore for tests (and machines with infinite RAM)
 struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
@@ -307,7 +316,14 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
+    virtual u32 checksum(u8 const* data, size_t size) const;
 };
+
+u32 MemStore::checksum(u8 const* data, size_t size) const {
+    AKU_UNUSED(data);
+    AKU_UNUSED(size);
+    return 0xDEADBEEF;
+}
 
 std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
     std::shared_ptr<Block> block;

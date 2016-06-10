@@ -113,6 +113,8 @@ struct SubtreeRef {
     u16 payload_size;
     //! Fan out index of the element (current)
     u16 fanout_index;
+    //! Checksum of the block (not used for links to child nodes)
+    u32 checksum;
 } __attribute__((packed));
 
 
@@ -175,6 +177,7 @@ public:
     /** Load from block store.
       * @param block Leaf's serialized data.
       * @param load Load method.
+      * @note This c-tor panics if block is invalid or doesn't exists.
       */
     NBTreeLeaf(std::shared_ptr<Block> bstore,
                LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);

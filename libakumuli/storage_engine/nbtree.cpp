@@ -35,6 +35,43 @@ static SubtreeRef const* subtree_cast(u8 const* p) {
     return reinterpret_cast<SubtreeRef const*>(p);
 }
 
+static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
+    aku_Status status;
+    std::shared_ptr<Block> block;
+    std::tie(status, block) = bstore->read_block(curr);
+    // Check consistency (works with both inner and leaf nodes).
+    u8 const* data = block->get_data();
+    SubtreeRef const* subtree = subtree_cast(data);
+    u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    if (crc != subtree->checksum) {
+        std::stringstream fmt;
+        fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
+        Logger::msg(AKU_LOG_ERROR, fmt.str());
+        status = AKU_ENO_DATA;
+    }
+    return std::tie(status, block);
+}
+
+//! Read block from blockstoroe with all the checks. Panic on error!
+static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
+    aku_Status status;
+    std::shared_ptr<Block> block;
+    std::tie(status, block) = bstore->read_block(curr);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't read block - " + StatusUtil::str(status));
+    }
+    // Check consistency (works with both inner and leaf nodes).
+    u8 const* data = block->get_data();
+    SubtreeRef const* subtree = subtree_cast(data);
+    u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    if (crc != subtree->checksum) {
+        std::stringstream fmt;
+        fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
+        AKU_PANIC(fmt.str());
+    }
+    return block;
+}
+
 //! Initialize object from leaf node
 static aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
     std::vector<aku_Timestamp> ts;
@@ -294,17 +331,6 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
 }
 
 
-//! Read block from blockstoroe.
-static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
-    aku_Status status;
-    std::shared_ptr<Block> block;
-    std::tie(status, block) = bstore->read_block(curr);
-    if (status != AKU_SUCCESS) {
-        AKU_PANIC("Can't read block - " + StatusUtil::str(status));
-    }
-    return block;
-}
-
 NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafLoadMethod load)
     : NBTreeLeaf(read_block_from_bstore(bstore, curr), load)
 {
@@ -414,6 +440,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->version = AKUMULI_VERSION;
     subtree->level = 0;
     subtree->fanout_index = fanout_index_;
+    // Compute checksum
+    subtree->checksum = bstore->checksum(buffer_.data() + sizeof(SubtreeRef), size);
     return bstore->append_block(buffer_.data());
 }
 
@@ -509,12 +537,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     : buffer_(AKU_BLOCK_SIZE, 0)
     , immutable_(false)
 {
-    aku_Status status;
-    std::shared_ptr<Block> block;
-    std::tie(status, block) = bstore->read_block(addr);
-    if (status != AKU_SUCCESS) {
-        AKU_PANIC("Bad arg, can't read data from block store, " + StatusUtil::str(status));
-    }
+    std::shared_ptr<Block> block = read_block_from_bstore(bstore, addr);
     SubtreeRef const* ref = subtree_cast(block->get_data());
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
@@ -583,10 +606,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     }
     // This fields should be rewrited to store node's own information
     backref->payload_size = static_cast<u16>(write_pos_);
+    assert(backref->payload_size + sizeof(SubtreeRef) < AKU_BLOCK_SIZE);
     backref->fanout_index = fanout_index_;
     backref->id = id_;
     backref->level = level_;
     backref->version = AKUMULI_VERSION;
+    // add checksum
+    backref->checksum = bstore->checksum(buffer_.data() + sizeof(SubtreeRef), backref->payload_size);
     return bstore->append_block(buffer_.data());
 }
 
@@ -709,8 +735,9 @@ struct NBTreeLeafExtent : NBTreeExtent {
             // Load previous node and calculate fanout.
             aku_Status status;
             std::shared_ptr<Block> block;
-            std::tie(status, block) = bstore_->read_block(last_);
+            std::tie(status, block) = read_and_check(bstore_, last_);
             if (status != AKU_SUCCESS) {
+                // FIXME: handle AKU_ENO_DATA!
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             }
             auto psubtree = subtree_cast(block->get_data());
@@ -861,8 +888,9 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             // block-store.
             aku_Status status;
             std::shared_ptr<Block> block;
-            std::tie(status, block) = bstore_->read_block(addr);
+            std::tie(status, block) = read_and_check(bstore_, addr);
             if (status != AKU_SUCCESS) {
+                // FIXME: handle AKU_ENO_DATA!
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             }
             auto psubtree = subtree_cast(block->get_data());
@@ -1006,7 +1034,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
         }
         // Try to read block and check stats
         std::shared_ptr<Block> block;
-        std::tie(status, block) = bstore->read_block(refs[i].addr);
+        std::tie(status, block) = read_and_check(bstore, refs[i].addr);
         if (status == AKU_ENO_DATA) {
             // block was deleted due to retention.
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
@@ -1224,7 +1252,7 @@ void NBTreeExtentsList::open() {
         LogicAddr addr = rescue_points_.front();
         std::shared_ptr<Block> leaf_block;
         aku_Status status;
-        std::tie(status, leaf_block) = bstore_->read_block(addr);
+        std::tie(status, leaf_block) = read_and_check(bstore_, addr);
         if (status != AKU_SUCCESS) {
             // Tree is old and should be removed, no data was left on the block device.
             // FIXME: handle obsolete trees correctly!
@@ -1320,7 +1348,7 @@ void NBTreeExtentsList::repair() {
                 while(leaf_addr != EMPTY_ADDR) {
                     aku_Status status;
                     std::shared_ptr<Block> block;
-                    std::tie(status, block) = bstore_->read_block(leaf_addr);
+                    std::tie(status, block) = read_and_check(bstore_, leaf_addr);
                     if (status != AKU_SUCCESS) {
                         // Leaf node was deleted because of retention process,
                         // we should stop recovery process.
@@ -1345,7 +1373,7 @@ void NBTreeExtentsList::repair() {
                 while(inner_addr != EMPTY_ADDR) {
                     aku_Status status;
                     std::shared_ptr<Block> block;
-                    std::tie(status, block) = bstore_->read_block(inner_addr);
+                    std::tie(status, block) = read_and_check(bstore_, inner_addr);
                     if (status != AKU_SUCCESS) {
                         // Leaf node was deleted because of retention process,
                         // we should stop recovery process.
@@ -1467,7 +1495,7 @@ void NBTreeExtentsList::debug_print(LogicAddr root, std::shared_ptr<BlockStore> 
     }
     aku_Status status;
     std::shared_ptr<Block> block;
-    std::tie(status, block) = bstore->read_block(root);
+    std::tie(status, block) = read_and_check(bstore, root);
     if (status != AKU_SUCCESS) {
         std::cout << pad << "ERROR: Can't read block at " << root << " " << StatusUtil::str(status) << std::endl;
     }
