@@ -442,4 +442,3 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_5) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_6) {
     test_storage_recovery(33*33, ~0u);
 }
-

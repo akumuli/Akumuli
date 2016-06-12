@@ -322,7 +322,7 @@ struct NBTreeSBlockIterator : NBTreeIterator {
     std::vector<SubtreeRef> refs_;
     std::unique_ptr<NBTreeIterator> iter_;
     u32 fsm_pos_;
-    u32 refs_pos_;
+    i32 refs_pos_;
 
     NBTreeSBlockIterator(std::shared_ptr<BlockStore> bstore, LogicAddr addr, aku_Timestamp begin, aku_Timestamp end)
         : begin_(begin)
@@ -345,9 +345,9 @@ struct NBTreeSBlockIterator : NBTreeIterator {
         aku_Status status = sblock.read_all(&refs_);
         if (status != AKU_SUCCESS) {
             // `read` call should fail with AKU_ENO_DATA error.
-            refs_pos_ = begin_ < end_ ? static_cast<u32>(refs_.size()) : 0ul;
+            refs_pos_ = begin_ < end_ ? static_cast<i32>(refs_.size()) : -1;
         } else {
-            refs_pos_ = begin_ < end_ ? 0ul : static_cast<u32>(refs_.size());
+            refs_pos_ = begin_ < end_ ? 0 : static_cast<i32>(refs_.size()) - 1;
         }
     }
 
@@ -360,7 +360,7 @@ struct NBTreeSBlockIterator : NBTreeIterator {
         }
         NBTreeSuperblock current(block);
         status = current.read_all(&refs_);
-        refs_pos_ = begin_ < end_ ? 0ul : static_cast<u32>(refs_.size());
+        refs_pos_ = begin_ < end_ ? 0 : static_cast<i32>(refs_.size()) - 1;
         return status;
     }
 
@@ -371,20 +371,22 @@ struct NBTreeSBlockIterator : NBTreeIterator {
         // create iterator for next node
         auto get_next_iter = [=] () {
             std::unique_ptr<NBTreeIterator> empty;
+            SubtreeRef ref;
             if (get_direction() == NBTreeIterator::Direction::FORWARD) {
+                if (refs_pos_ == static_cast<i32>(refs_.size())) {
+                    // Done
+                    return std::make_tuple(AKU_ENO_DATA, std::move(empty));
+                }
+                ref = refs_.at(static_cast<size_t>(refs_pos_));
                 refs_pos_++;
-                if (refs_pos_ == refs_.size()) {
-                    // Done
-                    return std::make_tuple(AKU_ENO_DATA, std::move(empty));
-                }
             } else {
-                if (refs_pos_ == 0) {
+                if (refs_pos_ < 0) {
                     // Done
                     return std::make_tuple(AKU_ENO_DATA, std::move(empty));
                 }
+                ref = refs_.at(static_cast<size_t>(refs_pos_));
                 refs_pos_--;
             }
-            SubtreeRef ref = refs_.at(refs_pos_);
             std::unique_ptr<NBTreeIterator> result;
             if (!subtree_in_range(ref, min, max)) {
                 // Subtree not in [begin_, end_) range. Proceed to next.
