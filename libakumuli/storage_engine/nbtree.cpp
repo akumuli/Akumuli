@@ -206,18 +206,19 @@ struct NBTreeLeafIterator : NBTreeIterator {
 
 
 std::tuple<aku_Status, size_t> NBTreeLeafIterator::read(aku_Timestamp *destts, double *destval, size_t size) {
+    ssize_t sz = static_cast<ssize_t>(size);
     if (status_ != AKU_SUCCESS) {
         return std::make_tuple(status_, 0);
     }
-    size_t toread = to_ - from_;
-    if (toread > size) {
-        toread = size;
+    ssize_t toread = to_ - from_;
+    if (toread > sz) {
+        toread = sz;
     }
     if (toread == 0) {
         return std::make_tuple(AKU_ENO_DATA, 0);
     }
     auto begin = from_;
-    auto end = from_ + toread;
+    ssize_t end = from_ + toread;
     std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);
     std::copy(xsbuf_.begin() + begin, xsbuf_.begin() + end, destval);
     from_ += toread;
@@ -331,6 +332,23 @@ struct NBTreeSBlockIterator : NBTreeIterator {
         , fsm_pos_(0)
         , refs_pos_(0)
     {
+    }
+
+    NBTreeSBlockIterator(std::shared_ptr<BlockStore> bstore, NBTreeSuperblock const& sblock, aku_Timestamp begin, aku_Timestamp end)
+        : begin_(begin)
+        , end_(end)
+        , addr_(EMPTY_ADDR)
+        , bstore_(bstore)
+        , fsm_pos_(1)  // FSM will bypass `init` step.
+        , refs_pos_(0)
+    {
+        aku_Status status = sblock.read_all(&refs_);
+        if (status != AKU_SUCCESS) {
+            // `read` call should fail with AKU_ENO_DATA error.
+            refs_pos_ = begin_ < end_ ? static_cast<u32>(refs_.size()) : 0ul;
+        } else {
+            refs_pos_ = begin_ < end_ ? 0ul : static_cast<u32>(refs_.size());
+        }
     }
 
     aku_Status init() {
@@ -563,7 +581,7 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore) {
     size_t size = writer_.commit();
     SubtreeRef* subtree = subtree_cast(buffer_.data());
-    subtree->payload_size = size;
+    subtree->payload_size = static_cast<u16>(size);
     if (prev_ != EMPTY_ADDR) {
         subtree->addr = prev_;
     } else {
@@ -770,62 +788,13 @@ std::tuple<aku_Timestamp, aku_Timestamp> NBTreeSuperblock::get_timestamps() cons
     return std::tie(pref->begin, pref->end);
 }
 
-//! Create subtree iterator
-static std::unique_ptr<NBTreeIterator> get_subtree_iterator(SubtreeRef const& ref,
-                                                            aku_Timestamp begin,
-                                                            aku_Timestamp end,
-                                                            std::shared_ptr<BlockStore> bstore)
-{
-    // Use BFS to iterate through the tree
-    if (ref.level == 0) {
-        // Points to leaf node
-        NBTreeLeaf leaf(bstore, ref.addr);
-        return std::move(leaf.range(begin, end));
-    }
-    NBTreeSuperblock sblock(ref.addr, bstore);
-    return std::move(sblock.search(begin, end, bstore));
-}
-
-
 std::unique_ptr<NBTreeIterator> NBTreeSuperblock::search(aku_Timestamp begin,
                                                          aku_Timestamp end,
                                                          std::shared_ptr<BlockStore> bstore) const
 {
-    /* Algorithm outline:
-     * - enumerate subtrees in right direction;
-     * - call `range` recoursively
-     * - concatenate iterators.
-     */
-    std::vector<SubtreeRef> refs;
-    aku_Status status = read_all(&refs);
-    if (status != AKU_SUCCESS) {
-        // Create bad iterator that always returns error.
-        std::unique_ptr<NBTreeIterator> p;
-        p.reset(new NBTreeLeafIterator(status));
-        return std::move(p);
-    }
-    auto min = std::min(begin, end);
-    auto max = std::max(begin, end);
-    std::vector<std::unique_ptr<NBTreeIterator>> iters;
-    if (begin < end) {
-        for (auto const& ref: refs) {
-            if (subtree_in_range(ref, min, max)) {
-                iters.push_back(std::move(get_subtree_iterator(ref, begin, end, bstore)));
-            }
-        }
-    } else {
-        for (auto it = refs.rbegin(); it < refs.rend(); it++) {
-            if (subtree_in_range(*it, min, max)) {
-                iters.push_back(std::move(get_subtree_iterator(*it, begin, end, bstore)));
-            }
-        }
-    }
-    if (iters.size() == 1) {
-        return std::move(iters.front());
-    }
-    std::unique_ptr<NBTreeIterator> iter;
-    iter.reset(new IteratorConcat(std::move(iters)));
-    return std::move(iter);
+    std::unique_ptr<NBTreeIterator> result;
+    result.reset(new NBTreeSBlockIterator(bstore, *this, begin, end));
+    return std::move(result);
 }
 
 
