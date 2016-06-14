@@ -36,20 +36,24 @@ int main(int argc, char** argv) {
         }
     }
 
-    ByteVector buffer(32 + header.timestamps.size()*32, 0);
+    ByteVector buffer(4096, 0);
     StorageEngine::DataBlockWriter writer(42, buffer.data(), static_cast<int>(buffer.size()));
-
+    u32 nelements = 0;
     size_t commit_size = 0;
     for (u32 i = 0; i < header.timestamps.size(); i++) {
         aku_Status status = writer.put(header.timestamps.at(i), header.values.at(i));
-        if (status != AKU_SUCCESS) {
+        if (status == AKU_EOVERFLOW) {
+            nelements = i;
+            break;
+        } else if (status != AKU_SUCCESS) {
             AKU_PANIC("Can't compress data: " + std::to_string(status));
         }
-        commit_size = writer.commit();
     }
+    commit_size = writer.commit();
 
     StorageEngine::DataBlockReader reader(buffer.data(), commit_size);
-    for (u32 i = 0; i < header.timestamps.size(); i++) {
+    // Only first `nelements` was written to `buffer`.
+    for (u32 i = 0; i < nelements; i++) {
         aku_Timestamp ts;
         double tx;
         aku_Status status;
