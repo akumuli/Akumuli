@@ -2,6 +2,7 @@
 #include "log_iface.h"
 #include "util.h"
 #include "status_util.h"
+#include "crc32c.h"
 
 #include <boost/crc.hpp>
 
@@ -286,11 +287,13 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
+static u32 crc32c(const u8* data, size_t size) {
+    static crc32c_impl_t impl = chose_crc32c_implementation();
+    return impl(0, data, size);
+}
+
 u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
-    // TODO: use CRC32C
-    AKU_UNUSED(data);
-    AKU_UNUSED(size);
-    return 0xDEADBEEF;
+    return crc32c(data, size);
 }
 
 
@@ -320,9 +323,7 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
 };
 
 u32 MemStore::checksum(u8 const* data, size_t size) const {
-    AKU_UNUSED(data);
-    AKU_UNUSED(size);
-    return 0xDEADBEEF;
+    return crc32c(data, size);
 }
 
 std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
