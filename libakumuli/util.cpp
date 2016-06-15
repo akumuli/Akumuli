@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>, Mark Adler <madler@alumni.caltech.edu>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -508,6 +508,19 @@ void RWLock::unlock() {
         AKU_PANIC("pthread_rwlock_unlock error");
     }
 }
+
+bool same_value(double a, double b) {
+    union Bits {
+        double d;
+        u64 u;
+    };
+    Bits ba = {};
+    ba.d = a;
+    Bits bb = {};
+    bb.d = b;
+    return ba.u == bb.u;
+}
+
 
 }
 

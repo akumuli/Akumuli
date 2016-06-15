@@ -53,6 +53,9 @@ struct BlockStore {
 
     //! Check if addr exists in block-store
     virtual bool exists(LogicAddr addr) const = 0;
+
+    //! Compute checksum of the input data.
+    virtual u32 checksum(u8 const* begin, size_t size) const = 0;
 };
 
 /** Blockstore. Contains collection of volumes.
@@ -100,7 +103,7 @@ public:
 
     virtual bool exists(LogicAddr addr) const;
 
-    // TODO: add static create fn
+    virtual u32 checksum(u8 const* data, size_t size) const;
 };
 
 //! Represents memory block
@@ -122,6 +125,7 @@ public:
 //! Should be used to create blockstore
 struct BlockStoreBuilder {
     static std::shared_ptr<BlockStore> create_memstore();
+    static std::shared_ptr<BlockStore> create_memstore(std::function<void(LogicAddr)> append_cb);
 };
 
 }
