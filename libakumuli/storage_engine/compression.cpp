@@ -262,7 +262,8 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             success &= encode_value(wstream, prev_diff, prev_flag);
             success &= encode_value(wstream, diff, flag);
             if (!success) {
-                AKU_PANIC("Buffer is too small");
+                std::runtime_error error("Buffer is too small");
+                BOOST_THROW_EXCEPTION(error);
             }
         }
     }
@@ -274,7 +275,8 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         success &= encode_value(wstream, prev_diff, prev_flag);
         success &= encode_value(wstream, 0ull, 0);
         if (!success) {
-            AKU_PANIC("Buffer is too small");
+            std::runtime_error error("Buffer is too small");
+            BOOST_THROW_EXCEPTION(error);
         }
     }
     return input.size();
@@ -534,7 +536,7 @@ DataBlockWriter::DataBlockWriter(aku_ParamId id, u8 *buf, int size)
     // offset 6
     success = stream_.put_raw(id) && success;
     if (!success || nchunks_ == nullptr || ntail_ == nullptr) {
-        AKU_PANIC("Buffer is too small");
+        AKU_PANIC("Buffer is too small (3)");
     }
     *ntail_ = 0;
     *nchunks_ = 0;
