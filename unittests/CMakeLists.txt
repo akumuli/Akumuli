@@ -372,6 +372,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/status_util.cpp
 )
