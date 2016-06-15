@@ -8,7 +8,8 @@
 namespace Akumuli {
 namespace QP {
 
-template <bool weighted> struct SpaceSaver : Node {
+template <bool weighted>
+struct SpaceSaver : Node {
     std::shared_ptr<Node> next_;
 
     struct Item {
@@ -39,7 +40,9 @@ template <bool weighted> struct SpaceSaver : Node {
     }
 
     SpaceSaver(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
-        : next_(next) {
+        : next_(next)
+        , N(0)
+    {
         double error   = ptree.get<double>("error");
         double portion = ptree.get<double>("portion");
         if (error == 0.0) {

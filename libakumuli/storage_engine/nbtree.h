@@ -56,7 +56,7 @@
 
 #pragma once
 // C++ headers
-#include <stack>
+#include <deque>
 
 // App headers
 #include "blockstore.h"
@@ -66,10 +66,17 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
+enum class NBTreeBlockType {
+    LEAF,   // data block
+    INNER,  // super block
+};
+
 enum {
     AKU_NBTREE_FANOUT = 32,
 };
 
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
@@ -106,6 +113,8 @@ struct SubtreeRef {
     u16 payload_size;
     //! Fan out index of the element (current)
     u16 fanout_index;
+    //! Checksum of the block (not used for links to child nodes)
+    u32 checksum;
 } __attribute__((packed));
 
 
@@ -164,6 +173,14 @@ public:
       * @param fanout_index Index inside current fanout
       */
     NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
+
+    /** Load from block store.
+      * @param block Leaf's serialized data.
+      * @param load Load method.
+      * @note This c-tor panics if block is invalid or doesn't exists.
+      */
+    NBTreeLeaf(std::shared_ptr<Block> bstore,
+               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -226,8 +243,14 @@ public:
     //! Create new writable node.
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
-    //! Create node from block-store (node is immutable).
+    //! Read immutable node from block-store.
+    NBTreeSuperblock(std::shared_ptr<Block> block);
+
+    //! Read immutable node from block-store.
     NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+
+    //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
+    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
 
     //! Append subtree ref
     aku_Status append(SubtreeRef const& p);
@@ -246,8 +269,13 @@ public:
     //! Get fanout index of the node
     u16 get_fanout() const;
 
+    size_t nelements() const;
+
     //! Return id of the tree
     aku_ParamId get_id() const;
+
+    //! Return addr of the previous node
+    LogicAddr get_prev_addr() const;
 
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
@@ -256,17 +284,36 @@ public:
 };
 
 
-//! NBTree root (leaf or superblock)
-struct NBTreeRoot {
-    virtual ~NBTreeRoot() = default;
-    //! Append new data to the root (doesn't work with superblocks)
-    virtual void append(aku_Timestamp ts, double value) = 0;
-    //! Append subtree metadata to the root (doesn't work with leaf nodes)
-    virtual void append(SubtreeRef const& pl) = 0;
-    //! Write all changes to the block-store, even if node is not full.
-    virtual void commit() = 0;
+//! NBTree extent
+struct NBTreeExtent {
+
+    virtual ~NBTreeExtent() = default;
+
+    /** Append new data to the root (doesn't work with superblocks)
+      * If new root created - return address of the previous root, otherwise return EMPTY
+      */
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) = 0;
+
+    /** Append subtree metadata to the root (doesn't work with leaf nodes)
+      * If new root created - return address of the previous root, otherwise return EMPTY
+      */
+    virtual std::tuple<bool, LogicAddr> append(SubtreeRef const& pl) = 0;
+
+    /** Write all changes to the block-store, even if node is not full.
+      * @param final Should be set to false during normal operation and set to true during commit.
+      * @return boolean value that is set to true when higher level node was saved as a
+      *         result of the `commit` call and address of this node after commit.
+      */
+    virtual std::tuple<bool, LogicAddr> commit(bool final) = 0;
+
     //! Return iterator
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
+
+    //! Returns true if extent was modified after last commit and has some unsaved data.
+    virtual bool is_dirty() const = 0;
+
+    //! Check extent's internal consitency
+    static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
 };
 
 
@@ -275,26 +322,55 @@ struct NBTreeRoot {
   * @li store all roots of the NBTree
   * @li create new roots lazily (NBTree starts with only one root and rarely goes above 2)
   */
-class NBTreeRootsCollection : public std::enable_shared_from_this<NBTreeRootsCollection> {
+class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::vector<std::unique_ptr<NBTreeRoot>> roots_;
+    std::deque<std::unique_ptr<NBTreeExtent>> extents_;
     aku_ParamId id_;
-    std::vector<LogicAddr> rootaddr_;
+    std::vector<LogicAddr> rescue_points_;
     bool initialized_;
 
     void init();
+    void open();
+    void repair();
 public:
+
     /** C-tor
-      * @param addresses List of root addresses in blockstore.
+      * @param addresses List of root addresses in blockstore or list of resque points.
       * @param bstore Block-store.
       */
-    NBTreeRootsCollection(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
+    NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
-    void append(SubtreeRef const& pl);
+    bool append(SubtreeRef const& pl);
 
-    void append(aku_Timestamp ts, double value);
+    bool append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+
+    //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
+    std::vector<LogicAddr> close();
+
+    //! Get roots of the tree
+    std::vector<LogicAddr> get_roots() const;
+
+    //! Get pointers to extents (for tests).
+    std::vector<NBTreeExtent const*> get_extents() const;
+
+    //! Force lazy initialization process.
+    void force_init();
+
+    enum class RepairStatus {
+        OK,
+        SKIP,
+        REPAIR
+    };
+
+    //! Calculate repair status for each rescue point.
+    static RepairStatus repair_status(std::vector<LogicAddr> rescue_points);
+
+    // Debug
+
+    //! Walk the tree from the root and print it to the stdout
+    static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
 };
 
 

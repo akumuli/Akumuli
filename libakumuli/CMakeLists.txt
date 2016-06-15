@@ -39,6 +39,7 @@ add_library(akumuli SHARED
     saxencoder.cpp
     hashfnfamily.cpp
     invertedindex.cpp
+    crc32c.cpp
     # query_processing
     queryprocessor.cpp
     queryprocessor_framework.cpp

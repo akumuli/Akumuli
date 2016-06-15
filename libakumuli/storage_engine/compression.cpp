@@ -211,7 +211,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
 {
     PredictorT predictor(PREDICTOR_N);
     u64 prev_diff = 0;
-    unsigned char prev_flag = 0;
+    u8 prev_flag = 0;
     for (size_t ix = 0u; ix != input.size(); ix++) {
         union {
             double real;
@@ -233,7 +233,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
         }
 
         int nbytes;
-        unsigned char flag;
+        u8 flag;
 
         if (trailing_zeros > leading_zeros) {
             // this would be the case with low precision values
@@ -257,19 +257,27 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
             prev_flag = flag;
         } else {
             // we're storing values by pairs to save space
-            unsigned char flags = (prev_flag << 4) | flag;
-            wstream.put_raw(flags);
-            encode_value(wstream, prev_diff, prev_flag);
-            encode_value(wstream, diff, flag);
+            u8 flags = static_cast<u8>((prev_flag << 4) | flag);
+            bool success = wstream.put_raw(flags);
+            success &= encode_value(wstream, prev_diff, prev_flag);
+            success &= encode_value(wstream, diff, flag);
+            if (!success) {
+                std::runtime_error error("Buffer is too small");
+                BOOST_THROW_EXCEPTION(error);
+            }
         }
     }
     if (input.size() % 2 != 0) {
         // `input` contains odd number of values so we should use
         // empty second value that will take one byte in output
-        unsigned char flags = prev_flag << 4;
-        wstream.put_raw(flags);
-        encode_value(wstream, prev_diff, prev_flag);
-        encode_value(wstream, 0ull, 0);
+        u8 flags = static_cast<u8>(prev_flag << 4);
+        bool success = wstream.put_raw(flags);
+        success &= encode_value(wstream, prev_diff, prev_flag);
+        success &= encode_value(wstream, 0ull, 0);
+        if (!success) {
+            std::runtime_error error("Buffer is too small");
+            BOOST_THROW_EXCEPTION(error);
+        }
     }
     return input.size();
 }
@@ -285,7 +293,7 @@ FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
 double FcmStreamReader::next() {
     unsigned char flag = 0;
     if (iter_++ % 2 == 0) {
-        flags_ = (int)stream_.read_raw<unsigned char>();
+        flags_ = static_cast<u32>(stream_.read_raw<u8>());
         flag = static_cast<unsigned char>(flags_ >> 4);
     } else {
         flag = static_cast<unsigned char>(flags_ & 0xF);
@@ -301,7 +309,7 @@ double FcmStreamReader::next() {
     return curr.real;
 }
 
-const unsigned char* FcmStreamReader::pos() const { return stream_.pos(); }
+const u8 *FcmStreamReader::pos() const { return stream_.pos(); }
 
 void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
                                          size_t                   numvalues,
@@ -508,6 +516,8 @@ DataBlockWriter::DataBlockWriter()
     , ts_stream_(stream_)
     , val_stream_(stream_)
     , write_index_(0)
+    , nchunks_(nullptr)
+    , ntail_(nullptr)
 {
 }
 
@@ -526,7 +536,7 @@ DataBlockWriter::DataBlockWriter(aku_ParamId id, u8 *buf, int size)
     // offset 6
     success = stream_.put_raw(id) && success;
     if (!success || nchunks_ == nullptr || ntail_ == nullptr) {
-        AKU_PANIC("Buffer is too small");
+        AKU_PANIC("Buffer is too small (3)");
     }
     *ntail_ = 0;
     *nchunks_ = 0;
@@ -591,6 +601,7 @@ size_t DataBlockWriter::commit() {
                 break;
             }
             *ntail_ += 1;
+            write_index_--;
         }
     }
     assert(nchunks <= 0xFFFF);

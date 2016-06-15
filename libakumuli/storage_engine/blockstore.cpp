@@ -2,9 +2,82 @@
 #include "log_iface.h"
 #include "util.h"
 #include "status_util.h"
+#include "crc32c.h"
+
+#include <boost/crc.hpp>
 
 namespace Akumuli {
 namespace StorageEngine {
+
+static u64 hash32(u32 value, u32 bits, u64 seed) {
+    // hashes x strongly universally into N bits
+    // using the random seed.
+    static const u64 a = (1ul << 32) - 1;
+    return (a * value + seed) >> (64-bits);
+}
+
+static u64 hash(u64 value, u32 bits) {
+    auto a = hash32(value & 0xFFFFFFFF, bits, 277);
+    auto b = hash32(value >> 32, bits, 337);
+    return a ^ b;
+}
+
+BlockCache::BlockCache(u32 Nbits)
+    : block_cache_(1 << Nbits, PBlock())
+    , bits_(Nbits)
+    , gen_(dev_())
+    , dist_(0, 1 << Nbits)
+{
+}
+
+int BlockCache::probe(LogicAddr addr) {
+    auto h = hash(addr, bits_);
+    auto b = block_cache_.at(h);
+    if (b) {
+        return b->get_addr() == addr ? 2 : 1;
+    }
+    return 0;
+}
+
+void BlockCache::insert(PBlock block) {
+    auto addr = block->get_addr();
+    auto pr = probe(addr);
+    if (pr == 2) {
+        // No need to insert, addr already sits in the cache.
+        return;
+    }
+    if (pr == 0) {
+        // Eviction. Generate two random hashes. Evict least accessed.
+        auto h1 = dist_(gen_);
+        auto h2 = dist_(gen_);
+        auto p1 = block_cache_.at(h1);
+        auto p2 = block_cache_.at(h2);
+        if (p1 && p2) {
+            if (p1.use_count() > p2.use_count()) {
+                block_cache_.at(h2).reset();
+            } else if (p1.use_count() < p2.use_count()) {
+                block_cache_.at(h1).reset();
+            } else {
+                if (p1->get_addr() < p2->get_addr()) {
+                    block_cache_.at(h1).reset();
+                } else {
+                    block_cache_.at(h2).reset();
+                }
+            }
+        }
+    }
+    auto h = hash(addr, bits_);
+    block_cache_.at(h) = block;
+}
+
+BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
+    auto it = hash(addr, bits_);
+    auto p = block_cache_.at(it);
+    if (p->get_addr() != addr) {
+        p.reset();
+    }
+    return p;
+}
 
 
 Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data)
@@ -22,9 +95,15 @@ size_t Block::get_size() const {
     return data_.size();
 }
 
+LogicAddr Block::get_addr() const {
+    return addr_;
+}
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
     : meta_(MetaVolume::open_existing(metapath.c_str()))
+    , current_volume_(0)
+    , current_gen_(0)
+    , total_size_(0)
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -42,20 +121,18 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
         dirty_.push_back(0);
     }
 
-    total_size_ = 0ull;
     for (const auto& vol: volumes_) {
         total_size_ += vol->get_size();
     }
 
     // set current volume, current volume is a first volume with free space available
-    for (size_t i = 0u; i < volumes_.size(); i++) {
+    for (u32 i = 0u; i < volumes_.size(); i++) {
         u32 curr_gen, nblocks;
         aku_Status status;
         std::tie(status, curr_gen) = meta_->get_generation(i);
         if (status == AKU_SUCCESS) {
             std::tie(status, nblocks) = meta_->get_nblocks(i);
-        }
-        if (status != AKU_SUCCESS) {
+        } else {
             Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted, error: "
                         + StatusUtil::str(status));
             AKU_PANIC("Meta-volume corrupted, " + StatusUtil::str(status));
@@ -103,7 +180,7 @@ static LogicAddr make_logic(u32 gen, BlockAddr addr) {
 bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
-    auto volix = gen % volumes_.size();
+    auto volix = gen % static_cast<u32>(volumes_.size());
     aku_Status status;
     u32 actual_gen;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
@@ -122,7 +199,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
-    auto volix = gen % volumes_.size();
+    auto volix = gen % static_cast<u32>(volumes_.size());
     u32 actual_gen;
     u32 nblocks;
     std::tie(status, actual_gen) = meta_->get_generation(volix);
@@ -210,48 +287,82 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
+static u32 crc32c(const u8* data, size_t size) {
+    static crc32c_impl_t impl = chose_crc32c_implementation();
+    return impl(0, data, size);
+}
+
+u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
+    return crc32c(data, size);
+}
+
 
 //! Memory resident blockstore for tests (and machines with infinite RAM)
 struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     std::vector<u8> buffer_;
+    std::function<void(LogicAddr)> append_callback_;
     u32 write_pos_;
+    u32 pad_;
+
     MemStore()
         : write_pos_(0)
     {
     }
 
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) {
-        std::shared_ptr<Block> block;
-        u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
-        if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-            return std::make_tuple(AKU_EOVERFLOW, block);
-        }
-        std::vector<u8> data;
-        data.reserve(AKU_BLOCK_SIZE);
-        auto begin = buffer_.begin() + offset;
-        auto end = begin + AKU_BLOCK_SIZE;
-        std::copy(begin, end, std::back_inserter(data));
-        block.reset(new Block(shared_from_this(), addr, std::move(data)));
-        return std::make_tuple(AKU_SUCCESS, block);
+    MemStore(std::function<void(LogicAddr)> append_cb)
+        : append_callback_(append_cb)
+        , write_pos_(0)
+    {
     }
 
-    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data) {
-        std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
-        return std::make_tuple(AKU_SUCCESS, write_pos_++);
-    }
-
-    virtual void flush() {
-        // no-op
-    }
-
-    virtual bool exists(LogicAddr addr) const {
-        return addr < write_pos_;
-    }
+    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data);
+    virtual void flush();
+    virtual bool exists(LogicAddr addr) const;
+    virtual u32 checksum(u8 const* data, size_t size) const;
 };
 
+u32 MemStore::checksum(u8 const* data, size_t size) const {
+    return crc32c(data, size);
+}
+
+std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
+    std::shared_ptr<Block> block;
+    u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
+    if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
+        return std::make_tuple(AKU_EOVERFLOW, block);
+    }
+    std::vector<u8> data;
+    data.reserve(AKU_BLOCK_SIZE);
+    auto begin = buffer_.begin() + offset;
+    auto end = begin + AKU_BLOCK_SIZE;
+    std::copy(begin, end, std::back_inserter(data));
+    block.reset(new Block(shared_from_this(), addr, std::move(data)));
+    return std::make_tuple(AKU_SUCCESS, block);
+}
+
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(const u8 *data) {
+    std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
+    if (append_callback_) {
+        append_callback_(write_pos_);
+    }
+    return std::make_tuple(AKU_SUCCESS, write_pos_++);
+}
+
+void MemStore::flush() {
+    // no-op
+}
+
+bool MemStore::exists(LogicAddr addr) const {
+    return addr < write_pos_;
+}
 
 std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore() {
     return std::make_shared<MemStore>();
+}
+
+std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore(std::function<void(LogicAddr)> append_cb) {
+    return std::make_shared<MemStore>(append_cb);
 }
 
 }}  // namespace

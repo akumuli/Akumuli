@@ -44,7 +44,7 @@ static size_t _get_file_size(apr_file_t* file) {
     apr_finfo_t info;
     auto status = apr_file_info_get(&info, APR_FINFO_SIZE, file);
     panic_on_error(status, "Can't get file info");
-    return info.size;
+    return static_cast<size_t>(info.size);
 }
 
 /** This function creates file with specified size
@@ -56,7 +56,7 @@ static void _create_file(const char* file_name, u64 size) {
     apr_status_t status = apr_file_open(&pfile, file_name, APR_TRUNCATE|APR_CREATE|APR_WRITE, APR_OS_DEFAULT, pool.get());
     panic_on_error(status, "Can't create file");
     AprFilePtr file(pfile, &_close_apr_file);
-    status = apr_file_trunc(file.get(), size);
+    status = apr_file_trunc(file.get(), static_cast<apr_off_t>(size));
     panic_on_error(status, "Can't truncate file");
 }
 
@@ -68,12 +68,12 @@ struct VolumeRef {
     u32 nblocks;
     u32 capacity;
     u32 generation;
-} __attribute__((packed));
+};
 
 MetaVolume::MetaVolume(const char *path)
     : mmap_(path, false)
     , file_size_(mmap_.get_size())
-    , mmap_ptr_((u8*)mmap_.get_pointer())
+    , mmap_ptr_(static_cast<u8*>(mmap_.get_pointer()))
     , double_write_buffer_(mmap_.get_size(), 0)
 {
     memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_.get_size());
@@ -87,12 +87,12 @@ void MetaVolume::create_new(const char* path, size_t capacity, const u32 *vol_ca
     size_t size = capacity * AKU_BLOCK_SIZE;
     _create_file(path, size);
     MemoryMappedFile mmap(path, false);
-    u8* it = (u8*)mmap.get_pointer();
+    u8* it = static_cast<u8*>(mmap.get_pointer());
     u8* end = it + mmap.get_size();
     u32 id = 0;
     // Initialization
     while(it < end) {
-        VolumeRef* pvolume = (VolumeRef*)it;
+        VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(it);
         pvolume->capacity = vol_capacities[id];
         pvolume->generation = id;
         pvolume->id = id;
@@ -114,7 +114,7 @@ std::unique_ptr<MetaVolume> MetaVolume::open_existing(const char* path) {
 //! Helper function
 static VolumeRef* get_volref(u8* p, u32 id) {
     u8* it = p + id * AKU_BLOCK_SIZE;
-    VolumeRef* vol = (VolumeRef*)it;
+    VolumeRef* vol = reinterpret_cast<VolumeRef*>(it);
     return vol;
 }
 
@@ -206,8 +206,8 @@ aku_Status MetaVolume::flush(u32 id) {
 Volume::Volume(const char* path, size_t write_pos)
     : apr_pool_(_make_apr_pool())
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
-    , file_size_(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE)
-    , write_pos_(write_pos)
+    , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
+    , write_pos_(static_cast<u32>(write_pos))
 {
 }
 

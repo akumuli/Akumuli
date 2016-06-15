@@ -67,7 +67,7 @@ void CursorFSM::put(const aku_Sample &result) {
     auto len = std::max(result.payload.size, (u16)sizeof(aku_Sample));
     auto ptr = (char*)usr_buffer_ + write_offset_;
     assert(len >= sizeof(aku_Sample));
-    assert((result.payload.type|aku_PData::SAX_WORD) == 0 ?
+    assert((result.payload.type & aku_PData::SAX_WORD) == 0 ?
            result.payload.size == sizeof(aku_Sample) :
            result.payload.size >= sizeof(aku_Sample));
     memcpy(ptr, &result, len);
@@ -108,12 +108,15 @@ size_t CursorFSM::get_data_len() const {
 
 // CoroCursor
 
+// coverity[+alloc]
 void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const
 {
     ctx.size = size;
+    // TODO: this is not an error, add to coverity mapping
     ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
 }
 
+// coverity[+free : arg-1]
 void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx) const {
     free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
 }

@@ -39,10 +39,11 @@ namespace Akumuli {
 // ----
 
 
-PageHeader::PageHeader(u32 count, u64 length, u32 page_id, u32 numpages)
+PageHeader::PageHeader(u32, u64 length, u32 page_id, u32 numpages)
     : version(0)
     , count(0)
     , next_offset(0)
+    , checkpoint(0)
     , open_count(0)
     , close_count(0)
     , page_id(page_id)
@@ -195,7 +196,12 @@ aku_Status PageHeader::complete_chunk(const UncompressedChunk& data) {
         char* begin;
         char* end;
 
-        Writer(PageHeader *h) : header(h) {}
+        Writer(PageHeader *h)
+            : header(h)
+            , begin(nullptr)
+            , end(nullptr)
+        {
+        }
 
         virtual aku_MemRange allocate() {
             size_t bytes_free = header->get_free_space();
@@ -540,7 +546,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         auto put_entry = [&header, queryproc, page] (u32 i) {
             auto id = header->paramids.at(i);
             if (queryproc->filter().apply(id) == QP::IQueryFilter::PROCESS) {
-                aku_PData pdata;
+                aku_PData pdata{};
                 pdata.type = AKU_PAYLOAD_FLOAT;
                 pdata.float64 = header->values.at(i);
                 pdata.size = sizeof(aku_Sample);
@@ -555,13 +561,13 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
         };
 
         if (query_range_.is_backward()) {
-            for (int i = static_cast<int>(start_pos); i >= 0; i--) {
-                result = check_timestamp(header->timestamps[i]);
+            for (int i = start_pos; i >= 0; i--) {
+                result = check_timestamp(header->timestamps[static_cast<size_t>(i)]);
                 if (result == OVERSHOOT) {
                     break;
                 }
                 if (result == IN_RANGE) {
-                    if (!put_entry(i)) {
+                    if (!put_entry(static_cast<u32>(i))) {
                         // Scaning process interrupted by the user (connection closed)
                         result = INTERRUPTED;
                         break;
@@ -569,14 +575,14 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
                 }
             }
         } else {
-            auto end_pos = (int)header->timestamps.size();
+            auto end_pos = static_cast<int>(header->timestamps.size());
             for (auto i = start_pos; i != end_pos; i++) {
-                result = check_timestamp(header->timestamps[i]);
+                result = check_timestamp(header->timestamps[static_cast<size_t>(i)]);
                 if (result == OVERSHOOT) {
                     break;
                 }
                 if (result == IN_RANGE) {
-                    if (!put_entry(i)) {
+                    if (!put_entry(static_cast<u32>(i))) {
                         result = INTERRUPTED;
                         break;
                     }

@@ -5,17 +5,6 @@
 include_directories(../akumulid)
 include_directories(../libakumuli)
 
-# Small utils
-add_executable(
-    test_utils
-    test_utils.cpp
-    ../akumulid/expected.h
-)
-target_link_libraries(test_utils
-    ${Boost_LIBRARIES}
-)
-add_test(utils test_utils)
-
 # Streams
 add_executable(
     test_streams
@@ -222,14 +211,15 @@ add_test(cursor test_cursor)
 
 # Mmap test
 add_executable(
-    test_mmap
-    test_mmap.cpp
+    test_util
+    test_util.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
-    test_mmap
+    test_util
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -237,7 +227,7 @@ target_link_libraries(
     pthread
 )
 
-add_test(mmap test_mmap)
+add_test(util test_util)
 
 # Compression test
 add_executable(
@@ -382,6 +372,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/status_util.cpp
 )
@@ -406,7 +397,10 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/crc32c.cpp
 )
+
+target_compile_definitions(test_nbtree PRIVATE AKU_UNIT_TEST_CONTEXT=1)
 
 target_link_libraries(
     test_nbtree

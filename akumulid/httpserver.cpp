@@ -117,6 +117,7 @@ HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder
     : acl_(acl)
     , proc_(qproc)
     , port_(port)
+    , daemon_(nullptr)  // `start` should be called to initialize daemon_ correctly
 {
 }
 
