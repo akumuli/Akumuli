@@ -1000,15 +1000,14 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         , level_(level)
         , pad_{}
     {
-        if (addr) {
+        if (addr != EMPTY_ADDR) {
             // `addr` is not empty. Node should be restored from
             // block-store.
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore_, addr);
             if (status  == AKU_EBAD_ARG) {
-                fanout_index_ = 0;
-                last_ = EMPTY_ADDR;
+                addr = EMPTY_ADDR;
             } else if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
@@ -1021,7 +1020,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
                 last_ = psubtree->addr;
             }
         }
-        if (last_ != EMPTY_ADDR) {
+        if (addr != EMPTY_ADDR) {
             // CoW constructor should be used here.
             curr_.reset(new NBTreeSuperblock(addr, bstore_, false));
         } else {

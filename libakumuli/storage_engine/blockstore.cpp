@@ -330,7 +330,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     std::shared_ptr<Block> block;
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
     if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-        return std::make_tuple(AKU_EOVERFLOW, block);
+        return std::make_tuple(AKU_EBAD_ARG, block);
     }
     std::vector<u8> data;
     data.reserve(AKU_BLOCK_SIZE);
