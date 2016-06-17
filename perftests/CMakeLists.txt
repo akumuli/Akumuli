@@ -230,6 +230,7 @@ add_executable(
     perf_nbtree.cpp
     perftest_tools.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp

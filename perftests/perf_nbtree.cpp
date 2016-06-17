@@ -47,30 +47,43 @@ int main() {
 
     auto bstore = FixedSizeFileStorage::open(metapath, paths);
 
-    NBTree tree_a(42, bstore);
-    NBTree tree_b(24, bstore);
+    std::vector<std::shared_ptr<NBTreeExtentsList>> trees;
+    const int numids = 10000;
+    for (int i = 0; i < numids; i++) {
+        auto id = static_cast<aku_ParamId>(i);
+        std::vector<LogicAddr> empty;
+        auto ext = std::make_shared<NBTreeExtentsList>(id, empty, bstore);
+        trees.push_back(std::move(ext));
+    }
 
     const int N = 100000000;
 
     Timer tm;
+    size_t rr = 0;
+    size_t flush = 0;
     for (int i = 1; i < (N+1); i++) {
-        aku_Timestamp ts = i;
+        aku_Timestamp ts = static_cast<aku_Timestamp>(i);
         double value = 0.01*i;
-        if (i&1) {
-            tree_a.append(ts, value);
-        } else {
-            tree_b.append(ts, value);
+        if (rr % 10000 == 0) {
+            rr = static_cast<size_t>(rand());
         }
-        if (i % 10000 == 0) {
-            bstore->flush();
+        if (trees[rr++ % trees.size()]->append(ts, value)) {
+            flush++;
+            if (flush % trees.size() == 0) {
+                std::cout << "About to call flush" << std::endl;
+                bstore->flush();
+            }
         }
         if (i % 1000000 == 0) {
             std::cout << i << "\t" << tm.elapsed() << " sec" << std::endl;
             tm.restart();
         }
     }
-    std::cout << "Root(A): " << tree_a.roots().at(0) << std::endl;
-    std::cout << "Root(B): " << tree_b.roots().at(0) << std::endl;
 
+    for (size_t i = 0; i < trees.size(); i++) {
+        trees[i]->close();
+    }
+
+    std::cout << "Write time: " << tm.elapsed() << "s" << std::endl;
     return 0;
 }

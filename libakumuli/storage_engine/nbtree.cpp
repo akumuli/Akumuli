@@ -28,6 +28,9 @@ static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared
     aku_Status status;
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(curr);
+    if (status != AKU_SUCCESS) {
+        return std::tie(status, block);
+    }
     // Check consistency (works with both inner and leaf nodes).
     u8 const* data = block->get_data();
     SubtreeRef const* subtree = subtree_cast(data);
@@ -36,7 +39,7 @@ static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared
         std::stringstream fmt;
         fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
         Logger::msg(AKU_LOG_ERROR, fmt.str());
-        status = AKU_ENO_DATA;
+        status = AKU_EBAD_DATA;
     }
     return std::tie(status, block);
 }
@@ -71,7 +74,7 @@ static aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out
     }
     if (xs.empty()) {
         // Can't add empty leaf node to the node!
-        return AKU_ENO_DATA;
+        return AKU_EBAD_ARG;
     }
     double min = std::numeric_limits<double>::max();
     double max = std::numeric_limits<double>::min();
@@ -751,12 +754,24 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     }
     SubtreeRef* backref = subtree_cast(buffer_.data());
     if (fanout_index_ != 0) {
-        NBTreeSuperblock subtree(prev_, bstore);
-        aku_Status status = init_subtree_from_subtree(subtree, *backref);
-        if (status != AKU_SUCCESS) {
+        aku_Status status;
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = read_and_check(bstore, prev_);
+        if (status == AKU_EBAD_ARG) {
+            // Previous root was deleted due to retention policy
+            backref->addr = EMPTY_ADDR;
+        } else if (status !=  AKU_SUCCESS) {
+            // Some other error!
             return std::make_tuple(status, EMPTY_ADDR);
+        } else {
+            // Everything is OK
+            NBTreeSuperblock subtree(block);
+            status = init_subtree_from_subtree(subtree, *backref);
+            if (status != AKU_SUCCESS) {
+                return std::make_tuple(status, EMPTY_ADDR);
+            }
+            backref->addr = prev_;
         }
-        backref->addr = prev_;
     } else {
         backref->addr = EMPTY_ADDR;
     }
@@ -834,15 +849,19 @@ struct NBTreeLeafExtent : NBTreeExtent {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore_, last_);
-            if (status != AKU_SUCCESS) {
-                // FIXME: handle AKU_ENO_DATA!
-                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
-            }
-            auto psubtree = subtree_cast(block->get_data());
-            fanout_index_ = psubtree->fanout_index + 1;
-            if (fanout_index_ == AKU_NBTREE_FANOUT) {
+            if (status == AKU_EBAD_ARG) {
+                // Can't read previous node (retention)
                 fanout_index_ = 0;
                 last_ = EMPTY_ADDR;
+            } else if (status != AKU_SUCCESS) {
+                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
+            } else {
+                auto psubtree = subtree_cast(block->get_data());
+                fanout_index_ = psubtree->fanout_index + 1;
+                if (fanout_index_ == AKU_NBTREE_FANOUT) {
+                    fanout_index_ = 0;
+                    last_ = EMPTY_ADDR;
+                }
             }
         }
         reset_leaf();
@@ -981,23 +1000,28 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         , level_(level)
         , pad_{}
     {
-        if (addr != EMPTY_ADDR) {
+        if (addr) {
             // `addr` is not empty. Node should be restored from
             // block-store.
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore_, addr);
-            if (status != AKU_SUCCESS) {
-                // FIXME: handle AKU_ENO_DATA!
-                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
-            }
-            auto psubtree = subtree_cast(block->get_data());
-            fanout_index_ = psubtree->fanout_index + 1;
-            if (fanout_index_ == AKU_NBTREE_FANOUT) {
+            if (status  == AKU_EBAD_ARG) {
                 fanout_index_ = 0;
                 last_ = EMPTY_ADDR;
+            } else if (status != AKU_SUCCESS) {
+                AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
+            } else {
+                auto psubtree = subtree_cast(block->get_data());
+                fanout_index_ = psubtree->fanout_index + 1;
+                if (fanout_index_ == AKU_NBTREE_FANOUT) {
+                    fanout_index_ = 0;
+                    last_ = EMPTY_ADDR;
+                }
+                last_ = psubtree->addr;
             }
-            last_ = psubtree->addr;
+        }
+        if (last_ != EMPTY_ADDR) {
             // CoW constructor should be used here.
             curr_.reset(new NBTreeSuperblock(addr, bstore_, false));
         } else {
@@ -1133,7 +1157,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
         // Try to read block and check stats
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore, refs[i].addr);
-        if (status == AKU_ENO_DATA) {
+        if (status == AKU_EBAD_ARG) {
             // block was deleted due to retention.
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
         } else if (status == AKU_SUCCESS) {
