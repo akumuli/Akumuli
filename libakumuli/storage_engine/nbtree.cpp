@@ -1,4 +1,5 @@
 // C++
+#include <iostream>  // For debug print fn.
 #include <algorithm>
 #include <vector>
 #include <sstream>
@@ -269,7 +270,7 @@ struct IteratorConcat : NBTreeIterator {
 };
 
 std::tuple<aku_Status, size_t> IteratorConcat::read(aku_Timestamp *destts, double *destval, size_t size) {
-    aku_Status status = AKU_SUCCESS;
+    aku_Status status = AKU_ENO_DATA;
     size_t ressz = 0;  // current size
     size_t accsz = 0;  // accumulated size
     while(iter_index_ < iter_.size()) {
