@@ -17,6 +17,8 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+extern const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
+
 static SubtreeRef* subtree_cast(u8* p) {
     return reinterpret_cast<SubtreeRef*>(p);
 }
@@ -470,11 +472,11 @@ NBTreeSBlockIterator::Direction NBTreeSBlockIterator::get_direction() {
 
 NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     : prev_(prev)
-    , buffer_(AKU_BLOCK_SIZE, 0)
-    , writer_(id, buffer_.data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
+    , block_(std::make_shared<Block>())
+    , writer_(id, block_->get_data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
     , fanout_index_(fanout_index)
 {
-    SubtreeRef* subtree = subtree_cast(buffer_.data());
+    SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->addr = prev;
     subtree->level = 0;  // Leaf node
     subtree->id = id;
@@ -491,30 +493,22 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
 }
 
 
-NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr, LeafLoadMethod load)
-    : NBTreeLeaf(read_block_from_bstore(bstore, curr), load)
+NBTreeLeaf::NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr)
+    : NBTreeLeaf(read_block_from_bstore(bstore, curr))
 {
 }
 
-NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block, LeafLoadMethod load)
+NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block)
     : prev_(EMPTY_ADDR)
 {
-    if (load == LeafLoadMethod::FULL_PAGE_LOAD) {
-        buffer_.reserve(block->get_size());
-        std::copy(block->get_data(), block->get_data() + block->get_size(),
-                  std::back_inserter(buffer_));
-    } else {
-        buffer_.reserve(sizeof(SubtreeRef));
-        std::copy(block->get_data(), block->get_data() + sizeof(SubtreeRef),
-                  std::back_inserter(buffer_));
-    }
-    SubtreeRef* subtree = subtree_cast(buffer_.data());
+    block_ = block;
+    SubtreeRef* subtree = subtree_cast(block_->get_data());
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
 }
 
 size_t NBTreeLeaf::nelements() const {
-    SubtreeRef const* subtree = subtree_cast(buffer_.data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_data());
     return subtree->count;
 }
 
@@ -523,12 +517,12 @@ u16 NBTreeLeaf::get_fanout() const {
 }
 
 aku_ParamId NBTreeLeaf::get_id() const {
-    SubtreeRef const* subtree = subtree_cast(buffer_.data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_data());
     return subtree->id;
 }
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeLeaf::get_timestamps() const {
-    SubtreeRef const* subtree = subtree_cast(buffer_.data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_data());
     return std::make_tuple(subtree->begin, subtree->end);
 }
 
@@ -541,12 +535,12 @@ LogicAddr NBTreeLeaf::get_prev_addr() const {
 aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
                                 std::vector<double>* values) const
 {
-    if (buffer_.size() == sizeof(SubtreeRef)) {
+    int windex = writer_.get_write_index();
+    if (windex == 0) {
         // Error. Page is not fully loaded
         return AKU_ENO_DATA;
     }
-    int windex = writer_.get_write_index();
-    DataBlockReader reader(buffer_.data() + sizeof(SubtreeRef), buffer_.size());
+    DataBlockReader reader(block_->get_data() + sizeof(SubtreeRef), block_->get_size());
     size_t sz = reader.nelements();
     timestamps->reserve(sz);
     values->reserve(sz);
@@ -571,7 +565,7 @@ aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
 aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
     aku_Status status = writer_.put(ts, value);
     if (status == AKU_SUCCESS) {
-        SubtreeRef* subtree = subtree_cast(buffer_.data());
+        SubtreeRef* subtree = subtree_cast(block_->get_data());
         subtree->end = ts;
         if (subtree->count == 0) {
             subtree->begin = ts;
@@ -586,7 +580,7 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
 
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore) {
     size_t size = writer_.commit();
-    SubtreeRef* subtree = subtree_cast(buffer_.data());
+    SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->payload_size = static_cast<u16>(size);
     if (prev_ != EMPTY_ADDR) {
         subtree->addr = prev_;
@@ -601,8 +595,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->level = 0;
     subtree->fanout_index = fanout_index_;
     // Compute checksum
-    subtree->checksum = bstore->checksum(buffer_.data() + sizeof(SubtreeRef), size);
-    return bstore->append_block(buffer_.data());
+    subtree->checksum = bstore->checksum(block_->get_data() + sizeof(SubtreeRef), size);
+    return bstore->append_block(block_);
 }
 
 
@@ -664,7 +658,7 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Time
 // //////////////////////// //
 
 NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
-    : buffer_(AKU_BLOCK_SIZE, 0)
+    : block_(std::make_shared<Block>())
     , id_(id)
     , write_pos_(0)
     , fanout_index_(fanout)
@@ -675,17 +669,16 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u
 }
 
 NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
-    : buffer_(AKU_BLOCK_SIZE, 0)
+    : block_(block)
     , immutable_(true)
 {
-    // Read content from bstore
+    // Use zero-copy here.
     SubtreeRef const* ref = subtree_cast(block->get_data());
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
     prev_ = ref->addr;
     write_pos_ = ref->payload_size;
     level_ = ref->level;
-    memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
 }
 
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore)
@@ -694,7 +687,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
 }
 
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last)
-    : buffer_(AKU_BLOCK_SIZE, 0)
+    : block_(std::make_shared<Block>())
     , immutable_(false)
 {
     std::shared_ptr<Block> block = read_block_from_bstore(bstore, addr);
@@ -705,9 +698,14 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     level_ = ref->level;
     write_pos_ = ref->payload_size;
     if (remove_last && write_pos_ != 0) {
+        // We can't use zero-copy here because `block` belongs to other node.
         write_pos_--;
+        memcpy(block_->get_data(), block->get_data(), AKU_BLOCK_SIZE);
     }
-    memcpy(buffer_.data(), block->get_data(), AKU_BLOCK_SIZE);
+    else {
+        // Zero copy
+        block_ = block;
+    }
 }
 
 size_t NBTreeSuperblock::nelements() const {
@@ -727,7 +725,7 @@ aku_ParamId NBTreeSuperblock::get_id() const {
 }
 
 LogicAddr NBTreeSuperblock::get_prev_addr() const {
-    return subtree_cast(buffer_.data())->addr;
+    return subtree_cast(block_->get_data())->addr;
 }
 
 aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
@@ -738,7 +736,7 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
         return AKU_EBAD_DATA;
     }
     // Write data into buffer
-    SubtreeRef* pref = subtree_cast(buffer_.data());
+    SubtreeRef* pref = subtree_cast(block_->get_data());
     auto it = pref + 1 + write_pos_;
     *it = p;
     if (write_pos_ == 0) {
@@ -753,7 +751,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     if (immutable_) {
         return std::make_tuple(AKU_EBAD_DATA, EMPTY_ADDR);
     }
-    SubtreeRef* backref = subtree_cast(buffer_.data());
+    SubtreeRef* backref = subtree_cast(block_->get_data());
     if (fanout_index_ != 0) {
         aku_Status status;
         std::shared_ptr<Block> block;
@@ -784,8 +782,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     backref->level = level_;
     backref->version = AKUMULI_VERSION;
     // add checksum
-    backref->checksum = bstore->checksum(buffer_.data() + sizeof(SubtreeRef), backref->payload_size);
-    return bstore->append_block(buffer_.data());
+    backref->checksum = bstore->checksum(block_->get_data() + sizeof(SubtreeRef), backref->payload_size);
+    return bstore->append_block(block_);
 }
 
 bool NBTreeSuperblock::is_full() const {
@@ -793,8 +791,8 @@ bool NBTreeSuperblock::is_full() const {
 }
 
 aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
+    SubtreeRef const* ref = subtree_cast(block_->get_data());
     for(u32 ix = 0u; ix < write_pos_; ix++) {
-        SubtreeRef const* ref = subtree_cast(buffer_.data());
         ref += (1 + ix);
         refs->push_back(*ref);
     }
@@ -802,7 +800,7 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
 }
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeSuperblock::get_timestamps() const {
-    SubtreeRef const* pref = subtree_cast(buffer_.data());
+    SubtreeRef const* pref = subtree_cast(block_->get_data());
     return std::tie(pref->begin, pref->end);
 }
 
@@ -827,7 +825,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
     std::weak_ptr<NBTreeExtentsList> roots_;
     aku_ParamId id_;
     LogicAddr last_;
-    std::unique_ptr<NBTreeLeaf> leaf_;
+    std::shared_ptr<NBTreeLeaf> leaf_;
     u16 fanout_index_;
     // padding
     u16 pad0_;
@@ -870,7 +868,12 @@ struct NBTreeLeafExtent : NBTreeExtent {
 
     aku_Status get_prev_subtreeref(SubtreeRef &payload) {
         aku_Status status = AKU_SUCCESS;
-        NBTreeLeaf leaf(bstore_, last_, NBTreeLeaf::LeafLoadMethod::FULL_PAGE_LOAD);
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = read_and_check(bstore_, last_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        NBTreeLeaf leaf(block);
         status = init_subtree_from_leaf(leaf, payload);
         payload.addr = last_;
         return status;

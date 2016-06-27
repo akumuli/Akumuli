@@ -74,8 +74,8 @@ int main() {
         if (trees[id]->append(ts, value)) {
             flush++;
             if (flush % trees.size() == 0) {
-                std::cout << "About to call flush" << std::endl;
-                bstore->flush();
+                //std::cout << "About to call flush" << std::endl;
+                //bstore->flush();
             }
         }
         if (nsamples < 10) {

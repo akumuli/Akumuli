@@ -4,10 +4,12 @@
 #include "status_util.h"
 #include "crc32c.h"
 
-#include <boost/crc.hpp>
+#include <cassert>
 
 namespace Akumuli {
 namespace StorageEngine {
+
+extern const LogicAddr EMPTY_ADDR;
 
 static u64 hash32(u32 value, u32 bits, u64 seed) {
     // hashes x strongly universally into N bits
@@ -80,14 +82,23 @@ BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
 }
 
 
-Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data)
-    : store_(bs)
-    , data_(std::move(data))
+Block::Block(LogicAddr addr, std::vector<u8>&& data)
+    : data_(std::move(data))
     , addr_(addr)
 {
 }
 
+Block::Block()
+    : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
+    , addr_(EMPTY_ADDR)
+{
+}
+
 const u8* Block::get_data() const {
+    return data_.data();
+}
+
+u8* Block::get_data() {
     return data_.data();
 }
 
@@ -97,6 +108,10 @@ size_t Block::get_size() const {
 
 LogicAddr Block::get_addr() const {
     return addr_;
+}
+
+void Block::set_addr(LogicAddr addr) {
+    addr_ = addr;
 }
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
@@ -257,18 +272,19 @@ void FixedSizeFileStorage::advance_volume() {
     }
 }
 
-std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(u8 const* data) {
+std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(std::shared_ptr<Block> data) {
     BlockAddr block_addr;
     aku_Status status;
-    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);
+    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data->get_data());
     if (status == AKU_EOVERFLOW) {
         // Move to next generation
         advance_volume();
-        std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
+        std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, 0ull);
         }
     }
+    data->set_addr(block_addr);
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
@@ -316,7 +332,7 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     }
 
     virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
     virtual u32 checksum(u8 const* data, size_t size) const;
@@ -337,16 +353,19 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     auto begin = buffer_.begin() + offset;
     auto end = begin + AKU_BLOCK_SIZE;
     std::copy(begin, end, std::back_inserter(data));
-    block.reset(new Block(shared_from_this(), addr, std::move(data)));
+    block.reset(new Block(addr, std::move(data)));
     return std::make_tuple(AKU_SUCCESS, block);
 }
 
-std::tuple<aku_Status, LogicAddr> MemStore::append_block(const u8 *data) {
-    std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> data) {
+    assert(data->get_size() == AKU_BLOCK_SIZE);
+    std::copy(data->get_data(), data->get_data() + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
     if (append_callback_) {
         append_callback_(write_pos_);
     }
-    return std::make_tuple(AKU_SUCCESS, write_pos_++);
+    auto addr = write_pos_++;
+    data->set_addr(addr);
+    return std::make_tuple(AKU_SUCCESS, addr);
 }
 
 void MemStore::flush() {

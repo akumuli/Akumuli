@@ -76,7 +76,7 @@ enum {
 };
 
 //! This value represents empty addr. It's too large to be used as a real block addr.
-static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
+extern const LogicAddr EMPTY_ADDR;
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
@@ -154,7 +154,7 @@ class NBTreeLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::vector<u8> buffer_;
+    std::shared_ptr<Block> block_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
     //! Fanout index
@@ -179,16 +179,14 @@ public:
       * @param load Load method.
       * @note This c-tor panics if block is invalid or doesn't exists.
       */
-    NBTreeLeaf(std::shared_ptr<Block> bstore,
-               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+    NBTreeLeaf(std::shared_ptr<Block> bstore);
 
     /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
       * @param load Load method.
       */
-    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr,
-               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr);
 
     //! Returns number of elements.
     size_t nelements() const;
@@ -231,13 +229,13 @@ public:
 /** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
-    std::vector<u8> buffer_;
-    aku_ParamId     id_;
-    u32             write_pos_;
-    u16             fanout_index_;
-    u16             level_;
-    LogicAddr       prev_;
-    bool            immutable_;
+    std::shared_ptr<Block> block_;
+    aku_ParamId            id_;
+    u32                    write_pos_;
+    u16                    fanout_index_;
+    u16                    level_;
+    LogicAddr              prev_;
+    bool                   immutable_;
 
 public:
     //! Create new writable node.
