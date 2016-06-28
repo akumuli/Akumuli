@@ -75,9 +75,6 @@ enum {
     AKU_NBTREE_FANOUT = 32,
 };
 
-//! This value represents empty addr. It's too large to be used as a real block addr.
-extern const LogicAddr EMPTY_ADDR;
-
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
   * This metadata corresponds to the current node.

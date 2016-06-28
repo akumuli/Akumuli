@@ -17,8 +17,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-extern const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
-
 static SubtreeRef* subtree_cast(u8* p) {
     return reinterpret_cast<SubtreeRef*>(p);
 }

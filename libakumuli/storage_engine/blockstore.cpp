@@ -9,8 +9,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-extern const LogicAddr EMPTY_ADDR;
-
 static u64 hash32(u32 value, u32 bits, u64 seed) {
     // hashes x strongly universally into N bits
     // using the random seed.

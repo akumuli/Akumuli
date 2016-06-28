@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
     aku_Status status;
 
     for (int i = 0; i < 17; i++) {
-        buffer.at(0) = (u8)i;
+        buffer->get_data()[0] = static_cast<u8>(i);
         std::tie(status, addr) = bstore->append_block(buffer);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     }
