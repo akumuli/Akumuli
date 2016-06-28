@@ -536,10 +536,6 @@ aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
                                 std::vector<double>* values) const
 {
     int windex = writer_.get_write_index();
-    if (windex == 0) {
-        // Error. Page is not fully loaded
-        return AKU_ENO_DATA;
-    }
     DataBlockReader reader(block_->get_data() + sizeof(SubtreeRef), block_->get_size());
     size_t sz = reader.nelements();
     timestamps->reserve(sz);
@@ -793,8 +789,8 @@ bool NBTreeSuperblock::is_full() const {
 aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
     SubtreeRef const* ref = subtree_cast(block_->get_data());
     for(u32 ix = 0u; ix < write_pos_; ix++) {
-        ref += (1 + ix);
-        refs->push_back(*ref);
+        auto p = ref + 1 + ix;
+        refs->push_back(*p);
     }
     return AKU_SUCCESS;
 }

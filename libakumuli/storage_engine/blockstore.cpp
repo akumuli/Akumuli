@@ -234,7 +234,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
         return std::make_tuple(status, std::unique_ptr<Block>());
     }
     auto self = shared_from_this();
-    auto block = std::make_shared<Block>(self, addr, std::move(dest));
+    auto block = std::make_shared<Block>(addr, std::move(dest));
     return std::make_tuple(status, std::move(block));
 }
 
