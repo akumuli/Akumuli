@@ -65,10 +65,10 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
 
     // Append first block
-    std::vector<u8> buffer(4096, 0);
-    buffer.at(0) = 1;
+    auto buffer = std::make_shared<Block>();
+    buffer->get_data()[0] = 1;
     LogicAddr addr;
-    std::tie(status, addr) = bstore->append_block(buffer.data());
+    std::tie(status, addr) = bstore->append_block(buffer);
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 
 
     // Fill data in
-    std::vector<u8> buffer(4096, 0);
+    auto buffer = std::make_shared<Block>();
 
 
     LogicAddr addr;
@@ -102,7 +102,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 
     for (int i = 0; i < 17; i++) {
         buffer.at(0) = (u8)i;
-        std::tie(status, addr) = bstore->append_block(buffer.data());
+        std::tie(status, addr) = bstore->append_block(buffer);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     }
     BOOST_REQUIRE_EQUAL(addr, (2ull << 32));
