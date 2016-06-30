@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
