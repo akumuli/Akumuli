@@ -7,6 +7,22 @@ namespace DataIngestion {
 /*  Tree data      Id -> NBTree        Series name parsing    */
 /*                 Global state        Connection local state */
 
+// ////////////// //
+// Registry entry //
+// ////////////// //
+
+RegistryEntry::RegistryEntry(std::unique_ptr<StorageEngine::NBTreeExtentsList> &&nbtree)
+    : roots_(std::move(nbtree))
+{
+}
+
+void RegistryEntry::write(aku_Timestamp ts, double value) {
+    bool should_flush = roots_->append(ts, value);
+    AKU_UNUSED(should_flush);
+    // FIXME: use `should_flush` variable (flush mechanism is not in its place yet)
+}
+
+
 // ///////////// //
 // Tree registry //
 // ///////////// //
@@ -112,10 +128,20 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
 }
 
 aku_Status StreamDispatcher::write(aku_Sample const* sample) {
+    if (AKU_UNLIKELY(sample->payload.type != AKU_PAYLOAD_FLOAT)) {
+        return AKU_EBAD_ARG;
+    }
     aku_ParamId id = sample->paramid;
     // Locate registery entry in cache, if no such entry - try to acquire
     // registery entry, if registery entry is already acquired by the other
     // `StreamDispatcher` - broadcast value to all other dispatchers.
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    auto it = cache_.find(id);
+    if (it == cache_.end()) {
+        // try to acquire entry
+    } else {
+        it->second->write(sample->timestamp, sample->payload.float64);
+    }
     return AKU_ENOT_IMPLEMENTED;
 }
 

@@ -43,6 +43,10 @@ namespace DataIngestion {
 class RegistryEntry {
     std::unique_ptr<StorageEngine::NBTreeExtentsList> roots_;
 public:
+
+    RegistryEntry(std::unique_ptr<StorageEngine::NBTreeExtentsList>&& nbtree);
+
+    void write(aku_Timestamp ts, double value);
 };
 
 
@@ -76,6 +80,8 @@ public:
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
 
+    // Dispatchers handling
+
     //! Create and register new `StreamDispatcher`.
     std::shared_ptr<StreamDispatcher> create_dispatcher();
 
@@ -84,6 +90,11 @@ public:
 
     //! Broadcast sample to all active dispatchers.
     void broadcast_sample(aku_Sample const* sample);
+
+    // Registry entry acquisition/release
+
+    //! Acquire registery entry (release should be automatic)
+    std::shared_ptr<RegistryEntry> acquire(aku_ParamId id);
 };
 
 
@@ -109,7 +120,9 @@ public:
     StreamDispatcher(StreamDispatcher &&) = delete;
     StreamDispatcher& operator = (StreamDispatcher const&) = delete;
 
-    //! Match series name. If series with such name doesn't exists - create it.
+    /** Match series name. If series with such name doesn't exists - create it.
+      * This method should be called for each sample to init its `paramid` field.
+      */
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
 
     //! Write sample
