@@ -50,32 +50,77 @@ public:
 class StreamDispatcher;
 
 
-class TreeRegistry {
+/** Global tree registery.
+  * Serve as a central data repository for series metadata and NBTree roots.
+  * Client code should create `StreamDispatcher` per connection, each dispatcher
+  * should have link to `TreeRegistry`.
+  * Instances of this class is thread-safe.
+  */
+class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
     std::unique_ptr<MetadataStorage> metadata_;
     std::unordered_map<aku_ParamId, std::shared_ptr<RegistryEntry>> table_;
     SeriesMatcher global_matcher_;
+    //! List of acitve dispatchers
+    std::unordered_map<size_t, std::weak_ptr<StreamDispatcher>> active_;
     std::mutex metadata_lock_;
     std::mutex table_lock_;
+
 public:
     TreeRegistry(std::unique_ptr<MetadataStorage>&& meta);
 
+    // No value semantics allowed.
+    TreeRegistry(TreeRegistry const&) = delete;
+    TreeRegistry(TreeRegistry &&) = delete;
+    TreeRegistry& operator = (TreeRegistry const&) = delete;
+
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
+
+    //! Create and register new `StreamDispatcher`.
+    std::shared_ptr<StreamDispatcher> create_dispatcher();
+
+    //! Remove dispatcher from registry.
+    void remove_dispatcher(std::shared_ptr<StreamDispatcher> ptr);
+
+    //! Broadcast sample to all active dispatchers.
+    void broadcast_sample(aku_Sample const* sample);
 };
 
 
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread.
   */
-class StreamDispatcher
+class StreamDispatcher : public std::enable_shared_from_this<StreamDispatcher>
 {
+    //! Link to global registry.
     std::weak_ptr<TreeRegistry> registry_;
+    //! Local registry cache.
+    std::unordered_map<aku_ParamId, std::shared_ptr<RegistryEntry>> cache_;
+    //! Local series matcher (with cached global data).
     SeriesMatcher local_matcher_;
+    //! This mutex shouldn't be contended during normal operation.
+    std::mutex lock_;
 public:
+    //! C-tor. Shouldn't be called directly.
     StreamDispatcher(std::shared_ptr<TreeRegistry> registry);
+    ~StreamDispatcher();
+
+    StreamDispatcher(StreamDispatcher const&) = delete;
+    StreamDispatcher(StreamDispatcher &&) = delete;
+    StreamDispatcher& operator = (StreamDispatcher const&) = delete;
 
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
+
+    //! Write sample
+    aku_Status write(aku_Sample const* sample);
+
+    /** Receive broadcast.
+      * Should perform write only if registry entry sits in cache.
+      * This method should only be called by `TreeRegistry` class.
+      * @return true if sample processed, false otherwise.
+      */
+    bool _receive_broadcast(aku_Sample const* sample);
 };
 
 }}  // namespace

@@ -27,9 +27,56 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
     return AKU_SUCCESS;
 }
 
+std::shared_ptr<StreamDispatcher> TreeRegistry::create_dispatcher() {
+    auto ptr = std::make_shared<StreamDispatcher>(shared_from_this());
+    auto id = reinterpret_cast<size_t>(ptr.get());
+    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
+    active_[id] = ptr;
+    return ptr;
+}
+
+void TreeRegistry::remove_dispatcher(std::shared_ptr<StreamDispatcher> ptr) {
+    auto id = reinterpret_cast<size_t>(ptr.get());
+    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
+    auto it = active_.find(id);
+    if (it != active_.end()) {
+        active_.erase(it);
+    }
+}
+
+void TreeRegistry::broadcast_sample(aku_Sample const* sample) {
+    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
+    for (auto wdisp: active_) {
+        auto disp = wdisp.second.lock();
+        if (disp) {
+            if (disp->_receive_broadcast(sample)) {
+                // Sample processed so we don't need to hold the lock
+                // anymore.
+                break;
+            }
+        }
+    }
+}
+
 // //////////////// //
 // StreamDispatcher //
 // //////////////// //
+
+StreamDispatcher::StreamDispatcher(std::shared_ptr<TreeRegistry> registry)
+    : registry_(registry)
+{
+    // At this point this `StreamDispatcher` should be already registered.
+    // This should be done by `TreeRegistry::create_dispatcher` function
+    // because we can't call `shared_from_this` in `StremDispatcher::c-tor`.
+}
+
+StreamDispatcher::~StreamDispatcher() {
+    auto ptr = shared_from_this();
+    auto reg = registry_.lock();
+    if (reg) {
+        reg->remove_dispatcher(ptr);
+    }
+}
 
 aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
     // Series name normalization procedure. Most likeley a bottleneck but
@@ -62,6 +109,26 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
         sample->paramid = id;
     }
     return status;
+}
+
+aku_Status StreamDispatcher::write(aku_Sample const* sample) {
+    aku_ParamId id = sample->paramid;
+    // Locate registery entry in cache, if no such entry - try to acquire
+    // registery entry, if registery entry is already acquired by the other
+    // `StreamDispatcher` - broadcast value to all other dispatchers.
+    return AKU_ENOT_IMPLEMENTED;
+}
+
+bool StreamDispatcher::_receive_broadcast(aku_Sample const* sample) {
+    aku_ParamId id = sample->paramid;
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    auto it = cache_.find(id);
+    if (it != cache_.end()) {
+        // perform write
+        throw "Not implemented";
+        return true;
+    }
+    return false;
 }
 
 }}  // namespace
