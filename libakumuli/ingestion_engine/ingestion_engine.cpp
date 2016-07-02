@@ -3,6 +3,8 @@
 namespace Akumuli {
 namespace DataIngestion {
 
+using namespace StorageEngine;
+
 /*  NBTree         TreeRegistry        StreamDispatcher       */
 /*  Tree data      Id -> NBTree        Series name parsing    */
 /*                 Global state        Connection local state */
@@ -11,17 +13,23 @@ namespace DataIngestion {
 // Registry entry //
 // ////////////// //
 
-RegistryEntry::RegistryEntry(std::unique_ptr<StorageEngine::NBTreeExtentsList> &&nbtree)
+RegistryEntry::RegistryEntry(std::unique_ptr<NBTreeExtentsList> &&nbtree)
     : roots_(std::move(nbtree))
 {
 }
 
-void RegistryEntry::write(aku_Timestamp ts, double value) {
-    bool should_flush = roots_->append(ts, value);
-    AKU_UNUSED(should_flush);
-    // FIXME: use `should_flush` variable (flush mechanism is not in its place yet)
+bool RegistryEntry::is_available() const {
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    return roots_.unique();
 }
 
+std::shared_ptr<NBTreeExtentsList> RegistryEntry::try_acquire() {
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    if (roots_.unique()) {
+        return roots_;
+    }
+    return std::shared_ptr<NBTreeExtentsList>();
+}
 
 // ///////////// //
 // Tree registry //
@@ -72,6 +80,15 @@ void TreeRegistry::broadcast_sample(aku_Sample const* sample) {
             }
         }
     }
+}
+
+std::shared_ptr<NBTreeExtentsList> TreeRegistry::try_acquire(aku_ParamId id) {
+    std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+    auto it = table_.find(id);
+    if (it == table_.end() && it->second->is_available()) {
+        return it->second->try_acquire();
+    }
+    return std::shared_ptr<NBTreeExtentsList>();
 }
 
 // //////////////// //
@@ -139,8 +156,14 @@ aku_Status StreamDispatcher::write(aku_Sample const* sample) {
     auto it = cache_.find(id);
     if (it == cache_.end()) {
         // try to acquire entry
+        auto reg = registry_.lock();
+        if (reg) {
+            auto entry = reg->try_acquire(id);
+        } else {
+            return AKU_ECLOSED;
+        }
     } else {
-        it->second->write(sample->timestamp, sample->payload.float64);
+        it->second->append(sample->timestamp, sample->payload.float64);
     }
     return AKU_ENOT_IMPLEMENTED;
 }
@@ -151,7 +174,9 @@ bool StreamDispatcher::_receive_broadcast(aku_Sample const* sample) {
     auto it = cache_.find(id);
     if (it != cache_.end()) {
         // perform write
-        throw "Not implemented";
+        auto should_flush = it->second->append(sample->timestamp, sample->payload.float64);
+        AKU_UNUSED(should_flush);
+        // FIXME: perform flush if needed
         return true;
     }
     return false;

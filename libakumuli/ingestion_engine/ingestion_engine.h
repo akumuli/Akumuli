@@ -41,12 +41,17 @@ namespace Akumuli {
 namespace DataIngestion {
 
 class RegistryEntry {
-    std::unique_ptr<StorageEngine::NBTreeExtentsList> roots_;
+    mutable std::mutex lock_;
+    std::shared_ptr<StorageEngine::NBTreeExtentsList> roots_;
 public:
 
     RegistryEntry(std::unique_ptr<StorageEngine::NBTreeExtentsList>&& nbtree);
 
-    void write(aku_Timestamp ts, double value);
+    //! Return true if entry is available for acquire.
+    bool is_available() const;
+
+    //! Acquire NBTreeExtentsList
+    std::shared_ptr<StorageEngine::NBTreeExtentsList> try_acquire();
 };
 
 
@@ -93,8 +98,8 @@ public:
 
     // Registry entry acquisition/release
 
-    //! Acquire registery entry (release should be automatic)
-    std::shared_ptr<RegistryEntry> acquire(aku_ParamId id);
+    //! Acquire nbtree extents list (release should be automatic)
+    std::shared_ptr<StorageEngine::NBTreeExtentsList> try_acquire(aku_ParamId id);
 };
 
 
@@ -106,7 +111,7 @@ class StreamDispatcher : public std::enable_shared_from_this<StreamDispatcher>
     //! Link to global registry.
     std::weak_ptr<TreeRegistry> registry_;
     //! Local registry cache.
-    std::unordered_map<aku_ParamId, std::shared_ptr<RegistryEntry>> cache_;
+    std::unordered_map<aku_ParamId, std::shared_ptr<StorageEngine::NBTreeExtentsList>> cache_;
     //! Local series matcher (with cached global data).
     SeriesMatcher local_matcher_;
     //! This mutex shouldn't be contended during normal operation.
