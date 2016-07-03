@@ -1,7 +1,7 @@
 #include "ingestion_engine.h"
 
 namespace Akumuli {
-namespace DataIngestion {
+namespace Ingress {
 
 using namespace StorageEngine;
 
@@ -159,13 +159,21 @@ aku_Status StreamDispatcher::write(aku_Sample const* sample) {
         auto reg = registry_.lock();
         if (reg) {
             auto entry = reg->try_acquire(id);
+            if (entry) {
+                cache_[id] = entry;
+                auto flush = entry->append(sample->timestamp, sample->payload.float64);
+                AKU_UNUSED(flush);
+                // FIXME: perform flush if needed
+            }
         } else {
             return AKU_ECLOSED;
         }
     } else {
-        it->second->append(sample->timestamp, sample->payload.float64);
+        auto flush = it->second->append(sample->timestamp, sample->payload.float64);
+        AKU_UNUSED(flush);
+        // FIXME: perform flush if needed
     }
-    return AKU_ENOT_IMPLEMENTED;
+    return AKU_SUCCESS;
 }
 
 bool StreamDispatcher::_receive_broadcast(aku_Sample const* sample) {

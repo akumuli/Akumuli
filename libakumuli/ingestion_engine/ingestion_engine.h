@@ -38,7 +38,7 @@
 #include "storage_engine/nbtree.h"
 
 namespace Akumuli {
-namespace DataIngestion {
+namespace Ingress {
 
 class RegistryEntry {
     mutable std::mutex lock_;

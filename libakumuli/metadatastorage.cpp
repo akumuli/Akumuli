@@ -17,6 +17,7 @@
 
 #include "metadatastorage.h"
 #include "util.h"
+#include "log_iface.h"
 
 #include <sstream>
 
@@ -47,11 +48,8 @@ void AprHandleDeleter::operator()(apr_dbd_t* handle) {
 
 //-------------------------------MetadataStorage----------------------------------------
 
-static void callback_adapter(void* cb, const char* msg) {
-    aku_logger_cb_t logger = (aku_logger_cb_t)cb;
-    if (logger != &aku_console_logger) {
-        logger(AKU_LOG_TRACE, msg);
-    }
+static void callback_adapter(void*, const char* msg) {
+    Logger::msg(AKU_LOG_TRACE, msg);
 }
 
 MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
@@ -83,7 +81,7 @@ MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t logger)
     handle_ = HandleT(handle, AprHandleDeleter(driver_));
 
     auto sqlite_handle = apr_dbd_native_handle(driver_, handle);
-    sqlite3_trace((sqlite3*)sqlite_handle, callback_adapter, (void*)logger_);
+    sqlite3_trace((sqlite3*)sqlite_handle, callback_adapter, nullptr);
 
     create_tables();
 
