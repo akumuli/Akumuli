@@ -145,8 +145,10 @@ typedef enum {
     AKU_EANOMALY_NEG_VAL = 12,
     //! Stale data in sequencer, merge to disk required
     AKU_EMERGE_REQUIRED = 13,
+    //! Operation on device can't be completed because device was closed
+    AKU_ECLOSED = 14,
 
-    AKU_EMAX_ERROR = 14,
+    AKU_EMAX_ERROR = 15,
 } aku_Status;
 
 

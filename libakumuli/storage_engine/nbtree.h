@@ -1,4 +1,21 @@
-/** Necklace B-tree data-structure implementation.
+/**
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+/** NB-tree data-structure implementation.
   * Outline:
   *
   *
@@ -74,9 +91,6 @@ enum class NBTreeBlockType {
 enum {
     AKU_NBTREE_FANOUT = 32,
 };
-
-//! This value represents empty addr. It's too large to be used as a real block addr.
-static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
@@ -154,7 +168,7 @@ class NBTreeLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::vector<u8> buffer_;
+    std::shared_ptr<Block> block_;
     //! DataBlockWriter for pending `append` operations.
     DataBlockWriter writer_;
     //! Fanout index
@@ -179,16 +193,14 @@ public:
       * @param load Load method.
       * @note This c-tor panics if block is invalid or doesn't exists.
       */
-    NBTreeLeaf(std::shared_ptr<Block> bstore,
-               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+    NBTreeLeaf(std::shared_ptr<Block> bstore);
 
     /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
       * @param load Load method.
       */
-    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr,
-               LeafLoadMethod load = LeafLoadMethod::FULL_PAGE_LOAD);
+    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr);
 
     //! Returns number of elements.
     size_t nelements() const;
@@ -231,13 +243,13 @@ public:
 /** NBTree superblock. Stores refs to subtrees.
  */
 class NBTreeSuperblock {
-    std::vector<u8> buffer_;
-    aku_ParamId     id_;
-    u32             write_pos_;
-    u16             fanout_index_;
-    u16             level_;
-    LogicAddr       prev_;
-    bool            immutable_;
+    std::shared_ptr<Block> block_;
+    aku_ParamId            id_;
+    u32                    write_pos_;
+    u16                    fanout_index_;
+    u16                    level_;
+    LogicAddr              prev_;
+    bool                   immutable_;
 
 public:
     //! Create new writable node.

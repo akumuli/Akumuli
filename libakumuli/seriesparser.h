@@ -31,6 +31,8 @@
 
 namespace Akumuli {
 
+static const u64 AKU_STARTING_SERIES_ID = 1024;
+
 
 /** Series matcher. Table that maps series names to series
   * ids. Should be initialized on startup from sqlite table.
@@ -53,7 +55,7 @@ struct SeriesMatcher {
     std::vector<SeriesNameT> names;      //! List of recently added names
     std::mutex               mutex;      //! Mutex for shared data
 
-    SeriesMatcher(u64 starting_id);
+    SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */

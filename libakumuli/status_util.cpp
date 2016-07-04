@@ -17,6 +17,7 @@ static const char* g_error_messages[] = {
     "query parsing error",
     "anomaly detector can't work with negative values",
     "merge required",
+    "attempt to perform operation on closed device",
     "unknown error code"
 };
 

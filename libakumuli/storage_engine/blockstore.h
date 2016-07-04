@@ -1,3 +1,20 @@
+/**
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 #pragma once
 #include "volume.h"
 #include <random>
@@ -8,6 +25,8 @@ namespace StorageEngine {
 //! Address of the block inside storage
 typedef u64 LogicAddr;
 
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 class Block;
 
@@ -46,7 +65,7 @@ struct BlockStore {
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data) = 0;
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data) = 0;
 
     //! Flush all pending changes.
     virtual void flush() = 0;
@@ -97,7 +116,7 @@ public:
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
 
     virtual void flush();
 
@@ -108,18 +127,23 @@ public:
 
 //! Represents memory block
 class Block {
-    std::weak_ptr<BlockStore> store_;
     std::vector<u8>           data_;
     LogicAddr                 addr_;
 
 public:
-    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data);
+    Block(LogicAddr addr, std::vector<u8>&& data);
+
+    Block();
 
     const u8* get_data() const;
+
+    u8* get_data();
 
     size_t get_size() const;
 
     LogicAddr get_addr() const;
+
+    void set_addr(LogicAddr addr);
 };
 
 //! Should be used to create blockstore
