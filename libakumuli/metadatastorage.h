@@ -58,12 +58,11 @@ struct MetadataStorage {
     DriverT         driver_;
     HandleT         handle_;
     PreparedT       insert_;
-    aku_logger_cb_t logger_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
-    MetadataStorage(const char* db, aku_logger_cb_t logger);
+    MetadataStorage(const char* db, aku_logger_cb_t logger=nullptr);
 
     // Creation //
 

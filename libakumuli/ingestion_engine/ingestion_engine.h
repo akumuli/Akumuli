@@ -91,7 +91,7 @@ public:
     std::shared_ptr<StreamDispatcher> create_dispatcher();
 
     //! Remove dispatcher from registry.
-    void remove_dispatcher(std::shared_ptr<StreamDispatcher> ptr);
+    void remove_dispatcher(StreamDispatcher const& disp);
 
     //! Broadcast sample to all active dispatchers.
     void broadcast_sample(aku_Sample const* sample);
@@ -119,7 +119,6 @@ class StreamDispatcher : public std::enable_shared_from_this<StreamDispatcher>
 public:
     //! C-tor. Shouldn't be called directly.
     StreamDispatcher(std::shared_ptr<TreeRegistry> registry);
-    ~StreamDispatcher();
 
     StreamDispatcher(StreamDispatcher const&) = delete;
     StreamDispatcher(StreamDispatcher &&) = delete;
@@ -129,6 +128,8 @@ public:
       * This method should be called for each sample to init its `paramid` field.
       */
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
+
+    void close();
 
     //! Write sample
     aku_Status write(aku_Sample const* sample);

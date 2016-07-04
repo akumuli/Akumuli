@@ -436,6 +436,7 @@ target_compile_definitions(test_ingestion PRIVATE AKU_UNIT_TEST_CONTEXT=1)
 target_link_libraries(
     test_ingestion
     sqlite3
+    "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}

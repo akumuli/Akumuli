@@ -52,15 +52,20 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
 }
 
 std::shared_ptr<StreamDispatcher> TreeRegistry::create_dispatcher() {
-    auto ptr = std::make_shared<StreamDispatcher>(shared_from_this());
-    auto id = reinterpret_cast<size_t>(ptr.get());
+    auto deleter = [](StreamDispatcher* p) {
+        p->close();
+        delete p;
+    };
+    auto ptr = new StreamDispatcher(shared_from_this());
+    auto sptr = std::shared_ptr<StreamDispatcher>(ptr, deleter);
+    auto id = reinterpret_cast<size_t>(ptr);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    active_[id] = ptr;
-    return ptr;
+    active_[id] = sptr;
+    return sptr;
 }
 
-void TreeRegistry::remove_dispatcher(std::shared_ptr<StreamDispatcher> ptr) {
-    auto id = reinterpret_cast<size_t>(ptr.get());
+void TreeRegistry::remove_dispatcher(StreamDispatcher const& disp) {
+    auto id = reinterpret_cast<size_t>(&disp);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     auto it = active_.find(id);
     if (it != active_.end()) {
@@ -103,11 +108,10 @@ StreamDispatcher::StreamDispatcher(std::shared_ptr<TreeRegistry> registry)
     // because we can't call `shared_from_this` in `StremDispatcher::c-tor`.
 }
 
-StreamDispatcher::~StreamDispatcher() {
-    auto ptr = shared_from_this();
+void StreamDispatcher::close() {
     auto reg = registry_.lock();
     if (reg) {
-        reg->remove_dispatcher(ptr);
+        reg->remove_dispatcher(*this);
     }
 }
 
