@@ -67,6 +67,12 @@ void SeriesMatcher::_add(std::string series, u64 id) {
     inv_table[id] = pstr;
 }
 
+void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+    StringT pstr = pool.add(begin, end, id);
+    table[pstr] = id;
+    inv_table[id] = pstr;
+}
+
 u64 SeriesMatcher::match(const char* begin, const char* end) {
 
     int len = end - begin;

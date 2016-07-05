@@ -40,14 +40,18 @@ TreeRegistry::TreeRegistry(std::unique_ptr<MetadataStorage>&& meta)
 {
 }
 
-aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
-    std::lock_guard<std::mutex> ml(this->metadata_lock_); AKU_UNUSED(ml);
-    u64 id = global_matcher_.match(begin, end);
-    if (id == 0) {
-        // create new series
-        id = global_matcher_.add(begin, end);
+aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+    u64 id = 0;
+    {
+        std::lock_guard<std::mutex> ml(this->metadata_lock_); AKU_UNUSED(ml);
+        id = global_matcher_.match(begin, end);
+        if (id == 0) {
+            // create new series
+            id = global_matcher_.add(begin, end);
+        }
     }
     sample->paramid = id;
+    local_matcher->_add(begin, end, id);
     return AKU_SUCCESS;
 }
 
@@ -122,7 +126,7 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
     const char* ksend = nullptr;
     char buf[AKU_LIMITS_MAX_SNAME];
     char* ob = static_cast<char*>(buf);
-    char* oe = static_cast<char*>(buf);
+    char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
     aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
         return status;
@@ -136,7 +140,7 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
         // go to global registery
         auto reg = registry_.lock();
         if (reg) {
-            status = reg->init_series_id(ob, ksend, sample);
+            status = reg->init_series_id(ob, ksend, sample, &local_matcher_);
         } else {
             // Global registery has been deleted. Connection should be closed.
             status = AKU_ECLOSED;
