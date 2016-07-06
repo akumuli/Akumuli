@@ -66,16 +66,18 @@ class StreamDispatcher;
   * Instances of this class is thread-safe.
   */
 class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
+    std::shared_ptr<StorageEngine::BlockStore> blockstore_;
     std::unique_ptr<MetadataStorage> metadata_;
     std::unordered_map<aku_ParamId, std::shared_ptr<RegistryEntry>> table_;
     SeriesMatcher global_matcher_;
+
     //! List of acitve dispatchers
     std::unordered_map<size_t, std::weak_ptr<StreamDispatcher>> active_;
     std::mutex metadata_lock_;
     std::mutex table_lock_;
 
 public:
-    TreeRegistry(std::unique_ptr<MetadataStorage>&& meta);
+    TreeRegistry(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
 
     // No value semantics allowed.
     TreeRegistry(TreeRegistry const&) = delete;
@@ -94,7 +96,7 @@ public:
     void remove_dispatcher(StreamDispatcher const& disp);
 
     //! Broadcast sample to all active dispatchers.
-    void broadcast_sample(aku_Sample const* sample);
+    void broadcast_sample(const aku_Sample &sample, StreamDispatcher const* source);
 
     // Registry entry acquisition/release
 
@@ -132,14 +134,14 @@ public:
     void close();
 
     //! Write sample
-    aku_Status write(aku_Sample const* sample);
+    aku_Status write(const aku_Sample &sample);
 
     /** Receive broadcast.
       * Should perform write only if registry entry sits in cache.
       * This method should only be called by `TreeRegistry` class.
       * @return true if sample processed, false otherwise.
       */
-    bool _receive_broadcast(aku_Sample const* sample);
+    bool _receive_broadcast(const aku_Sample &sample);
 };
 
 }}  // namespace

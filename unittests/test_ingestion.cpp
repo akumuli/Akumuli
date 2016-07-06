@@ -54,7 +54,8 @@ std::unique_ptr<MetadataStorage> create_metadatastorage() {
 BOOST_AUTO_TEST_CASE(Test_ingress_create) {
     // Do nothing, just create all the things
     auto meta = create_metadatastorage();
-    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(std::move(meta));
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
     auto dispatcher = registry->create_dispatcher();
 }
 
@@ -64,7 +65,8 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_series_1) {
     const char* end = sname + strlen(sname);
 
     auto meta = create_metadatastorage();
-    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(std::move(meta));
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
     auto dispa = registry->create_dispatcher();
     auto dispb = registry->create_dispatcher();
 
@@ -84,4 +86,45 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_series_1) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     BOOST_REQUIRE_EQUAL(samplea.paramid, sampleb.paramid);
+}
+
+BOOST_AUTO_TEST_CASE(Test_ingress_add_values_1) {
+    aku_Status status;
+    const char* sname = "hello world=1";
+    const char* end = sname + strlen(sname);
+
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto dispa = registry->create_dispatcher();
+    auto dispb = registry->create_dispatcher();
+
+    aku_Sample samplea;
+    samplea.payload.type = AKU_PAYLOAD_FLOAT;
+    samplea.timestamp = 111;
+    samplea.payload.float64 = 111;
+    status = dispa->init_series_id(sname, end, &samplea);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = dispa->write(samplea);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    aku_Sample sampleb;
+    sampleb.payload.type = AKU_PAYLOAD_FLOAT;
+    sampleb.timestamp = 222;
+    sampleb.payload.float64 = 222;
+    // Should initialize from global data
+    status = dispb->init_series_id(sname, end, &sampleb);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = dispb->write(sampleb);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    BOOST_REQUIRE_EQUAL(samplea.paramid, sampleb.paramid);
+
+    // Should read local data
+    sampleb.timestamp = 333;
+    sampleb.payload.float64 = 333;
+    status = dispa->init_series_id(sname, end, &sampleb);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = dispa->write(sampleb);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 }
