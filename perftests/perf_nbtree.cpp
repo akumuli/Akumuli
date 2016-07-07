@@ -10,6 +10,7 @@
 #include "storage_engine/blockstore.h"
 #include "storage_engine/volume.h"
 #include "storage_engine/nbtree.h"
+#include "log_iface.h"
 
 
 using namespace Akumuli::StorageEngine;
@@ -29,8 +30,24 @@ private:
     timeval _start_time;
 };
 
+static void console_logger(aku_LogLevel lvl, const char* msg) {
+    switch(lvl) {
+    case AKU_LOG_ERROR:
+        std::cerr << "ERROR: " << msg << std::endl;
+        break;
+    case AKU_LOG_INFO:
+        std::cerr << "Info: " << msg << std::endl;
+        break;
+    case AKU_LOG_TRACE:
+        std::cerr << "trace: " << msg << std::endl;
+        break;
+    };
+}
+
 int main() {
     apr_initialize();
+
+    Akumuli::Logger::set_logger(console_logger);
 
     // Create volumes
     std::string metapath = "/tmp/metavol.db";
@@ -56,12 +73,29 @@ int main() {
         trees.push_back(std::move(ext));
     }
 
+    bool flush_needed = false;
+    bool done = false;
+    std::condition_variable cvar;
+    std::mutex lock;
+    auto flush_fn = [bstore, &flush_needed, &done, &cvar, &lock]() {
+        while (!done) {
+            std::unique_lock<std::mutex> g(lock);
+            cvar.wait(g);
+            if (flush_needed) {
+                bstore->flush();
+                flush_needed = false;
+            }
+        }
+    };
+
+    std::thread flush_thread(flush_fn);
+    flush_thread.detach();
+
     const int N = 500000000;
 
     Timer tm;
     Timer total;
     size_t rr = 0;
-    size_t flush = 0;
     size_t nsamples = 0;
     std::vector<aku_ParamId> ids;
     for (int i = 1; i < (N+1); i++) {
@@ -72,11 +106,8 @@ int main() {
         }
         aku_ParamId id = rr++ % trees.size();
         if (trees[id]->append(ts, value)) {
-            flush++;
-            if (flush % trees.size() == 0) {
-                //std::cout << "About to call flush" << std::endl;
-                //bstore->flush();
-            }
+            flush_needed = true;
+            cvar.notify_one();
         }
         if (nsamples < 10) {
             ids.push_back(id);
@@ -91,6 +122,11 @@ int main() {
             std::cout << i << "\t" << tm.elapsed() << " sec" << std::endl;
             tm.restart();
         }
+    }
+
+    {   // stop flush thread
+        done = true;
+        cvar.notify_one();
     }
 
     std::cout << "Write time: " << total.elapsed() << "s" << std::endl;
