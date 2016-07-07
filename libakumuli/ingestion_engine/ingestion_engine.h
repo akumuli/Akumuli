@@ -102,6 +102,11 @@ public:
 
     //! Acquire nbtree extents list (release should be automatic)
     std::shared_ptr<StorageEngine::NBTreeExtentsList> try_acquire(aku_ParamId id);
+
+    // Querying
+
+    // TODO: add query support
+    // Iterator search(const char* query);
 };
 
 

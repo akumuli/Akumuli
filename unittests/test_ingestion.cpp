@@ -128,3 +128,40 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_values_1) {
     status = dispa->write(sampleb);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 }
+
+BOOST_AUTO_TEST_CASE(Test_ingress_add_values_2) {
+    aku_Status status;
+    const char* sname = "hello world=1";
+    const char* end = sname + strlen(sname);
+
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+
+    auto dispa = registry->create_dispatcher();
+    {
+        auto dispb = registry->create_dispatcher();
+
+        aku_Sample sample;
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.timestamp = 111;
+        sample.payload.float64 = 111;
+        status = dispb->init_series_id(sname, end, &sample);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        status = dispb->write(sample);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+        // disatcher should be freed and registry entry should be returned
+    }
+    aku_Sample sample;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.timestamp = 222;
+    sample.payload.float64 = 222;
+
+    status = dispa->init_series_id(sname, end, &sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = dispa->write(sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    BOOST_REQUIRE_EQUAL(sample.paramid, sample.paramid);
+}
