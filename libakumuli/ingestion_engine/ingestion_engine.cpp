@@ -1,4 +1,5 @@
 #include "ingestion_engine.h"
+#include "log_iface.h"
 
 namespace Akumuli {
 namespace Ingress {
@@ -61,6 +62,21 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
     sample->paramid = id;
     local_matcher->_add(begin, end, id);
     return AKU_SUCCESS;
+}
+
+int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+    auto str = global_matcher_.id2str(id);
+    if (str.first == nullptr) {
+        return 0;
+    }
+    // copy value to local matcher
+    local_matcher->_add(str.first, str.first + str.second, id);
+    // copy the string to out buffer
+    if (str.second > static_cast<int>(buffer_size)) {
+        return -1*str.second;
+    }
+    memcpy(buffer, str.first, static_cast<size_t>(str.second));
+    return str.second;
 }
 
 std::shared_ptr<StreamDispatcher> TreeRegistry::create_dispatcher() {
@@ -160,6 +176,21 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
         sample->paramid = id;
     }
     return status;
+}
+
+int StreamDispatcher::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+    auto name = local_matcher_.id2str(id);
+    if (name.first == nullptr) {
+        // not yet cached!
+        auto reg = registry_.lock();
+        if (reg) {
+            return reg->get_series_name(id, buffer, buffer_size, &local_matcher_);
+        }
+        Logger::msg(AKU_LOG_ERROR, "Attempt to get series name after close!");
+        return 0;
+    }
+    memcpy(buffer, name.first, static_cast<size_t>(name.second));
+    return name.second;
 }
 
 aku_Status StreamDispatcher::write(aku_Sample const& sample) {

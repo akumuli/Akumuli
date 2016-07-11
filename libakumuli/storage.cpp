@@ -897,4 +897,40 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
     return status;
 }
 
+//----------- V2Storage ----------
+
+V2Storage::V2Storage(const char* path) {
+
+    std::unique_ptr<MetadataStorage> meta;
+    meta.reset(new MetadataStorage(path));
+
+    std::string metapath;
+    std::vector<std::string> volpaths;
+
+    // first volume is a metavolume
+    auto volumes = meta->get_volumes();
+    for (auto vol: volumes) {
+        std::string path;
+        int index;
+        std::tie(index, path) = vol;
+        if (index == 0) {
+            metapath = path;
+        } else {
+            volpaths.push_back(path);
+        }
+    }
+
+    bstore_ = std::make_shared<StorageEngine::FixedSizeFileStorage>(metapath, volpaths);
+    reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
+}
+
+std::shared_ptr<Ingress::StreamDispatcher> V2Storage::create_dispatcher() {
+    return reg_->create_dispatcher();
+}
+
+void V2Storage::debug_print() const {
+    std::cout << "V2Storage::debug_print" << std::endl;
+    std::cout << "...not implemented" << std::endl;
+}
+
 }

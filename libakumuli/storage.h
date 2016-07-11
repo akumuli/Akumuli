@@ -1,14 +1,9 @@
 /**
- * PRIVATE HEADER
- *
- * Page management API.
- *
- * Copyright (c) 2013 Eugene Lazin <4lazin@gmail.com>
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
+ * You may obtain a copy of the License at *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -42,6 +37,10 @@
 #include "sequencer.h"
 #include "seriesparser.h"
 #include "util.h"
+
+#include "storage_engine/blockstore.h"
+#include "storage_engine/nbtree.h"
+#include "ingestion_engine/ingestion_engine.h"
 
 #include <boost/thread.hpp>
 
@@ -201,4 +200,20 @@ struct Storage {
 
     void debug_print() const;
 };
+
+
+// --- V2 stuff ---
+
+class V2Storage {
+    std::shared_ptr<StorageEngine::BlockStore> bstore_;
+    std::shared_ptr<Ingress::TreeRegistry> reg_;
+public:
+
+    V2Storage(const char* path);
+
+    std::shared_ptr<Ingress::StreamDispatcher> create_dispatcher();
+
+    void debug_print() const;
+};
+
 }

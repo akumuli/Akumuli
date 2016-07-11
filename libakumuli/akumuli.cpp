@@ -24,15 +24,18 @@
 #include <apr_dbd.h>
 
 #include "akumuli.h"
-#include "storage.h"
+#include "storage.h"  // TODO: remove
 #include "datetime.h"
 #include "log_iface.h"
 #include "status_util.h"
+
+#include "ingestion_engine/ingestion_engine.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
 using namespace Akumuli;
+using namespace Ingress;
 
 //! Pool for `apr_dbd_init`
 static apr_pool_t* g_dbd_pool = nullptr;
@@ -113,17 +116,39 @@ struct CursorImpl : aku_Cursor {
 };
 
 
+class IngestionEngine {
+    std::shared_ptr<Ingress::StreamDispatcher> disp_;
+public:
+
+    IngestionEngine(std::shared_ptr<Ingress::StreamDispatcher> disp)
+        : disp_(disp)
+    {
+    }
+
+    aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
+        return disp_->init_series_id(begin, end, out_sample);
+    }
+
+    int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
+        return disp_->get_series_name(id, buffer, size);
+    }
+
+    aku_Status add_sample(aku_Sample const& sample) {
+        return disp_->write(sample);
+    }
+};
+
 /** 
  * Object that extends a Database struct.
  * Can be used from "C" code.
  */
-struct DatabaseImpl : public aku_Database
+class DatabaseImpl : public aku_Database
 {
-    Storage storage_;
-
+    V2Storage storage_;
+public:
     // private fields
-    DatabaseImpl(const char* path, const aku_FineTuneParams& config)
-        : storage_(path, config)
+    DatabaseImpl(const char* path)
+        : storage_(path)
     {
     }
 
@@ -131,74 +156,69 @@ struct DatabaseImpl : public aku_Database
         storage_.debug_print();
     }
 
-    aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
-        return storage_.series_to_param_id(begin, end, &out_sample->paramid);
-    }
-
-    int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
-        return storage_.param_id_to_series(id, buffer, size);
-    }
-
-    aku_Status get_open_error() const {
-        return storage_.get_open_error();
-    }
-
-    void close() {
-        storage_.close();
+    IngestionEngine* create_dispatcher() {
+        auto disp = storage_.create_dispatcher();
+        auto ptr = new IngestionEngine(disp);
+        return ptr;
     }
 
     CursorImpl* query(const char* query) {
-        auto pcur = new CursorImpl(storage_, std::move(query));
-        return pcur;
+        AKU_PANIC("Not implemented");
     }
 
-    aku_Status add_double(aku_ParamId param_id, aku_Timestamp ts, double value) {
-        return storage_.write_double(param_id, ts, value);
-    }
-
-    aku_Status add_sample(aku_Sample const* sample) {
-        aku_Status status = add_double(sample->paramid, sample->timestamp, sample->payload.float64);
-        return status;
-    }
 
     // Stats
     void get_storage_stats(aku_StorageStats* recv_stats) {
-        storage_.get_stats(recv_stats);
-    }
-
-    std::vector<Storage::PVolume> iter_volumes() const {
-        return storage_.volumes_;
+        AKU_PANIC("Not implemented");
     }
 };
 
-apr_status_t aku_create_database( const char     *file_name
-                                , const char     *metadata_path
-                                , const char     *volumes_path
-                                , i32         num_volumes
-                                , aku_logger_cb_t logger)
+aku_Status aku_create_database_ex( const char     *file_name
+                                 , const char     *metadata_path
+                                 , const char     *volumes_path
+                                 , i32             num_volumes
+                                 , u64             page_size)
 {
-    if (logger == nullptr) {
-        logger = &aku_console_logger;
+    u32 vol_size = static_cast<u32>(page_size / 4096);
+    std::vector<std::tuple<u32, std::string>> paths;
+    std::string volpath(volumes_path);
+    if (volpath.back() != '/') {
+        volpath += "/";
     }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger, false);
+    for (i32 i = 0; i < num_volumes; i++) {
+        paths.push_back(std::make_tuple(vol_size, volpath + file_name + "_" + std::to_string(i) + ".vol"));
+    }
+    std::string meta(metadata_path);
+    if (meta.back() != '/') {
+        meta += "/";
+    }
+    meta += file_name;
+    meta += ".akumuli";
+    StorageEngine::FixedSizeFileStorage::create(meta, paths);
+    return APR_SUCCESS;
 }
 
-apr_status_t aku_create_database_ex( const char     *file_name
-                                   , const char     *metadata_path
-                                   , const char     *volumes_path
-                                   , i32         num_volumes
-                                   , u64        page_size
-                                   , aku_logger_cb_t logger)
+aku_Status aku_create_database( const char     *file_name
+                              , const char     *metadata_path
+                              , const char     *volumes_path
+                              , i32             num_volumes)
 {
-    if (logger == nullptr) {
-        logger = &aku_console_logger;
-    }
-    return Storage::new_storage(file_name, metadata_path, volumes_path, num_volumes, logger, page_size);
+    static const u64 vol_size = 4096ul*1024*1024; // pages (4GB total)
+    return aku_create_database_ex(file_name, metadata_path, volumes_path, num_volumes, vol_size);
 }
+
 
 apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
 
     return Storage::remove_storage(file_name, logger);
+}
+
+aku_IngestionStream* aku_open_ingestion_stream(aku_Database* db) {
+
+}
+
+void aku_close_ingestion_stream(aku_IngestionStream* stream) {
+
 }
 
 aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value) {

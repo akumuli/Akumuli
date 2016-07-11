@@ -87,6 +87,8 @@ public:
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
 
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
+
     // Dispatchers handling
 
     //! Create and register new `StreamDispatcher`.
@@ -135,6 +137,8 @@ public:
       * This method should be called for each sample to init its `paramid` field.
       */
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
+
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
 
     void close();
 
