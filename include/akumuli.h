@@ -43,13 +43,18 @@
 
 
 //! Database instance.
-typedef struct { int padding; } aku_Database;
+typedef struct { u8 padding[64]; } aku_Database;
 
 
 /**
  * @brief The aku_Cursor struct
  */
 typedef struct { int padding; } aku_Cursor;
+
+/**
+ * @brief The Ingestion Session struct
+ */
+typedef struct { u8 padding[64]; } aku_IngestionSession;
 
 
 //! Search stats
@@ -107,11 +112,6 @@ AKU_EXPORT const char* aku_error_message(int error_code);
   * explicitly.
   */
 AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
-
-/**
- * @brief Destroy any object created with aku_make_*** function
- */
-AKU_EXPORT void aku_destroy(void* any);
 
 
 //------------------------------
@@ -171,11 +171,9 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 // Ingestion
 //-----------
 
-typedef void* aku_IngestionStream;
+AKU_EXPORT aku_IngestionSession* aku_create_ingestion_session(aku_Database* db);
 
-AKU_EXPORT aku_IngestionStream* aku_open_ingestion_stream(aku_Database* db);
-
-AKU_EXPORT void aku_close_ingestion_stream(aku_IngestionStream* stream);
+AKU_EXPORT void aku_destroy_ingestion_session(aku_IngestionSession* stream);
 
 //---------
 // Parsing
@@ -195,7 +193,7 @@ AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sampl
   * @param sample is an output parameter
   * @returns AKU_SUCCESS on success, error code otherwise
   */
-AKU_EXPORT aku_Status aku_series_to_param_id(aku_IngestionStream* ist, const char* begin, const char* end,
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_IngestionSession* ist, const char* begin, const char* end,
                                              aku_Sample* sample);
 
 /** Try to parse duration.
@@ -217,7 +215,7 @@ AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionStream* ist, aku_ParamId param_id,
+AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionSession* ist, aku_ParamId param_id,
                                            aku_Timestamp timestamp,  double value);
 
 /** Write measurement to DB
@@ -225,7 +223,7 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionStream* ist, aku_ParamId
   * @param sample should contain valid measurement value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write(aku_IngestionStream* ist, const aku_Sample* sample);
+AKU_EXPORT aku_Status aku_write(aku_IngestionSession* ist, const aku_Sample* sample);
 
 
 //---------

@@ -35,7 +35,6 @@
 #include <boost/property_tree/json_parser.hpp>
 
 using namespace Akumuli;
-using namespace Ingress;
 
 //! Pool for `apr_dbd_init`
 static apr_pool_t* g_dbd_pool = nullptr;
@@ -116,11 +115,11 @@ struct CursorImpl : aku_Cursor {
 };
 
 
-class IngestionEngine {
-    std::shared_ptr<Ingress::StreamDispatcher> disp_;
+class IngestionSession : public aku_IngestionSession {
+    std::shared_ptr<Ingress::IngestionSession> disp_;
 public:
 
-    IngestionEngine(std::shared_ptr<Ingress::StreamDispatcher> disp)
+    IngestionSession(std::shared_ptr<Ingress::IngestionSession> disp)
         : disp_(disp)
     {
     }
@@ -152,23 +151,41 @@ public:
     {
     }
 
+    static aku_Database* create(const char* path) {
+        aku_Database* ptr = new aku_Database();
+        new (ptr) DatabaseImpl(path);
+        return ptr;
+    }
+
+    static void free(aku_Database* ptr) {
+        DatabaseImpl* pimpl = reinterpret_cast<DatabaseImpl*>(ptr);
+        pimpl->~DatabaseImpl();
+        delete ptr;
+    }
+
+    static void free(aku_IngestionSession* ptr) {
+        auto pimpl = reinterpret_cast<IngestionSession*>(ptr);
+        pimpl->~IngestionSession();
+        delete ptr;
+    }
+
     void debug_print() const {
         storage_.debug_print();
     }
 
-    IngestionEngine* create_dispatcher() {
+    aku_IngestionSession* create_session() {
+        aku_IngestionSession* ptr = new aku_IngestionSession();
         auto disp = storage_.create_dispatcher();
-        auto ptr = new IngestionEngine(disp);
+        new (ptr) IngestionSession(disp);
         return ptr;
     }
 
-    CursorImpl* query(const char* query) {
+    CursorImpl* query(const char*) {
         AKU_PANIC("Not implemented");
     }
 
-
     // Stats
-    void get_storage_stats(aku_StorageStats* recv_stats) {
+    void get_storage_stats(aku_StorageStats*) {
         AKU_PANIC("Not implemented");
     }
 };
@@ -195,7 +212,7 @@ aku_Status aku_create_database_ex( const char     *file_name
     meta += file_name;
     meta += ".akumuli";
     StorageEngine::FixedSizeFileStorage::create(meta, paths);
-    return APR_SUCCESS;
+    return AKU_SUCCESS;
 }
 
 aku_Status aku_create_database( const char     *file_name
@@ -213,22 +230,28 @@ apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) 
     return Storage::remove_storage(file_name, logger);
 }
 
-aku_IngestionStream* aku_open_ingestion_stream(aku_Database* db) {
-
-}
-
-void aku_close_ingestion_stream(aku_IngestionStream* stream) {
-
-}
-
-aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id, aku_Timestamp timestamp, double value) {
+aku_IngestionSession* aku_create_ingestion_session(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->add_double(param_id, timestamp, value);
+    return reinterpret_cast<aku_IngestionSession*>(dbi->create_session());
 }
 
-aku_Status aku_write(aku_Database* db, const aku_Sample* sample) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->add_sample(sample);
+void aku_destroy_ingestion_session(aku_IngestionSession* session) {
+    DatabaseImpl::free(session);
+}
+
+aku_Status aku_write_double_raw(aku_IngestionSession* ist, aku_ParamId param_id, aku_Timestamp timestamp,  double value) {
+    aku_Sample sample;
+    sample.timestamp = timestamp;
+    sample.paramid = param_id;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.payload.float64 = value;
+    auto ises = reinterpret_cast<IngestionSession*>(session);
+    return ises->add_sample(sample);
+}
+
+aku_Status aku_write(aku_IngestionSession* session, const aku_Sample* sample) {
+    auto ises = reinterpret_cast<IngestionSession*>(session);
+    return ises->add_sample(*sample);
 }
 
 
@@ -250,92 +273,49 @@ aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
     return AKU_SUCCESS;
 }
 
-aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end, aku_Sample* sample) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->series_to_param_id(begin, end, sample);
+aku_Status aku_series_to_param_id(aku_IngestionSession* session, const char* begin, const char* end, aku_Sample* sample) {
+    auto ises = reinterpret_cast<IngestionSession*>(session);
+    return ises->series_to_param_id(begin, end, sample);
 }
 
-aku_Database* aku_open_database(const char* path, aku_FineTuneParams config)
-{
-    if (config.logger == nullptr) {
-        // Use default console logger if user doesn't set it
-        config.logger = &aku_console_logger;
-    }
-    if (config.durability != AKU_MAX_DURABILITY &&
-        config.durability != AKU_DURABILITY_SPEED_TRADEOFF &&
-        config.durability != AKU_MAX_WRITE_SPEED)
-    {
-        config.durability = AKU_MAX_DURABILITY;
-        (*config.logger)(AKU_LOG_INFO, "config.durability = default(AKU_MAX_DURABILITY)");
-    }
-    if (config.compression_threshold == 0) {
-        config.compression_threshold = AKU_DEFAULT_COMPRESSION_THRESHOLD;
-        (*config.logger)(AKU_LOG_INFO, "config.compression_threshold = default(AKU_DEFAULT_COMPRESSION_THRESHOLD)");
-    }
-    if (config.window_size == 0) {
-        config.window_size = AKU_DEFAULT_WINDOW_SIZE;
-        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
-    }
-    if (config.max_cache_size == 0) {
-        config.max_cache_size = AKU_DEFAULT_MAX_CACHE_SIZE;
-        (*config.logger)(AKU_LOG_INFO, "config.window_size = default(AKU_DEFAULT_WINDOW_SIZE)");
-    }
-    auto ptr = new DatabaseImpl(path, config);
-    return static_cast<aku_Database*>(ptr);
+aku_Database* aku_open_database(const char* path) {
+    return DatabaseImpl::create(path);
 }
 
-aku_Status aku_open_status(aku_Database* db) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->get_open_error();
-}
-
-void aku_close_database(aku_Database* db)
-{
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    dbi->close();
-    delete dbi;
-}
-
-void aku_destroy(void* any) {
-    free(any);
+void aku_close_database(aku_Database* db) {
+    DatabaseImpl::free(db);
 }
 
 aku_Cursor* aku_query(aku_Database* db, const char* query) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->query(query);
+    AKU_PANIC("Not implemented");
 }
 
 void aku_cursor_close(aku_Cursor* pcursor) {
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    delete pimpl;
+    AKU_PANIC("Not implemented");
 }
 
 size_t aku_cursor_read( aku_Cursor       *cursor
                       , void             *dest
                       , size_t            dest_size)
 {
-    // read columns from data store
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(cursor);
-    return pimpl->read_values(dest, dest_size);
+    AKU_PANIC("Not implemented");
 }
 
 int aku_cursor_is_done(aku_Cursor* pcursor) {
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return static_cast<int>(pimpl->is_done());
+    AKU_PANIC("Not implemented");
 }
 
 int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
-    CursorImpl* pimpl = reinterpret_cast<CursorImpl*>(pcursor);
-    return static_cast<int>(pimpl->is_error(out_error_code_or_null));
+    AKU_PANIC("Not implemented");
 }
 
 int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
     return DateTimeUtil::to_iso_string(ts, buffer, buffer_size);
 }
 
-int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer, size_t buffer_size) {
-    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return dbi->param_id_to_series(id, buffer, buffer_size);
+int aku_param_id_to_series(aku_IngestionSession* session, aku_ParamId id, char* buffer, size_t buffer_size) {
+    auto ises = reinterpret_cast<IngestionSession*>(session);
+    return ises->param_id_to_series(id, buffer, buffer_size);
 }
 
 //--------------------------------

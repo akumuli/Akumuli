@@ -36,13 +36,13 @@ std::shared_ptr<NBTreeExtentsList> RegistryEntry::try_acquire() {
 // Tree registry //
 // ///////////// //
 
-TreeRegistry::TreeRegistry(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
+IngestionContext::IngestionContext(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
     : blockstore_(bstore)
     , metadata_(std::move(meta))
 {
 }
 
-aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+aku_Status IngestionContext::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
     {
         std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
@@ -64,7 +64,7 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
     return AKU_SUCCESS;
 }
 
-int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+int IngestionContext::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -79,20 +79,20 @@ int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_si
     return str.second;
 }
 
-std::shared_ptr<StreamDispatcher> TreeRegistry::create_dispatcher() {
-    auto deleter = [](StreamDispatcher* p) {
+std::shared_ptr<IngestionSession> IngestionContext::create_dispatcher() {
+    auto deleter = [](IngestionSession* p) {
         p->close();
         delete p;
     };
-    auto ptr = new StreamDispatcher(shared_from_this());
-    auto sptr = std::shared_ptr<StreamDispatcher>(ptr, deleter);
+    auto ptr = new IngestionSession(shared_from_this());
+    auto sptr = std::shared_ptr<IngestionSession>(ptr, deleter);
     auto id = reinterpret_cast<size_t>(ptr);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     active_[id] = sptr;
     return sptr;
 }
 
-void TreeRegistry::remove_dispatcher(StreamDispatcher const& disp) {
+void IngestionContext::remove_dispatcher(IngestionSession const& disp) {
     auto id = reinterpret_cast<size_t>(&disp);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     auto it = active_.find(id);
@@ -101,7 +101,7 @@ void TreeRegistry::remove_dispatcher(StreamDispatcher const& disp) {
     }
 }
 
-void TreeRegistry::broadcast_sample(aku_Sample const& sample, StreamDispatcher const* source) {
+void IngestionContext::broadcast_sample(aku_Sample const& sample, IngestionSession const* source) {
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     for (auto wdisp: active_) {
         auto disp = wdisp.second.lock();
@@ -117,7 +117,7 @@ void TreeRegistry::broadcast_sample(aku_Sample const& sample, StreamDispatcher c
     }
 }
 
-std::shared_ptr<NBTreeExtentsList> TreeRegistry::try_acquire(aku_ParamId id) {
+std::shared_ptr<NBTreeExtentsList> IngestionContext::try_acquire(aku_ParamId id) {
     std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
     auto it = table_.find(id);
     if (it != table_.end() && it->second->is_available()) {
@@ -130,7 +130,7 @@ std::shared_ptr<NBTreeExtentsList> TreeRegistry::try_acquire(aku_ParamId id) {
 // StreamDispatcher //
 // //////////////// //
 
-StreamDispatcher::StreamDispatcher(std::shared_ptr<TreeRegistry> registry)
+IngestionSession::IngestionSession(std::shared_ptr<IngestionContext> registry)
     : registry_(registry)
 {
     // At this point this `StreamDispatcher` should be already registered.
@@ -138,14 +138,14 @@ StreamDispatcher::StreamDispatcher(std::shared_ptr<TreeRegistry> registry)
     // because we can't call `shared_from_this` in `StremDispatcher::c-tor`.
 }
 
-void StreamDispatcher::close() {
+void IngestionSession::close() {
     auto reg = registry_.lock();
     if (reg) {
         reg->remove_dispatcher(*this);
     }
 }
 
-aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
+aku_Status IngestionSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
     // Series name normalization procedure. Most likeley a bottleneck but
     // can be easily parallelized.
     const char* ksbegin = nullptr;
@@ -178,7 +178,7 @@ aku_Status StreamDispatcher::init_series_id(const char* begin, const char* end, 
     return status;
 }
 
-int StreamDispatcher::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+int IngestionSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     auto name = local_matcher_.id2str(id);
     if (name.first == nullptr) {
         // not yet cached!
@@ -193,7 +193,7 @@ int StreamDispatcher::get_series_name(aku_ParamId id, char* buffer, size_t buffe
     return name.second;
 }
 
-aku_Status StreamDispatcher::write(aku_Sample const& sample) {
+aku_Status IngestionSession::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
@@ -227,7 +227,7 @@ aku_Status StreamDispatcher::write(aku_Sample const& sample) {
     return AKU_SUCCESS;
 }
 
-bool StreamDispatcher::_receive_broadcast(const aku_Sample &sample) {
+bool IngestionSession::_receive_broadcast(const aku_Sample &sample) {
     aku_ParamId id = sample.paramid;
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     auto it = cache_.find(id);

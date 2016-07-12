@@ -924,7 +924,7 @@ V2Storage::V2Storage(const char* path) {
     reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
 }
 
-std::shared_ptr<Ingress::StreamDispatcher> V2Storage::create_dispatcher() {
+std::shared_ptr<Ingress::IngestionSession> V2Storage::create_dispatcher() {
     return reg_->create_dispatcher();
 }
 

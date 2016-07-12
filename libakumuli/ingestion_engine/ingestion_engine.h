@@ -56,7 +56,7 @@ public:
 
 
 // Fwd decl.
-class StreamDispatcher;
+class IngestionSession;
 
 
 /** Global tree registery.
@@ -72,7 +72,7 @@ class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
     SeriesMatcher global_matcher_;
 
     //! List of acitve dispatchers
-    std::unordered_map<size_t, std::weak_ptr<StreamDispatcher>> active_;
+    std::unordered_map<size_t, std::weak_ptr<IngestionSession>> active_;
     std::mutex metadata_lock_;
     std::mutex table_lock_;
 
@@ -92,13 +92,13 @@ public:
     // Dispatchers handling
 
     //! Create and register new `StreamDispatcher`.
-    std::shared_ptr<StreamDispatcher> create_dispatcher();
+    std::shared_ptr<IngestionSession> create_session();
 
     //! Remove dispatcher from registry.
-    void remove_dispatcher(StreamDispatcher const& disp);
+    void remove_dispatcher(IngestionSession const& disp);
 
     //! Broadcast sample to all active dispatchers.
-    void broadcast_sample(const aku_Sample &sample, StreamDispatcher const* source);
+    void broadcast_sample(const aku_Sample &sample, IngestionSession const* source);
 
     // Registry entry acquisition/release
 
@@ -115,7 +115,7 @@ public:
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread.
   */
-class StreamDispatcher : public std::enable_shared_from_this<StreamDispatcher>
+class IngestionSession : public std::enable_shared_from_this<IngestionSession>
 {
     //! Link to global registry.
     std::weak_ptr<TreeRegistry> registry_;
@@ -127,11 +127,11 @@ class StreamDispatcher : public std::enable_shared_from_this<StreamDispatcher>
     std::mutex lock_;
 public:
     //! C-tor. Shouldn't be called directly.
-    StreamDispatcher(std::shared_ptr<TreeRegistry> registry);
+    IngestionSession(std::shared_ptr<TreeRegistry> registry);
 
-    StreamDispatcher(StreamDispatcher const&) = delete;
-    StreamDispatcher(StreamDispatcher &&) = delete;
-    StreamDispatcher& operator = (StreamDispatcher const&) = delete;
+    IngestionSession(IngestionSession const&) = delete;
+    IngestionSession(IngestionSession &&) = delete;
+    IngestionSession& operator = (IngestionSession const&) = delete;
 
     /** Match series name. If series with such name doesn't exists - create it.
       * This method should be called for each sample to init its `paramid` field.

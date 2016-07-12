@@ -211,7 +211,7 @@ public:
 
     V2Storage(const char* path);
 
-    std::shared_ptr<Ingress::StreamDispatcher> create_dispatcher();
+    std::shared_ptr<Ingress::IngestionSession> create_dispatcher();
 
     void debug_print() const;
 };
