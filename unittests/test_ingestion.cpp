@@ -55,8 +55,8 @@ BOOST_AUTO_TEST_CASE(Test_ingress_create) {
     // Do nothing, just create all the things
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
-    std::shared_ptr<IngestionContext> registry = std::make_shared<IngestionContext>(bstore, std::move(meta));
-    auto dispatcher = registry->create_dispatcher();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto session = registry->create_session();
 }
 
 BOOST_AUTO_TEST_CASE(Test_ingress_add_series_1) {
@@ -66,9 +66,9 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_series_1) {
 
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
-    std::shared_ptr<IngestionContext> registry = std::make_shared<IngestionContext>(bstore, std::move(meta));
-    auto dispa = registry->create_dispatcher();
-    auto dispb = registry->create_dispatcher();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto dispa = registry->create_session();
+    auto dispb = registry->create_session();
 
     aku_Sample samplea;
     status = dispa->init_series_id(sname, end, &samplea);
@@ -95,9 +95,9 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_values_1) {
 
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
-    std::shared_ptr<IngestionContext> registry = std::make_shared<IngestionContext>(bstore, std::move(meta));
-    auto dispa = registry->create_dispatcher();
-    auto dispb = registry->create_dispatcher();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto dispa = registry->create_session();
+    auto dispb = registry->create_session();
 
     aku_Sample samplea;
     samplea.payload.type = AKU_PAYLOAD_FLOAT;
@@ -136,11 +136,11 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_values_2) {
 
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
-    std::shared_ptr<IngestionContext> registry = std::make_shared<IngestionContext>(bstore, std::move(meta));
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
 
-    auto dispa = registry->create_dispatcher();
+    auto dispa = registry->create_session();
     {
-        auto dispb = registry->create_dispatcher();
+        auto dispb = registry->create_session();
 
         aku_Sample sample;
         sample.payload.type = AKU_PAYLOAD_FLOAT;

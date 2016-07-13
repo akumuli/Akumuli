@@ -215,7 +215,7 @@ AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionSession* ist, aku_ParamId param_id,
+AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionSession* session, aku_ParamId param_id,
                                            aku_Timestamp timestamp,  double value);
 
 /** Write measurement to DB

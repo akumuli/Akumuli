@@ -239,7 +239,7 @@ void aku_destroy_ingestion_session(aku_IngestionSession* session) {
     DatabaseImpl::free(session);
 }
 
-aku_Status aku_write_double_raw(aku_IngestionSession* ist, aku_ParamId param_id, aku_Timestamp timestamp,  double value) {
+aku_Status aku_write_double_raw(aku_IngestionSession* session, aku_ParamId param_id, aku_Timestamp timestamp,  double value) {
     aku_Sample sample;
     sample.timestamp = timestamp;
     sample.paramid = param_id;
