@@ -72,7 +72,9 @@ void AkumuliConnection::close() {
 }
 
 aku_Status AkumuliConnection::write(aku_Sample const& sample) {
-    return aku_write(db_, &sample);
+    // FIXME: api changed
+    //return aku_write(db_, &sample);
+    throw "not implemented";
 }
 
 std::shared_ptr<DbCursor> AkumuliConnection::search(std::string query) {
@@ -85,16 +87,19 @@ int AkumuliConnection::param_id_to_series(aku_ParamId id, char* buffer, size_t b
 }
 
 aku_Status AkumuliConnection::series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
-    return aku_series_to_param_id(db_, name, name + size, sample);
+    // FIXME: api changed
+    //return aku_series_to_param_id(db_, name, name + size, sample);
+    throw "not implemented";
 }
 
 std::string AkumuliConnection::get_all_stats() {
-    std::vector<char> buffer;
-    buffer.resize(0x1000);
-    int nbytes = aku_json_stats(db_, buffer.data(), buffer.size());
-    if (nbytes > 0) {
-        return std::string(buffer.data(), buffer.data() + nbytes);
-    }
+    //std::vector<char> buffer;
+    //buffer.resize(0x1000);
+    //int nbytes = aku_json_stats(db_, buffer.data(), buffer.size());
+    //if (nbytes > 0) {
+    //    return std::string(buffer.data(), buffer.data() + nbytes);
+    //}
+    // FIXME: aku_json_stats fn
     return "nope!";
 }
 

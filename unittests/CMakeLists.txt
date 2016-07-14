@@ -256,6 +256,13 @@ add_executable(
     ../libakumuli/log_iface.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
+    ../libakumuli/crc32c.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/ingestion_engine/ingestion_engine.cpp
 )
 
 target_link_libraries(

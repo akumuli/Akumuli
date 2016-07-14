@@ -40,6 +40,7 @@ add_library(akumuli SHARED
     hashfnfamily.cpp
     invertedindex.cpp
     crc32c.cpp
+    status_util.cpp
     # query_processing
     queryprocessor.cpp
     queryprocessor_framework.cpp
@@ -50,6 +51,12 @@ add_library(akumuli SHARED
     query_processing/randomsamplingnode.cpp
     query_processing/spacesaver.cpp
     query_processing/limiter.cpp
+    # storage engine
+    storage_engine/blockstore.cpp
+    storage_engine/volume.cpp
+    storage_engine/nbtree.cpp
+    storage_engine/compression.cpp
+    ingestion_engine/ingestion_engine.cpp
 )
 
 include_directories(.)

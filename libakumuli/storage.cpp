@@ -920,12 +920,12 @@ V2Storage::V2Storage(const char* path) {
         }
     }
 
-    bstore_ = std::make_shared<StorageEngine::FixedSizeFileStorage>(metapath, volpaths);
+    bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
 }
 
 std::shared_ptr<Ingress::IngestionSession> V2Storage::create_dispatcher() {
-    return reg_->create_dispatcher();
+    return reg_->create_session();
 }
 
 void V2Storage::debug_print() const {
