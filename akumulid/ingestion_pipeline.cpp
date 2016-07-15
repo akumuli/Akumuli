@@ -57,14 +57,6 @@ AkumuliConnection::AkumuliConnection(const char *path,
     params.window_size = window_width;
     params.max_cache_size = cache_size;
     db_ = aku_open_database(dbpath_.c_str(), params);
-
-    aku_Status status = aku_open_status(db_);
-    if (status != AKU_SUCCESS) {
-        std::stringstream fmt;
-        fmt << "can't open database, error: `" << aku_error_message(status) << "`";
-        std::runtime_error err(fmt.str());
-        BOOST_THROW_EXCEPTION(err);
-    }
 }
 
 void AkumuliConnection::close() {
@@ -72,7 +64,7 @@ void AkumuliConnection::close() {
 }
 
 aku_Status AkumuliConnection::write(aku_Sample const& sample) {
-    // FIXME: api changed
+    // FIXME: api was changed
     //return aku_write(db_, &sample);
     throw "not implemented";
 }
@@ -83,7 +75,9 @@ std::shared_ptr<DbCursor> AkumuliConnection::search(std::string query) {
 }
 
 int AkumuliConnection::param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) {
-    return aku_param_id_to_series(db_, id, buffer, buffer_size);
+    //return aku_param_id_to_series(db_, id, buffer, buffer_size);
+    // FIXME: api was changed
+    throw "not implemented";
 }
 
 aku_Status AkumuliConnection::series_to_param_id(const char *name, size_t size, aku_Sample *sample) {

@@ -278,7 +278,8 @@ aku_Status aku_series_to_param_id(aku_IngestionSession* session, const char* beg
     return ises->series_to_param_id(begin, end, sample);
 }
 
-aku_Database* aku_open_database(const char* path) {
+aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters) {
+    AKU_UNUSED(parameters);
     return DatabaseImpl::create(path);
 }
 

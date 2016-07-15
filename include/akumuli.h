@@ -157,12 +157,6 @@ AKU_EXPORT apr_status_t aku_remove_database(const char* file_name, aku_logger_cb
 AKU_EXPORT aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters);
 
 
-/** Check status of previous open operation
-  * @param db pointer to database
-  */
-AKU_EXPORT aku_Status aku_open_status(aku_Database* db);
-
-
 //! Close database. Free resources.
 AKU_EXPORT void aku_close_database(aku_Database* db);
 
