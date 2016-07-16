@@ -256,38 +256,29 @@ int main(int, const char**) {
         auto session = aku_create_ingestion_session(db);
         Timer timer;
         RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
-        aku_ParamId iditer = static_cast<aku_ParamId>(rand());
+        std::vector<aku_ParamId> ids;
+        // Genearate all ids
+        for (aku_ParamId it = begin; it < end; it++) {
+            char buffer[0x100];
+            int nchars = sprintf(buffer, "cpu id=%d", static_cast<int>(it));
+            aku_Sample sample;
+            aku_series_to_param_id(session, buffer, buffer + nchars, &sample);
+            ids.push_back(sample.paramid);
+        }
+        size_t load = NUM_ITERATIONS / ids.size();
+        // Generate data
         for(u64 i = 0; i < NUM_ITERATIONS; i++) {
             aku_Sample sample;
             //char buffer[100];
             // =series=
-            u64 id = begin + iditer % (end - begin);
-            iditer++;
-            if (iditer % 1000) {
-                iditer = static_cast<aku_ParamId>(rand());
-            }
-            //u64 hashval =  i % 10;
-            //int nchars = sprintf(buffer, "cpu key=%d hash=%d",
-            //                     static_cast<int>(id),
-            //                     static_cast<int>(hashval));
-
-            //aku_series_to_param_id(session, buffer, buffer + nchars, &sample);
-            sample.paramid = id;
+            sample.paramid = ids.at(i / load);
 
             // =timestamp=
             sample.timestamp = i;
 
             // =payload=
-            if (i == 1000000ul) {
-                // Add anomalous value
-                rwalk.add_anomaly(id, 100.0);
-            }
-            if (i == 899999999ul) {
-                // Add anomalous value
-                rwalk.add_anomaly(id, 100.0);
-            }
             sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.float64 = rwalk.generate(id);
+            sample.payload.float64 = rwalk.generate(sample.paramid);
 
             aku_Status status = aku_write(session, &sample);
 
@@ -304,9 +295,13 @@ int main(int, const char**) {
     };
 
     std::thread th0(std::bind(worker, 0, 1000));
-    std::thread th1(std::bind(worker, 1000, 3000));
+    std::thread th1(std::bind(worker, 1000, 2000));
+    std::thread th2(std::bind(worker, 3000, 4000));
+    //std::thread th3(std::bind(worker, 4000, 5000));
     th0.join();
     th1.join();
+    th2.join();
+    //th3.join();
 
     aku_close_database(db);
     /*

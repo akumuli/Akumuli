@@ -165,3 +165,20 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_values_2) {
 
     BOOST_REQUIRE_EQUAL(sample.paramid, sample.paramid);
 }
+
+BOOST_AUTO_TEST_CASE(Test_ingress_add_values_3) {
+    aku_Status status;
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto disp = registry->create_session();
+    auto dispb = registry->create_session();
+
+    aku_Sample sample;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.paramid = 111;
+    sample.timestamp = 111;
+    sample.payload.float64 = 111;
+    status = disp->write(sample);  // series with id 111 doesn't exists
+    BOOST_REQUIRE_NE(status, AKU_SUCCESS);
+}
