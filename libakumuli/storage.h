@@ -214,6 +214,20 @@ public:
     std::shared_ptr<Ingress::IngestionSession> create_dispatcher();
 
     void debug_print() const;
+
+    /** Create empty database from scratch.
+      * @param file_name is database name
+      * @param metadata_path is a path to metadata storage
+      * @param volumes_path is a path to volumes storage
+      * @param num_volumes defines how many volumes should be crated
+      * @param page_size is a size of the individual page in bytes
+      * @return operation status
+      */
+    static aku_Status create_database( const char     *file_name
+                                     , const char     *metadata_path
+                                     , const char     *volumes_path
+                                     , i32             num_volumes
+                                     , u64             page_size);
 };
 
 }

@@ -18,6 +18,7 @@
 #pragma once
 #include "volume.h"
 #include <random>
+#include <mutex>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -94,6 +95,8 @@ class FixedSizeFileStorage : public BlockStore,
     u32 current_gen_;
     //! Size of the blockstore in blocks.
     size_t total_size_;
+    //! Used to protect all internal state
+    mutable std::mutex lock_;
 
     //! Secret c-tor.
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);

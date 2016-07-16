@@ -20,6 +20,7 @@
 #include "util.h"
 #include "cursor.h"
 #include "queryprocessor.h"
+#include "log_iface.h"
 
 #include <cstdlib>
 #include <cstdarg>
@@ -748,12 +749,11 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
   * @return APR_EINIT on DB error.
   */
 static apr_status_t create_metadata_page( const char* file_name
-                                        , std::vector<std::string> const& page_file_names
-                                        , aku_logger_cb_t logger)
+                                        , std::vector<std::string> const& page_file_names)
 {
     using namespace std;
     try {
-        auto storage = std::make_shared<MetadataStorage>(file_name, logger);
+        auto storage = std::make_shared<MetadataStorage>(file_name, nullptr);
 
         auto now = apr_time_now();
         char date_time[0x100];
@@ -771,7 +771,7 @@ static apr_status_t create_metadata_page( const char* file_name
     } catch (std::exception const& err) {
         std::stringstream fmt;
         fmt << "Can't create metadata file " << file_name << ", the error is: " << err.what();
-        (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, fmt.str().c_str());
         return APR_EGENERAL;
     }
     return APR_SUCCESS;
@@ -853,7 +853,7 @@ apr_status_t Storage::new_storage(const char     *file_name,
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }
-    status = create_metadata_page(path, page_names, logger);
+    status = create_metadata_page(path, page_names);
     apr_pool_destroy(mempool);
     return status;
 }
@@ -931,6 +931,46 @@ std::shared_ptr<Ingress::IngestionSession> V2Storage::create_dispatcher() {
 void V2Storage::debug_print() const {
     std::cout << "V2Storage::debug_print" << std::endl;
     std::cout << "...not implemented" << std::endl;
+}
+
+aku_Status V2Storage::create_database( const char     *file_name
+                                     , const char     *metadata_path
+                                     , const char     *volumes_path
+                                     , i32             num_volumes
+                                     , u64             page_size)
+{
+    // Create volumes and metapage
+    u32 vol_size = static_cast<u32>(page_size / 4096);
+    std::vector<std::tuple<u32, std::string>> paths;
+    std::string volpath(volumes_path);
+    if (volpath.back() != '/') {
+        volpath += "/";
+    }
+    for (i32 i = 0; i < num_volumes; i++) {
+        paths.push_back(std::make_tuple(vol_size, volpath + file_name + "_" + std::to_string(i) + ".vol"));
+    }
+    std::string meta(metadata_path);
+    if (meta.back() != '/') {
+        meta += "/";
+    }
+    meta += file_name;
+    meta += ".metavol";
+    StorageEngine::FixedSizeFileStorage::create(meta, paths);
+
+    // Create sqlite database for metadata
+    std::vector<std::string> mpaths;
+    mpaths.push_back(meta);
+    for (auto p: paths) {
+        mpaths.push_back(std::get<1>(p));
+    }
+    std::string metadatadb = metadata_path;
+    if (metadatadb.back() != '/') {
+        metadatadb += "/";
+    }
+    metadatadb += file_name;
+    metadatadb += ".akumuli";
+    create_metadata_page(metadatadb.c_str(), mpaths);
+    return AKU_SUCCESS;
 }
 
 }

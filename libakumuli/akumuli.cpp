@@ -115,7 +115,7 @@ struct CursorImpl : aku_Cursor {
 };
 
 
-class IngestionSession : public aku_IngestionSession {
+class IngestionSession {
     std::shared_ptr<Ingress::IngestionSession> disp_;
 public:
 
@@ -141,7 +141,7 @@ public:
  * Object that extends a Database struct.
  * Can be used from "C" code.
  */
-class DatabaseImpl : public aku_Database
+class DatabaseImpl
 {
     V2Storage storage_;
 public:
@@ -196,23 +196,7 @@ aku_Status aku_create_database_ex( const char     *file_name
                                  , i32             num_volumes
                                  , u64             page_size)
 {
-    u32 vol_size = static_cast<u32>(page_size / 4096);
-    std::vector<std::tuple<u32, std::string>> paths;
-    std::string volpath(volumes_path);
-    if (volpath.back() != '/') {
-        volpath += "/";
-    }
-    for (i32 i = 0; i < num_volumes; i++) {
-        paths.push_back(std::make_tuple(vol_size, volpath + file_name + "_" + std::to_string(i) + ".vol"));
-    }
-    std::string meta(metadata_path);
-    if (meta.back() != '/') {
-        meta += "/";
-    }
-    meta += file_name;
-    meta += ".akumuli";
-    StorageEngine::FixedSizeFileStorage::create(meta, paths);
-    return AKU_SUCCESS;
+    return V2Storage::create_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
 }
 
 aku_Status aku_create_database( const char     *file_name
