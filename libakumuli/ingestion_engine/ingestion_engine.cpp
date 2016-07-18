@@ -203,6 +203,7 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
     // Locate registery entry in cache, if no such entry - try to acquire
     // registery entry, if registery entry is already acquired by the other
     // `StreamDispatcher` - broadcast value to all other dispatchers.
+    NBTreeAppendResult append_result = NBTreeAppendResult::OK;
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     auto it = cache_.find(id);
     if (it == cache_.end()) {
@@ -214,10 +215,7 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
             std::tie(status, entry) = reg->try_acquire(id);
             if (status == AKU_SUCCESS) {
                 cache_[id] = entry;
-                auto flush = entry->append(sample.timestamp, sample.payload.float64);
-                AKU_UNUSED(flush);
-                // FIXME: perform flush if needed
-                // we should get rescue points here and save it to metadata storage
+                append_result = entry->append(sample.timestamp, sample.payload.float64);
             } else if (status == AKU_EBUSY) {
                 reg->broadcast_sample(sample, this);
             } else {
@@ -227,11 +225,21 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
             return AKU_ECLOSED;
         }
     } else {
-        auto flush = it->second->append(sample.timestamp, sample.payload.float64);
-        AKU_UNUSED(flush);
-        // FIXME: perform flush if needed
+        append_result = it->second->append(sample.timestamp, sample.payload.float64);
     }
-    return AKU_SUCCESS;
+    auto status = AKU_SUCCESS;
+    switch(append_result) {
+    case NBTreeAppendResult::OK:
+        break;
+    case NBTreeAppendResult::OK_FLUSH_NEEDED:
+        // FIXME: perform flush if needed
+        // we should get rescue points here and save it to metadata storage
+        break;
+    case NBTreeAppendResult::FAIL_LATE_WRITE:
+        status = AKU_ELATE_WRITE;
+        break;
+    }
+    return status;
 }
 
 bool IngestionSession::_receive_broadcast(const aku_Sample &sample) {
@@ -240,9 +248,12 @@ bool IngestionSession::_receive_broadcast(const aku_Sample &sample) {
     auto it = cache_.find(id);
     if (it != cache_.end()) {
         // perform write
-        auto should_flush = it->second->append(sample.timestamp, sample.payload.float64);
-        AKU_UNUSED(should_flush);
-        // FIXME: perform flush if needed
+        auto result = it->second->append(sample.timestamp, sample.payload.float64);
+        if (result == NBTreeAppendResult::FAIL_LATE_WRITE) {
+            // FIXME: handle error
+        } else if (result == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+            // FIXME: perform flush if needed
+        }
         return true;
     }
     return false;

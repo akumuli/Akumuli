@@ -214,4 +214,3 @@ bool same_value(double a, double b);
 #define AKU_LIKELY(x) (x)
 #define AKU_UNLIKELY(x) (x)
 #endif
-

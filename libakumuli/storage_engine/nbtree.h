@@ -72,6 +72,7 @@
   */
 
 #pragma once
+
 // C++ headers
 #include <deque>
 
@@ -329,6 +330,12 @@ struct NBTreeExtent {
 };
 
 
+enum class NBTreeAppendResult {
+    OK,
+    OK_FLUSH_NEEDED,
+    FAIL_LATE_WRITE,
+};
+
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
   * @li store all roots of the NBTree
@@ -337,7 +344,9 @@ struct NBTreeExtent {
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
     std::deque<std::unique_ptr<NBTreeExtent>> extents_;
-    aku_ParamId id_;
+    const aku_ParamId id_;
+    //! Last timestamp
+    aku_Timestamp last_;
     std::vector<LogicAddr> rescue_points_;
     bool initialized_;
 
@@ -352,9 +361,18 @@ public:
       */
     NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
+    /** Append new subtree reference to extents list.
+      * This operation can't fail and should be used only by NB-tree itself (from node-commit functions).
+      * This property is not enforced by the typesystem.
+      * Result is OK or OK_FLUSH_NEEDED (if rescue points list was changed).
+      */
     bool append(SubtreeRef const& pl);
 
-    bool append(aku_Timestamp ts, double value);
+    /** Append new value to extents list.
+      * This operation can fail if value is out of order.
+      * On success result is OK or OK_FLUSH_NEEDED (if rescue points list was changed).
+      */
+    NBTreeAppendResult append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
@@ -385,6 +403,6 @@ public:
     static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
 };
 
-
 }
 }  // namespaces
+

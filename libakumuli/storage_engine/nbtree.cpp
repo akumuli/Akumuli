@@ -1272,6 +1272,7 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
 NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
     , id_(id)
+    , last_(0ull)
     , rescue_points_(std::move(addresses))
     , initialized_(false)
 {
@@ -1294,7 +1295,11 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
     return result;
 }
 
-bool NBTreeExtentsList::append(aku_Timestamp ts, double value) {
+NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
+    if (ts < last_) {
+        return NBTreeAppendResult::FAIL_LATE_WRITE;
+    }
+    last_ = ts;
     if (!initialized_) {
         init();
     }
@@ -1320,9 +1325,9 @@ bool NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         } else {
             rescue_points_.push_back(addr);
         }
-        return true;
+        return NBTreeAppendResult::OK_FLUSH_NEEDED;
     }
-    return false;
+    return NBTreeAppendResult::OK;
 }
 
 bool NBTreeExtentsList::append(const SubtreeRef &pl) {
