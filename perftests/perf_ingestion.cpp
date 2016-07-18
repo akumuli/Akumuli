@@ -296,11 +296,11 @@ int main(int, const char**) {
 
     std::thread th0(std::bind(worker, 0, 1000));
     std::thread th1(std::bind(worker, 1000, 2000));
-    std::thread th2(std::bind(worker, 3000, 4000));
+    //std::thread th2(std::bind(worker, 3000, 4000));
     //std::thread th3(std::bind(worker, 4000, 5000));
     th0.join();
     th1.join();
-    th2.join();
+    //th2.join();
     //th3.join();
 
     aku_close_database(db);

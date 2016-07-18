@@ -10,6 +10,8 @@ using namespace StorageEngine;
 /*  Tree data      Id -> NBTree        Series name parsing    */
 /*                 Global state        Connection local state */
 
+static std::shared_ptr<NBTreeExtentsList> EMPTY_EXTL = std::shared_ptr<NBTreeExtentsList>();
+
 // ////////////// //
 // Registry entry //
 // ////////////// //
@@ -24,12 +26,12 @@ bool RegistryEntry::is_available() const {
     return roots_.unique();
 }
 
-std::shared_ptr<NBTreeExtentsList> RegistryEntry::try_acquire() {
+std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > RegistryEntry::try_acquire() {
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     if (roots_.unique()) {
-        return roots_;
+        return std::make_tuple(AKU_SUCCESS, roots_);
     }
-    return std::shared_ptr<NBTreeExtentsList>();
+    return std::make_tuple(AKU_EBUSY, EMPTY_EXTL);
 }
 
 // ///////////// //
@@ -117,13 +119,13 @@ void TreeRegistry::broadcast_sample(aku_Sample const& sample, IngestionSession c
     }
 }
 
-std::shared_ptr<NBTreeExtentsList> TreeRegistry::try_acquire(aku_ParamId id) {
+std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_acquire(aku_ParamId id) {
     std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
     auto it = table_.find(id);
-    if (it != table_.end() && it->second->is_available()) {
+    if (it != table_.end()) {
         return it->second->try_acquire();
     }
-    return std::shared_ptr<NBTreeExtentsList>();
+    return std::make_tuple(AKU_ENOT_FOUND, EMPTY_EXTL);
 }
 
 // //////////////// //
@@ -207,14 +209,19 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
         // try to acquire entry
         auto reg = registry_.lock();
         if (reg) {
-            auto entry = reg->try_acquire(id);
-            if (entry) {
+            std::shared_ptr<NBTreeExtentsList> entry;
+            aku_Status status;
+            std::tie(status, entry) = reg->try_acquire(id);
+            if (status == AKU_SUCCESS) {
                 cache_[id] = entry;
                 auto flush = entry->append(sample.timestamp, sample.payload.float64);
                 AKU_UNUSED(flush);
                 // FIXME: perform flush if needed
-            } else {
+                // we should get rescue points here and save it to metadata storage
+            } else if (status == AKU_EBUSY) {
                 reg->broadcast_sample(sample, this);
+            } else {
+                return status;
             }
         } else {
             return AKU_ECLOSED;

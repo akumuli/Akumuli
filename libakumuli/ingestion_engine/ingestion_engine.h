@@ -51,7 +51,7 @@ public:
     bool is_available() const;
 
     //! Acquire NBTreeExtentsList
-    std::shared_ptr<StorageEngine::NBTreeExtentsList> try_acquire();
+    std::tuple<aku_Status, std::shared_ptr<StorageEngine::NBTreeExtentsList>> try_acquire();
 };
 
 
@@ -103,7 +103,7 @@ public:
     // Registry entry acquisition/release
 
     //! Acquire nbtree extents list (release should be automatic)
-    std::shared_ptr<StorageEngine::NBTreeExtentsList> try_acquire(aku_ParamId id);
+    std::tuple<aku_Status, std::shared_ptr<StorageEngine::NBTreeExtentsList>> try_acquire(aku_ParamId id);
 
     // Querying
 
