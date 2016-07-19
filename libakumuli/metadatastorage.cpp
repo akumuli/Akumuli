@@ -132,6 +132,20 @@ void MetadataStorage::create_tables() {
             "storage_id INTEGER UNIQUE"
             ");";
     execute_query(query);
+
+    query =
+            "CREATE TABLE IF NOT EXISTS akumuli_rescue_points("
+            "storage_id INTEGER PRIMARY KEY UNIQUE,"
+            "addr0 INTEGER,"
+            "addr1 INTEGER,"
+            "addr2 INTEGER,"
+            "addr3 INTEGER,"
+            "addr4 INTEGER,"
+            "addr5 INTEGER,"
+            "addr6 INTEGER,"
+            "addr7 INTEGER,"
+            ");";
+    execute_query(query);
 }
 
 void MetadataStorage::init_config(const char* creation_datetime)
@@ -177,6 +191,28 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     }
     std::string full_query = query.str();
     execute_query(full_query);
+}
+
+
+void MetadataStorage::udate_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
+    std::stringstream query;
+    query <<
+        "INSERT OR REPLACE INTO akumuli_rescue_points (storage_id, addr0, addr1, addr2, addr3, addr4, addr5, addr6, addr7) VALUES ";
+    size_t ix = 0;
+    for (auto const& kv: input) {
+        query << "( " << kv.first;
+        for (auto id: kv.second) {
+            query << ", " << id;
+        }
+        query << ")";
+        ix++;
+        if (ix == input.size()) {
+            query << ";";
+        } else {
+            query << ",";
+        }
+    }
+    execute_query(query.str());
 }
 
 

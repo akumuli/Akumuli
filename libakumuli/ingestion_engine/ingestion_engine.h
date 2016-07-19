@@ -76,6 +76,9 @@ class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
     std::mutex metadata_lock_;
     std::mutex table_lock_;
 
+    //! List of metadata to update
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
+
 public:
     TreeRegistry(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
 
@@ -88,6 +91,12 @@ public:
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
 
     int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
+
+    //! Update rescue points list for `id`.
+    void update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist);
+
+    //! Write rescue points to persistent storage synchronously.
+    aku_Status save_rescue_points();
 
     // Dispatchers handling
 

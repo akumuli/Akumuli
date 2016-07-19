@@ -100,6 +100,8 @@ struct MetadataStorage {
       */
     void insert_new_names(std::vector<SeriesT> items);
 
+    void udate_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error

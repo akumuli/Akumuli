@@ -44,6 +44,27 @@ TreeRegistry::TreeRegistry(std::shared_ptr<BlockStore> bstore, std::unique_ptr<M
 {
 }
 
+void TreeRegistry::update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist) {
+    // Lock metadata
+    std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
+    rescue_points_[id] = std::move(addrlist);
+}
+
+aku_Status TreeRegistry::save_rescue_points() {
+    std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
+    //
+    // Save new names
+    std::vector<SeriesMatcher::SeriesNameT> newnames;
+    global_matcher_.pull_new_names(&newnames);
+    metadata_->insert_new_names(newnames);
+    //
+    // Save rescue points
+
+    // TODO:
+
+    AKU_PANIC("Not implemented");
+}
+
 aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
     {
@@ -67,6 +88,7 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
 }
 
 int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+    std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -199,6 +221,7 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
+    auto status = AKU_SUCCESS;
     aku_ParamId id = sample.paramid;
     // Locate registery entry in cache, if no such entry - try to acquire
     // registery entry, if registery entry is already acquired by the other
@@ -211,33 +234,37 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
         auto reg = registry_.lock();
         if (reg) {
             std::shared_ptr<NBTreeExtentsList> entry;
-            aku_Status status;
             std::tie(status, entry) = reg->try_acquire(id);
             if (status == AKU_SUCCESS) {
                 cache_[id] = entry;
                 append_result = entry->append(sample.timestamp, sample.payload.float64);
             } else if (status == AKU_EBUSY) {
                 reg->broadcast_sample(sample, this);
-            } else {
-                return status;
             }
         } else {
-            return AKU_ECLOSED;
+            status = AKU_ECLOSED;
         }
     } else {
         append_result = it->second->append(sample.timestamp, sample.payload.float64);
     }
-    auto status = AKU_SUCCESS;
-    switch(append_result) {
-    case NBTreeAppendResult::OK:
-        break;
-    case NBTreeAppendResult::OK_FLUSH_NEEDED:
-        // FIXME: perform flush if needed
-        // we should get rescue points here and save it to metadata storage
-        break;
-    case NBTreeAppendResult::FAIL_LATE_WRITE:
-        status = AKU_ELATE_WRITE;
-        break;
+    if (status == AKU_SUCCESS) {
+        switch(append_result) {
+        case NBTreeAppendResult::OK:
+            break;
+        case NBTreeAppendResult::OK_FLUSH_NEEDED: {
+                std::vector<LogicAddr> rescue_points = it->second->get_roots();
+                auto reg = registry_.lock();
+                if (reg) {
+                    reg->update_rescue_points(id, std::move(rescue_points));
+                } else {
+                    status = AKU_ECLOSED;
+                }
+                break;
+            }
+        case NBTreeAppendResult::FAIL_LATE_WRITE:
+            status = AKU_ELATE_WRITE;
+            break;
+        }
     }
     return status;
 }
