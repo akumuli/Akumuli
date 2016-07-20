@@ -125,20 +125,24 @@ void TreeRegistry::remove_dispatcher(IngestionSession const& disp) {
     }
 }
 
-void TreeRegistry::broadcast_sample(aku_Sample const& sample, IngestionSession const* source) {
+NBTreeAppendResult TreeRegistry::broadcast_sample(aku_Sample const& sample, IngestionSession const* source) {
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     for (auto wdisp: active_) {
         auto disp = wdisp.second.lock();
         if (disp) {
             if (disp.get() != source) {
-                if (disp->_receive_broadcast(sample)) {
+                NBTreeAppendResult result;
+                bool stop = false;
+                std::tie(stop, result) = disp->_receive_broadcast(sample);
+                if (stop) {
                     // Sample processed so we don't need to hold the lock
                     // anymore.
-                    break;
+                    return result;
                 }
             }
         }
     }
+    return NBTreeAppendResult::FAIL_BAD_ID;
 }
 
 std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_acquire(aku_ParamId id) {
@@ -239,7 +243,8 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
                 cache_[id] = entry;
                 append_result = entry->append(sample.timestamp, sample.payload.float64);
             } else if (status == AKU_EBUSY) {
-                reg->broadcast_sample(sample, this);
+                status = AKU_SUCCESS;
+                append_result = reg->broadcast_sample(sample, this);
             }
         } else {
             status = AKU_ECLOSED;
@@ -264,26 +269,24 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
         case NBTreeAppendResult::FAIL_LATE_WRITE:
             status = AKU_ELATE_WRITE;
             break;
+        case NBTreeAppendResult::FAIL_BAD_ID:
+            status = AKU_ENOT_FOUND;
+            break;
         }
     }
     return status;
 }
 
-bool IngestionSession::_receive_broadcast(const aku_Sample &sample) {
+std::tuple<bool, NBTreeAppendResult> IngestionSession::_receive_broadcast(const aku_Sample &sample) {
     aku_ParamId id = sample.paramid;
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     auto it = cache_.find(id);
     if (it != cache_.end()) {
         // perform write
         auto result = it->second->append(sample.timestamp, sample.payload.float64);
-        if (result == NBTreeAppendResult::FAIL_LATE_WRITE) {
-            // FIXME: handle error
-        } else if (result == NBTreeAppendResult::OK_FLUSH_NEEDED) {
-            // FIXME: perform flush if needed
-        }
-        return true;
+        return std::make_tuple(true, result);
     }
-    return false;
+    return std::make_tuple(false, NBTreeAppendResult::OK);
 }
 
 }}  // namespace

@@ -107,7 +107,7 @@ public:
     void remove_dispatcher(IngestionSession const& disp);
 
     //! Broadcast sample to all active dispatchers.
-    void broadcast_sample(const aku_Sample &sample, IngestionSession const* source);
+    StorageEngine::NBTreeAppendResult broadcast_sample(const aku_Sample &sample, IngestionSession const* source);
 
     // Registry entry acquisition/release
 
@@ -159,7 +159,7 @@ public:
       * This method should only be called by `TreeRegistry` class.
       * @return true if sample processed, false otherwise.
       */
-    bool _receive_broadcast(const aku_Sample &sample);
+    std::tuple<bool, StorageEngine::NBTreeAppendResult>  _receive_broadcast(const aku_Sample &sample);
 };
 
 }}  // namespace

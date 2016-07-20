@@ -143,7 +143,7 @@ void MetadataStorage::create_tables() {
             "addr4 INTEGER,"
             "addr5 INTEGER,"
             "addr6 INTEGER,"
-            "addr7 INTEGER,"
+            "addr7 INTEGER"
             ");";
     execute_query(query);
 }
@@ -203,6 +203,9 @@ void MetadataStorage::udate_rescue_points(std::unordered_map<aku_ParamId, std::v
         query << "( " << kv.first;
         for (auto id: kv.second) {
             query << ", " << id;
+        }
+        for(auto i = kv.second.size(); i < 8; i++) {
+            query << ", null";
         }
         query << ")";
         ix++;
