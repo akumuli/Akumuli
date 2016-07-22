@@ -194,7 +194,7 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
 }
 
 
-void MetadataStorage::udate_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
+void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
     std::stringstream query;
     query <<
         "INSERT OR REPLACE INTO akumuli_rescue_points (storage_id, addr0, addr1, addr2, addr3, addr4, addr5, addr6, addr7) VALUES ";

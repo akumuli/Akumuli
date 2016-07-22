@@ -899,7 +899,10 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
 
 //----------- V2Storage ----------
 
-V2Storage::V2Storage(const char* path) {
+V2Storage::V2Storage(const char* path)
+    : done_{0}
+    , close_barrier_(2)
+{
 
     std::unique_ptr<MetadataStorage> meta;
     meta.reset(new MetadataStorage(path));
@@ -922,6 +925,23 @@ V2Storage::V2Storage(const char* path) {
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
+
+    auto sync_worker = [this]() {
+        while(!done_.load()) {
+            aku_Status status = reg_->wait_for_sync_request(10000);
+            if (status == AKU_SUCCESS) {
+                reg_->sync_with_metadata_storage();
+            }
+            bstore_->flush();
+        }
+        close_barrier_.wait();
+    };
+    std::thread sync_worker_thread(sync_worker);
+    sync_worker_thread.detach();
+}
+
+void V2Storage::close() {
+    close_barrier_.wait();
 }
 
 std::shared_ptr<Ingress::IngestionSession> V2Storage::create_dispatcher() {

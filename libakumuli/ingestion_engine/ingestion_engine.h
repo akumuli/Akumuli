@@ -79,6 +79,9 @@ class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
 
+    //! Syncronization for watcher thread
+    std::condition_variable cvar_;
+
 public:
     TreeRegistry(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
 
@@ -96,7 +99,9 @@ public:
     void update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist);
 
     //! Write rescue points to persistent storage synchronously.
-    aku_Status save_rescue_points();
+    void sync_with_metadata_storage();
+
+    aku_Status wait_for_sync_request(int timeout_us);
 
     // Dispatchers handling
 

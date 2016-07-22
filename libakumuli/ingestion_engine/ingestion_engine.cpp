@@ -48,21 +48,26 @@ void TreeRegistry::update_rescue_points(aku_ParamId id, std::vector<StorageEngin
     // Lock metadata
     std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
     rescue_points_[id] = std::move(addrlist);
+    cvar_.notify_one();
 }
 
-aku_Status TreeRegistry::save_rescue_points() {
+void TreeRegistry::sync_with_metadata_storage() {
     std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
-    //
     // Save new names
     std::vector<SeriesMatcher::SeriesNameT> newnames;
     global_matcher_.pull_new_names(&newnames);
     metadata_->insert_new_names(newnames);
-    //
     // Save rescue points
+    metadata_->upsert_rescue_points(std::move(rescue_points_));
+}
 
-    // TODO:
-
-    AKU_PANIC("Not implemented");
+aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
+    std::unique_lock<std::mutex> lock(metadata_lock_);
+    auto res = cvar_.wait_for(lock, std::chrono::microseconds(timeout_us));
+    if (res == std::cv_status::timeout) {
+        return AKU_ETIMEOUT;
+    }
+    return rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
 }
 
 aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
@@ -80,6 +85,9 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
             auto entry = std::make_shared<RegistryEntry>(std::move(tree));
             std::lock_guard<std::mutex> tl(table_lock_); AKU_UNUSED(tl);
             table_[id] = entry;
+            // add rescue points list (empty) for new entry
+            rescue_points_[id] = std::vector<LogicAddr>();
+            cvar_.notify_one();
         }
     }
     sample->paramid = id;

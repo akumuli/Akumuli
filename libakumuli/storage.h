@@ -25,6 +25,7 @@
 #include <queue>
 #include <thread>
 #include <vector>
+#include <atomic>
 
 // APR headers
 #include <apr.h>
@@ -207,6 +208,8 @@ struct Storage {
 class V2Storage {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
     std::shared_ptr<Ingress::TreeRegistry> reg_;
+    std::atomic<int> done_;
+    boost::barrier close_barrier_;
 public:
 
     V2Storage(const char* path);
@@ -214,6 +217,8 @@ public:
     std::shared_ptr<Ingress::IngestionSession> create_dispatcher();
 
     void debug_print() const;
+
+    void close();
 
     /** Create empty database from scratch.
       * @param file_name is database name

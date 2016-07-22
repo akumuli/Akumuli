@@ -18,6 +18,8 @@ static const char* g_error_messages[] = {
     "anomaly detector can't work with negative values",
     "merge required",
     "attempt to perform operation on closed device",
+    "timeout",
+    "retry required",
     "unknown error code"
 };
 
