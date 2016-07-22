@@ -104,6 +104,10 @@ struct MetadataStorage {
       */
     void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
 
+    void begin_transaction();
+
+    void end_transaction();
+
 private:
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error

@@ -43,18 +43,18 @@
 
 
 //! Database instance.
-typedef struct { u8 padding[64]; } aku_Database;
+typedef struct { int padding; } aku_Database;
 
 
 /**
  * @brief The aku_Cursor struct
  */
-typedef struct { int padding; } aku_Cursor;
+typedef void* aku_Cursor;
 
 /**
  * @brief The Ingestion Session struct
  */
-typedef struct { u8 padding[64]; } aku_IngestionSession;
+typedef struct { int padding; } aku_IngestionSession;
 
 
 //! Search stats

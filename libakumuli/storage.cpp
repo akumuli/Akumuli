@@ -926,13 +926,18 @@ V2Storage::V2Storage(const char* path)
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
 
+    // This thread periodically checks state of the tree registry.
+    // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
+    // if something needs to be synced.
+    // This order guarantees that metadata storage always contains correct rescue points and
+    // other metadata.
     auto sync_worker = [this]() {
         while(!done_.load()) {
             aku_Status status = reg_->wait_for_sync_request(10000);
             if (status == AKU_SUCCESS) {
+                bstore_->flush();
                 reg_->sync_with_metadata_storage();
             }
-            bstore_->flush();
         }
         close_barrier_.wait();
     };

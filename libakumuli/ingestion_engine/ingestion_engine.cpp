@@ -52,13 +52,19 @@ void TreeRegistry::update_rescue_points(aku_ParamId id, std::vector<StorageEngin
 }
 
 void TreeRegistry::sync_with_metadata_storage() {
-    std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
-    // Save new names
     std::vector<SeriesMatcher::SeriesNameT> newnames;
-    global_matcher_.pull_new_names(&newnames);
+    std::unordered_map<aku_ParamId, std::vector<LogicAddr>> rescue_points;
+    {
+        std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
+        global_matcher_.pull_new_names(&newnames);
+        std::swap(rescue_points, rescue_points_);
+    }
+    // Save new names
+    metadata_->begin_transaction();
     metadata_->insert_new_names(newnames);
     // Save rescue points
     metadata_->upsert_rescue_points(std::move(rescue_points_));
+    metadata_->end_transaction();
 }
 
 aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {

@@ -194,31 +194,6 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
 }
 
 
-void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
-    std::stringstream query;
-    query <<
-        "INSERT OR REPLACE INTO akumuli_rescue_points (storage_id, addr0, addr1, addr2, addr3, addr4, addr5, addr6, addr7) VALUES ";
-    size_t ix = 0;
-    for (auto const& kv: input) {
-        query << "( " << kv.first;
-        for (auto id: kv.second) {
-            query << ", " << id;
-        }
-        for(auto i = kv.second.size(); i < 8; i++) {
-            query << ", null";
-        }
-        query << ")";
-        ix++;
-        if (ix == input.size()) {
-            query << ";";
-        } else {
-            query << ",";
-        }
-    }
-    execute_query(query.str());
-}
-
-
 std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const char* query) const {
     std::vector<UntypedTuple> tuples;
     apr_dbd_results_t *results = nullptr;
@@ -305,20 +280,60 @@ static bool split_series(const char* str, int n, LightweightString* outname, Lig
     return true;
 }
 
+void MetadataStorage::begin_transaction() {
+    execute_query("BEGIN TRANSACTION;");
+}
+
+void MetadataStorage::end_transaction() {
+    execute_query("END TRANSACTION;");
+}
+
+void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
+    if (input.empty()) {
+        return;
+    }
+    std::stringstream query;
+    typedef std::pair<aku_ParamId, std::vector<u64>> ValueT;
+    std::vector<ValueT> items(input.begin(), input.end());
+    while(!items.empty()) {
+        const size_t batchsize = 500;
+        const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
+        std::vector<ValueT> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
+        items.resize(newsize);
+        query <<
+            "INSERT OR REPLACE INTO akumuli_rescue_points (storage_id, addr0, addr1, addr2, addr3, addr4, addr5, addr6, addr7) VALUES ";
+        size_t ix = 0;
+        for (auto const& kv: batch) {
+            query << "( " << kv.first;
+            for (auto id: kv.second) {
+                query << ", " << id;
+            }
+            for(auto i = kv.second.size(); i < 8; i++) {
+                query << ", null";
+            }
+            query << ")";
+            ix++;
+            if (ix == batch.size()) {
+                query << ";\n";
+            } else {
+                query << ",";
+            }
+        }
+    }
+    execute_query(query.str());
+}
+
 void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> items) {
     if (items.size() == 0) {
         return;
     }
-
-    execute_query("BEGIN TRANSACTION;");
-
     // Write all data
+    std::stringstream query;
     while(!items.empty()) {
-        const size_t batchsize = 100;
+        const size_t batchsize = 500;
         const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
-        std::vector<MetadataStorage::SeriesT> batch(items.begin() + newsize, items.end());
+        std::vector<MetadataStorage::SeriesT> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
         items.resize(newsize);
-        std::stringstream query;
         query << "INSERT INTO akumuli_series (series_id, keyslist, storage_id)" << std::endl;
         bool first = true;
         for (auto item: batch) {
@@ -340,11 +355,10 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
                 }
             }
         }
-        std::string full_query = query.str();
-        execute_query(full_query);
+        query << ";\n";
     }
-
-    execute_query("END TRANSACTION;");
+    std::string full_query = query.str();
+    execute_query(full_query);
 }
 
 u64 MetadataStorage::get_prev_largest_id() {

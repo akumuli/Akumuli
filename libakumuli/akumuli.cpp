@@ -79,7 +79,7 @@ const char* aku_error_message(int error_code) {
 }
 
 
-struct CursorImpl : aku_Cursor {
+struct CursorImpl {
     std::unique_ptr<ExternalCursor> cursor_;
     aku_Status status_;
     std::string query_;
@@ -115,7 +115,7 @@ struct CursorImpl : aku_Cursor {
 };
 
 
-class IngestionSession {
+class IngestionSession : public aku_IngestionSession {
     std::shared_ptr<Ingress::IngestionSession> disp_;
 public:
 
@@ -141,7 +141,7 @@ public:
  * Object that extends a Database struct.
  * Can be used from "C" code.
  */
-class DatabaseImpl
+class DatabaseImpl : public aku_Database
 {
     V2Storage storage_;
 public:
@@ -151,22 +151,24 @@ public:
     {
     }
 
+    void close() {
+        storage_.close();
+    }
+
     static aku_Database* create(const char* path) {
-        aku_Database* ptr = new aku_Database();
-        new (ptr) DatabaseImpl(path);
-        return ptr;
+        DatabaseImpl* ptr = new DatabaseImpl(path);
+        return static_cast<aku_Database*>(ptr);
     }
 
     static void free(aku_Database* ptr) {
         DatabaseImpl* pimpl = reinterpret_cast<DatabaseImpl*>(ptr);
-        pimpl->~DatabaseImpl();
-        delete ptr;
+        pimpl->close();
+        delete pimpl;
     }
 
     static void free(aku_IngestionSession* ptr) {
         auto pimpl = reinterpret_cast<IngestionSession*>(ptr);
-        pimpl->~IngestionSession();
-        delete ptr;
+        delete pimpl;
     }
 
     void debug_print() const {
@@ -174,10 +176,9 @@ public:
     }
 
     aku_IngestionSession* create_session() {
-        aku_IngestionSession* ptr = new aku_IngestionSession();
         auto disp = storage_.create_dispatcher();
-        new (ptr) IngestionSession(disp);
-        return ptr;
+        IngestionSession* ptr = new IngestionSession(disp);
+        return static_cast<aku_IngestionSession*>(ptr);
     }
 
     CursorImpl* query(const char*) {
@@ -216,7 +217,7 @@ apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) 
 
 aku_IngestionSession* aku_create_ingestion_session(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
-    return reinterpret_cast<aku_IngestionSession*>(dbi->create_session());
+    return dbi->create_session();
 }
 
 void aku_destroy_ingestion_session(aku_IngestionSession* session) {
