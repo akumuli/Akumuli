@@ -262,7 +262,7 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
-    ../libakumuli/ingestion_engine/ingestion_engine.cpp
+    ../libakumuli/storage_engine/ingestion_engine.cpp
 )
 
 target_link_libraries(
@@ -432,7 +432,7 @@ add_executable(
     ../libakumuli/log_iface.cpp
     ../libakumuli/crc32c.cpp
     # ingestion engine
-    ../libakumuli/ingestion_engine/ingestion_engine.cpp
+    ../libakumuli/storage_engine/ingestion_engine.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/metadatastorage.cpp

@@ -29,7 +29,7 @@
 #include "log_iface.h"
 #include "status_util.h"
 
-#include "ingestion_engine/ingestion_engine.h"
+#include "storage_engine/ingestion_engine.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -116,10 +116,10 @@ struct CursorImpl {
 
 
 class IngestionSession : public aku_IngestionSession {
-    std::shared_ptr<Ingress::IngestionSession> disp_;
+    std::shared_ptr<StorageEngine::Session> disp_;
 public:
 
-    IngestionSession(std::shared_ptr<Ingress::IngestionSession> disp)
+    IngestionSession(std::shared_ptr<StorageEngine::Session> disp)
         : disp_(disp)
     {
     }
@@ -197,7 +197,7 @@ aku_Status aku_create_database_ex( const char     *file_name
                                  , i32             num_volumes
                                  , u64             page_size)
 {
-    return V2Storage::create_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
+    return V2Storage::new_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
 }
 
 aku_Status aku_create_database( const char     *file_name

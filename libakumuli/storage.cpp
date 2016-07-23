@@ -903,7 +903,6 @@ V2Storage::V2Storage(const char* path)
     : done_{0}
     , close_barrier_(2)
 {
-
     std::unique_ptr<MetadataStorage> meta;
     meta.reset(new MetadataStorage(path));
 
@@ -924,7 +923,7 @@ V2Storage::V2Storage(const char* path)
     }
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
-    reg_ = std::make_shared<Ingress::TreeRegistry>(bstore_, std::move(meta));
+    reg_ = std::make_shared<StorageEngine::TreeRegistry>(bstore_, std::move(meta));
 
     // This thread periodically checks state of the tree registry.
     // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
@@ -958,7 +957,7 @@ void V2Storage::close() {
     close_barrier_.wait();
 }
 
-std::shared_ptr<Ingress::IngestionSession> V2Storage::create_dispatcher() {
+std::shared_ptr<StorageEngine::Session> V2Storage::create_dispatcher() {
     return reg_->create_session();
 }
 
@@ -967,43 +966,61 @@ void V2Storage::debug_print() const {
     std::cout << "...not implemented" << std::endl;
 }
 
-aku_Status V2Storage::create_database( const char     *file_name
-                                     , const char     *metadata_path
-                                     , const char     *volumes_path
-                                     , i32             num_volumes
-                                     , u64             page_size)
+aku_Status V2Storage::new_database( const char     *file_name
+                                  , const char     *metadata_path
+                                  , const char     *volumes_path
+                                  , i32             num_volumes
+                                  , u64             page_size)
 {
     // Create volumes and metapage
     u32 vol_size = static_cast<u32>(page_size / 4096);
+
+    boost::filesystem::path volpath(volumes_path);
+    boost::filesystem::path metpath(metadata_path);
+    volpath = boost::filesystem::absolute(volpath);
+    metpath = boost::filesystem::absolute(metpath);
+
+    if (!boost::filesystem::exists(volpath)) {
+        Logger::msg(AKU_LOG_INFO, std::string(volumes_path) + " doesn't exists, trying to create directory");
+        boost::filesystem::create_directories(volpath);
+    } else {
+        if (!boost::filesystem::is_directory(volpath)) {
+            Logger::msg(AKU_LOG_ERROR, std::string(volumes_path) + " is not a directory");
+            return AKU_EBAD_ARG;
+        }
+    }
+
+    if (!boost::filesystem::exists(metpath)) {
+        Logger::msg(AKU_LOG_INFO, std::string(metadata_path) + " doesn't exists, trying to create directory");
+        boost::filesystem::create_directories(metpath);
+    } else {
+        if (!boost::filesystem::is_directory(metpath)) {
+            Logger::msg(AKU_LOG_ERROR, std::string(metadata_path) + " is not a directory");
+            return AKU_EBAD_ARG;
+        }
+    }
+
     std::vector<std::tuple<u32, std::string>> paths;
-    std::string volpath(volumes_path);
-    if (volpath.back() != '/') {
-        volpath += "/";
-    }
     for (i32 i = 0; i < num_volumes; i++) {
-        paths.push_back(std::make_tuple(vol_size, volpath + file_name + "_" + std::to_string(i) + ".vol"));
+        std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
+        boost::filesystem::path p = volpath / basename;
+        paths.push_back(std::make_tuple(vol_size, p.string()));
     }
-    std::string meta(metadata_path);
-    if (meta.back() != '/') {
-        meta += "/";
-    }
-    meta += file_name;
-    meta += ".metavol";
-    StorageEngine::FixedSizeFileStorage::create(meta, paths);
+    // Volumes meta-page
+    std::string basename = std::string(file_name) + ".metavol";
+    boost::filesystem::path volmpage = volpath / basename;
+
+    StorageEngine::FixedSizeFileStorage::create(volmpage.string(), paths);
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
-    mpaths.push_back(meta);
+    mpaths.push_back(volmpage.string());
     for (auto p: paths) {
         mpaths.push_back(std::get<1>(p));
     }
-    std::string metadatadb = metadata_path;
-    if (metadatadb.back() != '/') {
-        metadatadb += "/";
-    }
-    metadatadb += file_name;
-    metadatadb += ".akumuli";
-    create_metadata_page(metadatadb.c_str(), mpaths);
+    std::string sqlitebname = std::string(file_name) + ".akumuli";
+    boost::filesystem::path sqlitepath = metpath / sqlitebname;
+    create_metadata_page(sqlitepath.c_str(), mpaths);
     return AKU_SUCCESS;
 }
 

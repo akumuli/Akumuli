@@ -41,7 +41,7 @@
 
 #include "storage_engine/blockstore.h"
 #include "storage_engine/nbtree.h"
-#include "ingestion_engine/ingestion_engine.h"
+#include "storage_engine/ingestion_engine.h"
 
 #include <boost/thread.hpp>
 
@@ -207,14 +207,14 @@ struct Storage {
 
 class V2Storage {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
-    std::shared_ptr<Ingress::TreeRegistry> reg_;
+    std::shared_ptr<StorageEngine::TreeRegistry> reg_;
     std::atomic<int> done_;
     boost::barrier close_barrier_;
 public:
 
     V2Storage(const char* path);
 
-    std::shared_ptr<Ingress::IngestionSession> create_dispatcher();
+    std::shared_ptr<StorageEngine::Session> create_dispatcher();
 
     void debug_print() const;
 
@@ -231,7 +231,7 @@ public:
       * @param page_size is a size of the individual page in bytes
       * @return operation status
       */
-    static aku_Status create_database( const char     *file_name
+    static aku_Status new_database( const char     *file_name
                                      , const char     *metadata_path
                                      , const char     *volumes_path
                                      , i32             num_volumes

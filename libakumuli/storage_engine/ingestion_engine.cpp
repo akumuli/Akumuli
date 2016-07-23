@@ -2,7 +2,7 @@
 #include "log_iface.h"
 
 namespace Akumuli {
-namespace Ingress {
+namespace StorageEngine {
 
 using namespace StorageEngine;
 
@@ -124,20 +124,20 @@ int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_si
     return str.second;
 }
 
-std::shared_ptr<IngestionSession> TreeRegistry::create_session() {
-    auto deleter = [](IngestionSession* p) {
+std::shared_ptr<Session> TreeRegistry::create_session() {
+    auto deleter = [](Session* p) {
         p->close();
         delete p;
     };
-    auto ptr = new IngestionSession(shared_from_this());
-    auto sptr = std::shared_ptr<IngestionSession>(ptr, deleter);
+    auto ptr = new Session(shared_from_this());
+    auto sptr = std::shared_ptr<Session>(ptr, deleter);
     auto id = reinterpret_cast<size_t>(ptr);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     active_[id] = sptr;
     return sptr;
 }
 
-void TreeRegistry::remove_session(IngestionSession const& disp) {
+void TreeRegistry::remove_session(Session const& disp) {
     auto id = reinterpret_cast<size_t>(&disp);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     auto it = active_.find(id);
@@ -147,7 +147,7 @@ void TreeRegistry::remove_session(IngestionSession const& disp) {
     cvar_.notify_one();
 }
 
-NBTreeAppendResult TreeRegistry::broadcast_sample(aku_Sample const& sample, IngestionSession const* source) {
+NBTreeAppendResult TreeRegistry::broadcast_sample(aku_Sample const& sample, Session const* source) {
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     for (auto wdisp: active_) {
         auto disp = wdisp.second.lock();
@@ -180,7 +180,7 @@ std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_ac
 // StreamDispatcher //
 // //////////////// //
 
-IngestionSession::IngestionSession(std::shared_ptr<TreeRegistry> registry)
+Session::Session(std::shared_ptr<TreeRegistry> registry)
     : registry_(registry)
 {
     // At this point this `StreamDispatcher` should be already registered.
@@ -188,14 +188,14 @@ IngestionSession::IngestionSession(std::shared_ptr<TreeRegistry> registry)
     // because we can't call `shared_from_this` in `StremDispatcher::c-tor`.
 }
 
-void IngestionSession::close() {
+void Session::close() {
     auto reg = registry_.lock();
     if (reg) {
         reg->remove_session(*this);
     }
 }
 
-aku_Status IngestionSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
+aku_Status Session::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
     // Series name normalization procedure. Most likeley a bottleneck but
     // can be easily parallelized.
     const char* ksbegin = nullptr;
@@ -228,7 +228,7 @@ aku_Status IngestionSession::init_series_id(const char* begin, const char* end, 
     return status;
 }
 
-int IngestionSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+int Session::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     auto name = local_matcher_.id2str(id);
     if (name.first == nullptr) {
         // not yet cached!
@@ -243,7 +243,7 @@ int IngestionSession::get_series_name(aku_ParamId id, char* buffer, size_t buffe
     return name.second;
 }
 
-aku_Status IngestionSession::write(aku_Sample const& sample) {
+aku_Status Session::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
@@ -299,7 +299,7 @@ aku_Status IngestionSession::write(aku_Sample const& sample) {
     return status;
 }
 
-std::tuple<bool, NBTreeAppendResult> IngestionSession::_receive_broadcast(const aku_Sample &sample) {
+std::tuple<bool, NBTreeAppendResult> Session::_receive_broadcast(const aku_Sample &sample) {
     aku_ParamId id = sample.paramid;
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     auto it = cache_.find(id);

@@ -19,11 +19,10 @@
 
 /* In general this is a tree-roots collection combined with series name parser
  * and series registery (backed by sqlite). One TreeRegistery should be created
- * per database. This registery can be used to create StreamDispatcher. The
- * StreamDispatcher instances should be created per-connection for each connection
- * to operate locally (without synchronization). This code assumes that each connection
- * ingests its own set of time-series. If this isn't the case - performance penalty
- * will be introduced.
+ * per database. This registery can be used to create sessions. Session instances
+ * should be created per-connection for each connection to operate locally (without
+ * synchronization). This code assumes that each connection works with its own
+ * set of time-series. If this isn't the case - performance penalty will be introduced.
  */
 
 // Stdlib
@@ -34,11 +33,12 @@
 #include "akumuli_def.h"
 #include "metadatastorage.h"
 #include "seriesparser.h"
+
 // Project.storage_engine
 #include "storage_engine/nbtree.h"
 
 namespace Akumuli {
-namespace Ingress {
+namespace StorageEngine {
 
 class RegistryEntry {
     mutable std::mutex lock_;
@@ -56,7 +56,7 @@ public:
 
 
 // Fwd decl.
-class IngestionSession;
+class Session;
 
 
 /** Global tree registery.
@@ -72,7 +72,7 @@ class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
     SeriesMatcher global_matcher_;
 
     //! List of acitve dispatchers
-    std::unordered_map<size_t, std::weak_ptr<IngestionSession>> active_;
+    std::unordered_map<size_t, std::weak_ptr<Session>> active_;
     std::mutex metadata_lock_;
     std::mutex table_lock_;
 
@@ -110,13 +110,13 @@ public:
     // Dispatchers handling
 
     //! Create and register new `StreamDispatcher`.
-    std::shared_ptr<IngestionSession> create_session();
+    std::shared_ptr<Session> create_session();
 
     //! Remove dispatcher from registry.
-    void remove_session(IngestionSession const& disp);
+    void remove_session(Session const& disp);
 
     //! Broadcast sample to all active dispatchers.
-    StorageEngine::NBTreeAppendResult broadcast_sample(const aku_Sample &sample, IngestionSession const* source);
+    StorageEngine::NBTreeAppendResult broadcast_sample(const aku_Sample &sample, Session const* source);
 
     // Registry entry acquisition/release
 
@@ -128,7 +128,7 @@ public:
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread.
   */
-class IngestionSession : public std::enable_shared_from_this<IngestionSession>
+class Session : public std::enable_shared_from_this<Session>
 {
     //! Link to global registry.
     std::weak_ptr<TreeRegistry> registry_;
@@ -140,11 +140,11 @@ class IngestionSession : public std::enable_shared_from_this<IngestionSession>
     std::mutex lock_;
 public:
     //! C-tor. Shouldn't be called directly.
-    IngestionSession(std::shared_ptr<TreeRegistry> registry);
+    Session(std::shared_ptr<TreeRegistry> registry);
 
-    IngestionSession(IngestionSession const&) = delete;
-    IngestionSession(IngestionSession &&) = delete;
-    IngestionSession& operator = (IngestionSession const&) = delete;
+    Session(Session const&) = delete;
+    Session(Session &&) = delete;
+    Session& operator = (Session const&) = delete;
 
     /** Match series name. If series with such name doesn't exists - create it.
       * This method should be called for each sample to init its `paramid` field.

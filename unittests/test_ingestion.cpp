@@ -13,7 +13,7 @@
 #include "storage_engine/blockstore.h"
 #include "storage_engine/volume.h"
 #include "storage_engine/nbtree.h"
-#include "ingestion_engine/ingestion_engine.h"
+#include "storage_engine/ingestion_engine.h"
 #include "log_iface.h"
 
 
@@ -42,7 +42,7 @@ static AkumuliInitializer initializer;
 
 using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
-using namespace Akumuli::Ingress;
+using namespace Akumuli::StorageEngine;
 
 std::unique_ptr<MetadataStorage> create_metadatastorage() {
     // Create in-memory sqlite database.
