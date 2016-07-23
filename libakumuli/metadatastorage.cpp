@@ -296,7 +296,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
     typedef std::pair<aku_ParamId, std::vector<u64>> ValueT;
     std::vector<ValueT> items(input.begin(), input.end());
     while(!items.empty()) {
-        const size_t batchsize = 500;
+        const size_t batchsize = 500;  // This limit is defined by SQLITE_MAX_COMPOUND_SELECT
         const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
         std::vector<ValueT> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
         items.resize(newsize);
@@ -330,7 +330,7 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
     // Write all data
     std::stringstream query;
     while(!items.empty()) {
-        const size_t batchsize = 500;
+        const size_t batchsize = 500; // This limit is defined by SQLITE_MAX_COMPOUND_SELECT
         const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
         std::vector<MetadataStorage::SeriesT> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
         items.resize(newsize);

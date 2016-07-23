@@ -101,7 +101,11 @@ public:
     //! Write rescue points to persistent storage synchronously.
     void sync_with_metadata_storage();
 
+    //! Waint until some data will be available.
     aku_Status wait_for_sync_request(int timeout_us);
+
+    //! Wait until all sessions will be closed.
+    void wait_for_sessions();
 
     // Dispatchers handling
 
@@ -109,7 +113,7 @@ public:
     std::shared_ptr<IngestionSession> create_session();
 
     //! Remove dispatcher from registry.
-    void remove_dispatcher(IngestionSession const& disp);
+    void remove_session(IngestionSession const& disp);
 
     //! Broadcast sample to all active dispatchers.
     StorageEngine::NBTreeAppendResult broadcast_sample(const aku_Sample &sample, IngestionSession const* source);
@@ -118,11 +122,6 @@ public:
 
     //! Acquire nbtree extents list (release should be automatic)
     std::tuple<aku_Status, std::shared_ptr<StorageEngine::NBTreeExtentsList>> try_acquire(aku_ParamId id);
-
-    // Querying
-
-    // TODO: add query support
-    // Iterator search(const char* query);
 };
 
 

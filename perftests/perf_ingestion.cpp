@@ -243,12 +243,6 @@ int main(int, const char**) {
     //
 
     aku_FineTuneParams params = {};
-    params.debug_mode = 0;
-    params.durability = /*AKU_MAX_DURABILITY; //*/AKU_MAX_WRITE_SPEED;
-    params.enable_huge_tlb = 0;
-    params.compression_threshold = 10000;
-    params.window_size = 600;
-    params.max_cache_size = 10*1024*1024;  // 10Mb
 
     auto db = aku_open_database(DB_META_FILE, params);
 

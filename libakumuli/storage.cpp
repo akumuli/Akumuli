@@ -939,6 +939,12 @@ V2Storage::V2Storage(const char* path)
                 reg_->sync_with_metadata_storage();
             }
         }
+        // Sync remaining data
+        aku_Status status = reg_->wait_for_sync_request(0);
+        if (status == AKU_SUCCESS) {
+            bstore_->flush();
+            reg_->sync_with_metadata_storage();
+        }
         close_barrier_.wait();
     };
     std::thread sync_worker_thread(sync_worker);
@@ -946,6 +952,9 @@ V2Storage::V2Storage(const char* path)
 }
 
 void V2Storage::close() {
+    // Wait for all ingestion sessions to stop
+    reg_->wait_for_sessions();
+    done_.store(1);
     close_barrier_.wait();
 }
 

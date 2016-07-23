@@ -76,6 +76,13 @@ aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
     return rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
 }
 
+void TreeRegistry::wait_for_sessions() {
+    std::unique_lock<std::mutex> lock(metadata_lock_);
+    while(!active_.empty()) {
+        cvar_.wait(lock);
+    }
+}
+
 aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
     {
@@ -130,13 +137,14 @@ std::shared_ptr<IngestionSession> TreeRegistry::create_session() {
     return sptr;
 }
 
-void TreeRegistry::remove_dispatcher(IngestionSession const& disp) {
+void TreeRegistry::remove_session(IngestionSession const& disp) {
     auto id = reinterpret_cast<size_t>(&disp);
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
     auto it = active_.find(id);
     if (it != active_.end()) {
         active_.erase(it);
     }
+    cvar_.notify_one();
 }
 
 NBTreeAppendResult TreeRegistry::broadcast_sample(aku_Sample const& sample, IngestionSession const* source) {
@@ -183,7 +191,7 @@ IngestionSession::IngestionSession(std::shared_ptr<TreeRegistry> registry)
 void IngestionSession::close() {
     auto reg = registry_.lock();
     if (reg) {
-        reg->remove_dispatcher(*this);
+        reg->remove_session(*this);
     }
 }
 

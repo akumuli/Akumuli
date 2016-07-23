@@ -218,6 +218,9 @@ public:
 
     void debug_print() const;
 
+    /** This method should be called before object destructor.
+      * All ingestion sessions should be stopped first.
+      */
     void close();
 
     /** Create empty database from scratch.

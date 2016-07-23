@@ -205,7 +205,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
     u32 nleafs = 0;
     u32 nitems = 0;
     for (u32 i = 0; true; i++) {
-        if (collection->append(i, i)) {
+        if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
             auto newroots = collection->get_roots();
             if (newroots == addrlist) {
@@ -294,7 +294,7 @@ void test_storage_recovery_status(u32 N, u32 N_values) {
     u32 nleafs = 0;
     u32 nitems = 0;
     for (u32 i = 0; true; i++) {
-        if (collection->append(i, i)) {
+        if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
             auto newroots = collection->get_roots();
             if (newroots == addrlist) {
@@ -350,7 +350,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
     u32 nleafs = 0;
     u32 nitems = 0;
     for (u32 i = 0; true; i++) {
-        if (collection->append(i, i)) {
+        if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
             auto newroots = collection->get_roots();
             if (newroots == addrlist) {
