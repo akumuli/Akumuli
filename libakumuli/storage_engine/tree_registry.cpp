@@ -1,4 +1,4 @@
-#include "ingestion_engine.h"
+#include "tree_registry.h"
 #include "log_iface.h"
 
 namespace Akumuli {

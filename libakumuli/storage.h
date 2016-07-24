@@ -41,7 +41,7 @@
 
 #include "storage_engine/blockstore.h"
 #include "storage_engine/nbtree.h"
-#include "storage_engine/ingestion_engine.h"
+#include "storage_engine/tree_registry.h"
 
 #include <boost/thread.hpp>
 

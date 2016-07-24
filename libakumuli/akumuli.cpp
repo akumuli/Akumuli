@@ -29,7 +29,7 @@
 #include "log_iface.h"
 #include "status_util.h"
 
-#include "storage_engine/ingestion_engine.h"
+#include "storage_engine/tree_registry.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>

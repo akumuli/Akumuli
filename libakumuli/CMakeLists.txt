@@ -56,7 +56,7 @@ add_library(akumuli SHARED
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
-    storage_engine/ingestion_engine.cpp
+    storage_engine/tree_registry.cpp
 )
 
 include_directories(.)
