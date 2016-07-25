@@ -29,12 +29,13 @@
 #include <unordered_map>
 #include <mutex>
 
+// Boost libraries
+#include <boost/property_tree/ptree_fwd.hpp>
+
 // Project
 #include "akumuli_def.h"
 #include "metadatastorage.h"
 #include "seriesparser.h"
-
-// Project.storage_engine
 #include "storage_engine/nbtree.h"
 
 namespace Akumuli {
@@ -122,6 +123,19 @@ public:
 
     //! Acquire nbtree extents list (release should be automatic)
     std::tuple<aku_Status, std::shared_ptr<StorageEngine::NBTreeExtentsList>> try_acquire(aku_ParamId id);
+
+    //! Temporary implementation
+    std::vector<aku_ParamId> get_ids(std::string filter);
+};
+
+
+class ConcatCursor : public NBTreeIterator {
+    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    size_t pos_;
+public:
+    ConcatCursor(std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    virtual Direction get_direction();
 };
 
 
@@ -164,6 +178,8 @@ public:
       * @return true if sample processed, false otherwise.
       */
     std::tuple<bool, StorageEngine::NBTreeAppendResult>  _receive_broadcast(const aku_Sample &sample);
+
+    std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> query(boost::property_tree::ptree const& query);
 };
 
 }}  // namespace

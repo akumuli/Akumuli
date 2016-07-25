@@ -1,6 +1,8 @@
 #include "tree_registry.h"
 #include "log_iface.h"
 
+#include <boost/property_tree/ptree.hpp>
+
 namespace Akumuli {
 namespace StorageEngine {
 
@@ -176,6 +178,41 @@ std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_ac
     return std::make_tuple(AKU_ENOT_FOUND, EMPTY_EXTL);
 }
 
+std::vector<aku_ParamId> TreeRegistry::get_ids(std::string filter) {
+    std::vector<aku_ParamId> ids;
+    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
+    StringPoolOffset offset{};
+    size_t size;
+    auto result = global_matcher_.pool.regex_match(filter.c_str(), &offset, &size);
+    for(StringPool::StringT str: result) {
+        u64 id = StringTools::extract_id_from_pool(str);
+        ids.push_back(static_cast<aku_ParamId>(id));
+    }
+    return ids;
+}
+
+
+// //////////// //
+// ConcatCursor //
+// //////////// //
+
+ConcatCursor::ConcatCursor(std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+    : iters_(std::move(it))
+    , pos_(0)
+{
+}
+
+std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Timestamp *destts, double *destval, size_t size) {
+    if (pos_ == iters_.size()) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    return iters_[pos_]->read(destts, destval, size);
+}
+
+ConcatCursor::Direction ConcatCursor::get_direction() {
+    return Direction::FORWARD;  // FIXME: use meaningful value
+}
+
 // //////////////// //
 // StreamDispatcher //
 // //////////////// //
@@ -309,6 +346,39 @@ std::tuple<bool, NBTreeAppendResult> Session::_receive_broadcast(const aku_Sampl
         return std::make_tuple(true, result);
     }
     return std::make_tuple(false, NBTreeAppendResult::OK);
+}
+
+std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost::property_tree::ptree &query)
+{
+    // NOTE: this is placeholder for query analyzer, at this point akumuli can
+    // perform only simple reads.
+    aku_Timestamp begin, end;
+    std::string filter;
+    try {
+        begin = query.get<aku_Timestamp>("begin");
+        end = query.get<aku_Timestamp>("end");
+        filter = query.get<std::string>("filter");
+    } catch (const boost::property_tree::ptree_error& err) {
+        Logger::msg(AKU_LOG_ERROR, err.what());
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<ConcatCursor>());
+    }
+    auto reg = registry_.lock();
+    if (!reg) {
+        Logger::msg(AKU_LOG_ERROR, "Registry is closed");
+        return std::make_tuple(AKU_ECLOSED, std::unique_ptr<ConcatCursor>());
+    }
+    auto ids = reg->get_ids(filter);
+    std::vector<std::unique_ptr<NBTreeIterator>> iterators;
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    for (auto id: ids) {
+        auto it = cache_.find(id);
+        if (it != cache_.end()) {
+            auto nbtree_iter = it->second->search(begin, end);
+            iterators.push_back(std::move(nbtree_iter));
+        }
+    }
+    auto ptr = new ConcatCursor(std::move(iterators));
+    return std::make_tuple(AKU_SUCCESS, std::unique_ptr<ConcatCursor>(ptr));
 }
 
 }}  // namespace
