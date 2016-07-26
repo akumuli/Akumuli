@@ -126,15 +126,39 @@ public:
 
     //! Temporary implementation
     std::vector<aku_ParamId> get_ids(std::string filter);
+    std::tuple<aku_Status, std::unique_ptr<NBTreeIterator> > search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end);
 };
 
 
-class ConcatCursor : public NBTreeIterator {
+/** Base class for all cursors. */
+class Cursor {
+public:
+    enum class Direction {
+        FORWARD, BACKWARD,
+    };
+    virtual ~Cursor() = default;
+    /** Read samples in batch.
+      * @param dest is an array that will receive values from cursor
+      * @param size is an arrays size
+      */
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) = 0;
+
+    /** Get direction of the cursor (FORWARD|BACKWARD).
+      */
+    virtual Direction get_direction() = 0;
+};
+
+
+/** Cursor implementation.
+  * Output of this cursor is ordered by series id.
+  */
+class ConcatCursor : public Cursor {
     std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<aku_ParamId> ids_;
     size_t pos_;
 public:
-    ConcatCursor(std::vector<std::unique_ptr<NBTreeIterator>>&& it);
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size);
     virtual Direction get_direction();
 };
 

@@ -191,31 +191,86 @@ std::vector<aku_ParamId> TreeRegistry::get_ids(std::string filter) {
     return ids;
 }
 
+std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> TreeRegistry::search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+    std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+    auto it = table_.find(id);
+    if (it != table_.end()) {
+        // acquire tree temporarily
+        aku_Status status;
+        std::shared_ptr<NBTreeExtentsList> ext;
+        std::tie(status, ext) = it->second->try_acquire();
+        if (status == AKU_SUCCESS) {
+            return std::make_tuple(AKU_SUCCESS, ext->search(begin, end));
+        } else {
+            std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
+            // TODO: lookup other session's data
+            AKU_PANIC("Not implemented");
+        }
+    }
+    return std::make_tuple(AKU_ENOT_FOUND, std::unique_ptr<NBTreeIterator>());
+}
+
 
 // //////////// //
 // ConcatCursor //
 // //////////// //
 
-ConcatCursor::ConcatCursor(std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+ConcatCursor::ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
     : iters_(std::move(it))
+    , ids_(std::move(ids))
     , pos_(0)
 {
 }
 
-std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Timestamp *destts, double *destval, size_t size) {
-    if (pos_ == iters_.size()) {
-        return std::make_tuple(AKU_ENO_DATA, 0);
+std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Sample *dest, size_t size) {
+    aku_Status status = AKU_ENO_DATA;
+    size_t ressz = 0;  // current size
+    size_t accsz = 0;  // accumulated size
+    std::vector<aku_Timestamp> destts_vec(size, 0);
+    std::vector<double> destval_vec(size, 0);
+    std::vector<aku_ParamId> outids(size, 0);
+    aku_Timestamp* destts = destts_vec.data();
+    double* destval = destval_vec.data();
+    while(pos_ < iters_.size()) {
+        aku_ParamId curr = ids_[pos_];
+        std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
+        for (size_t i = accsz; i < accsz+ressz; i++) {
+            outids[i] = curr;
+        }
+        destts += ressz;
+        destval += ressz;
+        size -= ressz;
+        accsz += ressz;
+        if (size == 0) {
+            break;
+        }
+        pos_++;
+        if (status == AKU_ENO_DATA) {
+            // this iterator is done, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration on error!
+            break;
+        }
     }
-    return iters_[pos_]->read(destts, destval, size);
+    // Convert vectors to series of samples
+    for (size_t i = 0; i < accsz; i++) {
+        dest[i].payload.type = AKU_PAYLOAD_FLOAT;
+        dest[i].paramid = outids[i];
+        dest[i].timestamp = destts[i];
+        dest[i].payload.float64 = destval[i];
+    }
+    return std::tie(status, accsz);
 }
 
 ConcatCursor::Direction ConcatCursor::get_direction() {
     return Direction::FORWARD;  // FIXME: use meaningful value
 }
 
-// //////////////// //
-// StreamDispatcher //
-// //////////////// //
+// ///////////////// //
+//      Session      //
+// ///////////////// //
 
 Session::Session(std::shared_ptr<TreeRegistry> registry)
     : registry_(registry)
@@ -375,9 +430,20 @@ std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost
         if (it != cache_.end()) {
             auto nbtree_iter = it->second->search(begin, end);
             iterators.push_back(std::move(nbtree_iter));
+        } else {
+            std::unique_ptr<NBTreeIterator> nbtree_iter;
+            aku_Status status;
+            std::tie(status, nbtree_iter) = reg->search(id, begin, end);
+            if (status == AKU_SUCCESS) {
+                iterators.push_back(std::move(nbtree_iter));
+            } else {
+                // Can return AKU_ENOT_FOUND if nbtree was deleted for some reason
+                // (retention or manual operation)
+                return std::make_tuple(status, std::unique_ptr<ConcatCursor>());
+            }
         }
     }
-    auto ptr = new ConcatCursor(std::move(iterators));
+    auto ptr = new ConcatCursor(std::move(ids), std::move(iterators));
     return std::make_tuple(AKU_SUCCESS, std::unique_ptr<ConcatCursor>(ptr));
 }
 

@@ -4,6 +4,8 @@
 #define BOOST_TEST_MODULE Main
 
 #include <boost/test/unit_test.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 #include <sqlite3.h>
 #include <apr.h>
@@ -13,7 +15,7 @@
 #include "storage_engine/blockstore.h"
 #include "storage_engine/volume.h"
 #include "storage_engine/nbtree.h"
-#include "storage_engine/ingestion_engine.h"
+#include "storage_engine/tree_registry.h"
 #include "log_iface.h"
 
 
@@ -41,7 +43,6 @@ struct AkumuliInitializer {
 static AkumuliInitializer initializer;
 
 using namespace Akumuli;
-using namespace Akumuli::StorageEngine;
 using namespace Akumuli::StorageEngine;
 
 std::unique_ptr<MetadataStorage> create_metadatastorage() {
@@ -181,4 +182,40 @@ BOOST_AUTO_TEST_CASE(Test_ingress_add_values_3) {
     sample.payload.float64 = 111;
     status = disp->write(sample);  // series with id 111 doesn't exists
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
+}
+
+BOOST_AUTO_TEST_CASE(Test_read_values_back_1) {
+    aku_Status status;
+    const char* sname = "hello world=1";
+    const char* end = sname + strlen(sname);
+
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto session = registry->create_session();
+
+    aku_Sample sample;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.timestamp = 111;
+    sample.payload.float64 = 111;
+    status = session->init_series_id(sname, end, &sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = session->write(sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    boost::property_tree::ptree ptree;
+    ptree.put("begin", "0");
+    ptree.put("end", "200");
+    ptree.put("filter", ".+");
+    std::unique_ptr<ConcatCursor> cursor;
+    std::tie(status, cursor) = std::move(session->query(ptree));
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    aku_Sample out;
+    size_t outsize;
+    std::tie(status, outsize) = cursor->read(&out, 1);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(outsize, 1);
+    BOOST_REQUIRE_EQUAL(out.timestamp, sample.timestamp);
+    BOOST_REQUIRE_EQUAL(out.paramid, sample.paramid);
+    BOOST_REQUIRE_EQUAL(out.payload.float64, sample.payload.float64);
 }
