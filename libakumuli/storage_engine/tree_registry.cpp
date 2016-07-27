@@ -191,7 +191,9 @@ std::vector<aku_ParamId> TreeRegistry::get_ids(std::string filter) {
     return ids;
 }
 
-std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> TreeRegistry::search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
+    TreeRegistry::_search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end, Session const* src)
+{
     std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
     auto it = table_.find(id);
     if (it != table_.end()) {
@@ -203,8 +205,14 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> TreeRegistry::search(aku
             return std::make_tuple(AKU_SUCCESS, ext->search(begin, end));
         } else {
             std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-            // TODO: lookup other session's data
-            AKU_PANIC("Not implemented");
+            for (auto wsession: active_) {
+                auto session = wsession.second.lock();
+                if (session && session.get() != src) {  // the last chec is needed to prevent deadlock because
+                    if (session->owns(id)) {            // this method is called from Session under sessions lock.
+                        return session->search(id, begin, end);
+                    }
+                }
+            }
         }
     }
     return std::make_tuple(AKU_ENOT_FOUND, std::unique_ptr<NBTreeIterator>());
@@ -433,7 +441,7 @@ std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost
         } else {
             std::unique_ptr<NBTreeIterator> nbtree_iter;
             aku_Status status;
-            std::tie(status, nbtree_iter) = reg->search(id, begin, end);
+            std::tie(status, nbtree_iter) = reg->_search(id, begin, end, this);
             if (status == AKU_SUCCESS) {
                 iterators.push_back(std::move(nbtree_iter));
             } else {
@@ -445,6 +453,22 @@ std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost
     }
     auto ptr = new ConcatCursor(std::move(ids), std::move(iterators));
     return std::make_tuple(AKU_SUCCESS, std::unique_ptr<ConcatCursor>(ptr));
+}
+
+std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
+    Session::search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end)
+{
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    auto it = cache_.find(id);
+    if (it != cache_.end()) {
+        return std::make_tuple(AKU_SUCCESS, it->second->search(begin, end));
+    }
+    return std::make_tuple(AKU_ENOT_FOUND, std::unique_ptr<NBTreeIterator>());
+}
+
+bool Session::owns(aku_ParamId id) {
+    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
+    return cache_.count(id) > 0;
 }
 
 }}  // namespace
