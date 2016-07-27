@@ -206,7 +206,7 @@ BOOST_AUTO_TEST_CASE(Test_read_values_back_1) {
     boost::property_tree::ptree ptree;
     ptree.put("begin", "0");
     ptree.put("end", "200");
-    ptree.put("filter", ".+");
+    ptree.put("filter", "hello world=1");
     std::unique_ptr<ConcatCursor> cursor;
     std::tie(status, cursor) = std::move(session->query(ptree));
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);

@@ -258,8 +258,8 @@ std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Sample *dest, size_t size)
     for (size_t i = 0; i < accsz; i++) {
         dest[i].payload.type = AKU_PAYLOAD_FLOAT;
         dest[i].paramid = outids[i];
-        dest[i].timestamp = destts[i];
-        dest[i].payload.float64 = destval[i];
+        dest[i].timestamp = destts_vec[i];
+        dest[i].payload.float64 = destval_vec[i];
     }
     return std::tie(status, accsz);
 }
