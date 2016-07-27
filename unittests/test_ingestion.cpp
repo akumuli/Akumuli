@@ -219,3 +219,40 @@ BOOST_AUTO_TEST_CASE(Test_read_values_back_1) {
     BOOST_REQUIRE_EQUAL(out.paramid, sample.paramid);
     BOOST_REQUIRE_EQUAL(out.payload.float64, sample.payload.float64);
 }
+
+BOOST_AUTO_TEST_CASE(Test_read_values_back_2) {
+    aku_Status status;
+    const char* sname = "hello world=1";
+    const char* end = sname + strlen(sname);
+
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<TreeRegistry> registry = std::make_shared<TreeRegistry>(bstore, std::move(meta));
+    auto write_session = registry->create_session();
+
+    aku_Sample sample;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.timestamp = 111;
+    sample.payload.float64 = 111;
+    status = write_session->init_series_id(sname, end, &sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = write_session->write(sample);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    auto read_session = registry->create_session();
+    boost::property_tree::ptree ptree;
+    ptree.put("begin", "0");
+    ptree.put("end", "200");
+    ptree.put("filter", "hello world=1");
+    std::unique_ptr<ConcatCursor> cursor;
+    std::tie(status, cursor) = std::move(read_session->query(ptree));
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    aku_Sample out;
+    size_t outsize;
+    std::tie(status, outsize) = cursor->read(&out, 1);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(outsize, 1);
+    BOOST_REQUIRE_EQUAL(out.timestamp, sample.timestamp);
+    BOOST_REQUIRE_EQUAL(out.paramid, sample.paramid);
+    BOOST_REQUIRE_EQUAL(out.payload.float64, sample.payload.float64);
+}
