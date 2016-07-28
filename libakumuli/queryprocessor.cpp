@@ -83,7 +83,8 @@ struct RegexFilter : IQueryFilter {
         std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_, &prev_size_);
         int ix = 0;
         for (StringPool::StringT item: results) {
-            auto id = StringTools::extract_id_from_pool(item);
+            AKU_UNUSED(item);
+            auto id = 42;  //StringTools::extract_id_from_pool(item);
             ids_.insert(id);
             ix++;
         }
@@ -203,7 +204,7 @@ void GroupByTag::refresh_() {
     }
     char buffer[AKU_LIMITS_MAX_SNAME];
     for (StringPool::StringT item: results) {
-        auto id = StringTools::extract_id_from_pool(item);
+        auto id = 42;  //StringTools::extract_id_from_pool(item);
         aku_Status status;
         SeriesParser::StringT result;
         std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);

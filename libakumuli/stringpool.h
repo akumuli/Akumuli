@@ -49,7 +49,7 @@ struct StringPool {
     StringPool(StringPool const&) = delete;
     StringPool& operator=(StringPool const&) = delete;
 
-    StringT add(const char* begin, const char* end, u64 payload);
+    StringT add(const char* begin, const char* end);
 
     //! Get number of stored strings atomically
     size_t size() const;
@@ -83,7 +83,5 @@ struct StringTools {
     static TableT create_table(size_t size);
 
     static SetT create_set(size_t size);
-
-    static u64 extract_id_from_pool(StringPool::StringT res);
 };
 }

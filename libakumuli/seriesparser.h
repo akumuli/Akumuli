@@ -88,6 +88,8 @@ struct SeriesMatcher {
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
     std::vector<u64> get_all_ids() const;
+
+    std::vector<SeriesNameT> regex_match(const char* rexp);
 };
 
 /** Namespace class to store all parsing related things.

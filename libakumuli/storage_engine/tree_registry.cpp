@@ -181,11 +181,12 @@ std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_ac
 std::vector<aku_ParamId> TreeRegistry::get_ids(std::string filter) {
     std::vector<aku_ParamId> ids;
     std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    StringPoolOffset offset{};
-    size_t size;
-    auto result = global_matcher_.pool.regex_match(filter.c_str(), &offset, &size);
-    for(StringPool::StringT str: result) {
-        u64 id = StringTools::extract_id_from_pool(str);
+    auto result = global_matcher_.regex_match(filter.c_str());
+    for(SeriesMatcher::SeriesNameT str: result) {
+        const char* name;
+        int size;
+        u64 id;
+        std::tie(name, size, id) = str;
         ids.push_back(static_cast<aku_ParamId>(id));
     }
     return ids;
