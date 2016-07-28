@@ -1,12 +1,13 @@
 #include "tree_registry.h"
 #include "log_iface.h"
+#include "query_processing/queryparser.h"
 
 #include <boost/property_tree/ptree.hpp>
 
 namespace Akumuli {
 namespace StorageEngine {
 
-using namespace StorageEngine;
+using namespace QP;
 
 /*  NBTree         TreeRegistry        StreamDispatcher       */
 /*  Tree data      Id -> NBTree        Series name parsing    */
@@ -210,7 +211,7 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
                 auto session = wsession.second.lock();
                 if (session && session.get() != src) {  // the last chec is needed to prevent deadlock because
                     if (session->owns(id)) {            // this method is called from Session under sessions lock.
-                        return session->search(id, begin, end);
+                        return session->_search(id, begin, end);
                     }
                 }
             }
@@ -412,37 +413,33 @@ std::tuple<bool, NBTreeAppendResult> Session::_receive_broadcast(const aku_Sampl
     return std::make_tuple(false, NBTreeAppendResult::OK);
 }
 
-std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost::property_tree::ptree &query)
+std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(std::string text_query)
 {
     // NOTE: this is placeholder for query analyzer, at this point akumuli can
     // perform only simple reads.
-    aku_Timestamp begin, end;
-    std::string filter;
-    try {
-        begin = query.get<aku_Timestamp>("begin");
-        end = query.get<aku_Timestamp>("end");
-        filter = query.get<std::string>("filter");
-    } catch (const boost::property_tree::ptree_error& err) {
-        Logger::msg(AKU_LOG_ERROR, err.what());
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<ConcatCursor>());
+    aku_Status status;
+    Query query;
+    std::tie(status, query) = QueryParser::parse(text_query);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, query.get_error_message());
+        return std::make_tuple(status, std::unique_ptr<ConcatCursor>());
     }
     auto reg = registry_.lock();
     if (!reg) {
         Logger::msg(AKU_LOG_ERROR, "Registry is closed");
         return std::make_tuple(AKU_ECLOSED, std::unique_ptr<ConcatCursor>());
     }
-    auto ids = reg->get_ids(filter);
+    auto ids = reg->get_ids(query.get_filter());
     std::vector<std::unique_ptr<NBTreeIterator>> iterators;
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     for (auto id: ids) {
         auto it = cache_.find(id);
         if (it != cache_.end()) {
-            auto nbtree_iter = it->second->search(begin, end);
+            auto nbtree_iter = it->second->search(query.get_end(), query.get_begin());
             iterators.push_back(std::move(nbtree_iter));
         } else {
             std::unique_ptr<NBTreeIterator> nbtree_iter;
-            aku_Status status;
-            std::tie(status, nbtree_iter) = reg->_search(id, begin, end, this);
+            std::tie(status, nbtree_iter) = reg->_search(id, query.get_begin(), query.get_end(), this);
             if (status == AKU_SUCCESS) {
                 iterators.push_back(std::move(nbtree_iter));
             } else {
@@ -457,7 +454,7 @@ std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(const boost
 }
 
 std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
-    Session::search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end)
+    Session::_search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end)
 {
     std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
     auto it = cache_.find(id);

@@ -51,6 +51,7 @@ add_library(akumuli SHARED
     query_processing/randomsamplingnode.cpp
     query_processing/spacesaver.cpp
     query_processing/limiter.cpp
+    query_processing/queryparser.cpp
     # storage engine
     storage_engine/blockstore.cpp
     storage_engine/volume.cpp

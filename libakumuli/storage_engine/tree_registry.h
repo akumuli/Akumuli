@@ -203,9 +203,9 @@ public:
       */
     std::tuple<bool, StorageEngine::NBTreeAppendResult>  _receive_broadcast(const aku_Sample &sample);
 
-    std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> query(boost::property_tree::ptree const& query);
+    std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> query(std::string text_query);
 
-    std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end);
+    std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> _search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end);
 
     //! Return true if this session owns registry entry with such id.
     bool owns(aku_ParamId id);

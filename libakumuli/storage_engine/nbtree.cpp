@@ -617,6 +617,10 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::range(aku_Timestamp begin, aku_Times
     return std::move(it);
 }
 
+std::unique_ptr<NBTreeIterator> NBTreeLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const {
+    throw "not implemented";
+}
+
 std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
     // Traverse tree from largest timestamp to smallest
     aku_Timestamp min = std::min(begin, end);
@@ -902,6 +906,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
     virtual bool is_dirty() const;
 };
 
@@ -978,6 +983,10 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
 
 std::unique_ptr<NBTreeIterator> NBTreeLeafExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
     return std::move(leaf_->range(begin, end));
+}
+
+std::unique_ptr<NBTreeIterator> NBTreeLeafExtent::aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const {
+    return std::move(leaf_->aggregate(begin, end, agg_type));
 }
 
 bool NBTreeLeafExtent::is_dirty() const {
@@ -1064,6 +1073,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
     virtual bool is_dirty() const;
 };
 
@@ -1131,6 +1141,11 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
 std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
     return std::move(curr_->search(begin, end, bstore_));
 }
+
+std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const {
+    return std::move(curr_->aggregate(begin, end, agg_type, bstore_));
+}
+
 
 bool NBTreeSBlockExtent::is_dirty() const {
     if (curr_) {
@@ -1576,6 +1591,30 @@ std::unique_ptr<NBTreeIterator> NBTreeExtentsList::search(aku_Timestamp begin, a
     std::unique_ptr<NBTreeIterator> concat;
     concat.reset(new IteratorConcat(std::move(iterators)));
     return std::move(concat);
+}
+
+std::unique_ptr<NBTreeIterator> NBTreeExtentsList::aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const {
+    if (!initialized_) {
+        // FIXME: so ugly!
+        const_cast<NBTreeExtentsList*>(this)->init();
+    }
+    std::vector<std::unique_ptr<NBTreeIterator>> iterators;
+    if (begin < end) {
+        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+            iterators.push_back(std::move((*it)->aggregate(begin, end, agg_type)));
+        }
+    } else {
+        for (auto const& root: extents_) {
+            iterators.push_back(std::move(root->aggregate(begin, end, agg_type)));
+        }
+    }
+    if (iterators.size() == 1) {
+        return std::move(iterators.front());
+    }
+    std::unique_ptr<NBTreeIterator> concat;
+    concat.reset(new IteratorConcat(std::move(iterators)));
+    return std::move(concat);
+
 }
 
 

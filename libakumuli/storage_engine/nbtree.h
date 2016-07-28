@@ -15,7 +15,7 @@
  *
  */
 
-/** NB-tree data-structure implementation.
+/** Numeric B+tree data-structure implementation.
   * Outline:
   *
   *
@@ -87,6 +87,10 @@ namespace StorageEngine {
 enum class NBTreeBlockType {
     LEAF,   // data block
     INNER,  // super block
+};
+
+enum class NBTreeAggregation {
+    CNT, SUM, AVG, MIN, MAX,
 };
 
 enum {
@@ -236,7 +240,9 @@ public:
     //! Return iterator that outputs all values in time range that is stored in this leaf.
     std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end) const;
 
-    //! Search for values in a range (in this and connected leaf nodes).
+    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
+
+    //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 };
 
@@ -325,6 +331,9 @@ struct NBTreeExtent {
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
 
+    //! Return iterator that will return single aggregated value.
+    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
+
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
 };
@@ -376,6 +385,8 @@ public:
     NBTreeAppendResult append(aku_Timestamp ts, double value);
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+
+    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();

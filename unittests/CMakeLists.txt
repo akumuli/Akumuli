@@ -263,6 +263,7 @@ add_executable(
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/tree_registry.cpp
+    ../libakumuli/query_processing/queryparser.cpp
 )
 
 target_link_libraries(
@@ -436,6 +437,7 @@ add_executable(
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
     ../libakumuli/metadatastorage.cpp
+    ../libakumuli/query_processing/queryparser.cpp
 )
 
 target_compile_definitions(test_ingestion PRIVATE AKU_UNIT_TEST_CONTEXT=1)

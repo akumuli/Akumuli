@@ -203,12 +203,13 @@ BOOST_AUTO_TEST_CASE(Test_read_values_back_1) {
     status = session->write(sample);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    boost::property_tree::ptree ptree;
-    ptree.put("begin", "0");
-    ptree.put("end", "200");
-    ptree.put("filter", "hello world=1");
+    std::string query_text = R"json({
+                                      "begin": "0",
+                                      "end": "200",
+                                      "filter": "hello world=1"
+                                    })json";
     std::unique_ptr<ConcatCursor> cursor;
-    std::tie(status, cursor) = std::move(session->query(ptree));
+    std::tie(status, cursor) = std::move(session->query(query_text));
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     aku_Sample out;
     size_t outsize;
@@ -240,12 +241,13 @@ BOOST_AUTO_TEST_CASE(Test_read_values_back_2) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     auto read_session = registry->create_session();
-    boost::property_tree::ptree ptree;
-    ptree.put("begin", "0");
-    ptree.put("end", "200");
-    ptree.put("filter", "hello world=1");
+    std::string query_text = R"json({
+                                      "begin": "0",
+                                      "end": "200",
+                                      "filter": "hello world=1"
+                                    })json";
     std::unique_ptr<ConcatCursor> cursor;
-    std::tie(status, cursor) = std::move(read_session->query(ptree));
+    std::tie(status, cursor) = std::move(read_session->query(query_text));
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     aku_Sample out;
     size_t outsize;
