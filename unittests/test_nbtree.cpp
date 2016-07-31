@@ -35,7 +35,7 @@ using namespace Akumuli::StorageEngine;
 enum class ScanDir {
     FWD, BWD
 };
-
+/*
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -525,7 +525,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_7) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_8) {
     test_nbtree_leaf_iteration(500, 200);
 }
-
+*/
 // Test aggregation
 
 //! Generate time-series from random walk
@@ -623,7 +623,7 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTree
     BOOST_REQUIRE_EQUAL(size, 0);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation_avg) {
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation) {
     std::vector<std::pair<aku_Timestamp, aku_Timestamp>> params = {
     // Fwd
         {  0,   10000000},
@@ -647,5 +647,70 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation_avg) {
         for (auto cp: params) {
             test_nbtree_leaf_aggregation(cp.first, cp.second, agg);
         }
+    }
+}
+
+void test_nbtree_superblock_iter(aku_Timestamp begin, aku_Timestamp end) {
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    std::vector<double> expected;
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        if (begin < end) {
+            if (ts >= begin && ts < end) {
+                expected.push_back(value);
+            }
+        } else {
+            if (ts <= begin && ts > end) {
+                expected.push_back(value);
+            }
+        }
+    }
+    if (begin > end) {
+        std::reverse(expected.begin(), expected.end());
+    }
+    // Check actual output
+    auto it = extents->search(begin, end);
+    size_t chunk_size = 1000;
+    std::vector<double> destxs(chunk_size, 0);
+    std::vector<aku_Timestamp> destts(chunk_size, 0);
+    ssize_t expix = 0;
+    while(true) {
+        aku_Status status;
+        ssize_t size;
+        std::tie(status, size) = it->read(destts.data(), destxs.data(), chunk_size);
+        if (status != AKU_SUCCESS) {
+            BOOST_REQUIRE_EQUAL(expix, expected.size());
+            break;
+        }
+        BOOST_REQUIRE_EQUAL_COLLECTIONS(
+            expected.begin() + expix, expected.begin() + expix + size,
+            destxs.begin(), destxs.begin() + size
+        );
+        expix += size;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration_1) {
+    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
+        {      0, 1000000 },
+        {   2000, 1000000 },
+        {      0,  600000 },
+        {   2000,  600000 },
+        { 400000,  500000 },
+    };
+    for (auto be: tss) {
+        test_nbtree_superblock_iter(be.first, be.second);
+        test_nbtree_superblock_iter(be.second, be.first);
     }
 }
