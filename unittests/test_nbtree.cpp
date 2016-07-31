@@ -12,6 +12,7 @@
 #include "storage_engine/volume.h"
 #include "storage_engine/nbtree.h"
 #include "log_iface.h"
+#include "status_util.h"
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
@@ -441,4 +442,210 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_5) {
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_6) {
     test_storage_recovery(33*33, ~0u);
+}
+
+// Test iteration
+
+void test_nbtree_leaf_iteration(aku_Timestamp begin, aku_Timestamp end) {
+    NBTreeLeaf leaf(42, 0, 0);
+    aku_Timestamp last_successfull = 100;
+    aku_Timestamp first_timestamp = 100;
+    for (size_t ix = first_timestamp; true; ix++) {
+        aku_Status status = leaf.append(ix, static_cast<double>(ix));
+        if (status == AKU_EOVERFLOW) {
+            break;
+        }
+        if (status == AKU_SUCCESS) {
+            last_successfull = ix;
+            continue;
+        }
+        BOOST_FAIL(StatusUtil::c_str(status));
+    }
+    // Everytithing should work before commit
+    auto iter = leaf.range(begin, end);
+    // Calculate output size
+    size_t sz = 0;
+    auto min = std::min(begin, end);
+    min = std::max(min, first_timestamp);
+    auto max = std::max(begin, end);
+    max = std::min(max, last_successfull);
+    sz = max - min;
+    // Perform read using iterator
+    std::vector<aku_Timestamp> tss(sz, 0);
+    std::vector<double> xss(sz, 0);
+    aku_Status status;
+    size_t outsz;
+    std::tie(status, outsz) = iter->read(tss.data(), xss.data(), sz);
+    // Check results
+    BOOST_REQUIRE_EQUAL(outsz, sz);
+    if(status != AKU_SUCCESS) {
+        BOOST_FAIL(StatusUtil::c_str(status));
+    }
+    if (end < begin) {
+        std::reverse(tss.begin(), tss.end());
+        std::reverse(xss.begin(), xss.end());
+        min++;
+    }
+    for(size_t ix = 0; ix < sz; ix++) {
+        // iter from min to max
+        BOOST_REQUIRE_EQUAL(tss.at(ix), min);
+        BOOST_REQUIRE_EQUAL(xss.at(ix), static_cast<double>(min));
+        min++;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_1) {
+    test_nbtree_leaf_iteration(0, 100000000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_2) {
+    test_nbtree_leaf_iteration(100000000, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_3) {
+    test_nbtree_leaf_iteration(200, 100000000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_4) {
+    test_nbtree_leaf_iteration(100000000, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_5) {
+    test_nbtree_leaf_iteration(0, 500);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_6) {
+    test_nbtree_leaf_iteration(500, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_7) {
+    test_nbtree_leaf_iteration(200, 500);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_8) {
+    test_nbtree_leaf_iteration(500, 200);
+}
+
+// Test aggregation
+
+//! Generate time-series from random walk
+struct RandomWalk {
+    std::random_device                  randdev;
+    std::mt19937                        generator;
+    std::normal_distribution<double>    distribution;
+    double                              value;
+
+    RandomWalk(double start, double mean, double stddev)
+        : generator(randdev())
+        , distribution(mean, stddev)
+        , value(start)
+    {
+    }
+
+    double next() {
+        value += distribution(generator);
+        return value;
+    }
+};
+
+void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
+    NBTreeLeaf leaf(42, 0, 0);
+    aku_Timestamp first_timestamp = 100;
+    std::vector<double> xss;
+    RandomWalk rwalk(0.0, 1.0, 1.0);
+    for (size_t ix = first_timestamp; true; ix++) {
+        double val = rwalk.next();
+        aku_Status status = leaf.append(ix, val);
+        if (status == AKU_EOVERFLOW) {
+            break;
+        }
+        if (status == AKU_SUCCESS) {
+            if (begin < end) {
+                if (ix >= begin && ix < end) {
+                    xss.push_back(val);
+                }
+            } else {
+                if (ix <= begin && ix > end) {
+                    xss.push_back(val);
+                }
+            }
+            continue;
+        }
+        BOOST_FAIL(StatusUtil::c_str(status));
+    }
+    if (end < begin) {
+        // we should reverse xss, otherwise expected and actual values wouldn't match exactly because
+        // floating point arithmetics is not commutative
+        std::reverse(xss.begin(), xss.end());
+    }
+
+    // Compute expected value
+    double expected{};
+    switch(agg) {
+    case NBTreeAggregation::AVG:
+        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        expected /= xss.size();
+        break;
+    case NBTreeAggregation::SUM:
+        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        break;
+    case NBTreeAggregation::MAX:
+        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(), [](double a, double b) {
+            return std::max(a, b);
+        });
+        break;
+    case NBTreeAggregation::MIN:
+        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(), [](double a, double b) {
+            return std::min(a, b);
+        });
+        break;
+    case NBTreeAggregation::CNT:
+        expected = xss.size();
+        break;
+    }
+
+    // Compare expected and actual
+    auto it = leaf.aggregate(begin, end, agg);
+    aku_Status status;
+    size_t size;
+    std::vector<aku_Timestamp> destts(100, 0);
+    std::vector<double> destxs(100, 0);
+    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(size, 1);
+
+    double actual = destxs.at(0);
+    BOOST_REQUIRE_CLOSE(actual, expected, 0.00001);
+
+    // Subsequent call to `it->read` should fail
+    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
+    BOOST_REQUIRE_EQUAL(size, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation_avg) {
+    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> params = {
+    // Fwd
+        {  0,   10000000},
+        {200,   10000000},
+        {  0,        300},
+        {200,        400},
+    // Bwd
+        {10000000,     0},
+        {10000000,   200},
+        {     300,     0},
+        {     400,   200},
+    };
+    std::vector<NBTreeAggregation> aggs = {
+        NBTreeAggregation::AVG,
+        NBTreeAggregation::CNT,
+        NBTreeAggregation::MAX,
+        NBTreeAggregation::MIN,
+        NBTreeAggregation::SUM,
+    };
+    for (auto agg: aggs) {
+        for (auto cp: params) {
+            test_nbtree_leaf_aggregation(cp.first, cp.second, agg);
+        }
+    }
 }

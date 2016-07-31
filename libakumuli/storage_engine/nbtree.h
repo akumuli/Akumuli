@@ -207,6 +207,9 @@ public:
       */
     NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr);
 
+    //! Get leaf metadata.
+    SubtreeRef const* get_leafmeta() const;
+
     //! Returns number of elements.
     size_t nelements() const;
 
@@ -332,7 +335,7 @@ struct NBTreeExtent {
     virtual bool is_dirty() const = 0;
 
     //! Return iterator that will return single aggregated value.
-    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
+    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
