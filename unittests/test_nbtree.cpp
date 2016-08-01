@@ -689,15 +689,19 @@ void test_nbtree_superblock_iter(aku_Timestamp begin, aku_Timestamp end) {
         aku_Status status;
         ssize_t size;
         std::tie(status, size) = it->read(destts.data(), destxs.data(), chunk_size);
-        if (status != AKU_SUCCESS) {
+        if (status == AKU_ENO_DATA && size == 0) {
             BOOST_REQUIRE_EQUAL(expix, expected.size());
             break;
         }
-        BOOST_REQUIRE_EQUAL_COLLECTIONS(
-            expected.begin() + expix, expected.begin() + expix + size,
-            destxs.begin(), destxs.begin() + size
-        );
-        expix += size;
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && size != 0)) {
+            BOOST_REQUIRE_EQUAL_COLLECTIONS(
+                expected.begin() + expix, expected.begin() + expix + size,
+                destxs.begin(), destxs.begin() + size
+            );
+            expix += size;
+            continue;
+        }
+        BOOST_FAIL(StatusUtil::c_str(status));
     }
 }
 
