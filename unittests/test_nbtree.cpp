@@ -35,7 +35,7 @@ using namespace Akumuli::StorageEngine;
 enum class ScanDir {
     FWD, BWD
 };
-/*
+
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -525,7 +525,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_7) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_8) {
     test_nbtree_leaf_iteration(500, 200);
 }
-*/
+
 // Test aggregation
 
 //! Generate time-series from random walk
@@ -547,6 +547,33 @@ struct RandomWalk {
         return value;
     }
 };
+
+double calculate_expected_value(std::vector<double> const& xss, NBTreeAggregation agg) {
+    double expected{};
+    switch(agg) {
+    case NBTreeAggregation::AVG:
+        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        expected /= xss.size();
+        break;
+    case NBTreeAggregation::SUM:
+        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        break;
+    case NBTreeAggregation::MAX:
+        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(), [](double a, double b) {
+            return std::max(a, b);
+        });
+        break;
+    case NBTreeAggregation::MIN:
+        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(), [](double a, double b) {
+            return std::min(a, b);
+        });
+        break;
+    case NBTreeAggregation::CNT:
+        expected = xss.size();
+        break;
+    }
+    return expected;
+}
 
 void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
     NBTreeLeaf leaf(42, 0, 0);
@@ -580,29 +607,7 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTree
     }
 
     // Compute expected value
-    double expected{};
-    switch(agg) {
-    case NBTreeAggregation::AVG:
-        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
-        expected /= xss.size();
-        break;
-    case NBTreeAggregation::SUM:
-        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
-        break;
-    case NBTreeAggregation::MAX:
-        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(), [](double a, double b) {
-            return std::max(a, b);
-        });
-        break;
-    case NBTreeAggregation::MIN:
-        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(), [](double a, double b) {
-            return std::min(a, b);
-        });
-        break;
-    case NBTreeAggregation::CNT:
-        expected = xss.size();
-        break;
-    }
+    double expected = calculate_expected_value(xss, agg);
 
     // Compare expected and actual
     auto it = leaf.aggregate(begin, end, agg);
@@ -705,7 +710,7 @@ void test_nbtree_superblock_iter(aku_Timestamp begin, aku_Timestamp end) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration_1) {
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration) {
     std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
         {      0, 1000000 },
         {   2000, 1000000 },
@@ -716,5 +721,78 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration_1) {
     for (auto be: tss) {
         test_nbtree_superblock_iter(be.first, be.second);
         test_nbtree_superblock_iter(be.second, be.first);
+    }
+}
+
+void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    std::vector<double> xss;
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        if (begin < end) {
+            if (ts >= begin && ts < end) {
+                xss.push_back(value);
+            }
+        } else {
+            if (ts <= begin && ts > end) {
+                xss.push_back(value);
+            }
+        }
+    }
+    if (begin > end) {
+        std::reverse(xss.begin(), xss.end());
+    }
+    double expected = calculate_expected_value(xss, agg);
+
+    // Check actual output
+    auto it = extents->aggregate(begin, end, agg);
+    aku_Status status;
+    size_t size;
+    std::vector<aku_Timestamp> destts(100, 0);
+    std::vector<double> destxs(100, 0);
+    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(size, 1);
+
+    double actual = destxs.at(0);
+    BOOST_REQUIRE_CLOSE(actual, expected, 0.00001);
+
+    // Subsequent call to `it->read` should fail
+    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
+    BOOST_REQUIRE_EQUAL(size, 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
+    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
+        {      0, 1000000 },
+        {   2000, 1000000 },
+        {      0,  600000 },
+        {   2000,  600000 },
+        { 400000,  500000 },
+    };
+    std::vector<NBTreeAggregation> aggs = {
+        NBTreeAggregation::AVG,
+        NBTreeAggregation::CNT,
+        NBTreeAggregation::MAX,
+        NBTreeAggregation::MIN,
+        NBTreeAggregation::SUM,
+    };
+    for (auto agg: aggs) {
+        for (auto be: tss) {
+            test_nbtree_superblock_aggregation(be.first, be.second, agg);
+            test_nbtree_superblock_aggregation(be.second, be.first, agg);
+        }
     }
 }
