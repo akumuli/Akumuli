@@ -303,6 +303,11 @@ public:
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin,
+                                              aku_Timestamp end,
+                                              std::shared_ptr<BlockStore> bstore,
+                                              NBTreeAggregation agg_type) const;
 };
 
 

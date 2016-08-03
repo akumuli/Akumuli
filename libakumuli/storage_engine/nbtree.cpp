@@ -42,6 +42,33 @@ static SubtreeRef const* subtree_cast(u8 const* p) {
     return reinterpret_cast<SubtreeRef const*>(p);
 }
 
+static double calculate_aggregate(std::vector<double> const& xss, NBTreeAggregation agg) {
+    double result = .0;
+    switch(agg) {
+    case NBTreeAggregation::AVG:
+        result = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        result /= xss.size();
+        break;
+    case NBTreeAggregation::SUM:
+        result = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+        break;
+    case NBTreeAggregation::MAX:
+        result = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(), [](double a, double b) {
+            return std::max(a, b);
+        });
+        break;
+    case NBTreeAggregation::MIN:
+        result = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(), [](double a, double b) {
+            return std::min(a, b);
+        });
+        break;
+    case NBTreeAggregation::CNT:
+        result = xss.size();
+        break;
+    }
+    return result;
+}
+
 static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
     std::shared_ptr<Block> block;
@@ -273,7 +300,6 @@ NBTreeIterator::Direction NBTreeLeafIterator::get_direction() {
   * Accepts list of iterators in the c-tor. All iterators then
   * can be seen as one iterator. Iterators should be in correct
   * order.
-  * @note deprecated
   */
 struct IteratorConcat : NBTreeIterator {
     typedef std::vector<std::unique_ptr<NBTreeIterator>> IterVec;
@@ -325,6 +351,65 @@ std::tuple<aku_Status, size_t> IteratorConcat::read(aku_Timestamp *destts, doubl
 }
 
 NBTreeIterator::Direction IteratorConcat::get_direction() {
+    return dir_;
+}
+
+// //////////////////////////// //
+//  NBTreeIterator aggregation  //
+// //////////////////////////// //
+
+/** Aggregating iterator.
+  * Accepts list of iterators in the c-tor. All iterators then
+  * can be seen as one iterator that returns single value.
+  */
+struct IteratorAggregate : NBTreeIterator {
+    typedef std::vector<std::unique_ptr<NBTreeIterator>> IterVec;
+    IterVec   iter_;
+    Direction dir_;
+    u32       iter_index_;
+
+    //! C-tor. Create iterator from list of iterators.
+    template<class TVec>
+    IteratorAggregate(TVec&& iter)
+        : iter_(std::forward<TVec>(iter))
+        , iter_index_(0)
+    {
+        if (iter_.empty()) {
+            dir_ = Direction::FORWARD;
+        } else {
+            dir_ = iter_.front()->get_direction();
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    virtual Direction get_direction();
+};
+
+std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, double *destval, size_t size) {
+    aku_Status status = AKU_ENO_DATA;
+    double outval;
+    aku_Timestamp outts;
+    size_t ressz;
+    while(iter_index_ < iter_.size()) {
+        std::tie(status, ressz) = iter_[iter_index_]->read(&outts, &outval, 1);
+        iter_index_++;
+        if (ressz != 0) {
+            //total = calculate_aggregate??
+        }
+        if (status == AKU_ENO_DATA) {
+            // this leaf node is empty, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration or error!
+            //return std::tie(status, 1);
+        }
+    }
+    //return std::tie(status, 1);
+    throw "not implemented";
+}
+
+NBTreeIterator::Direction IteratorAggregate::get_direction() {
     return dir_;
 }
 
@@ -589,30 +674,7 @@ std::tuple<aku_Status, size_t> NBTreeLeafAggregator::read(aku_Timestamp *destts,
         }
         assert(out_size == size_hint);
 
-        switch(aggtype_) {
-        case NBTreeAggregation::AVG:
-        case NBTreeAggregation::SUM:
-            outval = std::accumulate(xs.begin(), xs.end(), 0.0, [](double lhs, double rhs) {
-                return lhs + rhs;
-            });
-            if (aggtype_ == NBTreeAggregation::AVG) {
-                outval /= static_cast<double>(out_size);
-            }
-            break;
-        case NBTreeAggregation::MAX:
-            outval = std::accumulate(xs.begin(), xs.end(), std::numeric_limits<double>::min(), [](double lhs, double rhs) {
-                return std::max(lhs, rhs);
-            });
-            break;
-        case NBTreeAggregation::MIN:
-            outval = std::accumulate(xs.begin(), xs.end(), std::numeric_limits<double>::max(), [](double lhs, double rhs) {
-                return std::min(lhs, rhs);
-            });
-            break;
-        case NBTreeAggregation::CNT:
-            outval = out_size;
-            break;
-        };
+        outval = calculate_aggregate(xs, aggtype_);
         outts = ts.front();  // INVARIANT: ts.size() is gt 0, destts(xs) size is gt 0
     }
     destts[0] = outts;
@@ -653,7 +715,46 @@ public:
     }
     virtual std::unique_ptr<NBTreeIterator> make_leaf_iterator(NBTreeLeaf const& leaf) override;
     virtual std::unique_ptr<NBTreeIterator> make_superblock_iterator(LogicAddr addr) override;
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) override;
 };
+
+std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destts, double *destval, size_t size) {
+    if (size == 0) {
+        return std::make_pair(AKU_EBAD_ARG, 0ul);
+    }
+    if (!fsm_pos_ ) {
+        aku_Status status = AKU_SUCCESS;
+        status = init();
+        if (status != AKU_SUCCESS) {
+            return std::make_pair(status, 0ul);
+        }
+        fsm_pos_++;
+    }
+    size_t xss_size = 0xFFF;
+    std::vector<double> xss(xss_size + 1, 0);
+    std::vector<aku_Timestamp> tss(xss_size + 1, 0);
+    ssize_t outsz = 0;
+    aku_Status status;
+    while(true) {
+        std::tie(status, outsz) = iter(tss.data() + 1, xss.data() + 1, xss_size);
+        if ((status == AKU_SUCCESS || status == AKU_ENO_DATA) && outsz != 0) {
+            tss[0] = tss[1];
+            std::vector<double> slice(xss.begin() + 1, xss.begin() + 1 + outsz); // size is expected to be equal to 1
+            xss[1] = calculate_aggregate(slice, agg_type_);
+            size = 1;
+        } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            size = 0;
+            break;
+        } else if (outsz == 0) {
+            if (size != 0) {
+                destval[0] = xss[0];
+                destts[0] = tss[0];
+            }
+            break;
+        }
+    }
+    return std::make_tuple(status, size);
+}
 
 std::unique_ptr<NBTreeIterator> NBTreeSBlockAggregator::make_leaf_iterator(NBTreeLeaf const& leaf) {
     std::unique_ptr<NBTreeIterator> result;
@@ -1020,6 +1121,16 @@ std::unique_ptr<NBTreeIterator> NBTreeSuperblock::search(aku_Timestamp begin,
     return std::move(result);
 }
 
+std::unique_ptr<NBTreeIterator> NBTreeSuperblock::aggregate(aku_Timestamp begin,
+                                                            aku_Timestamp end,
+                                                            std::shared_ptr<BlockStore> bstore,
+                                                            NBTreeAggregation agg_type) const
+{
+    std::unique_ptr<NBTreeIterator> result;
+    result.reset(new NBTreeSBlockAggregator(agg_type, bstore, *this, begin, end));
+    return std::move(result);
+}
+
 
 // //////////////////////// //
 //        NBTreeExtent      //
@@ -1335,7 +1446,7 @@ std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::search(aku_Timestamp begin, 
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const {
-    throw "not implemented";
+    return std::move(curr_->aggregate(begin, end, bstore_, agg_type));
 }
 
 
