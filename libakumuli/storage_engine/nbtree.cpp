@@ -42,13 +42,10 @@ static SubtreeRef const* subtree_cast(u8 const* p) {
     return reinterpret_cast<SubtreeRef const*>(p);
 }
 
+//! Aggregate plain data (from leaf node).
 static double calculate_aggregate(std::vector<double> const& xss, NBTreeAggregation agg) {
     double result = .0;
     switch(agg) {
-    case NBTreeAggregation::AVG:
-        result = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
-        result /= xss.size();
-        break;
     case NBTreeAggregation::SUM:
         result = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
         break;
@@ -64,6 +61,34 @@ static double calculate_aggregate(std::vector<double> const& xss, NBTreeAggregat
         break;
     case NBTreeAggregation::CNT:
         result = xss.size();
+        break;
+    }
+    return result;
+}
+
+//! Merge aggregates. Each value in array already contains aggregation results.
+static double merge_aggregates(std::vector<double>::const_iterator begin,
+                               std::vector<double>::const_iterator end,
+                               NBTreeAggregation agg)
+{
+    double result = .0;
+    switch(agg) {
+    case NBTreeAggregation::SUM:
+        result = std::accumulate(begin, end, 0.0, [](double a, double b) { return a + b; });
+        break;
+    case NBTreeAggregation::MAX:
+        result = std::accumulate(begin, end, std::numeric_limits<double>::min(), [](double a, double b) {
+            return std::max(a, b);
+        });
+        break;
+    case NBTreeAggregation::MIN:
+        result = std::accumulate(begin, end, std::numeric_limits<double>::max(), [](double a, double b) {
+            return std::min(a, b);
+        });
+        break;
+    case NBTreeAggregation::CNT:
+        // each value is a count so we should sum everything up
+        result = std::accumulate(begin, end, 0.0, [](double a, double b) { return a + b; });
         break;
     }
     return result;
@@ -641,9 +666,6 @@ std::tuple<aku_Status, size_t> NBTreeLeafAggregator::read(aku_Timestamp *destts,
     if (enable_cached_metadata_) {
         // Fast path. Use metadata to compute results.
         switch(aggtype_) {
-        case NBTreeAggregation::AVG:
-            outval = metacache_.sum / metacache_.count;
-            break;
         case NBTreeAggregation::SUM:
             outval = metacache_.sum;
             break;
@@ -739,8 +761,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
         std::tie(status, outsz) = iter(tss.data() + 1, xss.data() + 1, xss_size);
         if ((status == AKU_SUCCESS || status == AKU_ENO_DATA) && outsz != 0) {
             tss[0] = tss[1];
-            std::vector<double> slice(xss.begin() + 1, xss.begin() + 1 + outsz); // size is expected to be equal to 1
-            xss[1] = calculate_aggregate(slice, agg_type_);
+            xss[0] = merge_aggregates(xss.begin() + 1, xss.begin() + outsz + 1, agg_type_);
             size = 1;
         } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
             size = 0;

@@ -90,7 +90,7 @@ enum class NBTreeBlockType {
 };
 
 enum class NBTreeAggregation {
-    CNT, SUM, AVG, MIN, MAX,
+    CNT, SUM, MIN, MAX,
 };
 
 enum {
