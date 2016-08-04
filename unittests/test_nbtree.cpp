@@ -779,9 +779,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
     };
     std::vector<NBTreeAggregation> aggs = {
         NBTreeAggregation::CNT,
-        //NBTreeAggregation::MAX,
-        //NBTreeAggregation::MIN,
-        //NBTreeAggregation::SUM,
+        NBTreeAggregation::MAX,
+        NBTreeAggregation::MIN,
+        NBTreeAggregation::SUM,
     };
     for (auto agg: aggs) {
         for (auto be: tss) {
