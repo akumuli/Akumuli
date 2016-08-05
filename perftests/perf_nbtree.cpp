@@ -36,10 +36,10 @@ static void console_logger(aku_LogLevel lvl, const char* msg) {
         std::cerr << "ERROR: " << msg << std::endl;
         break;
     case AKU_LOG_INFO:
-        std::cerr << "Info: " << msg << std::endl;
+        std::cout << "Info: " << msg << std::endl;
         break;
     case AKU_LOG_TRACE:
-        std::cerr << "trace: " << msg << std::endl;
+        //std::cerr << "trace: " << msg << std::endl;
         break;
     };
 }
@@ -105,9 +105,10 @@ int main() {
             rr = static_cast<size_t>(rand());
         }
         aku_ParamId id = rr++ % trees.size();
-        if (trees[id]->append(ts, value)) {
+        if (trees[id]->append(ts, value) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             flush_needed = true;
             cvar.notify_one();
+            //auto roots = trees[id]->get_roots();
         }
         if (nsamples < 10) {
             ids.push_back(id);
@@ -149,7 +150,44 @@ int main() {
         }
         std::cout << "From id: " << id << " n: " << total_sum << " sum: "
                   << sum << " calculated in " << total.elapsed() << "s" << std::endl;
+        total.restart();
+        it = trees[id]->aggregate(N+1, 0, NBTreeAggregation::SUM);
+        size_t sz;
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), 0x1000);
+        if (sz != 1) {
+            std::cout << "Failure at id = " << id << std::endl;
+        }
+        if (std::abs(sum - xs.at(0)) > .0001) {
+            std::cout << "Failure at id = " << id << ", sums didn't match "
+                      << total_sum << " != " << xs.at(0) << std::endl;
+        }
+        std::cout << "From id: " << id << " n: " << total_sum << " sum: "
+                  << xs.at(0) << " aggregated in " << total.elapsed() << "s" << std::endl;
+        it = trees[id]->aggregate(N+1, 0, NBTreeAggregation::CNT);
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), 0x1000);
+        if (sz != 1) {
+            std::cout << "Failure at id = " << id << std::endl;
+        }
+        std::cout << "From id: " << id << " n: " << xs.at(0)
+                  << " aggregated in " << total.elapsed() << "s" << std::endl;
     }
+
+    // Test recovery
+    std::vector<std::vector<LogicAddr>> rescue_points;
+    for (int i = 0; i < numids; i++) {
+        rescue_points.push_back(trees[i]->get_roots());
+    }
+    total.restart();
+    std::vector<std::shared_ptr<NBTreeExtentsList>> tmptrees;
+    for (int i = 0; i < numids; i++) {
+        auto id = static_cast<aku_ParamId>(i);
+        std::vector<LogicAddr> empty;
+        auto ext = std::make_shared<NBTreeExtentsList>(id, rescue_points[i], bstore);
+        tmptrees.push_back(std::move(ext));
+    }
+    std::cout << "Recovery completed in " << total.elapsed() << " sec" << std::endl;
+    tmptrees.clear();
+    // end test recovery
 
     total.restart();
     for (size_t i = 0; i < trees.size(); i++) {

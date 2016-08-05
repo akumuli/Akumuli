@@ -35,7 +35,7 @@ using namespace Akumuli::StorageEngine;
 enum class ScanDir {
     FWD, BWD
 };
-/*
+
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -525,7 +525,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_7) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_8) {
     test_nbtree_leaf_iteration(500, 200);
 }
-*/
+
 // Test aggregation
 
 //! Generate time-series from random walk
@@ -623,7 +623,7 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTree
     BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
     BOOST_REQUIRE_EQUAL(size, 0);
 }
-/*
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation) {
     std::vector<std::pair<aku_Timestamp, aku_Timestamp>> params = {
     // Fwd
@@ -718,7 +718,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration) {
         test_nbtree_superblock_iter(be.second, be.first);
     }
 }
-*/
+
 void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
