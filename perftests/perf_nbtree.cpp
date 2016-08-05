@@ -54,14 +54,14 @@ int main() {
     std::vector<std::string> paths = {
         "/tmp/volume0.db",
         "/tmp/volume1.db",
-        "/tmp/volume2.db",
-        "/tmp/volume3.db",
+        //"/tmp/volume2.db",
+        //"/tmp/volume3.db",
     };
     std::vector<std::tuple<u32, std::string>> volumes {
         std::make_tuple(1024*1024, paths[0]),
         std::make_tuple(1024*1024, paths[1]),
-        std::make_tuple(1024*1024, paths[2]),
-        std::make_tuple(1024*1024, paths[3]),
+        //std::make_tuple(1024*1024, paths[2]),
+        //std::make_tuple(1024*1024, paths[3]),
     };
 
     FixedSizeFileStorage::create(metapath, volumes);
@@ -70,6 +70,7 @@ int main() {
 
     std::vector<std::shared_ptr<NBTreeExtentsList>> trees;
     const int numids = 10000;
+    //const int numids = 1;
     for (int i = 0; i < numids; i++) {
         auto id = static_cast<aku_ParamId>(i);
         std::vector<LogicAddr> empty;
@@ -95,13 +96,14 @@ int main() {
     std::thread flush_thread(flush_fn);
     flush_thread.detach();
 
-    const int N = 500000000;
+    const int N = 100000000;
 
     Timer tm;
     Timer total;
     size_t rr = 0;
     size_t nsamples = 0;
     std::vector<aku_ParamId> ids;
+    const int nextracted = std::min(10, numids);
     for (int i = 1; i < (N+1); i++) {
         aku_Timestamp ts = static_cast<aku_Timestamp>(i);
         double value = i;
@@ -112,13 +114,12 @@ int main() {
         if (trees[id]->append(ts, value) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             flush_needed = true;
             cvar.notify_one();
-            //auto roots = trees[id]->get_roots();
         }
-        if (nsamples < 10) {
+        if (nsamples < static_cast<size_t>(nextracted)) {
             ids.push_back(id);
         } else {
             int rix = rand() % nsamples;
-            if (rix < 10) {
+            if (rix < nextracted) {
                 ids[rix] = id;
             }
         }

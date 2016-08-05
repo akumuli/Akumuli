@@ -891,6 +891,8 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     , writer_(id, block_->get_data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
     , fanout_index_(fanout_index)
 {
+    // Check that invariant holds.
+    assert((prev == EMPTY_ADDR && fanout_index == 0) || (prev != EMPTY_ADDR && fanout_index > 0));
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->addr = prev;
     subtree->level = 0;  // Leaf node
@@ -997,14 +999,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     size_t size = writer_.commit();
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->payload_size = static_cast<u16>(size);
-    if (prev_ != EMPTY_ADDR) {
+    if (prev_ != EMPTY_ADDR && fanout_index_ > 0) {
         subtree->addr = prev_;
     } else {
         // addr = EMPTY indicates that there is
         // no link to previous node.
         subtree->addr  = EMPTY_ADDR;
         // Invariant: fanout index should be 0 in this case.
-        assert(fanout_index_ == 0);
     }
     subtree->version = AKUMULI_VERSION;
     subtree->level = 0;
@@ -1384,11 +1385,11 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
         AKU_PANIC("Roots collection destroyed");
     }
     fanout_index_++;
+    last_ = addr;
     if (fanout_index_ == AKU_NBTREE_FANOUT) {
         fanout_index_ = 0;
         last_ = EMPTY_ADDR;
     }
-    last_ = addr;
     reset_leaf();
     // NOTE: we should reset current extent's rescue point because parent node was saved and
     // already has a link to current extent (e.g. leaf node was saved and new leaf
@@ -1543,11 +1544,11 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
         AKU_PANIC("Roots collection destroyed");
     }
     fanout_index_++;
+    last_ = addr;
     if (fanout_index_ == AKU_NBTREE_FANOUT) {
         fanout_index_ = 0;
         last_ = EMPTY_ADDR;
     }
-    last_ = addr;
     reset_subtree();
     // NOTE: we should reset current extent's rescue point because parent node was saved and
     // parent node already has a link to this extent.
@@ -1963,6 +1964,7 @@ void NBTreeExtentsList::repair() {
                     inner_addr = sblock.get_prev_addr();
                     refs.push_back(ref);
                 }
+                rescue_points_.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
             }
             // Insert all nodes in direct order
             for(auto it = refs.rbegin(); it < refs.rend(); it++) {
