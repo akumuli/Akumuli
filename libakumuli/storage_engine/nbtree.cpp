@@ -1982,6 +1982,7 @@ void NBTreeExtentsList::init() {
         }
         // Tree should be restored (crush recovery kicks in here).
         else {
+            repair();
         }
     }
 }

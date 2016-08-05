@@ -368,9 +368,9 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     std::vector<LogicAddr> rescue_points_;
     bool initialized_;
 
-    void init();
     void open();
     void repair();
+    void init();
 public:
 
     /** C-tor

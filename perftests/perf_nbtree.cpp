@@ -54,10 +54,14 @@ int main() {
     std::vector<std::string> paths = {
         "/tmp/volume0.db",
         "/tmp/volume1.db",
+        "/tmp/volume2.db",
+        "/tmp/volume3.db",
     };
     std::vector<std::tuple<u32, std::string>> volumes {
         std::make_tuple(1024*1024, paths[0]),
-        std::make_tuple(1024*1024, paths[1])
+        std::make_tuple(1024*1024, paths[1]),
+        std::make_tuple(1024*1024, paths[2]),
+        std::make_tuple(1024*1024, paths[3]),
     };
 
     FixedSizeFileStorage::create(metapath, volumes);
@@ -181,13 +185,39 @@ int main() {
     std::vector<std::shared_ptr<NBTreeExtentsList>> tmptrees;
     for (int i = 0; i < numids; i++) {
         auto id = static_cast<aku_ParamId>(i);
-        std::vector<LogicAddr> empty;
         auto ext = std::make_shared<NBTreeExtentsList>(id, rescue_points[i], bstore);
         tmptrees.push_back(std::move(ext));
     }
+    size_t total_cnt = 0;
+    for (int i = 0; i < numids; i++) {
+        auto it = tmptrees[i]->aggregate(N+1, 0, NBTreeAggregation::CNT);
+        aku_Status status;
+        size_t sz;
+        aku_Timestamp ts;
+        double val;
+        std::tie(status, sz) = it->read(&ts, &val, 0x1);
+        if (sz == 1) {
+            total_cnt += static_cast<size_t>(val);
+        }
+    }
     std::cout << "Recovery completed in " << total.elapsed() << " sec" << std::endl;
+    std::cout << "n = " << total_cnt << " elements" << std::endl;
     tmptrees.clear();
     // end test recovery
+
+    size_t orig_total_cnt = 0;
+    for (int i = 0; i < numids; i++) {
+        auto it = trees[i]->aggregate(N+1, 0, NBTreeAggregation::CNT);
+        aku_Status status;
+        size_t sz;
+        aku_Timestamp ts;
+        double val;
+        std::tie(status, sz) = it->read(&ts, &val, 0x1);
+        if (sz == 1) {
+            orig_total_cnt += static_cast<size_t>(val);
+        }
+    }
+    std::cout << "n (original) = " << orig_total_cnt << " elements" << std::endl;
 
     total.restart();
     for (size_t i = 0; i < trees.size(); i++) {
