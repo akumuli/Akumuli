@@ -662,20 +662,21 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTree
     // Compare expected and actual
     auto it = leaf.aggregate(begin, end, agg);
     aku_Status status;
-    size_t size;
-    std::vector<aku_Timestamp> destts(100, 0);
-    std::vector<double> destxs(100, 0);
-    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    size_t size = 100;
+    std::vector<aku_Timestamp> destts(size, 0);
+    std::vector<double> destxs(size, 0);
+    size_t outsz;
+    std::tie(status, outsz) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-    BOOST_REQUIRE_EQUAL(size, 1);
+    BOOST_REQUIRE_EQUAL(outsz, 1);
 
     double actual = destxs.at(0);
     BOOST_REQUIRE_CLOSE(actual, expected, 0.00001);
 
     // Subsequent call to `it->read` should fail
-    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    std::tie(status, outsz) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
-    BOOST_REQUIRE_EQUAL(size, 0);
+    BOOST_REQUIRE_EQUAL(outsz, 0);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation) {
