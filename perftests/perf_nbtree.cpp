@@ -58,8 +58,10 @@ int main() {
         //"/tmp/volume3.db",
     };
     std::vector<std::tuple<u32, std::string>> volumes {
-        std::make_tuple(1024*1024, paths[0]),
-        std::make_tuple(1024*1024, paths[1]),
+        std::make_tuple(10*1024, paths[0]),
+        std::make_tuple(10*1024, paths[1]),
+        //std::make_tuple(1024*1024, paths[0]),
+        //std::make_tuple(1024*1024, paths[1]),
         //std::make_tuple(1024*1024, paths[2]),
         //std::make_tuple(1024*1024, paths[3]),
     };

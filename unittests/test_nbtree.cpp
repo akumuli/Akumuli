@@ -375,7 +375,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
     addrlist = collection->get_roots();
 
     //for (auto addr: addrlist) {
-    //    std::cout << "Dbg print for " << addr << std::endl;
+    //    std::cout << "\n\nDbg print for " << addr << std::endl;
     //    NBTreeExtentsList::debug_print(addr, bstore);
     //}
 
@@ -403,8 +403,13 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         // Expect zero, data was stored in single leaf-node.
         BOOST_REQUIRE(sz == 0);
     } else {
-        // `sz` value can't be equal to N because some data should be lost!
-        BOOST_REQUIRE(sz < nitems);
+        if (nleafs == N_blocks) {
+            // new leaf was empty before 'crash'
+            BOOST_REQUIRE(sz == nitems);
+        } else {
+            // some data can be lost!
+            BOOST_REQUIRE(sz <= nitems);
+        }
     }
     // Note: `status` should be equal to AKU_SUCCESS if size of the destination
     // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
@@ -444,10 +449,59 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_6) {
     test_storage_recovery(33*33, ~0u);
 }
 
+//! Reopen storage that has been closed without final commit.
+void test_storage_recovery_2(u32 N_blocks) {
+    LogicAddr last_block = EMPTY_ADDR;
+    auto cb = [&last_block] (LogicAddr addr) {
+        last_block = addr;
+    };
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+
+    u32 nleafs = 0;
+    u32 nitems = 0;
+
+    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist) {
+        auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+        col->force_init();
+
+        auto it = col->search(0, nitems);
+        std::vector<aku_Timestamp> ts(nitems, 0);
+        std::vector<double> xs(nitems, 0);
+        aku_Status status = AKU_SUCCESS;
+        size_t sz = 0;
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), nitems);
+        BOOST_REQUIRE(sz == nitems);
+        BOOST_REQUIRE(status == AKU_ENO_DATA || status  == AKU_SUCCESS);
+        if (sz > 0) {
+            BOOST_REQUIRE(ts[0] == 0);
+            BOOST_REQUIRE(ts[sz - 1] == sz - 1);
+        }
+    };
+
+    for (u32 i = 0; true; i++) {
+        if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+            // addrlist changed
+            try_to_recover(collection->get_roots());
+            nleafs++;
+            if (nleafs == N_blocks) {
+                nitems = i;
+                break;
+            }
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_7) {
+    test_storage_recovery_2(4096);
+}
+
+
 // Test iteration
 
 void test_nbtree_leaf_iteration(aku_Timestamp begin, aku_Timestamp end) {
-    NBTreeLeaf leaf(42, 0, 0);
+    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp last_successfull = 100;
     aku_Timestamp first_timestamp = 100;
     for (size_t ix = first_timestamp; true; ix++) {
@@ -572,7 +626,7 @@ double calculate_expected_value(std::vector<double> const& xss, NBTreeAggregatio
 }
 
 void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
-    NBTreeLeaf leaf(42, 0, 0);
+    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;
     std::vector<double> xss;
     RandomWalk rwalk(0.0, 1.0, 1.0);
@@ -790,3 +844,4 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
         }
     }
 }
+

@@ -1746,12 +1746,6 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     LogicAddr addr = EMPTY_ADDR;
     std::tie(parent_saved, addr) = extents_.front()->append(ts, value);
     if (addr != EMPTY_ADDR) {
-        if (parent_saved) {
-            // NOTE: node at `addr` was saved into parent node and
-            // parent node was saved to disk. No need to store this
-            // address as leaf's rescue point!
-            addr = EMPTY_ADDR;
-        }
         if (rescue_points_.size() > 0) {
             rescue_points_.at(0) = addr;
         } else {
@@ -1787,12 +1781,6 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     std::tie(parent_saved, addr) = root->append(pl);
     if (addr != EMPTY_ADDR) {
         // NOTE: `addr != EMPTY_ADDR` means that something was saved to disk (current node or parent node).
-        if (parent_saved) {
-            // NOTE: node at `addr` was saved into parent node and
-            // parent node was saved to disk. No need to store this
-            // address in internal node's rescue point!
-            addr = EMPTY_ADDR;
-        }
         if (rescue_points_.size() > lvl) {
             rescue_points_.at(lvl) = addr;
         } else if (rescue_points_.size() == lvl) {
