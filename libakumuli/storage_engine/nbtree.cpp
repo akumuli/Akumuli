@@ -1888,23 +1888,24 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
 void NBTreeExtentsList::repair() {
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
+    std::vector<LogicAddr> rescue_points(rescue_points_.begin(), rescue_points_.end());
     // Construct roots using CoW
-    if (rescue_points_.size() < 2) {
+    if (rescue_points.size() < 2) {
         // All data was lost.
         create_empty_extents(shared_from_this(), bstore_, id_, 1, &extents_);
     } else {
         // Init `extents_` to make `append` functions work.
-        create_empty_extents(shared_from_this(), bstore_, id_, rescue_points_.size(), &extents_);
+        create_empty_extents(shared_from_this(), bstore_, id_, rescue_points.size(), &extents_);
 
-        int i = static_cast<int>(rescue_points_.size());
+        int i = static_cast<int>(rescue_points.size());
         while (i --> 0) {
             std::vector<SubtreeRef> refs;
-            if (rescue_points_.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
+            if (rescue_points.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
                 continue;
             } else if (i == 1) {
                 // Resestore this level from last saved leaf node.
-                auto leaf_addr = rescue_points_.front();
-                assert(rescue_points_.at(1) == EMPTY_ADDR);
+                auto leaf_addr = rescue_points.front();
+                assert(rescue_points.at(1) == EMPTY_ADDR);
                 // Recover all leaf nodes in reverse order.
                 while(leaf_addr != EMPTY_ADDR) {
                     aku_Status status;
@@ -1929,7 +1930,7 @@ void NBTreeExtentsList::repair() {
                 }
             } else if (i > 1) {
                 // resestore this level from last saved inner node
-                auto inner_addr = rescue_points_.at(static_cast<size_t>(i - 1));
+                auto inner_addr = rescue_points.at(static_cast<size_t>(i - 1));
                 // Recover all inner nodes in reverse order.
                 while(inner_addr != EMPTY_ADDR) {
                     aku_Status status;
@@ -1952,7 +1953,7 @@ void NBTreeExtentsList::repair() {
                     inner_addr = sblock.get_prev_addr();
                     refs.push_back(ref);
                 }
-                rescue_points_.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
+                rescue_points.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
             }
             // Insert all nodes in direct order
             for(auto it = refs.rbegin(); it < refs.rend(); it++) {
