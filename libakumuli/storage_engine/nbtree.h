@@ -89,13 +89,11 @@ enum class NBTreeBlockType {
     INNER,  // super block
 };
 
-enum class NBTreeAggregation {
-    CNT, SUM, MIN, MAX,
-};
 
 enum {
     AKU_NBTREE_FANOUT = 32,
 };
+
 
 /** Reference to tree node.
   * Ref contains some metadata: version, level, payload_size, id.
@@ -137,6 +135,22 @@ struct SubtreeRef {
 } __attribute__((packed));
 
 
+//! Result of the aggregation operation that has several components.
+struct NBTreeAggregationResult {
+    double cnt;
+    double sum;
+    double min;
+    double max;
+
+    //! Copy all components from subtree reference.
+    void copy_from(SubtreeRef const&);
+    //! Calculate values from raw data.
+    void do_the_math(double const* xss, size_t size);
+    //! Combine this value with the other one (inplace update).
+    void combine(const NBTreeAggregationResult& other);
+};
+
+
 /** NBTree iterator.
   * @note all ranges is semi-open. This means that if we're
   *       reading data from A to B, iterator should return
@@ -144,7 +158,8 @@ struct SubtreeRef {
   *       greater (or less if we're reading data in backward
   *       direction) then all timestamps that we've read before.
   */
-struct NBTreeIterator {
+template <class TValue>
+struct NBTreeIteratorBase {
 
     //! Iteration direction
     enum class Direction {
@@ -152,7 +167,7 @@ struct NBTreeIterator {
     };
 
     //! D-tor
-    virtual ~NBTreeIterator() = default;
+    virtual ~NBTreeIteratorBase() = default;
 
     /** Read data from iterator.
       * @param destts Timestamps destination buffer. On success timestamps will be written here.
@@ -160,10 +175,16 @@ struct NBTreeIterator {
       * @param size Size of the  destts and destval buffers (should be the same).
       * @return status and number of elements written to both buffers.
       */
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp* destts, double* destval, size_t size) = 0;
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp* destts, TValue* destval, size_t size) = 0;
 
     virtual Direction get_direction() = 0;
 };
+
+//! Base class for all raw data iterators.
+using NBTreeIterator = NBTreeIteratorBase<double>;
+
+//! Base class for all aggregating iterators. Return single value.
+using NBTreeAggregator = NBTreeIteratorBase<NBTreeAggregationResult>;
 
 
 /** NBTree leaf node. Supports append operation.
@@ -243,7 +264,7 @@ public:
     //! Return iterator that outputs all values in time range that is stored in this leaf.
     std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end) const;
 
-    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
+    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
@@ -304,10 +325,9 @@ public:
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
-    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin,
-                                              aku_Timestamp end,
-                                              std::shared_ptr<BlockStore> bstore,
-                                              NBTreeAggregation agg_type) const;
+    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin,
+                                                aku_Timestamp end,
+                                                std::shared_ptr<BlockStore> bstore) const;
 };
 
 
@@ -340,7 +360,7 @@ struct NBTreeExtent {
     virtual bool is_dirty() const = 0;
 
     //! Return iterator that will return single aggregated value.
-    virtual std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const = 0;
+    virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
@@ -394,7 +414,7 @@ public:
 
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
-    std::unique_ptr<NBTreeIterator> aggregate(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg_type) const;
+    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();

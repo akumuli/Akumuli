@@ -99,6 +99,7 @@ int main() {
     flush_thread.detach();
 
     const int N = 100000000;
+    //const int N = 20000000;
 
     Timer tm;
     Timer total;
@@ -147,12 +148,20 @@ int main() {
         aku_Status status = AKU_SUCCESS;
         std::vector<aku_Timestamp> ts(0x1000, 0);
         std::vector<double> xs(0x1000, 0.0);
+        auto prev = double(N + 1);
         while(status == AKU_SUCCESS) {
             size_t sz;
             std::tie(status, sz) = it->read(ts.data(), xs.data(), 0x1000);
             total_sum += sz;
             for (size_t i = 0; i < sz; i++) {
                 sum += xs[i];
+                if (numids == 1) {
+                    if(std::abs(prev - xs[i] - 1.0) > .0001) {
+                        std::cout << "Bad value at " << i << " expected: " << (prev - 1) << " actual: " << xs[i] << std::endl;
+                        std::terminate();
+                    }
+                    prev = xs[i];
+                }
             }
         }
         std::cout << "From id: " << id << " n: " << total_sum << " sum: "
@@ -166,7 +175,7 @@ int main() {
         }
         if (std::abs(sum - xs.at(0)) > .0001) {
             std::cout << "Failure at id = " << id << ", sums didn't match "
-                      << total_sum << " != " << xs.at(0) << std::endl;
+                      << sum << " != " << xs.at(0) << std::endl;
         }
         std::cout << "From id: " << id << " n: " << total_sum << " sum: "
                   << xs.at(0) << " aggregated in " << total.elapsed() << "s" << std::endl;
