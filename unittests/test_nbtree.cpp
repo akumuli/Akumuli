@@ -602,30 +602,22 @@ struct RandomWalk {
     }
 };
 
-double calculate_expected_value(std::vector<double> const& xss, NBTreeAggregation agg) {
-    double expected{};
-    switch(agg) {
-    case NBTreeAggregation::SUM:
-        expected = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
-        break;
-    case NBTreeAggregation::MAX:
-        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(), [](double a, double b) {
-            return std::max(a, b);
-        });
-        break;
-    case NBTreeAggregation::MIN:
-        expected = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(), [](double a, double b) {
-            return std::min(a, b);
-        });
-        break;
-    case NBTreeAggregation::CNT:
-        expected = xss.size();
-        break;
-    }
+NBTreeAggregationResult calculate_expected_value(std::vector<double> const& xss) {
+    NBTreeAggregationResult expected = INIT_AGGRES;
+    expected.sum = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
+    expected.max = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(),
+                        [](double a, double b) {
+                            return std::max(a, b);
+                        });
+    expected.min = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::max(),
+                        [](double a, double b) {
+                            return std::min(a, b);
+                        });
+    expected.cnt = xss.size();
     return expected;
 }
 
-void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
+void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;
     std::vector<double> xss;
@@ -657,21 +649,24 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTree
     }
 
     // Compute expected value
-    double expected = calculate_expected_value(xss, agg);
+    auto expected = calculate_expected_value(xss);
 
     // Compare expected and actual
-    auto it = leaf.aggregate(begin, end, agg);
+    auto it = leaf.aggregate(begin, end);
     aku_Status status;
     size_t size = 100;
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<double> destxs(size, 0);
+    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
     size_t outsz;
     std::tie(status, outsz) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(outsz, 1);
 
-    double actual = destxs.at(0);
-    BOOST_REQUIRE_CLOSE(actual, expected, 0.00001);
+    auto actual = destxs.at(0);
+    BOOST_REQUIRE_CLOSE(actual.cnt, expected.cnt, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.sum, expected.sum, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.min, expected.min, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.max, expected.max, 0.00001);
 
     // Subsequent call to `it->read` should fail
     std::tie(status, outsz) = it->read(destts.data(), destxs.data(), size);
@@ -692,16 +687,8 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_aggregation) {
         {     300,     0},
         {     400,   200},
     };
-    std::vector<NBTreeAggregation> aggs = {
-        NBTreeAggregation::CNT,
-        NBTreeAggregation::MAX,
-        NBTreeAggregation::MIN,
-        NBTreeAggregation::SUM,
-    };
-    for (auto agg: aggs) {
-        for (auto cp: params) {
-            test_nbtree_leaf_aggregation(cp.first, cp.second, agg);
-        }
+    for (auto cp: params) {
+        test_nbtree_leaf_aggregation(cp.first, cp.second);
     }
 }
 
@@ -774,7 +761,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration) {
     }
 }
 
-void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end, NBTreeAggregation agg) {
+void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
     size_t ncommits = 0;
@@ -803,20 +790,23 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end, 
     if (begin > end) {
         std::reverse(xss.begin(), xss.end());
     }
-    double expected = calculate_expected_value(xss, agg);
+    auto expected = calculate_expected_value(xss);
 
     // Check actual output
-    auto it = extents->aggregate(begin, end, agg);
+    auto it = extents->aggregate(begin, end);
     aku_Status status;
     size_t size = 100;
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<double> destxs(size, 0);
+    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(size, 1);
 
-    double actual = destxs.at(0);
-    BOOST_REQUIRE_CLOSE(actual, expected, 0.00001);
+    auto actual = destxs.at(0);
+    BOOST_REQUIRE_CLOSE(actual.cnt, expected.cnt, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.sum, expected.sum, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.min, expected.min, 0.00001);
+    BOOST_REQUIRE_CLOSE(actual.max, expected.max, 0.00001);
 
     // Subsequent call to `it->read` should fail
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
@@ -832,17 +822,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
         {   2000,  600000 },
         { 400000,  500000 },
     };
-    std::vector<NBTreeAggregation> aggs = {
-        NBTreeAggregation::CNT,
-        NBTreeAggregation::MAX,
-        NBTreeAggregation::MIN,
-        NBTreeAggregation::SUM,
-    };
-    for (auto agg: aggs) {
-        for (auto be: tss) {
-            test_nbtree_superblock_aggregation(be.first, be.second, agg);
-            test_nbtree_superblock_aggregation(be.second, be.first, agg);
-        }
+    for (auto be: tss) {
+        test_nbtree_superblock_aggregation(be.first, be.second);
+        test_nbtree_superblock_aggregation(be.second, be.first);
     }
 }
 

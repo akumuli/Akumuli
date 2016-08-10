@@ -151,6 +151,14 @@ struct NBTreeAggregationResult {
 };
 
 
+static const NBTreeAggregationResult INIT_AGGRES = {
+    .0,
+    .0,
+    std::numeric_limits<double>::max(),
+    std::numeric_limits<double>::min()
+};
+
+
 /** NBTree iterator.
   * @note all ranges is semi-open. This means that if we're
   *       reading data from A to B, iterator should return

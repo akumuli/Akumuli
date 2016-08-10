@@ -148,6 +148,7 @@ int main() {
         aku_Status status = AKU_SUCCESS;
         std::vector<aku_Timestamp> ts(0x1000, 0);
         std::vector<double> xs(0x1000, 0.0);
+        std::vector<NBTreeAggregationResult> agg(0x1000, INIT_AGGRES);
         auto prev = double(N + 1);
         while(status == AKU_SUCCESS) {
             size_t sz;
@@ -167,24 +168,19 @@ int main() {
         std::cout << "From id: " << id << " n: " << total_sum << " sum: "
                   << sum << " calculated in " << total.elapsed() << "s" << std::endl;
         total.restart();
-        it = trees[id]->aggregate(N+1, 0, NBTreeAggregation::SUM);
+        auto ag = trees[id]->aggregate(N+1, 0);
         size_t sz;
-        std::tie(status, sz) = it->read(ts.data(), xs.data(), 0x1000);
+        std::tie(status, sz) = ag->read(ts.data(), agg.data(), 0x1000);
         if (sz != 1) {
             std::cout << "Failure at id = " << id << std::endl;
         }
-        if (std::abs(sum - xs.at(0)) > .0001) {
+        if (std::abs(sum - agg.at(0).sum) > .0001) {
             std::cout << "Failure at id = " << id << ", sums didn't match "
-                      << sum << " != " << xs.at(0) << std::endl;
+                      << sum << " != " << agg.at(0).sum << std::endl;
         }
         std::cout << "From id: " << id << " n: " << total_sum << " sum: "
-                  << xs.at(0) << " aggregated in " << total.elapsed() << "s" << std::endl;
-        it = trees[id]->aggregate(N+1, 0, NBTreeAggregation::CNT);
-        std::tie(status, sz) = it->read(ts.data(), xs.data(), 0x1000);
-        if (sz != 1) {
-            std::cout << "Failure at id = " << id << std::endl;
-        }
-        std::cout << "From id: " << id << " n: " << xs.at(0)
+                  << agg.at(0).sum << " aggregated in " << total.elapsed() << "s" << std::endl;
+        std::cout << "From id: " << id << " n: " << agg.at(0).cnt
                   << " aggregated in " << total.elapsed() << "s" << std::endl;
     }
 
@@ -202,14 +198,14 @@ int main() {
     }
     size_t total_cnt = 0;
     for (int i = 0; i < numids; i++) {
-        auto it = tmptrees[i]->aggregate(N+1, 0, NBTreeAggregation::CNT);
+        auto it = tmptrees[i]->aggregate(N+1, 0);
         aku_Status status;
         size_t sz;
         aku_Timestamp ts;
-        double val;
+        NBTreeAggregationResult val;
         std::tie(status, sz) = it->read(&ts, &val, 0x1);
         if (sz == 1) {
-            total_cnt += static_cast<size_t>(val);
+            total_cnt += static_cast<size_t>(val.cnt);
         }
     }
     std::cout << "Recovery completed in " << total.elapsed() << " sec" << std::endl;
@@ -219,14 +215,14 @@ int main() {
 
     size_t orig_total_cnt = 0;
     for (int i = 0; i < numids; i++) {
-        auto it = trees[i]->aggregate(N+1, 0, NBTreeAggregation::CNT);
+        auto it = trees[i]->aggregate(N+1, 0);
         aku_Status status;
         size_t sz;
         aku_Timestamp ts;
-        double val;
+        NBTreeAggregationResult val;
         std::tie(status, sz) = it->read(&ts, &val, 0x1);
         if (sz == 1) {
-            orig_total_cnt += static_cast<size_t>(val);
+            orig_total_cnt += static_cast<size_t>(val.cnt);
         }
     }
     std::cout << "n (original) = " << orig_total_cnt << " elements" << std::endl;
