@@ -330,32 +330,23 @@ u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
 }
 
+// MemStore
+MemStore::MemStore()
+    : write_pos_(0)
+    , removed_pos_(0)
+{
+}
 
-//! Memory resident blockstore for tests (and machines with infinite RAM)
-struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
-    std::vector<u8> buffer_;
-    std::function<void(LogicAddr)> append_callback_;
-    u32 write_pos_;
-    u32 pad_;
-    mutable std::mutex lock_;
+MemStore::MemStore(std::function<void(LogicAddr)> append_cb)
+    : append_callback_(append_cb)
+    , write_pos_(0)
+    , removed_pos_(0)
+{
+}
 
-    MemStore()
-        : write_pos_(0)
-    {
-    }
-
-    MemStore(std::function<void(LogicAddr)> append_cb)
-        : append_callback_(append_cb)
-        , write_pos_(0)
-    {
-    }
-
-    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
-    virtual void flush();
-    virtual bool exists(LogicAddr addr) const;
-    virtual u32 checksum(u8 const* data, size_t size) const;
-};
+void MemStore::remove(size_t addr) {
+    removed_pos_ = addr;
+}
 
 u32 MemStore::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
@@ -366,6 +357,9 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     std::shared_ptr<Block> block;
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
     if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
+        return std::make_tuple(AKU_EBAD_ARG, block);
+    }
+    if (addr < removed_pos_) {
         return std::make_tuple(AKU_EBAD_ARG, block);
     }
     std::vector<u8> data;

@@ -828,3 +828,67 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
     }
 }
 
+void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) {
+    // Build this tree structure.
+    assert(nremoved < nblocks);  // both numbers are actually a numbers
+    aku_Timestamp gen = 1000;
+    aku_Timestamp begin, end, last_ts;
+    LogicAddr last_addr = 0;
+    auto commit_counter = [&](LogicAddr addr) {
+        last_addr = addr;
+        if (addr == nremoved) {
+            // one time event
+            begin = gen;
+        }
+        end = last_ts;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(last_addr != nblocks) {
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        last_ts = ts;
+    }
+    // Remove old values
+    std::dynamic_pointer_cast<MemStore, BlockStore>(bstore)->remove(nremoved);
+
+    // Recovery
+    auto rescue_points = extents->get_roots();
+    // We shouldn't close `extents` to emulate program state after crush.
+    std::shared_ptr<NBTreeExtentsList> recovered(new NBTreeExtentsList(42, rescue_points, bstore));
+    recovered->force_init();
+
+    auto it = recovered->search(begin, end);
+    size_t sz = end - begin;
+    std::vector<aku_Timestamp> tss(sz, 0);
+    std::vector<double> xss(sz, .0);
+    aku_Status stat;
+    size_t outsz;
+    std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+    BOOST_REQUIRE_EQUAL(outsz, sz);
+    BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+    for(aku_Timestamp ts: tss) {
+        BOOST_REQUIRE_EQUAL(ts, begin);
+        begin++;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_with_retention_1) {
+    std::vector<std::pair<LogicAddr, LogicAddr>> addrlist = {
+        { 1, 0 },
+        { 1, 1 },
+        { 2, 0 },
+        { 2, 1 },
+        { 33, 1},
+        { 33, 10},
+        { 33, 33},
+        { 33*33, 33},
+        { 33*33, 33*33},
+    };
+    for(auto pair: addrlist) {
+        test_nbtree_recovery_with_retention(pair.first, pair.second);
+    }
+}
