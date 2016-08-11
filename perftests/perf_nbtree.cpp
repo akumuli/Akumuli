@@ -98,8 +98,8 @@ int main() {
     std::thread flush_thread(flush_fn);
     flush_thread.detach();
 
-    const int N = 100000000;
-    //const int N = 20000000;
+    //const int N = 100000000;
+    const int N = 20000000;
 
     Timer tm;
     Timer total;

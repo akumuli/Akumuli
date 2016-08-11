@@ -407,7 +407,7 @@ std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NB
                                 lhs.combine(rhs);
                                 return lhs;
                             });
-            tsresult = outts[static_cast<size_t>(ressz)];
+            tsresult = outts[static_cast<size_t>(ressz)-1];
         }
         if (status == AKU_ENO_DATA) {
             // This leaf node is empty, continue with next.
