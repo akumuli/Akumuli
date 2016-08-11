@@ -830,7 +830,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
 
 void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) {
     // Build this tree structure.
-    assert(nremoved < nblocks);  // both numbers are actually a numbers
+    assert(nremoved <= nblocks);  // both numbers are actually a numbers
     aku_Timestamp gen = 1000;
     aku_Timestamp begin, end, last_ts;
     LogicAddr last_addr = 0;
@@ -846,7 +846,7 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     std::vector<LogicAddr> empty;
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
     RandomWalk rwalk(1.0, 0.1, 0.1);
-    while(last_addr != nblocks) {
+    while(last_addr < nblocks) {
         double value = rwalk.next();
         aku_Timestamp ts = gen++;
         extents->append(ts, value);
@@ -862,17 +862,29 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     recovered->force_init();
 
     auto it = recovered->search(begin, end);
-    size_t sz = end - begin;
-    std::vector<aku_Timestamp> tss(sz, 0);
-    std::vector<double> xss(sz, .0);
-    aku_Status stat;
-    size_t outsz;
-    std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
-    BOOST_REQUIRE_EQUAL(outsz, sz);
-    BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
-    for(aku_Timestamp ts: tss) {
-        BOOST_REQUIRE_EQUAL(ts, begin);
-        begin++;
+    if (end > begin) {
+        size_t sz = end - begin;
+        std::vector<aku_Timestamp> tss(sz, 0);
+        std::vector<double> xss(sz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        BOOST_REQUIRE_EQUAL(outsz, sz);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        for(aku_Timestamp ts: tss) {
+            BOOST_REQUIRE_EQUAL(ts, begin);
+            begin++;
+        }
+    } else {
+        // No output expected
+        size_t sz = 10;
+        std::vector<aku_Timestamp> tss(sz, 0);
+        std::vector<double> xss(sz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        BOOST_REQUIRE_EQUAL(outsz, 0);
+        BOOST_REQUIRE(stat == AKU_ENO_DATA);
     }
 }
 
