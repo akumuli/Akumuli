@@ -118,10 +118,18 @@ struct SubtreeRef {
     LogicAddr addr;
     //! Smalles value
     double min;
+    //! Registration time of the smallest value
+    aku_Timestamp min_time;
     //! Largest value
     double max;
+    //! Registration time of the largest value
+    aku_Timestamp max_time;
     //! Summ of all elements in subtree
     double sum;
+    //! First value in subtree
+    double first;
+    //! Last value in subtree
+    double last;
     //! Node version
     u16 version;
     //! Node level in the tree
@@ -141,11 +149,17 @@ struct NBTreeAggregationResult {
     double sum;
     double min;
     double max;
+    double first;
+    double last;
+    aku_Timestamp mints;
+    aku_Timestamp maxts;
+    aku_Timestamp _begin;
+    aku_Timestamp _end;
 
     //! Copy all components from subtree reference.
     void copy_from(SubtreeRef const&);
     //! Calculate values from raw data.
-    void do_the_math(double const* xss, size_t size);
+    void do_the_math(aku_Timestamp *tss, double const* xss, size_t size, bool inverted);
     //! Combine this value with the other one (inplace update).
     void combine(const NBTreeAggregationResult& other);
 };
@@ -155,7 +169,13 @@ static const NBTreeAggregationResult INIT_AGGRES = {
     .0,
     .0,
     std::numeric_limits<double>::max(),
-    std::numeric_limits<double>::min()
+    std::numeric_limits<double>::min(),
+    .0,
+    .0,
+    std::numeric_limits<aku_Timestamp>::max(),
+    std::numeric_limits<aku_Timestamp>::min(),
+    std::numeric_limits<aku_Timestamp>::max(),
+    std::numeric_limits<aku_Timestamp>::min(),
 };
 
 

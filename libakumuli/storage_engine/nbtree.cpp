@@ -39,23 +39,60 @@ void NBTreeAggregationResult::copy_from(SubtreeRef const& r) {
     sum = r.sum;
     min = r.min;
     max = r.max;
+    mints = r.min_time;
+    maxts = r.max_time;
+    first = r.first;
+    last = r.last;
+    _begin = r.begin;
+    _end = r.end;
 }
 
-void NBTreeAggregationResult::do_the_math(double const* xss, size_t size) {
+void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss, size_t size, bool inverted) {
     assert(size);
     cnt += size;
     for (size_t i = 0; i < size; i++) {
         sum += xss[i];
+        if (min > xss[i]) {
+            min = xss[i];
+            mints = tss[i];
+        }
+        if (max < xss[i]) {
+            max = xss[i];
+            maxts = tss[i];
+        }
         min = std::min(min, xss[i]);
         max = std::max(max, xss[i]);
+    }
+    if (!inverted) {
+        first = xss[0];
+        last = xss[size - 1];
+    } else {
+        last = xss[0];
+        first = xss[size - 1];
     }
 }
 
 void NBTreeAggregationResult::combine(const NBTreeAggregationResult& other) {
     sum += other.sum;
     cnt += other.cnt;
+    if (min > other.min) {
+        min = other.min;
+        mints = other.mints;
+    }
+    if (max < other.max) {
+        max = other.max;
+        maxts = other.maxts;
+    }
     min = std::min(min, other.min);
     max = std::max(max, other.max);
+    if (_begin > other._begin) {
+        first = other.first;
+        _begin = other._begin;
+    }
+    if (_end < other._end) {
+        last = other.last;
+        _end = other._end;
+    }
 }
 
 static SubtreeRef* subtree_cast(u8* p) {
@@ -123,14 +160,30 @@ static aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out
     }
     double min = std::numeric_limits<double>::max();
     double max = std::numeric_limits<double>::min();
+    aku_Timestamp mints = 0;
+    aku_Timestamp maxts = 0;
     double sum = 0;
-    for (auto x: xs) {
-        min = std::min(min, x);
-        max = std::max(max, x);
-        sum = sum + x;
+    for (size_t i = 0; i < xs.size(); i++) {
+        if (min > xs[i]) {
+            min = xs[i];
+            mints = ts[i];
+        }
+        if (max < xs[i]) {
+            max = xs[i];
+            maxts = ts[i];
+        }
+        sum = sum + xs[i];
     }
     out.max = max;
     out.min = min;
+    out.min_time = mints;
+    out.max_time = maxts;
+    if (!xs.empty()) {
+        out.first = xs.front();
+        out.last = xs.back();
+    } else {
+        out.first = out.last = NAN;
+    }
     out.sum = sum;
     out.begin = ts.front();
     out.end = ts.back();
@@ -152,19 +205,31 @@ static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, Subtre
     }
     backref.begin = refs.front().begin;
     backref.end = refs.back().end;
+    backref.first = refs.front().first;
+    backref.last = refs.back().last;
     backref.count = 0;
     backref.sum = 0;
 
     double min = std::numeric_limits<double>::max();
     double max = std::numeric_limits<double>::min();
+    aku_Timestamp mints = 0;
+    aku_Timestamp maxts = 0;
     for (const SubtreeRef& sref: refs) {
         backref.count += sref.count;
         backref.sum   += sref.sum;
-        min = std::min(min, sref.min);
-        max = std::max(max, sref.max);
+        if (min > sref.min) {
+            min = sref.min;
+            mints = sref.min_time;
+        }
+        if (max < sref.max) {
+            max = sref.max;
+            maxts = sref.max_time;
+        }
     }
     backref.min = min;
     backref.max = max;
+    backref.min_time = mints;
+    backref.max_time = maxts;
 
     // Node level information
     backref.id = node.get_id();
@@ -689,8 +754,8 @@ std::tuple<aku_Status, size_t> NBTreeLeafAggregator::read(aku_Timestamp *destts,
             return std::make_tuple(AKU_ENO_DATA, 0);
         }
         assert(out_size == size_hint);
-
-        outval.do_the_math(xs.data(), out_size);
+        bool inverted = iter_.get_direction() == NBTreeLeafIterator::Direction::BACKWARD;
+        outval.do_the_math(ts.data(), xs.data(), out_size, inverted);
         outts = ts.front();  // INVARIANT: ts.size() is gt 0, destts(xs) size is gt 0
     }
     destts[0] = outts;
@@ -869,6 +934,10 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     subtree->min = std::numeric_limits<double>::max();
     subtree->max = std::numeric_limits<double>::min();
     subtree->sum = 0;
+    subtree->min_time = std::numeric_limits<aku_Timestamp>::max();
+    subtree->max_time = std::numeric_limits<aku_Timestamp>::min();
+    subtree->first = .0;
+    subtree->last = .0;
 }
 
 
@@ -946,13 +1015,21 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
     if (status == AKU_SUCCESS) {
         SubtreeRef* subtree = subtree_cast(block_->get_data());
         subtree->end = ts;
+        subtree->last = value;
         if (subtree->count == 0) {
             subtree->begin = ts;
+            subtree->first = value;
         }
         subtree->count++;
         subtree->sum += value;
-        subtree->max = std::max(subtree->max, value);
-        subtree->min = std::min(subtree->min, value);
+        if (subtree->max < value) {
+            subtree->max = value;
+            subtree->max_time = ts;
+        }
+        if (subtree->min > value) {
+            subtree->min = value;
+            subtree->min_time = ts;
+        }
     }
     return status;
 }
