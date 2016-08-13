@@ -35,7 +35,7 @@ using namespace Akumuli::StorageEngine;
 enum class ScanDir {
     FWD, BWD
 };
-/*
+
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
@@ -579,7 +579,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_7) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_leaf_iteration_8) {
     test_nbtree_leaf_iteration(500, 200);
 }
-*/
+
 // Test aggregation
 
 //! Generate time-series from random walk
@@ -751,19 +751,19 @@ void test_nbtree_superblock_iter(aku_Timestamp begin, aku_Timestamp end) {
     }
 }
 
-//BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration) {
-//    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
-//        {      0, 1000000 },
-//        {   2000, 1000000 },
-//        {      0,  600000 },
-//        {   2000,  600000 },
-//        { 400000,  500000 },
-//    };
-//    for (auto be: tss) {
-//        test_nbtree_superblock_iter(be.first, be.second);
-//        test_nbtree_superblock_iter(be.second, be.first);
-//    }
-//}
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_iteration) {
+    std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
+        {      0, 1000000 },
+        {   2000, 1000000 },
+        {      0,  600000 },
+        {   2000,  600000 },
+        { 400000,  500000 },
+    };
+    for (auto be: tss) {
+        test_nbtree_superblock_iter(be.first, be.second);
+        test_nbtree_superblock_iter(be.second, be.first);
+    }
+}
 
 void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     // Build this tree structure.
@@ -824,15 +824,15 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
     std::vector<std::pair<aku_Timestamp, aku_Timestamp>> tss = {
-//        {      0, 1000000 },
+        {      0, 1000000 },
         {   2000, 1000000 },
-//        {      0,  600000 },
-//        {   2000,  600000 },
-//        { 400000,  500000 },
+        {      0,  600000 },
+        {   2000,  600000 },
+        { 400000,  500000 },
     };
     for (auto be: tss) {
         test_nbtree_superblock_aggregation(be.first, be.second);
-//        test_nbtree_superblock_aggregation(be.second, be.first);
+        test_nbtree_superblock_aggregation(be.second, be.first);
     }
 }
 

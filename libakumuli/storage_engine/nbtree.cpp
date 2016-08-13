@@ -66,9 +66,13 @@ void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss,
     if (!inverted) {
         first = xss[0];
         last = xss[size - 1];
+        _begin = tss[0];
+        _end = tss[size - 1];
     } else {
         last = xss[0];
         first = xss[size - 1];
+        _end = tss[0];
+        _begin = tss[size - 1];
     }
 }
 
