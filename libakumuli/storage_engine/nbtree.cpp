@@ -912,6 +912,41 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator> > NBTreeSBlockAggregato
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
+
+// //////////////////////////// //
+// NBTreeSBlockCandlesticksIter //
+// //////////////////////////// //
+
+class NBTreeSBlockCandlesticsIter : public NBTreeSBlockIteratorBase<NBTreeAggregationResult> {
+    NBTreeCandlestickHint hint_;
+public:
+    NBTreeSBlockCandlesticsIter(std::shared_ptr<BlockStore> bstore,
+                                NBTreeSuperblock const& sblock,
+                                aku_Timestamp begin,
+                                aku_Timestamp end,
+                                NBTreeCandlestickHint hint)
+        : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, sblock, begin, end)
+        , hint_(hint)
+    {
+    }
+
+    NBTreeSBlockCandlesticsIter(std::shared_ptr<BlockStore> bstore,
+                                LogicAddr addr,
+                                aku_Timestamp begin,
+                                aku_Timestamp end,
+                                NBTreeCandlestickHint hint)
+        : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, addr, begin, end)
+        , hint_(hint)
+    {
+    }
+    virtual std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> make_leaf_iterator(const SubtreeRef &ref) override;
+    virtual std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> make_superblock_iterator(const SubtreeRef &ref) override;
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) override;
+};
+
+
+
+
 // //////////////// //
 //    NBTreeLeaf    //
 // //////////////// //
@@ -1066,6 +1101,13 @@ std::unique_ptr<NBTreeIterator> NBTreeLeaf::range(aku_Timestamp begin, aku_Times
 }
 
 std::unique_ptr<NBTreeAggregator> NBTreeLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
+    std::unique_ptr<NBTreeAggregator> it;
+    it.reset(new NBTreeLeafAggregator(begin, end, *this));
+    return std::move(it);
+}
+
+std::unique_ptr<NBTreeAggregator> NBTreeLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
+    AKU_UNUSED(hint);
     std::unique_ptr<NBTreeAggregator> it;
     it.reset(new NBTreeLeafAggregator(begin, end, *this));
     return std::move(it);
@@ -1287,6 +1329,14 @@ std::unique_ptr<NBTreeAggregator> NBTreeSuperblock::aggregate(aku_Timestamp begi
     return std::move(result);
 }
 
+std::unique_ptr<NBTreeAggregator> NBTreeSuperblock::candlesticks(aku_Timestamp begin, aku_Timestamp end,
+                                                                 std::shared_ptr<BlockStore> bstore,
+                                                                 NBTreeCandlestickHint hint) const
+{
+    std::unique_ptr<NBTreeAggregator> result;
+    result.reset(new NBTreeSBlockCandlesticsIter(bstore, *this, begin, end, hint));
+    return std::move(result);
+}
 
 // //////////////////////// //
 //        NBTreeExtent      //

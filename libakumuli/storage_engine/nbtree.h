@@ -179,6 +179,15 @@ static const NBTreeAggregationResult INIT_AGGRES = {
 };
 
 
+/** Describes how storage engine should process candlesticks
+  * in corresponding query.
+  */
+struct NBTreeCandlestickHint {
+    aku_Timestamp min_delta;
+    size_t out_size;
+};
+
+
 /** NBTree iterator.
   * @note all ranges is semi-open. This means that if we're
   *       reading data from A to B, iterator should return
@@ -296,6 +305,9 @@ public:
 
     //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+
+    //! Return iterator that returns candlesticks
+    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 };
 
 
@@ -356,6 +368,8 @@ public:
     std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
                                                 std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 };
 
 
@@ -389,6 +403,8 @@ struct NBTreeExtent {
 
     //! Return iterator that will return single aggregated value.
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
+
+    virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint mode);
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
