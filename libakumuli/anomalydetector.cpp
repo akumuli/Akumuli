@@ -103,7 +103,8 @@ struct CountingSketch {
             std::vector<double> const& lrow = lhs.tables_[ixrow];
             std::vector<double> const& rrow = rhs.tables_[ixrow];
             for (auto col = 0u; col < K; col++) {
-                row[col] = abs(lrow[col] - rrow[col]);
+                // FIXME: Was this conversion to integer intentional?
+                row[col] = std::fabs(lrow[col] - rrow[col]);
             }
         }
         _update_sum();
@@ -226,7 +227,8 @@ struct PreciseCounter {
             if (small_it != small->end()) {
                 val = small_it->second;
             }
-            table_[it->first] = abs(it->second - val);
+            // FIXME: Was this conversion to integer intentional?
+            table_[it->first] = std::fabs(it->second - val);
         }
     }
 
