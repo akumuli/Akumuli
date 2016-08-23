@@ -127,7 +127,9 @@ apr_status_t MemoryMappedFile::map_file() {
                     success_count++;
                     apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
                     if (enable_huge_tlb_) {
-                        flags |= MAP_HUGETLB;
+#if defined MAP_HUGETLB
+						flags |= MAP_HUGETLB;
+#endif
                     }
                     status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
                     if (status_ == APR_SUCCESS)
