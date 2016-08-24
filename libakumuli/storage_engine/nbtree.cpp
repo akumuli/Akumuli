@@ -945,6 +945,42 @@ public:
 };
 
 
+std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockCandlesticsIter::make_leaf_iterator(const SubtreeRef &ref) {
+    auto agg = INIT_AGGRES;
+    agg.copy_from(ref);
+    std::unique_ptr<NBTreeAggregator> result;
+    result.reset(new ValueAggregator(ref.end, agg, get_direction()));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockCandlesticsIter::make_superblock_iterator(const SubtreeRef &ref) {
+    aku_Timestamp min = std::min(begin_, end_);
+    aku_Timestamp max = std::max(begin_, end_);
+    aku_Timestamp delta = max - min;
+    std::unique_ptr<NBTreeAggregator> result;
+    if (min < ref.begin && ref.end < max && hint_.min_delta > delta) {
+        // We don't need to go to lower level, value from subtree ref can be used instead.
+        auto agg = INIT_AGGRES;
+        agg.copy_from(ref);
+        result.reset(new ValueAggregator(ref.end, agg, get_direction()));
+    } else {
+        result.reset(new NBTreeSBlockCandlesticsIter(bstore_, ref.addr, begin_, end_, hint_));
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+
+}
+
+std::tuple<aku_Status, size_t> NBTreeSBlockCandlesticsIter::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
+    if (!fsm_pos_ ) {
+        aku_Status status = AKU_SUCCESS;
+        status = init();
+        if (status != AKU_SUCCESS) {
+            return std::make_pair(status, 0ul);
+        }
+        fsm_pos_++;
+    }
+    return iter(destts, destval, size);
+}
 
 
 // //////////////// //
@@ -1108,9 +1144,13 @@ std::unique_ptr<NBTreeAggregator> NBTreeLeaf::aggregate(aku_Timestamp begin, aku
 
 std::unique_ptr<NBTreeAggregator> NBTreeLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
     AKU_UNUSED(hint);
-    std::unique_ptr<NBTreeAggregator> it;
-    it.reset(new NBTreeLeafAggregator(begin, end, *this));
-    return std::move(it);
+    auto agg = INIT_AGGRES;
+    SubtreeRef* subtree = subtree_cast(block_->get_data());
+    agg.copy_from(*subtree);
+    std::unique_ptr<NBTreeAggregator> result;
+    NBTreeAggregator::Direction dir = begin < end ? NBTreeAggregator::Direction::FORWARD : NBTreeAggregator::Direction::BACKWARD;
+    result.reset(new ValueAggregator(subtree->end, agg, dir));
+    return std::move(result);
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {

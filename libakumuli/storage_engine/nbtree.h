@@ -369,7 +369,9 @@ public:
                                                 aku_Timestamp end,
                                                 std::shared_ptr<BlockStore> bstore) const;
 
-    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
+                                                   std::shared_ptr<BlockStore> bstore,
+                                                   NBTreeCandlestickHint hint) const;
 };
 
 
@@ -404,7 +406,7 @@ struct NBTreeExtent {
     //! Return iterator that will return single aggregated value.
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
-    virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint mode);
+    //virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint mode);
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
