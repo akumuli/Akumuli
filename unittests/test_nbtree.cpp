@@ -913,3 +913,56 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_with_retention_1) {
     }
 }
 
+
+void test_nbtree_superblock_candlesticks(size_t commit_limit, aku_Timestamp delta) {
+    // Build this tree structure.
+    aku_Timestamp begin = 1000;
+    aku_Timestamp end = begin;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
+        double value = rwalk.next();
+        aku_Timestamp ts = end++;
+        extents->append(ts, value);
+    }
+
+    // Check actual output
+    NBTreeCandlestickHint hint;
+    hint.min_delta = delta;
+    auto it = extents->candlesticks(begin, end, hint);
+    aku_Status status;
+    size_t size = 1000;
+    std::vector<aku_Timestamp> destts(size, 0);
+    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    for(size_t i = 1; i < size; i++) {
+        NBTreeAggregationResult prev, curr;
+        prev = destxs[i - 1];
+        curr = destxs[i];
+        BOOST_REQUIRE_CLOSE(prev.last, curr.first, 10e-5);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_candlesticks) {
+    std::vector<std::pair<size_t, aku_Timestamp>> cases = {
+        { 1, 10 },
+        {10, 10 },
+        {10, 10000 },
+        {33, 10 },
+        {33, 100 },
+        {33, 1000 },
+        {33, 100000 },
+        {33*33, 10000 },
+    };
+    for (auto it: cases) {
+        test_nbtree_superblock_candlesticks(it.first, it.second);
+    }
+}
