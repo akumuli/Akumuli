@@ -21,9 +21,6 @@
 #include <vector>
 #include <sstream>
 
-// Boost
-#include <boost/scope_exit.hpp>
-
 // App
 #include "nbtree.h"
 #include "akumuli_version.h"

@@ -951,6 +951,7 @@ void test_nbtree_superblock_candlesticks(size_t commit_limit, aku_Timestamp delt
     }
 }
 
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_candlesticks) {
     std::vector<std::pair<size_t, aku_Timestamp>> cases = {
         { 1, 10 },

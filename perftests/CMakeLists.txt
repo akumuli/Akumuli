@@ -133,7 +133,7 @@ add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
     jemalloc
-    akumuli
+    akumuli2
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"

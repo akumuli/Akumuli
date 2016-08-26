@@ -184,7 +184,6 @@ static const NBTreeAggregationResult INIT_AGGRES = {
   */
 struct NBTreeCandlestickHint {
     aku_Timestamp min_delta;
-    size_t out_size;
 };
 
 

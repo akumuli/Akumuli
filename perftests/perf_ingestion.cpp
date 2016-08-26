@@ -14,7 +14,7 @@
 #include <apr_general.h>
 #include <sys/time.h>
 
-#include "akumuli.h"
+#include "akumuli2.h"
 
 using namespace std;
 
