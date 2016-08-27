@@ -225,17 +225,55 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
 // ConcatCursor //
 // //////////// //
 
+
+/** Cursor implementation.
+  * Output of this cursor is ordered by series id.
+  */
+class ConcatCursor : public ExternalCursor {
+    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+    aku_Status last_error_;
+public:
+    ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    virtual u32 read(void *buffer, u32 buffer_size) override;
+    virtual bool is_done() const override;
+    virtual bool is_error(aku_Status *out_error_code_or_null) const override;
+    virtual void close() override;
+};
+
+
 ConcatCursor::ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
     : iters_(std::move(it))
     , ids_(std::move(ids))
     , pos_(0)
+    , last_error_(AKU_SUCCESS)
 {
 }
 
-std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Sample *dest, size_t size) {
+bool ConcatCursor::is_done() const {
+    return pos_ == iters_.size();
+}
+
+bool ConcatCursor::is_error(aku_Status *out_error_code_or_null) const {
+    if (last_error_ != AKU_SUCCESS) {
+        if (out_error_code_or_null != nullptr) {
+            *out_error_code_or_null = last_error_;
+        }
+        return true;
+    }
+    return false;
+}
+
+void ConcatCursor::close() {
+    // No need to do something special because NBTreeIterators doesn't need special handling here.
+}
+
+u32 ConcatCursor::read(void *dest, u32 size) {
+    size /= sizeof(aku_Sample);
     aku_Status status = AKU_ENO_DATA;
-    size_t ressz = 0;  // current size
-    size_t accsz = 0;  // accumulated size
+    u32 ressz = 0;  // current size
+    u32 accsz = 0;  // accumulated size
     std::vector<aku_Timestamp> destts_vec(size, 0);
     std::vector<double> destval_vec(size, 0);
     std::vector<aku_ParamId> outids(size, 0);
@@ -244,7 +282,7 @@ std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Sample *dest, size_t size)
     while(pos_ < iters_.size()) {
         aku_ParamId curr = ids_[pos_];
         std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
-        for (size_t i = accsz; i < accsz+ressz; i++) {
+        for (u32 i = accsz; i < accsz+ressz; i++) {
             outids[i] = curr;
         }
         destts += ressz;
@@ -265,18 +303,16 @@ std::tuple<aku_Status, size_t> ConcatCursor::read(aku_Sample *dest, size_t size)
         }
     }
     // Convert vectors to series of samples
-    for (size_t i = 0; i < accsz; i++) {
-        dest[i].payload.type = AKU_PAYLOAD_FLOAT;
-        dest[i].paramid = outids[i];
-        dest[i].timestamp = destts_vec[i];
-        dest[i].payload.float64 = destval_vec[i];
+    aku_Sample* samples = reinterpret_cast<aku_Sample*>(dest);
+    for (u32 i = 0; i < accsz; i++) {
+        samples[i].payload.type = AKU_PAYLOAD_FLOAT;
+        samples[i].paramid = outids[i];
+        samples[i].timestamp = destts_vec[i];
+        samples[i].payload.float64 = destval_vec[i];
     }
-    return std::tie(status, accsz);
+    return accsz;
 }
 
-ConcatCursor::Direction ConcatCursor::get_direction() {
-    return Direction::FORWARD;  // FIXME: use meaningful value
-}
 
 // ///////////////// //
 //      Session      //
@@ -413,7 +449,7 @@ std::tuple<bool, NBTreeAppendResult> Session::_receive_broadcast(const aku_Sampl
     return std::make_tuple(false, NBTreeAppendResult::OK);
 }
 
-std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> Session::query(std::string text_query)
+std::tuple<aku_Status, std::unique_ptr<ExternalCursor> > Session::query(std::string text_query)
 {
     // NOTE: this is placeholder for query analyzer, at this point akumuli can
     // perform only simple reads.

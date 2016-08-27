@@ -34,6 +34,7 @@
 
 // Project
 #include "akumuli_def.h"
+#include "external_cursor.h"
 #include "metadatastorage.h"
 #include "seriesparser.h"
 #include "storage_engine/nbtree.h"
@@ -130,39 +131,6 @@ public:
 };
 
 
-/** Base class for all cursors. */
-class Cursor {
-public:
-    enum class Direction {
-        FORWARD, BACKWARD,
-    };
-    virtual ~Cursor() = default;
-    /** Read samples in batch.
-      * @param dest is an array that will receive values from cursor
-      * @param size is an arrays size
-      */
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) = 0;
-
-    /** Get direction of the cursor (FORWARD|BACKWARD).
-      */
-    virtual Direction get_direction() = 0;
-};
-
-
-/** Cursor implementation.
-  * Output of this cursor is ordered by series id.
-  */
-class ConcatCursor : public Cursor {
-    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
-    std::vector<aku_ParamId> ids_;
-    size_t pos_;
-public:
-    ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size);
-    virtual Direction get_direction();
-};
-
-
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread.
   */
@@ -203,7 +171,7 @@ public:
       */
     std::tuple<bool, StorageEngine::NBTreeAppendResult>  _receive_broadcast(const aku_Sample &sample);
 
-    std::tuple<aku_Status, std::unique_ptr<ConcatCursor>> query(std::string text_query);
+    std::tuple<aku_Status, std::unique_ptr<ExternalCursor>> query(std::string text_query);
 
     std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>> _search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end);
 
