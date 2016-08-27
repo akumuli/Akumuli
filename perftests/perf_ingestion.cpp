@@ -14,7 +14,7 @@
 #include <apr_general.h>
 #include <sys/time.h>
 
-#include "akumuli2.h"
+#include "akumuli.h"
 
 using namespace std;
 
@@ -63,7 +63,7 @@ std::string build_query(u64 begin, u64 end) {
 }
 
 void delete_storage() {
-    aku_remove_database(DB_META_FILE, &aku_console_logger);
+    aku_remove_database(DB_META_FILE, true);
 }
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, u64& counter, Timer& timer, u64 mod) {

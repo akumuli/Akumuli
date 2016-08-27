@@ -25,7 +25,6 @@
 
 #include <sys/mman.h>
 
-#include "akumuli_def.h"
 #include "log_iface.h"
 
 namespace Akumuli

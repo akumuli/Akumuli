@@ -53,9 +53,10 @@ add_library(akumuli SHARED
     crc32c.cpp
 )
 
+
 # New library
 add_library(akumuli2
-    akumuli2.cpp
+    akumuli.cpp
     seriesparser.cpp
     metadatastorage.cpp
     stringpool.cpp

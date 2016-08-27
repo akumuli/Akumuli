@@ -16,7 +16,7 @@
  */
 
 
-#include "storage.h"
+#include "storage2.h"
 #include "util.h"
 #include "cursor.h"
 #include "queryprocessor.h"
@@ -53,7 +53,7 @@ static apr_status_t create_metadata_page( const char* file_name
 {
     using namespace std;
     try {
-        auto storage = std::make_shared<MetadataStorage>(file_name, nullptr);
+        auto storage = std::make_shared<MetadataStorage>(file_name);
 
         auto now = apr_time_now();
         char date_time[0x100];
@@ -78,9 +78,9 @@ static apr_status_t create_metadata_page( const char* file_name
 }
 
 
-//----------- V2Storage ----------
+//----------- Storage ----------
 
-V2Storage::V2Storage(const char* path)
+Storage::Storage(const char* path)
     : done_{0}
     , close_barrier_(2)
 {
@@ -131,23 +131,23 @@ V2Storage::V2Storage(const char* path)
     sync_worker_thread.detach();
 }
 
-void V2Storage::close() {
+void Storage::close() {
     // Wait for all ingestion sessions to stop
     reg_->wait_for_sessions();
     done_.store(1);
     close_barrier_.wait();
 }
 
-std::shared_ptr<StorageEngine::Session> V2Storage::create_dispatcher() {
+std::shared_ptr<StorageEngine::Session> Storage::create_dispatcher() {
     return reg_->create_session();
 }
 
-void V2Storage::debug_print() const {
-    std::cout << "V2Storage::debug_print" << std::endl;
+void Storage::debug_print() const {
+    std::cout << "Storage::debug_print" << std::endl;
     std::cout << "...not implemented" << std::endl;
 }
 
-aku_Status V2Storage::new_database( const char     *file_name
+aku_Status Storage::new_database( const char     *file_name
                                   , const char     *metadata_path
                                   , const char     *volumes_path
                                   , i32             num_volumes
@@ -202,6 +202,65 @@ aku_Status V2Storage::new_database( const char     *file_name
     std::string sqlitebname = std::string(file_name) + ".akumuli";
     boost::filesystem::path sqlitepath = metpath / sqlitebname;
     create_metadata_page(sqlitepath.c_str(), mpaths);
+    return AKU_SUCCESS;
+}
+
+aku_Status Storage::remove_storage(const char* file_name, bool force) {
+    auto meta = std::make_shared<MetadataStorage>(file_name);
+    auto volumes = meta->get_volumes();
+    std::vector<std::string> volume_names(volumes.size() - 1, "");
+    // First volume is meta-page
+    std::string meta_file;
+    for(auto it: volumes) {
+        if (it.first == 0) {
+            meta_file = it.second;
+        } else {
+            volume_names.at(static_cast<size_t>(it.first)) = it.second;
+        }
+    }
+    if (!force) {
+        // Check whether or not database is empty
+        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta_file, volume_names);
+        auto stats = fstore->get_stats();
+        if (stats.nblocks != 0) {
+            // DB is not empty
+            return AKU_ENOT_PERMITTED;
+        }
+    }
+    meta.reset();
+
+    // Check access rights
+    auto check_access = [](std::string const& p) {
+        auto status = boost::filesystem::status(p);
+        auto perms = status.permissions();
+        if ((perms & boost::filesystem::owner_write) == 0) {
+            return AKU_EACCESS;
+        }
+        return AKU_SUCCESS;
+    };
+    volume_names.push_back(meta_file);
+    volume_names.push_back(file_name);
+    std::vector<aku_Status> statuses;
+    std::transform(volume_names.begin(), volume_names.end(), std::back_inserter(statuses), check_access);
+    auto comb_status = [](aku_Status lhs, aku_Status rhs) {
+        return lhs == AKU_SUCCESS ? rhs : lhs;
+    };
+    auto status = std::accumulate(statuses.begin(), statuses.end(), AKU_SUCCESS, comb_status);
+    if (status != AKU_SUCCESS) {
+        return AKU_EACCESS;
+    }
+
+    // Actual deletion starts here!
+    auto delete_file = [](std::string const& fname) {
+        if (!boost::filesystem::remove(fname)) {
+            Logger::msg(AKU_LOG_ERROR, fname + " file is not deleted!");
+        } else {
+            Logger::msg(AKU_LOG_INFO, fname + " was deleted.");
+        }
+    };
+
+    std::for_each(volume_names.begin(), volume_names.end(), delete_file);
+
     return AKU_SUCCESS;
 }
 

@@ -24,7 +24,13 @@
 #include <apr_dbd.h>
 
 #include "akumuli.h"
-#include "storage.h"  // TODO: remove
+
+//#ifdef libakumuli2
+#include "storage2.h"
+//#else
+//#include "storage.h"
+//#endif
+
 #include "datetime.h"
 #include "log_iface.h"
 #include "status_util.h"
@@ -80,37 +86,31 @@ const char* aku_error_message(int error_code) {
 
 
 struct CursorImpl {
-    std::unique_ptr<ExternalCursor> cursor_;
     aku_Status status_;
     std::string query_;
 
     CursorImpl(Storage& storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_SUCCESS;
-        cursor_ = CoroCursor::make(&Storage::search, &storage, query_.data());
+        status_ = AKU_ENOT_IMPLEMENTED;
     }
 
     ~CursorImpl() {
-        cursor_->close();
     }
 
     bool is_done() const {
-        return cursor_->is_done();
+        return true;
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        if (status_ != AKU_SUCCESS) {
-            *out_error_code_or_null = status_;
-            return false;
-        }
-        return cursor_->is_error(out_error_code_or_null);
+        *out_error_code_or_null = AKU_ENOT_IMPLEMENTED;
+        return true;
     }
 
     size_t read_values( void  *values
                       , size_t values_size )
     {
-        return cursor_->read_ex(values, values_size);
+        return 0;
     }
 };
 
@@ -143,7 +143,7 @@ public:
  */
 class DatabaseImpl : public aku_Database
 {
-    V2Storage storage_;
+    Storage storage_;
 public:
     // private fields
     DatabaseImpl(const char* path)
@@ -197,7 +197,7 @@ aku_Status aku_create_database_ex( const char     *file_name
                                  , i32             num_volumes
                                  , u64             page_size)
 {
-    return V2Storage::new_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
+    return Storage::new_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
 }
 
 aku_Status aku_create_database( const char     *file_name
@@ -210,9 +210,9 @@ aku_Status aku_create_database( const char     *file_name
 }
 
 
-apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger) {
+aku_Status aku_remove_database(const char* file_name, bool force) {
 
-    return Storage::remove_storage(file_name, logger);
+    return Storage::remove_storage(file_name, force);
 }
 
 aku_IngestionSession* aku_create_ingestion_session(aku_Database* db) {

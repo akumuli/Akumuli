@@ -23,6 +23,7 @@
 #pragma once
 
 #include "akumuli.h"
+
 #include <apr_general.h>
 #include <apr_mmap.h>
 #include <atomic>
@@ -195,7 +196,7 @@ bool same_value(double a, double b);
   * @param msg error message
   * @throws Exception.
   */
-#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(std::move(msg)));
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(msg));
 
 /** Panic macro that can use APR error code to panic more informative.
   * @param msg error message

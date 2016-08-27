@@ -20,6 +20,8 @@ static const char* g_error_messages[] = {
     "attempt to perform operation on closed device",
     "timeout",
     "retry required",
+    "access denied",
+    "operation not permitted",
     "unknown error code"
 };
 

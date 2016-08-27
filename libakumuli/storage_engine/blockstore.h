@@ -54,6 +54,14 @@ struct BlockCache {
     PBlock loockup(LogicAddr addr);
 };
 
+
+struct BlockStoreStats {
+    size_t block_size;
+    size_t capacity;
+    size_t nblocks;
+};
+
+
 struct BlockStore {
 
     virtual ~BlockStore() = default;
@@ -76,6 +84,8 @@ struct BlockStore {
 
     //! Compute checksum of the input data.
     virtual u32 checksum(u8 const* begin, size_t size) const = 0;
+
+    virtual BlockStoreStats get_stats() const = 0;
 };
 
 /** Blockstore. Contains collection of volumes.
@@ -126,6 +136,8 @@ public:
     virtual bool exists(LogicAddr addr) const;
 
     virtual u32 checksum(u8 const* data, size_t size) const;
+
+    virtual BlockStoreStats get_stats() const;
 };
 
 
@@ -147,6 +159,7 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
     virtual u32 checksum(u8 const* data, size_t size) const;
+    BlockStoreStats get_stats() const;
     void remove(size_t addr);
 };
 

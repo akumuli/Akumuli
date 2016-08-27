@@ -44,14 +44,14 @@
 
 namespace Akumuli {
 
-class V2Storage {
+class Storage {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
     std::shared_ptr<StorageEngine::TreeRegistry> reg_;
     std::atomic<int> done_;
     boost::barrier close_barrier_;
 public:
 
-    V2Storage(const char* path);
+    Storage(const char* path);
 
     std::shared_ptr<StorageEngine::Session> create_dispatcher();
 
@@ -71,10 +71,18 @@ public:
       * @return operation status
       */
     static aku_Status new_database( const char     *file_name
-                                     , const char     *metadata_path
-                                     , const char     *volumes_path
-                                     , i32             num_volumes
-                                     , u64             page_size);
+                                  , const char     *metadata_path
+                                  , const char     *volumes_path
+                                  , i32             num_volumes
+                                  , u64             page_size);
+
+    /** Remove existing database
+      * @param file_name is a database name
+      * @param force forces database deletion even if database is not empty
+      * @return AKU_SUCCESS on success or AKU_ENOT_PERMITTED if database contains data and `force` is false or
+      *         AKU_EACCESS if database there is not enough priveleges to delete the files
+      */
+    static aku_Status remove_storage(const char* file_name, bool force);
 };
 
 }

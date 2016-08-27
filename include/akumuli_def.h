@@ -151,8 +151,12 @@ typedef enum {
     AKU_ETIMEOUT = 15,
     //! Retry required
     AKU_ERETRY = 16,
+    //! Access denied
+    AKU_EACCESS = 17,
+    //! Operation not permitted
+    AKU_ENOT_PERMITTED = 18,
     //! All error codes should be less then AKU_EMAX_ERROR
-    AKU_EMAX_ERROR = 17,
+    AKU_EMAX_ERROR = 19,
     // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
 

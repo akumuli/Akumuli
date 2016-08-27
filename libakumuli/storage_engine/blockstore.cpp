@@ -321,6 +321,25 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
+BlockStoreStats FixedSizeFileStorage::get_stats() const {
+    BlockStoreStats stats = {};
+    stats.block_size = 4096;
+    size_t nvol = meta_->get_nvolumes();
+    for (u32 ix = 0; ix < nvol; ix++) {
+        aku_Status stat;
+        u32 res;
+        std::tie(stat, res) = meta_->get_capacity(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.capacity += res;
+        }
+        std::tie(stat, res) = meta_->get_nblocks(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.nblocks += res;
+        }
+    }
+    return stats;
+}
+
 static u32 crc32c(const u8* data, size_t size) {
     static crc32c_impl_t impl = chose_crc32c_implementation();
     return impl(0, data, size);
@@ -385,6 +404,14 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> 
 
 void MemStore::flush() {
     // no-op
+}
+
+BlockStoreStats MemStore::get_stats() const {
+    BlockStoreStats s;
+    s.block_size = 4096;
+    s.capacity = 1024*4096;
+    s.nblocks = write_pos_;
+    return s;
 }
 
 bool MemStore::exists(LogicAddr addr) const {

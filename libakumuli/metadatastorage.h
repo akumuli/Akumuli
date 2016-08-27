@@ -22,7 +22,6 @@
 #include <apr.h>
 #include <apr_dbd.h>
 
-#include "akumuli.h"
 #include "akumuli_def.h"
 #include "seriesparser.h"
 
@@ -62,7 +61,7 @@ struct MetadataStorage {
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
-    MetadataStorage(const char* db, aku_logger_cb_t logger=nullptr);
+    MetadataStorage(const char* db);
 
     // Creation //
 

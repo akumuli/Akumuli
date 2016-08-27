@@ -52,7 +52,7 @@ static void callback_adapter(void*, const char* msg) {
     Logger::msg(AKU_LOG_TRACE, msg);
 }
 
-MetadataStorage::MetadataStorage(const char* db, aku_logger_cb_t)
+MetadataStorage::MetadataStorage(const char* db)
     : pool_(nullptr, &delete_apr_pool)
     , driver_(nullptr)
     , handle_(nullptr, AprHandleDeleter(nullptr))
