@@ -18,18 +18,10 @@
 #pragma once
 #include <atomic>
 #include <cstddef>
-#include <list>
-#include <map>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <vector>
-#include <atomic>
-
-// APR headers
-#include <apr.h>
-#include <apr_mmap.h>
 
 #include "akumuli_def.h"
 #include "metadatastorage.h"

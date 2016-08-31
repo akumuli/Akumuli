@@ -9,34 +9,6 @@ namespace StorageEngine {
 
 using namespace QP;
 
-/*  NBTree         TreeRegistry        StreamDispatcher       */
-/*  Tree data      Id -> NBTree        Series name parsing    */
-/*                 Global state        Connection local state */
-
-static std::shared_ptr<NBTreeExtentsList> EMPTY_EXTL = std::shared_ptr<NBTreeExtentsList>();
-
-// ////////////// //
-// Registry entry //
-// ////////////// //
-
-RegistryEntry::RegistryEntry(std::unique_ptr<NBTreeExtentsList> &&nbtree)
-    : roots_(std::move(nbtree))
-{
-}
-
-bool RegistryEntry::is_available() const {
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    return roots_.unique();
-}
-
-std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > RegistryEntry::try_acquire() {
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    if (roots_.unique()) {
-        return std::make_tuple(AKU_SUCCESS, roots_);
-    }
-    return std::make_tuple(AKU_EBUSY, EMPTY_EXTL);
-}
-
 // ///////////// //
 // Tree registry //
 // ///////////// //
@@ -79,12 +51,6 @@ aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
     return rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
 }
 
-void TreeRegistry::wait_for_sessions() {
-    std::unique_lock<std::mutex> lock(metadata_lock_);
-    while(!active_.empty()) {
-        cvar_.wait(lock);
-    }
-}
 
 aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
@@ -96,13 +62,14 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
             id = global_matcher_.add(begin, end);
             // create new NBTreeExtentsList
             std::vector<LogicAddr> empty;
-            auto ptr = new NBTreeExtentsList(id, empty, blockstore_);
-            std::unique_ptr<NBTreeExtentsList> tree(ptr);
-            auto entry = std::make_shared<RegistryEntry>(std::move(tree));
-            std::lock_guard<std::mutex> tl(table_lock_); AKU_UNUSED(tl);
-            table_[id] = entry;
+            auto tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
+            std::unique_lock<std::mutex> tl(table_lock_);
+            table_[id] = std::move(tree);
+            tl.release();
             // add rescue points list (empty) for new entry
+            std::unique_lock<std::mutex> ml(metadata_lock_);
             rescue_points_[id] = std::vector<LogicAddr>();
+            ml.release();
             cvar_.notify_one();
         }
     }
@@ -112,7 +79,7 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
 }
 
 int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
-    std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
+    std::lock_guard<std::mutex> ml(metadata_lock_);
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -127,190 +94,54 @@ int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_si
     return str.second;
 }
 
-std::shared_ptr<Session> TreeRegistry::create_session() {
-    auto deleter = [](Session* p) {
-        p->close();
-        delete p;
-    };
-    auto ptr = new Session(shared_from_this());
-    auto sptr = std::shared_ptr<Session>(ptr, deleter);
-    auto id = reinterpret_cast<size_t>(ptr);
-    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    active_[id] = sptr;
-    return sptr;
-}
-
-void TreeRegistry::remove_session(Session const& disp) {
-    auto id = reinterpret_cast<size_t>(&disp);
-    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    auto it = active_.find(id);
-    if (it != active_.end()) {
-        active_.erase(it);
-    }
-    cvar_.notify_one();
-}
-
-NBTreeAppendResult TreeRegistry::broadcast_sample(aku_Sample const& sample, Session const* source) {
-    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    for (auto wdisp: active_) {
-        auto disp = wdisp.second.lock();
-        if (disp) {
-            if (disp.get() != source) {
-                NBTreeAppendResult result;
-                bool stop = false;
-                std::tie(stop, result) = disp->_receive_broadcast(sample);
-                if (stop) {
-                    // Sample processed so we don't need to hold the lock
-                    // anymore.
-                    return result;
-                }
-            }
-        }
-    }
-    return NBTreeAppendResult::FAIL_BAD_ID;
-}
-
-std::tuple<aku_Status, std::shared_ptr<NBTreeExtentsList> > TreeRegistry::try_acquire(aku_ParamId id) {
-    std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-    auto it = table_.find(id);
-    if (it != table_.end()) {
-        return it->second->try_acquire();
-    }
-    return std::make_tuple(AKU_ENOT_FOUND, EMPTY_EXTL);
-}
-
-std::vector<aku_ParamId> TreeRegistry::get_ids(std::string filter) {
-    std::vector<aku_ParamId> ids;
-    std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-    auto result = global_matcher_.regex_match(filter.c_str());
-    for(SeriesMatcher::SeriesNameT str: result) {
-        const char* name;
-        int size;
-        u64 id;
-        std::tie(name, size, id) = str;
-        ids.push_back(static_cast<aku_ParamId>(id));
-    }
-    return ids;
-}
-
-std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
-    TreeRegistry::_search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end, Session const* src)
-{
-    std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-    auto it = table_.find(id);
-    if (it != table_.end()) {
-        // acquire tree temporarily
-        aku_Status status;
-        std::shared_ptr<NBTreeExtentsList> ext;
-        std::tie(status, ext) = it->second->try_acquire();
-        if (status == AKU_SUCCESS) {
-            return std::make_tuple(AKU_SUCCESS, ext->search(begin, end));
+void TreeRegistry::query(QP::IQueryProcessor& qproc) {
+    auto &filter = qproc.filter();
+    auto ids = filter.get_ids();
+    auto range = qproc.range();
+    std::vector<std::unique_ptr<NBTreeIterator>> iters;
+    for (auto id: ids) {
+        std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+        auto it = table_.find(id);
+        if (it != table_.end()) {
+            std::unique_ptr<NBTreeIterator> iter = it->second->search(range.begin(), range.end());
+            iters.push_back(std::move(iter));
         } else {
-            std::lock_guard<std::mutex> lg(metadata_lock_); AKU_UNUSED(lg);
-            for (auto wsession: active_) {
-                auto session = wsession.second.lock();
-                if (session && session.get() != src) {  // the last chec is needed to prevent deadlock because
-                    if (session->owns(id)) {            // this method is called from Session under sessions lock.
-                        return session->_search(id, begin, end);
-                    }
-                }
-            }
+            qproc.set_error(AKU_ENOT_FOUND);
         }
     }
-    return std::make_tuple(AKU_ENOT_FOUND, std::unique_ptr<NBTreeIterator>());
+
+    // TODO: Reshape iterators
+
+    qproc.start();
+    qproc.set_error(AKU_ENOT_IMPLEMENTED);
 }
 
-
-// //////////// //
-// ConcatCursor //
-// //////////// //
-
-
-/** Cursor implementation.
-  * Output of this cursor is ordered by series id.
-  */
-class ConcatCursor : public ExternalCursor {
-    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
-    std::vector<aku_ParamId> ids_;
-    size_t pos_;
-    aku_Status last_error_;
-public:
-    ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
-    virtual u32 read(void *buffer, u32 buffer_size) override;
-    virtual bool is_done() const override;
-    virtual bool is_error(aku_Status *out_error_code_or_null) const override;
-    virtual void close() override;
-};
-
-
-ConcatCursor::ConcatCursor(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
-    : iters_(std::move(it))
-    , ids_(std::move(ids))
-    , pos_(0)
-    , last_error_(AKU_SUCCESS)
+aku_Status TreeRegistry::write(aku_Sample const& sample,
+                               std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>>* cache_or_null)
 {
-}
-
-bool ConcatCursor::is_done() const {
-    return pos_ == iters_.size();
-}
-
-bool ConcatCursor::is_error(aku_Status *out_error_code_or_null) const {
-    if (last_error_ != AKU_SUCCESS) {
-        if (out_error_code_or_null != nullptr) {
-            *out_error_code_or_null = last_error_;
-        }
-        return true;
-    }
-    return false;
-}
-
-void ConcatCursor::close() {
-    // No need to do something special because NBTreeIterators doesn't need special handling here.
-}
-
-u32 ConcatCursor::read(void *dest, u32 size) {
-    size /= sizeof(aku_Sample);
-    aku_Status status = AKU_ENO_DATA;
-    u32 ressz = 0;  // current size
-    u32 accsz = 0;  // accumulated size
-    std::vector<aku_Timestamp> destts_vec(size, 0);
-    std::vector<double> destval_vec(size, 0);
-    std::vector<aku_ParamId> outids(size, 0);
-    aku_Timestamp* destts = destts_vec.data();
-    double* destval = destval_vec.data();
-    while(pos_ < iters_.size()) {
-        aku_ParamId curr = ids_[pos_];
-        std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
-        for (u32 i = accsz; i < accsz+ressz; i++) {
-            outids[i] = curr;
-        }
-        destts += ressz;
-        destval += ressz;
-        size -= ressz;
-        accsz += ressz;
-        if (size == 0) {
-            break;
-        }
-        pos_++;
-        if (status == AKU_ENO_DATA) {
-            // this iterator is done, continue with next
-            continue;
-        }
-        if (status != AKU_SUCCESS) {
-            // Stop iteration on error!
-            break;
+    std::unique_lock<std::mutex> lock(table_lock_);
+    aku_ParamId id = sample.paramid;
+    auto it = table_.find(id);
+    if (it != table_.end()) {
+        auto tree = it->second;
+        lock.release();
+        auto res = tree->append(sample.timestamp, sample.payload.float64);
+        switch (res) {
+        case NBTreeAppendResult::OK:
+            return AKU_SUCCESS;
+        case NBTreeAppendResult::OK_FLUSH_NEEDED:
+            update_rescue_points(id, tree->get_roots());
+            return AKU_SUCCESS;
+        case NBTreeAppendResult::FAIL_BAD_ID:
+            AKU_PANIC("Invalid tree-registry, id = " + std::to_string(id));
+        case NBTreeAppendResult::FAIL_LATE_WRITE:
+            return AKU_ELATE_WRITE;
+        };
+        if (cache_or_null != nullptr) {
+            cache_or_null->insert(std::make_pair(id, tree));
         }
     }
-    // Convert vectors to series of samples
-    aku_Sample* samples = reinterpret_cast<aku_Sample*>(dest);
-    for (u32 i = 0; i < accsz; i++) {
-        samples[i].payload.type = AKU_PAYLOAD_FLOAT;
-        samples[i].paramid = outids[i];
-        samples[i].timestamp = destts_vec[i];
-        samples[i].payload.float64 = destval_vec[i];
-    }
-    return accsz;
+    return AKU_EBAD_ARG;
 }
 
 
@@ -321,16 +152,6 @@ u32 ConcatCursor::read(void *dest, u32 size) {
 Session::Session(std::shared_ptr<TreeRegistry> registry)
     : registry_(registry)
 {
-    // At this point this `StreamDispatcher` should be already registered.
-    // This should be done by `TreeRegistry::create_dispatcher` function
-    // because we can't call `shared_from_this` in `StremDispatcher::c-tor`.
-}
-
-void Session::close() {
-    auto reg = registry_.lock();
-    if (reg) {
-        reg->remove_session(*this);
-    }
 }
 
 aku_Status Session::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
@@ -352,13 +173,7 @@ aku_Status Session::init_series_id(const char* begin, const char* end, aku_Sampl
     u64 id = local_matcher_.match(ob, ksend);
     if (!id) {
         // go to global registery
-        auto reg = registry_.lock();
-        if (reg) {
-            status = reg->init_series_id(ob, ksend, sample, &local_matcher_);
-        } else {
-            // Global registery has been deleted. Connection should be closed.
-            status = AKU_ECLOSED;
-        }
+        status = registry_->init_series_id(ob, ksend, sample, &local_matcher_);
     } else {
         // initialize using local info
         sample->paramid = id;
@@ -370,12 +185,7 @@ int Session::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     auto name = local_matcher_.id2str(id);
     if (name.first == nullptr) {
         // not yet cached!
-        auto reg = registry_.lock();
-        if (reg) {
-            return reg->get_series_name(id, buffer, buffer_size, &local_matcher_);
-        }
-        Logger::msg(AKU_LOG_ERROR, "Attempt to get series name after close!");
-        return 0;
+        return registry_->get_series_name(id, buffer, buffer_size, &local_matcher_);
     }
     memcpy(buffer, name.first, static_cast<size_t>(name.second));
     return name.second;
@@ -385,124 +195,29 @@ aku_Status Session::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
-    auto status = AKU_SUCCESS;
-    aku_ParamId id = sample.paramid;
-    // Locate registery entry in cache, if no such entry - try to acquire
-    // registery entry, if registery entry is already acquired by the other
-    // `StreamDispatcher` - broadcast value to all other dispatchers.
-    NBTreeAppendResult append_result = NBTreeAppendResult::OK;
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    auto it = cache_.find(id);
-    if (it == cache_.end()) {
-        // try to acquire entry
-        auto reg = registry_.lock();
-        if (reg) {
-            std::shared_ptr<NBTreeExtentsList> entry;
-            std::tie(status, entry) = reg->try_acquire(id);
-            if (status == AKU_SUCCESS) {
-                cache_[id] = entry;
-                append_result = entry->append(sample.timestamp, sample.payload.float64);
-            } else if (status == AKU_EBUSY) {
-                status = AKU_SUCCESS;
-                append_result = reg->broadcast_sample(sample, this);
-            }
-        } else {
-            status = AKU_ECLOSED;
-        }
-    } else {
-        append_result = it->second->append(sample.timestamp, sample.payload.float64);
-    }
-    if (status == AKU_SUCCESS) {
-        switch(append_result) {
+    // Cache lookup
+    std::lock_guard<std::mutex> lock(lock_);
+    auto it = cache_.find(sample.paramid);
+    if (it != cache_.end()) {
+        auto status = it->second->append(sample.timestamp, sample.payload.float64);
+        switch (status) {
         case NBTreeAppendResult::OK:
-            break;
-        case NBTreeAppendResult::OK_FLUSH_NEEDED: {
-                std::vector<LogicAddr> rescue_points = it->second->get_roots();
-                auto reg = registry_.lock();
-                if (reg) {
-                    reg->update_rescue_points(id, std::move(rescue_points));
-                } else {
-                    status = AKU_ECLOSED;
-                }
-                break;
-            }
-        case NBTreeAppendResult::FAIL_LATE_WRITE:
-            status = AKU_ELATE_WRITE;
-            break;
+            return AKU_SUCCESS;
+        case NBTreeAppendResult::OK_FLUSH_NEEDED:
+            registry_->update_rescue_points(sample.paramid, it->second->get_roots());
+            return AKU_SUCCESS;
         case NBTreeAppendResult::FAIL_BAD_ID:
-            status = AKU_ENOT_FOUND;
-            break;
-        }
+            AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
+        case NBTreeAppendResult::FAIL_LATE_WRITE:
+            return AKU_ELATE_WRITE;
+        };
     }
-    return status;
+    // Cache miss - access global registry
+    return registry_->write(sample, &cache_);
 }
 
-std::tuple<bool, NBTreeAppendResult> Session::_receive_broadcast(const aku_Sample &sample) {
-    aku_ParamId id = sample.paramid;
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    auto it = cache_.find(id);
-    if (it != cache_.end()) {
-        // perform write
-        auto result = it->second->append(sample.timestamp, sample.payload.float64);
-        return std::make_tuple(true, result);
-    }
-    return std::make_tuple(false, NBTreeAppendResult::OK);
-}
-
-std::tuple<aku_Status, std::unique_ptr<ExternalCursor> > Session::query(std::string text_query)
-{
-    // NOTE: this is placeholder for query analyzer, at this point akumuli can
-    // perform only simple reads.
-    aku_Status status;
-    Query query;
-    std::tie(status, query) = QueryParser::parse(text_query);
-    if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, query.get_error_message());
-        return std::make_tuple(status, std::unique_ptr<ConcatCursor>());
-    }
-    auto reg = registry_.lock();
-    if (!reg) {
-        Logger::msg(AKU_LOG_ERROR, "Registry is closed");
-        return std::make_tuple(AKU_ECLOSED, std::unique_ptr<ConcatCursor>());
-    }
-    auto ids = reg->get_ids(query.get_filter());
-    std::vector<std::unique_ptr<NBTreeIterator>> iterators;
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    for (auto id: ids) {
-        auto it = cache_.find(id);
-        if (it != cache_.end()) {
-            auto nbtree_iter = it->second->search(query.get_end(), query.get_begin());
-            iterators.push_back(std::move(nbtree_iter));
-        } else {
-            std::unique_ptr<NBTreeIterator> nbtree_iter;
-            std::tie(status, nbtree_iter) = reg->_search(id, query.get_begin(), query.get_end(), this);
-            if (status == AKU_SUCCESS) {
-                iterators.push_back(std::move(nbtree_iter));
-            } else {
-                // Can return AKU_ENOT_FOUND if nbtree was deleted for some reason
-                // (retention or manual operation)
-                return std::make_tuple(status, std::unique_ptr<ConcatCursor>());
-            }
-        }
-    }
-    auto ptr = new ConcatCursor(std::move(ids), std::move(iterators));
-    return std::make_tuple(AKU_SUCCESS, std::unique_ptr<ConcatCursor>(ptr));
-}
-
-std::tuple<aku_Status, std::unique_ptr<NBTreeIterator>>
-    Session::_search(aku_ParamId id, aku_Timestamp begin, aku_Timestamp end)
-{
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    auto it = cache_.find(id);
-    if (it != cache_.end()) {
-        return std::make_tuple(AKU_SUCCESS, it->second->search(begin, end));
-    }
-    return std::make_tuple(AKU_ENOT_FOUND, std::unique_ptr<NBTreeIterator>());
-}
-
-bool Session::owns(aku_ParamId id) {
-    std::lock_guard<std::mutex> m(lock_); AKU_UNUSED(m);
-    return cache_.count(id) > 0;
+void Session::query(QP::IQueryProcessor& proc) {
+    registry_->query(proc);
 }
 
 }}  // namespace

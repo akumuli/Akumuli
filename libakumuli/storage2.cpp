@@ -18,25 +18,18 @@
 
 #include "storage2.h"
 #include "util.h"
-#include "cursor.h"
 #include "queryprocessor.h"
 #include "log_iface.h"
 
-#include <cstdlib>
-#include <cstdarg>
-#include <stdexcept>
 #include <algorithm>
 #include <atomic>
 #include <sstream>
 #include <cassert>
 #include <functional>
-#include <sstream>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
-#include <boost/scoped_array.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/filesystem.hpp>
 
 namespace Akumuli {

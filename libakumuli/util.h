@@ -175,6 +175,10 @@ class RWLock {
 public:
     RWLock();
 
+    RWLock(RWLock const&) = delete;
+    RWLock(RWLock &&) = delete;
+    RWLock& operator = (RWLock const&) = delete;
+
     ~RWLock();
 
     void rdlock();
