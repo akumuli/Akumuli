@@ -1504,7 +1504,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
     auto roots_collection = roots_.lock();
     size_t next_level = payload.level + 1;
     if (roots_collection) {
-        if (!final || roots_collection->get_roots().size() > next_level) {
+        if (!final || roots_collection->_get_roots().size() > next_level) {
             parent_saved = roots_collection->append(payload);
         }
     } else {
@@ -1667,7 +1667,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
     auto roots_collection = roots_.lock();
     size_t next_level = payload.level + 1;
     if (roots_collection) {
-        if (!final || roots_collection->get_roots().size() > next_level) {
+        if (!final || roots_collection->_get_roots().size() > next_level) {
             // We shouldn't create new root if `commit` called from `close` method.
             parent_saved = roots_collection->append(payload);
         }
@@ -1851,12 +1851,21 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
 }
 
 void NBTreeExtentsList::force_init() {
+    UniqueLock lock(lock_);
     if (!initialized_) {
         init();
     }
 }
 
+bool NBTreeExtentsList::is_initialized() const {
+    SharedLock lock(lock_);
+    return initialized_;
+}
+
 std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
+    // NOTE: no lock here because we're returning extents and this breaks
+    //       all thread safety but this is doesn't matter because this method
+    //       should be used only for testing in single-threaded setting.
     std::vector<NBTreeExtent const*> result;
     for (auto const& ptr: extents_) {
         result.push_back(ptr.get());
@@ -1865,12 +1874,14 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
 }
 
 NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
+    UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
+                             //       recursively (maybe even many times).
     if (ts < last_) {
         return NBTreeAppendResult::FAIL_LATE_WRITE;
     }
     last_ = ts;
     if (!initialized_) {
-        init();
+        AKU_PANIC("NB+tree not imitialized");
     }
     if (extents_.size() == 0) {
         // create first leaf node
@@ -1894,9 +1905,9 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
 }
 
 bool NBTreeExtentsList::append(const SubtreeRef &pl) {
-    if (!initialized_) {
-        init();
-    }
+    // NOTE: this method should be called by extents which
+    //       is called by another `append` overload recursively
+    //       and lock will be held already so no lock here!
     u16 lvl = static_cast<u16>(pl.level + 1);
     NBTreeExtent* root = nullptr;
     if (extents_.size() > lvl) {
@@ -1934,6 +1945,8 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
 }
 
 void NBTreeExtentsList::open() {
+    // NOTE: lock doesn't needed here because this method will be called by
+    //       the `force_init` method that already holds the write lock.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - OK, addr: " +
                               std::to_string(rescue_points_.back()));
     // NOTE: rescue_points_ list should have at least two elements [EMPTY_ADDR, Root].
@@ -2024,6 +2037,7 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
 }
 
 void NBTreeExtentsList::repair() {
+    // NOTE: lock doesn't needed for the same reason as in `open` method.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
     std::vector<LogicAddr> rescue_points(rescue_points_.begin(), rescue_points_.end());
@@ -2117,18 +2131,18 @@ void NBTreeExtentsList::init() {
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeExtentsList::search(aku_Timestamp begin, aku_Timestamp end) const {
+    SharedLock lock(lock_);
     if (!initialized_) {
-        // FIXME: so ugly!
-        const_cast<NBTreeExtentsList*>(this)->init();
+        AKU_PANIC("NB+tree not imitialized");
     }
     std::vector<std::unique_ptr<NBTreeIterator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back(std::move((*it)->search(begin, end)));
+            iterators.push_back((*it)->search(begin, end));
         }
     } else {
         for (auto const& root: extents_) {
-            iterators.push_back(std::move(root->search(begin, end)));
+            iterators.push_back(root->search(begin, end));
         }
     }
     if (iterators.size() == 1) {
@@ -2136,22 +2150,22 @@ std::unique_ptr<NBTreeIterator> NBTreeExtentsList::search(aku_Timestamp begin, a
     }
     std::unique_ptr<NBTreeIterator> concat;
     concat.reset(new IteratorConcat(std::move(iterators)));
-    return std::move(concat);
+    return concat;
 }
 
 std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
+    SharedLock lock(lock_);
     if (!initialized_) {
-        // FIXME: so ugly!
-        const_cast<NBTreeExtentsList*>(this)->init();
+        AKU_PANIC("NB+tree not imitialized");
     }
     std::vector<std::unique_ptr<NBTreeAggregator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back(std::move((*it)->aggregate(begin, end)));
+            iterators.push_back((*it)->aggregate(begin, end));
         }
     } else {
         for (auto const& root: extents_) {
-            iterators.push_back(std::move(root->aggregate(begin, end)));
+            iterators.push_back(root->aggregate(begin, end));
         }
     }
     if (iterators.size() == 1) {
@@ -2159,24 +2173,24 @@ std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::aggregate(aku_Timestamp beg
     }
     std::unique_ptr<NBTreeAggregator> concat;
     concat.reset(new IteratorAggregate(std::move(iterators)));
-    return std::move(concat);
+    return concat;
 
 }
 
 
-std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) {
+std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
+    SharedLock lock(lock_);
     if (!initialized_) {
-        // FIXME: so ugly!
-        const_cast<NBTreeExtentsList*>(this)->init();
+        AKU_PANIC("NB+tree not imitialized");
     }
     std::vector<std::unique_ptr<NBTreeAggregator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back(std::move((*it)->candlesticks(begin, end, hint)));
+            iterators.push_back((*it)->candlesticks(begin, end, hint));
         }
     } else {
         for (auto const& root: extents_) {
-            iterators.push_back(std::move(root->candlesticks(begin, end, hint)));
+            iterators.push_back(root->candlesticks(begin, end, hint));
         }
     }
     if (iterators.size() == 1) {
@@ -2184,11 +2198,12 @@ std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::candlesticks(aku_Timestamp 
     }
     std::unique_ptr<NBTreeAggregator> concat;
     concat.reset(new IteratorAggregate(std::move(iterators)));
-    return std::move(concat);
+    return concat;
 }
 
 
 std::vector<LogicAddr> NBTreeExtentsList::close() {
+    UniqueLock lock(lock_);
     if (initialized_) {
         Logger::msg(AKU_LOG_TRACE, std::to_string(id_) + " Going to close the tree.");
         LogicAddr addr = EMPTY_ADDR;
@@ -2219,6 +2234,11 @@ std::vector<LogicAddr> NBTreeExtentsList::close() {
 }
 
 std::vector<LogicAddr> NBTreeExtentsList::get_roots() const {
+    SharedLock lock(lock_);
+    return rescue_points_;
+}
+
+std::vector<LogicAddr> NBTreeExtentsList::_get_roots() const {
     return rescue_points_;
 }
 

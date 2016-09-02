@@ -436,6 +436,7 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     void open();
     void repair();
     void init();
+    mutable RWLock lock_;
 public:
 
     /** C-tor
@@ -461,7 +462,7 @@ public:
 
     std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
-    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint);
+    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();
@@ -469,11 +470,16 @@ public:
     //! Get roots of the tree
     std::vector<LogicAddr> get_roots() const;
 
+    //! Get roots of the tree (only for internal use)
+    std::vector<LogicAddr> _get_roots() const;
+
     //! Get pointers to extents (for tests).
     std::vector<NBTreeExtent const*> get_extents() const;
 
     //! Force lazy initialization process.
     void force_init();
+
+    bool is_initialized() const;
 
     enum class RepairStatus {
         OK,

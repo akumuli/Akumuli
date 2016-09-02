@@ -41,6 +41,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
     for (u32 i = 0; i < N; i++) {
         collection->append(i, i);
     }
@@ -121,6 +122,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
 
     for (u32 i = 0; i < N; i++) {
         collection->append(i, i);
@@ -202,6 +204,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
         BlockStoreBuilder::create_memstore([&last_one](LogicAddr addr) { last_one = addr; });
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
 
     u32 nleafs = 0;
     u32 nitems = 0;
@@ -231,7 +234,6 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
 
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
-
     collection->force_init();
 
     auto extents = collection->get_extents();
@@ -291,6 +293,7 @@ void test_storage_recovery_status(u32 N, u32 N_values) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
 
     u32 nleafs = 0;
     u32 nitems = 0;
@@ -347,6 +350,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
 
     u32 nleafs = 0;
     u32 nitems = 0;
@@ -384,7 +388,6 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
 
     // TODO: check attempt to open tree using wrong id!
     collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
-
     collection->force_init();
 
     auto extents = collection->get_extents();
@@ -458,6 +461,7 @@ void test_storage_recovery_2(u32 N_blocks) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore(cb);
     std::vector<LogicAddr> addrlist;  // should be empty at first
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
 
     u32 nleafs = 0;
     u32 nitems = 0;
@@ -707,6 +711,7 @@ void test_nbtree_superblock_iter(aku_Timestamp begin, aku_Timestamp end) {
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
     while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
         double value = rwalk.next();
@@ -776,6 +781,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
     while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
         double value = rwalk.next();
@@ -853,6 +859,7 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
     while(buffer_cnt < nblocks) {
         double value = rwalk.next();
@@ -925,6 +932,7 @@ void test_nbtree_superblock_candlesticks(size_t commit_limit, aku_Timestamp delt
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
     while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
         double value = rwalk.next();

@@ -192,6 +192,27 @@ public:
     void unlock();
 };
 
+template<class T, void (T::*on_enter)()>
+struct LockGuard {
+    T& lock;
+    LockGuard(T& lock)
+        : lock(lock)
+    {
+        (lock.*on_enter)();
+    }
+
+    LockGuard(LockGuard const&) = delete;
+    LockGuard(LockGuard &&) = delete;
+    LockGuard& operator = (LockGuard const&) = delete;
+
+    ~LockGuard() {
+        lock.unlock();
+    }
+};
+
+using UniqueLock = LockGuard<RWLock, &RWLock::wrlock>;
+using SharedLock = LockGuard<RWLock, &RWLock::wrlock>;
+
 //! Compare two double values and return true if they are equal at bit-level (needed to supress CLang analyzer warnings).
 bool same_value(double a, double b);
 }
