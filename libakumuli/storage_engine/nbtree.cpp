@@ -31,6 +31,42 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+static const SubtreeRef INIT_SUBTREE_REF = {
+    0,
+    //! Series Id
+    0,
+    //! First element's timestamp
+    0,
+    //! Last element's timestamp
+    0,
+    //! Object addr in blockstore
+    EMPTY_ADDR,
+    //! Smalles value
+    std::numeric_limits<double>::max(),
+    //! Registration time of the smallest value
+    std::numeric_limits<aku_Timestamp>::max(),
+    //! Largest value
+    std::numeric_limits<double>::min(),
+    //! Registration time of the largest value
+    std::numeric_limits<aku_Timestamp>::min(),
+    //! Summ of all elements in subtree
+    .0,
+    //! First value in subtree
+    .0,
+    //! Last value in subtree
+    .0,
+    //! Node version
+    AKUMULI_VERSION,
+    //! Node level in the tree
+    0,
+    //! Payload size (real)
+    0,
+    //! Fan out index of the element (current)
+    0,
+    //! Checksum of the block (not used for links to child nodes)
+    0
+};
+
 void NBTreeAggregationResult::copy_from(SubtreeRef const& r) {
     cnt = r.count;
     sum = r.sum;
@@ -149,54 +185,17 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
 
 //! Initialize object from leaf node
 static aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
-    std::vector<aku_Timestamp> ts;
-    std::vector<double> xs;
-    aku_Status status = leaf.read_all(&ts, &xs);
-    if (status != AKU_SUCCESS) {
-        return status;
-    }
-    if (xs.empty()) {
-        // Can't add empty leaf node to the node!
+    if (leaf.nelements() == 0) {
         return AKU_EBAD_ARG;
     }
-    double min = std::numeric_limits<double>::max();
-    double max = std::numeric_limits<double>::min();
-    aku_Timestamp mints = 0;
-    aku_Timestamp maxts = 0;
-    double sum = 0;
-    for (size_t i = 0; i < xs.size(); i++) {
-        if (min > xs[i]) {
-            min = xs[i];
-            mints = ts[i];
-        }
-        if (max < xs[i]) {
-            max = xs[i];
-            maxts = ts[i];
-        }
-        sum = sum + xs[i];
-    }
-    out.max = max;
-    out.min = min;
-    out.min_time = mints;
-    out.max_time = maxts;
-    if (!xs.empty()) {
-        out.first = xs.front();
-        out.last = xs.back();
-    } else {
-        out.first = out.last = NAN;
-    }
-    out.sum = sum;
-    out.begin = ts.front();
-    out.end = ts.back();
-    out.count = xs.size();
-    // Set node's data
-    out.id = leaf.get_id();
-    out.level = 0;
-    out.version = AKUMULI_VERSION;
-    out.fanout_index = leaf.get_fanout();
+    SubtreeRef const* meta = leaf.get_leafmeta();
+    out = *meta;
     out.payload_size = 0;
+    out.checksum = 0;
+    out.addr = EMPTY_ADDR;  // Leaf metadta stores address of the previous node!
     return AKU_SUCCESS;
 }
+
 
 static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref) {
     std::vector<SubtreeRef> refs;
@@ -580,7 +579,7 @@ struct NBTreeSBlockIteratorBase : NBTreeIteratorBase<TVal> {
         auto max = std::max(begin_, end_);
 
         TIter empty;
-        SubtreeRef ref;
+        SubtreeRef ref = INIT_SUBTREE_REF;
         if (get_direction() == Direction::FORWARD) {
             if (refs_pos_ == static_cast<i32>(refs_.size())) {
                 // Done
@@ -706,7 +705,7 @@ public:
     NBTreeLeafAggregator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node)
         : iter_(begin, end, node, true)
         , enable_cached_metadata_(false)
-        , metacache_{}
+        , metacache_(INIT_SUBTREE_REF)
     {
         aku_Timestamp nodemin, nodemax, min, max;
         std::tie(nodemin, nodemax) = node.get_timestamps();
@@ -1493,7 +1492,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
         AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
     }
     // Gather stats and send them to upper-level node
-    SubtreeRef payload;
+    SubtreeRef payload = INIT_SUBTREE_REF;
     status = init_subtree_from_leaf(*leaf_, payload);
     if (status != AKU_SUCCESS) {
         // This shouldn't happen because leaf node can't be
@@ -1658,7 +1657,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
         AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
     }
     // Gather stats and send them to upper-level node
-    SubtreeRef payload;
+    SubtreeRef payload = INIT_SUBTREE_REF;
     status = init_subtree_from_subtree(*curr_, payload);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
@@ -1745,7 +1744,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
             // block was deleted due to retention.
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
         } else if (status == AKU_SUCCESS) {
-            SubtreeRef out;
+            SubtreeRef out = INIT_SUBTREE_REF;
             if (required_level == 0) {
                 NBTreeLeaf leaf(block);
                 status = init_subtree_from_leaf(leaf, out);
@@ -1960,13 +1959,14 @@ void NBTreeExtentsList::open() {
             return;
         }
         NBTreeLeaf leaf(leaf_block);  // fully loaded leaf
-        SubtreeRef sref = {};
+        SubtreeRef sref = INIT_SUBTREE_REF;
         status = init_subtree_from_leaf(leaf, sref);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't open tree at: " + std::to_string(addr) +
                         " error: " + StatusUtil::str(status));
             AKU_PANIC("Can't open tree");
         }
+        sref.addr = addr;
         root_extent->append(sref);  // this always should return `false` and `EMPTY_ADDR`, no need to check this.
 
         // Create new empty leaf
@@ -2055,7 +2055,7 @@ void NBTreeExtentsList::repair() {
                         break;
                     }
                     NBTreeLeaf leaf(block);
-                    SubtreeRef ref;
+                    SubtreeRef ref = INIT_SUBTREE_REF;
                     status = init_subtree_from_leaf(leaf, ref);
                     if (status != AKU_SUCCESS) {
                         Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
@@ -2080,7 +2080,7 @@ void NBTreeExtentsList::repair() {
                         break;
                     }
                     NBTreeSuperblock sblock(block);
-                    SubtreeRef ref;
+                    SubtreeRef ref = INIT_SUBTREE_REF;
                     status = init_subtree_from_subtree(sblock, ref);
                     if (status != AKU_SUCCESS) {
                         Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +

@@ -118,15 +118,27 @@ FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
 }
 
 bool FcmStreamWriter::tput(double const* values, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        if (!put(values[i])) {
+    assert(n % 2 == 0);
+    for (size_t i = 0; i < n; i+=2) {
+        u64 prev_diff, curr_diff;
+        unsigned char prev_flag, curr_flag;
+        std::tie(prev_diff, prev_flag) = encode(values[i]);
+        std::tie(curr_diff, curr_flag) = encode(values[i + 1]);
+        unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
+        if (!stream_.put_raw(flags)) {
+            return false;
+        }
+        if (!encode_value(stream_, prev_diff, prev_flag)) {
+            return false;
+        }
+        if (!encode_value(stream_, curr_diff, curr_flag)) {
             return false;
         }
     }
     return commit();
 }
 
-bool FcmStreamWriter::put(double value) {
+std::tuple<u64, unsigned char> FcmStreamWriter::encode(double value) {
     union {
         double real;
         u64 bits;
@@ -165,7 +177,13 @@ bool FcmStreamWriter::put(double value) {
         // zeroed 4th bit indicates that only trailing bytes are stored
         flag = nbytes&7;
     }
+    return std::make_tuple(diff, flag);
+}
 
+bool FcmStreamWriter::put(double value) {
+    u64 diff;
+    unsigned char flag;
+    std::tie(diff, flag) = encode(value);
     if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
         prev_flag_ = flag;

@@ -54,7 +54,7 @@ typedef void* aku_Cursor;
 /**
  * @brief The Ingestion Session struct
  */
-typedef struct { int padding; } aku_IngestionSession;
+typedef struct { int padding; } aku_Session;
 
 
 //! Search stats
@@ -165,9 +165,9 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 // Ingestion
 //-----------
 
-AKU_EXPORT aku_IngestionSession* aku_create_ingestion_session(aku_Database* db);
+AKU_EXPORT aku_Session* aku_create_session(aku_Database* db);
 
-AKU_EXPORT void aku_destroy_ingestion_session(aku_IngestionSession* stream);
+AKU_EXPORT void aku_destroy_session(aku_Session* stream);
 
 //---------
 // Parsing
@@ -187,7 +187,7 @@ AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sampl
   * @param sample is an output parameter
   * @returns AKU_SUCCESS on success, error code otherwise
   */
-AKU_EXPORT aku_Status aku_series_to_param_id(aku_IngestionSession* ist, const char* begin, const char* end,
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Session* ist, const char* begin, const char* end,
                                              aku_Sample* sample);
 
 /** Try to parse duration.
@@ -209,7 +209,7 @@ AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionSession* session, aku_ParamId param_id,
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Session* session, aku_ParamId param_id,
                                            aku_Timestamp timestamp,  double value);
 
 /** Write measurement to DB
@@ -217,7 +217,7 @@ AKU_EXPORT aku_Status aku_write_double_raw(aku_IngestionSession* session, aku_Pa
   * @param sample should contain valid measurement value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write(aku_IngestionSession* ist, const aku_Sample* sample);
+AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
 
 
 //---------

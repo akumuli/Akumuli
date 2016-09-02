@@ -117,6 +117,7 @@ add_executable(
     perftest_tools.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(

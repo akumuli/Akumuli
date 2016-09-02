@@ -349,6 +349,9 @@ u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
 }
 
+//! Address space should be started from this address (otherwise some tests will pass no matter what).
+static const LogicAddr MEMSTORE_BASE = 619;
+
 // MemStore
 MemStore::MemStore()
     : write_pos_(0)
@@ -372,6 +375,7 @@ u32 MemStore::checksum(u8 const* data, size_t size) const {
 }
 
 std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
+    addr -= MEMSTORE_BASE;
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     std::shared_ptr<Block> block;
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
@@ -386,7 +390,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     auto begin = buffer_.begin() + offset;
     auto end = begin + AKU_BLOCK_SIZE;
     std::copy(begin, end, std::back_inserter(data));
-    block.reset(new Block(addr, std::move(data)));
+    block.reset(new Block(addr + MEMSTORE_BASE, std::move(data)));
     return std::make_tuple(AKU_SUCCESS, block);
 }
 
@@ -395,9 +399,10 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> 
     assert(data->get_size() == AKU_BLOCK_SIZE);
     std::copy(data->get_data(), data->get_data() + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
     if (append_callback_) {
-        append_callback_(write_pos_);
+        append_callback_(write_pos_ + MEMSTORE_BASE);
     }
     auto addr = write_pos_++;
+    addr += MEMSTORE_BASE;
     data->set_addr(addr);
     return std::make_tuple(AKU_SUCCESS, addr);
 }
@@ -415,6 +420,7 @@ BlockStoreStats MemStore::get_stats() const {
 }
 
 bool MemStore::exists(LogicAddr addr) const {
+    addr -= MEMSTORE_BASE;
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     return addr < write_pos_;
 }

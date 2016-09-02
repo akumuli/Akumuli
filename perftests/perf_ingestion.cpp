@@ -231,10 +231,16 @@ int main(int, const char**) {
 
     aku_initialize(nullptr, logger_);
 
+    // Delete database
+    //
+
+    aku_Status status = aku_remove_database("/tmp/testdb.akumuli", true);
+    std::cout << "Remove old database, status: " << aku_error_message(status) << std::endl;
+
     // Create database
     //
 
-    aku_Status status = aku_create_database("testdb", "/tmp", "/tmp", 2);
+    status = aku_create_database("testdb", "/tmp", "/tmp", 2);
     if (status != AKU_SUCCESS) {
         std::cerr << "Can't create database" << std::endl;
     }
@@ -247,7 +253,7 @@ int main(int, const char**) {
     auto db = aku_open_database(DB_META_FILE, params);
 
     auto worker = [db](aku_ParamId begin, aku_ParamId end) {
-        auto session = aku_create_ingestion_session(db);
+        auto session = aku_create_session(db);
         Timer timer;
         RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
         std::vector<aku_ParamId> ids;
@@ -285,7 +291,7 @@ int main(int, const char**) {
                 timer.restart();
             }
         }
-        aku_destroy_ingestion_session(session);
+        aku_destroy_session(session);
     };
 
     std::thread th0(std::bind(worker, 0, 1000));

@@ -32,7 +32,6 @@
 // Boost libraries
 #include <boost/property_tree/ptree_fwd.hpp>
 
-#include <libakumuli/queryprocessor_framework.h>
 
 // Project
 #include "akumuli_def.h"
@@ -40,6 +39,7 @@
 #include "metadatastorage.h"
 #include "seriesparser.h"
 #include "storage_engine/nbtree.h"
+#include <queryprocessor_framework.h>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -111,8 +111,6 @@ class Session : public std::enable_shared_from_this<Session>
     std::shared_ptr<TreeRegistry> registry_;
     //! Local series matcher (with cached global data).
     SeriesMatcher local_matcher_;
-    //! This mutex shouldn't be contended during normal operation.
-    std::mutex lock_;
     //! Tree cache
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> cache_;
 public:

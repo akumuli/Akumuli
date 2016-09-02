@@ -28,6 +28,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <vector>
+#include <tuple>
 
 #include "akumuli.h"
 #include "util.h"
@@ -539,6 +540,8 @@ struct FcmStreamWriter {
     int                  nelements_;
 
     FcmStreamWriter(Base128StreamWriter& stream);
+
+    inline std::tuple<u64, unsigned char> encode(double value);
 
     bool tput(double const* values, size_t n);
 

@@ -80,6 +80,7 @@
 #include "blockstore.h"
 #include "compression.h"
 
+
 namespace Akumuli {
 namespace StorageEngine {
 
@@ -141,7 +142,6 @@ struct SubtreeRef {
     //! Checksum of the block (not used for links to child nodes)
     u32 checksum;
 } __attribute__((packed));
-
 
 //! Result of the aggregation operation that has several components.
 struct NBTreeAggregationResult {

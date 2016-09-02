@@ -126,13 +126,13 @@ Storage::Storage(const char* path)
 
 void Storage::close() {
     // Wait for all ingestion sessions to stop
-    reg_->wait_for_sessions();
     done_.store(1);
     close_barrier_.wait();
 }
 
 std::shared_ptr<StorageEngine::Session> Storage::create_dispatcher() {
-    return reg_->create_session();
+    std::shared_ptr<StorageEngine::Session> res = std::make_shared<StorageEngine::Session>(reg_);
+    return res;
 }
 
 void Storage::debug_print() const {
@@ -141,10 +141,10 @@ void Storage::debug_print() const {
 }
 
 aku_Status Storage::new_database( const char     *file_name
-                                  , const char     *metadata_path
-                                  , const char     *volumes_path
-                                  , i32             num_volumes
-                                  , u64             page_size)
+                                , const char     *metadata_path
+                                , const char     *volumes_path
+                                , i32             num_volumes
+                                , u64             page_size)
 {
     // Create volumes and metapage
     u32 vol_size = static_cast<u32>(page_size / 4096);
@@ -153,6 +153,8 @@ aku_Status Storage::new_database( const char     *file_name
     boost::filesystem::path metpath(metadata_path);
     volpath = boost::filesystem::absolute(volpath);
     metpath = boost::filesystem::absolute(metpath);
+    std::string sqlitebname = std::string(file_name) + ".akumuli";
+    boost::filesystem::path sqlitepath = metpath / sqlitebname;
 
     if (!boost::filesystem::exists(volpath)) {
         Logger::msg(AKU_LOG_INFO, std::string(volumes_path) + " doesn't exists, trying to create directory");
@@ -174,6 +176,11 @@ aku_Status Storage::new_database( const char     *file_name
         }
     }
 
+    if (boost::filesystem::exists(sqlitepath)) {
+        Logger::msg(AKU_LOG_ERROR, "Database is already exists");
+        return AKU_EBAD_ARG;
+    }
+
     std::vector<std::tuple<u32, std::string>> paths;
     for (i32 i = 0; i < num_volumes; i++) {
         std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
@@ -192,15 +199,20 @@ aku_Status Storage::new_database( const char     *file_name
     for (auto p: paths) {
         mpaths.push_back(std::get<1>(p));
     }
-    std::string sqlitebname = std::string(file_name) + ".akumuli";
-    boost::filesystem::path sqlitepath = metpath / sqlitebname;
     create_metadata_page(sqlitepath.c_str(), mpaths);
     return AKU_SUCCESS;
 }
 
 aku_Status Storage::remove_storage(const char* file_name, bool force) {
+    if (!boost::filesystem::exists(file_name)) {
+        return AKU_ENOT_FOUND;
+    }
     auto meta = std::make_shared<MetadataStorage>(file_name);
     auto volumes = meta->get_volumes();
+    if (volumes.empty()) {
+        // Bad database
+        return AKU_EBAD_ARG;
+    }
     std::vector<std::string> volume_names(volumes.size() - 1, "");
     // First volume is meta-page
     std::string meta_file;
@@ -208,7 +220,7 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         if (it.first == 0) {
             meta_file = it.second;
         } else {
-            volume_names.at(static_cast<size_t>(it.first)) = it.second;
+            volume_names.at(static_cast<size_t>(it.first) - 1) = it.second;
         }
     }
     if (!force) {

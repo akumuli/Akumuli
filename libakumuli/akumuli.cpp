@@ -115,11 +115,11 @@ struct CursorImpl {
 };
 
 
-class IngestionSession : public aku_IngestionSession {
+class Session : public aku_Session {
     std::shared_ptr<StorageEngine::Session> disp_;
 public:
 
-    IngestionSession(std::shared_ptr<StorageEngine::Session> disp)
+    Session(std::shared_ptr<StorageEngine::Session> disp)
         : disp_(disp)
     {
     }
@@ -166,8 +166,8 @@ public:
         delete pimpl;
     }
 
-    static void free(aku_IngestionSession* ptr) {
-        auto pimpl = reinterpret_cast<IngestionSession*>(ptr);
+    static void free(aku_Session* ptr) {
+        auto pimpl = reinterpret_cast<Session*>(ptr);
         delete pimpl;
     }
 
@@ -175,10 +175,10 @@ public:
         storage_.debug_print();
     }
 
-    aku_IngestionSession* create_session() {
+    aku_Session* create_session() {
         auto disp = storage_.create_dispatcher();
-        IngestionSession* ptr = new IngestionSession(disp);
-        return static_cast<aku_IngestionSession*>(ptr);
+        Session* ptr = new Session(disp);
+        return static_cast<aku_Session*>(ptr);
     }
 
     CursorImpl* query(const char*) {
@@ -215,27 +215,27 @@ aku_Status aku_remove_database(const char* file_name, bool force) {
     return Storage::remove_storage(file_name, force);
 }
 
-aku_IngestionSession* aku_create_ingestion_session(aku_Database* db) {
+aku_Session* aku_create_session(aku_Database* db) {
     auto dbi = reinterpret_cast<DatabaseImpl*>(db);
     return dbi->create_session();
 }
 
-void aku_destroy_ingestion_session(aku_IngestionSession* session) {
+void aku_destroy_session(aku_Session* session) {
     DatabaseImpl::free(session);
 }
 
-aku_Status aku_write_double_raw(aku_IngestionSession* session, aku_ParamId param_id, aku_Timestamp timestamp,  double value) {
+aku_Status aku_write_double_raw(aku_Session* session, aku_ParamId param_id, aku_Timestamp timestamp,  double value) {
     aku_Sample sample;
     sample.timestamp = timestamp;
     sample.paramid = param_id;
     sample.payload.type = AKU_PAYLOAD_FLOAT;
     sample.payload.float64 = value;
-    auto ises = reinterpret_cast<IngestionSession*>(session);
+    auto ises = reinterpret_cast<Session*>(session);
     return ises->add_sample(sample);
 }
 
-aku_Status aku_write(aku_IngestionSession* session, const aku_Sample* sample) {
-    auto ises = reinterpret_cast<IngestionSession*>(session);
+aku_Status aku_write(aku_Session* session, const aku_Sample* sample) {
+    auto ises = reinterpret_cast<Session*>(session);
     return ises->add_sample(*sample);
 }
 
@@ -258,8 +258,8 @@ aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
     return AKU_SUCCESS;
 }
 
-aku_Status aku_series_to_param_id(aku_IngestionSession* session, const char* begin, const char* end, aku_Sample* sample) {
-    auto ises = reinterpret_cast<IngestionSession*>(session);
+aku_Status aku_series_to_param_id(aku_Session* session, const char* begin, const char* end, aku_Sample* sample) {
+    auto ises = reinterpret_cast<Session*>(session);
     return ises->series_to_param_id(begin, end, sample);
 }
 
@@ -299,8 +299,8 @@ int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) 
     return DateTimeUtil::to_iso_string(ts, buffer, buffer_size);
 }
 
-int aku_param_id_to_series(aku_IngestionSession* session, aku_ParamId id, char* buffer, size_t buffer_size) {
-    auto ises = reinterpret_cast<IngestionSession*>(session);
+int aku_param_id_to_series(aku_Session* session, aku_ParamId id, char* buffer, size_t buffer_size) {
+    auto ises = reinterpret_cast<Session*>(session);
     return ises->param_id_to_series(id, buffer, buffer_size);
 }
 

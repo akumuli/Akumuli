@@ -54,24 +54,25 @@ aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
 
 aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
+    std::shared_ptr<NBTreeExtentsList> tree;
     {
-        std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
+        std::lock_guard<std::mutex> ml(metadata_lock_);
         id = global_matcher_.match(begin, end);
         if (id == 0) {
             // create new series
             id = global_matcher_.add(begin, end);
             // create new NBTreeExtentsList
             std::vector<LogicAddr> empty;
-            auto tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
-            std::unique_lock<std::mutex> tl(table_lock_);
-            table_[id] = std::move(tree);
-            tl.release();
+            tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
             // add rescue points list (empty) for new entry
-            std::unique_lock<std::mutex> ml(metadata_lock_);
             rescue_points_[id] = std::vector<LogicAddr>();
-            ml.release();
             cvar_.notify_one();
         }
+    }
+    if (tree) {
+        // New tree was created
+        std::lock_guard<std::mutex> tl(table_lock_);
+        table_[id] = std::move(tree);
     }
     sample->paramid = id;
     local_matcher->_add(begin, end, id);
@@ -119,12 +120,11 @@ void TreeRegistry::query(QP::IQueryProcessor& qproc) {
 aku_Status TreeRegistry::write(aku_Sample const& sample,
                                std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>>* cache_or_null)
 {
-    std::unique_lock<std::mutex> lock(table_lock_);
+    std::lock_guard<std::mutex> lock(table_lock_);
     aku_ParamId id = sample.paramid;
     auto it = table_.find(id);
     if (it != table_.end()) {
         auto tree = it->second;
-        lock.release();
         auto res = tree->append(sample.timestamp, sample.payload.float64);
         switch (res) {
         case NBTreeAppendResult::OK:
@@ -196,7 +196,6 @@ aku_Status Session::write(aku_Sample const& sample) {
         return AKU_EBAD_ARG;
     }
     // Cache lookup
-    std::lock_guard<std::mutex> lock(lock_);
     auto it = cache_.find(sample.paramid);
     if (it != cache_.end()) {
         auto status = it->second->append(sample.timestamp, sample.payload.float64);
