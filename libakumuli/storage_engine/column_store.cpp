@@ -12,8 +12,8 @@ using namespace QP;
 /** This interface is used by column-store internally.
   * It allows to iterate through a bunch of columns row by row.
   */
-class RowIterator {
-public:
+struct RowIterator {
+
     virtual ~RowIterator() = default;
     /** Read samples in batch.
       * @param dest is an array that will receive values from cursor
@@ -22,6 +22,65 @@ public:
     virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) = 0;
 };
 
+
+class ChainIterator : public RowIterator {
+    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+public:
+    ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size);
+};
+
+
+ChainIterator::ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+    : iters_(std::move(it))
+    , ids_(std::move(ids))
+    , pos_(0)
+{
+}
+
+std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size) {
+    aku_Status status = AKU_ENO_DATA;
+    size_t ressz = 0;  // current size
+    size_t accsz = 0;  // accumulated size
+    std::vector<aku_Timestamp> destts_vec(size, 0);
+    std::vector<double> destval_vec(size, 0);
+    std::vector<aku_ParamId> outids(size, 0);
+    aku_Timestamp* destts = destts_vec.data();
+    double* destval = destval_vec.data();
+    while(pos_ < iters_.size()) {
+        aku_ParamId curr = ids_[pos_];
+        std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
+        for (size_t i = accsz; i < accsz+ressz; i++) {
+            outids[i] = curr;
+        }
+        destts += ressz;
+        destval += ressz;
+        size -= ressz;
+        accsz += ressz;
+        if (size == 0) {
+            break;
+        }
+        pos_++;
+        if (status == AKU_ENO_DATA) {
+            // this iterator is done, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration on error!
+            break;
+        }
+    }
+    // Convert vectors to series of samples
+    for (size_t i = 0; i < accsz; i++) {
+        dest[i].payload.type = AKU_PAYLOAD_FLOAT;
+        dest[i].paramid = outids[i];
+        dest[i].timestamp = destts_vec[i];
+        dest[i].payload.float64 = destval_vec[i];
+    }
+    return std::tie(status, accsz);
+}
 
 // ///////////// //
 // Tree registry //
@@ -109,7 +168,7 @@ int ColumnStore::get_series_name(aku_ParamId id, char* buffer, size_t buffer_siz
     return str.second;
 }
 
-void ColumnStore::query(QP::IQueryProcessor& qproc) {
+void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
     auto &filter = qproc.filter();
     auto ids = filter.get_ids();
     auto range = qproc.range();

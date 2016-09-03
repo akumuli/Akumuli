@@ -44,6 +44,55 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+/* ColumnStore + reshape functionality
+ * selct cpu where host=XXXX group by tag order by time from 0 to 100;
+ * TS  Series name Value
+ *  0  cpu tag=Foo    10
+ *  0  cpu tag=Bar    20
+ *  1  cpu tag=Foo    10
+ *  2  cpu tag=Foo    12
+ *  2  cpu tag=Bar    30
+ *  ...
+ *
+ * selct cpu where host=XXXX group by tag order by series from 0 to 100;
+ * TS  Series name Value
+ *  0  cpu tag=Foo    21
+ *  1  cpu tag=Foo    20
+ * ...
+ * 99  cpu tag=Foo    19
+ *  0  cpu tag=Bar    20
+ *  1  cpu tag=Bar    11
+ * ...
+ * 99  cpu tag=Bar    14
+ *  ...
+ *
+ * It is possible to add processing steps via IQueryProcessor.
+ */
+
+//! Set of ids returned by the query (defined by select and where clauses)
+struct Selection {
+    std::vector<aku_ParamId> ids;
+};
+
+//! Mapping from persistent series names to transient series names
+struct GroupBy {
+    bool enabled;
+    std::unordered_map<aku_ParamId, aku_ParamId> group_by_map_;
+    // TODO: series matcher to convert from ids to transient series names
+};
+
+//! Output order
+enum class OrderBy {
+    SERIES,
+    TIME,
+};
+
+//! Reshape request defines what should be sent to query processor
+struct ReshapeRequest {
+    Selection select;
+    GroupBy group_by;
+    OrderBy order_by;
+};
 
 /** Columns store.
   * Serve as a central data repository for series metadata and all individual columns.
@@ -96,14 +145,14 @@ public:
     aku_Status write(aku_Sample const& sample,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
-    //! Query data
-    void query(QP::IQueryProcessor& qproc);
+    //! Slice and dice data according to request and feed it to query processor
+    void query(ReshapeRequest const& req, QP::IQueryProcessor& qproc);
 };
 
 
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread. Stores series matcher cache and tree
-  * cache. ColumnStore can work without Session.
+  * cache. ColumnStore can work without WriteSession.
   */
 class WriteSession : public std::enable_shared_from_this<WriteSession>
 {
