@@ -45,35 +45,35 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-/** Global tree registery.
-  * Serve as a central data repository for series metadata and NBTree roots.
-  * Client code should create `StreamDispatcher` per connection, each dispatcher
-  * should have link to `TreeRegistry`.
+/** Columns store.
+  * Serve as a central data repository for series metadata and all individual columns.
+  * Each column is addressed by the series name. Data can be written in through WriteSession
+  * and read back via IQueryProcessor interface. ColumnStore can reshape data (group, merge or join
+  * different columns together).
+  * Columns are built from NB+tree instances.
   * Instances of this class is thread-safe.
   */
-class TreeRegistry : public std::enable_shared_from_this<TreeRegistry> {
+class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     std::shared_ptr<StorageEngine::BlockStore> blockstore_;
     std::unique_ptr<MetadataStorage> metadata_;
-    std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> table_;
+    std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> columns_;
     SeriesMatcher global_matcher_;
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
-
     //! Mutex for metadata storage and rescue points list
     std::mutex metadata_lock_;
     //! Mutex for table_ hashmap (shrink and resize)
     std::mutex table_lock_;
-
     //! Syncronization for watcher thread
     std::condition_variable cvar_;
 
 public:
-    TreeRegistry(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
+    ColumnStore(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
 
     // No value semantics allowed.
-    TreeRegistry(TreeRegistry const&) = delete;
-    TreeRegistry(TreeRegistry &&) = delete;
-    TreeRegistry& operator = (TreeRegistry const&) = delete;
+    ColumnStore(ColumnStore const&) = delete;
+    ColumnStore(ColumnStore &&) = delete;
+    ColumnStore& operator = (ColumnStore const&) = delete;
 
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
@@ -103,23 +103,23 @@ public:
 
 /** Dispatches incoming messages to corresponding NBTreeExtentsList instances.
   * Should be created per writer thread. Stores series matcher cache and tree
-  * cache. TreeRegistry can work without Session.
+  * cache. ColumnStore can work without Session.
   */
-class Session : public std::enable_shared_from_this<Session>
+class WriteSession : public std::enable_shared_from_this<WriteSession>
 {
     //! Link to global registry.
-    std::shared_ptr<TreeRegistry> registry_;
+    std::shared_ptr<ColumnStore> registry_;
     //! Local series matcher (with cached global data).
     SeriesMatcher local_matcher_;
     //! Tree cache
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> cache_;
 public:
     //! C-tor. Shouldn't be called directly.
-    Session(std::shared_ptr<TreeRegistry> registry);
+    WriteSession(std::shared_ptr<ColumnStore> registry);
 
-    Session(Session const&) = delete;
-    Session(Session &&) = delete;
-    Session& operator = (Session const&) = delete;
+    WriteSession(WriteSession const&) = delete;
+    WriteSession(WriteSession &&) = delete;
+    WriteSession& operator = (WriteSession const&) = delete;
 
     /** Match series name. If series with such name doesn't exists - create it.
       * This method should be called for each sample to init its `paramid` field.

@@ -30,7 +30,7 @@
 
 #include "storage_engine/blockstore.h"
 #include "storage_engine/nbtree.h"
-#include "storage_engine/tree_registry.h"
+#include "storage_engine/column_store.h"
 
 #include <boost/thread.hpp>
 
@@ -38,14 +38,15 @@ namespace Akumuli {
 
 class Storage {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
-    std::shared_ptr<StorageEngine::TreeRegistry> reg_;
+    std::shared_ptr<StorageEngine::ColumnStore> reg_;
     std::atomic<int> done_;
     boost::barrier close_barrier_;
 public:
 
     Storage(const char* path);
 
-    std::shared_ptr<StorageEngine::Session> create_dispatcher();
+    //! Create new write session
+    std::shared_ptr<StorageEngine::WriteSession> create_write_session();
 
     void debug_print() const;
 

@@ -48,7 +48,7 @@ add_library(akumuli SHARED
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
-    storage_engine/tree_registry.cpp
+    storage_engine/column_store.cpp
     # stuff from v2
     crc32c.cpp
 )
@@ -71,7 +71,7 @@ add_library(akumuli2
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
-    storage_engine/tree_registry.cpp
+    storage_engine/column_store.cpp
 )
 
 include_directories(.)

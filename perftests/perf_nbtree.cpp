@@ -46,9 +46,6 @@ static void console_logger(aku_LogLevel lvl, const char* msg) {
 }
 
 int main() {
-    const int numids = 10000;
-    //const int numids = 100;
-
     apr_initialize();
 
     Akumuli::Logger::set_logger(console_logger);
@@ -70,18 +67,19 @@ int main() {
         //std::make_tuple(1024*1024, paths[3]),
     };
 
-    std::vector<std::shared_ptr<Akumuli::RWLock>> locks;
-    for (int i = 0; i < numids; i++) {
-        auto lock = std::make_shared<Akumuli::RWLock>();
-        locks.push_back(lock);
-    }
-
     FixedSizeFileStorage::create(metapath, volumes);
 
     auto bstore = FixedSizeFileStorage::open(metapath, paths);
 
     std::vector<std::shared_ptr<NBTreeExtentsList>> trees;
+
     //const int numids = 1;
+    const int numids = 10000;
+    //const int numids = 100;
+
+    const int N = 100000000;
+    //const int N = 20000000;
+
     for (int i = 0; i < numids; i++) {
         auto id = static_cast<aku_ParamId>(i);
         std::vector<LogicAddr> empty;
@@ -107,9 +105,6 @@ int main() {
     std::thread flush_thread(flush_fn);
     flush_thread.detach();
 
-    const int N = 100000000;
-    //const int N = 20000000;
-
     auto writer = [&](size_t begin, size_t end) {
         auto fn = [&]() {
             Timer tm;
@@ -120,12 +115,10 @@ int main() {
                 aku_Timestamp ts = nsamples;//static_cast<aku_Timestamp>(i);
                 double value = i;
                 aku_ParamId id = begin + (i % nbatch);
-                locks[id]->wrlock();
                 if (trees[id]->append(ts, value) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
                     flush_needed = true;
                     cvar.notify_one();
                 }
-                locks[id]->unlock();
                 nsamples++;
                 if (nsamples % 1000000 == 0) {
                     std::cout << i << "\t" << tm.elapsed() << " sec" << std::endl;

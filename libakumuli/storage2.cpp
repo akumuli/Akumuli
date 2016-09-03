@@ -97,7 +97,7 @@ Storage::Storage(const char* path)
     }
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
-    reg_ = std::make_shared<StorageEngine::TreeRegistry>(bstore_, std::move(meta));
+    reg_ = std::make_shared<StorageEngine::ColumnStore>(bstore_, std::move(meta));
 
     // This thread periodically checks state of the tree registry.
     // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
@@ -130,8 +130,8 @@ void Storage::close() {
     close_barrier_.wait();
 }
 
-std::shared_ptr<StorageEngine::Session> Storage::create_dispatcher() {
-    std::shared_ptr<StorageEngine::Session> res = std::make_shared<StorageEngine::Session>(reg_);
+std::shared_ptr<StorageEngine::WriteSession> Storage::create_write_session() {
+    std::shared_ptr<StorageEngine::WriteSession> res = std::make_shared<StorageEngine::WriteSession>(reg_);
     return res;
 }
 

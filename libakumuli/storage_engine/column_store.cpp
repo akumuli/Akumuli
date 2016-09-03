@@ -1,4 +1,4 @@
-#include "tree_registry.h"
+#include "column_store.h"
 #include "log_iface.h"
 #include "query_processing/queryparser.h"
 
@@ -9,24 +9,38 @@ namespace StorageEngine {
 
 using namespace QP;
 
+/** This interface is used by column-store internally.
+  * It allows to iterate through a bunch of columns row by row.
+  */
+class RowIterator {
+public:
+    virtual ~RowIterator() = default;
+    /** Read samples in batch.
+      * @param dest is an array that will receive values from cursor
+      * @param size is an arrays size
+      */
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) = 0;
+};
+
+
 // ///////////// //
 // Tree registry //
 // ///////////// //
 
-TreeRegistry::TreeRegistry(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
+ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
     : blockstore_(bstore)
     , metadata_(std::move(meta))
 {
 }
 
-void TreeRegistry::update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist) {
+void ColumnStore::update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist) {
     // Lock metadata
     std::lock_guard<std::mutex> ml(metadata_lock_); AKU_UNUSED(ml);
     rescue_points_[id] = std::move(addrlist);
     cvar_.notify_one();
 }
 
-void TreeRegistry::sync_with_metadata_storage() {
+void ColumnStore::sync_with_metadata_storage() {
     std::vector<SeriesMatcher::SeriesNameT> newnames;
     std::unordered_map<aku_ParamId, std::vector<LogicAddr>> rescue_points;
     {
@@ -42,7 +56,7 @@ void TreeRegistry::sync_with_metadata_storage() {
     metadata_->end_transaction();
 }
 
-aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
+aku_Status ColumnStore::wait_for_sync_request(int timeout_us) {
     std::unique_lock<std::mutex> lock(metadata_lock_);
     auto res = cvar_.wait_for(lock, std::chrono::microseconds(timeout_us));
     if (res == std::cv_status::timeout) {
@@ -52,7 +66,7 @@ aku_Status TreeRegistry::wait_for_sync_request(int timeout_us) {
 }
 
 
-aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+aku_Status ColumnStore::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
     std::shared_ptr<NBTreeExtentsList> tree;
     {
@@ -72,14 +86,14 @@ aku_Status TreeRegistry::init_series_id(const char* begin, const char* end, aku_
     if (tree) {
         // New tree was created
         std::lock_guard<std::mutex> tl(table_lock_);
-        table_[id] = std::move(tree);
+        columns_[id] = std::move(tree);
     }
     sample->paramid = id;
     local_matcher->_add(begin, end, id);
     return AKU_SUCCESS;
 }
 
-int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+int ColumnStore::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
     std::lock_guard<std::mutex> ml(metadata_lock_);
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
@@ -95,15 +109,15 @@ int TreeRegistry::get_series_name(aku_ParamId id, char* buffer, size_t buffer_si
     return str.second;
 }
 
-void TreeRegistry::query(QP::IQueryProcessor& qproc) {
+void ColumnStore::query(QP::IQueryProcessor& qproc) {
     auto &filter = qproc.filter();
     auto ids = filter.get_ids();
     auto range = qproc.range();
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
     for (auto id: ids) {
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-        auto it = table_.find(id);
-        if (it != table_.end()) {
+        auto it = columns_.find(id);
+        if (it != columns_.end()) {
             std::unique_ptr<NBTreeIterator> iter = it->second->search(range.begin(), range.end());
             iters.push_back(std::move(iter));
         } else {
@@ -117,13 +131,13 @@ void TreeRegistry::query(QP::IQueryProcessor& qproc) {
     qproc.set_error(AKU_ENOT_IMPLEMENTED);
 }
 
-aku_Status TreeRegistry::write(aku_Sample const& sample,
+aku_Status ColumnStore::write(aku_Sample const& sample,
                                std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>>* cache_or_null)
 {
     std::lock_guard<std::mutex> lock(table_lock_);
     aku_ParamId id = sample.paramid;
-    auto it = table_.find(id);
-    if (it != table_.end()) {
+    auto it = columns_.find(id);
+    if (it != columns_.end()) {
         auto tree = it->second;
         auto res = tree->append(sample.timestamp, sample.payload.float64);
         switch (res) {
@@ -145,16 +159,16 @@ aku_Status TreeRegistry::write(aku_Sample const& sample,
 }
 
 
-// ///////////////// //
-//      Session      //
-// ///////////////// //
+// ////////////////////// //
+//      WriteSession      //
+// ////////////////////// //
 
-Session::Session(std::shared_ptr<TreeRegistry> registry)
+WriteSession::WriteSession(std::shared_ptr<ColumnStore> registry)
     : registry_(registry)
 {
 }
 
-aku_Status Session::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
+aku_Status WriteSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
     // Series name normalization procedure. Most likeley a bottleneck but
     // can be easily parallelized.
     const char* ksbegin = nullptr;
@@ -181,7 +195,7 @@ aku_Status Session::init_series_id(const char* begin, const char* end, aku_Sampl
     return status;
 }
 
-int Session::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+int WriteSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     auto name = local_matcher_.id2str(id);
     if (name.first == nullptr) {
         // not yet cached!
@@ -191,7 +205,7 @@ int Session::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     return name.second;
 }
 
-aku_Status Session::write(aku_Sample const& sample) {
+aku_Status WriteSession::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
@@ -215,7 +229,7 @@ aku_Status Session::write(aku_Sample const& sample) {
     return registry_->write(sample, &cache_);
 }
 
-void Session::query(QP::IQueryProcessor& proc) {
+void WriteSession::query(QP::IQueryProcessor& proc) {
     registry_->query(proc);
 }
 

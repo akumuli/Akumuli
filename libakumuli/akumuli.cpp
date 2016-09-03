@@ -35,8 +35,6 @@
 #include "log_iface.h"
 #include "status_util.h"
 
-#include "storage_engine/tree_registry.h"
-
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
@@ -116,10 +114,10 @@ struct CursorImpl {
 
 
 class Session : public aku_Session {
-    std::shared_ptr<StorageEngine::Session> disp_;
+    std::shared_ptr<StorageEngine::WriteSession> disp_;
 public:
 
-    Session(std::shared_ptr<StorageEngine::Session> disp)
+    Session(std::shared_ptr<StorageEngine::WriteSession> disp)
         : disp_(disp)
     {
     }
@@ -176,7 +174,7 @@ public:
     }
 
     aku_Session* create_session() {
-        auto disp = storage_.create_dispatcher();
+        auto disp = storage_.create_write_session();
         Session* ptr = new Session(disp);
         return static_cast<aku_Session*>(ptr);
     }
