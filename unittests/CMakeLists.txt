@@ -449,37 +449,3 @@ target_link_libraries(
 
 add_test(column_store test_column_store)
 
-# Ingress test
-add_executable(
-    test_ingestion
-    test_ingestion.cpp
-    # blockstore
-    ../libakumuli/storage_engine/blockstore.cpp
-    ../libakumuli/storage_engine/volume.cpp
-    ../libakumuli/storage_engine/nbtree.cpp
-    ../libakumuli/storage_engine/compression.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/status_util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/crc32c.cpp
-    # ingestion engine
-    ../libakumuli/storage_engine/column_store.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/metadatastorage.cpp
-    ../libakumuli/query_processing/queryparser.cpp
-)
-
-target_compile_definitions(test_ingestion PRIVATE AKU_UNIT_TEST_CONTEXT=1)
-
-target_link_libraries(
-    test_ingestion
-    sqlite3
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-)
-
-add_test(ingestion test_ingestion)
-
