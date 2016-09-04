@@ -1,5 +1,6 @@
 #include "column_store.h"
 #include "log_iface.h"
+#include "status_util.h"
 #include "query_processing/queryparser.h"
 
 #include <boost/property_tree/ptree.hpp>
@@ -8,6 +9,27 @@ namespace Akumuli {
 namespace StorageEngine {
 
 using namespace QP;
+
+static std::string to_string(ReshapeRequest const& req) {
+    std::stringstream str;
+    str << "ReshapeRequest(";
+    switch (req.order_by) {
+    case OrderBy::SERIES:
+        str << "order-by: series, ";
+        break;
+    case OrderBy::TIME:
+        str << "order-by: time, ";
+        break;
+    };
+    if (req.group_by.enabled) {
+        str << "group-by: enabled, ";
+    } else {
+        str << "group-by: disabled, ";
+    }
+    str << "range-begin: " << req.select.begin << ", range-end: " << req.select.end << ", ";
+    str << "select: " << req.select.ids.size();
+    return str.str();
+}
 
 /** This interface is used by column-store internally.
   * It allows to iterate through a bunch of columns row by row.
@@ -82,9 +104,9 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
     return std::tie(status, accsz);
 }
 
-// ///////////// //
-// Tree registry //
-// ///////////// //
+// ////////////// //
+//  Column-store  //
+// ////////////// //
 
 ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
     : blockstore_(bstore)
@@ -169,25 +191,59 @@ int ColumnStore::get_series_name(aku_ParamId id, char* buffer, size_t buffer_siz
 }
 
 void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
-    auto &filter = qproc.filter();
-    auto ids = filter.get_ids();
-    auto range = qproc.range();
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore query: " + to_string(req));
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
-    for (auto id: ids) {
+    for (auto id: req.select.ids) {
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
         auto it = columns_.find(id);
         if (it != columns_.end()) {
-            std::unique_ptr<NBTreeIterator> iter = it->second->search(range.begin(), range.end());
+            std::unique_ptr<NBTreeIterator> iter = it->second->search(req.select.begin, req.select.end);
             iters.push_back(std::move(iter));
         } else {
             qproc.set_error(AKU_ENOT_FOUND);
         }
     }
 
-    // TODO: Reshape iterators
+    std::unique_ptr<RowIterator> iter;
+    if (req.order_by == OrderBy::SERIES) {
+        auto ids = req.select.ids;
+        iter.reset(new ChainIterator(std::move(ids), std::move(iters)));
+    } else {
+        Logger::msg(AKU_LOG_ERROR, "Order-by-time not implemented yet");
+        qproc.set_error(AKU_ENOT_IMPLEMENTED);
+    }
 
-    qproc.start();
-    qproc.set_error(AKU_ENOT_IMPLEMENTED);
+    const size_t dest_size = 0x1000;
+    std::vector<aku_Sample> dest;
+    dest.resize(dest_size);
+    aku_Status status = AKU_SUCCESS;
+    while(status == AKU_SUCCESS) {
+        size_t size;
+        std::tie(status, size) = iter->read(dest.data(), dest_size);
+        if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+            qproc.set_error(status);
+            return;
+        }
+        if (req.group_by.enabled) {
+            for (size_t ix = 0; ix < size; ix++) {
+                auto it = req.group_by.transient_map.find(dest[ix].paramid);
+                if (it == req.group_by.transient_map.end()) {
+                    Logger::msg(AKU_LOG_ERROR, "Unexpected id " + std::to_string(dest[ix].paramid));
+                    qproc.set_error(AKU_EBAD_DATA);
+                    return;
+                }
+            }
+        } else {
+            for (size_t ix = 0; ix < size; ix++) {
+                if (!qproc.put(dest[ix])) {
+                    return;
+                }
+            }
+        }
+    }
+
+
 }
 
 aku_Status ColumnStore::write(aku_Sample const& sample,
@@ -288,8 +344,8 @@ aku_Status WriteSession::write(aku_Sample const& sample) {
     return registry_->write(sample, &cache_);
 }
 
-void WriteSession::query(QP::IQueryProcessor& proc) {
-    registry_->query(proc);
+void WriteSession::query(const ReshapeRequest &req, QP::IQueryProcessor& proc) {
+    registry_->query(req, proc);
 }
 
 }}  // namespace

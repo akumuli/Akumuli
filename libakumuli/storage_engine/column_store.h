@@ -72,13 +72,14 @@ namespace StorageEngine {
 //! Set of ids returned by the query (defined by select and where clauses)
 struct Selection {
     std::vector<aku_ParamId> ids;
+    aku_Timestamp begin;
+    aku_Timestamp end;
 };
 
 //! Mapping from persistent series names to transient series names
 struct GroupBy {
     bool enabled;
-    std::unordered_map<aku_ParamId, aku_ParamId> group_by_map_;
-    // TODO: series matcher to convert from ids to transient series names
+    std::unordered_map<aku_ParamId, aku_ParamId> transient_map;
 };
 
 //! Output order
@@ -180,7 +181,7 @@ public:
     //! Write sample
     aku_Status write(const aku_Sample &sample);
 
-    void query(QP::IQueryProcessor& qproc);
+    void query(const ReshapeRequest &req, QP::IQueryProcessor& qproc);
 };
 
 }}  // namespace
