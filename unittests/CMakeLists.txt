@@ -394,7 +394,7 @@ target_link_libraries(
 
 add_test(blockstore test_blockstore)
 
-# Blockstore test
+# NB+tree test
 add_executable(
     test_nbtree
     test_nbtree.cpp
@@ -418,6 +418,36 @@ target_link_libraries(
 )
 
 add_test(nbtree test_nbtree)
+
+# Column-store test
+add_executable(
+    test_column_store
+    test_column_store.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/crc32c.cpp
+    ../libakumuli/seriesparser.cpp
+    ../libakumuli/stringpool.cpp
+    ../libakumuli/metadatastorage.cpp
+)
+
+target_compile_definitions(test_column_store PRIVATE AKU_UNIT_TEST_CONTEXT=1)
+
+target_link_libraries(
+    test_column_store
+    sqlite3
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+
+add_test(column_store test_column_store)
 
 # Ingress test
 add_executable(

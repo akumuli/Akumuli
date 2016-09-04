@@ -27,7 +27,7 @@ static std::string to_string(ReshapeRequest const& req) {
         str << "group-by: disabled, ";
     }
     str << "range-begin: " << req.select.begin << ", range-end: " << req.select.end << ", ";
-    str << "select: " << req.select.ids.size();
+    str << "select: " << req.select.ids.size() << ")";
     return str.str();
 }
 
