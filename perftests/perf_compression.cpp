@@ -36,204 +36,48 @@ struct RandomWalk {
 };
 
 int main(int argc, char** argv) {
-    const u64 N_TIMESTAMPS = 1000;
-    const u64 N_PARAMS = 100;
+    const u64 TEST_SIZE = 100000;
     UncompressedChunk header;
     std::cout << "Testing timestamp sequence" << std::endl;
     int c = 100;
     std::vector<aku_ParamId> ids;
-    for (u64 id = 0; id < N_PARAMS; id++) { ids.push_back(id); }
-    RandomWalk rwalk(10.0, 0.0, 0.01, N_PARAMS);
-    for (u64 id = 0; id < N_PARAMS; id++) {
-        for (u64 ts = 0; ts < N_TIMESTAMPS; ts++) {
-            header.paramids.push_back(ids[id]);
-            int k = rand() % 2;
-            if (k) {
-                c++;
-            } else if (c > 0) {
-                c--;
-            }
-            header.timestamps.push_back((ts + c) << 8);
-            header.values.push_back(rwalk.generate(0));
+    RandomWalk rwalk(10.0, 0.0, 0.01, 1);
+    for (u64 ts = 0; ts < TEST_SIZE; ts++) {
+        int k = rand() % 2;
+        if (k) {
+            c++;
+        } else if (c > 0) {
+            c--;
         }
+        header.timestamps.push_back((ts + c) << 8);
+        header.values.push_back(rwalk.generate(0));
     }
 
     ByteVector out;
-    out.resize(N_PARAMS*N_TIMESTAMPS*24);
+    out.resize(TEST_SIZE*24);
 
-    const size_t UNCOMPRESSED_SIZE = header.paramids.size()*8    // Didn't count lengths and offsets
-                                   + header.timestamps.size()*8  // because because this arrays contains
-                                   + header.values.size()*8;     // no information and should be compressed
-                                                                 // to a few bytes
+    const size_t UNCOMPRESSED_SIZE = header.timestamps.size()*8
+                                   + header.values.size()*8;
 
-    struct Writer : ChunkWriter {
-        ByteVector *out;
-        Writer(ByteVector *out) : out(out) {}
-
-        virtual aku_MemRange allocate() {
-            aku_MemRange range = {
-                out->data(),
-                static_cast<u32>(out->size())
-            };
-            return range;
-        }
-
-        //! Commit changes
-        virtual aku_Status commit(size_t bytes_written) {
-            out->resize(bytes_written);
-            return AKU_SUCCESS;
-        }
-    };
-    Writer writer(&out);
-
-    aku_Timestamp tsbegin, tsend;
-    u32 n;
-    auto status = CompressionUtil::encode_chunk(&n, &tsbegin, &tsend, &writer, header);
-    if (status != AKU_SUCCESS) {
-        std::cout << "Encoding error" << std::endl;
-        return 1;
-    }
-
-    // Compress using zlib
-
-    // Ids copy (zlib need all input data to be aligned because it uses SSE2 internally)
-    Bytef* pgz_ids = (Bytef*)aligned_alloc(64, header.paramids.size()*8);
-    memcpy(pgz_ids, header.paramids.data(), header.paramids.size()*8);
-    // Timestamps copy
-    Bytef* pgz_ts = (Bytef*)aligned_alloc(64, header.timestamps.size()*8);
-    memcpy(pgz_ts, header.timestamps.data(), header.timestamps.size()*8);
-    // Values copy
-    Bytef* pgz_val = (Bytef*)aligned_alloc(64, header.values.size()*8);
-    memcpy(pgz_val, header.values.data(), header.values.size()*8);
-
-    const auto gz_max_size = N_PARAMS*N_TIMESTAMPS*24;
-    Bytef* pgzout = (Bytef*)aligned_alloc(64, gz_max_size);
-    uLongf gzoutlen = gz_max_size;
-    size_t total_gz_size = 0, id_gz_size = 0, ts_gz_size = 0, float_gz_size = 0;
-    // compress param ids
-    auto zstatus = compress(pgzout, &gzoutlen, pgz_ids, header.paramids.size()*8);
-    if (zstatus != Z_OK) {
-        std::cout << "GZip error" << std::endl;
-        exit(zstatus);
-    }
-    total_gz_size += gzoutlen;
-    id_gz_size = gzoutlen;
-    gzoutlen = gz_max_size;
-    // compress timestamps
-    zstatus = compress(pgzout, &gzoutlen, pgz_ts, header.timestamps.size()*8);
-    if (zstatus != Z_OK) {
-        std::cout << "GZip error" << std::endl;
-        exit(zstatus);
-    }
-    total_gz_size += gzoutlen;
-    ts_gz_size = gzoutlen;
-    gzoutlen = gz_max_size;
-    // compress floats
-    zstatus = compress(pgzout, &gzoutlen, pgz_val, header.values.size()*8);
-    if (zstatus != Z_OK) {
-        std::cout << "GZip error" << std::endl;
-        exit(zstatus);
-    }
-    total_gz_size += gzoutlen;
-    float_gz_size = gzoutlen;
-
-    const float GZ_BPE = float(total_gz_size)/header.paramids.size();
-    const float GZ_RATIO = float(UNCOMPRESSED_SIZE)/float(total_gz_size);
-
-
-    const size_t COMPRESSED_SIZE = out.size();
-    const float BYTES_PER_EL = float(COMPRESSED_SIZE)/header.paramids.size();
-    const float COMPRESSION_RATIO = float(UNCOMPRESSED_SIZE)/COMPRESSED_SIZE;
-
-    std::cout << "Uncompressed: " << UNCOMPRESSED_SIZE       << std::endl
-              << "  compressed: " << COMPRESSED_SIZE         << std::endl
-              << "    elements: " << header.paramids.size()  << std::endl
-              << "  bytes/elem: " << BYTES_PER_EL            << std::endl
-              << "       ratio: " << COMPRESSION_RATIO       << std::endl
-    ;
-
-    std::cout << "Gzip stats: " << std::endl
-              << "bytes/elem: " << GZ_BPE << std::endl
-              << "     ratio: " << GZ_RATIO << std::endl
-              << "  id bytes: " << id_gz_size << std::endl
-              << "  ts bytes: " << ts_gz_size << std::endl
-              << " val bytes: " << float_gz_size << std::endl;
-
-
-    // Try to decompress
-    UncompressedChunk decomp;
-    const unsigned char* pbegin = out.data();
-    const unsigned char* pend = pbegin + out.size();
-    CompressionUtil::decode_chunk(&decomp, pbegin, pend, header.timestamps.size());
-    bool first_error = true;
-    for (auto i = 0u; i < header.timestamps.size(); i++) {
-        if (header.timestamps.at(i) != decomp.timestamps.at(i) && first_error) {
-            std::cout << "Error, bad timestamp at " << i << std::endl;
-            first_error = false;
-        }
-        if (header.paramids.at(i) != decomp.paramids.at(i) && first_error) {
-            std::cout << "Error, bad paramid at " << i << std::endl;
-            first_error = false;
-        }
-        double origvalue = header.values.at(i);
-        double decvalue = decomp.values.at(i);
-        if (origvalue != decvalue && first_error) {
-            std::cout << "Error, bad value at " << i << std::endl;
-            std::cout << "Expected: " << origvalue << std::endl;
-            std::cout << "Actual:   " << decvalue << std::endl;
-            first_error = false;
-        }
-    }
-
-    if (argc == 2 && std::string(argv[1]) == "benchmark") {
-        // Bench compression process
-        const int NRUNS = 1000;
+    const size_t nruns = 1000;
+    size_t total_bytes = 0;
+    std::vector<double> timings(nruns, .0);
+    for (size_t k = 0; k < nruns; k++) {
         PerfTimer tm;
-        aku_Status tstatus;
-        volatile u32 vn;
-        ByteVector vec;
-        for (int i = 0; i < NRUNS; i++) {
-            vec.resize(N_PARAMS*N_TIMESTAMPS*24);
-            Writer w(&vec);
-            aku_Timestamp ts;
-            u32 n;
-            tstatus = CompressionUtil::encode_chunk(&n, &ts, &ts, &w, header);
-            if (tstatus != AKU_SUCCESS) {
-                std::cout << "Encoding error" << std::endl;
-                return 1;
-            }
-            vn = n;
+        Akumuli::StorageEngine::DataBlockWriter writer(42, out.data(), static_cast<int>(out.size()));
+        for (size_t i = 0; i < header.timestamps.size(); i++) {
+            writer.put(header.timestamps[i], header.values[i]);
         }
-        double elapsed = tm.elapsed();
-        std::cout << "Elapsed (akumuli): " << elapsed << " " << vn << std::endl;
-
-        tm.restart();
-        for (int i = 0; i < NRUNS; i++) {
-            uLongf offset = 0;
-            // compress param ids
-            auto zstatus = compress(pgzout, &gzoutlen, pgz_ids, header.paramids.size()*8);
-            if (zstatus != Z_OK) {
-                std::cout << "GZip error" << std::endl;
-                exit(zstatus);
-            }
-            offset += gzoutlen;
-            gzoutlen = gz_max_size - offset;
-            // compress timestamps
-            zstatus = compress(pgzout + offset, &gzoutlen, pgz_ts, header.timestamps.size()*8);
-            if (zstatus != Z_OK) {
-                std::cout << "GZip error" << std::endl;
-                exit(zstatus);
-            }
-            offset += gzoutlen;
-            gzoutlen = gz_max_size - offset;
-            // compress floats
-            zstatus = compress(pgzout + offset, &gzoutlen, pgz_val, header.values.size()*8);
-            if (zstatus != Z_OK) {
-                std::cout << "GZip error" << std::endl;
-                exit(zstatus);
-            }
-        }
-        elapsed = tm.elapsed();
-        std::cout << "Elapsed (zlib): " << elapsed << " " << vn << std::endl;
+        size_t outsize = writer.commit();
+        timings.at(k) = tm.elapsed();
+        total_bytes += outsize;
     }
+
+    std::cout << "Completed at " << std::accumulate(timings.begin(), timings.end(), .0, std::plus<double>()) << std::endl;
+    std::cout << "Fastest run: " << std::accumulate(timings.begin(), timings.end(), 1E10, [](double a, double b) {
+        return std::min(a, b);
+    }) << std::endl;
+    std::cout << "Total bytes: " << total_bytes << std::endl;
+    std::cout << "Compression: " << (double(UNCOMPRESSED_SIZE)/double(total_bytes/nruns)) << std::endl;
+    std::cout << "Bytes/point: " << (double(total_bytes/nruns)/TEST_SIZE) << std::endl;
 }

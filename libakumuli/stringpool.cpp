@@ -28,37 +28,31 @@ StringPool::StringPool()
 {
 }
 
-StringPool::StringT StringPool::add(const char* begin, const char* end, u64 payload) {
+StringPool::StringT StringPool::add(const char* begin, const char* end) {
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
-        pool.back().reserve(MAX_BIN_SIZE);
+        pool.back().reserve(static_cast<size_t>(MAX_BIN_SIZE));
     }
-    int size = end - begin;
+    int size = static_cast<int>(end - begin);
     if (size == 0) {
         return std::make_pair("", 0);
     }
-    size += 2 + sizeof(u64);  // 2 is for two \0 characters
+    size += 1;  // 1 is for 0 character
     std::vector<char>* bin = &pool.back();
     if (static_cast<int>(bin->size()) + size > MAX_BIN_SIZE) {
         // New bin
         pool.emplace_back();
         bin = &pool.back();
-        bin->reserve(MAX_BIN_SIZE);
+        bin->reserve(static_cast<size_t>(MAX_BIN_SIZE));
     }
     for(auto i = begin; i < end; i++) {
         bin->push_back(*i);
     }
     bin->push_back('\0');
-    char* payload_ptr = bin->data() + bin->size();
-    for(int i = 0; i < 8; i++) {
-        bin->push_back(0);
-    }
-    *reinterpret_cast<u64*>(payload_ptr) = payload;
-    bin->push_back('\0');
     const char* p = &bin->back();
     p -= size - 1;
-    int token_size = end - begin;
+    int token_size = static_cast<int>(end - begin);
     std::atomic_fetch_add(&counter, 1ul);
     return std::make_pair(p, token_size);
 }
@@ -130,9 +124,9 @@ size_t StringTools::hash(StringT str) {
     int len = str.second;
     const char* end = begin + len;
     size_t hash = 5381;
-    int c;
+    size_t c;
     while (begin < end) {
-        c = *begin++;
+        c = static_cast<size_t>(*begin++);
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
     }
     return hash;
@@ -151,14 +145,6 @@ StringTools::TableT StringTools::create_table(size_t size) {
 
 StringTools::SetT StringTools::create_set(size_t size) {
     return SetT(size, &StringTools::hash, &StringTools::equal);
-}
-
-u64 StringTools::extract_id_from_pool(StringPool::StringT res) {
-    // Series name in string pool should be followed by \0 character and 64-bit series id.
-    auto p = res.first + res.second;
-    assert(p[0] == '\0');
-    p += 1;  // zero terminator + sizeof(u64)
-    return *reinterpret_cast<u64 const*>(p);
 }
 
 }

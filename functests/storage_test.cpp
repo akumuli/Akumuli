@@ -245,8 +245,7 @@ void LocalStorage::close() {
 }
 
 void LocalStorage::create_new() {
-    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
-                                              nullptr);
+    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_);
     throw_on_error(result);
 }
 

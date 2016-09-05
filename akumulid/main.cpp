@@ -358,7 +358,7 @@ void create_db_files(const char* path,
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        status = aku_create_database_ex("db", path, path, nvolumes, page_size, &static_logger);
+        status = aku_create_database_ex("db", path, path, nvolumes, page_size);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);

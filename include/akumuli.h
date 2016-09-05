@@ -49,7 +49,12 @@ typedef struct { int padding; } aku_Database;
 /**
  * @brief The aku_Cursor struct
  */
-typedef struct { int padding; } aku_Cursor;
+typedef void* aku_Cursor;
+
+/**
+ * @brief The Ingestion Session struct
+ */
+typedef struct { int padding; } aku_Session;
 
 
 //! Search stats
@@ -108,11 +113,6 @@ AKU_EXPORT const char* aku_error_message(int error_code);
   */
 AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
 
-/**
- * @brief Destroy any object created with aku_make_*** function
- */
-AKU_EXPORT void aku_destroy(void* any);
-
 
 //------------------------------
 // Storage management functions
@@ -125,12 +125,9 @@ AKU_EXPORT void aku_destroy(void* any);
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
- * @return APR errorcode or APR_SUCCESS
- * TODO: move from apr_status_t to aku_Status
  */
-AKU_EXPORT apr_status_t aku_create_database(const char* file_name, const char* metadata_path,
-                                            const char* volumes_path, i32 num_volumes,
-                                            aku_logger_cb_t logger);
+AKU_EXPORT aku_Status aku_create_database(const char* file_name, const char* metadata_path,
+                                          const char* volumes_path, i32 num_volumes);
 
 /**
  * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
@@ -138,12 +135,10 @@ AKU_EXPORT apr_status_t aku_create_database(const char* file_name, const char* m
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
- * @return APR errorcode or APR_SUCCESS
- * TODO: move from apr_status_t to aku_Status
  */
-AKU_EXPORT apr_status_t aku_create_database_ex(const char* file_name, const char* metadata_path,
-                                               const char* volumes_path, i32 num_volumes,
-                                               u64 page_size, aku_logger_cb_t logger);
+AKU_EXPORT aku_Status aku_create_database_ex(const char* file_name, const char* metadata_path,
+                                             const char* volumes_path, i32 num_volumes,
+                                             u64 page_size);
 
 
 /** Remove all volumes.
@@ -151,7 +146,7 @@ AKU_EXPORT apr_status_t aku_create_database_ex(const char* file_name, const char
   * @param logger
   * @returns status
   */
-AKU_EXPORT apr_status_t aku_remove_database(const char* file_name, aku_logger_cb_t logger);
+AKU_EXPORT aku_Status aku_remove_database(const char* file_name, bool force);
 
 
 /** Open recenlty create storage.
@@ -162,14 +157,17 @@ AKU_EXPORT apr_status_t aku_remove_database(const char* file_name, aku_logger_cb
 AKU_EXPORT aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters);
 
 
-/** Check status of previous open operation
-  * @param db pointer to database
-  */
-AKU_EXPORT aku_Status aku_open_status(aku_Database* db);
-
-
 //! Close database. Free resources.
 AKU_EXPORT void aku_close_database(aku_Database* db);
+
+
+//-----------
+// Ingestion
+//-----------
+
+AKU_EXPORT aku_Session* aku_create_session(aku_Database* db);
+
+AKU_EXPORT void aku_destroy_session(aku_Session* stream);
 
 //---------
 // Parsing
@@ -183,13 +181,13 @@ AKU_EXPORT void aku_close_database(aku_Database* db);
 AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample);
 
 /** Convert series name to id. Assign new id to series name on first encounter.
-  * @param db opened database instance
+  * @param ist is an opened ingestion stream
   * @param begin should point to the begining of the string
   * @param end should point to the next after end character of the string
   * @param sample is an output parameter
   * @returns AKU_SUCCESS on success, error code otherwise
   */
-AKU_EXPORT aku_Status aku_series_to_param_id(aku_Database* db, const char* begin, const char* end,
+AKU_EXPORT aku_Status aku_series_to_param_id(aku_Session* ist, const char* begin, const char* end,
                                              aku_Sample* sample);
 
 /** Try to parse duration.
@@ -205,21 +203,21 @@ AKU_EXPORT aku_Status aku_parse_duration(const char* str, int* value);
 //---------
 
 /** Write measurement to DB
-  * @param db opened database instance
+  * @param ist is an opened ingestion stream
   * @param param_id storage parameter id
   * @param timestamp timestamp
   * @param value parameter value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write_double_raw(aku_Database* db, aku_ParamId param_id,
-                                           aku_Timestamp timestamp, double value);
+AKU_EXPORT aku_Status aku_write_double_raw(aku_Session* session, aku_ParamId param_id,
+                                           aku_Timestamp timestamp,  double value);
 
 /** Write measurement to DB
-  * @param db opened database instance
+  * @param ist is an opened ingestion stream
   * @param sample should contain valid measurement value
   * @returns operation status
   */
-AKU_EXPORT aku_Status aku_write(aku_Database* db, const aku_Sample* sample);
+AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
 
 
 //---------

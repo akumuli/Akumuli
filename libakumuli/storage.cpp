@@ -20,6 +20,7 @@
 #include "util.h"
 #include "cursor.h"
 #include "queryprocessor.h"
+#include "log_iface.h"
 
 #include <cstdlib>
 #include <cstdarg>
@@ -748,12 +749,11 @@ static std::vector<apr_status_t> delete_files(const std::vector<std::string>& ta
   * @return APR_EINIT on DB error.
   */
 static apr_status_t create_metadata_page( const char* file_name
-                                        , std::vector<std::string> const& page_file_names
-                                        , aku_logger_cb_t logger)
+                                        , std::vector<std::string> const& page_file_names)
 {
     using namespace std;
     try {
-        auto storage = std::make_shared<MetadataStorage>(file_name, logger);
+        auto storage = std::make_shared<MetadataStorage>(file_name, nullptr);
 
         auto now = apr_time_now();
         char date_time[0x100];
@@ -771,7 +771,7 @@ static apr_status_t create_metadata_page( const char* file_name
     } catch (std::exception const& err) {
         std::stringstream fmt;
         fmt << "Can't create metadata file " << file_name << ", the error is: " << err.what();
-        (*logger)(AKU_LOG_ERROR, fmt.str().c_str());
+        Logger::msg(AKU_LOG_ERROR, fmt.str().c_str());
         return APR_EGENERAL;
     }
     return APR_SUCCESS;
@@ -853,7 +853,7 @@ apr_status_t Storage::new_storage(const char     *file_name,
         apr_pool_destroy(mempool);
         AKU_APR_PANIC(status, error_message.c_str());
     }
-    status = create_metadata_page(path, page_names, logger);
+    status = create_metadata_page(path, page_names);
     apr_pool_destroy(mempool);
     return status;
 }
@@ -895,6 +895,133 @@ apr_status_t Storage::remove_storage(const char* file_name, aku_logger_cb_t logg
     status = apr_file_remove(file_name, mempool);
     apr_pool_destroy(mempool);
     return status;
+}
+
+//----------- V2Storage ----------
+
+V2Storage::V2Storage(const char* path)
+    : done_{0}
+    , close_barrier_(2)
+{
+    std::unique_ptr<MetadataStorage> meta;
+    meta.reset(new MetadataStorage(path));
+
+    std::string metapath;
+    std::vector<std::string> volpaths;
+
+    // first volume is a metavolume
+    auto volumes = meta->get_volumes();
+    for (auto vol: volumes) {
+        std::string path;
+        int index;
+        std::tie(index, path) = vol;
+        if (index == 0) {
+            metapath = path;
+        } else {
+            volpaths.push_back(path);
+        }
+    }
+
+    bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    reg_ = std::make_shared<StorageEngine::TreeRegistry>(bstore_, std::move(meta));
+
+    // This thread periodically checks state of the tree registry.
+    // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
+    // if something needs to be synced.
+    // This order guarantees that metadata storage always contains correct rescue points and
+    // other metadata.
+    auto sync_worker = [this]() {
+        while(!done_.load()) {
+            aku_Status status = reg_->wait_for_sync_request(10000);
+            if (status == AKU_SUCCESS) {
+                bstore_->flush();
+                reg_->sync_with_metadata_storage();
+            }
+        }
+        // Sync remaining data
+        aku_Status status = reg_->wait_for_sync_request(0);
+        if (status == AKU_SUCCESS) {
+            bstore_->flush();
+            reg_->sync_with_metadata_storage();
+        }
+        close_barrier_.wait();
+    };
+    std::thread sync_worker_thread(sync_worker);
+    sync_worker_thread.detach();
+}
+
+void V2Storage::close() {
+    // Wait for all ingestion sessions to stop
+    reg_->wait_for_sessions();
+    done_.store(1);
+    close_barrier_.wait();
+}
+
+std::shared_ptr<StorageEngine::Session> V2Storage::create_dispatcher() {
+    return reg_->create_session();
+}
+
+void V2Storage::debug_print() const {
+    std::cout << "V2Storage::debug_print" << std::endl;
+    std::cout << "...not implemented" << std::endl;
+}
+
+aku_Status V2Storage::new_database( const char     *file_name
+                                  , const char     *metadata_path
+                                  , const char     *volumes_path
+                                  , i32             num_volumes
+                                  , u64             page_size)
+{
+    // Create volumes and metapage
+    u32 vol_size = static_cast<u32>(page_size / 4096);
+
+    boost::filesystem::path volpath(volumes_path);
+    boost::filesystem::path metpath(metadata_path);
+    volpath = boost::filesystem::absolute(volpath);
+    metpath = boost::filesystem::absolute(metpath);
+
+    if (!boost::filesystem::exists(volpath)) {
+        Logger::msg(AKU_LOG_INFO, std::string(volumes_path) + " doesn't exists, trying to create directory");
+        boost::filesystem::create_directories(volpath);
+    } else {
+        if (!boost::filesystem::is_directory(volpath)) {
+            Logger::msg(AKU_LOG_ERROR, std::string(volumes_path) + " is not a directory");
+            return AKU_EBAD_ARG;
+        }
+    }
+
+    if (!boost::filesystem::exists(metpath)) {
+        Logger::msg(AKU_LOG_INFO, std::string(metadata_path) + " doesn't exists, trying to create directory");
+        boost::filesystem::create_directories(metpath);
+    } else {
+        if (!boost::filesystem::is_directory(metpath)) {
+            Logger::msg(AKU_LOG_ERROR, std::string(metadata_path) + " is not a directory");
+            return AKU_EBAD_ARG;
+        }
+    }
+
+    std::vector<std::tuple<u32, std::string>> paths;
+    for (i32 i = 0; i < num_volumes; i++) {
+        std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
+        boost::filesystem::path p = volpath / basename;
+        paths.push_back(std::make_tuple(vol_size, p.string()));
+    }
+    // Volumes meta-page
+    std::string basename = std::string(file_name) + ".metavol";
+    boost::filesystem::path volmpage = volpath / basename;
+
+    StorageEngine::FixedSizeFileStorage::create(volmpage.string(), paths);
+
+    // Create sqlite database for metadata
+    std::vector<std::string> mpaths;
+    mpaths.push_back(volmpage.string());
+    for (auto p: paths) {
+        mpaths.push_back(std::get<1>(p));
+    }
+    std::string sqlitebname = std::string(file_name) + ".akumuli";
+    boost::filesystem::path sqlitepath = metpath / sqlitebname;
+    create_metadata_page(sqlitepath.c_str(), mpaths);
+    return AKU_SUCCESS;
 }
 
 }

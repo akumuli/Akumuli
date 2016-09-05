@@ -3,14 +3,6 @@ add_library(akumuli SHARED
     ../include/akumuli_config.h
     ../include/akumuli.h
     ../include/akumuli_def.h
-    storage_engine/volume.h
-    storage_engine/volume.cpp
-    storage_engine/compression.h
-    storage_engine/compression.cpp
-    storage_engine/blockstore.h
-    storage_engine/blockstore.cpp
-    storage_engine/nbtree.h
-    storage_engine/nbtree.cpp
     status_util.cpp
     status_util.h
     log_iface.h
@@ -39,7 +31,7 @@ add_library(akumuli SHARED
     saxencoder.cpp
     hashfnfamily.cpp
     invertedindex.cpp
-    crc32c.cpp
+    status_util.cpp
     # query_processing
     queryprocessor.cpp
     queryprocessor_framework.cpp
@@ -50,6 +42,36 @@ add_library(akumuli SHARED
     query_processing/randomsamplingnode.cpp
     query_processing/spacesaver.cpp
     query_processing/limiter.cpp
+    query_processing/queryparser.cpp
+    # storage engine
+    storage_engine/blockstore.cpp
+    storage_engine/volume.cpp
+    storage_engine/nbtree.cpp
+    storage_engine/compression.cpp
+    storage_engine/column_store.cpp
+    # stuff from v2
+    crc32c.cpp
+)
+
+
+# New library
+add_library(akumuli2
+    akumuli.cpp
+    seriesparser.cpp
+    metadatastorage.cpp
+    stringpool.cpp
+    datetime.cpp
+    log_iface.cpp
+    util.cpp
+    storage2.cpp
+    crc32c.cpp
+    status_util.cpp
+    query_processing/queryparser.cpp
+    storage_engine/blockstore.cpp
+    storage_engine/volume.cpp
+    storage_engine/nbtree.cpp
+    storage_engine/compression.cpp
+    storage_engine/column_store.cpp
 )
 
 include_directories(.)

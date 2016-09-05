@@ -117,6 +117,7 @@ add_executable(
     perftest_tools.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
 )
 
 target_link_libraries(
@@ -133,7 +134,7 @@ add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
     jemalloc
-    akumuli
+    akumuli2
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -230,6 +231,7 @@ add_executable(
     perf_nbtree.cpp
     perftest_tools.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp

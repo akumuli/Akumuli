@@ -22,7 +22,6 @@
 #include <apr.h>
 #include <apr_dbd.h>
 
-#include "akumuli.h"
 #include "akumuli_def.h"
 #include "seriesparser.h"
 
@@ -58,12 +57,11 @@ struct MetadataStorage {
     DriverT         driver_;
     HandleT         handle_;
     PreparedT       insert_;
-    aku_logger_cb_t logger_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
-    MetadataStorage(const char* db, aku_logger_cb_t logger);
+    MetadataStorage(const char* db);
 
     // Creation //
 
@@ -100,6 +98,14 @@ struct MetadataStorage {
     /** Add new series to the metadata storage.
       */
     void insert_new_names(std::vector<SeriesT> items);
+
+    /** Insert or update rescue provided points.
+      */
+    void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+
+    void begin_transaction();
+
+    void end_transaction();
 
 private:
     /** Execute query that doesn't return anything.

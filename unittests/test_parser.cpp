@@ -52,9 +52,9 @@ BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
     StringPool pool;
     const char* foo = "foo";
-    auto result_foo = pool.add(foo, foo + 3, 0ul);
+    auto result_foo = pool.add(foo, foo + 3);
     const char* bar = "123456";
-    auto result_bar = pool.add(bar, bar + 6, 0ul);
+    auto result_bar = pool.add(bar, bar + 6);
     BOOST_REQUIRE_EQUAL(result_foo.second, 3);
     BOOST_REQUIRE_EQUAL(std::string(result_foo.first, result_foo.first + result_foo.second), foo);
     BOOST_REQUIRE_EQUAL(result_bar.second, 6);
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesmatcher_1) {
     const char* buz = "host=2 region=C";
 
     // Insert first
-    spool.add(foo, foo+strlen(foo), 0ul);
+    spool.add(foo, foo+strlen(foo));
 
     StringPoolOffset offset = {};  // zero offset initially
     auto res = spool.regex_match("host=1 \\w+=\\w", &offset);
@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesmatcher_1) {
     BOOST_REQUIRE_EQUAL(res.at(0).second, strlen(foo));
 
     // Insert next
-    spool.add(bar, bar+strlen(bar), 1u);
+    spool.add(bar, bar+strlen(bar));
 
     // Continue search
     res = spool.regex_match("host=1 \\w+=\\w", &offset);
@@ -106,7 +106,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesmatcher_1) {
     BOOST_REQUIRE_EQUAL(res.at(0).second, strlen(bar));
 
     // Insert last
-    spool.add(buz, buz+strlen(buz), 42ul);
+    spool.add(buz, buz+strlen(buz));
     res = spool.regex_match("host=1 \\w+=\\w", &offset);
     BOOST_REQUIRE_EQUAL(res.size(), 0u);
 }
@@ -123,7 +123,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     std::string expected = "cpu host=127.0.0.1 region=europe";
-    std::string actual = std::string((const char*)out, pend);
+    std::string actual = std::string(static_cast<const char*>(out), pend);
     BOOST_REQUIRE_EQUAL(expected, actual);
 
     std::string keystr = std::string(pbegin, pend);

@@ -31,6 +31,8 @@
 
 namespace Akumuli {
 
+static const u64 AKU_STARTING_SERIES_ID = 1024;
+
 
 /** Series matcher. Table that maps series names to series
   * ids. Should be initialized on startup from sqlite table.
@@ -53,17 +55,25 @@ struct SeriesMatcher {
     std::vector<SeriesNameT> names;      //! List of recently added names
     std::mutex               mutex;      //! Mutex for shared data
 
-    SeriesMatcher(u64 starting_id);
+    SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */
     u64 add(const char* begin, const char* end);
 
-    /** Add value from DB to matcher. This function should be
-      * used only to load data from database to matcher. Internal
-      * `series_id` counter shouldn't be affected by this call.
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
       */
     void _add(std::string series, u64 id);
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    void _add(const char*  begin, const char* end, u64 id);
 
     /** Match string and return it's id. If string is new return 0.
       */
@@ -78,6 +88,8 @@ struct SeriesMatcher {
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
     std::vector<u64> get_all_ids() const;
+
+    std::vector<SeriesNameT> regex_match(const char* rexp);
 };
 
 /** Namespace class to store all parsing related things.
