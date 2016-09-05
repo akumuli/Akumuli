@@ -185,3 +185,58 @@ BOOST_AUTO_TEST_CASE(Test_column_store_add_values_3) {
     status = sessiona->write(sample);  // series with id 111 doesn't exists
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
 }
+
+struct QueryProcessorMock : QP::IQueryProcessor {
+    bool started = false;
+    bool stopped = false;
+    std::vector<aku_Sample> samples;
+    aku_Status error = AKU_SUCCESS;
+
+    virtual QP::QueryRange range() const override {
+        throw "not implemented";
+    }
+    virtual QP::IQueryFilter &filter() override {
+        throw "not implemented";
+    }
+    virtual SeriesMatcher *matcher() override {
+        return nullptr;
+    }
+    virtual bool start() override {
+        started = true;
+        return true;
+    }
+    virtual void stop() override {
+        stopped = true;
+    }
+    virtual bool put(const aku_Sample &sample) override {
+        samples.push_back(sample);
+        return true;
+    }
+    virtual void set_error(aku_Status err) override {
+        error = err;
+    }
+};
+
+BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    QueryProcessorMock qproc;
+    aku_Sample sample;
+    sample.timestamp = 42;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    const char* begin = "test tag=val";
+    const char* end = begin + strlen(begin);
+    session->init_series_id(begin, end, &sample);
+    session->write(sample);
+    ReshapeRequest req;
+    req.group_by.enabled = false;
+    req.select.begin = 0;
+    req.select.end = 100;
+    req.select.ids.push_back(sample.paramid);
+    req.order_by = OrderBy::SERIES;
+    session->query(req, qproc);
+    BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+    BOOST_REQUIRE(qproc.samples.size() == 1);
+    BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
+    BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
+}

@@ -159,6 +159,7 @@ aku_Status ColumnStore::init_series_id(const char* begin, const char* end, aku_S
             // create new NBTreeExtentsList
             std::vector<LogicAddr> empty;
             tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
+            tree->force_init();
             // add rescue points list (empty) for new entry
             rescue_points_[id] = std::vector<LogicAddr>();
             cvar_.notify_one();
