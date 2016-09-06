@@ -240,3 +240,86 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
     BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
 }
+
+static void fill_data_in(std::unique_ptr<WriteSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+    assert(begin < end);
+    aku_Sample sample;
+    sample.paramid = id;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        sample.payload.float64 = ix*0.1;
+        sample.timestamp = ix;
+        session->write(sample);
+    }
+}
+
+static std::vector<aku_ParamId> init_series_ids(std::vector<std::string> const& names, std::unique_ptr<WriteSession>& session) {
+    std::vector<aku_ParamId> ids;
+    for (auto name: names) {
+        aku_Sample sample;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &sample);
+        BOOST_REQUIRE(status == AKU_SUCCESS);
+        ids.push_back(sample.paramid);
+    }
+    return ids;
+}
+
+static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::vector<std::string> names = {
+        "m t=0",
+        "m t=1",
+        "m t=2",
+        "m t=3",
+        "m t=4",
+        "m t=5",
+        "m t=6",
+        "m t=7",
+        "m t=8",
+        "m t=9",
+    };
+    auto ids = init_series_ids(names, session);
+    for (auto id: ids) {
+        fill_data_in(session, id, begin, end);
+    }
+
+    auto read_fn = [&](size_t base_ix, size_t inc) {
+        QueryProcessorMock qproc;
+        ReshapeRequest req;
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        for(size_t i = base_ix; i < ids.size(); i += inc) {
+            req.select.ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::SERIES;
+        session->query(req, qproc);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()/inc*timestamps.size());
+        size_t niter = 0;
+        for(size_t i = base_ix; i < ids.size(); i += inc) {
+            size_t baseix = timestamps.size() * niter;
+            for (size_t tx = begin; tx < end; tx++) {
+                BOOST_REQUIRE(qproc.samples.at(tx - begin + baseix).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(tx - begin + baseix).timestamp == tx);
+            }
+            niter++;
+        }
+    };
+
+    read_fn(0, ids.size());  // read one series
+    read_fn(0, 2);  // read even
+    read_fn(1, 2);  // read odd
+    read_fn(0, 1);  // read all
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_query_2) {
+    test_column_store_query(10, 100);
+    test_column_store_query(100, 1000);
+    test_column_store_query(1000, 100000);
+}
