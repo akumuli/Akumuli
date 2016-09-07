@@ -1,6 +1,9 @@
 #include "storage_engine/compression.h"
 #include "perftest_tools.h"
 
+#define ZSTD_STATIC_LINKING_ONLY
+#include <zstd.h>
+
 #include <iostream>
 #include <cstdlib>
 #include <algorithm>
@@ -55,6 +58,7 @@ int main(int argc, char** argv) {
 
     ByteVector out;
     out.resize(TEST_SIZE*24);
+    //out.resize(4096);
 
     const size_t UNCOMPRESSED_SIZE = header.timestamps.size()*8
                                    + header.values.size()*8;
@@ -73,6 +77,57 @@ int main(int argc, char** argv) {
         total_bytes += outsize;
     }
 
+    std::cout << "\nAkumuli" << std::endl;
+    std::cout << "Completed at " << std::accumulate(timings.begin(), timings.end(), .0, std::plus<double>()) << std::endl;
+    std::cout << "Fastest run: " << std::accumulate(timings.begin(), timings.end(), 1E10, [](double a, double b) {
+        return std::min(a, b);
+    }) << std::endl;
+    std::cout << "Total bytes: " << total_bytes << std::endl;
+    std::cout << "Compression: " << (double(UNCOMPRESSED_SIZE)/double(total_bytes/nruns)) << std::endl;
+    std::cout << "Bytes/point: " << (double(total_bytes/nruns)/TEST_SIZE) << std::endl;
+
+    // Test zstd compression
+    total_bytes = 0;
+    for (size_t k = 0; k < nruns; k++) {
+        PerfTimer tm;
+        auto ctx = ZSTD_createCStream();
+        ZSTD_initCStream(ctx, 1);
+        u64 tss[128];
+        ZSTD_outBuffer outbuf = {};
+        outbuf.dst = out.data();
+        outbuf.size = out.size();
+        for (size_t ix = 0; ix < header.timestamps.size(); ix++) {
+            tss[ix % 64] = header.timestamps[ix];
+            tss[ix % 64 + 64] = *reinterpret_cast<double const*>(&header.values[ix]);
+            if (ix % 64 == 0 && ix) {
+                ZSTD_inBuffer inbuf = {};
+                inbuf.src = &tss;
+                inbuf.size = 128*8;
+                auto hint = ZSTD_compressStream(ctx, &outbuf, &inbuf);
+                while (inbuf.size != inbuf.pos) {
+                    hint = ZSTD_compressStream(ctx, &outbuf, &inbuf);
+                    if (ZSTD_isError(hint)) {
+                        std::cout << ZSTD_getErrorName(hint) << std::endl;
+                        abort();
+                    }
+                }
+                if (ZSTD_isError(hint)) {
+                    std::cout << ZSTD_getErrorName(hint) << std::endl;
+                    abort();
+                }
+                ZSTD_flushStream(ctx, &outbuf);
+            }
+        }
+        size_t outsize = ZSTD_endStream(ctx, &outbuf);
+        if (ZSTD_isError(outsize)) {
+            std::cout << ZSTD_getErrorName(outsize) << std::endl;
+            abort();
+        }
+        ZSTD_freeCStream(ctx);
+        timings.at(k) = tm.elapsed();
+        total_bytes += outbuf.pos;
+    }
+    std::cout << "\nZstandard" << std::endl;
     std::cout << "Completed at " << std::accumulate(timings.begin(), timings.end(), .0, std::plus<double>()) << std::endl;
     std::cout << "Fastest run: " << std::accumulate(timings.begin(), timings.end(), 1E10, [](double a, double b) {
         return std::min(a, b);

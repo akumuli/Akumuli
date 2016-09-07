@@ -729,6 +729,151 @@ u16 DataBlockReader::version() const {
     return get_block_version(begin_);
 }
 
+// /////////////////// //
+//  Zstandard support  //
+// /////////////////// //
+
+ZstdWriter::ZstdWriter()
+    : stream_(ZSTD_createCStream(), &ZSTD_freeCStream)
+{
+    throw "not implemented";
 }
 
+ZstdWriter::ZstdWriter(aku_ParamId id, u8* buf, int size)
+    : stream_(ZSTD_createCStream(), &ZSTD_freeCStream)
+    , write_index_(0)
+{
+    ZSTD_initCStream(stream_.get(), 1);
+    u16* p = reinterpret_cast<u16*>(buf);
+    *p++ = AKUMULI_VERSION;
+    nchunks_ = p++;
+    ntail_ = p++;
+    memcpy(p, &id, sizeof(id));
+    out_buffer_.pos = 0;
+    out_buffer_.size = static_cast<size_t>(size) - HEADER_SIZE;
+    out_buffer_.dst = buf + HEADER_SIZE;
 }
+
+aku_Status ZstdWriter::put(aku_Timestamp ts, double value) {
+    if (room_for_chunk()) {
+        // Invariant 1: number of elements stored in write buffer (ts_writebuf_ val_writebuf_)
+        // equals `write_index_ % CHUNK_SIZE`.
+        writebuf_[write_index_ & CHUNK_MASK].time = ts;
+        writebuf_[(write_index_ & CHUNK_MASK) + CHUNK_SIZE].value = value;
+        write_index_++;
+        if ((write_index_ & CHUNK_MASK) == 0) {
+            // Content of the write buffer was lost, this can happen only if `room_for_chunk`
+            // function estimates required space incorrectly.
+            assert(false);
+            return AKU_EOVERFLOW;
+        }
+    } else {
+        // Put values to the end of the stream without compression.
+        // This can happen first only when write buffer is empty.
+        assert((write_index_ & CHUNK_MASK) == 0);
+
+        ZSTD_inBuffer buf;
+        buf.pos = 0;
+        buf.size = CHUNK_SIZE * 16;
+        buf.src = writebuf_;
+
+        while(buf.pos < buf.size) {
+            // Normally, body of this loop will be executed once because input buffer is small.
+            size_t hint = 0;
+            hint = ZSTD_compressStream(stream_.get(), &out_buffer_, &buf);
+            if (ZSTD_isError(hint)) {
+                if (out_buffer_.pos == out_buffer_.size) {
+                    return AKU_EOVERFLOW;
+                }
+                AKU_PANIC(std::string("Zstd error: ") + ZSTD_getErrorName(hint));
+            }
+        }
+        size_t size = 0;
+        size = ZSTD_flushStream(stream_.get(), &out_buffer_);
+        if (ZSTD_isError(size)) {
+            AKU_PANIC(std::string("Zstd error: ") + ZSTD_getErrorName(size));
+        }
+        if (size != 0) {
+            AKU_PANIC("Zstd not enough room in out-buffer, `room_for_chunk` gives wrong estimate!");
+        }
+        *ntail_ += 1;
+    }
+    return AKU_SUCCESS;
+}
+
+size_t ZstdWriter::commit() {
+    auto nchunks = write_index_ / CHUNK_SIZE;
+    auto buftail = write_index_ % CHUNK_SIZE;
+    // Invariant 2: if ZstdWriter was closed after `put` method overflowed (return AKU_EOVERFLOW),
+    // then `ntail_` should be GE then zero and write buffer should be empty (write_index_ = multiple of CHUNK_SIZE).
+    // Otherwise, `ntail_` should be zero.
+    if (buftail) {
+        // Write buffer is not empty
+        if (*ntail_ != 0) {
+            // invariant is broken
+            AKU_PANIC("Write buffer is not empty but can't be flushed");
+        }
+        size_t size = 0;
+        size = ZSTD_endStream(stream_.get(), &out_buffer_);
+        if (ZSTD_isError(size)) {
+            AKU_PANIC(std::string("Zstd can't close steram: ") + ZSTD_getErrorName(size));
+        }
+        TSorVal* pval = static_cast<TSorVal*>(out_buffer_.dst);
+        for (int ix = 0; ix < buftail; ix++) {
+            if (out_buffer_.size - out_buffer_.pos > (sizeof(double) + sizeof(aku_Timestamp))) {
+                auto ts = writebuf_[ix].time;
+                auto xs = writebuf_[ix + CHUNK_SIZE].value;
+                pval->time = ts;
+                pval++;
+                pval->value = xs;
+                pval++;
+                out_buffer_.pos += sizeof(double) + sizeof(aku_Timestamp);
+                *ntail_ += 1;
+                write_index_--;
+            } else {
+                // Data loss. This should never happen at this point. If this error
+                // occures then `room_for_chunk` estimates space requirements incorrectly.
+                AKU_PANIC("Can't commit write-stream, `room_for_chunk` gives wrong estimate!");
+            }
+        }
+    }
+    assert(nchunks <= 0xFFFF);
+    *nchunks_ = static_cast<u16>(nchunks);
+    return out_buffer_.pos;
+}
+
+bool ZstdWriter::room_for_chunk() const {
+    static const size_t MARGIN = 10*16 + 9*16 + 18;  // worst case
+    auto free_space = out_buffer_.size - out_buffer_.pos;
+    if (free_space < MARGIN) {
+        return false;
+    }
+    return true;
+}
+
+void ZstdWriter::read_tail_elements(std::vector<aku_Timestamp>* timestamps,
+                                    std::vector<double>* values) const {
+    // Note: this method can be used to read values from
+    // write buffer. It sort of breaks incapsulation but
+    // we don't need  to maintain  another  write buffer
+    // anywhere else.
+    auto tailsize = write_index_ & CHUNK_MASK;
+    for (int i = 0; i < tailsize; i++) {
+        auto ts = writebuf_[i].time;
+        auto xs = writebuf_[i + CHUNK_SIZE].value;
+        timestamps->push_back(ts);
+        values->push_back(xs);
+    }
+}
+
+int ZstdWriter::get_write_index() const {
+    // Note: we need to be able to read this index to
+    // get rid of write index inside NBTreeLeaf.
+    if (out_buffer_.pos != 0) {
+        return *ntail_ + write_index_;
+    }
+    return 0;
+}
+
+
+}}  // namespace

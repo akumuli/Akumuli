@@ -122,7 +122,7 @@ add_executable(
 
 target_link_libraries(
     perf_compression
-    z
+    zstd
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}

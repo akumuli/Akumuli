@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <zstd.h>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -29,9 +31,11 @@
 #include <stdexcept>
 #include <vector>
 #include <tuple>
+#include <memory>
 
 #include "akumuli.h"
 #include "util.h"
+
 
 namespace Akumuli {
 
@@ -727,6 +731,47 @@ struct DataBlockReader {
 
     u16 version() const;
 };
+
+struct ZstdWriter {
+    enum {
+        CHUNK_SIZE  = 32,
+        CHUNK_MASK  = 31,
+        HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
+    };
+    union TSorVal {
+        double value;
+        aku_Timestamp time;
+    };
+
+    typedef std::unique_ptr<ZSTD_CStream, size_t (*)(ZSTD_CStream*)> StreamT;
+
+    StreamT         stream_;
+    ZSTD_outBuffer  out_buffer_;
+    TSorVal         writebuf_[2*CHUNK_SIZE];
+    u16*            nchunks_;
+    u16*            ntail_;
+    int             write_index_;
+
+    //! Empty c-tor. Constructs unwritable object.
+    ZstdWriter();
+
+    ZstdWriter(aku_ParamId id, u8* buf, int size);
+
+    aku_Status put(aku_Timestamp ts, double value);
+
+    size_t commit();
+
+    //! Read tail elements (the ones not yet written to output stream)
+    void read_tail_elements(std::vector<aku_Timestamp>* timestamps,
+                            std::vector<double>*        values) const;
+
+    int get_write_index() const;
+
+private:
+    //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
+    bool room_for_chunk() const;
+};
+
 
 }  // namespace V2
 }
