@@ -53,15 +53,15 @@ std::shared_ptr<ColumnStore> create_cstore() {
     return cstore;
 }
 
-std::unique_ptr<WriteSession> create_session(std::shared_ptr<ColumnStore> cstore) {
-    std::unique_ptr<WriteSession> session;
-    session.reset(new WriteSession(cstore));
+std::unique_ptr<CStoreSession> create_session(std::shared_ptr<ColumnStore> cstore) {
+    std::unique_ptr<CStoreSession> session;
+    session.reset(new CStoreSession(cstore));
     return session;
 }
 
 BOOST_AUTO_TEST_CASE(Test_columns_store_create_1) {
     std::shared_ptr<ColumnStore> cstore = create_cstore();
-    std::unique_ptr<WriteSession> session = create_session(cstore);
+    std::unique_ptr<CStoreSession> session = create_session(cstore);
 }
 
 BOOST_AUTO_TEST_CASE(Test_column_store_add_series_1) {
@@ -241,7 +241,7 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
 }
 
-static void fill_data_in(std::unique_ptr<WriteSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+static void fill_data_in(std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
     assert(begin < end);
     aku_Sample sample;
     sample.paramid = id;
@@ -253,7 +253,7 @@ static void fill_data_in(std::unique_ptr<WriteSession>& session, aku_ParamId id,
     }
 }
 
-static std::vector<aku_ParamId> init_series_ids(std::vector<std::string> const& names, std::unique_ptr<WriteSession>& session) {
+static std::vector<aku_ParamId> init_series_ids(std::vector<std::string> const& names, std::unique_ptr<CStoreSession>& session) {
     std::vector<aku_ParamId> ids;
     for (auto name: names) {
         aku_Sample sample;

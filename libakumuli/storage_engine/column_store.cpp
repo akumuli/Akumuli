@@ -146,7 +146,6 @@ aku_Status ColumnStore::wait_for_sync_request(int timeout_us) {
     return rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
 }
 
-
 aku_Status ColumnStore::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
     u64 id = 0;
     std::shared_ptr<NBTreeExtentsList> tree;
@@ -279,12 +278,12 @@ aku_Status ColumnStore::write(aku_Sample const& sample,
 //      WriteSession      //
 // ////////////////////// //
 
-WriteSession::WriteSession(std::shared_ptr<ColumnStore> registry)
+CStoreSession::CStoreSession(std::shared_ptr<ColumnStore> registry)
     : registry_(registry)
 {
 }
 
-aku_Status WriteSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
+aku_Status CStoreSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
     // Series name normalization procedure. Most likeley a bottleneck but
     // can be easily parallelized.
     const char* ksbegin = nullptr;
@@ -311,7 +310,7 @@ aku_Status WriteSession::init_series_id(const char* begin, const char* end, aku_
     return status;
 }
 
-int WriteSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+int CStoreSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
     auto name = local_matcher_.id2str(id);
     if (name.first == nullptr) {
         // not yet cached!
@@ -321,7 +320,7 @@ int WriteSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_si
     return name.second;
 }
 
-aku_Status WriteSession::write(aku_Sample const& sample) {
+aku_Status CStoreSession::write(aku_Sample const& sample) {
     if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
         return AKU_EBAD_ARG;
     }
@@ -345,7 +344,7 @@ aku_Status WriteSession::write(aku_Sample const& sample) {
     return registry_->write(sample, &cache_);
 }
 
-void WriteSession::query(const ReshapeRequest &req, QP::IQueryProcessor& proc) {
+void CStoreSession::query(const ReshapeRequest &req, QP::IQueryProcessor& proc) {
     registry_->query(req, proc);
 }
 

@@ -130,9 +130,28 @@ void Storage::close() {
     close_barrier_.wait();
 }
 
-std::shared_ptr<StorageEngine::WriteSession> Storage::create_write_session() {
-    std::shared_ptr<StorageEngine::WriteSession> res = std::make_shared<StorageEngine::WriteSession>(reg_);
-    return res;
+std::shared_ptr<StorageSession> Storage::create_write_session() {
+    std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(reg_);
+    return std::make_shared<StorageSession>(session);
+}
+
+void Storage::query(Caller& caller, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    // Parse query
+    try {
+        // the code here can throw a QueryParser exception
+        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+        std::shared_ptr<IQueryProcessor> query_processor;
+        try {
+            query_processor = Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
+        } catch (const QueryParserError& qpe) {
+            log_error(qpe.what());
+            cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);
+            return;
+        }
+    } catch (QueryParserError const& err) {
+        Logger::msg(AKU_LOG_ERROR, err.what());
+    }
 }
 
 void Storage::debug_print() const {

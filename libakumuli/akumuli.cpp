@@ -114,10 +114,10 @@ struct CursorImpl {
 
 
 class Session : public aku_Session {
-    std::shared_ptr<StorageEngine::WriteSession> disp_;
+    std::shared_ptr<StorageEngine::CStoreSession> disp_;
 public:
 
-    Session(std::shared_ptr<StorageEngine::WriteSession> disp)
+    Session(std::shared_ptr<StorageEngine::CStoreSession> disp)
         : disp_(disp)
     {
     }

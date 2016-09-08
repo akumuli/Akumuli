@@ -32,9 +32,32 @@
 #include "storage_engine/nbtree.h"
 #include "storage_engine/column_store.h"
 
+#include "internal_cursor.h"
+
 #include <boost/thread.hpp>
 
 namespace Akumuli {
+
+class Storage;
+
+class StorageSession {
+    /* TODO: move series matcher from column store here. It belongs here because Storeage works
+     * with series names and column store doesn't. This should be done the same way it was done in
+     * ColumnStore - CStoreSession subsystem (session caches frequent names to speed up ingestion).
+     * ColumnsStore also owns MetadataStorage. It's not clear yet where it should belong.
+     * It can be the part of the Storage class or ColumnStore class or it can be shared by both.
+     * In both cases classes should communicate to save both new series names and updated resque
+     * points. Maybe it's worth to make it independent and make both classes to communicated with it.
+     */
+    std::weak_ptr<Storage> storage_;
+    std::shared_ptr<StorageEngine::CStoreSession> session_;
+public:
+    StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
+
+    aku_Status write(aku_Sample const& sample);
+
+    void query(Caller& caller, InternalCursor* cur, const char* query) const;
+};
 
 class Storage {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
@@ -46,7 +69,9 @@ public:
     Storage(const char* path);
 
     //! Create new write session
-    std::shared_ptr<StorageEngine::WriteSession> create_write_session();
+    std::shared_ptr<StorageSession> create_write_session();
+
+    void query(Caller& caller, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
 

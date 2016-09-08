@@ -155,7 +155,7 @@ public:
   * Should be created per writer thread. Stores series matcher cache and tree
   * cache. ColumnStore can work without WriteSession.
   */
-class WriteSession : public std::enable_shared_from_this<WriteSession>
+class CStoreSession : public std::enable_shared_from_this<CStoreSession>
 {
     //! Link to global registry.
     std::shared_ptr<ColumnStore> registry_;
@@ -165,11 +165,11 @@ class WriteSession : public std::enable_shared_from_this<WriteSession>
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> cache_;
 public:
     //! C-tor. Shouldn't be called directly.
-    WriteSession(std::shared_ptr<ColumnStore> registry);
+    CStoreSession(std::shared_ptr<ColumnStore> registry);
 
-    WriteSession(WriteSession const&) = delete;
-    WriteSession(WriteSession &&) = delete;
-    WriteSession& operator = (WriteSession const&) = delete;
+    CStoreSession(CStoreSession const&) = delete;
+    CStoreSession(CStoreSession &&) = delete;
+    CStoreSession& operator = (CStoreSession const&) = delete;
 
     /** Match series name. If series with such name doesn't exists - create it.
       * This method should be called for each sample to init its `paramid` field.
