@@ -93,6 +93,25 @@ MetadataStorage::MetadataStorage(const char* db)
     }
 }
 
+void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names) {
+    // Make temporary copies under the lock
+    std::vector<SeriesMatcher::SeriesNameT> newnames;
+    std::unordered_map<aku_ParamId, std::vector<u64>> rescue_points;
+    {
+        std::lock_guard<std::mutex> guard(sync_lock_);
+        std::swap(rescue_points, pending_rescue_points_);
+    }
+    pull_new_names(&newnames);
+
+    // Save new names
+    begin_transaction();
+    insert_new_names(std::move(newnames));
+
+    // Save rescue points
+    upsert_rescue_points(std::move(rescue_points));
+    end_transaction();
+}
+
 int MetadataStorage::execute_query(std::string query) {
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.c_str());
@@ -280,6 +299,21 @@ static bool split_series(const char* str, int n, LightweightString* outname, Lig
     return true;
 }
 
+aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
+    std::unique_lock<std::mutex> lock(sync_lock_);
+    auto res = sync_cvar_.wait_for(lock, std::chrono::microseconds(timeout_us));
+    if (res == std::cv_status::timeout) {
+        return AKU_ETIMEOUT;
+    }
+    return pending_rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
+}
+
+void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
+    std::lock_guard<std::mutex> guard(sync_lock_);
+    pending_rescue_points_[id] = val;
+    sync_cvar_.notify_one();
+}
+
 void MetadataStorage::begin_transaction() {
     execute_query("BEGIN TRANSACTION;");
 }
@@ -323,7 +357,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
     execute_query(query.str());
 }
 
-void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> items) {
+void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {
     if (items.size() == 0) {
         return;
     }

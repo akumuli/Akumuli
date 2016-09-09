@@ -417,6 +417,7 @@ enum class NBTreeAppendResult {
     OK_FLUSH_NEEDED,
     FAIL_LATE_WRITE,
     FAIL_BAD_ID,
+    FAIL_BAD_VALUE,
 };
 
 /** @brief This class represents set of roots of the NBTree.

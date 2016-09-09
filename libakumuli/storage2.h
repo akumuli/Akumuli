@@ -40,33 +40,41 @@ namespace Akumuli {
 
 class Storage;
 
-class StorageSession {
-    /* TODO: move series matcher from column store here. It belongs here because Storeage works
-     * with series names and column store doesn't. This should be done the same way it was done in
-     * ColumnStore - CStoreSession subsystem (session caches frequent names to speed up ingestion).
-     * ColumnsStore also owns MetadataStorage. It's not clear yet where it should belong.
-     * It can be the part of the Storage class or ColumnStore class or it can be shared by both.
-     * In both cases classes should communicate to save both new series names and updated resque
-     * points. Maybe it's worth to make it independent and make both classes to communicated with it.
-     */
-    std::weak_ptr<Storage> storage_;
+class StorageSession : public std::enable_shared_from_this<StorageSession> {
+    std::shared_ptr<Storage> storage_;
+    SeriesMatcher local_matcher_;
     std::shared_ptr<StorageEngine::CStoreSession> session_;
 public:
     StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
 
     aku_Status write(aku_Sample const& sample);
 
+    /** Match series name. If series with such name doesn't exists - create it.
+      * This method should be called for each sample to init its `paramid` field.
+      */
+    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
+
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
+
     void query(Caller& caller, InternalCursor* cur, const char* query) const;
 };
 
-class Storage {
+class Storage : public std::enable_shared_from_this<Storage> {
     std::shared_ptr<StorageEngine::BlockStore> bstore_;
-    std::shared_ptr<StorageEngine::ColumnStore> reg_;
+    std::shared_ptr<StorageEngine::ColumnStore> cstore_;
     std::atomic<int> done_;
     boost::barrier close_barrier_;
+    mutable std::mutex lock_;
+    SeriesMatcher global_matcher_;
+    std::shared_ptr<MetadataStorage> metadata_;
 public:
 
     Storage(const char* path);
+
+    //! Match series name. If series with such name doesn't exists - create it.
+    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
+
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
 
     //! Create new write session
     std::shared_ptr<StorageSession> create_write_session();
@@ -74,6 +82,10 @@ public:
     void query(Caller& caller, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
+
+    void _update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& rpoints);
+
+    void run();
 
     /** This method should be called before object destructor.
       * All ingestion sessions should be stopped first.

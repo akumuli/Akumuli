@@ -125,25 +125,16 @@ public:
     ColumnStore(ColumnStore &&) = delete;
     ColumnStore& operator = (ColumnStore const&) = delete;
 
-    //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
-
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
-
-    //! Update rescue points list for `id`.
-    void update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist);
-
-    //! Write rescue points to persistent storage synchronously.
-    void sync_with_metadata_storage();
-
-    //! Waint until some data will be available.
-    aku_Status wait_for_sync_request(int timeout_us);
+    /** Create new column.
+      * @return completion status
+      */
+    aku_Status create_new_column(aku_ParamId id);
 
     /** Write sample to data-store.
       * @param sample to write
       * @param cache_or_null is a pointer to external cache, tree ref will be added there on success
       */
-    aku_Status write(aku_Sample const& sample,
+    NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
     //! Slice and dice data according to request and feed it to query processor
@@ -157,10 +148,8 @@ public:
   */
 class CStoreSession : public std::enable_shared_from_this<CStoreSession>
 {
-    //! Link to global registry.
-    std::shared_ptr<ColumnStore> registry_;
-    //! Local series matcher (with cached global data).
-    SeriesMatcher local_matcher_;
+    //! Link to global column store.
+    std::shared_ptr<ColumnStore> cstore_;
     //! Tree cache
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> cache_;
 public:
@@ -171,15 +160,8 @@ public:
     CStoreSession(CStoreSession &&) = delete;
     CStoreSession& operator = (CStoreSession const&) = delete;
 
-    /** Match series name. If series with such name doesn't exists - create it.
-      * This method should be called for each sample to init its `paramid` field.
-      */
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
-
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
-
     //! Write sample
-    aku_Status write(const aku_Sample &sample);
+    NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
     void query(const ReshapeRequest &req, QP::IQueryProcessor& qproc);
 };

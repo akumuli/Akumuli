@@ -70,6 +70,64 @@ static apr_status_t create_metadata_page( const char* file_name
     return APR_SUCCESS;
 }
 
+//--------- StorageSession ----------
+
+aku_Status StorageSession::write(aku_Sample const& sample) {
+    using namespace StorageEngine;
+    std::vector<u64> rpoints;
+    auto status = session_->write(sample, &rpoints);
+    switch (status) {
+    case NBTreeAppendResult::OK:
+        return AKU_SUCCESS;
+    case NBTreeAppendResult::OK_FLUSH_NEEDED:
+        storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
+        return AKU_SUCCESS;
+    case NBTreeAppendResult::FAIL_BAD_ID:
+        AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
+    case NBTreeAppendResult::FAIL_LATE_WRITE:
+        return AKU_ELATE_WRITE;
+    case NBTreeAppendResult::FAIL_BAD_VALUE:
+        return AKU_EBAD_ARG;
+    };
+    return AKU_SUCCESS;
+}
+
+aku_Status StorageSession::init_series_id(const char* begin, const char* end, aku_Sample *sample) {
+    // Series name normalization procedure. Most likeley a bottleneck but
+    // can be easily parallelized.
+    const char* ksbegin = nullptr;
+    const char* ksend = nullptr;
+    char buf[AKU_LIMITS_MAX_SNAME];
+    char* ob = static_cast<char*>(buf);
+    char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
+    aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    // Match series name locally (on success use local information)
+    // Otherwise - match using global registry. On success - add global information to
+    //  the local matcher. On error - add series name to global registry and then to
+    //  the local matcher.
+    u64 id = local_matcher_.match(ob, ksend);
+    if (!id) {
+        // go to global registery
+        status = storage_->init_series_id(ob, ksend, sample, &local_matcher_);
+    } else {
+        // initialize using local info
+        sample->paramid = id;
+    }
+    return status;
+}
+
+int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
+    auto name = local_matcher_.id2str(id);
+    if (name.first == nullptr) {
+        // not yet cached!
+        return storage_->get_series_name(id, buffer, buffer_size, &local_matcher_);
+    }
+    memcpy(buffer, name.first, static_cast<size_t>(name.second));
+    return name.second;
+}
 
 //----------- Storage ----------
 
@@ -97,7 +155,7 @@ Storage::Storage(const char* path)
     }
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
-    reg_ = std::make_shared<StorageEngine::ColumnStore>(bstore_, std::move(meta));
+    cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_, std::move(meta));
 
     // This thread periodically checks state of the tree registry.
     // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
@@ -106,17 +164,17 @@ Storage::Storage(const char* path)
     // other metadata.
     auto sync_worker = [this]() {
         while(!done_.load()) {
-            aku_Status status = reg_->wait_for_sync_request(10000);
+            aku_Status status = cstore_->wait_for_sync_request(10000);
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
-                reg_->sync_with_metadata_storage();
+                cstore_->sync_with_metadata_storage();
             }
         }
         // Sync remaining data
-        aku_Status status = reg_->wait_for_sync_request(0);
+        aku_Status status = cstore_->wait_for_sync_request(0);
         if (status == AKU_SUCCESS) {
             bstore_->flush();
-            reg_->sync_with_metadata_storage();
+            cstore_->sync_with_metadata_storage();
         }
         close_barrier_.wait();
     };
@@ -130,22 +188,88 @@ void Storage::close() {
     close_barrier_.wait();
 }
 
+void Storage::run() {
+    auto self = shared_from_this();
+    auto fn = [self]() {
+
+        auto get_names = [self](std::vector<SeriesMatcher::SeriesNameT>* names) {
+            std::lock_guard<std::mutex> guard(self->lock_);
+            self->global_matcher_.pull_new_names(names);
+        };
+
+        while(self->done_.load() == 0) {
+            auto status = self->metadata_->wait_for_sync_request(1000);
+            if (status == AKU_SUCCESS) {
+                self->metadata_->sync_with_metadata_storage(get_names);
+            }
+        }
+
+        self->close_barrier_.wait();
+    };
+
+    std::thread th(fn);
+    th.detach();
+}
+
+void Storage::_update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& rpoints) {
+    metadata_->add_rescue_point(id, std::move(rpoints));
+}
+
 std::shared_ptr<StorageSession> Storage::create_write_session() {
-    std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(reg_);
+    std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(cstore_);
     return std::make_shared<StorageSession>(session);
+}
+
+aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+    u64 id = 0;
+    bool create_new = false;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        id = global_matcher_.match(begin, end);
+        if (id == 0) {
+            // create new series
+            id = global_matcher_.add(begin, end);
+            metadata_->add_rescue_point(id, std::vector<u64>());
+            create_new = true;
+        }
+    }
+    if (create_new) {
+        // id guaranteed to be unique
+        cstore_->create_new_column(id);
+    }
+    sample->paramid = id;
+    local_matcher->_add(begin, end, id);
+    return AKU_SUCCESS;
+}
+
+int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto str = global_matcher_.id2str(id);
+    if (str.first == nullptr) {
+        return 0;
+    }
+    // copy value to local matcher
+    local_matcher->_add(str.first, str.first + str.second, id);
+    // copy the string to out buffer
+    if (str.second > static_cast<int>(buffer_size)) {
+        return -1*str.second;
+    }
+    memcpy(buffer, str.first, static_cast<size_t>(str.second));
+    return str.second;
 }
 
 void Storage::query(Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
     // Parse query
     try {
+        std::lock_guard<std::mutex> guard(lock_);
         // the code here can throw a QueryParser exception
         auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
         std::shared_ptr<IQueryProcessor> query_processor;
         try {
-            query_processor = Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
+            query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_);
         } catch (const QueryParserError& qpe) {
-            log_error(qpe.what());
+            Logger::msg(AKU_LOG_ERROR, qpe.what());
             cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);
             return;
         }
