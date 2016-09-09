@@ -67,9 +67,17 @@ class Storage : public std::enable_shared_from_this<Storage> {
     mutable std::mutex lock_;
     SeriesMatcher global_matcher_;
     std::shared_ptr<MetadataStorage> metadata_;
+
+    void start_sync_worker();
 public:
 
     Storage(const char* path);
+
+    /** C-tor for test */
+    Storage(std::shared_ptr<MetadataStorage>            meta,
+            std::shared_ptr<StorageEngine::BlockStore>  bstore,
+            std::shared_ptr<StorageEngine::ColumnStore> cstore,
+            bool                                        start_worker);
 
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
@@ -84,8 +92,6 @@ public:
     void debug_print() const;
 
     void _update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& rpoints);
-
-    void run();
 
     /** This method should be called before object destructor.
       * All ingestion sessions should be stopped first.

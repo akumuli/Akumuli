@@ -108,9 +108,8 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
 //  Column-store  //
 // ////////////// //
 
-ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta)
+ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
     : blockstore_(bstore)
-    , metadata_(std::move(meta))
 {
 }
 

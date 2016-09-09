@@ -129,6 +129,7 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
     return name.second;
 }
 
+
 //----------- Storage ----------
 
 Storage::Storage(const char* path)
@@ -157,29 +158,49 @@ Storage::Storage(const char* path)
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_, std::move(meta));
 
-    // This thread periodically checks state of the tree registry.
+    start_sync_worker();
+}
+
+Storage::Storage(std::shared_ptr<MetadataStorage>                  meta,
+                 std::shared_ptr<StorageEngine::BlockStore>        bstore,
+                 std::shared_ptr<StorageEngine::ColumnStore>       cstore,
+                 bool                                              start_worker)
+    : bstore_(bstore)
+    , cstore_(cstore)
+    , done_{0}
+    , close_barrier_(2)
+    , metadata_(meta)
+{
+    if (start_worker) {
+        start_sync_worker();
+    }
+}
+
+void Storage::start_sync_worker() {
+    // This thread periodically sync rescue points and series names.
     // It calls `flush` method of the blockstore and then `sync_with_metadata_storage` method
     // if something needs to be synced.
     // This order guarantees that metadata storage always contains correct rescue points and
     // other metadata.
     auto sync_worker = [this]() {
-        while(!done_.load()) {
-            aku_Status status = cstore_->wait_for_sync_request(10000);
+        auto get_names = [this](std::vector<SeriesMatcher::SeriesNameT>* names) {
+            std::lock_guard<std::mutex> guard(lock_);
+            global_matcher_.pull_new_names(names);
+        };
+
+        while(done_.load() == 0) {
+            auto status = metadata_->wait_for_sync_request(1000);
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
-                cstore_->sync_with_metadata_storage();
+                metadata_->sync_with_metadata_storage(get_names);
             }
         }
-        // Sync remaining data
-        aku_Status status = cstore_->wait_for_sync_request(0);
-        if (status == AKU_SUCCESS) {
-            bstore_->flush();
-            cstore_->sync_with_metadata_storage();
-        }
+
         close_barrier_.wait();
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
+
 }
 
 void Storage::close() {
@@ -188,28 +209,6 @@ void Storage::close() {
     close_barrier_.wait();
 }
 
-void Storage::run() {
-    auto self = shared_from_this();
-    auto fn = [self]() {
-
-        auto get_names = [self](std::vector<SeriesMatcher::SeriesNameT>* names) {
-            std::lock_guard<std::mutex> guard(self->lock_);
-            self->global_matcher_.pull_new_names(names);
-        };
-
-        while(self->done_.load() == 0) {
-            auto status = self->metadata_->wait_for_sync_request(1000);
-            if (status == AKU_SUCCESS) {
-                self->metadata_->sync_with_metadata_storage(get_names);
-            }
-        }
-
-        self->close_barrier_.wait();
-    };
-
-    std::thread th(fn);
-    th.detach();
-}
 
 void Storage::_update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& rpoints) {
     metadata_->add_rescue_point(id, std::move(rpoints));
@@ -264,10 +263,11 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
     try {
         std::lock_guard<std::mutex> guard(lock_);
         // the code here can throw a QueryParser exception
-        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+        //auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
         std::shared_ptr<IQueryProcessor> query_processor;
         try {
-            query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_);
+            throw QueryParserError("Not implemented");
+            //query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_);
         } catch (const QueryParserError& qpe) {
             Logger::msg(AKU_LOG_ERROR, qpe.what());
             cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);

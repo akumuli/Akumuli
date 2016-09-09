@@ -105,7 +105,6 @@ struct ReshapeRequest {
   */
 class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     std::shared_ptr<StorageEngine::BlockStore> blockstore_;
-    std::unique_ptr<MetadataStorage> metadata_;
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> columns_;
     SeriesMatcher global_matcher_;
     //! List of metadata to update
@@ -118,7 +117,7 @@ class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     std::condition_variable cvar_;
 
 public:
-    ColumnStore(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
+    ColumnStore(std::shared_ptr<StorageEngine::BlockStore> bstore);
 
     // No value semantics allowed.
     ColumnStore(ColumnStore const&) = delete;

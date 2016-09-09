@@ -251,6 +251,7 @@ add_test(compression test_compression)
 add_executable(
     test_storage
     test_storage.cpp
+    ../libakumuli/storage2.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
