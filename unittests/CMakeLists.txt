@@ -270,7 +270,6 @@ add_executable(
 target_link_libraries(
     test_storage
     pthread
-    akumuli
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
