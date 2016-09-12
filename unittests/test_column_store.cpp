@@ -43,13 +43,13 @@ std::unique_ptr<MetadataStorage> create_metadatastorage() {
     // Create in-memory sqlite database.
     std::unique_ptr<MetadataStorage> meta;
     meta.reset(new MetadataStorage(":memory:"));
-    return std::move(meta);
+    return meta;
 }
 
 std::shared_ptr<ColumnStore> create_cstore() {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::shared_ptr<ColumnStore> cstore;
-    cstore.reset(new ColumnStore(bstore, create_metadatastorage()));
+    cstore.reset(new ColumnStore(bstore));
     return cstore;
 }
 
@@ -65,7 +65,6 @@ BOOST_AUTO_TEST_CASE(Test_columns_store_create_1) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_column_store_add_values_3) {
-    aku_Status status;
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
     auto cstore = create_cstore();
@@ -75,8 +74,9 @@ BOOST_AUTO_TEST_CASE(Test_column_store_add_values_3) {
     sample.paramid = 111;
     sample.timestamp = 111;
     sample.payload.float64 = 111;
-    status = sessiona->write(sample);  // series with id 111 doesn't exists
-    BOOST_REQUIRE_NE(status, AKU_SUCCESS);
+    std::vector<u64> rpoints;
+    auto status = sessiona->write(sample, &rpoints);  // series with id 111 doesn't exists
+    BOOST_REQUIRE(status == NBTreeAppendResult::FAIL_BAD_ID);
 }
 
 struct QueryProcessorMock : QP::IQueryProcessor {
@@ -117,10 +117,10 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     aku_Sample sample;
     sample.timestamp = 42;
     sample.payload.type = AKU_PAYLOAD_FLOAT;
-    const char* begin = "test tag=val";
-    const char* end = begin + strlen(begin);
-    session->init_series_id(begin, end, &sample);
-    session->write(sample);
+    sample.paramid = 42;
+    cstore->create_new_column(42);
+    std::vector<u64> rpoints;
+    session->write(sample, &rpoints);
     ReshapeRequest req;
     req.group_by.enabled = false;
     req.select.begin = 0;
@@ -134,27 +134,18 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
 }
 
-static void fill_data_in(std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+static void fill_data_in(std::shared_ptr<ColumnStore> cstore, std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
     assert(begin < end);
+    cstore->create_new_column(id);
     aku_Sample sample;
     sample.paramid = id;
     sample.payload.type = AKU_PAYLOAD_FLOAT;
+    std::vector<u64> rpoints;
     for (aku_Timestamp ix = begin; ix < end; ix++) {
         sample.payload.float64 = ix*0.1;
         sample.timestamp = ix;
-        session->write(sample);
+        session->write(sample, &rpoints);  // rescue points are ignored now
     }
-}
-
-static std::vector<aku_ParamId> init_series_ids(std::vector<std::string> const& names, std::unique_ptr<CStoreSession>& session) {
-    std::vector<aku_ParamId> ids;
-    for (auto name: names) {
-        aku_Sample sample;
-        auto status = session->init_series_id(name.data(), name.data() + name.size(), &sample);
-        BOOST_REQUIRE(status == AKU_SUCCESS);
-        ids.push_back(sample.paramid);
-    }
-    return ids;
 }
 
 static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
@@ -164,23 +155,12 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     for (aku_Timestamp ix = begin; ix < end; ix++) {
         timestamps.push_back(ix);
     }
-    std::vector<std::string> names = {
-        "m t=0",
-        "m t=1",
-        "m t=2",
-        "m t=3",
-        "m t=4",
-        "m t=5",
-        "m t=6",
-        "m t=7",
-        "m t=8",
-        "m t=9",
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
     };
-    auto ids = init_series_ids(names, session);
     for (auto id: ids) {
-        fill_data_in(session, id, begin, end);
+        fill_data_in(cstore, session, id, begin, end);
     }
-
     auto read_fn = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
         ReshapeRequest req;

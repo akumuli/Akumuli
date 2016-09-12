@@ -124,7 +124,7 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
             columns_[id] = std::move(tree);
         }
     }
-    tree->force_init();
+    columns_[id]->force_init();
     return AKU_SUCCESS;
 }
 
