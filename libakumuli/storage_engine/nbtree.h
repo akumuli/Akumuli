@@ -242,6 +242,9 @@ public:
         ONLY_HEADER,
     };
 
+    //! Only for testing and benchmarks
+    size_t _get_uncommitted_size() const;
+
     /** Create empty leaf node.
       * @param id Series id.
       * @param link to block store.
@@ -473,6 +476,9 @@ public:
 
     //! Get roots of the tree (only for internal use)
     std::vector<LogicAddr> _get_roots() const;
+
+    //! Get size of the data stored in memory in compressed form (only for internal use)
+    size_t _get_uncommitted_size() const;
 
     //! Get pointers to extents (for tests).
     std::vector<NBTreeExtent const*> get_extents() const;

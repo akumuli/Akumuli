@@ -116,8 +116,17 @@ add_executable(
     perf_compression.cpp
     perftest_tools.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/datetime.cpp
+    ../libakumuli/seriesparser.cpp
+    ../libakumuli/stringpool.cpp
 )
 
 target_link_libraries(

@@ -21,17 +21,17 @@ u64 FcmPredictor::predict_next() const {
 
 void FcmPredictor::update(u64 value) {
     table[last_hash] = value;
-    last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+    last_hash = ((last_hash << 5) ^ (value >> 50)) & MASK_;
 }
 
 //! C-tor. `table_size` should be a power of two.
 DfcmPredictor::DfcmPredictor(int table_size)
     : last_hash (0ul)
     , last_value(0ul)
-    , MASK_(table_size - 1)
+    , MASK_(static_cast<u64>(table_size - 1))
 {
    assert((table_size & MASK_) == 0);
-   table.resize(table_size);
+   table.resize(static_cast<u64>(table_size));
 }
 
 u64 DfcmPredictor::predict_next() const {
@@ -40,11 +40,11 @@ u64 DfcmPredictor::predict_next() const {
 
 void DfcmPredictor::update(u64 value) {
     table[last_hash] = value - last_value;
-    last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
+    last_hash = ((last_hash << 5) ^ ((value - last_value) >> 50)) & MASK_;
     last_value = value;
 }
 
-static const int PREDICTOR_N = 1 << 10;
+static const int PREDICTOR_N = 1 << 7;
 
 static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;

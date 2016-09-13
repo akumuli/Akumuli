@@ -351,16 +351,13 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
     bool tput(TVal const* iter, size_t n) {
         assert(n == Step);
         TVal outbuf[n];
-        memset(outbuf, 0, n);
+        TVal min = iter[0] - prev_;
         for (size_t i = 0; i < n; i++) {
             auto value  = iter[i];
             auto result = value - prev_;
             outbuf[i]   = result;
             prev_       = value;
-        }
-        TVal min = outbuf[0];
-        for (size_t i = 1; i < n; i++) {
-            min = std::min(outbuf[i], min);
+            min         = std::min(outbuf[i], min);
         }
         for (size_t i = 0; i < n; i++) {
             outbuf[i] -= min;
@@ -530,7 +527,24 @@ struct DfcmPredictor {
     void update(u64 value);
 };
 
-typedef FcmPredictor PredictorT;
+// 2nd order DFCM predictor
+struct Dfcm2Predictor {
+    std::vector<u64> table1;
+    std::vector<u64> table2;
+    u64              last_hash;
+    u64              last_value1;
+    u64              last_value2;
+    const u64        MASK_;
+
+    //! C-tor. `table_size` should be a power of two.
+    Dfcm2Predictor(int table_size);
+
+    u64 predict_next() const;
+
+    void update(u64 value);
+};
+
+typedef DfcmPredictor PredictorT;
 
 struct FcmStreamWriter {
     Base128StreamWriter& stream_;
@@ -657,6 +671,9 @@ typedef DeltaStreamWriter<RLEStreamWriter<u64>, u64> DeltaRLEWriter;
 // Base128 -> RLE -> Delta -> u64
 typedef DeltaStreamReader<RLEStreamReader<u64>, u64> DeltaRLEReader;
 
+typedef DeltaDeltaStreamReader<16, u64> DeltaDeltaReader;
+typedef DeltaDeltaStreamWriter<16, u64> DeltaDeltaWriter;
+
 
 namespace StorageEngine {
 
@@ -667,7 +684,7 @@ struct DataBlockWriter {
         HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
     Base128StreamWriter stream_;
-    DeltaRLEWriter      ts_stream_;
+    DeltaDeltaWriter    ts_stream_;
     FcmStreamWriter     val_stream_;
     int                 write_index_;
     aku_Timestamp       ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
@@ -712,7 +729,7 @@ struct DataBlockReader {
     };
     const u8*           begin_;
     Base128StreamReader stream_;
-    DeltaRLEReader      ts_stream_;
+    DeltaDeltaReader    ts_stream_;
     FcmStreamReader     val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
     u32                 read_index_;

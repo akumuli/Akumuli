@@ -110,9 +110,9 @@ class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
     //! Mutex for metadata storage and rescue points list
-    std::mutex metadata_lock_;
+    mutable std::mutex metadata_lock_;
     //! Mutex for table_ hashmap (shrink and resize)
-    std::mutex table_lock_;
+    mutable std::mutex table_lock_;
     //! Syncronization for watcher thread
     std::condition_variable cvar_;
 
@@ -123,6 +123,8 @@ public:
     ColumnStore(ColumnStore const&) = delete;
     ColumnStore(ColumnStore &&) = delete;
     ColumnStore& operator = (ColumnStore const&) = delete;
+
+    std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> close();
 
     /** Create new column.
       * @return completion status
@@ -138,6 +140,8 @@ public:
 
     //! Slice and dice data according to request and feed it to query processor
     void query(ReshapeRequest const& req, QP::IQueryProcessor& qproc);
+
+    size_t _get_uncommitted_memory() const;
 };
 
 

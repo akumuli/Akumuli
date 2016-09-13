@@ -113,6 +113,18 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
+std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
+    std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
+    std::lock_guard<std::mutex> tl(table_lock_);
+    Logger::msg(AKU_LOG_INFO, "Column-store commit called");
+    for (auto it: columns_) {
+        auto addrlist = it.second->close();
+        result[it.first] = addrlist;
+    }
+    Logger::msg(AKU_LOG_INFO, "Column-store commit completed");
+    return result;
+}
+
 aku_Status ColumnStore::create_new_column(aku_ParamId id) {
     std::vector<LogicAddr> empty;
     auto tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
@@ -181,8 +193,15 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
             }
         }
     }
+}
 
-
+size_t ColumnStore::_get_uncommitted_memory() const {
+    std::lock_guard<std::mutex> guard(table_lock_);
+    size_t total_size = 0;
+    for (auto const& p: columns_) {
+        total_size += p.second->_get_uncommitted_size();
+    }
+    return total_size;
 }
 
 NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<LogicAddr>* rescue_points,

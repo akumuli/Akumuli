@@ -1026,6 +1026,10 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block)
     fanout_index_ = subtree->fanout_index;
 }
 
+size_t NBTreeLeaf::_get_uncommitted_size() const {
+    return static_cast<size_t>(writer_.get_write_index());
+}
+
 SubtreeRef const* NBTreeLeaf::get_leafmeta() const {
     return subtree_cast(block_->get_data());
 }
@@ -1855,6 +1859,15 @@ void NBTreeExtentsList::force_init() {
     if (!initialized_) {
         init();
     }
+}
+
+size_t NBTreeExtentsList::_get_uncommitted_size() const {
+    SharedLock lock(lock_);
+    if (!extents_.empty()) {
+        auto leaf = dynamic_cast<NBTreeLeafExtent const*>(extents_.front().get());
+        return leaf->leaf_->_get_uncommitted_size();
+    }
+    return 0;
 }
 
 bool NBTreeExtentsList::is_initialized() const {
