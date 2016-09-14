@@ -125,8 +125,8 @@ TestRunResults run_tests(fs::path path) {
     auto store_stats = bstore->get_stats();
     auto uncommitted = cstore->_get_uncommitted_memory();
     cstore->close();
-    std::cout << "Block store: " << store_stats.nblocks <<
-                 " blocks used, uncommitted size: " << uncommitted << std::endl;
+    //std::cout << "Block store: " << store_stats.nblocks <<
+    //             " blocks used, uncommitted size: " << uncommitted << std::endl;
 
     // Compress using zlib
 
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     }
     std::sort(files.begin(), files.end());
     for (auto fname: files) {
-        std::cout << "Run tests for " << fs::basename(fname) << std::endl;
+        //std::cout << "Run tests for " << fs::basename(fname) << std::endl;
         results.push_back(run_tests(fname));
     }
 

@@ -380,7 +380,8 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
 
 SimpleFcmStreamWriter::SimpleFcmStreamWriter(Base128StreamWriter& stream)
     : stream_(stream)
-    , predictor_(PREDICTOR_N)
+    , fcm_(PREDICTOR_N)
+    , dfcm_(PREDICTOR_N)
     , prev_diff_(0)
     , prev_flag_(0)
     , nelements_(0)
@@ -401,15 +402,15 @@ bool SimpleFcmStreamWriter::tput(double const* values, size_t n) {
             return false;
         }
         // Encode prev value
-        int nbytes = (prev_flag & 7) + 1;
-        int nshift = 64 - nbytes*8;
+        int nbytes = ((prev_flag & 7) + 1) * (curr_flag != 0);
+        int nshift = nbytes*8;
         prev_diff >>= nshift;
         if (!stream_.put<u64>(prev_diff)) {
             return false;
         }
         // Encode current value
-        nbytes = (curr_flag & 7) + 1;
-        nshift = 64 - nbytes*8;
+        nbytes = ((curr_flag & 7) + 1) * (curr_flag != 0);
+        nshift = nbytes*8;
         curr_diff >>= nshift;
         if (!stream_.put<u64>(curr_diff)) {
             return false;
@@ -424,22 +425,47 @@ std::tuple<u64, unsigned char> SimpleFcmStreamWriter::encode(double value) {
         u64 bits;
     } curr = {};
     curr.real = value;
-    u64 predicted = predictor_.predict_next();
-    predictor_.update(curr.bits);
-    u64 diff = curr.bits ^ predicted;
+    u64 fcm_predicted = fcm_.predict_next();
+    u64 dfcm_predicted = dfcm_.predict_next();
+    fcm_.update(curr.bits);
+    dfcm_.update(curr.bits);
+    u64 diff1 = curr.bits ^ fcm_predicted;
+    u64 diff2 = curr.bits ^ dfcm_predicted;
 
     int trailing_zeros = 64;
 
-    if (diff != 0) {
-        trailing_zeros = __builtin_ctzl(diff);
+    u8 flag;
+    u64 diff;
+    int lzeroes1 = 64;
+    int lzeroes2 = 64;
+    if (diff1 != 0) {
+        lzeroes1 = __builtin_clzl(diff1);
     }
-
-    int nbytes = 8 - trailing_zeros / 8;
-    if (nbytes > 0) {
-        nbytes--;
+    if (diff2 != 0) {
+        lzeroes2 = __builtin_clzl(diff2);
     }
-    unsigned char flag = 8 | (nbytes&7);
+    if (lzeroes1 < lzeroes2) {
+        if (diff1 != 0) {
+            trailing_zeros = __builtin_ctzl(diff1);
+        }
+        int nbytes = trailing_zeros / 8;
+        if (nbytes > 0) {
+            nbytes--;
+        }
+        flag = 8 | (nbytes&7);
+        diff = diff1;
+    } else {
+        if (diff2 != 0) {
+            trailing_zeros = __builtin_ctzl(diff2);
+        }
 
+        int nbytes = trailing_zeros / 8;
+        if (nbytes > 0) {
+            nbytes--;
+        }
+        flag = nbytes&7;
+        diff = diff2;
+    }
     return std::make_tuple(diff, flag);
 }
 
@@ -457,15 +483,15 @@ bool SimpleFcmStreamWriter::put(double value) {
             return false;
         }
         // Encode prev value
-        int nbytes = (prev_flag_ & 7) + 1;
-        int nshift = 64 - nbytes*8;
+        int nbytes = ((prev_flag_ & 7) + 1) * (prev_flag_ != 0);
+        int nshift = nbytes*8;
         prev_diff_ >>= nshift;
         if (!stream_.put<u64>(prev_diff_)) {
             return false;
         }
         // Encode current value
-        nbytes = (flag & 7) + 1;
-        nshift = 64 - nbytes*8;
+        nbytes = ((flag & 7) + 1) * (flag != 0);
+        nshift = nbytes*8;
         diff >>= nshift;
         if (!stream_.put<u64>(diff)) {
             return false;
@@ -486,8 +512,8 @@ bool SimpleFcmStreamWriter::commit() {
             return false;
         }
         // Encode prev value
-        int nbytes = (prev_flag_ & 7) + 1;
-        int nshift = 64 - nbytes*8;
+        int nbytes = ((prev_flag_ & 7) + 1) * (prev_flag_ != 0);
+        int nshift = nbytes*8;
         prev_diff_ >>= nshift;
         if (!stream_.put<u64>(prev_diff_)) {
             return false;
@@ -504,6 +530,7 @@ Simple2FcmStreamWriter::Simple2FcmStreamWriter(Base128StreamWriter& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , prev_diff_(0)
+    , prev_flag_(0)
     , nelements_(0)
 {
 }
@@ -514,21 +541,34 @@ bool Simple2FcmStreamWriter::tput(double const* values, size_t n) {
     // in 2^K sized chunks
     for (size_t i = 0; i < n; i+=2) {
         u64 prev_diff, curr_diff;
-        prev_diff = encode(values[i]);
-        curr_diff = encode(values[i + 1]);
-        // Encode prev value
-        if (!stream_.put<u64>(prev_diff)) {
+        u8 prev_flag, curr_flag;
+        std::tie(prev_diff, prev_flag) = encode(values[i]);
+        std::tie(curr_diff, curr_flag) = encode(values[i + 1]);
+        u8 flags = static_cast<u8>((prev_flag << 4) | curr_flag);
+        if (!stream_.put_raw(flags)) {
             return false;
         }
+        // Encode prev value
+        int nshift = 4 * ((prev_flag + 1) * (prev_flag != 0));
+        prev_diff >>= nshift;
+        if (nshift != 64) {
+            if (!stream_.put<u64>(prev_diff)) {
+                return false;
+            }
+        }
         // Encode current value
-        if (!stream_.put<u64>(curr_diff)) {
-            return false;
+        nshift = 4*((curr_flag + 1) * (curr_flag != 0));
+        curr_diff >>= nshift;
+        if (nshift != 64) {
+            if (!stream_.put<u64>(curr_diff)) {
+                return false;
+            }
         }
     }
     return stream_.commit();
 }
 
-u64 Simple2FcmStreamWriter::encode(double value) {
+std::tuple<u64, unsigned char> Simple2FcmStreamWriter::encode(double value) {
     union {
         double real;
         u64 bits;
@@ -538,21 +578,49 @@ u64 Simple2FcmStreamWriter::encode(double value) {
     predictor_.update(curr.bits);
     u64 diff = curr.bits ^ predicted;
 
-    return diff;
+    int trailing_zeros = 64;
+
+    if (diff != 0) {
+        trailing_zeros = __builtin_ctzl(diff);
+    }
+
+    int nhalfbytes = trailing_zeros / 4;
+    if (nhalfbytes > 0) {
+        // Should be in range 0-15
+        nhalfbytes--;
+    }
+    assert(nhalfbytes < 16);
+    return std::make_tuple(diff, nhalfbytes);
 }
 
 bool Simple2FcmStreamWriter::put(double value) {
-    u64 diff = encode(value);
+    u64 diff;
+    u8 flag;
+    std::tie(diff, flag) = encode(value);
     if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
+        prev_flag_ = flag;
     } else {
-        // Encode prev value
-        if (!stream_.put<u64>(prev_diff_)) {
+        // Write combining to save some space
+        u8 flags = static_cast<u8>(prev_flag_ << 4) | flag;
+        if (!stream_.put_raw(flags)) {
             return false;
         }
+        // Encode prev value
+        int nshift = 4*((prev_flag_ + 1) * (prev_flag_ != 0));
+        prev_diff_ >>= nshift;
+        if (nshift != 64) {
+            if (!stream_.put<u64>(prev_diff_)) {
+                return false;
+            }
+        }
         // Encode current value
-        if (!stream_.put<u64>(diff)) {
-            return false;
+        nshift = 4*((flag + 1) * (flag != 0));
+        diff >>= nshift;
+        if (nshift != 64) {
+            if (!stream_.put<u64>(diff)) {
+                return false;
+            }
         }
     }
     nelements_++;
@@ -565,13 +633,19 @@ bool Simple2FcmStreamWriter::commit() {
     if (nelements_ % 2 != 0) {
         // `input` contains odd number of values so we should use
         // empty second value that will take one byte in output
+        u8 flags = static_cast<u8>(prev_flag_ << 4);
+        if (!stream_.put_raw(flags)) {
+            return false;
+        }
+        // Encode prev value
+        int nshift = 4*((prev_flag_ + 1) * (prev_flag_ != 0));
+        prev_diff_ >>= nshift;
         if (!stream_.put<u64>(prev_diff_)) {
             return false;
         }
     }
     return stream_.commit();
 }
-
 
 // ///////////////////// //
 // SimpleFcmStreamReader //

@@ -594,7 +594,8 @@ struct FcmStreamReader {
 //! Double to FCM encoder
 struct SimpleFcmStreamWriter {
     Base128StreamWriter& stream_;
-    PredictorT           predictor_;
+    FcmPredictor         fcm_;
+    DfcmPredictor        dfcm_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
     int                  nelements_;
@@ -617,11 +618,12 @@ struct Simple2FcmStreamWriter {
     Base128StreamWriter& stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
+    unsigned char        prev_flag_;
     int                  nelements_;
 
     Simple2FcmStreamWriter(Base128StreamWriter& stream);
 
-    inline u64 encode(double value);
+    inline std::tuple<u64, unsigned char> encode(double value);
 
     bool tput(double const* values, size_t n);
 
