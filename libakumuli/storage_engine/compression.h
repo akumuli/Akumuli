@@ -239,8 +239,33 @@ struct Base128StreamReader {
 };
 
 
-/** Variable byte-width enoding that uses write
-  * combining to store control words. Should be a bit better then LEB128.
+/** VByte for DeltaDelta encoding.
+  * Delta-RLE encoding used to work great for majority of time-series. But sometimes
+  * it doesn't work because timestamps have some noise in low registers. E.g. timestamps
+  * have 1s period but each timestamp has nonzero amount of usec in it. In this case 
+  * Delta encoding will produce series of different values (probably about 4 bytes each).
+  * Run length encoding will have trouble compressing it. Actually it will make output larger
+  * then simple delta-encoding (but it will be smaller then input anyway). To solve this
+  * DeltaDelta encoding was introduced. After delta encoding step we're searching for smallest
+  * value and substract it from each element of the chunk (we're doing it for each chunk).
+  * This will make timestamps smaller (1-2 bytes instead of 3-4). But if series of timestamps
+  * is regullar Delta-RLE will achive much better results. In this case DeltaDelta will
+  * produce one value followed by series of zeroes [42, 0, 0, ... 0].
+  * 
+  * This encoding was introduced to solve this problem. It combines values into pairs (x1, x2)
+  * and writes them using one control byte. This is basically the same as LEB128 but with
+  * all control bits moved to separate location. In this case each byte stores control byte or 8-bits
+  * of value (7-bits in LEB128). This makes encoder simplier because we can get rid of most branches.
+  * Control world consist of two flags (first one corresponds to x1, the second one to x2). Each flag
+  * is a size of the value in bytes (size(x1) | (size(x3) << 4)). E.g. if both values can be stored
+  * using one byte cotrol word will be 0x11, and if first value can be stored using only one byte
+  * and second needs eight bytes control word will be 0x81.
+  * 
+  * To store effectively combination of signle value followed by the series of zeroes special shortcut
+  * was introduced. In this case lowest 4-bits of control word will store length of the first element
+  * and the highest 4-bits will be all set. E.g. 0xF5 means that first value of the sequence is stored 
+  * using 5 bytes and the rest of the sequence is zeroes (sequence size = chunk size = 16). This
+  * encoding combines upsides of both Delta-RLE and DeltaDelta encodings without its downsides.
   */
 struct VByteStreamWriter {
     // underlying memory region
@@ -290,33 +315,62 @@ struct VByteStreamWriter {
         }
         return true;
     }
+    
+    template<class TVal> bool shortcut(TVal val) {
+        int len = 8*sizeof(TVal);
+        if (val) {
+            len = __builtin_clzl(val);
+        }
+        int ctl = sizeof(TVal) - len / 8;
+        u8 ctrlword = (0xF & ctl) | 0xF0;
+        // Check size
+        if (space_left() < static_cast<size_t>(1 + ctl)) {
+            return false;
+        }
+        // Write ctrl world
+        *pos_++ = ctrlword;
+        for (int i = 0; i < ctl; i++) {
+            *pos_++ = static_cast<u8>(val);
+            val >>= 8;
+        }
+        return true;
+    }
 
     /** Put value into stream (transactional).
       */
     template <class TVal> bool tput(TVal const* iter, size_t n) {
-        assert(n % 2 == 0);
+        assert(n % 2 == 0);  // n expected to be eq 16 
         auto oldpos = pos_;
-        for (size_t i = 0; i < n; i+=2) {
-            if (!encode(iter[i], iter[i+1])) {
-                // restore old pos_ value
-                pos_ = oldpos;
-                return false;
+        // Fast path for DeltaDelta encoding
+        bool shortcut = true;
+        for (u32 i = 1; i < n; i++) {
+            if (iter[i] != 0) {
+                shortcut = false;
+                break;
+            }
+        }
+        if (shortcut) {
+            return shortcut(iter[0]);
+        } else {
+            for (u32 i = 0; i < n; i+=2) {
+                if (!encode(iter[i], iter[i+1])) {
+                    // restore old pos_ value
+                    pos_ = oldpos;
+                    return false;
+                }
             }
         }
         return true;
     }
 
-    /** Put value into stream.
-     */
+    /** Put value into stream. This method should be used after
+      * tput. The idea is that user should write most of the data
+      * using `tput` method and then the rest of the data (less then 
+      * chunksize elements) should be written using this one. If one
+      * call `put` before `tput` stream will be broken and unreadable.
+      */
     template <class TVal> bool put(TVal value) {
-        // Write value using simple LEB128 encoding
-        Base128Int<TVal> val(value);
-        unsigned char* p = val.put(pos_, end_);
-        if (pos_ == p) {
-            return false;
-        }
-        pos_ = p;
-        return true;
+        throw "not implemented";
     }
 
     template <class TVal> bool put_raw(TVal value) {
