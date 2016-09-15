@@ -149,8 +149,7 @@ struct Base128StreamWriter {
 
     bool empty() const { return begin_ == end_; }
 
-    /** Put value into stream (transactional).
-      */
+    //! Put value into stream (transactional).
     template <class TVal> bool tput(TVal const* iter, size_t n) {
         auto oldpos = pos_;
         for (size_t i = 0; i < n; i++) {
@@ -163,8 +162,7 @@ struct Base128StreamWriter {
         return commit();  // no-op
     }
 
-    /** Put value into stream.
-     */
+    //! Put value into stream.
     template <class TVal> bool put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char*   p = val.put(pos_, end_);
@@ -191,10 +189,9 @@ struct Base128StreamWriter {
 
     size_t space_left() const { return end_ - pos_; }
 
-    /** Try to allocate space inside a stream in current position without
-      * compression (needed for size prefixes).
-      * @returns pointer to the value inside the stream or nullptr
-      */
+    // Try to allocate space inside a stream in current position without
+    // compression (needed for size prefixes).
+    // @returns pointer to the value inside the stream or nullptr
     template <class T> T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
@@ -239,6 +236,118 @@ struct Base128StreamReader {
     size_t space_left() const { return end_ - pos_; }
 
     const unsigned char* pos() const { return pos_; }
+};
+
+
+/** Variable byte-width enoding that uses write
+  * combining to store control words. Should be a bit better then LEB128.
+  */
+struct VByteStreamWriter {
+    // underlying memory region
+    const u8* begin_;
+    const u8* end_;
+    u8*       pos_;
+
+    VByteStreamWriter(u8* begin, const unsigned char* end)
+        : begin_(begin)
+        , end_(end)
+        , pos_(begin) {}
+
+    VByteStreamWriter(VByteStreamWriter& other)
+        : begin_(other.begin_)
+        , end_(other.end_)
+        , pos_(other.pos_) {}
+
+    bool empty() const { return begin_ == end_; }
+
+    //! Perform combined write (TVal should be integer)
+    template<class TVal> bool encode(TVal fst, TVal snd) {
+        static_assert(sizeof(TVal) < 128, "Value is to large");
+        int fstlen = 8*sizeof(TVal);
+        int sndlen = 8*sizeof(TVal);
+        if (fst) {
+            fstlen = __builtin_clzl(fst);
+        }
+        if (snd) {
+            sndlen = __builtin_clzl(snd);
+        }
+        int fstctrl = sizeof(TVal) - fstlen / 8;  // value should be in 0-8 range
+        int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
+        u8 ctrlword = static_cast<u8>(fstctrl | (sndctrl << 4));
+        // Check size
+        if (space_left() < static_cast<size_t>(1 + fstctrl + sndctrl)) {
+            return false;
+        }
+        // Write ctrl world
+        *pos_++ = ctrlword;
+        for (int i = 0; i < fstctrl; i++) {
+            *pos_++ = static_cast<u8>(fst);
+            fst >>= 8;
+        }
+        for (int i = 0; i < sndctrl; i++) {
+            *pos_++ = static_cast<u8>(snd);
+            snd >>= 8;
+        }
+        return true;
+    }
+
+    /** Put value into stream (transactional).
+      */
+    template <class TVal> bool tput(TVal const* iter, size_t n) {
+        assert(n % 2 == 0);
+        auto oldpos = pos_;
+        for (size_t i = 0; i < n; i+=2) {
+            if (!encode(iter[i], iter[i+1])) {
+                // restore old pos_ value
+                pos_ = oldpos;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Put value into stream.
+     */
+    template <class TVal> bool put(TVal value) {
+        // Write value using simple LEB128 encoding
+        Base128Int<TVal> val(value);
+        unsigned char* p = val.put(pos_, end_);
+        if (pos_ == p) {
+            return false;
+        }
+        pos_ = p;
+        return true;
+    }
+
+    template <class TVal> bool put_raw(TVal value) {
+        if ((end_ - pos_) < sizeof(TVal)) {
+            return false;
+        }
+        *reinterpret_cast<TVal*>(pos_) = value;
+        pos_ += sizeof(value);
+        return true;
+    }
+
+    //! Commit stream
+    bool commit() { return true; }
+
+    size_t size() const { return static_cast<size_t>(pos_ - begin_); }
+
+    size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
+
+    /** Try to allocate space inside a stream in current position without
+      * compression (needed for size prefixes).
+      * @returns pointer to the value inside the stream or nullptr
+      */
+    template <class T> T* allocate() {
+        size_t sz = sizeof(T);
+        if (space_left() < sz) {
+            return nullptr;
+        }
+        T* result = reinterpret_cast<T*>(pos_);
+        pos_ += sz;
+        return result;
+    }
 };
 
 template <class Stream, class TVal> struct ZigZagStreamWriter {
