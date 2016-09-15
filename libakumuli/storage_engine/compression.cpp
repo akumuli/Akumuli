@@ -46,7 +46,7 @@ void DfcmPredictor::update(u64 value) {
 
 static const int PREDICTOR_N = 1 << 7;
 
-static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned char flag) {
+static inline bool encode_value(StreamWriterT& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
@@ -95,7 +95,7 @@ static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned
     return true;
 }
 
-static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag) {
+static inline u64 decode_value(StreamReaderT& rstream, unsigned char flag) {
     u64 diff = 0ul;
     int nbytes = (flag & 7) + 1;
     for (int i = 0; i < nbytes; i++) {
@@ -114,7 +114,7 @@ static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag)
 
 
 
-FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
+FcmStreamWriter::FcmStreamWriter(StreamWriterT& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , prev_diff_(0)
@@ -306,7 +306,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     return input.size();
 }
 
-FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
+FcmStreamReader::FcmStreamReader(StreamReaderT& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , flags_(0)

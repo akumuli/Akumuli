@@ -272,22 +272,31 @@ struct VByteStreamWriter {
     const u8* begin_;
     const u8* end_;
     u8*       pos_;
+    // tail elements
+    u32       cnt_;
+    u64       prev_;
 
     VByteStreamWriter(u8* begin, const unsigned char* end)
         : begin_(begin)
         , end_(end)
-        , pos_(begin) {}
+        , pos_(begin)
+        , cnt_(0)
+        , prev_(0)
+    {}
 
     VByteStreamWriter(VByteStreamWriter& other)
         : begin_(other.begin_)
         , end_(other.end_)
-        , pos_(other.pos_) {}
+        , pos_(other.pos_)
+        , cnt_(0)
+        , prev_(0)
+    {}
 
     bool empty() const { return begin_ == end_; }
 
     //! Perform combined write (TVal should be integer)
     template<class TVal> bool encode(TVal fst, TVal snd) {
-        static_assert(sizeof(TVal) < 128, "Value is to large");
+        static_assert(sizeof(TVal) <= 8, "Value is to large");
         int fstlen = 8*sizeof(TVal);
         int sndlen = 8*sizeof(TVal);
         if (fst) {
@@ -342,14 +351,14 @@ struct VByteStreamWriter {
         assert(n % 2 == 0);  // n expected to be eq 16 
         auto oldpos = pos_;
         // Fast path for DeltaDelta encoding
-        bool shortcut = true;
+        bool take_shortcut = true;
         for (u32 i = 1; i < n; i++) {
             if (iter[i] != 0) {
-                shortcut = false;
+                take_shortcut = false;
                 break;
             }
         }
-        if (shortcut) {
+        if (take_shortcut) {
             return shortcut(iter[0]);
         } else {
             for (u32 i = 0; i < n; i+=2) {
@@ -370,7 +379,19 @@ struct VByteStreamWriter {
       * call `put` before `tput` stream will be broken and unreadable.
       */
     template <class TVal> bool put(TVal value) {
-        throw "not implemented";
+        cnt_++;
+        union {
+            TVal val;
+            u64 uint;
+        } prev;
+        if (cnt_ % 2 != 0) {
+            prev.val = value;
+            prev_ = prev.uint;
+        } else {
+            prev.uint = prev_;
+            return encode(prev.val, value);
+        }
+        return true;
     }
 
     template <class TVal> bool put_raw(TVal value) {
@@ -404,10 +425,67 @@ struct VByteStreamWriter {
     }
 };
 
+
+//! Base128 decoder
+struct VByteStreamReader {
+    const u8* begin_;
+    const u8* end_;
+    u32 pos_;
+    int ctrl_;
+
+    VByteStreamReader(const u8* begin, const u8* end)
+        : begin_(begin)
+        , end_(end)
+        , pos_(0)
+        , ctrl_(0)
+    {}
+
+    template <class TVal> TVal next() {
+        int bytelen = 0;
+        if (pos_ % 2 == 0) {
+            // Read control byte
+            ctrl_ = read_raw<u8>();
+            bytelen = ctrl_ & 0xF;
+        } else {
+            bytelen = ctrl_ >> 4;
+        }
+        TVal acc = {};
+        int cnt = 0;
+        if (space_left() < static_cast<size_t>(bytelen)) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        while(cnt < bytelen) {
+            u8 byte = *(begin_ + pos_ + cnt);
+            acc |= (byte << (cnt*8));
+            cnt++;
+        }
+        pos_ += static_cast<size_t>(bytelen);
+        return acc;
+    }
+
+    //! Read uncompressed value from stream
+    template <class TVal> TVal read_raw() {
+        size_t sz = sizeof(TVal);
+        if (space_left() < sz) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        auto val = *reinterpret_cast<const TVal*>(begin_ + pos_);
+        pos_ += sz;
+        return val;
+    }
+
+    size_t space_left() const { return static_cast<size_t>(end_ - begin_ - pos_); }
+
+    const u8* pos() const { return begin_ + pos_; }
+};
+
+typedef Base128StreamReader StreamReaderT;
+typedef Base128StreamWriter StreamWriterT;
+
 template <class Stream, class TVal> struct ZigZagStreamWriter {
     Stream stream_;
 
-    ZigZagStreamWriter(Base128StreamWriter& stream)
+    ZigZagStreamWriter(StreamWriterT& stream)
         : stream_(stream) {}
 
     bool tput(TVal const* iter, size_t n) {
@@ -438,7 +516,7 @@ template <class Stream, class TVal> struct ZigZagStreamWriter {
 template <class Stream, class TVal> struct ZigZagStreamReader {
     Stream stream_;
 
-    ZigZagStreamReader(Base128StreamReader& stream)
+    ZigZagStreamReader(StreamReaderT& stream)
         : stream_(stream) {}
 
     TVal next() {
@@ -453,7 +531,7 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
     Stream stream_;
     TVal   prev_;
 
-    DeltaStreamWriter(Base128StreamWriter& stream)
+    DeltaStreamWriter(StreamWriterT& stream)
         : stream_(stream)
         , prev_() {}
 
@@ -486,7 +564,7 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
     Stream stream_;
     TVal   prev_;
 
-    DeltaStreamReader(Base128StreamReader& stream)
+    DeltaStreamReader(StreamReaderT& stream)
         : stream_(stream)
         , prev_() {}
 
@@ -502,11 +580,11 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
 
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
-    Base128StreamWriter& stream_;
+    StreamWriterT& stream_;
     TVal                 prev_;
     int                  put_calls_;
 
-    DeltaDeltaStreamWriter(Base128StreamWriter& stream)
+    DeltaDeltaStreamWriter(StreamWriterT& stream)
         : stream_(stream)
         , prev_()
         , put_calls_(0) {}
@@ -552,12 +630,12 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
 };
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
-    Base128StreamReader& stream_;
+    StreamReaderT& stream_;
     TVal                 prev_;
     TVal                 min_;
     int                  counter_;
 
-    DeltaDeltaStreamReader(Base128StreamReader& stream)
+    DeltaDeltaStreamReader(StreamReaderT& stream)
         : stream_(stream)
         , prev_()
         , min_()
@@ -579,12 +657,12 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
 };
 
 template <typename TVal> struct RLEStreamWriter {
-    Base128StreamWriter& stream_;
+    StreamWriterT& stream_;
     TVal                 prev_;
     TVal                 reps_;
     size_t               start_size_;
 
-    RLEStreamWriter(Base128StreamWriter& stream)
+    RLEStreamWriter(StreamWriterT& stream)
         : stream_(stream)
         , prev_()
         , reps_()
@@ -643,11 +721,11 @@ template <typename TVal> struct RLEStreamWriter {
 };
 
 template <typename TVal> struct RLEStreamReader {
-    Base128StreamReader& stream_;
+    StreamReaderT& stream_;
     TVal                 prev_;
     TVal                 reps_;
 
-    RLEStreamReader(Base128StreamReader& stream)
+    RLEStreamReader(StreamReaderT& stream)
         : stream_(stream)
         , prev_()
         , reps_() {}
@@ -711,13 +789,13 @@ typedef DfcmPredictor PredictorT;
 
 //! Double to FCM encoder
 struct FcmStreamWriter {
-    Base128StreamWriter& stream_;
+    StreamWriterT& stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
     int                  nelements_;
 
-    FcmStreamWriter(Base128StreamWriter& stream);
+    FcmStreamWriter(StreamWriterT& stream);
 
     inline std::tuple<u64, unsigned char> encode(double value);
 
@@ -732,12 +810,12 @@ struct FcmStreamWriter {
 
 //! FCM to double decoder
 struct FcmStreamReader {
-    Base128StreamReader& stream_;
+    StreamReaderT& stream_;
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
 
-    FcmStreamReader(Base128StreamReader& stream);
+    FcmStreamReader(StreamReaderT& stream);
 
     double next();
 
@@ -831,7 +909,7 @@ struct DataBlockWriter {
         CHUNK_MASK  = 15,
         HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
-    Base128StreamWriter stream_;
+    StreamWriterT       stream_;
     DeltaDeltaWriter    ts_stream_;
     FcmStreamWriter     val_stream_;
     int                 write_index_;
@@ -876,7 +954,7 @@ struct DataBlockReader {
         CHUNK_MASK = 15,
     };
     const u8*           begin_;
-    Base128StreamReader stream_;
+    StreamReaderT       stream_;
     DeltaDeltaReader    ts_stream_;
     FcmStreamReader     val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
