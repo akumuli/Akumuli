@@ -546,10 +546,6 @@ struct Dfcm2Predictor {
 
 typedef DfcmPredictor PredictorT;
 
-/** Baseline FCM stream writer. Stable and well tested
-  * compression algorithm. Fuzzed with afl.
-  */
-
 //! Double to FCM encoder
 struct FcmStreamWriter {
     Base128StreamWriter& stream_;
@@ -579,69 +575,6 @@ struct FcmStreamReader {
     u32                  iter_;
 
     FcmStreamReader(Base128StreamReader& stream);
-
-    double next();
-
-    const u8* pos() const;
-};
-
-
-/** Simplified version of the original FCM algorithm.
-  * This version of the algorithm piggybacks underlying LEB128
-  * encoding. (NOTE: LEB128 can be switched to VByte)
-  */
-
-//! Double to FCM encoder
-struct SimpleFcmStreamWriter {
-    Base128StreamWriter& stream_;
-    FcmPredictor         fcm_;
-    DfcmPredictor        dfcm_;
-    u64                  prev_diff_;
-    unsigned char        prev_flag_;
-    int                  nelements_;
-
-    SimpleFcmStreamWriter(Base128StreamWriter& stream);
-
-    inline std::tuple<u64, unsigned char> encode(double value);
-
-    bool tput(double const* values, size_t n);
-
-    bool put(double value);
-
-    size_t size() const;
-
-    bool commit();
-};
-
-//! Double to FCM encoder
-struct Simple2FcmStreamWriter {
-    Base128StreamWriter& stream_;
-    PredictorT           predictor_;
-    u64                  prev_diff_;
-    unsigned char        prev_flag_;
-    int                  nelements_;
-
-    Simple2FcmStreamWriter(Base128StreamWriter& stream);
-
-    inline std::tuple<u64, unsigned char> encode(double value);
-
-    bool tput(double const* values, size_t n);
-
-    bool put(double value);
-
-    size_t size() const;
-
-    bool commit();
-};
-
-//! FCM to double decoder
-struct SimpleFcmStreamReader {
-    Base128StreamReader& stream_;
-    PredictorT           predictor_;
-    u32                  flags_;
-    u32                  iter_;
-
-    SimpleFcmStreamReader(Base128StreamReader& stream);
 
     double next();
 
@@ -719,26 +652,9 @@ struct CompressionUtil {
 };
 
 
-// Length -> RLE -> Base128
-typedef RLEStreamWriter<u32> RLELenWriter;
-
-// Base128 -> RLE -> Length
-typedef RLEStreamReader<u32> RLELenReader;
-
-// i64 -> Delta -> ZigZag -> RLE -> Base128
-typedef RLEStreamWriter<i64> __RLEWriter;
-typedef ZigZagStreamWriter<__RLEWriter, i64>   __ZigZagWriter;
-typedef DeltaStreamWriter<__ZigZagWriter, i64> ZDeltaRLEWriter;
-
-// Base128 -> RLE -> ZigZag -> Delta -> i64
-typedef RLEStreamReader<i64> __RLEReader;
-typedef ZigZagStreamReader<__RLEReader, i64>   __ZigZagReader;
-typedef DeltaStreamReader<__ZigZagReader, i64> ZDeltaRLEReader;
-
-// u64 -> Delta -> RLE -> Base128
 typedef DeltaStreamWriter<RLEStreamWriter<u64>, u64> DeltaRLEWriter;
-// Base128 -> RLE -> Delta -> u64
 typedef DeltaStreamReader<RLEStreamReader<u64>, u64> DeltaRLEReader;
+
 
 typedef DeltaDeltaStreamReader<16, u64> DeltaDeltaReader;
 typedef DeltaDeltaStreamWriter<16, u64> DeltaDeltaWriter;
@@ -754,7 +670,7 @@ struct DataBlockWriter {
     };
     Base128StreamWriter stream_;
     DeltaDeltaWriter    ts_stream_;
-    Simple2FcmStreamWriter     val_stream_;
+    FcmStreamWriter     val_stream_;
     int                 write_index_;
     aku_Timestamp       ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
     double              val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
