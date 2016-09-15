@@ -231,7 +231,7 @@ bool FcmStreamWriter::commit() {
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         Base128StreamWriter&       wstream)
+                                         StreamWriterT &wstream)
 {
     PredictorT predictor(PREDICTOR_N);
     u64 prev_diff = 0;
@@ -335,7 +335,7 @@ double FcmStreamReader::next() {
 
 const u8 *FcmStreamReader::pos() const { return stream_.pos(); }
 
-void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
+void CompressionUtil::decompress_doubles(StreamReaderT &rstream,
                                          size_t                   numvalues,
                                          std::vector<double>     *output)
 {
@@ -391,7 +391,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
   */
 
 template<class StreamType, class Fn>
-aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
+aku_Status write_to_stream(StreamWriterT& stream, const Fn& writer) {
     u32* length_prefix = stream.allocate<u32>();
     StreamType wstream(stream);
     writer(wstream);
@@ -410,7 +410,7 @@ aku_Status CompressionUtil::encode_chunk( u32           *n_elements
     aku_MemRange available_space = writer->allocate();
     unsigned char* begin = (unsigned char*)available_space.address;
     unsigned char* end = begin + (available_space.length - 2*sizeof(u32));  // 2*sizeof(aku_EntryOffset)
-    Base128StreamWriter stream(begin, end);
+    StreamWriterT stream(begin, end);
 
     try {
         // ParamId stream
@@ -450,7 +450,7 @@ aku_Status CompressionUtil::encode_chunk( u32           *n_elements
 }
 
 template<class Stream, class Fn>
-void read_from_stream(Base128StreamReader& reader, const Fn& func) {
+void read_from_stream(StreamReaderT& reader, const Fn& func) {
     u32 size_prefix = reader.read_raw<u32>();
     Stream stream(reader);
     func(stream, size_prefix);
@@ -462,7 +462,7 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
                                         , u32             nelements)
 {
     try {
-        Base128StreamReader rstream(pbegin, pend);
+        StreamReaderT rstream(pbegin, pend);
         // Paramids
         read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, u32 size) {
             for (auto i = nelements; i --> 0;) {

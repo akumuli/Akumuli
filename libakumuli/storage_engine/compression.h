@@ -479,8 +479,8 @@ struct VByteStreamReader {
     const u8* pos() const { return begin_ + pos_; }
 };
 
-typedef Base128StreamReader StreamReaderT;
-typedef Base128StreamWriter StreamWriterT;
+typedef VByteStreamReader StreamReaderT;
+typedef VByteStreamWriter StreamWriterT;
 
 template <class Stream, class TVal> struct ZigZagStreamWriter {
     Stream stream_;
@@ -868,7 +868,7 @@ struct CompressionUtil {
       * @param params array of parameter ids
       * @param buffer resulting byte array
       */
-    static size_t compress_doubles(const std::vector<double>& input, Base128StreamWriter& wstream);
+    static size_t compress_doubles(const std::vector<double>& input, StreamWriterT& wstream);
 
     /** Decompress list of doubles.
       * @param buffer input data
@@ -876,7 +876,7 @@ struct CompressionUtil {
       * @param params list of parameter ids
       * @param output resulting array
       */
-    static void decompress_doubles(Base128StreamReader& rstream, size_t numvalues,
+    static void decompress_doubles(StreamReaderT& rstream, size_t numvalues,
                                    std::vector<double>* output);
 
     /** Convert from chunk order to time order.
