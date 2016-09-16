@@ -892,6 +892,20 @@ struct CompressionUtil {
     static bool convert_from_time_order(const UncompressedChunk& header, UncompressedChunk* out);
 };
 
+// Length -> RLE -> Base128
+typedef RLEStreamWriter<u32> RLELenWriter;
+// Base128 -> RLE -> Length
+typedef RLEStreamReader<u32> RLELenReader;
+
+// i64 -> Delta -> ZigZag -> RLE -> Base128
+typedef RLEStreamWriter<i64> __RLEWriter;
+typedef ZigZagStreamWriter<__RLEWriter, i64>   __ZigZagWriter;
+typedef DeltaStreamWriter<__ZigZagWriter, i64> ZDeltaRLEWriter;
+
+// Base128 -> RLE -> ZigZag -> Delta -> i64
+typedef RLEStreamReader<i64> __RLEReader;
+typedef ZigZagStreamReader<__RLEReader, i64>   __ZigZagReader;
+typedef DeltaStreamReader<__ZigZagReader, i64> ZDeltaRLEReader;
 
 typedef DeltaStreamWriter<RLEStreamWriter<u64>, u64> DeltaRLEWriter;
 typedef DeltaStreamReader<RLEStreamReader<u64>, u64> DeltaRLEReader;
