@@ -46,7 +46,8 @@ void DfcmPredictor::update(u64 value) {
 
 static const int PREDICTOR_N = 1 << 7;
 
-static inline bool encode_value(StreamWriterT& wstream, u64 diff, unsigned char flag) {
+template<class StreamT>
+static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
@@ -95,11 +96,12 @@ static inline bool encode_value(StreamWriterT& wstream, u64 diff, unsigned char 
     return true;
 }
 
-static inline u64 decode_value(StreamReaderT& rstream, unsigned char flag) {
+template<class StreamT>
+static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
     u64 diff = 0ul;
     int nbytes = (flag & 7) + 1;
     for (int i = 0; i < nbytes; i++) {
-        u64 delta = rstream.read_raw<unsigned char>();
+        u64 delta = rstream.template read_raw<unsigned char>();
         diff |= delta << (i*8);
     }
     int shift_width = (64 - nbytes*8)*(flag >> 3);
@@ -231,7 +233,7 @@ bool FcmStreamWriter::commit() {
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         StreamWriterT &wstream)
+                                         Base128StreamWriter &wstream)
 {
     PredictorT predictor(PREDICTOR_N);
     u64 prev_diff = 0;
@@ -335,7 +337,7 @@ double FcmStreamReader::next() {
 
 const u8 *FcmStreamReader::pos() const { return stream_.pos(); }
 
-void CompressionUtil::decompress_doubles(StreamReaderT &rstream,
+void CompressionUtil::decompress_doubles(Base128StreamReader &rstream,
                                          size_t                   numvalues,
                                          std::vector<double>     *output)
 {
@@ -391,7 +393,7 @@ void CompressionUtil::decompress_doubles(StreamReaderT &rstream,
   */
 
 template<class StreamType, class Fn>
-aku_Status write_to_stream(StreamWriterT& stream, const Fn& writer) {
+aku_Status write_to_stream(Base128StreamWriter& stream, const Fn& writer) {
     u32* length_prefix = stream.allocate<u32>();
     StreamType wstream(stream);
     writer(wstream);
@@ -410,7 +412,7 @@ aku_Status CompressionUtil::encode_chunk( u32           *n_elements
     aku_MemRange available_space = writer->allocate();
     unsigned char* begin = (unsigned char*)available_space.address;
     unsigned char* end = begin + (available_space.length - 2*sizeof(u32));  // 2*sizeof(aku_EntryOffset)
-    StreamWriterT stream(begin, end);
+    Base128StreamWriter stream(begin, end);
 
     try {
         // ParamId stream
@@ -450,7 +452,7 @@ aku_Status CompressionUtil::encode_chunk( u32           *n_elements
 }
 
 template<class Stream, class Fn>
-void read_from_stream(StreamReaderT& reader, const Fn& func) {
+void read_from_stream(Base128StreamReader& reader, const Fn& func) {
     u32 size_prefix = reader.read_raw<u32>();
     Stream stream(reader);
     func(stream, size_prefix);
@@ -462,7 +464,7 @@ aku_Status CompressionUtil::decode_chunk( UncompressedChunk   *header
                                         , u32             nelements)
 {
     try {
-        StreamReaderT rstream(pbegin, pend);
+        Base128StreamReader rstream(pbegin, pend);
         // Paramids
         read_from_stream<DeltaRLEReader>(rstream, [&](DeltaRLEReader& reader, u32 size) {
             for (auto i = nelements; i --> 0;) {
