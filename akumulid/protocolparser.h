@@ -18,7 +18,7 @@
 
 // Using old-style boost.coroutines
 #define BOOST_COROUTINES_BIDIRECT
-#include <boost/coroutine/all.hpp>
+#include <boost/coroutine/asymmetric_coroutine.hpp>
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -43,8 +43,12 @@ struct ProtocolParserError : StreamError {
     ProtocolParserError(std::string line, int pos);
 };
 
-typedef boost::coroutines::coroutine<void()> Coroutine;
-typedef typename Coroutine::caller_type      Caller;
+// TODO: On clang, gives "error: destructor called on non-final boost::coroutines::detail::push_coroutine_object<...>
+// that has virtual functions but non-virtual destructor [-Werror,-Wdelete-non-virtual-dtor]"
+// on obj->~obj_t();
+// at /include/boost/coroutine/detail/push_coroutine_object.hpp:81:9
+typedef typename boost::coroutines::asymmetric_coroutine<void()>::push_type Coroutine;
+typedef typename boost::coroutines::asymmetric_coroutine<void()>::pull_type Caller;
 
 
 //! Stop iteration exception
