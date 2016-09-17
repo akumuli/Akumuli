@@ -266,7 +266,6 @@ BOOST_AUTO_TEST_CASE(Test_rle) {
     test_stream_read(rle_reader);
 }
 
-/*
 BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
 {
     // this replicates real problem //
@@ -281,7 +280,7 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
 
     ByteVector data;
     data.resize(100000);
-    StreamWriterT bstream(data.data(), data.data() + data.size());
+    Base128StreamWriter bstream(data.data(), data.data() + data.size());
 
     DeltaRLEWriter wstream(bstream);
     for (auto off: actual) {
@@ -290,7 +289,7 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
     wstream.commit();
 
     std::vector<u32> expected;
-    StreamReaderT rstream(data.data(), data.data() + data.size());
+    Base128StreamReader rstream(data.data(), data.data() + data.size());
     DeltaRLEReader rlestream(rstream);
     for (int i = 0; i < 10000; i++) {
         expected.push_back((u32)rlestream.next());
@@ -302,11 +301,11 @@ BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
 void test_doubles_compression(std::vector<double> input) {
     ByteVector buffer;
     buffer.resize(input.size()*10);
-    StreamWriterT wstream(buffer.data(), buffer.data() + buffer.size());
+    Base128StreamWriter wstream(buffer.data(), buffer.data() + buffer.size());
     size_t nblocks = CompressionUtil::compress_doubles(input, wstream);
     std::vector<double> output;
     output.resize(input.size());
-    StreamReaderT rstream(buffer.data(), buffer.data() + buffer.size());
+    Base128StreamReader rstream(buffer.data(), buffer.data() + buffer.size());
     CompressionUtil::decompress_doubles(rstream, nblocks, &output);
 
     BOOST_REQUIRE_EQUAL(input.size(), output.size());
@@ -413,19 +412,29 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
     test_float_compression(-1E100);
 }
 
-void test_block_compression(double start, unsigned N=10000) {
+void test_block_compression(double start, unsigned N=10000, bool regullar=false) {
     RandomWalk rwalk(start, 1., .11);
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
     std::vector<u8> block;
     block.resize(4096);
 
-    aku_Timestamp its = rand();
-    for (unsigned i = 0; i < N; i++) {
-        values.push_back(rwalk.generate());
-        int skew = rand() % 100;
-        its += skew;
-        timestamps.push_back(its);
+    if (regullar) {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        aku_Timestamp stp = static_cast<aku_Timestamp>(rand() % 1000);
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            its += stp;
+            timestamps.push_back(its);
+        }
+    } else {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            u32 skew = rand() % 100;
+            its += skew;
+            timestamps.push_back(its);
+        }
     }
 
     // compress
@@ -490,44 +499,84 @@ void test_block_compression(double start, unsigned N=10000) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_00) {
     test_block_compression(0);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_1) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_01) {
     test_block_compression(1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_2) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_02) {
     test_block_compression(1E100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_03) {
     test_block_compression(-1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_04) {
     test_block_compression(-1E100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_5) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_05) {
     test_block_compression(0, 1);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_6) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_06) {
     test_block_compression(0, 16);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_7) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_07) {
     test_block_compression(0, 100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_8) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_08) {
     test_block_compression(0, 0x100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_9) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_09) {
     test_block_compression(0, 0x111);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_10) {
+    test_block_compression(0, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_11) {
+    test_block_compression(1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_12) {
+    test_block_compression(1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_13) {
+    test_block_compression(-1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_14) {
+    test_block_compression(-1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_15) {
+    test_block_compression(0, 1, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_16) {
+    test_block_compression(0, 16, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_17) {
+    test_block_compression(0, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_18) {
+    test_block_compression(0, 0x100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_19) {
+    test_block_compression(0, 0x111, true);
 }
 
 void test_chunk_header_compression(double start) {
@@ -633,4 +682,3 @@ BOOST_AUTO_TEST_CASE(Test_chunk_compression_3) {
 BOOST_AUTO_TEST_CASE(Test_chunk_compression_4) {
     test_chunk_header_compression(-1E100);
 }
-*/
