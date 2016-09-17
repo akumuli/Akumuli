@@ -43,10 +43,6 @@ struct ProtocolParserError : StreamError {
     ProtocolParserError(std::string line, int pos);
 };
 
-// TODO: On clang, gives "error: destructor called on non-final boost::coroutines::detail::push_coroutine_object<...>
-// that has virtual functions but non-virtual destructor [-Werror,-Wdelete-non-virtual-dtor]"
-// on obj->~obj_t();
-// at /include/boost/coroutine/detail/push_coroutine_object.hpp:81:9
 typedef typename boost::coroutines::asymmetric_coroutine<void()>::push_type Coroutine;
 typedef typename boost::coroutines::asymmetric_coroutine<void()>::pull_type Caller;
 
