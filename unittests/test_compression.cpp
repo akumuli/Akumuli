@@ -235,17 +235,17 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
     data.resize(1*1024*1024);  // 1MB of storage
 
     {
-        StreamWriterT wstream(data.data(), data.data() + data.size());
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
         DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-        StreamReaderT rstream(data.data(), data.data() + data.size());
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
         DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
         test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, false);
     }
     {
-        StreamWriterT wstream(data.data(), data.data() + data.size());
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
         DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-        StreamReaderT rstream(data.data(), data.data() + data.size());
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
         DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
         test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, true);
@@ -372,7 +372,7 @@ void test_float_compression(double start) {
     block.resize(N*9, 0);
 
     // Compress
-    StreamWriterT wstream(block.data(), block.data() + block.size());
+    VByteStreamWriter wstream(block.data(), block.data() + block.size());
     FcmStreamWriter writer(wstream);
     for (int ix = 0; ix < N; ix++) {
         double val = rwalk.generate();
@@ -382,7 +382,7 @@ void test_float_compression(double start) {
     writer.commit();
 
     // Decompress
-    StreamReaderT rstream(block.data(), block.data() + block.size());
+    VByteStreamReader rstream(block.data(), block.data() + block.size());
     FcmStreamReader reader(rstream);
     for (int ix = 0; ix < N; ix++) {
         double val = reader.next();

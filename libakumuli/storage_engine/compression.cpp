@@ -116,7 +116,7 @@ static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
 
 
 
-FcmStreamWriter::FcmStreamWriter(StreamWriterT& stream)
+FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , prev_diff_(0)
@@ -308,7 +308,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     return input.size();
 }
 
-FcmStreamReader::FcmStreamReader(StreamReaderT& stream)
+FcmStreamReader::FcmStreamReader(VByteStreamReader& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , flags_(0)

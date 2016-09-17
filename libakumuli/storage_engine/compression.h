@@ -528,11 +528,6 @@ struct VByteStreamReader {
     const u8* pos() const { return pos_; }
 };
 
-typedef VByteStreamReader StreamReaderT;
-typedef VByteStreamWriter StreamWriterT;
-//typedef Base128StreamReader StreamReaderT;
-//typedef Base128StreamWriter StreamWriterT;
-
 template <class Stream, class TVal> struct ZigZagStreamWriter {
     Stream stream_;
 
@@ -843,13 +838,13 @@ typedef DfcmPredictor PredictorT;
 
 //! Double to FCM encoder
 struct FcmStreamWriter {
-    StreamWriterT& stream_;
+    VByteStreamWriter& stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
     int                  nelements_;
 
-    FcmStreamWriter(StreamWriterT& stream);
+    FcmStreamWriter(VByteStreamWriter& stream);
 
     inline std::tuple<u64, unsigned char> encode(double value);
 
@@ -864,12 +859,12 @@ struct FcmStreamWriter {
 
 //! FCM to double decoder
 struct FcmStreamReader {
-    StreamReaderT& stream_;
+    VByteStreamReader& stream_;
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
 
-    FcmStreamReader(StreamReaderT& stream);
+    FcmStreamReader(VByteStreamReader& stream);
 
     double next();
 
@@ -977,7 +972,7 @@ struct DataBlockWriter {
         CHUNK_MASK  = 15,
         HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
-    StreamWriterT       stream_;
+    VByteStreamWriter   stream_;
     DeltaDeltaWriter    ts_stream_;
     FcmStreamWriter     val_stream_;
     int                 write_index_;
@@ -1022,7 +1017,7 @@ struct DataBlockReader {
         CHUNK_MASK = 15,
     };
     const u8*           begin_;
-    StreamReaderT       stream_;
+    VByteStreamReader   stream_;
     DeltaDeltaReader    ts_stream_;
     FcmStreamReader     val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
