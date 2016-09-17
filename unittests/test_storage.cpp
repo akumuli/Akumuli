@@ -40,6 +40,8 @@ struct AkumuliInitializer {
     }
 };
 
+static AkumuliInitializer initializer;
+
 std::shared_ptr<MetadataStorage> create_metadatastorage() {
     // Create in-memory sqlite database.
     std::shared_ptr<MetadataStorage> meta;

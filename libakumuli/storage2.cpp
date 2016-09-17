@@ -72,6 +72,12 @@ static apr_status_t create_metadata_page( const char* file_name
 
 //--------- StorageSession ----------
 
+StorageSession::StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session)
+    : storage_(storage)
+    , session_(session)
+{
+}
+
 aku_Status StorageSession::write(aku_Sample const& sample) {
     using namespace StorageEngine;
     std::vector<u64> rpoints;
@@ -136,14 +142,13 @@ Storage::Storage(const char* path)
     : done_{0}
     , close_barrier_(2)
 {
-    std::unique_ptr<MetadataStorage> meta;
-    meta.reset(new MetadataStorage(path));
+    metadata_.reset(new MetadataStorage(path));
 
     std::string metapath;
     std::vector<std::string> volpaths;
 
     // first volume is a metavolume
-    auto volumes = meta->get_volumes();
+    auto volumes = metadata_->get_volumes();
     for (auto vol: volumes) {
         std::string path;
         int index;
@@ -156,7 +161,7 @@ Storage::Storage(const char* path)
     }
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
-    cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_, std::move(meta));
+    cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
 
     start_sync_worker();
 }
@@ -216,7 +221,7 @@ void Storage::_update_rescue_points(aku_ParamId id, std::vector<StorageEngine::L
 
 std::shared_ptr<StorageSession> Storage::create_write_session() {
     std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(cstore_);
-    return std::make_shared<StorageSession>(session);
+    return std::make_shared<StorageSession>(shared_from_this(), session);
 }
 
 aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
