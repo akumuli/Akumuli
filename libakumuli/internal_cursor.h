@@ -19,21 +19,41 @@
 
 #pragma once
 
+#include <boost/version.hpp>
+
+#if BOOST_VERSION <= 105500
+
 #define BOOST_COROUTINES_BIDIRECT
+#include <boost/coroutine/all.hpp>
+
+namespace Akumuli {
+
+struct InternalCursor;
+
+typedef boost::coroutines::coroutine<void(InternalCursor*)> Coroutine;
+typedef typename Coroutine::caller_type Caller;
+
+}
+
+#else
+
 #include <boost/coroutine/asymmetric_coroutine.hpp>
+
+namespace Akumuli {
+
+struct InternalCursor;
+
+typedef typename boost::coroutines::asymmetric_coroutine<InternalCursor*>::push_type Coroutine;
+typedef typename boost::coroutines::asymmetric_coroutine<InternalCursor*>::pull_type Caller;
+
+}
+
+#endif
 
 #include "akumuli.h"
 
 namespace Akumuli {
 
-
-struct InternalCursor;
-
-
-// NOTE: obsolete
-typedef typename boost::coroutines::asymmetric_coroutine<InternalCursor*>::push_type Coroutine;
-// NOTE: obsolete
-typedef typename boost::coroutines::asymmetric_coroutine<InternalCursor*>::pull_type Caller;
 
 /** Interface used by different search procedures
  *  in akumuli. Must be used only inside library.
