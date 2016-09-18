@@ -5,3 +5,5 @@ tags
 Makefile
 CMakeFiles/
 CMakeCache.txt
+/.idea
+/build
