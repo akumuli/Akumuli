@@ -26,7 +26,7 @@
 #include <apr_errno.h>
 #include <stdint.h>
 
-#ifdef __unix__
+#if !defined _WIN32
 #ifdef __cplusplus
 #define AKU_EXPORT extern "C" __attribute__((visibility("default")))
 #else
