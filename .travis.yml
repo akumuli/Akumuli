@@ -1,5 +1,5 @@
 sudo: required
-dist: wily
+dist: trusty
 language: python
 compiler: gcc
 
