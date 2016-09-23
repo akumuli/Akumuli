@@ -185,9 +185,9 @@ struct Base128StreamWriter {
     //! Commit stream
     bool commit() { return true; }
 
-    size_t size() const { return pos_ - begin_; }
+    size_t size() const { return static_cast<size_t>(pos_ - begin_); }
 
-    size_t space_left() const { return end_ - pos_; }
+    size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
 
     // Try to allocate space inside a stream in current position without
     // compression (needed for size prefixes).
@@ -629,7 +629,7 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
 
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
-    VByteStreamWriter& stream_;
+    VByteStreamWriter&   stream_;
     TVal                 prev_;
     int                  put_calls_;
 
@@ -679,7 +679,7 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
 };
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
-    VByteStreamReader& stream_;
+    VByteStreamReader&   stream_;
     TVal                 prev_;
     TVal                 min_;
     int                  counter_;
@@ -838,7 +838,7 @@ typedef DfcmPredictor PredictorT;
 
 //! Double to FCM encoder
 struct FcmStreamWriter {
-    VByteStreamWriter& stream_;
+    VByteStreamWriter&   stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
@@ -859,7 +859,7 @@ struct FcmStreamWriter {
 
 //! FCM to double decoder
 struct FcmStreamReader {
-    VByteStreamReader& stream_;
+    VByteStreamReader&   stream_;
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
