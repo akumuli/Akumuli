@@ -195,8 +195,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_add_values_2) {
 // Test read queries
 
 void fill_data(std::shared_ptr<StorageSession> session, aku_Timestamp begin, aku_Timestamp end, std::vector<std::string> const& names) {
-    aku_Timestamp ts = begin;
-    while (true) {
+    for (aku_Timestamp ts = begin; ts < end; ts++) {
         for (auto it: names) {
             aku_Sample sample;
             sample.timestamp = ts;
@@ -210,13 +209,6 @@ void fill_data(std::shared_ptr<StorageSession> session, aku_Timestamp begin, aku
             if (status != AKU_SUCCESS) {
                 BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             }
-        }
-        if (end > begin) {
-            if (ts >= end) break;
-            ts++;
-        } else {
-            if (ts <= end) break;
-            ts--;
         }
     }
 }
@@ -261,7 +253,7 @@ std::string make_scan_query(aku_Timestamp begin, aku_Timestamp end) {
     return str.str();
 }
 
-void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end) {
+void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end/*, StorageEngine::OrderBy order*/) {
     std::vector<std::string> series_names = {
         "test key=0",
         "test key=1",
@@ -276,7 +268,7 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end) {
     };
     auto storage = create_storage();
     auto session = storage->create_write_session();
-    fill_data(session, begin, end, series_names);
+    fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
     Caller caller;
     CursorMock cursor;
     auto query = make_scan_query(begin, end);
@@ -287,14 +279,27 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end) {
     if (begin < end) {
         expected_size = (end - begin)*series_names.size();
     } else {
-        expected_size = (begin - end)*series_names.size();
+        // because we will read data in (end, begin] range but
+        // fill data in [end, begin) range
+        expected_size = (begin - end - 1)*series_names.size();
     }
     BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
 }
 
 
-BOOST_AUTO_TEST_CASE(Test_storage_query_0) {
-    test_storage_read_query(100, 200);
+BOOST_AUTO_TEST_CASE(Test_storage_query) {
+    std::vector<std::tuple<aku_Timestamp, aku_Timestamp>> input = {
+        std::make_tuple(100ul, 200ul),
+        std::make_tuple(200ul, 100ul),
+        std::make_tuple(1000ul, 2000ul),
+        std::make_tuple(2000ul, 1000ul),
+    };
+    for (auto tup: input) {
+        aku_Timestamp begin;
+        aku_Timestamp end;
+        std::tie(begin, end) = tup;
+        test_storage_read_query(begin, end);
+    }
 }
 
 // Test reopen
