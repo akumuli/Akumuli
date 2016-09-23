@@ -191,3 +191,111 @@ BOOST_AUTO_TEST_CASE(Test_storage_add_values_2) {
 
     BOOST_REQUIRE_EQUAL(sample.paramid, sample.paramid);
 }
+
+// Test read queries
+
+void fill_data(std::shared_ptr<StorageSession> session, aku_Timestamp begin, aku_Timestamp end, std::vector<std::string> const& names) {
+    aku_Timestamp ts = begin;
+    while (true) {
+        for (auto it: names) {
+            aku_Sample sample;
+            sample.timestamp = ts;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.float64 = double(ts)/10.0;
+            auto status = session->init_series_id(it.data(), it.data() + it.size(), &sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            }
+            status = session->write(sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            }
+        }
+        if (end > begin) {
+            if (ts >= end) break;
+            ts++;
+        } else {
+            if (ts <= end) break;
+            ts--;
+        }
+    }
+}
+
+struct CursorMock : InternalCursor {
+    bool done;
+    std::vector<aku_Sample> samples;
+    aku_Status error;
+
+    CursorMock() {
+        done = false;
+        error = AKU_SUCCESS;
+    }
+
+    virtual bool put(Caller&, const aku_Sample &val) override {
+        if (done) {
+            BOOST_FAIL("Cursor invariant broken");
+        }
+        samples.push_back(val);
+        return true;
+    }
+
+    virtual void complete(Caller&) override {
+        if (done) {
+            BOOST_FAIL("Cursor invariant broken");
+        }
+        done = true;
+    }
+
+    virtual void set_error(Caller &, aku_Status error_code) override {
+        if (done) {
+            BOOST_FAIL("Cursor invariant broken");
+        }
+        done = true;
+        error = error_code;
+    }
+};
+
+std::string make_scan_query(aku_Timestamp begin, aku_Timestamp end) {
+    std::stringstream str;
+    str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "}}";
+    return str.str();
+}
+
+void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end) {
+    std::vector<std::string> series_names = {
+        "test key=0",
+        "test key=1",
+        "test key=2",
+        "test key=3",
+        "test key=4",
+        "test key=5",
+        "test key=6",
+        "test key=7",
+        "test key=8",
+        "test key=9",
+    };
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, begin, end, series_names);
+    Caller caller;
+    CursorMock cursor;
+    auto query = make_scan_query(begin, end);
+    session->query(caller, &cursor, query.c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    size_t expected_size;
+    if (begin < end) {
+        expected_size = (end - begin)*series_names.size();
+    } else {
+        expected_size = (begin - end)*series_names.size();
+    }
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_storage_query_0) {
+    test_storage_read_query(100, 200);
+}
+
+// Test reopen
+

@@ -254,6 +254,7 @@ add_executable(
     ../libakumuli/storage2.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/datetime.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
@@ -265,6 +266,19 @@ add_executable(
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/query_processing/queryparser.cpp
+    # query processor
+    ../libakumuli/queryprocessor.cpp
+    ../libakumuli/queryprocessor_framework.cpp
+    ../libakumuli/saxencoder.cpp
+    ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
+    ../libakumuli/query_processing/anomaly.cpp
+    ../libakumuli/query_processing/sax.cpp
+    ../libakumuli/query_processing/paa.cpp
+    ../libakumuli/query_processing/filterbyid.cpp
+    ../libakumuli/query_processing/randomsamplingnode.cpp
+    ../libakumuli/query_processing/limiter.cpp
+
 )
 
 target_link_libraries(

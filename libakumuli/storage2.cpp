@@ -34,6 +34,42 @@
 
 namespace Akumuli {
 
+// Utility functions & classes //
+
+struct TerminalNode : QP::Node {
+
+    Caller &caller;
+    InternalCursor* cursor;
+
+    TerminalNode(Caller& ca, InternalCursor* cur)
+        : caller(ca)
+        , cursor(cur)
+    {
+    }
+
+    // Node interface
+
+    void complete() {
+        cursor->complete(caller);
+    }
+
+    bool put(const aku_Sample& sample) {
+        if (sample.payload.type != aku_PData::MARGIN) {
+            return cursor->put(caller, sample);
+        }
+        return true;
+    }
+
+    void set_error(aku_Status status) {
+        cursor->set_error(caller, status);
+        throw std::runtime_error("search error detected");
+    }
+
+    int get_requirements() const {
+        return TERMINAL;
+    }
+};
+
 // Standalone functions //
 
 /** This function creates metadata file - root of the storage system.
@@ -133,6 +169,10 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
     }
     memcpy(buffer, name.first, static_cast<size_t>(name.second));
     return name.second;
+}
+
+void StorageSession::query(Caller& caller, InternalCursor* cur, const char* query) const {
+    storage_->query(caller, cur, query);
 }
 
 
@@ -262,17 +302,35 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     return str.second;
 }
 
+// TODO: get rid of this
+static void logger_adapter(aku_LogLevel level, const char* msg) {
+    Logger::msg(level, msg);
+}
+
 void Storage::query(Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
     // Parse query
     try {
         std::lock_guard<std::mutex> guard(lock_);
         // the code here can throw a QueryParser exception
-        //auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
+        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
         std::shared_ptr<IQueryProcessor> query_processor;
         try {
-            throw QueryParserError("Not implemented");
-            //query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_);
+            query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_, &logger_adapter);
+
+            // Create ReshapeRequest from QueryProcessor instance
+            StorageEngine::ReshapeRequest req;
+            req.select.ids = query_processor->filter().get_ids();
+            req.select.begin = query_processor->range().begin();
+            req.select.end = query_processor->range().end();
+            req.order_by = StorageEngine::OrderBy::SERIES;  // Only this case is implemented now
+            req.group_by.enabled = false;  // group by is not implemneted properly yet
+
+            // Access column store
+            if (query_processor->start()) {
+                cstore_->query(req, *query_processor);
+                query_processor->stop();
+            }
         } catch (const QueryParserError& qpe) {
             Logger::msg(AKU_LOG_ERROR, qpe.what());
             cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);

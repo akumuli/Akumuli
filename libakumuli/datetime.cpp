@@ -76,8 +76,8 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
         aku_Timestamp ts;
         char* end;
         ts = strtoull(iso_str, &end, 10);
-        if (errno) {
-            BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
+        if (errno == ERANGE) {
+            BadDateTimeFormat error("can't parse unix-timestamp from string");
             BOOST_THROW_EXCEPTION(error);
         }
         return ts;
