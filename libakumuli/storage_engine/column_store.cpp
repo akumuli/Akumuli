@@ -4,6 +4,9 @@
 #include "query_processing/queryparser.h"
 
 #include <boost/property_tree/ptree.hpp>
+#include <boost/heap/skew_heap.hpp>
+#include <boost/range.hpp>
+#include <boost/range/iterator_range.hpp>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -102,6 +105,121 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
         dest[i].payload.float64 = destval_vec[i];
     }
     return std::tie(status, accsz);
+}
+
+
+struct MergeIterator : RowIterator {
+    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<aku_ParamId> ids_;
+
+    MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) override;
+};
+
+MergeIterator::MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+    : iters_(it)
+    , ids_(ids)
+{
+}
+
+template<int dir>  // 0 - forward, 1 - backward
+struct Predicate {
+    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    typedef std::tuple<KeyType, double, int> HeapItem;
+
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        if (dir == 0) {
+            return std::get<0>(lhs) < std::get<0>(rhs);
+        }
+        return std::get<0>(lhs) > std::get<0>(rhs);
+    }
+};
+
+template<class Consumer>
+void kway_merge(std::vector<aku_ParamId> ids, std::vector<std::unique_ptr<NBTreeIterator>>& runs, Consumer& cons) {
+    static const size_t RANGE_SIZE = 1024;
+    struct Range {
+        std::vector<aku_Timestamp> ts;
+        std::vector<double> xs;
+        aku_ParamId id;
+    };
+
+    std::vector<Range> ranges;
+    for (size_t i = 0; i < runs.size(); i++) {
+        Range range;
+        range.ts.resize(RANGE_SIZE);
+        range.xs.resize(RANGE_SIZE);
+        range.id = ids[i];
+        aku_Status status;
+        size_t outsize;
+        std::tie(status, outsize) = runs[i]->read(range.ts.data(), range.xs.data(), RANGE_SIZE);
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize != 0)) {
+            ranges.push_back(std::move(range));
+        }
+        if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            // TODO: transform into error
+            AKU_PANIC("merge error");
+        }
+    }
+
+    typedef Predicate<0> Comp;
+    typedef typename Comp::HeapItem HeapItem;
+    typedef typename Comp::KeyType KeyType;
+    typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
+    Heap heap;
+
+    auto make_heap_key = [](Range const& r) {
+        return std::make_tuple(r.ts.front(), r.id);
+    };
+
+    int index = 0;
+    for(auto& range: ranges) {
+        if (!range.empty()) {
+            KeyType value = make_heap_key(range);
+            range.advance_begin(1);
+            heap.push(std::make_tuple(value, range.xs.front(), index));
+        }
+        index++;
+    }
+
+    enum {
+        KEY = 0,
+        VALUE = 1,
+        INDEX = 2,
+        TIME = 0,
+        ID = 1,
+    };
+
+    while(!heap.empty()) {
+        HeapItem item = heap.top();
+        KeyType point = std::get<KEY>(item);
+        int index = std::get<INDEX>(item);
+        aku_Sample sample;
+        sample.paramid = std::get<ID>(point);
+        sample.timestamp = std::get<TIME>(point);
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.float64 = std::get<VALUE>(item);
+        if (!cons(sample)) {
+            // Interrupted
+            return;
+        }
+        heap.pop();
+        if (ranges[index].empty()) {
+            // try to `read` from iterator once again
+        }
+        if (!ranges[index].empty()) {
+            KeyType point = make_heap_key(ranges[index]);
+            ranges[index].advance_begin(1);
+            heap.push(std::make_tuple(point, ranges[index].xs.front(), index));
+        }
+    }
+    if (heap.empty()) {
+        runs.clear();
+    }
+}
+
+std::tuple<aku_Status, size_t> MergeIterator::read(aku_Sample *dest, size_t size) {
+    AKU_PANIC("Not implemented");
 }
 
 // ////////////// //
