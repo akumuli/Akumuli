@@ -17,6 +17,8 @@
 
 #include "saxencoder.h"
 #include <map>
+#include <cmath>
+#include <vector>
 
 namespace Akumuli {
 namespace SAX {

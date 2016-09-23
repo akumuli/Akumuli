@@ -17,8 +17,6 @@
 #pragma once
 
 // Using old-style boost.coroutines
-#define BOOST_COROUTINES_BIDIRECT
-#include <boost/coroutine/all.hpp>
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -28,6 +26,33 @@
 #include "protocol_consumer.h"
 #include "resp.h"
 #include "stream.h"
+
+#include <boost/version.hpp>
+
+#if BOOST_VERSION <= 105500
+
+#define BOOST_COROUTINES_BIDIRECT
+#include <boost/coroutine/all.hpp>
+
+namespace Akumuli {
+
+typedef boost::coroutines::coroutine<void()> Coroutine;
+typedef typename Coroutine::caller_type Caller;
+
+}
+
+#else
+
+#include <boost/coroutine/asymmetric_coroutine.hpp>
+
+namespace Akumuli {
+
+typedef typename boost::coroutines::asymmetric_coroutine<void()>::push_type Coroutine;
+typedef typename boost::coroutines::asymmetric_coroutine<void()>::pull_type Caller;
+
+}
+
+#endif
 
 namespace Akumuli {
 
@@ -42,9 +67,6 @@ struct PDU {
 struct ProtocolParserError : StreamError {
     ProtocolParserError(std::string line, int pos);
 };
-
-typedef boost::coroutines::coroutine<void()> Coroutine;
-typedef typename Coroutine::caller_type      Caller;
 
 
 //! Stop iteration exception

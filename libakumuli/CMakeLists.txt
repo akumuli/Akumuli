@@ -110,3 +110,15 @@ set(CPACK_PACKAGE_VERSION_MINOR "3")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
 
 include(CPack)
+
+link_directories(${Boost_LIBRARY_DIRS})
+
+if(!APPLE)
+target_link_libraries(akumuli
+    sqlite3
+    "${LOG4CXX_LIBRARIES}"
+    "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+endif(!APPLE)
