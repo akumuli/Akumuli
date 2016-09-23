@@ -247,13 +247,44 @@ struct CursorMock : InternalCursor {
     }
 };
 
-std::string make_scan_query(aku_Timestamp begin, aku_Timestamp end) {
+std::string make_scan_query(aku_Timestamp begin, aku_Timestamp end, OrderBy order) {
     std::stringstream str;
-    str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "}}";
+    str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "},";
+    str << "  \"order-by\": " << (order == OrderBy::SERIES ? "\"series\"" : "\"time\"");
+    str << "}";
     return str.str();
 }
 
-void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end/*, StorageEngine::OrderBy order*/) {
+void check_timestamps(CursorMock const& mock, aku_Timestamp begin, aku_Timestamp end, OrderBy order, size_t nseries) {
+    std::vector<aku_Timestamp> expected;
+    if (begin < end) {
+        for (aku_Timestamp ts = begin; ts < end; ts++) {
+            expected.push_back(ts);
+        }
+    } else {
+        for (aku_Timestamp ts = begin-1; ts > end; ts--) {
+            expected.push_back(ts);
+        }
+    }
+    size_t tsix = 0;
+    if (order == OrderBy::SERIES) {
+        for (size_t s = 0; s < nseries; s++) {
+            for (auto expts: expected) {
+                BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix++).timestamp);
+            }
+        }
+        BOOST_REQUIRE_EQUAL(tsix, mock.samples.size());
+    } else {
+        for (auto expts: expected) {
+            for (size_t s = 0; s < nseries; s++) {
+                BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix++).timestamp);
+            }
+        }
+        BOOST_REQUIRE_EQUAL(tsix, mock.samples.size());
+    }
+}
+
+void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy order) {
     std::vector<std::string> series_names = {
         "test key=0",
         "test key=1",
@@ -271,7 +302,7 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end/*, StorageEn
     fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
     Caller caller;
     CursorMock cursor;
-    auto query = make_scan_query(begin, end);
+    auto query = make_scan_query(begin, end, order);
     session->query(caller, &cursor, query.c_str());
     BOOST_REQUIRE(cursor.done);
     BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
@@ -284,21 +315,27 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end/*, StorageEn
         expected_size = (begin - end - 1)*series_names.size();
     }
     BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+    check_timestamps(cursor, begin, end, order, series_names.size());
 }
 
 
 BOOST_AUTO_TEST_CASE(Test_storage_query) {
-    std::vector<std::tuple<aku_Timestamp, aku_Timestamp>> input = {
-        std::make_tuple(100ul, 200ul),
-        std::make_tuple(200ul, 100ul),
-        std::make_tuple(1000ul, 2000ul),
-        std::make_tuple(2000ul, 1000ul),
+    std::vector<std::tuple<aku_Timestamp, aku_Timestamp, OrderBy>> input = {
+        std::make_tuple( 100ul,  200ul, OrderBy::TIME),
+        std::make_tuple( 200ul,  100ul, OrderBy::TIME),
+        std::make_tuple(1000ul, 2000ul, OrderBy::TIME),
+        std::make_tuple(2000ul, 1000ul, OrderBy::TIME),
+        std::make_tuple( 100ul,  200ul, OrderBy::SERIES),
+        std::make_tuple( 200ul,  100ul, OrderBy::SERIES),
+        std::make_tuple(1000ul, 2000ul, OrderBy::SERIES),
+        std::make_tuple(2000ul, 1000ul, OrderBy::SERIES),
     };
     for (auto tup: input) {
+        OrderBy order;
         aku_Timestamp begin;
         aku_Timestamp end;
-        std::tie(begin, end) = tup;
-        test_storage_read_query(begin, end);
+        std::tie(begin, end, order) = tup;
+        test_storage_read_query(begin, end, order);
     }
 }
 
