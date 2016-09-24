@@ -123,14 +123,20 @@ struct MergeIterator : RowIterator {
 
         Range(aku_ParamId id)
             : id(id)
+            , size(0)
             , pos(0)
         {
             ts.resize(RANGE_SIZE);
             xs.resize(RANGE_SIZE);
         }
 
-        void advance_begin() {
+        void advance() {
             pos++;
+        }
+
+        void retreat() {
+            assert(pos);
+            pos--;
         }
 
         bool empty() const {
@@ -173,17 +179,18 @@ template<int dir>  // 0 - forward, 1 - backward
 struct Predicate {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
     typedef std::tuple<KeyType, double, u32> HeapItem;
+    std::greater<KeyType> greater_;
 
     bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
-        if (dir == 0) {
-            return std::get<0>(lhs) < std::get<0>(rhs);
-        }
-        return std::get<0>(lhs) > std::get<0>(rhs);
+        return greater_(std::get<0>(lhs), std::get<0>(rhs));
     }
 };
 
 template<int dir>
 std::tuple<aku_Status, size_t> MergeIterator::kway_merge(aku_Sample* dest, size_t size) {
+    if (iters_.empty()) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
     size_t outpos = 0;
     if (ranges_.empty()) {
         // `ranges_` array should be initialized on first call
@@ -212,9 +219,8 @@ std::tuple<aku_Status, size_t> MergeIterator::kway_merge(aku_Sample* dest, size_
     int index = 0;
     for(auto& range: ranges_) {
         if (!range.empty()) {
-            KeyType value = range.top_key();
-            range.advance_begin();
-            heap.push(std::make_tuple(value, range.top_value(), index));
+            KeyType key = range.top_key();
+            heap.push(std::make_tuple(key, range.top_value(), index));
         }
         index++;
     }
@@ -244,7 +250,9 @@ std::tuple<aku_Status, size_t> MergeIterator::kway_merge(aku_Sample* dest, size_
             return std::make_tuple(AKU_SUCCESS, size);
         }
         heap.pop();
+        ranges_[index].advance();
         if (ranges_[index].empty()) {
+            // Refill range if possible
             aku_Status status;
             size_t outsize;
             std::tie(status, outsize) = iters_[index]->read(ranges_[index].ts.data(), ranges_[index].xs.data(), RANGE_SIZE);
@@ -256,14 +264,15 @@ std::tuple<aku_Status, size_t> MergeIterator::kway_merge(aku_Sample* dest, size_
         }
         if (!ranges_[index].empty()) {
             KeyType point = ranges_[index].top_key();
-            ranges_[index].advance_begin();
             heap.push(std::make_tuple(point, ranges_[index].top_value(), index));
         }
     }
     if (heap.empty()) {
         iters_.clear();
+        ranges_.clear();
     }
-    return std::make_tuple(AKU_SUCCESS, outpos);
+    // All iterators are fully consumed
+    return std::make_tuple(AKU_ENO_DATA, outpos);
 }
 
 std::tuple<aku_Status, size_t> MergeIterator::read(aku_Sample *dest, size_t size) {

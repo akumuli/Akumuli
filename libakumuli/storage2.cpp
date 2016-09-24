@@ -307,6 +307,13 @@ static void logger_adapter(aku_LogLevel level, const char* msg) {
     Logger::msg(level, msg);
 }
 
+static StorageEngine::OrderBy convert(QP::OrderBy order) {
+    if (order == QP::OrderBy::TIME) {
+        return StorageEngine::OrderBy::TIME;
+    }
+    return StorageEngine::OrderBy::SERIES;
+}
+
 void Storage::query(Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
     // Parse query
@@ -323,7 +330,7 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
             req.select.ids = query_processor->filter().get_ids();
             req.select.begin = query_processor->range().begin();
             req.select.end = query_processor->range().end();
-            req.order_by = StorageEngine::OrderBy::SERIES;  // Only this case is implemented now
+            req.order_by = convert(query_processor->range().order);
             req.group_by.enabled = false;  // group by is not implemneted properly yet
 
             // Access column store

@@ -242,8 +242,8 @@ bool GroupByTag::apply(aku_Sample* sample) {
 
 //  ScanQueryProcessor  //
 
-static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type) {
-    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type};
+static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type, OrderBy orderby) {
+    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type, orderby};
 }
 
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
@@ -253,9 +253,9 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        QueryRange::QueryRangeType type,
                                        std::shared_ptr<IQueryFilter> filter,
                                        GroupByTime groupby,
-                                       std::unique_ptr<GroupByTag> groupbytag
-                                       )
-    : range_(make_range(begin, end, type))
+                                       std::unique_ptr<GroupByTag> groupbytag,
+                                       OrderBy orderby)
+    : range_(make_range(begin, end, type, orderby))
     , metric_(metric)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
@@ -636,7 +636,10 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             // Build query processor
             return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end,
                                                         QueryRange::INSTANT,  // TODO: parse from query
-                                                        filter, groupbytime, std::move(groupbytag));
+                                                        filter,
+                                                        groupbytime,
+                                                        std::move(groupbytag),
+                                                        orderby);
         }
         return std::make_shared<MetadataQueryProcessor>(filter, next);
 

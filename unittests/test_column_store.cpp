@@ -161,7 +161,8 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     for (auto id: ids) {
         fill_data_in(cstore, session, id, begin, end);
     }
-    auto read_fn = [&](size_t base_ix, size_t inc) {
+
+    auto read_ordered_by_series = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
         ReshapeRequest req;
         req.group_by.enabled = false;
@@ -185,10 +186,38 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
         }
     };
 
-    read_fn(0, ids.size());  // read one series
-    read_fn(0, 2);  // read even
-    read_fn(1, 2);  // read odd
-    read_fn(0, 1);  // read all
+    auto read_ordered_by_time = [&](size_t base_ix, size_t inc) {
+        QueryProcessorMock qproc;
+        ReshapeRequest req;
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        for(size_t i = base_ix; i < ids.size(); i += inc) {
+            req.select.ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::TIME;
+        session->query(req, qproc);
+        BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
+        BOOST_REQUIRE_EQUAL(qproc.samples.size(), ids.size()/inc*timestamps.size());
+        size_t niter = 0;
+        for (size_t ts = begin; ts < end; ts++) {
+            for (size_t i = base_ix; i < ids.size(); i += inc) {
+                BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).paramid, ids[i]);
+                BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).timestamp, ts);
+                niter++;
+            }
+        }
+    };
+
+    read_ordered_by_series(0, ids.size());  // read one series
+    read_ordered_by_series(0, 2);  // read even
+    read_ordered_by_series(1, 2);  // read odd
+    read_ordered_by_series(0, 1);  // read all
+
+    read_ordered_by_time(0, ids.size());  // read one series
+    read_ordered_by_time(0, 2);  // read even
+    read_ordered_by_time(1, 2);  // read odd
+    read_ordered_by_time(0, 1);  // read all
 }
 
 BOOST_AUTO_TEST_CASE(Test_column_store_query_2) {

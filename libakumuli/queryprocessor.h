@@ -41,12 +41,6 @@ struct Builder {
                           const SeriesMatcher& matcher, aku_logger_cb_t logger);
 };
 
-/** Order-by statement */
-enum class OrderBy {
-    TIME,
-    SERIES,
-};
-
 /** Group-by time statement processor */
 struct GroupByTime {
     aku_Timestamp step_;
@@ -130,7 +124,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, std::string metric,
                        aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type,
                        std::shared_ptr<IQueryFilter> filter, GroupByTime groupby,
-                       std::unique_ptr<GroupByTag> groupbytag);
+                       std::unique_ptr<GroupByTag> groupbytag, OrderBy orderby);
 
     QueryRange range() const;
 
