@@ -180,9 +180,13 @@ struct Predicate {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
     typedef std::tuple<KeyType, double, u32> HeapItem;
     std::greater<KeyType> greater_;
+    std::less<KeyType> less_;
 
     bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
-        return greater_(std::get<0>(lhs), std::get<0>(rhs));
+        if (dir == 0) {
+            return greater_(std::get<0>(lhs), std::get<0>(rhs));
+        }
+        return less_(std::get<0>(lhs), std::get<0>(rhs));
     }
 };
 
