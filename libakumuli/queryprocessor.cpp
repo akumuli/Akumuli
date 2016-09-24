@@ -409,6 +409,24 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
     return boost::optional<std::string>();
 }
 
+static QP::OrderBy parse_orderby(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    auto orderby = ptree.get_child_optional("order-by");
+    if (orderby) {
+        auto stringval = orderby->get_value<std::string>();
+        if (stringval == "time") {
+            return QP::OrderBy::TIME;
+        } else if (stringval == "series") {
+            return QP::OrderBy::SERIES;
+        } else {
+            logger(AKU_LOG_ERROR, "Invalid 'order-by' statement");
+            QueryParserError error("Invalid 'order-by' statement");
+            BOOST_THROW_EXCEPTION(error);
+        }
+    }
+    // Default is order by time
+    return QP::OrderBy::TIME;
+}
+
 static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost::property_tree::ptree const& ptree,
                                                                            aku_logger_cb_t logger) {
     std::vector<std::string> tags;
@@ -573,6 +591,9 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         if (!tags.empty()) {
             groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
         }
+
+        // Order-by statment
+        auto orderby = parse_orderby(ptree, logger);
 
         // Read limit/offset
         auto limoff = parse_limit_offset(ptree, logger);

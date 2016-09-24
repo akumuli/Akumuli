@@ -41,6 +41,11 @@ struct Builder {
                           const SeriesMatcher& matcher, aku_logger_cb_t logger);
 };
 
+/** Order-by statement */
+enum class OrderBy {
+    TIME,
+    SERIES,
+};
 
 /** Group-by time statement processor */
 struct GroupByTime {
