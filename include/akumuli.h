@@ -229,7 +229,7 @@ AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
   * @param query should contain valid query
   * @return cursor instance
   */
-AKU_EXPORT aku_Cursor* aku_query(aku_Database* db, const char* query);
+AKU_EXPORT aku_Cursor* aku_query(aku_Session* session, const char* query);
 
 /**
  * @brief Close cursor

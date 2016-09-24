@@ -140,6 +140,11 @@ public:
     aku_Status add_sample(aku_Sample const& sample) {
         return session_->write(sample);
     }
+
+    CursorImpl* query(const char* q) {
+        auto res = new CursorImpl(session_, q);
+        return res;
+    }
 };
 
 /** 
@@ -277,27 +282,33 @@ void aku_close_database(aku_Database* db) {
     DatabaseImpl::free(db);
 }
 
-aku_Cursor* aku_query(aku_Database* db, const char* query) {
-    AKU_PANIC("Not implemented");
+aku_Cursor* aku_query(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->query(query);
+    return static_cast<aku_Cursor*>(cursor);
 }
 
 void aku_cursor_close(aku_Cursor* pcursor) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    delete impl;  // destructor calls `close` method
 }
 
 size_t aku_cursor_read( aku_Cursor       *cursor
                       , void             *dest
                       , size_t            dest_size)
 {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(cursor);
+    return impl->read_values(dest, static_cast<u32>(dest_size));
 }
 
 int aku_cursor_is_done(aku_Cursor* pcursor) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    return impl->is_done();
 }
 
 int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    return impl->is_error(out_error_code_or_null);
 }
 
 int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
