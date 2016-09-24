@@ -78,7 +78,7 @@ struct CoroCursor : Cursor {
 
     // External cursor implementation
 
-    virtual u32 read_ex(void* buffer, u32 buffer_size);
+    virtual u32 read(void* buffer, u32 buffer_size);
 
     virtual bool is_done() const;
 

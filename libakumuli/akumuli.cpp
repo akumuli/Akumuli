@@ -34,6 +34,7 @@
 #include "datetime.h"
 #include "log_iface.h"
 #include "status_util.h"
+#include "cursor.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -83,55 +84,61 @@ const char* aku_error_message(int error_code) {
 }
 
 
-struct CursorImpl {
+struct CursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
     aku_Status status_;
     std::string query_;
 
-    CursorImpl(Storage& storage, const char* query)
+    CursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_ENOT_IMPLEMENTED;
+        status_ = AKU_SUCCESS;
+        cursor_ = CoroCursor::make(&StorageSession::query, storage, query_.data());
     }
 
     ~CursorImpl() {
+        cursor_->close();
     }
 
     bool is_done() const {
-        return true;
+        return cursor_->is_done();
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        *out_error_code_or_null = AKU_ENOT_IMPLEMENTED;
-        return true;
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
     }
 
-    size_t read_values( void  *values
-                      , size_t values_size )
+    u32 read_values( void  *values
+                   , u32    values_size )
     {
-        return 0;
+        return cursor_->read(values, values_size);
     }
 };
 
 
 class Session : public aku_Session {
-    std::shared_ptr<StorageEngine::CStoreSession> disp_;
+    std::shared_ptr<StorageSession> session_;
 public:
 
-    Session(std::shared_ptr<StorageEngine::CStoreSession> disp)
-        : disp_(disp)
+    Session(std::shared_ptr<StorageSession> session)
+        : session_(session)
     {
     }
 
     aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
-        return disp_->init_series_id(begin, end, out_sample);
+        return session_->init_series_id(begin, end, out_sample);
     }
 
     int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
-        return disp_->get_series_name(id, buffer, size);
+        return session_->get_series_name(id, buffer, size);
     }
 
     aku_Status add_sample(aku_Sample const& sample) {
-        return disp_->write(sample);
+        return session_->write(sample);
     }
 };
 
@@ -141,16 +148,16 @@ public:
  */
 class DatabaseImpl : public aku_Database
 {
-    Storage storage_;
+    std::shared_ptr<Storage> storage_;
 public:
     // private fields
     DatabaseImpl(const char* path)
-        : storage_(path)
+        : storage_(std::make_shared<Storage>(path))
     {
     }
 
     void close() {
-        storage_.close();
+        storage_->close();
     }
 
     static aku_Database* create(const char* path) {
@@ -170,11 +177,11 @@ public:
     }
 
     void debug_print() const {
-        storage_.debug_print();
+        storage_->debug_print();
     }
 
     aku_Session* create_session() {
-        auto disp = storage_.create_write_session();
+        auto disp = storage_->create_write_session();
         Session* ptr = new Session(disp);
         return static_cast<aku_Session*>(ptr);
     }
