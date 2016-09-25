@@ -66,6 +66,7 @@ add_library(akumuli2
     storage2.cpp
     crc32c.cpp
     status_util.cpp
+    cursor.cpp
     query_processing/queryparser.cpp
     storage_engine/blockstore.cpp
     storage_engine/volume.cpp

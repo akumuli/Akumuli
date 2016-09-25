@@ -257,13 +257,13 @@ AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_co
 AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size);
 
 /** Convert param-id to series name
-  * @param db opened database
+  * @param session
   * @param id valid param id
   * @param buffer is a destination buffer
   * @param buffer_size is a destination buffer size
   * @return 0 if no such id, -LEN if buffer is too small, LEN on success
   */
-AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer,
+AKU_EXPORT int aku_param_id_to_series(aku_Session* session, aku_ParamId id, char* buffer,
                                       size_t buffer_size);
 
 //--------------------

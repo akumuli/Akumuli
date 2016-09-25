@@ -1,6 +1,6 @@
 add_executable(storage_test storage_test.cpp)
 target_link_libraries(storage_test
-    akumuli
+    akumuli2
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"

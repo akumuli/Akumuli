@@ -28,7 +28,6 @@
 #include "akumuli.h"
 #include "internal_cursor.h"
 #include "external_cursor.h"
-#include "page.h"
 
 namespace Akumuli {
 

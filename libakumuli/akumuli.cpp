@@ -191,10 +191,6 @@ public:
         return static_cast<aku_Session*>(ptr);
     }
 
-    CursorImpl* query(const char*) {
-        AKU_PANIC("Not implemented");
-    }
-
     // Stats
     void get_storage_stats(aku_StorageStats*) {
         AKU_PANIC("Not implemented");

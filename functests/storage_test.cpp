@@ -90,12 +90,12 @@ boost::property_tree::ptree from_json(std::string json) {
 }
 
 struct LocalCursor : Cursor {
-    aku_Database*   db_;
-    aku_Cursor* cursor_;
-    aku_Sample  sample_;
+    aku_Session* session_;
+    aku_Cursor*  cursor_;
+    aku_Sample   sample_;
 
-    LocalCursor(aku_Database *db, aku_Cursor *cursor)
-        : db_(db)
+    LocalCursor(aku_Session *s, aku_Cursor *cursor)
+        : session_(s)
         , cursor_(cursor)
         , sample_()
     {
@@ -107,7 +107,6 @@ struct LocalCursor : Cursor {
         if (aku_cursor_is_error(cursor_, &status)) {
             std::runtime_error err(aku_error_message(status));
             BOOST_THROW_EXCEPTION(err);
-            return false;
         }
         return true;
     }
@@ -143,7 +142,7 @@ struct LocalCursor : Cursor {
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
             char buffer[buffer_size];
             // Convert id
-            auto len = aku_param_id_to_series(db_, sample_.paramid, buffer, buffer_size);
+            auto len = aku_param_id_to_series(session_, sample_.paramid, buffer, buffer_size);
             if (len <= 0) {
                 std::runtime_error err("no such id");
                 BOOST_THROW_EXCEPTION(err);
@@ -182,6 +181,7 @@ struct LocalStorage : Storage {
     bool enable_huge_tlb_;
     const char* DBNAME_;
     aku_Database *db_;
+    aku_Session  *session_;
 
     LocalStorage(
             std::string work_dir,
@@ -201,6 +201,7 @@ struct LocalStorage : Storage {
         , enable_huge_tlb_(huge_tlb)
         , DBNAME_("test")
         , db_(nullptr)
+        , session_(nullptr)
     {
     }
 
@@ -236,10 +237,11 @@ struct LocalStorage : Storage {
 
 // Storage interface
 void LocalStorage::close() {
-    if (db_ == nullptr) {
+    if (session_ == nullptr || db_ == nullptr) {
         std::logic_error err("Database allready closed");
         BOOST_THROW_EXCEPTION(err);
     }
+    aku_destroy_session(session_);
     aku_close_database(db_);
     db_ = nullptr;
 }
@@ -263,13 +265,13 @@ void LocalStorage::open() {
 
     std::string path = get_db_file_path();
     db_ = aku_open_database(path.c_str(), params);
-    auto status = aku_open_status(db_);
-    throw_on_error(status);
+    //auto status = aku_open_status(db_);
+    //throw_on_error(status);
 }
 
 void LocalStorage::delete_all() {
     std::string path = get_db_file_path();
-    auto status = aku_remove_database(path.c_str(), &aku_console_logger);
+    auto status = aku_remove_database(path.c_str(), true);
     throw_on_error(status);
 }
 
@@ -281,13 +283,13 @@ void LocalStorage::add(std::string ts, std::string id, double value) {
             std::runtime_error err("invalid timestamp");
             BOOST_THROW_EXCEPTION(err);
         }
-        if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+        if (aku_series_to_param_id(session_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
             std::runtime_error err("invalid series name");
             BOOST_THROW_EXCEPTION(err);
         }
         sample.payload.type = AKU_PAYLOAD_FLOAT;
         sample.payload.float64 = value;
-        status = aku_write(db_, &sample);
+        status = aku_write(session_, &sample);
     }
     throw_on_error(status);
 }
@@ -320,8 +322,8 @@ std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
     boost::property_tree::json_parser::write_json(stream, query, true);
     std::string query_text = stream.str();
 
-    auto cursor = aku_query(db_, query_text.c_str());
-    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    auto cursor = aku_query(session_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(session_, cursor));
     return std::move(ptr);
 }
 
@@ -346,8 +348,8 @@ std::unique_ptr<Cursor> LocalStorage::metadata_query(std::string metric, std::st
     boost::property_tree::json_parser::write_json(stream, query, true);
     std::string query_text = stream.str();
 
-    auto cursor = aku_query(db_, query_text.c_str());
-    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    auto cursor = aku_query(session_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(session_, cursor));
     return std::move(ptr);
 }
 
