@@ -331,6 +331,7 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
             req.select.begin = query_processor->range().begin();
             req.select.end = query_processor->range().end();
             req.order_by = convert(query_processor->range().order);
+
             req.group_by.enabled = false;  // group by is not implemneted properly yet
 
             // Access column store

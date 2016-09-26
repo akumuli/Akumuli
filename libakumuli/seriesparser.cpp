@@ -71,7 +71,7 @@ void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     inv_table[id] = pstr;
 }
 
-u64 SeriesMatcher::match(const char* begin, const char* end) {
+u64 SeriesMatcher::match(const char* begin, const char* end) const {
 
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);

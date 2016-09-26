@@ -67,8 +67,8 @@ struct GroupByTag {
     std::string regex_;
     //! Mapping from global parameter ids to local parameter ids
     std::unordered_map<aku_ParamId, aku_ParamId> ids_;
-    //! Shared string pool
-    StringPool const* spool_;
+    //! Shared series matcher
+    SeriesMatcher const& matcher_;
     //! Previous string pool offset
     StringPoolOffset offset_;
     //! Previous string pool size
@@ -81,7 +81,7 @@ struct GroupByTag {
     StringTools::SetT snames_;
 
     //! Main c-tor
-    GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
+    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
 
     void refresh_();
 

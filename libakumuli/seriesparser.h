@@ -77,7 +77,7 @@ struct SeriesMatcher {
 
     /** Match string and return it's id. If string is new return 0.
       */
-    u64 match(const char* begin, const char* end);
+    u64 match(const char* begin, const char* end) const;
 
     //! Convert id to string
     StringT id2str(u64 tokenid) const;
