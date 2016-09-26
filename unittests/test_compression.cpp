@@ -45,7 +45,7 @@ void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t
     TVal value = 100000;
 
     // Generate
-    for (int i = 0; i < (input_size-1); i++) {
+    for (size_t i = 0; i < (input_size-1); i++) {
         int delta = TVal(rand() % 1000 - 500);
         value += delta;
         input.push_back(value);
