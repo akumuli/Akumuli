@@ -167,8 +167,6 @@ MergeIterator::MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::un
 {
     if (!iters_.empty()) {
         forward_ = iters_.front()->get_direction() == NBTreeIterator::Direction::FORWARD;
-    } else {
-        AKU_PANIC("MergeIterator - nothing to merge");
     }
     if (iters_.size() != ids_.size()) {
         AKU_PANIC("MergeIterator - broken invariant");

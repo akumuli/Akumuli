@@ -318,7 +318,7 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy ord
     check_timestamps(cursor, begin, end, order, series_names.size());
 }
 
-
+/*
 BOOST_AUTO_TEST_CASE(Test_storage_query) {
     std::vector<std::tuple<aku_Timestamp, aku_Timestamp, OrderBy>> input = {
         std::make_tuple( 100ul,  200ul, OrderBy::TIME),
@@ -337,6 +337,57 @@ BOOST_AUTO_TEST_CASE(Test_storage_query) {
         std::tie(begin, end, order) = tup;
         test_storage_read_query(begin, end, order);
     }
+}
+*/
+
+// Test metadata query
+
+static void test_metadata_query() {
+    auto query = "{\"select\": \"names\"}";
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    std::vector<std::string> series_names = {
+        "test key=0",
+        "test key=1",
+        "test key=2",
+        "test key=3",
+        "test key=4",
+        "test key=5",
+        "test key=6",
+        "test key=7",
+        "test key=8",
+        "test key=9",
+    };
+    for (auto name: series_names) {
+        aku_Sample s;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        s.timestamp = 111;
+        s.payload.type = AKU_PAYLOAD_FLOAT;
+        s.payload.float64 = 0.;
+        status = session->write(s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    Caller caller;
+    CursorMock cursor;
+    session->query(caller, &cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names.size());
+    for (auto sample: cursor.samples) {
+        const int buffer_size = AKU_LIMITS_MAX_SNAME;
+        char buffer[buffer_size];
+        auto len = session->get_series_name(sample.paramid, buffer, buffer_size);
+        if (len <= 0) {
+            BOOST_FAIL("no such id");
+        }
+        std::string name(buffer, buffer + len);
+        auto cnt = std::count(series_names.begin(), series_names.end(), name);
+        BOOST_REQUIRE_EQUAL(cnt, 1);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_metadata_query) {
+    test_metadata_query();
 }
 
 // Test reopen

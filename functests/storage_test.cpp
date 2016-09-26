@@ -147,7 +147,7 @@ struct LocalCursor : Cursor {
                 std::runtime_error err("no such id");
                 BOOST_THROW_EXCEPTION(err);
             }
-            std::string paramid(buffer, buffer + len - 1);
+            std::string paramid(buffer, buffer + len);
 
             std::string timestamp;
             if (sample_.payload.type & aku_PData::TIMESTAMP_BIT) {
@@ -265,6 +265,7 @@ void LocalStorage::open() {
 
     std::string path = get_db_file_path();
     db_ = aku_open_database(path.c_str(), params);
+    session_ = aku_create_session(db_);
     //auto status = aku_open_status(db_);
     //throw_on_error(status);
 }

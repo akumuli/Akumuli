@@ -67,12 +67,23 @@ add_library(akumuli2
     crc32c.cpp
     status_util.cpp
     cursor.cpp
-    query_processing/queryparser.cpp
     storage_engine/blockstore.cpp
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
+    # query_processing
+    query_processing/queryparser.cpp  # TODO: remove
+    queryprocessor.cpp
+    queryprocessor_framework.cpp
+    query_processing/anomaly.cpp
+    query_processing/sax.cpp
+    query_processing/paa.cpp
+    query_processing/filterbyid.cpp
+    query_processing/randomsamplingnode.cpp
+    query_processing/spacesaver.cpp
+    query_processing/limiter.cpp
+    query_processing/queryparser.cpp
 )
 
 include_directories(.)
