@@ -318,7 +318,6 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy ord
     check_timestamps(cursor, begin, end, order, series_names.size());
 }
 
-/*
 BOOST_AUTO_TEST_CASE(Test_storage_query) {
     std::vector<std::tuple<aku_Timestamp, aku_Timestamp, OrderBy>> input = {
         std::make_tuple( 100ul,  200ul, OrderBy::TIME),
@@ -338,7 +337,6 @@ BOOST_AUTO_TEST_CASE(Test_storage_query) {
         test_storage_read_query(begin, end, order);
     }
 }
-*/
 
 // Test metadata query
 
@@ -388,6 +386,53 @@ static void test_metadata_query() {
 
 BOOST_AUTO_TEST_CASE(Test_storage_metadata_query) {
     test_metadata_query();
+}
+
+// Group-by query
+
+static const aku_Timestamp gb_begin = 1000;
+static const aku_Timestamp gb_end   = 2000;
+
+static std::string make_group_by_query(std::string tag) {
+    std::stringstream str;
+    str << "{ \"metric\": \"test\",";
+    str << "  \"range\": { \"from\": " << gb_begin << ", \"to\": " << gb_end << "},";
+    str << "  \"order-by\": \"series\",";
+    str << "  \"group-by\": {\"tag\": " << "\"" << tag << "\"}";
+    str << "}";
+    return str.str();
+}
+
+static void test_storage_group_by_query() {
+    std::vector<std::string> series_names = {
+        "test key=0 group=0",
+        "test key=1 group=0",
+        "test key=2 group=0",
+        "test key=3 group=1",
+        "test key=4 group=1",
+        "test key=5 group=1",
+        "test key=6 group=1",
+        "test key=7 group=1",
+        "test key=8 group=0",
+        "test key=9 group=0",
+    };
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, gb_begin, gb_end, series_names);
+    Caller caller;
+    CursorMock cursor;
+    auto query = make_group_by_query("group");
+    session->query(caller, &cursor, query.c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    size_t expected_size;
+    expected_size = (gb_end - gb_begin)*series_names.size();
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+    check_timestamps(cursor, gb_begin, gb_end, OrderBy::SERIES, series_names.size());
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_groupby_query) {
+    test_storage_group_by_query();
 }
 
 // Test reopen
