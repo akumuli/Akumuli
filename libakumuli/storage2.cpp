@@ -325,6 +325,10 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
         try {
             query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_, &logger_adapter);
 
+
+            //TODO: this should be refactored. ReshapeRequest should be decoupled from
+            //      column-store and used by both IQueryProcessor and ColumnStore.
+
             // Create ReshapeRequest from QueryProcessor instance
             StorageEngine::ReshapeRequest req;
             req.select.ids = query_processor->filter().get_ids();
@@ -332,7 +336,7 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
             req.select.end = query_processor->range().end();
             req.order_by = convert(query_processor->range().order);
 
-            req.group_by.enabled = false;  // group by is not implemneted properly yet
+            req.group_by.enabled = query_processor->get_groupby_mapping(&req.group_by.transient_map);
 
             // Access column store
             if (query_processor->start()) {

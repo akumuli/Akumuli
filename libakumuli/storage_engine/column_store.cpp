@@ -336,11 +336,24 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
     }
 
     std::unique_ptr<RowIterator> iter;
+    auto ids = req.select.ids;
+    if (req.group_by.enabled) {
+        // Transform each id
+        for (size_t i = 0; i < ids.size(); i++) {
+            auto oldid = ids[i];
+            auto it = req.group_by.transient_map.find(oldid);
+            if (it != req.group_by.transient_map.end()) {
+                ids[i] = it->second;
+            } else {
+                // Bad transient id mapping found!
+                qproc.set_error(AKU_ENOT_FOUND);
+                return;
+            }
+        }
+    }
     if (req.order_by == OrderBy::SERIES) {
-        auto ids = req.select.ids;
         iter.reset(new ChainIterator(std::move(ids), std::move(iters)));
     } else {
-        auto ids = req.select.ids;
         iter.reset(new MergeIterator(std::move(ids), std::move(iters)));
     }
 
@@ -356,20 +369,9 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
             qproc.set_error(status);
             return;
         }
-        if (req.group_by.enabled) {
-            for (size_t ix = 0; ix < size; ix++) {
-                auto it = req.group_by.transient_map.find(dest[ix].paramid);
-                if (it == req.group_by.transient_map.end()) {
-                    Logger::msg(AKU_LOG_ERROR, "Unexpected id " + std::to_string(dest[ix].paramid));
-                    qproc.set_error(AKU_EBAD_DATA);
-                    return;
-                }
-            }
-        } else {
-            for (size_t ix = 0; ix < size; ix++) {
-                if (!qproc.put(dest[ix])) {
-                    return;
-                }
+        for (size_t ix = 0; ix < size; ix++) {
+            if (!qproc.put(dest[ix])) {
+                return;
             }
         }
     }

@@ -140,6 +140,8 @@ struct IQueryProcessor {
       */
     virtual SeriesMatcher* matcher() = 0;
 
+    virtual bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) = 0;
+
     // Execution control
 
     /** Will be called before query execution starts.

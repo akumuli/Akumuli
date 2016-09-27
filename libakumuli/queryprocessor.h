@@ -86,6 +86,8 @@ struct GroupByTag {
     void refresh_();
 
     bool apply(aku_Sample* sample);
+
+    std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
 };
 
 
@@ -142,6 +144,8 @@ struct ScanQueryProcessor : IQueryProcessor {
 
     //! Set execution error
     void set_error(aku_Status error);
+
+    bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids);
 };
 
 
@@ -159,6 +163,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
     bool put(const aku_Sample& sample);
     void stop();
     void set_error(aku_Status error);
+    bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids);
 };
 }
 }  // namespaces

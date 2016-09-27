@@ -201,6 +201,10 @@ GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::ve
     refresh_();
 }
 
+std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
+    return ids_;
+}
+
 void GroupByTag::refresh_() {
                             // TODO: should be matcher_.regex_match
     std::vector<StringPool::StringT> results = matcher_.pool.regex_match(regex_.c_str(), &offset_, &prev_size_);
@@ -303,6 +307,14 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     }
 }
 
+bool ScanQueryProcessor::get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) {
+    if (groupby_tag_) {
+        *ids = groupby_tag_->get_mapping();
+        return true;
+    }
+    return false;
+}
+
 IQueryFilter& ScanQueryProcessor::filter() {
     return *filter_;
 }
@@ -323,14 +335,11 @@ bool ScanQueryProcessor::put(const aku_Sample &sample) {
         // shourtcut for empty samples
         return last_node_->put(sample);
     }
-    // We're dealing with basic sample here (no extra payload)
-    // that comes right from page or sequencer. Because of that
-    // we can copy it without slicing.
-    auto copy = sample;
-    if (groupby_tag_ && !groupby_tag_->apply(&copy)) {
-        return true;
-    }
-    return groupby_.put(copy, *root_node_);
+    /* NOTE: group_by processing is done on column-store level now,
+     *       because of that groupby_tag_ is not used here to transform
+     *       each sample.
+     */
+    return groupby_.put(sample, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
@@ -349,6 +358,10 @@ MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt
     : filter_(flt)
     , root_(node)
 {
+}
+
+bool MetadataQueryProcessor::get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) {
+    return false;
 }
 
 SeriesMatcher* MetadataQueryProcessor::matcher() {
