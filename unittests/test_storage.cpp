@@ -284,6 +284,59 @@ void check_timestamps(CursorMock const& mock, aku_Timestamp begin, aku_Timestamp
     }
 }
 
+static void check_paramids(StorageSession& session,
+                           CursorMock const& cursor,
+                           OrderBy order,
+                           std::vector<std::string> expected_series_names,
+                           size_t nelem,
+                           bool reverse_dir)
+{
+    if (order == OrderBy::SERIES) {
+        auto elperseries = nelem / expected_series_names.size();
+        assert(nelem % expected_series_names.size() == 0);
+        size_t iter = 0;
+        for (auto expected: expected_series_names) {
+            for (size_t i = 0; i < elperseries; i++) {
+                const size_t buffer_size = 1024;
+                char buffer[buffer_size];
+                auto id = cursor.samples.at(iter++).paramid;
+                auto len = session.get_series_name(id, buffer, buffer_size);
+                if (len < 0) {
+                    BOOST_FAIL("Can't extract series name from session");
+                }
+                std::string actual(buffer, buffer + len);
+                if (actual != expected) {
+                    BOOST_REQUIRE_EQUAL(actual, expected);
+                }
+            }
+        }
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), iter);
+    } else {
+        if (reverse_dir) {
+            std::reverse(expected_series_names.begin(), expected_series_names.end());
+        }
+        auto elperseries = nelem / expected_series_names.size();
+        assert(nelem % expected_series_names.size() == 0);
+        size_t iter = 0;
+        for (size_t i = 0; i < elperseries; i++) {
+            for (auto expected: expected_series_names) {
+                const size_t buffer_size = 1024;
+                char buffer[buffer_size];
+                auto id = cursor.samples.at(iter++).paramid;
+                auto len = session.get_series_name(id, buffer, buffer_size);
+                if (len < 0) {
+                    BOOST_FAIL("Can't extract series name from session");
+                }
+                std::string actual(buffer, buffer + len);
+                if (actual != expected) {
+                    BOOST_REQUIRE_EQUAL(actual, expected);
+                }
+            }
+        }
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), iter);
+    }
+}
+
 void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy order) {
     std::vector<std::string> series_names = {
         "test key=0",
@@ -316,6 +369,7 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy ord
     }
     BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
     check_timestamps(cursor, begin, end, order, series_names.size());
+    check_paramids(*session, cursor, order, series_names, expected_size, begin > end);
 }
 
 BOOST_AUTO_TEST_CASE(Test_storage_query) {
@@ -416,6 +470,11 @@ static void test_storage_group_by_query() {
         "test key=8 group=0",
         "test key=9 group=0",
     };
+    // Series names after group-by
+    std::vector<std::string> expected_series_names = {
+        "test group=0",
+        "test group=1",
+    };
     auto storage = create_storage();
     auto session = storage->create_write_session();
     fill_data(session, gb_begin, gb_end, series_names);
@@ -429,6 +488,7 @@ static void test_storage_group_by_query() {
     expected_size = (gb_end - gb_begin)*series_names.size();
     BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
     check_timestamps(cursor, gb_begin, gb_end, OrderBy::SERIES, series_names.size());
+    check_paramids(*session, cursor, OrderBy::SERIES, expected_series_names, (gb_end - gb_begin)*series_names.size(), false);
 }
 
 BOOST_AUTO_TEST_CASE(Test_storage_groupby_query) {

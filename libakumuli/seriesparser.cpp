@@ -100,6 +100,7 @@ std::vector<u64> SeriesMatcher::get_all_ids() const {
     for (auto const &tup: inv_table) {
         result.push_back(tup.first);
     }
+    std::sort(result.begin(), result.end());
     return result;
 }
 
