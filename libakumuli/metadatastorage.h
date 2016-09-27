@@ -18,11 +18,12 @@
 #include <cstddef>
 #include <memory>
 #include <vector>
+#include <mutex>
+#include <condition_variable>
 
 #include <apr.h>
 #include <apr_dbd.h>
 
-#include "akumuli.h"
 #include "akumuli_def.h"
 #include "seriesparser.h"
 
@@ -52,18 +53,23 @@ struct MetadataStorage {
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
     typedef std::pair<int, std::string>                  VolumeDesc;
     typedef apr_dbd_prepared_t* PreparedT;
+    typedef SeriesMatcher::SeriesNameT SeriesT;
 
     // Members
     PoolT           pool_;
     DriverT         driver_;
     HandleT         handle_;
     PreparedT       insert_;
-    aku_logger_cb_t logger_;
+
+    // Synchronization
+    std::mutex sync_lock_;
+    std::condition_variable sync_cvar_;
+    std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
-    MetadataStorage(const char* db, aku_logger_cb_t logger);
+    MetadataStorage(const char* db);
 
     // Creation //
 
@@ -93,15 +99,30 @@ struct MetadataStorage {
 
     aku_Status load_matcher_data(SeriesMatcher& matcher);
 
-    // Writing //
+    // Synchronization
 
-    typedef std::tuple<const char*, int, u64> SeriesT;
+    void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);
 
-    /** Add new series to the metadata storage.
+    aku_Status wait_for_sync_request(int timeout_us);
+
+    void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
+
+// should be private:
+
+    void begin_transaction();
+
+    void end_transaction();
+
+    /** Add new series to the metadata storage (generate sql query and execute it).
       */
-    void insert_new_names(std::vector<SeriesT> items);
+    void insert_new_names(std::vector<SeriesT>&& items);
+
+    /** Insert or update rescue provided points (generate sql query and execute it).
+      */
+    void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
 
 private:
+
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error
       * @return number of rows changed

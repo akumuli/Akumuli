@@ -27,7 +27,7 @@
 
 #include "akumuli.h"
 #include "internal_cursor.h"
-#include "page.h"
+#include "external_cursor.h"
 
 namespace Akumuli {
 
@@ -61,33 +61,6 @@ public:
 };
 
 
-/** Data retreival interface that can be used by
- *  code that reads data from akumuli.
- */
-struct ExternalCursor {
-    //! Read portion of the data to the buffer
-    //virtual size_t read(aku_Sample* buf, size_t buf_len) = 0;
-
-    /** New read interface for variably sized samples.
-     * @param buffer is an array of aku_Sample structs
-     * @param item_size defines size of each struct 0 - size = sizeof(aku_Sample)
-     * @param buffer_size defines size of the buffer in bytes (should be a multiple of item_size)
-     * @return number of overwritten bytes in `buffer`
-     */
-    virtual size_t read_ex(void* buffer, size_t buffer_size) = 0;
-
-    //! Check is everything done
-    virtual bool is_done() const = 0;
-
-    //! Check is error occured and (optionally) get the error code
-    virtual bool is_error(aku_Status* out_error_code_or_null = nullptr) const = 0;
-
-    //! Finalizer
-    virtual void close() = 0;
-
-    virtual ~ExternalCursor() = default;
-};
-
 
 //! Combined cursor interface
 struct Cursor : InternalCursor, ExternalCursor {};
@@ -104,9 +77,7 @@ struct CoroCursor : Cursor {
 
     // External cursor implementation
 
-    //virtual size_t read(aku_Sample* buf, size_t buf_len);
-
-    virtual size_t read_ex(void* buffer, size_t buffer_size);
+    virtual u32 read(void* buffer, u32 buffer_size);
 
     virtual bool is_done() const;
 

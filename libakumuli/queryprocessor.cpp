@@ -66,13 +66,13 @@ static std::shared_ptr<Node> make_sampler(boost::property_tree::ptree const& ptr
 struct RegexFilter : IQueryFilter {
     std::string regex_;
     std::unordered_set<aku_ParamId> ids_;
-    StringPool const& spool_;
+    SeriesMatcher const& matcher_;
     StringPoolOffset offset_;
     size_t prev_size_;
 
-    RegexFilter(std::string regex, StringPool const& spool)
+    RegexFilter(std::string regex, SeriesMatcher const& matcher)
         : regex_(regex)
-        , spool_(spool)
+        , matcher_(matcher)
         , offset_{}
         , prev_size_(0ul)
     {
@@ -80,10 +80,16 @@ struct RegexFilter : IQueryFilter {
     }
 
     void refresh() {
-        std::vector<StringPool::StringT> results = spool_.regex_match(regex_.c_str(), &offset_, &prev_size_);
+        // TODO: refactor this!
+        std::vector<StringPool::StringT> results = matcher_.pool.regex_match(regex_.c_str(), &offset_, &prev_size_);
         int ix = 0;
         for (StringPool::StringT item: results) {
-            auto id = StringTools::extract_id_from_pool(item);
+            AKU_UNUSED(item);
+            auto id = matcher_.match(item.first, item.first + item.second);
+            if (id == 0ul) {
+                // Series name was added to string pool but not yet added to matcher
+                continue;
+            }
             ids_.insert(id);
             ix++;
         }
@@ -97,7 +103,7 @@ struct RegexFilter : IQueryFilter {
 
     virtual FilterResult apply(aku_ParamId id) {
         // Atomic operation, can be a source of contention
-        if (spool_.size() != prev_size_) {
+        if (matcher_.pool.size() != prev_size_) {
             refresh();
         }
         return ids_.count(id) != 0 ? PROCESS : SKIP_THIS;
@@ -174,8 +180,8 @@ bool GroupByTime::empty() const {
 }
 
 //  GroupByTag  //
-GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags)
-    : spool_(spool)
+GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+    : matcher_(matcher)
     , offset_{0}
     , prev_size_(0)
     , tags_(tags)
@@ -195,15 +201,20 @@ GroupByTag::GroupByTag(StringPool const* spool, std::string metric, std::vector<
     refresh_();
 }
 
+std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
+    return ids_;
+}
+
 void GroupByTag::refresh_() {
-    std::vector<StringPool::StringT> results = spool_->regex_match(regex_.c_str(), &offset_, &prev_size_);
+                            // TODO: should be matcher_.regex_match
+    std::vector<StringPool::StringT> results = matcher_.pool.regex_match(regex_.c_str(), &offset_, &prev_size_);
     auto filter = StringTools::create_set(tags_.size());
     for (const auto& tag: tags_) {
         filter.insert(std::make_pair(tag.data(), tag.size()));
     }
     char buffer[AKU_LIMITS_MAX_SNAME];
     for (StringPool::StringT item: results) {
-        auto id = StringTools::extract_id_from_pool(item);
+        auto id = matcher_.match(item.first, item.second + item.first);
         aku_Status status;
         SeriesParser::StringT result;
         std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);
@@ -227,7 +238,7 @@ void GroupByTag::refresh_() {
 }
 
 bool GroupByTag::apply(aku_Sample* sample) {
-    if (spool_->size() != prev_size_) {
+    if (matcher_.pool.size() != prev_size_) {
         refresh_();
     }
     auto it = ids_.find(sample->paramid);
@@ -241,8 +252,8 @@ bool GroupByTag::apply(aku_Sample* sample) {
 
 //  ScanQueryProcessor  //
 
-static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type) {
-    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type};
+static QueryRange make_range(aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type, OrderBy orderby) {
+    return {std::min(begin, end), std::max(begin, end), begin < end ? AKU_CURSOR_DIR_FORWARD : AKU_CURSOR_DIR_BACKWARD, type, orderby};
 }
 
 ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
@@ -252,9 +263,9 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        QueryRange::QueryRangeType type,
                                        std::shared_ptr<IQueryFilter> filter,
                                        GroupByTime groupby,
-                                       std::unique_ptr<GroupByTag> groupbytag
-                                       )
-    : range_(make_range(begin, end, type))
+                                       std::unique_ptr<GroupByTag> groupbytag,
+                                       OrderBy orderby)
+    : range_(make_range(begin, end, type, orderby))
     , metric_(metric)
     , namesofinterest_(StringTools::create_table(0x1000))
     , groupby_(groupby)
@@ -296,6 +307,14 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     }
 }
 
+bool ScanQueryProcessor::get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) {
+    if (groupby_tag_) {
+        *ids = groupby_tag_->get_mapping();
+        return true;
+    }
+    return false;
+}
+
 IQueryFilter& ScanQueryProcessor::filter() {
     return *filter_;
 }
@@ -316,14 +335,11 @@ bool ScanQueryProcessor::put(const aku_Sample &sample) {
         // shourtcut for empty samples
         return last_node_->put(sample);
     }
-    // We're dealing with basic sample here (no extra payload)
-    // that comes right from page or sequencer. Because of that
-    // we can copy it without slicing.
-    auto copy = sample;
-    if (groupby_tag_ && !groupby_tag_->apply(&copy)) {
-        return true;
-    }
-    return groupby_.put(copy, *root_node_);
+    /* NOTE: group_by processing is done on column-store level now,
+     *       because of that groupby_tag_ is not used here to transform
+     *       each sample.
+     */
+    return groupby_.put(sample, *root_node_);
 }
 
 void ScanQueryProcessor::stop() {
@@ -342,6 +358,10 @@ MetadataQueryProcessor::MetadataQueryProcessor(std::shared_ptr<IQueryFilter> flt
     : filter_(flt)
     , root_(node)
 {
+}
+
+bool MetadataQueryProcessor::get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) {
+    return false;
 }
 
 SeriesMatcher* MetadataQueryProcessor::matcher() {
@@ -406,6 +426,24 @@ static boost::optional<std::string> parse_select_stmt(boost::property_tree::ptre
         BOOST_THROW_EXCEPTION(rte);
     }
     return boost::optional<std::string>();
+}
+
+static QP::OrderBy parse_orderby(boost::property_tree::ptree const& ptree, aku_logger_cb_t logger) {
+    auto orderby = ptree.get_child_optional("order-by");
+    if (orderby) {
+        auto stringval = orderby->get_value<std::string>();
+        if (stringval == "time") {
+            return QP::OrderBy::TIME;
+        } else if (stringval == "series") {
+            return QP::OrderBy::SERIES;
+        } else {
+            logger(AKU_LOG_ERROR, "Invalid 'order-by' statement");
+            QueryParserError error("Invalid 'order-by' statement");
+            BOOST_THROW_EXCEPTION(error);
+        }
+    }
+    // Default is order by time
+    return QP::OrderBy::TIME;
 }
 
 static std::tuple<QP::GroupByTime, std::vector<std::string>> parse_groupby(boost::property_tree::ptree const& ptree,
@@ -505,14 +543,14 @@ static std::shared_ptr<IQueryFilter> parse_where_clause(boost::property_tree::pt
             }
             series_regexp << ")";
             std::string regex = series_regexp.str();
-            result = std::make_shared<RegexFilter>(regex, matcher.pool);
+            result = std::make_shared<RegexFilter>(regex, matcher);
         }
     } else if (!metric.empty()) {
         // only metric is specified
         std::stringstream series_regex;
         series_regex << metric << "(?:\\s\\w+=\\w+)*";
         std::string regex = series_regex.str();
-        result = std::make_shared<RegexFilter>(regex, matcher.pool);
+        result = std::make_shared<RegexFilter>(regex, matcher);
     } else {
         // we need to include all series
         // were stmt is not used
@@ -570,8 +608,11 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
         std::tie(groupbytime, tags) = parse_groupby(ptree, logger);
         auto groupbytag = std::unique_ptr<GroupByTag>();
         if (!tags.empty()) {
-            groupbytag.reset(new GroupByTag(&matcher.pool, metric, tags));
+            groupbytag.reset(new GroupByTag(matcher, metric, tags));
         }
+
+        // Order-by statment
+        auto orderby = parse_orderby(ptree, logger);
 
         // Read limit/offset
         auto limoff = parse_limit_offset(ptree, logger);
@@ -614,7 +655,10 @@ std::shared_ptr<QP::IQueryProcessor> Builder::build_query_processor(const char* 
             // Build query processor
             return std::make_shared<ScanQueryProcessor>(allnodes, metric, ts_begin, ts_end,
                                                         QueryRange::INSTANT,  // TODO: parse from query
-                                                        filter, groupbytime, std::move(groupbytag));
+                                                        filter,
+                                                        groupbytime,
+                                                        std::move(groupbytag),
+                                                        orderby);
         }
         return std::make_shared<MetadataQueryProcessor>(filter, next);
 

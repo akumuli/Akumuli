@@ -3,7 +3,7 @@ add_executable(storage_test storage_test.cpp)
 include_directories(../libakumuli)
 
 target_link_libraries(storage_test
-    akumuli
+    akumuli2
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -11,6 +11,7 @@ target_link_libraries(storage_test
     ${Boost_LIBRARIES}
     libboost_coroutine.a
     libboost_context.a)
+set_target_properties(storage_test PROPERTIES EXCLUDE_FROM_ALL 1)  # needs revamp after API change
 
 file(COPY
     akumulid_test_tools.py

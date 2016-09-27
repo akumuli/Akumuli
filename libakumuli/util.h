@@ -23,6 +23,7 @@
 #pragma once
 
 #include "akumuli.h"
+
 #include <apr_general.h>
 #include <apr_mmap.h>
 #include <atomic>
@@ -115,8 +116,6 @@ private:
 //! Fast integer logarithm
 i64 log2(i64 value);
 
-std::tuple<bool, aku_Status> page_in_core(const void* addr);
-
 size_t get_page_size();
 
 const void* align_to_page(const void* ptr, size_t get_page_size);
@@ -124,38 +123,7 @@ const void* align_to_page(const void* ptr, size_t get_page_size);
 void* align_to_page(void* ptr, size_t get_page_size);
 
 void prefetch_mem(const void* ptr, size_t mem_size);
-
-/** Wrapper for mincore syscall.
-     * If everything is OK works as simple wrapper
-     * (memory needed for mincore syscall managed by wrapper itself).
-     * If non-fatal error occured - acts as in case when all memory is
-     * in core (optimistically).
-     */
-class PageInfo {
-    std::vector<unsigned char> data_;
-    size_t                     page_size_;
-    const void*                base_addr_;
-    size_t                     len_bytes_;
-
-    void fill_mem();
-
-public:
-    /** C-tor.
-         * @param start_addr start address of the monitored memory region
-         * @param len_bytes length (in bytes) of the monitored region
-         */
-    PageInfo(const void* addr, size_t len_bytes);
-
-    //! Query data from OS
-    aku_Status refresh(const void* addr);
-
-    //! Check if memory address is in core
-    bool in_core(const void* addr);
-
-    //! Check if underlying memory is swapped to disk
-    bool swapped();
-};
-
+    
 class Rand {
     std::ranlux48_base rand_;
 
@@ -174,6 +142,10 @@ class RWLock {
 public:
     RWLock();
 
+    RWLock(RWLock const&) = delete;
+    RWLock(RWLock &&) = delete;
+    RWLock& operator = (RWLock const&) = delete;
+
     ~RWLock();
 
     void rdlock();
@@ -187,16 +159,36 @@ public:
     void unlock();
 };
 
+template<class T, void (T::*on_enter)()>
+struct LockGuard {
+    T& lock;
+    LockGuard(T& lock)
+        : lock(lock)
+    {
+        (lock.*on_enter)();
+    }
+
+    LockGuard(LockGuard const&) = delete;
+    LockGuard(LockGuard &&) = delete;
+    LockGuard& operator = (LockGuard const&) = delete;
+
+    ~LockGuard() {
+        lock.unlock();
+    }
+};
+
+using UniqueLock = LockGuard<RWLock, &RWLock::wrlock>;
+using SharedLock = LockGuard<RWLock, &RWLock::wrlock>;
+
 //! Compare two double values and return true if they are equal at bit-level (needed to supress CLang analyzer warnings).
 bool same_value(double a, double b);
-
 }
 
 /** Panic macro.
   * @param msg error message
   * @throws Exception.
   */
-#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(std::move(msg)));
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(msg));
 
 /** Panic macro that can use APR error code to panic more informative.
   * @param msg error message
@@ -215,4 +207,3 @@ bool same_value(double a, double b);
 #define AKU_LIKELY(x) (x)
 #define AKU_UNLIKELY(x) (x)
 #endif
-

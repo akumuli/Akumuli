@@ -10,6 +10,14 @@
 namespace Akumuli {
 namespace QP {
 
+
+/** Order-by statement */
+enum class OrderBy {
+    TIME,
+    SERIES,
+};
+
+
 //! Exception triggered by query parser
 struct QueryParserError : std::runtime_error {
     QueryParserError(const char* parser_message)
@@ -95,6 +103,7 @@ struct QueryRange {
     aku_Timestamp  upperbound;
     int            direction;
     QueryRangeType type;
+    OrderBy        order;
 
     //! Return true if query should scan data backward in time
     bool is_backward() const { return direction == AKU_CURSOR_DIR_BACKWARD; }
@@ -130,6 +139,8 @@ struct IQueryProcessor {
       * If override is not needed - return nullptr.
       */
     virtual SeriesMatcher* matcher() = 0;
+
+    virtual bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) = 0;
 
     // Execution control
 

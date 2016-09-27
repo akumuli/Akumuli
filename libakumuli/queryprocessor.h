@@ -41,7 +41,6 @@ struct Builder {
                           const SeriesMatcher& matcher, aku_logger_cb_t logger);
 };
 
-
 /** Group-by time statement processor */
 struct GroupByTime {
     aku_Timestamp step_;
@@ -68,8 +67,8 @@ struct GroupByTag {
     std::string regex_;
     //! Mapping from global parameter ids to local parameter ids
     std::unordered_map<aku_ParamId, aku_ParamId> ids_;
-    //! Shared string pool
-    StringPool const* spool_;
+    //! Shared series matcher
+    SeriesMatcher const& matcher_;
     //! Previous string pool offset
     StringPoolOffset offset_;
     //! Previous string pool size
@@ -82,11 +81,13 @@ struct GroupByTag {
     StringTools::SetT snames_;
 
     //! Main c-tor
-    GroupByTag(StringPool const* spool, std::string metric, std::vector<std::string> const& tags);
+    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
 
     void refresh_();
 
     bool apply(aku_Sample* sample);
+
+    std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
 };
 
 
@@ -125,7 +126,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, std::string metric,
                        aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type,
                        std::shared_ptr<IQueryFilter> filter, GroupByTime groupby,
-                       std::unique_ptr<GroupByTag> groupbytag);
+                       std::unique_ptr<GroupByTag> groupbytag, OrderBy orderby);
 
     QueryRange range() const;
 
@@ -143,6 +144,8 @@ struct ScanQueryProcessor : IQueryProcessor {
 
     //! Set execution error
     void set_error(aku_Status error);
+
+    bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids);
 };
 
 
@@ -160,6 +163,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
     bool put(const aku_Sample& sample);
     void stop();
     void set_error(aku_Status error);
+    bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids);
 };
 }
 }  // namespaces

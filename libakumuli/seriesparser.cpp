@@ -27,8 +27,6 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
-#include <bits/unordered_set.h>
-
 namespace Akumuli {
 
 //                          //
@@ -48,7 +46,7 @@ SeriesMatcher::SeriesMatcher(u64 starting_id)
 
 u64 SeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
-    StringT pstr = pool.add(begin, end, id);
+    StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
     table[pstr] = id;
     inv_table[id] = pstr;
@@ -62,14 +60,20 @@ void SeriesMatcher::_add(std::string series, u64 id) {
     }
     const char* begin = &series[0];
     const char* end = begin + series.size();
-    StringT pstr = pool.add(begin, end, id);
+    StringT pstr = pool.add(begin, end);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
-u64 SeriesMatcher::match(const char* begin, const char* end) {
+void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+    StringT pstr = pool.add(begin, end);
+    table[pstr] = id;
+    inv_table[id] = pstr;
+}
 
-    int len = end - begin;
+u64 SeriesMatcher::match(const char* begin, const char* end) const {
+
+    int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
 
     auto it = table.find(str);
@@ -96,7 +100,25 @@ std::vector<u64> SeriesMatcher::get_all_ids() const {
     for (auto const &tup: inv_table) {
         result.push_back(tup.first);
     }
+    std::sort(result.begin(), result.end());
     return result;
+}
+
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp) {
+    std::vector<SeriesNameT> series;
+    StringPoolOffset offset = {};
+    size_t size = 0;
+    std::vector<StringPool::StringT> res = pool.regex_match(rexp, &offset, &size);
+    std::transform(res.begin(), res.end(), std::back_inserter(series), [this](StringT s) {
+        auto it = table.find(s);
+        if (it == table.end()) {
+            // We should always find id by string, otherwise - invariant is
+            // broken (due to memory corruption most likely).
+            AKU_PANIC("Invalid string-pool.");
+        }
+        return std::make_tuple(s.first, s.second, it->second);
+    });
+    return series;
 }
 
 //                         //

@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <thread>
 
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
@@ -17,13 +18,13 @@
 
 using namespace std;
 
-int DB_SIZE = 8;
-u64 NUM_ITERATIONS = 100*1000*1000ul;
-int CHUNK_SIZE = 5000;
+static int DB_SIZE = 8;
+static u64 NUM_ITERATIONS = 100*1000*1000ul;
+//static int CHUNK_SIZE = 5000;
 
-const char* DB_NAME = "db";
-const char* DB_PATH = "";
-const char* DB_META_FILE = "/tmp/akumuli/db.akumuli";
+//static const char* DB_NAME = "db";
+//static const char* DB_PATH = "";
+static const char* DB_META_FILE = "/tmp/testdb.akumuli";
 
 class Timer
 {
@@ -62,7 +63,7 @@ std::string build_query(u64 begin, u64 end) {
 }
 
 void delete_storage() {
-    aku_remove_database(DB_META_FILE, &aku_console_logger);
+    aku_remove_database(DB_META_FILE, true);
 }
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, u64& counter, Timer& timer, u64 mod) {
@@ -164,7 +165,7 @@ struct RandomGen {
     }
 
     int generate() {
-        return (int)abs(distribution(generator));
+        return static_cast<int>(abs(distribution(generator)));
     }
 };
 
@@ -200,7 +201,7 @@ Mode read_cmd(int cnt, const char** args) {
     }
     if (cnt == 4) {
         DB_SIZE        = boost::lexical_cast<int>(args[2]);
-        NUM_ITERATIONS = boost::lexical_cast<int>(args[3]);
+        NUM_ITERATIONS = boost::lexical_cast<u64>(args[3]);
 
         if (NUM_ITERATIONS >= 10000000000) {
             std::cout << "NUM_ITERATIONS set too large" << std::endl;
@@ -226,74 +227,94 @@ void logger_(aku_LogLevel level, const char * msg) {
     }
 }
 
-int main(int cnt, const char** args)
-{
-    aku_initialize(nullptr);
+int main(int, const char**) {
+
+    aku_initialize(nullptr, logger_);
+
+    // Delete database
+    //
+
+    aku_Status status = aku_remove_database("/tmp/testdb.akumuli", true);
+    std::cout << "Remove old database, status: " << aku_error_message(status) << std::endl;
+
+    // Create database
+    //
+
+    status = aku_create_database("testdb", "/tmp", "/tmp", 2);
+    if (status != AKU_SUCCESS) {
+        std::cerr << "Can't create database" << std::endl;
+    }
+
+    // Open database
+    //
 
     aku_FineTuneParams params = {};
-    params.debug_mode = 0;
-    params.durability = /*AKU_MAX_DURABILITY; //*/AKU_MAX_WRITE_SPEED;
-    params.enable_huge_tlb = 0;
-    params.compression_threshold = 10000;
-    params.window_size = 600;
-    params.max_cache_size = 10*1024*1024;  // 10Mb
 
     auto db = aku_open_database(DB_META_FILE, params);
 
-    Timer timer;
+    auto worker = [db](aku_ParamId begin, aku_ParamId end) {
+        auto session = aku_create_session(db);
+        Timer timer;
+        RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
+        std::vector<aku_ParamId> ids;
+        // Genearate all ids
+        for (aku_ParamId it = begin; it < end; it++) {
+            char buffer[0x100];
+            int nchars = sprintf(buffer, "cpu id=%d", static_cast<int>(it));
+            aku_Sample sample;
+            aku_series_to_param_id(session, buffer, buffer + nchars, &sample);
+            ids.push_back(sample.paramid);
+        }
+        size_t load = NUM_ITERATIONS / ids.size();
+        // Generate data
+        for(u64 i = 0; i < NUM_ITERATIONS; i++) {
+            aku_Sample sample;
+            //char buffer[100];
+            // =series=
+            sample.paramid = ids.at(i / load);
+
+            // =timestamp=
+            sample.timestamp = i;
+
+            // =payload=
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.float64 = rwalk.generate(sample.paramid);
+
+            aku_Status status = aku_write(session, &sample);
+
+            if (status != AKU_SUCCESS) {
+                std::cout << "Error at " << i << std::endl;
+                std::terminate();
+            }
+            if (i % 1000000 == 0) {
+                std::cout << i << " " << timer.elapsed() << "s" << std::endl;
+                timer.restart();
+            }
+        }
+        aku_destroy_session(session);
+    };
+
+    std::thread th0(std::bind(worker, 0, 1000));
+    std::thread th1(std::bind(worker, 1000, 2000));
+    //std::thread th2(std::bind(worker, 3000, 4000));
+    //std::thread th3(std::bind(worker, 4000, 5000));
+    th0.join();
+    th1.join();
+    //th2.join();
+    //th3.join();
+
+    aku_close_database(db);
+    /*
 
     aku_debug_print(db);
 
-    u64 busy_count = 0;
-    // Fill in data
-    RandomWalk rwalk(10.0, 0.0, 0.002, 10000);
-    for(u64 i = 0; i < NUM_ITERATIONS; i++) {
-        aku_Sample sample;
-        char buffer[100];
-
-        // =series=
-        int id = i % 1000;
-        int hashval =  i % 10;
-        int nchars = sprintf(buffer, "cpu key=%d hash=%d", id, hashval);
-        aku_series_to_param_id(db, buffer, buffer + nchars, &sample);
-
-        // =timestamp=
-        sample.timestamp = i/100;
-
-        // =payload=
-        if (i == 1000000ul) {
-            // Add anomalous value
-            rwalk.add_anomaly(id, 100.0);
-        }
-        if (i == 899999999ul) {
-            // Add anomalous value
-            rwalk.add_anomaly(id, 100.0);
-        }
-        sample.payload.type = AKU_PAYLOAD_FLOAT;
-        sample.payload.float64 = rwalk.generate(id);
-
-        aku_Status status = aku_write(db, &sample);
-
-        while (status == AKU_EBUSY) {
-            status = aku_write(db, &sample);
-            busy_count++;
-        }
-        if (i % 1000000 == 0) {
-            std::cout << i << " " << timer.elapsed() << "s" << std::endl;
-            timer.restart();
-        }
-    }
-    std::cout << "!busy count = " << busy_count << std::endl;
-
-    aku_debug_print(db);
-
-    aku_StorageStats storage_stats = {0};
+    aku_StorageStats storage_stats = {};
     aku_global_storage_stats(db, &storage_stats);
     print_storage_stats(storage_stats);
 
     // Search
     std::cout << "Sequential access" << std::endl;
-    aku_SearchStats search_stats = {0};
+    aku_SearchStats search_stats = {};
     u64 counter = 0;
 
     timer.restart();
@@ -335,8 +356,7 @@ int main(int cnt, const char** args)
     }
     aku_global_search_stats(&search_stats, true);
     print_search_stats(search_stats);
-
-    aku_close_database(db);
+    */
 
     return 0;
 }

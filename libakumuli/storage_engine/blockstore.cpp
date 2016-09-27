@@ -1,7 +1,27 @@
+/**
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 #include "blockstore.h"
 #include "log_iface.h"
 #include "util.h"
 #include "status_util.h"
+#include "crc32c.h"
+
+#include <cassert>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -77,14 +97,23 @@ BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
 }
 
 
-Block::Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data)
-    : store_(bs)
-    , data_(std::move(data))
+Block::Block(LogicAddr addr, std::vector<u8>&& data)
+    : data_(std::move(data))
     , addr_(addr)
 {
 }
 
+Block::Block()
+    : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
+    , addr_(EMPTY_ADDR)
+{
+}
+
 const u8* Block::get_data() const {
+    return data_.data();
+}
+
+u8* Block::get_data() {
     return data_.data();
 }
 
@@ -94,6 +123,10 @@ size_t Block::get_size() const {
 
 LogicAddr Block::get_addr() const {
     return addr_;
+}
+
+void Block::set_addr(LogicAddr addr) {
+    addr_ = addr;
 }
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
@@ -175,6 +208,7 @@ static LogicAddr make_logic(u32 gen, BlockAddr addr) {
 }
 
 bool FixedSizeFileStorage::exists(LogicAddr addr) const {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     auto volix = gen % static_cast<u32>(volumes_.size());
@@ -193,6 +227,7 @@ bool FixedSizeFileStorage::exists(LogicAddr addr) const {
 }
 
 std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
@@ -215,8 +250,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<Block>());
     }
-    auto self = shared_from_this();
-    auto block = std::make_shared<Block>(self, addr, std::move(dest));
+    auto block = std::make_shared<Block>(addr, std::move(dest));
     return std::make_tuple(status, std::move(block));
 }
 
@@ -254,18 +288,20 @@ void FixedSizeFileStorage::advance_volume() {
     }
 }
 
-std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(u8 const* data) {
+std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(std::shared_ptr<Block> data) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     BlockAddr block_addr;
     aku_Status status;
-    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data);
+    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data->get_data());
     if (status == AKU_EOVERFLOW) {
         // Move to next generation
         advance_volume();
-        std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data);
+        std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, 0ull);
         }
     }
+    data->set_addr(block_addr);
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
@@ -275,6 +311,7 @@ std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(u8 const* d
 }
 
 void FixedSizeFileStorage::flush() {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
         if (dirty_[ix]) {
             dirty_[ix] = 0;
@@ -284,59 +321,107 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
-
-//! Memory resident blockstore for tests (and machines with infinite RAM)
-struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
-    std::vector<u8> buffer_;
-    std::function<void(LogicAddr)> append_callback_;
-    u32 write_pos_;
-    u32 pad_;
-
-    MemStore()
-        : write_pos_(0)
-    {
+BlockStoreStats FixedSizeFileStorage::get_stats() const {
+    BlockStoreStats stats = {};
+    stats.block_size = 4096;
+    size_t nvol = meta_->get_nvolumes();
+    for (u32 ix = 0; ix < nvol; ix++) {
+        aku_Status stat;
+        u32 res;
+        std::tie(stat, res) = meta_->get_capacity(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.capacity += res;
+        }
+        std::tie(stat, res) = meta_->get_nblocks(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.nblocks += res;
+        }
     }
+    return stats;
+}
 
-    MemStore(std::function<void(LogicAddr)> append_cb)
-        : append_callback_(append_cb)
-        , write_pos_(0)
-    {
-    }
+static u32 crc32c(const u8* data, size_t size) {
+    static crc32c_impl_t impl = chose_crc32c_implementation();
+    return impl(0, data, size);
+}
 
-    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, LogicAddr> append_block(const u8 *data);
-    virtual void flush();
-    virtual bool exists(LogicAddr addr) const;
-};
+u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
+    return crc32c(data, size);
+}
+
+//! Address space should be started from this address (otherwise some tests will pass no matter what).
+static const LogicAddr MEMSTORE_BASE = 619;
+
+// MemStore
+MemStore::MemStore()
+    : write_pos_(0)
+    , removed_pos_(0)
+{
+}
+
+MemStore::MemStore(std::function<void(LogicAddr)> append_cb)
+    : append_callback_(append_cb)
+    , write_pos_(0)
+    , removed_pos_(0)
+{
+}
+
+void MemStore::remove(size_t addr) {
+    removed_pos_ = addr;
+}
+
+u32 MemStore::checksum(u8 const* data, size_t size) const {
+    return crc32c(data, size);
+}
 
 std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
+    addr -= MEMSTORE_BASE;
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     std::shared_ptr<Block> block;
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
     if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-        return std::make_tuple(AKU_EOVERFLOW, block);
+        return std::make_tuple(AKU_EBAD_ARG, block);
+    }
+    if (addr < removed_pos_) {
+        return std::make_tuple(AKU_EBAD_ARG, block);
     }
     std::vector<u8> data;
     data.reserve(AKU_BLOCK_SIZE);
     auto begin = buffer_.begin() + offset;
     auto end = begin + AKU_BLOCK_SIZE;
     std::copy(begin, end, std::back_inserter(data));
-    block.reset(new Block(shared_from_this(), addr, std::move(data)));
+    block.reset(new Block(addr + MEMSTORE_BASE, std::move(data)));
     return std::make_tuple(AKU_SUCCESS, block);
 }
 
-std::tuple<aku_Status, LogicAddr> MemStore::append_block(const u8 *data) {
-    std::copy(data, data + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> data) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    assert(data->get_size() == AKU_BLOCK_SIZE);
+    std::copy(data->get_data(), data->get_data() + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
     if (append_callback_) {
-        append_callback_(write_pos_);
+        append_callback_(write_pos_ + MEMSTORE_BASE);
     }
-    return std::make_tuple(AKU_SUCCESS, write_pos_++);
+    auto addr = write_pos_++;
+    addr += MEMSTORE_BASE;
+    data->set_addr(addr);
+    return std::make_tuple(AKU_SUCCESS, addr);
 }
 
 void MemStore::flush() {
     // no-op
 }
 
+BlockStoreStats MemStore::get_stats() const {
+    BlockStoreStats s;
+    s.block_size = 4096;
+    s.capacity = 1024*4096;
+    s.nblocks = write_pos_;
+    return s;
+}
+
 bool MemStore::exists(LogicAddr addr) const {
+    addr -= MEMSTORE_BASE;
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     return addr < write_pos_;
 }
 

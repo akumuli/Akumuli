@@ -1,6 +1,24 @@
+/**
+ * Copyright (c) 2016 Eugene Lazin <4lazin@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 #pragma once
 #include "volume.h"
 #include <random>
+#include <mutex>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -8,6 +26,8 @@ namespace StorageEngine {
 //! Address of the block inside storage
 typedef u64 LogicAddr;
 
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 class Block;
 
@@ -34,6 +54,14 @@ struct BlockCache {
     PBlock loockup(LogicAddr addr);
 };
 
+
+struct BlockStoreStats {
+    size_t block_size;
+    size_t capacity;
+    size_t nblocks;
+};
+
+
 struct BlockStore {
 
     virtual ~BlockStore() = default;
@@ -46,13 +74,18 @@ struct BlockStore {
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data) = 0;
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data) = 0;
 
     //! Flush all pending changes.
     virtual void flush() = 0;
 
     //! Check if addr exists in block-store
     virtual bool exists(LogicAddr addr) const = 0;
+
+    //! Compute checksum of the input data.
+    virtual u32 checksum(u8 const* begin, size_t size) const = 0;
+
+    virtual BlockStoreStats get_stats() const = 0;
 };
 
 /** Blockstore. Contains collection of volumes.
@@ -72,6 +105,8 @@ class FixedSizeFileStorage : public BlockStore,
     u32 current_gen_;
     //! Size of the blockstore in blocks.
     size_t total_size_;
+    //! Used to protect all internal state
+    mutable std::mutex lock_;
 
     //! Secret c-tor.
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
@@ -94,29 +129,60 @@ public:
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(u8 const* data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
 
     virtual void flush();
 
     virtual bool exists(LogicAddr addr) const;
 
-    // TODO: add static create fn
+    virtual u32 checksum(u8 const* data, size_t size) const;
+
+    virtual BlockStoreStats get_stats() const;
 };
+
+
+//! Memory resident blockstore for tests (and machines with infinite RAM)
+struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
+    std::vector<u8> buffer_;
+    std::function<void(LogicAddr)> append_callback_;
+    u32 write_pos_;
+    u32 removed_pos_;
+    u32 pad_;
+    mutable std::mutex lock_;
+
+    MemStore();
+
+    MemStore(std::function<void(LogicAddr)> append_cb);
+
+    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
+    virtual void flush();
+    virtual bool exists(LogicAddr addr) const;
+    virtual u32 checksum(u8 const* data, size_t size) const;
+    BlockStoreStats get_stats() const;
+    void remove(size_t addr);
+};
+
 
 //! Represents memory block
 class Block {
-    std::weak_ptr<BlockStore> store_;
     std::vector<u8>           data_;
     LogicAddr                 addr_;
 
 public:
-    Block(std::shared_ptr<BlockStore> bs, LogicAddr addr, std::vector<u8>&& data);
+    Block(LogicAddr addr, std::vector<u8>&& data);
+
+    Block();
 
     const u8* get_data() const;
+
+    u8* get_data();
 
     size_t get_size() const;
 
     LogicAddr get_addr() const;
+
+    void set_addr(LogicAddr addr);
 };
 
 //! Should be used to create blockstore

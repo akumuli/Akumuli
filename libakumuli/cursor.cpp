@@ -123,10 +123,10 @@ void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx)
 
 // External cursor implementation
 
-size_t CoroCursor::read_ex(void* buffer, size_t buffer_size) {
+u32 CoroCursor::read(void* buffer, u32 buffer_size) {
     cursor_fsm_.update_buffer(buffer, buffer_size);
     coroutine_->operator()(this);
-    return cursor_fsm_.get_data_len();
+    return static_cast<u32>(cursor_fsm_.get_data_len());
 }
 
 bool CoroCursor::is_done() const {
