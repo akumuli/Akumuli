@@ -399,7 +399,7 @@ struct VByteStreamWriter {
     }
 
     template <class TVal> bool put_raw(TVal value) {
-        if ((end_ - pos_) < sizeof(TVal)) {
+        if ((end_ - pos_) < static_cast<i32>(sizeof(TVal))) {
             return false;
         }
         *reinterpret_cast<TVal*>(pos_) = value;
