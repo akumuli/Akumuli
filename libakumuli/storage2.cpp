@@ -186,7 +186,7 @@ void StorageSession::query(Caller& caller, InternalCursor* cur, const char* quer
     storage_->query(this, caller, cur, query);
 }
 
-void StorageSession::set_series_matcher(SeriesMatcher const* matcher) const {
+void StorageSession::set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const {
     matcher_substitute_ = matcher;
 }
 
@@ -358,16 +358,14 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
 
             if (req.group_by.enabled) {
                 session->set_series_matcher(query_processor->matcher());
+            } else {
+                session->clear_series_matcher();
             }
 
             // Access column store
             if (query_processor->start()) {
                 cstore_->query(req, *query_processor);
                 query_processor->stop();
-            }
-
-            if (req.group_by.enabled) {
-                session->clear_series_matcher();
             }
         } catch (const QueryParserError& qpe) {
             Logger::msg(AKU_LOG_ERROR, qpe.what());

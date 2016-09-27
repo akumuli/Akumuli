@@ -45,7 +45,7 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     SeriesMatcher local_matcher_;
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
-    mutable SeriesMatcher const* matcher_substitute_;
+    mutable std::shared_ptr<SeriesMatcher> matcher_substitute_;
 public:
     StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
 
@@ -61,7 +61,7 @@ public:
     void query(Caller& caller, InternalCursor* cur, const char* query) const;
 
     // Temporary reset series matcher
-    void set_series_matcher(const SeriesMatcher *matcher) const;
+    void set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const;
     void clear_series_matcher() const;
 };
 

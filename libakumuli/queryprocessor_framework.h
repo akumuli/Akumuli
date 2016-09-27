@@ -138,7 +138,7 @@ struct IQueryProcessor {
     /** Returns series matcher to override global one for query execution.
       * If override is not needed - return nullptr.
       */
-    virtual SeriesMatcher* matcher() = 0;
+    virtual std::shared_ptr<SeriesMatcher> matcher() = 0;
 
     virtual bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) = 0;
 

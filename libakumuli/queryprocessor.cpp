@@ -263,7 +263,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
                                        QueryRange::QueryRangeType type,
                                        std::shared_ptr<IQueryFilter> filter,
                                        GroupByTime groupby,
-                                       std::unique_ptr<GroupByTag> groupbytag,
+                                       std::shared_ptr<GroupByTag> groupbytag,
                                        OrderBy orderby)
     : range_(make_range(begin, end, type, orderby))
     , metric_(metric)
@@ -319,11 +319,11 @@ IQueryFilter& ScanQueryProcessor::filter() {
     return *filter_;
 }
 
-SeriesMatcher* ScanQueryProcessor::matcher() {
+std::shared_ptr<SeriesMatcher> ScanQueryProcessor::matcher() {
     if (groupby_tag_) {
-        return &groupby_tag_->local_matcher_;
+        return std::shared_ptr<SeriesMatcher>(groupby_tag_, &groupby_tag_->local_matcher_);
     }
-    return nullptr;
+    return std::shared_ptr<SeriesMatcher>();
 }
 
 bool ScanQueryProcessor::start() {
@@ -364,8 +364,8 @@ bool MetadataQueryProcessor::get_groupby_mapping(std::unordered_map<aku_ParamId,
     return false;
 }
 
-SeriesMatcher* MetadataQueryProcessor::matcher() {
-    return nullptr;
+std::shared_ptr<SeriesMatcher> MetadataQueryProcessor::matcher() {
+    return std::shared_ptr<SeriesMatcher>();
 }
 
 QueryRange MetadataQueryProcessor::range() const {

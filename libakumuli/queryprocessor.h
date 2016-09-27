@@ -114,7 +114,7 @@ struct ScanQueryProcessor : IQueryProcessor {
     //! Final of the processing topology
     std::shared_ptr<Node> last_node_;
     //! Group-by-tag
-    std::unique_ptr<GroupByTag> groupby_tag_;
+    std::shared_ptr<GroupByTag> groupby_tag_;
 
     /** Create new query processor.
       * @param root is a root of the processing topology
@@ -126,13 +126,13 @@ struct ScanQueryProcessor : IQueryProcessor {
     ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, std::string metric,
                        aku_Timestamp begin, aku_Timestamp end, QueryRange::QueryRangeType type,
                        std::shared_ptr<IQueryFilter> filter, GroupByTime groupby,
-                       std::unique_ptr<GroupByTag> groupbytag, OrderBy orderby);
+                       std::shared_ptr<GroupByTag> groupbytag, OrderBy orderby);
 
     QueryRange range() const;
 
     IQueryFilter& filter();
 
-    SeriesMatcher* matcher();
+    std::shared_ptr<SeriesMatcher> matcher();
 
     bool start();
 
@@ -158,7 +158,7 @@ struct MetadataQueryProcessor : IQueryProcessor {
 
     QueryRange     range() const;
     IQueryFilter&  filter();
-    SeriesMatcher* matcher();
+    std::shared_ptr<SeriesMatcher> matcher();
     bool           start();
     bool put(const aku_Sample& sample);
     void stop();
