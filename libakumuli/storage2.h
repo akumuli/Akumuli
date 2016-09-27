@@ -44,6 +44,8 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<Storage> storage_;
     SeriesMatcher local_matcher_;
     std::shared_ptr<StorageEngine::CStoreSession> session_;
+    //! Temporary query matcher
+    mutable SeriesMatcher const* matcher_substitute_;
 public:
     StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
 
@@ -57,6 +59,10 @@ public:
     int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
 
     void query(Caller& caller, InternalCursor* cur, const char* query) const;
+
+    // Temporary reset series matcher
+    void set_series_matcher(const SeriesMatcher *matcher) const;
+    void clear_series_matcher() const;
 };
 
 class Storage : public std::enable_shared_from_this<Storage> {
@@ -87,7 +93,7 @@ public:
     //! Create new write session
     std::shared_ptr<StorageSession> create_write_session();
 
-    void query(Caller& caller, InternalCursor* cur, const char* query) const;
+    void query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
 

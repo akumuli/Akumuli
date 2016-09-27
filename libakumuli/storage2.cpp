@@ -111,6 +111,7 @@ static apr_status_t create_metadata_page( const char* file_name
 StorageSession::StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session)
     : storage_(storage)
     , session_(session)
+    , matcher_substitute_(nullptr)
 {
 }
 
@@ -162,19 +163,36 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
 }
 
 int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
-    auto name = local_matcher_.id2str(id);
-    if (name.first == nullptr) {
-        // not yet cached!
-        return storage_->get_series_name(id, buffer, buffer_size, &local_matcher_);
+    SeriesMatcher::StringT name;
+    if (matcher_substitute_) {
+        // Use temporary matcher
+        name = matcher_substitute_->id2str(id);
+        if (name.first == nullptr) {
+            // no such id, user error
+            return 0;
+        }
+    } else {
+        name = local_matcher_.id2str(id);
+        if (name.first == nullptr) {
+            // not yet cached!
+            return storage_->get_series_name(id, buffer, buffer_size, &local_matcher_);
+        }
     }
     memcpy(buffer, name.first, static_cast<size_t>(name.second));
     return name.second;
 }
 
 void StorageSession::query(Caller& caller, InternalCursor* cur, const char* query) const {
-    storage_->query(caller, cur, query);
+    storage_->query(this, caller, cur, query);
 }
 
+void StorageSession::set_series_matcher(SeriesMatcher const* matcher) const {
+    matcher_substitute_ = matcher;
+}
+
+void StorageSession::clear_series_matcher() const {
+    matcher_substitute_ = nullptr;
+}
 
 //----------- Storage ----------
 
@@ -314,7 +332,7 @@ static StorageEngine::OrderBy convert(QP::OrderBy order) {
     return StorageEngine::OrderBy::SERIES;
 }
 
-void Storage::query(Caller& caller, InternalCursor* cur, const char* query) const {
+void Storage::query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
     // Parse query
     try {
@@ -338,10 +356,18 @@ void Storage::query(Caller& caller, InternalCursor* cur, const char* query) cons
 
             req.group_by.enabled = query_processor->get_groupby_mapping(&req.group_by.transient_map);
 
+            if (req.group_by.enabled) {
+                session->set_series_matcher(query_processor->matcher());
+            }
+
             // Access column store
             if (query_processor->start()) {
                 cstore_->query(req, *query_processor);
                 query_processor->stop();
+            }
+
+            if (req.group_by.enabled) {
+                session->clear_series_matcher();
             }
         } catch (const QueryParserError& qpe) {
             Logger::msg(AKU_LOG_ERROR, qpe.what());
