@@ -109,6 +109,44 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
 
 static const size_t RANGE_SIZE = 1024;
 
+
+template<int dir>  // 0 - forward, 1 - backward
+struct TimeOrder {
+    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    typedef std::tuple<KeyType, double, u32> HeapItem;
+    std::greater<KeyType> greater_;
+    std::less<KeyType> less_;
+
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        if (dir == 0) {
+            return greater_(std::get<0>(lhs), std::get<0>(rhs));
+        }
+        return less_(std::get<0>(lhs), std::get<0>(rhs));
+    }
+};
+
+template<int dir>  // 0 - forward, 1 - backward
+struct SeriesOrder {
+    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    typedef std::tuple<KeyType, double, u32> HeapItem;
+    typedef std::tuple<aku_ParamId, aku_Timestamp> InvKeyType;
+    std::greater<InvKeyType> greater_;
+    std::less<InvKeyType> less_;
+
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        auto lkey = std::get<0>(lhs);
+        InvKeyType ilhs = std::make_tuple(std::get<1>(lkey), std::get<0>(lkey));
+        auto rkey = std::get<0>(rhs);
+        InvKeyType irhs = std::make_tuple(std::get<1>(rkey), std::get<0>(rkey));
+        if (dir == 0) {
+            return greater_(ilhs, irhs);
+        }
+        return less_(ilhs, irhs);
+    }
+};
+
+
+template<template <int dir> class CmpPred>
 struct MergeIterator : RowIterator {
     std::vector<std::unique_ptr<NBTreeIterator>> iters_;
     std::vector<aku_ParamId> ids_;
@@ -154,135 +192,115 @@ struct MergeIterator : RowIterator {
 
     std::vector<Range> ranges_;
 
-    MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) override;
+    MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+        : iters_(std::move(it))
+        , ids_(std::move(ids))
+    {
+        if (!iters_.empty()) {
+            forward_ = iters_.front()->get_direction() == NBTreeIterator::Direction::FORWARD;
+        }
+        if (iters_.size() != ids_.size()) {
+            AKU_PANIC("MergeIterator - broken invariant");
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) override {
+        if (forward_) {
+            return kway_merge<0>(dest, size);
+        }
+        return kway_merge<1>(dest, size);
+    }
 
     template<int dir>
-    std::tuple<aku_Status, size_t> kway_merge(aku_Sample* dest, size_t size);
+    std::tuple<aku_Status, size_t> kway_merge(aku_Sample* dest, size_t size) {
+        if (iters_.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
+        size_t outpos = 0;
+        if (ranges_.empty()) {
+            // `ranges_` array should be initialized on first call
+            for (size_t i = 0; i < iters_.size(); i++) {
+                Range range(ids_[i]);
+                aku_Status status;
+                size_t outsize;
+                std::tie(status, outsize) = iters_[i]->read(range.ts.data(), range.xs.data(), RANGE_SIZE);
+                if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize != 0)) {
+                    range.size = outsize;
+                    range.pos  = 0;
+                    ranges_.push_back(std::move(range));
+                }
+                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                    return std::make_tuple(status, 0);
+                }
+            }
+        }
+
+        typedef CmpPred<dir> Comp;
+        typedef typename Comp::HeapItem HeapItem;
+        typedef typename Comp::KeyType KeyType;
+        typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
+        Heap heap;
+
+        int index = 0;
+        for(auto& range: ranges_) {
+            if (!range.empty()) {
+                KeyType key = range.top_key();
+                heap.push(std::make_tuple(key, range.top_value(), index));
+            }
+            index++;
+        }
+
+        enum {
+            KEY = 0,
+            VALUE = 1,
+            INDEX = 2,
+            TIME = 0,
+            ID = 1,
+        };
+
+        while(!heap.empty()) {
+            HeapItem item = heap.top();
+            KeyType point = std::get<KEY>(item);
+            u32 index = std::get<INDEX>(item);
+            aku_Sample sample;
+            sample.paramid = std::get<ID>(point);
+            sample.timestamp = std::get<TIME>(point);
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.float64 = std::get<VALUE>(item);
+
+            if (outpos < size) {
+                dest[outpos++] = sample;
+            } else {
+                // Output buffer is fully consumed
+                return std::make_tuple(AKU_SUCCESS, size);
+            }
+            heap.pop();
+            ranges_[index].advance();
+            if (ranges_[index].empty()) {
+                // Refill range if possible
+                aku_Status status;
+                size_t outsize;
+                std::tie(status, outsize) = iters_[index]->read(ranges_[index].ts.data(), ranges_[index].xs.data(), RANGE_SIZE);
+                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                    return std::make_tuple(status, 0);
+                }
+                ranges_[index].size = outsize;
+                ranges_[index].pos  = 0;
+            }
+            if (!ranges_[index].empty()) {
+                KeyType point = ranges_[index].top_key();
+                heap.push(std::make_tuple(point, ranges_[index].top_value(), index));
+            }
+        }
+        if (heap.empty()) {
+            iters_.clear();
+            ranges_.clear();
+        }
+        // All iterators are fully consumed
+        return std::make_tuple(AKU_ENO_DATA, outpos);
+    }
+
 };
-
-MergeIterator::MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
-    : iters_(std::move(it))
-    , ids_(std::move(ids))
-{
-    if (!iters_.empty()) {
-        forward_ = iters_.front()->get_direction() == NBTreeIterator::Direction::FORWARD;
-    }
-    if (iters_.size() != ids_.size()) {
-        AKU_PANIC("MergeIterator - broken invariant");
-    }
-}
-
-template<int dir>  // 0 - forward, 1 - backward
-struct Predicate {
-    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
-    typedef std::tuple<KeyType, double, u32> HeapItem;
-    std::greater<KeyType> greater_;
-    std::less<KeyType> less_;
-
-    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
-        if (dir == 0) {
-            return greater_(std::get<0>(lhs), std::get<0>(rhs));
-        }
-        return less_(std::get<0>(lhs), std::get<0>(rhs));
-    }
-};
-
-template<int dir>
-std::tuple<aku_Status, size_t> MergeIterator::kway_merge(aku_Sample* dest, size_t size) {
-    if (iters_.empty()) {
-        return std::make_tuple(AKU_ENO_DATA, 0);
-    }
-    size_t outpos = 0;
-    if (ranges_.empty()) {
-        // `ranges_` array should be initialized on first call
-        for (size_t i = 0; i < iters_.size(); i++) {
-            Range range(ids_[i]);
-            aku_Status status;
-            size_t outsize;
-            std::tie(status, outsize) = iters_[i]->read(range.ts.data(), range.xs.data(), RANGE_SIZE);
-            if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize != 0)) {
-                range.size = outsize;
-                range.pos  = 0;
-                ranges_.push_back(std::move(range));
-            }
-            if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
-                return std::make_tuple(status, 0);
-            }
-        }
-    }
-
-    typedef Predicate<dir> Comp;
-    typedef typename Comp::HeapItem HeapItem;
-    typedef typename Comp::KeyType KeyType;
-    typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
-    Heap heap;
-
-    int index = 0;
-    for(auto& range: ranges_) {
-        if (!range.empty()) {
-            KeyType key = range.top_key();
-            heap.push(std::make_tuple(key, range.top_value(), index));
-        }
-        index++;
-    }
-
-    enum {
-        KEY = 0,
-        VALUE = 1,
-        INDEX = 2,
-        TIME = 0,
-        ID = 1,
-    };
-
-    while(!heap.empty()) {
-        HeapItem item = heap.top();
-        KeyType point = std::get<KEY>(item);
-        u32 index = std::get<INDEX>(item);
-        aku_Sample sample;
-        sample.paramid = std::get<ID>(point);
-        sample.timestamp = std::get<TIME>(point);
-        sample.payload.type = AKU_PAYLOAD_FLOAT;
-        sample.payload.float64 = std::get<VALUE>(item);
-
-        if (outpos < size) {
-            dest[outpos++] = sample;
-        } else {
-            // Output buffer is fully consumed
-            return std::make_tuple(AKU_SUCCESS, size);
-        }
-        heap.pop();
-        ranges_[index].advance();
-        if (ranges_[index].empty()) {
-            // Refill range if possible
-            aku_Status status;
-            size_t outsize;
-            std::tie(status, outsize) = iters_[index]->read(ranges_[index].ts.data(), ranges_[index].xs.data(), RANGE_SIZE);
-            if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
-                return std::make_tuple(status, 0);
-            }
-            ranges_[index].size = outsize;
-            ranges_[index].pos  = 0;
-        }
-        if (!ranges_[index].empty()) {
-            KeyType point = ranges_[index].top_key();
-            heap.push(std::make_tuple(point, ranges_[index].top_value(), index));
-        }
-    }
-    if (heap.empty()) {
-        iters_.clear();
-        ranges_.clear();
-    }
-    // All iterators are fully consumed
-    return std::make_tuple(AKU_ENO_DATA, outpos);
-}
-
-std::tuple<aku_Status, size_t> MergeIterator::read(aku_Sample *dest, size_t size) {
-    if (forward_) {
-        return kway_merge<0>(dest, size);
-    }
-    return kway_merge<1>(dest, size);
-}
 
 // ////////////// //
 //  Column-store  //
@@ -350,11 +368,17 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
                 return;
             }
         }
-    }
-    if (req.order_by == OrderBy::SERIES) {
-        iter.reset(new ChainIterator(std::move(ids), std::move(iters)));
+        if (req.order_by == OrderBy::SERIES) {
+            iter.reset(new MergeIterator<SeriesOrder>(std::move(ids), std::move(iters)));
+        } else {
+            iter.reset(new MergeIterator<TimeOrder>(std::move(ids), std::move(iters)));
+        }
     } else {
-        iter.reset(new MergeIterator(std::move(ids), std::move(iters)));
+        if (req.order_by == OrderBy::SERIES) {
+            iter.reset(new ChainIterator(std::move(ids), std::move(iters)));
+        } else {
+            iter.reset(new MergeIterator<TimeOrder>(std::move(ids), std::move(iters)));
+        }
     }
 
     const size_t dest_size = 0x1000;
