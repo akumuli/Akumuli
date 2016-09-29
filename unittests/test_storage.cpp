@@ -521,5 +521,84 @@ BOOST_AUTO_TEST_CASE(Test_storage_groupby_query_1) {
     test_storage_group_by_query(OrderBy::TIME);
 }
 
+// Test where clause
+
+static std::string make_scan_query_with_where(aku_Timestamp begin, aku_Timestamp end, std::vector<int> keys) {
+    std::stringstream str;
+    str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "},";
+    str << "  \"metric\": \"test\",";
+    str << "  \"order-by\": \"series\",";
+    str << "  \"where\": { \"key\": [";
+    bool first = true;
+    for (auto key: keys) {
+        if (first) {
+            first = false;
+            str << key;
+        } else {
+            str << ", " << key;
+        }
+    }
+    str << "]}}";
+    return str.str();
+
+}
+
+void test_storage_where_clause(aku_Timestamp begin, aku_Timestamp end, int nseries) {
+    std::vector<std::string> series_names;
+    for (int i = 0; i < nseries; i++) {
+        series_names.push_back("test key=" + std::to_string(i));
+    }
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
+    auto check_case = [&](std::vector<int> ids2read) {
+        Caller caller;
+        CursorMock cursor;
+        auto query = make_scan_query_with_where(begin, end, ids2read);
+        std::vector<std::string> expected_series;
+        for(auto id: ids2read) {
+            expected_series.push_back(series_names[static_cast<size_t>(id)]);
+        }
+        session->query(caller, &cursor, query.c_str());
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+        size_t expected_size = (end - begin)*expected_series.size();
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+        std::vector<aku_Timestamp> expected;
+        for (aku_Timestamp ts = begin; ts < end; ts++) {
+            expected.push_back(ts);
+        }
+        check_timestamps(cursor, expected, OrderBy::SERIES, expected_series);
+        check_paramids(*session, cursor, OrderBy::SERIES, expected_series, expected_size, true);
+    };
+
+    std::vector<int> first = { 0 };
+    check_case(first);
+
+    std::vector<int> last = { nseries - 1 };
+    check_case(last);
+
+    std::vector<int> all; for (int i = 0; i < nseries; i++) { all.push_back(i); };
+    check_case(all);
+
+    std::vector<int> even; std::copy_if(all.begin(), all.end(), std::back_inserter(even), [](int i) {return i % 2 == 0;});
+    check_case(even);
+
+    std::vector<int> odd; std::copy_if(all.begin(), all.end(), std::back_inserter(odd), [](int i) {return i % 2 != 0;});
+    check_case(odd);
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_where_clause) {
+    std::vector<std::tuple<aku_Timestamp, aku_Timestamp, int>> cases = {
+        std::make_tuple(100, 200, 10),
+    };
+    for (auto tup: cases) {
+        aku_Timestamp begin, end;
+        int nseries;
+        std::tie(begin, end, nseries) = tup;
+        test_storage_where_clause(begin, end, nseries);
+    }
+}
+
 // Test reopen
 

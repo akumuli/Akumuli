@@ -98,6 +98,7 @@ struct RegexFilter : IQueryFilter {
     virtual std::vector<aku_ParamId> get_ids() {
         std::vector<aku_ParamId> result;
         std::copy(ids_.begin(), ids_.end(), std::back_inserter(result));
+        std::sort(result.begin(), result.end());
         return result;
     }
 
