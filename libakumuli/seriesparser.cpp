@@ -48,6 +48,7 @@ u64 SeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
     StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
+    std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
     names.push_back(tup);
@@ -61,12 +62,14 @@ void SeriesMatcher::_add(std::string series, u64 id) {
     const char* begin = &series[0];
     const char* end = begin + series.size();
     StringT pstr = pool.add(begin, end);
+    std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
 void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     StringT pstr = pool.add(begin, end);
+    std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
@@ -76,6 +79,7 @@ u64 SeriesMatcher::match(const char* begin, const char* end) const {
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
 
+    std::lock_guard<std::mutex> guard(mutex);
     auto it = table.find(str);
     if (it == table.end()) {
         return 0ul;
@@ -84,6 +88,7 @@ u64 SeriesMatcher::match(const char* begin, const char* end) const {
 }
 
 SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
+    std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
         return EMPTY;
@@ -92,23 +97,33 @@ SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
 }
 
 void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
+    std::lock_guard<std::mutex> guard(mutex);
     std::swap(names, *buffer);
 }
 
 std::vector<u64> SeriesMatcher::get_all_ids() const {
     std::vector<u64> result;
-    for (auto const &tup: inv_table) {
-        result.push_back(tup.first);
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        for (auto const &tup: inv_table) {
+            result.push_back(tup.first);
+        }
     }
     std::sort(result.begin(), result.end());
     return result;
 }
 
-std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp) {
-    std::vector<SeriesNameT> series;
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp) const {
     StringPoolOffset offset = {};
     size_t size = 0;
-    std::vector<StringPool::StringT> res = pool.regex_match(rexp, &offset, &size);
+    return regex_match(rexp, &offset, &size);
+}
+
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
+    std::vector<SeriesNameT> series;
+    std::vector<StringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
+
+    std::lock_guard<std::mutex> guard(mutex);
     std::transform(res.begin(), res.end(), std::back_inserter(series), [this](StringT s) {
         auto it = table.find(s);
         if (it == table.end()) {

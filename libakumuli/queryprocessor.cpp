@@ -80,18 +80,9 @@ struct RegexFilter : IQueryFilter {
     }
 
     void refresh() {
-        // TODO: refactor this!
-        std::vector<StringPool::StringT> results = matcher_.pool.regex_match(regex_.c_str(), &offset_, &prev_size_);
-        int ix = 0;
-        for (StringPool::StringT item: results) {
-            AKU_UNUSED(item);
-            auto id = matcher_.match(item.first, item.first + item.second);
-            if (id == 0ul) {
-                // Series name was added to string pool but not yet added to matcher
-                continue;
-            }
-            ids_.insert(id);
-            ix++;
+        std::vector<SeriesMatcher::SeriesNameT> results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
+        for (SeriesMatcher::SeriesNameT item: results) {
+            ids_.insert(std::get<2>(item));
         }
     }
 
@@ -207,32 +198,31 @@ std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
 }
 
 void GroupByTag::refresh_() {
-                            // TODO: should be matcher_.regex_match
-    std::vector<StringPool::StringT> results = matcher_.pool.regex_match(regex_.c_str(), &offset_, &prev_size_);
+    auto results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
     auto filter = StringTools::create_set(tags_.size());
     for (const auto& tag: tags_) {
         filter.insert(std::make_pair(tag.data(), tag.size()));
     }
     char buffer[AKU_LIMITS_MAX_SNAME];
-    for (StringPool::StringT item: results) {
-        auto id = matcher_.match(item.first, item.second + item.first);
+    for (auto item: results) {
         aku_Status status;
-        SeriesParser::StringT result;
-        std::tie(status, result) = SeriesParser::filter_tags(item, filter, buffer);
+        SeriesParser::StringT result, stritem;
+        stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
+        std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
         if (status == AKU_SUCCESS) {
             if (snames_.count(result) == 0) {
                 // put result to local stringpool and ids list
                 auto localid = local_matcher_.add(result.first, result.first + result.second);
                 auto str = local_matcher_.id2str(localid);
                 snames_.insert(str);
-                ids_[id] = localid;
+                ids_[std::get<2>(item)] = localid;
             } else {
                 // local name already created
                 auto localid = local_matcher_.match(result.first, result.first + result.second);
                 if (localid == 0ul) {
                     AKU_PANIC("inconsistent matcher state");
                 }
-                ids_[id] = localid;
+                ids_[std::get<2>(item)] = localid;
             }
         }
     }

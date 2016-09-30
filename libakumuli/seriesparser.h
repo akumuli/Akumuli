@@ -53,7 +53,7 @@ struct SeriesMatcher {
     InvT                     inv_table;  //! Ids table (id to name mapping)
     u64                      series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
-    std::mutex               mutex;      //! Mutex for shared data
+    mutable std::mutex       mutex;      //! Mutex for shared data
 
     SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
 
@@ -89,7 +89,9 @@ struct SeriesMatcher {
 
     std::vector<u64> get_all_ids() const;
 
-    std::vector<SeriesNameT> regex_match(const char* rexp);
+    std::vector<SeriesNameT> regex_match(const char* rexp) const;
+
+    std::vector<SeriesNameT> regex_match(const char* rexp, StringPoolOffset* offset, size_t* prevsize) const;
 };
 
 /** Namespace class to store all parsing related things.
