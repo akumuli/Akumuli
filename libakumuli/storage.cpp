@@ -411,7 +411,7 @@ void Storage::search(Caller &caller, InternalCursor* cur, const char* query) con
     try {
         // Parse query
         auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
-        std::shared_ptr<IQueryProcessor> query_processor;
+        std::shared_ptr<IStreamProcessor> query_processor;
         try {
             query_processor = Builder::build_query_processor(query, terminal_node, *matcher_, logger_);
         } catch (const QueryParserError& qpe) {

@@ -341,7 +341,7 @@ namespace {
 struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 {
     const PageHeader *page_;
-    std::shared_ptr<QP::IQueryProcessor> query_;
+    std::shared_ptr<QP::IStreamProcessor> query_;
     std::shared_ptr<ChunkCache> cache_;
 
     const aku_Timestamp  key_;
@@ -349,7 +349,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 
     SearchRange search_range_;
 
-    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache)
+    SearchAlgorithm(PageHeader const* page, std::shared_ptr<QP::IStreamProcessor> query, std::shared_ptr<ChunkCache> cache)
         : page_(page)
         , query_(query)
         , cache_(cache)
@@ -690,7 +690,7 @@ struct SearchAlgorithm : InterpolationSearch<SearchAlgorithm>
 };
 
 
-void PageHeader::search(std::shared_ptr<QP::IQueryProcessor> query, std::shared_ptr<ChunkCache> cache) const {
+void PageHeader::search(std::shared_ptr<QP::IStreamProcessor> query, std::shared_ptr<ChunkCache> cache) const {
     SearchAlgorithm search_alg(this, query, cache);
     if (search_alg.fast_path() == false) {
         if (search_alg.interpolation()) {

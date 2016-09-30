@@ -198,7 +198,7 @@ struct Node : QP::Node {
     }
 };
 
-struct TestQueryProcessor : QP::IQueryProcessor {
+struct TestQueryProcessor : QP::IStreamProcessor {
 
     // Search range
     aku_Timestamp begin;

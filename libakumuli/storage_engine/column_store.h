@@ -44,56 +44,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-/* ColumnStore + reshape functionality
- * selct cpu where host=XXXX group by tag order by time from 0 to 100;
- * TS  Series name Value
- *  0  cpu tag=Foo    10
- *  0  cpu tag=Bar    20
- *  1  cpu tag=Foo    10
- *  2  cpu tag=Foo    12
- *  2  cpu tag=Bar    30
- *  ...
- *
- * selct cpu where host=XXXX group by tag order by series from 0 to 100;
- * TS  Series name Value
- *  0  cpu tag=Foo    21
- *  1  cpu tag=Foo    20
- * ...
- * 99  cpu tag=Foo    19
- *  0  cpu tag=Bar    20
- *  1  cpu tag=Bar    11
- * ...
- * 99  cpu tag=Bar    14
- *  ...
- *
- * It is possible to add processing steps via IQueryProcessor.
- */
-
-//! Set of ids returned by the query (defined by select and where clauses)
-struct Selection {
-    std::vector<aku_ParamId> ids;
-    aku_Timestamp begin;
-    aku_Timestamp end;
-};
-
-//! Mapping from persistent series names to transient series names
-struct GroupBy {
-    bool enabled;
-    std::unordered_map<aku_ParamId, aku_ParamId> transient_map;
-};
-
-//! Output order
-enum class OrderBy {
-    SERIES,
-    TIME,
-};
-
-//! Reshape request defines what should be sent to query processor
-struct ReshapeRequest {
-    Selection select;
-    GroupBy group_by;
-    OrderBy order_by;
-};
 
 /** Columns store.
   * Serve as a central data repository for series metadata and all individual columns.
@@ -139,7 +89,7 @@ public:
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
     //! Slice and dice data according to request and feed it to query processor
-    void query(ReshapeRequest const& req, QP::IQueryProcessor& qproc);
+    void query(ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     size_t _get_uncommitted_memory() const;
 };
@@ -166,7 +116,7 @@ public:
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void query(const ReshapeRequest &req, QP::IQueryProcessor& qproc);
+    void query(const ReshapeRequest &req, QP::IStreamProcessor& qproc);
 };
 
 }}  // namespace

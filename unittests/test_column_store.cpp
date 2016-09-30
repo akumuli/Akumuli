@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(Test_column_store_add_values_3) {
     BOOST_REQUIRE(status == NBTreeAppendResult::FAIL_BAD_ID);
 }
 
-struct QueryProcessorMock : QP::IQueryProcessor {
+struct QueryProcessorMock : QP::IStreamProcessor {
     bool started = false;
     bool stopped = false;
     std::vector<aku_Sample> samples;

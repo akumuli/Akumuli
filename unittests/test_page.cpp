@@ -78,7 +78,7 @@ struct Recorder : QP::Node {
     }
 };
 
-struct TestQueryProcessor : QP::IQueryProcessor {
+struct TestQueryProcessor : QP::IStreamProcessor {
 
     // Search range
     aku_Timestamp begin;
@@ -139,7 +139,7 @@ struct TestQueryProcessor : QP::IQueryProcessor {
 };
 
 // Make query processor
-std::shared_ptr<QP::IQueryProcessor> make_proc(std::shared_ptr<QP::Node> root, aku_Timestamp begin, aku_Timestamp end, int dir) {
+std::shared_ptr<QP::IStreamProcessor> make_proc(std::shared_ptr<QP::Node> root, aku_Timestamp begin, aku_Timestamp end, int dir) {
     return std::make_shared<TestQueryProcessor>(begin, end, dir, root);
 }
 

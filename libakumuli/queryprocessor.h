@@ -36,29 +36,9 @@ struct Builder {
       * @param terminal_node should contain valid pointer to terminal(final) node
       * @param logger should contain valid pointer to logging function
       */
-    static std::shared_ptr<QP::IQueryProcessor>
+    static std::shared_ptr<QP::IStreamProcessor>
     build_query_processor(const char* query, std::shared_ptr<QP::Node> terminal_node,
                           const SeriesMatcher& matcher, aku_logger_cb_t logger);
-};
-
-/** Group-by time statement processor */
-struct GroupByTime {
-    aku_Timestamp step_;
-    bool          first_hit_;
-    aku_Timestamp lowerbound_;
-    aku_Timestamp upperbound_;
-
-    GroupByTime();
-
-    GroupByTime(aku_Timestamp step);
-
-    GroupByTime(const GroupByTime& other);
-
-    GroupByTime& operator=(const GroupByTime& other);
-
-    bool put(aku_Sample const& sample, Node& next);
-
-    bool empty() const;
 };
 
 
@@ -94,7 +74,7 @@ struct GroupByTag {
 /** Numeric data query processor. Can be used to return raw data
   * from HDD or derivatives (Depending on the list of processing nodes).
   */
-struct ScanQueryProcessor : IQueryProcessor {
+struct ScanQueryProcessor : IStreamProcessor {
 
     typedef StringTools::StringT StringT;
     typedef StringTools::TableT  TableT;
@@ -149,7 +129,7 @@ struct ScanQueryProcessor : IQueryProcessor {
 };
 
 
-struct MetadataQueryProcessor : IQueryProcessor {
+struct MetadataQueryProcessor : IStreamProcessor {
 
     std::shared_ptr<IQueryFilter> filter_;
     std::shared_ptr<Node>         root_;

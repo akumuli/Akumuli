@@ -10,11 +10,55 @@
 namespace Akumuli {
 namespace QP {
 
+/* ColumnStore + reshape functionality
+ * selct cpu where host=XXXX group by tag order by time from 0 to 100;
+ * TS  Series name Value
+ *  0  cpu tag=Foo    10
+ *  0  cpu tag=Bar    20
+ *  1  cpu tag=Foo    10
+ *  2  cpu tag=Foo    12
+ *  2  cpu tag=Bar    30
+ *  ...
+ *
+ * selct cpu where host=XXXX group by tag order by series from 0 to 100;
+ * TS  Series name Value
+ *  0  cpu tag=Foo    21
+ *  1  cpu tag=Foo    20
+ * ...
+ * 99  cpu tag=Foo    19
+ *  0  cpu tag=Bar    20
+ *  1  cpu tag=Bar    11
+ * ...
+ * 99  cpu tag=Bar    14
+ *  ...
+ *
+ * It is possible to add processing steps via IQueryProcessor.
+ */
 
-/** Order-by statement */
+//! Set of ids returned by the query (defined by select and where clauses)
+struct Selection {
+    std::vector<aku_ParamId> ids;
+    aku_Timestamp begin;
+    aku_Timestamp end;
+};
+
+//! Mapping from persistent series names to transient series names
+struct GroupBy {
+    bool enabled;
+    std::unordered_map<aku_ParamId, aku_ParamId> transient_map;
+};
+
+//! Output order
 enum class OrderBy {
-    TIME,
     SERIES,
+    TIME,
+};
+
+//! Reshape request defines what should be sent to query processor
+struct ReshapeRequest {
+    Selection select;
+    GroupBy group_by;
+    OrderBy order_by;
 };
 
 
@@ -29,6 +73,7 @@ static const aku_Sample NO_DATA = { 0u, 0u, { 0.0, sizeof(aku_Sample), aku_PData
 static const aku_Sample SAMPLING_LO_MARGIN = { 0u,
                                                0u,
                                                { 0.0, sizeof(aku_Sample), aku_PData::LO_MARGIN } };
+
 static const aku_Sample SAMPLING_HI_MARGIN = { 0u,
                                                0u,
                                                { 0.0, sizeof(aku_Sample), aku_PData::HI_MARGIN } };
@@ -67,82 +112,100 @@ struct NodeException : std::runtime_error {
 };
 
 
-struct IQueryFilter {
-    enum FilterResult {
-        SKIP_THIS,
-        SKIP_ALL,
-        PROCESS,
-    };
-    virtual ~IQueryFilter()                    = default;
-    virtual FilterResult apply(aku_ParamId id) = 0;
-    virtual std::vector<aku_ParamId> get_ids() = 0;
+
+/** Group-by time statement processor */
+struct GroupByTime {
+    aku_Timestamp step_;
+    bool          first_hit_;
+    aku_Timestamp lowerbound_;
+    aku_Timestamp upperbound_;
+
+    GroupByTime();
+
+    GroupByTime(aku_Timestamp step);
+
+    GroupByTime(const GroupByTime& other);
+
+    GroupByTime& operator=(const GroupByTime& other);
+
+    bool put(aku_Sample const& sample, Node& next);
+
+    bool empty() const;
 };
 
 
-//! Query filter that doesn't block anything (for testing purposes)
-struct BypassFilter : QP::IQueryFilter {
-    std::vector<u64> allids;
+GroupByTime::GroupByTime()
+    : step_(0)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
+}
 
-    BypassFilter(std::vector<u64> allids = std::vector<u64>())
-        : allids(allids) {}
+GroupByTime::GroupByTime(aku_Timestamp step)
+    : step_(step)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
+}
 
-    virtual FilterResult apply(aku_ParamId id) { return PROCESS; }
+GroupByTime::GroupByTime(const GroupByTime& other)
+    : step_(other.step_)
+    , first_hit_(other.first_hit_)
+    , lowerbound_(other.lowerbound_)
+    , upperbound_(other.upperbound_)
+{
+}
 
-    std::vector<aku_ParamId> get_ids() { return allids; }
-};
+GroupByTime& GroupByTime::operator = (const GroupByTime& other) {
+    step_ = other.step_;
+    first_hit_ = other.first_hit_;
+    lowerbound_ = other.lowerbound_;
+    upperbound_ = other.upperbound_;
+    return *this;
+}
 
-
-struct QueryRange {
-
-    enum QueryRangeType {
-        INSTANT,  // If upperbound is in the future - query should be executed untill most recent data were reached
-        CONTINUOUS,  // If upperbound is in the future - query should wait
-    };
-
-    aku_Timestamp  lowerbound;
-    aku_Timestamp  upperbound;
-    int            direction;
-    QueryRangeType type;
-    OrderBy        order;
-
-    //! Return true if query should scan data backward in time
-    bool is_backward() const { return direction == AKU_CURSOR_DIR_BACKWARD; }
-
-    //! Return timestamp from wich scan starts
-    aku_Timestamp begin() const {
-        return direction == AKU_CURSOR_DIR_BACKWARD ? upperbound : lowerbound;
+bool GroupByTime::put(aku_Sample const& sample, Node& next) {
+    if (step_ && sample.payload.type != aku_PData::EMPTY) {
+        aku_Timestamp ts = sample.timestamp;
+        if (AKU_UNLIKELY(first_hit_ == true)) {
+            first_hit_ = false;
+            aku_Timestamp aligned = ts / step_ * step_;
+            lowerbound_ = aligned;
+            upperbound_ = aligned + step_;
+        }
+        if (ts >= upperbound_) {
+            // Forward direction
+            aku_Sample empty = SAMPLING_HI_MARGIN;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ += step_;
+            upperbound_ += step_;
+        } else if (ts < lowerbound_) {
+            // Backward direction
+            aku_Sample empty = SAMPLING_LO_MARGIN;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ -= step_;
+            upperbound_ -= step_;
+        }
     }
+    return next.put(sample);
+}
 
-    //! Return timestamp at wich scan stops
-    aku_Timestamp end() const {
-        return direction == AKU_CURSOR_DIR_BACKWARD ? lowerbound : upperbound;
-    }
-};
+bool GroupByTime::empty() const {
+    return step_ == 0;
+}
 
+//! Stream processor interface
+struct IStreamProcessor {
 
-std::ostream& operator<<(std::ostream& str, QueryRange const& range);
-
-
-//! Query processor interface
-struct IQueryProcessor {
-
-    // Query information
-    virtual ~IQueryProcessor() = default;
-
-    //! Lowerbound
-    virtual QueryRange range() const = 0;
-
-    //! Return query filter
-    virtual IQueryFilter& filter() = 0;
-
-    /** Returns series matcher to override global one for query execution.
-      * If override is not needed - return nullptr.
-      */
-    virtual std::shared_ptr<SeriesMatcher> matcher() = 0;
-
-    virtual bool get_groupby_mapping(std::unordered_map<aku_ParamId, aku_ParamId>* ids) = 0;
-
-    // Execution control
+    virtual ~IStreamProcessor() = default;
 
     /** Will be called before query execution starts.
       * If result already obtained - return False.

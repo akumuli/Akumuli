@@ -240,7 +240,7 @@ public:
     /**
       * @brief Search matches inside the volume
       */
-    void search(std::shared_ptr<QP::IQueryProcessor> query,
+    void search(std::shared_ptr<QP::IStreamProcessor> query,
                 std::shared_ptr<ChunkCache>          cache = std::shared_ptr<ChunkCache>()) const;
 
     static void get_search_stats(aku_SearchStats* stats, bool reset = false);

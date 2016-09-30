@@ -529,7 +529,7 @@ std::tuple<aku_Timestamp, int> Sequencer::get_window() const {
 }
 
 
-void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, std::vector<PSortedRun>* results) const {
+void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IStreamProcessor> q, std::vector<PSortedRun>* results) const {
     if (run->empty()) {
         return;
     }
@@ -542,7 +542,7 @@ void Sequencer::filter(PSortedRun run, std::shared_ptr<QP::IQueryProcessor> q, s
     results->push_back(move(result));
 }
 
-void Sequencer::search(std::shared_ptr<QP::IQueryProcessor> query, int sequence_number) const {
+void Sequencer::search(std::shared_ptr<QP::IStreamProcessor> query, int sequence_number) const {
     int seq_id = sequence_number_.load();
     if (seq_id % 2 != 0 || sequence_number != seq_id) {
         query->set_error(AKU_EBUSY);

@@ -339,7 +339,7 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
 }
 
 
-void ColumnStore::query(const ReshapeRequest &req, QP::IQueryProcessor& qproc) {
+void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
     Logger::msg(AKU_LOG_TRACE, "ColumnStore query: " + to_string(req));
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
     for (auto id: req.select.ids) {
@@ -454,7 +454,7 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
     return cstore_->write(sample, rescue_points, &cache_);
 }
 
-void CStoreSession::query(const ReshapeRequest &req, QP::IQueryProcessor& proc) {
+void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
     cstore_->query(req, proc);
 }
 
