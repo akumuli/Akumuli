@@ -10,36 +10,6 @@
 namespace Akumuli {
 namespace QP {
 
-struct RegexFilter {
-    std::string regex_;
-    std::unordered_set<aku_ParamId> ids_;
-    SeriesMatcher const& matcher_;
-    StringPoolOffset offset_;
-    size_t prev_size_;
-
-    RegexFilter(std::string regex, SeriesMatcher const& matcher)
-        : regex_(regex)
-        , matcher_(matcher)
-        , offset_{}
-        , prev_size_(0ul)
-    {
-        refresh();
-    }
-
-    void refresh() {
-        std::vector<SeriesMatcher::SeriesNameT> results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
-        for (SeriesMatcher::SeriesNameT item: results) {
-            ids_.insert(std::get<2>(item));
-        }
-    }
-
-    std::vector<aku_ParamId> get_ids() {
-        std::vector<aku_ParamId> result;
-        std::copy(ids_.begin(), ids_.end(), std::back_inserter(result));
-        std::sort(result.begin(), result.end());
-        return result;
-    }
-};
 
 static std::tuple<aku_Status, bool, std::string> parse_select_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("select");
@@ -56,21 +26,21 @@ static std::tuple<aku_Status, bool, std::string> parse_select_stmt(boost::proper
     return std::make_tuple(AKU_SUCCESS, false, "");
 }
 
-static std::tuple<aku_Status, bool, OrderBy> parse_orderby(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, OrderBy> parse_orderby(boost::property_tree::ptree const& ptree) {
     auto orderby = ptree.get_child_optional("order-by");
     if (orderby) {
         auto stringval = orderby->get_value<std::string>();
         if (stringval == "time") {
-            return std::make_tuple(AKU_SUCCESS, true, OrderBy::TIME);
+            return std::make_tuple(AKU_SUCCESS, OrderBy::TIME);
         } else if (stringval == "series") {
-            return std::make_tuple(AKU_SUCCESS, true, OrderBy::SERIES);
+            return std::make_tuple(AKU_SUCCESS, OrderBy::SERIES);
         } else {
             Logger::msg(AKU_LOG_ERROR, "Invalid 'order-by' statement");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, false, OrderBy::TIME);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, OrderBy::TIME);
         }
     }
     // Default is order by time
-    return std::make_tuple(AKU_SUCCESS, true, OrderBy::TIME);
+    return std::make_tuple(AKU_SUCCESS, OrderBy::TIME);
 }
 
 static std::tuple<GroupByTime, std::vector<std::string>> parse_groupby(boost::property_tree::ptree const& ptree) {
@@ -133,15 +103,15 @@ static std::tuple<aku_Status, aku_Timestamp> parse_range_timestamp(boost::proper
 }
 
 static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost::property_tree::ptree const& ptree,
+                                                                           bool metric_is_set,
                                                                            std::string metric,
-                                                                           std::string pred,
                                                                            SeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> output;
     std::shared_ptr<RegexFilter> result;
     auto where = ptree.get_child_optional("where");
     if (where) {
-        if (metric.empty()) {
+        if (!metric_is_set) {
             Logger::msg(AKU_LOG_ERROR, "Metric is not set");
             return std::make_tuple(AKU_EQUERY_PARSING_ERROR, output);
         }
@@ -167,7 +137,7 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
             RegexFilter filter(regex, matcher);
             output = filter.get_ids();
         }
-    } else if (!metric.empty()) {
+    } else if (metric_is_set) {
         // only metric is specified
         std::stringstream series_regex;
         series_regex << metric << "(?:\\s\\w+=\\w+)*";
@@ -186,6 +156,71 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
     std::stringstream ss;
     boost::property_tree::write_json(ss, ptree, pretty_print);
     return ss.str();
+}
+
+std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
+        boost::property_tree::ptree const& ptree,
+        const SeriesMatcher &matcher)
+{
+    aku_Status status;
+    ReshapeRequest result = {};
+
+    Logger::msg(AKU_LOG_INFO, "Parsing query:");
+    Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
+
+    // Metric name
+    std::string metric;
+    bool metric_set = false;
+    std::tie(metric_set, metric) = parse_metric(ptree);
+
+    // Group-by statement
+    std::vector<std::string> tags;
+    GroupByTime groupbytime;
+    std::tie(groupbytime, tags) = parse_groupby(ptree);
+    auto groupbytag = std::unique_ptr<GroupByTag>();
+    if (!tags.empty()) {
+        groupbytag.reset(new GroupByTag(matcher, metric, tags));
+    }
+
+    // Order-by statment
+    OrderBy order;
+    std::tie(status, order) = parse_orderby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Where statement
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids) = parse_where_clause(ptree, metric_set, metric, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Read timestamps
+    aku_Timestamp ts_begin, ts_end;
+    std::tie(status, ts_begin) = parse_range_timestamp(ptree, "from");
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+    std::tie(status, ts_end)   = parse_range_timestamp(ptree, "to");
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Initialize request
+
+    result.select.begin = ts_begin;
+    result.select.end = ts_end;
+    result.select.ids = ids;
+
+    result.order_by = order;
+
+    result.group_by.enabled = static_cast<bool>(groupbytag);
+    if (groupbytag) {
+        result.group_by.transient_map = groupbytag->get_mapping();
+    }
+
+    return std::make_tuple(AKU_SUCCESS, result);
 }
 
 }}  // namespace

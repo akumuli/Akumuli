@@ -119,4 +119,54 @@ struct SeriesParser {
     static std::tuple<aku_Status, StringT> filter_tags(StringT const& input,
                                                        StringTools::SetT const& tags, char* out);
 };
+
+
+/** Filter series using regex.
+  */
+struct RegexFilter {
+    std::string regex_;
+    std::unordered_set<aku_ParamId> ids_;
+    SeriesMatcher const& matcher_;
+    StringPoolOffset offset_;
+    size_t prev_size_;
+
+    RegexFilter(std::string regex, SeriesMatcher const& matcher);
+
+    void refresh();
+
+    std::vector<aku_ParamId> get_ids();
+};
+
+
+/** Group-by processor. Maps set of global series names to
+  * some other set of local series ids.
+  */
+struct GroupByTag {
+    std::string regex_;
+    //! Mapping from global parameter ids to local parameter ids
+    std::unordered_map<aku_ParamId, aku_ParamId> ids_;
+    //! Shared series matcher
+    SeriesMatcher const& matcher_;
+    //! Previous string pool offset
+    StringPoolOffset offset_;
+    //! Previous string pool size
+    size_t prev_size_;
+    //! List of tags of interest
+    std::vector<std::string> tags_;
+    //! Local string pool. All transient series names lives here.
+    SeriesMatcher local_matcher_;
+    //! List of string already added string pool
+    StringTools::SetT snames_;
+
+    //! Main c-tor
+    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
+
+    void refresh_();
+
+    bool apply(aku_Sample* sample);
+
+    std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
+};
+
+
 }

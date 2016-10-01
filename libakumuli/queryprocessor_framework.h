@@ -3,9 +3,11 @@
 #include <stdexcept>
 
 #include "akumuli.h"
+#include "util.h"
 #include "seriesparser.h"
 
 #include <boost/property_tree/ptree.hpp>
+
 
 namespace Akumuli {
 namespace QP {
