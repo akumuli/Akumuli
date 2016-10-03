@@ -19,6 +19,7 @@
 #include "storage2.h"
 #include "util.h"
 #include "queryprocessor.h"
+#include "query_processing/queryparser.h"
 #include "log_iface.h"
 
 #include <algorithm>
@@ -36,39 +37,6 @@ namespace Akumuli {
 
 // Utility functions & classes //
 
-struct TerminalNode : QP::Node {
-
-    Caller &caller;
-    InternalCursor* cursor;
-
-    TerminalNode(Caller& ca, InternalCursor* cur)
-        : caller(ca)
-        , cursor(cur)
-    {
-    }
-
-    // Node interface
-
-    void complete() {
-        cursor->complete(caller);
-    }
-
-    bool put(const aku_Sample& sample) {
-        if (sample.payload.type != aku_PData::MARGIN) {
-            return cursor->put(caller, sample);
-        }
-        return true;
-    }
-
-    void set_error(aku_Status status) {
-        cursor->set_error(caller, status);
-        throw std::runtime_error("search error detected");
-    }
-
-    int get_requirements() const {
-        return TERMINAL;
-    }
-};
 
 // Standalone functions //
 
@@ -320,60 +288,52 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     return str.second;
 }
 
-// TODO: get rid of this
-static void logger_adapter(aku_LogLevel level, const char* msg) {
-    Logger::msg(level, msg);
-}
-
-static StorageEngine::OrderBy convert(QP::OrderBy order) {
-    if (order == QP::OrderBy::TIME) {
-        return StorageEngine::OrderBy::TIME;
-    }
-    return StorageEngine::OrderBy::SERIES;
-}
-
 void Storage::query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
-    // Parse query
-    try {
-        std::lock_guard<std::mutex> guard(lock_);
-        // the code here can throw a QueryParser exception
-        auto terminal_node = std::make_shared<TerminalNode>(caller, cur);
-        std::shared_ptr<IStreamProcessor> query_processor;
-        try {
-            query_processor = Builder::build_query_processor(query, terminal_node, global_matcher_, &logger_adapter);
-
-
-            //TODO: this should be refactored. ReshapeRequest should be decoupled from
-            //      column-store and used by both IQueryProcessor and ColumnStore.
-
-            // Create ReshapeRequest from QueryProcessor instance
-            StorageEngine::ReshapeRequest req;
-            req.select.ids = query_processor->filter().get_ids();
-            req.select.begin = query_processor->range().begin();
-            req.select.end = query_processor->range().end();
-            req.order_by = convert(query_processor->range().order);
-
-            req.group_by.enabled = query_processor->get_groupby_mapping(&req.group_by.transient_map);
-
-            if (req.group_by.enabled) {
-                session->set_series_matcher(query_processor->matcher());
-            } else {
-                session->clear_series_matcher();
-            }
-
-            // Access column store
-            if (query_processor->start()) {
-                cstore_->query(req, *query_processor);
-                query_processor->stop();
-            }
-        } catch (const QueryParserError& qpe) {
-            Logger::msg(AKU_LOG_ERROR, qpe.what());
-            cur->set_error(caller, AKU_EQUERY_PARSING_ERROR);
+    std::lock_guard<std::mutex> guard(lock_);
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(caller, status);
+        return;
+    }
+    QueryKind kind;
+    std::tie(status, kind) = QueryParser::get_query_kind(ptree);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(caller, status);
+        return;
+    }
+    if (kind == QueryKind::SELECT) {
+        // TODO: QueryParser::parse_select_query()
+        AKU_PANIC("Not implemented");
+    } else if (kind == QueryKind::AGGREGATE) {
+        AKU_PANIC("Not implemented");
+    } else if (kind == QueryKind::SCAN) {
+        ReshapeRequest req;
+        std::tie(status, req) = QueryParser::parse_scan_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
             return;
         }
-    } catch (QueryParserError const& err) {
-        Logger::msg(AKU_LOG_ERROR, err.what());
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>();
+        if (req.group_by.enabled) {
+            //FIXME: session->set_series_matcher(query_processor->matcher());
+            AKU_PANIC("Not implemented");
+        } else {
+            session->clear_series_matcher();
+        }
+        // Scan column store
+        if (proc->start()) {
+            cstore_->query(req, *proc);
+            proc->stop();
+        }
     }
 }
 

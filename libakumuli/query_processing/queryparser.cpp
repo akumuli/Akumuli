@@ -158,6 +158,48 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
     return ss.str();
 }
 
+
+// ///////////////// //
+// QueryParser class //
+// ///////////////// //
+
+std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(const char* query) {
+    //! C-string to streambuf adapter
+    struct MemStreambuf : std::streambuf {
+        MemStreambuf(const char* buf) {
+            char* p = const_cast<char*>(buf);
+            setg(p, p, p+strlen(p));
+        }
+    };
+
+    boost::property_tree::ptree ptree;
+    MemStreambuf strbuf(query);
+    std::istream stream(&strbuf);
+    try {
+        boost::property_tree::json_parser::read_json(stream, ptree);
+    } catch (boost::property_tree::json_parser_error& e) {
+        // Error, bad query
+        Logger::msg(AKU_LOG_ERROR, e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree);
+    }
+    return std::make_tuple(AKU_SUCCESS, ptree);
+}
+
+std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tree::ptree const& ptree) {
+    aku_Status status;
+    bool sel;
+    std::string dummy;
+    std::tie(status, sel, dummy) = parse_select_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        QueryKind empty;
+        return std::make_tuple(status, empty);
+    }
+    if (sel) {
+        return std::make_tuple(status, QueryKind::SCAN);
+    }
+    return std::make_tuple(status, QueryKind::SELECT);
+}
+
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
         boost::property_tree::ptree const& ptree,
         const SeriesMatcher &matcher)
@@ -221,6 +263,65 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
+}
+
+struct TerminalNode : QP::Node {
+
+    Caller &caller;
+    InternalCursor* cursor;
+
+    TerminalNode(Caller& ca, InternalCursor* cur)
+        : caller(ca)
+        , cursor(cur)
+    {
+    }
+
+    // Node interface
+
+    void complete() {
+        cursor->complete(caller);
+    }
+
+    bool put(const aku_Sample& sample) {
+        if (sample.payload.type != aku_PData::MARGIN) {
+            return cursor->put(caller, sample);
+        }
+        return true;
+    }
+
+    void set_error(aku_Status status) {
+        cursor->set_error(caller, status);
+        throw std::runtime_error("search error detected");
+    }
+
+    int get_requirements() const {
+        return TERMINAL;
+    }
+};
+
+
+std::tuple<aku_Status, std::shared_ptr<Node>>
+    make_sampler(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+{
+    try {
+        std::string name;
+        name = ptree.get<std::string>("name");
+        return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, next));
+    } catch (const boost::property_tree::ptree_error& e) {
+        Logger::msg(AKU_LOG_ERROR, std::string("Can't parse query: ") + e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
+    }
+}
+
+std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+    boost::property_tree::ptree const& ptree,
+    Caller& caller,
+    InternalCursor* cursor)
+{
+    // TODO: all processing steps are bypassed now, this should be fixed
+    AKU_UNUSED(ptree);
+    std::vector<std::shared_ptr<Node>> res = {std::make_shared<TerminalNode>(caller, cursor)};
+    return std::make_tuple(AKU_SUCCESS, res);
 }
 
 }}  // namespace
