@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 #include <vector>
 
+#include "queryprocessor_framework.h"
 #include "metadatastorage.h"
 #include "storage2.h"
 
@@ -18,6 +19,7 @@
 
 using namespace Akumuli;
 using namespace StorageEngine;
+using namespace QP;
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
@@ -46,7 +48,7 @@ std::shared_ptr<MetadataStorage> create_metadatastorage() {
     // Create in-memory sqlite database.
     std::shared_ptr<MetadataStorage> meta;
     meta.reset(new MetadataStorage(":memory:"));
-    return std::move(meta);
+    return meta;
 }
 
 std::shared_ptr<ColumnStore> create_cstore() {

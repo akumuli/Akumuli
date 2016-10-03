@@ -317,15 +317,15 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        GroupByTime groupbytime;
+        std::tie(status, groupbytime, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
         if (status != AKU_SUCCESS) {
             cur->set_error(caller, status);
             return;
         }
-        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>();
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (req.group_by.enabled) {
-            //FIXME: session->set_series_matcher(query_processor->matcher());
-            AKU_PANIC("Not implemented");
+            session->set_series_matcher(req.group_by.matcher);
         } else {
             session->clear_series_matcher();
         }

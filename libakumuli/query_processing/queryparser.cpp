@@ -219,7 +219,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
     std::vector<std::string> tags;
     GroupByTime groupbytime;
     std::tie(groupbytime, tags) = parse_groupby(ptree);
-    auto groupbytag = std::unique_ptr<GroupByTag>();
+    auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
         groupbytag.reset(new GroupByTag(matcher, metric, tags));
     }
@@ -260,6 +260,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
+        result.group_by.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
@@ -313,15 +314,19 @@ std::tuple<aku_Status, std::shared_ptr<Node>>
     }
 }
 
-std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
     boost::property_tree::ptree const& ptree,
     Caller& caller,
     InternalCursor* cursor)
 {
+    std::vector<std::string> tags;
+    GroupByTime groupbytime;
+    std::tie(groupbytime, tags) = parse_groupby(ptree);
+    AKU_UNUSED(tags);
     // TODO: all processing steps are bypassed now, this should be fixed
     AKU_UNUSED(ptree);
     std::vector<std::shared_ptr<Node>> res = {std::make_shared<TerminalNode>(caller, cursor)};
-    return std::make_tuple(AKU_SUCCESS, res);
+    return std::make_tuple(AKU_SUCCESS, groupbytime, res);
 }
 
 }}  // namespace

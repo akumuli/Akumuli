@@ -35,7 +35,7 @@ struct QueryParser {
       * @param ptree contains query
       * @returns vector of Nodes in proper order
       */
-    static std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+    static std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
             boost::property_tree::ptree const& ptree,
             Caller& caller,
             InternalCursor* cursor);
