@@ -5,6 +5,7 @@
 #include <boost/property_tree/json_parser.hpp>
 
 #include "datetime.h"
+#include "query_processing/limiter.h"
 
 
 namespace Akumuli {
@@ -194,10 +195,35 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
         QueryKind empty;
         return std::make_tuple(status, empty);
     }
-    if (sel) {
+    if (!sel) {
         return std::make_tuple(status, QueryKind::SCAN);
     }
     return std::make_tuple(status, QueryKind::SELECT);
+}
+
+std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_query(
+        boost::property_tree::ptree const& ptree,
+        SeriesMatcher const& matcher)
+{
+    aku_Status status;
+    bool sel;
+    std::string name;
+    std::tie(status, sel, name) = parse_select_stmt(ptree);
+    std::vector<aku_ParamId> ids;
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    if (sel) {
+        bool metricset;
+        std::string metric;
+        std::tie(metricset, metric) = parse_metric(ptree);
+        aku_Status status;
+        std::tie(status, ids) = parse_where_clause(ptree, metricset, metric, matcher);
+        if (status == AKU_SUCCESS) {
+            return std::make_tuple(AKU_SUCCESS, ids);
+        }
+    }
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ids);
 }
 
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_scan_query(
@@ -314,7 +340,7 @@ std::tuple<aku_Status, std::shared_ptr<Node>>
     }
 }
 
-std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> QueryParser::parse_processing_topology(
     boost::property_tree::ptree const& ptree,
     Caller& caller,
     InternalCursor* cursor)
@@ -323,10 +349,19 @@ std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> parse_pr
     GroupByTime groupbytime;
     std::tie(groupbytime, tags) = parse_groupby(ptree);
     AKU_UNUSED(tags);
+
     // TODO: all processing steps are bypassed now, this should be fixed
-    AKU_UNUSED(ptree);
-    std::vector<std::shared_ptr<Node>> res = {std::make_shared<TerminalNode>(caller, cursor)};
-    return std::make_tuple(AKU_SUCCESS, groupbytime, res);
+    auto terminal = std::make_shared<TerminalNode>(caller, cursor);
+    std::vector<std::shared_ptr<Node>> result;
+
+    auto limoff = parse_limit_offset(ptree);
+    if (limoff.first != 0 || limoff.second != 0) {
+        auto node = std::make_shared<QP::Limiter>(limoff.first, limoff.second, terminal);
+        result.push_back(node);
+    }
+
+    result.push_back(terminal);
+    return std::make_tuple(AKU_SUCCESS, groupbytime, result);
 }
 
 }}  // namespace

@@ -30,6 +30,11 @@ struct QueryParser {
       */
     static std::tuple<aku_Status, ReshapeRequest> parse_scan_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
+    /** Parse select query (metadata query).
+      * @param ptree is a property tree generated from query json
+      * @param matcher is a global matcher
+      */
+    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query

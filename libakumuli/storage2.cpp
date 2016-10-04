@@ -305,8 +305,24 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         return;
     }
     if (kind == QueryKind::SELECT) {
-        // TODO: QueryParser::parse_select_query()
-        AKU_PANIC("Not implemented");
+        std::vector<aku_ParamId> ids;
+        std::tie(status, ids) = QueryParser::parse_select_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        GroupByTime tm;
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, tm, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        AKU_UNUSED(tm);
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+        if (proc->start()) {
+            proc->stop();
+        }
     } else if (kind == QueryKind::AGGREGATE) {
         AKU_PANIC("Not implemented");
     } else if (kind == QueryKind::SCAN) {
