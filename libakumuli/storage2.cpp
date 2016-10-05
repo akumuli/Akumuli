@@ -188,7 +188,11 @@ Storage::Storage(const char* path)
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
-
+    auto status = metadata_->load_matcher_data(global_matcher_);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't read series names");
+        AKU_PANIC("Can't read series names");
+    }
     start_sync_worker();
 }
 
@@ -237,6 +241,7 @@ void Storage::start_sync_worker() {
 void Storage::close() {
     // Wait for all ingestion sessions to stop
     done_.store(1);
+    metadata_->force_sync();
     close_barrier_.wait();
 }
 
@@ -273,7 +278,6 @@ aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sampl
 }
 
 int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
-    std::lock_guard<std::mutex> guard(lock_);
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -290,7 +294,6 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
 
 void Storage::query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const {
     using namespace QP;
-    std::lock_guard<std::mutex> guard(lock_);
     boost::property_tree::ptree ptree;
     aku_Status status;
     std::tie(status, ptree) = QueryParser::parse_json(query);

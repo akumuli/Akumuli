@@ -100,6 +100,7 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
     // Convert vectors to series of samples
     for (size_t i = 0; i < accsz; i++) {
         dest[i].payload.type = AKU_PAYLOAD_FLOAT;
+        dest[i].payload.size = sizeof(aku_Sample);
         dest[i].paramid = outids[i];
         dest[i].timestamp = destts_vec[i];
         dest[i].payload.float64 = destval_vec[i];
@@ -266,6 +267,7 @@ struct MergeIterator : RowIterator {
             sample.paramid = std::get<ID>(point);
             sample.timestamp = std::get<TIME>(point);
             sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.size = sizeof(aku_Sample);
             sample.payload.float64 = std::get<VALUE>(item);
 
             if (outpos < size) {

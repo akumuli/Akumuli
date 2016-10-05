@@ -112,6 +112,10 @@ void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<
     end_transaction();
 }
 
+void MetadataStorage::force_sync() {
+    sync_cvar_.notify_one();
+}
+
 int MetadataStorage::execute_query(std::string query) {
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.c_str());
@@ -414,7 +418,6 @@ u64 MetadataStorage::get_prev_largest_id() {
         AKU_PANIC("Can't get max storage id");
     }
 }
-
 
 aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
     auto query = "SELECT series_id || ' ' || keyslist, storage_id FROM akumuli_series;";

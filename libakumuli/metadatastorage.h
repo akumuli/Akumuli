@@ -71,6 +71,7 @@ struct MetadataStorage {
       */
     MetadataStorage(const char* db);
 
+
     // Creation //
 
     /** Create tables if database is empty
@@ -107,7 +108,10 @@ struct MetadataStorage {
 
     void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
 
-// should be private:
+    //! Forces `wait_for_sync_request` to return immediately
+    void force_sync();
+
+    // should be private:
 
     void begin_transaction();
 
