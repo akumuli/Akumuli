@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <mutex>
 #include <apr_time.h>
-#include "timsort.hpp"
 #include "page.h"
 #include "storage_engine/compression.h"
 #include "akumuli_def.h"

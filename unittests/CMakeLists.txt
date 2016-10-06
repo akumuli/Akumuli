@@ -17,6 +17,8 @@ target_link_libraries(test_streams
 )
 add_test(streams test_streams)
 
+set_target_properties(test_streams PROPERTIES EXCLUDE_FROM_ALL 1)
+
 # RESP
 add_executable(
     test_respstream
@@ -30,6 +32,8 @@ target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
 )
 add_test(respstream test_respstream)
+
+set_target_properties(test_respstream PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Protocol parser
 add_executable(
@@ -55,6 +59,8 @@ target_link_libraries(
 )
 add_test(protocol-parser test_protocolparser)
 
+set_target_properties(test_protocolparser PROPERTIES EXCLUDE_FROM_ALL 1)
+
 # Pipeline test
 add_executable(
     test_pipeline
@@ -75,6 +81,8 @@ target_link_libraries(
     libboost_context.a
 )
 add_test(pipeline test_pipeline)
+
+set_target_properties(test_pipeline PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # TCPServer test
 add_executable(
@@ -101,6 +109,8 @@ target_link_libraries(test_tcp_server
 )
 add_test(tcp-server test_tcp_server)
 
+set_target_properties(test_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
+
 # QueryCursor
 
 # Pipeline test
@@ -125,6 +135,8 @@ target_link_libraries(
 )
 add_test(querycursor test_querycursor)
 
+set_target_properties(test_querycursor PROPERTIES EXCLUDE_FROM_ALL 1)
+
 
 ##########################################
 #                                        #
@@ -132,65 +144,11 @@ add_test(querycursor test_querycursor)
 #                                        #
 ##########################################
 
-# Page test
-add_executable(
-    test_page
-    test_page.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/storage_engine/compression.cpp
-)
-
-target_link_libraries(
-    test_page
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-    pthread
-)
-
-add_test(page test_page)
-
-# Sequencer tests
-add_executable(
-    test_sequencer
-    test_sequencer.cpp
-    ../libakumuli/sequencer.cpp
-    ../libakumuli/queryprocessor_framework.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/storage_engine/compression.cpp
-)
-
-target_link_libraries(
-    test_sequencer
-    pthread
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-)
-
-add_test(sequencer test_sequencer)
-
 # Cursor tests
 add_executable(
     test_cursor
     test_cursor.cpp
     ../libakumuli/cursor.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/compression.cpp
