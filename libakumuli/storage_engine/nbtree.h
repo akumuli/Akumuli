@@ -495,7 +495,7 @@ public:
     };
 
     //! Calculate repair status for each rescue point.
-    static RepairStatus repair_status(std::vector<LogicAddr> rescue_points);
+    static RepairStatus repair_status(const std::vector<LogicAddr> &rescue_points);
 
     // Debug
 

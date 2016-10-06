@@ -74,6 +74,9 @@ public:
     ColumnStore(ColumnStore &&) = delete;
     ColumnStore& operator = (ColumnStore const&) = delete;
 
+    //! Open storage or restore if needed
+    aku_Status open_or_restore(std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping);
+
     std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> close();
 
     /** Create new column.

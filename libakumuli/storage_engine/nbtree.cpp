@@ -2255,7 +2255,7 @@ std::vector<LogicAddr> NBTreeExtentsList::_get_roots() const {
     return rescue_points_;
 }
 
-NBTreeExtentsList::RepairStatus NBTreeExtentsList::repair_status(std::vector<LogicAddr> rescue_points) {
+NBTreeExtentsList::RepairStatus NBTreeExtentsList::repair_status(std::vector<LogicAddr> const& rescue_points) {
     ssize_t count = static_cast<ssize_t>(rescue_points.size()) -
                     std::count(rescue_points.begin(), rescue_points.end(), EMPTY_ADDR);
     if (count == 1 && rescue_points.back() != EMPTY_ADDR) {

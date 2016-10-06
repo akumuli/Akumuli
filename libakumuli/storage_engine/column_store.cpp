@@ -313,6 +313,28 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
+aku_Status ColumnStore::open_or_restore(std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping) {
+    for (auto it: mapping) {
+        aku_ParamId id = it.first;
+        std::vector<LogicAddr> const& rescue_points = it.second;
+        auto status = NBTreeExtentsList::repair_status(rescue_points);
+        if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
+            Logger::msg(AKU_LOG_ERROR, "Repair needed, id=" + std::to_string(id));
+        }
+        auto tree = std::make_shared<NBTreeExtentsList>(id, rescue_points, blockstore_);
+
+        std::lock_guard<std::mutex> tl(table_lock_);
+        if (columns_.count(id)) {
+            Logger::msg(AKU_LOG_ERROR, "Can't open/repair " + std::to_string(id) + " (already exists)");
+            return AKU_EBAD_ARG;
+        } else {
+            columns_[id] = std::move(tree);
+        }
+        columns_[id]->force_init();
+    }
+    return AKU_SUCCESS;
+}
+
 std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
     std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
     std::lock_guard<std::mutex> tl(table_lock_);

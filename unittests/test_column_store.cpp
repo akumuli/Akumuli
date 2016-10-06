@@ -38,6 +38,7 @@ static AkumuliInitializer initializer;
 
 using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
+using namespace Akumuli::QP;
 
 std::unique_ptr<MetadataStorage> create_metadatastorage() {
     // Create in-memory sqlite database.
@@ -85,15 +86,6 @@ struct QueryProcessorMock : QP::IStreamProcessor {
     std::vector<aku_Sample> samples;
     aku_Status error = AKU_SUCCESS;
 
-    virtual QP::QueryRange range() const override {
-        throw "not implemented";
-    }
-    virtual QP::IQueryFilter &filter() override {
-        throw "not implemented";
-    }
-    virtual SeriesMatcher *matcher() override {
-        return nullptr;
-    }
     virtual bool start() override {
         started = true;
         return true;
@@ -287,3 +279,67 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_2) {
     test_column_store_query(100, 1000);
     test_column_store_query(1000, 100000);
 }
+
+void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<ColumnStore> cstore;
+    cstore.reset(new ColumnStore(bstore));
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+
+    for (auto id: ids) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    session.reset();
+    auto mapping = cstore->close();
+
+    // Reopen
+    cstore.reset(new ColumnStore(bstore));
+    cstore->open_or_restore(mapping);
+    session = create_session(cstore);
+
+    QueryProcessorMock qproc;
+    ReshapeRequest req;
+    req.group_by.enabled = false;
+    req.select.begin = begin;
+    req.select.end = end;
+    for(size_t i = 0; i < ids.size(); i++) {
+        req.select.ids.push_back(ids[i]);
+    }
+    req.order_by = OrderBy::SERIES;
+    session->query(req, qproc);
+
+    // Check everything
+    BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+    BOOST_REQUIRE(qproc.samples.size() == ids.size()*timestamps.size());
+    size_t niter = 0;
+    for(size_t i = 0; i < ids.size(); i++) {
+        for (auto tx: timestamps) {
+            BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+            BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+            niter++;
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_reopen_1) {
+    test_reopen(100, 200);     // 100 el.
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_reopen_2) {
+    test_reopen(1000, 2000);   // 1000 el.
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_reopen_3) {
+    test_reopen(1000, 11000);  // 10000 el.
+}
+
