@@ -38,7 +38,6 @@ static const u64 AKU_STARTING_SERIES_ID = 1024;
   * ids. Should be initialized on startup from sqlite table.
   */
 struct SeriesMatcher {
-    // TODO: add LRU cache
     //! Pooled string
     typedef StringTools::StringT StringT;
     //! Series name descriptor - pointer to string, length, series id.

@@ -188,10 +188,20 @@ Storage::Storage(const char* path)
 
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
+    // Update series matcher
+    u64 baseline = metadata_->get_prev_largest_id();
+    global_matcher_.series_id = baseline + 1;
     auto status = metadata_->load_matcher_data(global_matcher_);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
         AKU_PANIC("Can't read series names");
+    }
+    // Update column store
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
+    status = metadata_->load_rescue_points(mapping);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
+        AKU_PANIC("Can't read rescue points");
     }
     start_sync_worker();
 }
@@ -239,6 +249,14 @@ void Storage::start_sync_worker() {
 }
 
 void Storage::close() {
+    // Close column store
+    auto mapping = cstore_->close();
+    for (auto kv: mapping) {
+        u64 id;
+        std::vector<u64> vals;
+        std::tie(id, vals) = kv;
+        metadata_->add_rescue_point(id, std::move(vals));
+    }
     // Wait for all ingestion sessions to stop
     done_.store(1);
     metadata_->force_sync();

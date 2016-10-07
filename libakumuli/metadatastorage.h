@@ -100,6 +100,8 @@ struct MetadataStorage {
 
     aku_Status load_matcher_data(SeriesMatcher& matcher);
 
+    aku_Status load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping);
+
     // Synchronization
 
     void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);

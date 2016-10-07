@@ -438,4 +438,42 @@ aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
     return AKU_SUCCESS;
 }
 
+aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping) {
+    auto query =
+        "SELECT "
+        "storage_id,"
+        "addr0,"
+        "addr1,"
+        "addr2,"
+        "addr3,"
+        "addr4,"
+        "addr5,"
+        "addr6,"
+        "addr7 "
+        "FROM akumuli_rescue_points;";
+    try {
+        auto results = select_query(query);
+        for(auto row: results) {
+            if (row.size() != 9) {
+                continue;
+            }
+            auto series_id = boost::lexical_cast<u64>(row.at(0));
+            std::vector<u64> addrlist;
+            for (size_t i = 0; i < 8; i++) {
+                auto addr = row.at(1 + i);
+                if (addr.empty()) {
+                    break;
+                }
+                auto uaddr = boost::lexical_cast<u64>(row.at(i));
+                addrlist.push_back(uaddr);
+            }
+            mapping[series_id] = std::move(addrlist);
+        }
+    } catch(...) {
+        Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
+        return AKU_EGENERAL;
+    }
+    return AKU_SUCCESS;
+}
+
 }
