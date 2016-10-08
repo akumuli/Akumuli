@@ -2001,6 +2001,7 @@ void NBTreeExtentsList::open() {
         std::unique_ptr<NBTreeExtent> leaf_extent(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, addr));
         extents_.push_back(std::move(leaf_extent));
         extents_.push_back(std::move(root_extent));
+        rescue_points_.push_back(EMPTY_ADDR);
     } else {
         // Initialize root node.
         auto root_level = rescue_points_.size() - 1;
@@ -2039,6 +2040,7 @@ void NBTreeExtentsList::open() {
             Logger::msg(AKU_LOG_ERROR, "Can't restore last timestamp from tree");
             AKU_PANIC("Can't restore last timestamp from tree");
         }
+        last_ = ts;
     }
 }
 
