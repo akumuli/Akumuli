@@ -20,6 +20,7 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <boost/optional.hpp>
 
 #include <apr.h>
 #include <apr_dbd.h>
@@ -96,7 +97,7 @@ struct MetadataStorage {
     void get_configs(std::string* creation_datetime);
 
     /** Read larges series id */
-    u64 get_prev_largest_id();
+    boost::optional<u64> get_prev_largest_id();
 
     aku_Status load_matcher_data(SeriesMatcher& matcher);
 

@@ -312,11 +312,16 @@ std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(std::shared
 
 void FixedSizeFileStorage::flush() {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    /*
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
         if (dirty_[ix]) {
             dirty_[ix] = 0;
             volumes_[ix]->flush();
         }
+    }
+    */
+    for (size_t ix = 0; ix < volumes_.size(); ix++) {
+        volumes_[ix]->flush();
     }
     meta_->flush();
 }

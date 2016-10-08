@@ -399,7 +399,7 @@ void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {
     execute_query(full_query);
 }
 
-u64 MetadataStorage::get_prev_largest_id() {
+boost::optional<u64> MetadataStorage::get_prev_largest_id() {
     auto query = "SELECT max(storage_id) FROM akumuli_series;";
     try {
         auto results = select_query(query);
@@ -410,7 +410,7 @@ u64 MetadataStorage::get_prev_largest_id() {
         auto id = row.at(0);
         if (id == "") {
             // Table is empty
-            return 1ul;
+            return boost::optional<u64>();
         }
         return boost::lexical_cast<u64>(id);
     } catch(...) {
@@ -440,16 +440,8 @@ aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
 
 aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping) {
     auto query =
-        "SELECT "
-        "storage_id,"
-        "addr0,"
-        "addr1,"
-        "addr2,"
-        "addr3,"
-        "addr4,"
-        "addr5,"
-        "addr6,"
-        "addr7 "
+        "SELECT storage_id, addr0, addr1, addr2, addr3,"
+                          " addr4, addr5, addr6, addr7 "
         "FROM akumuli_rescue_points;";
     try {
         auto results = select_query(query);
@@ -464,7 +456,7 @@ aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vect
                 if (addr.empty()) {
                     break;
                 }
-                auto uaddr = boost::lexical_cast<u64>(row.at(i));
+                auto uaddr = boost::lexical_cast<u64>(addr);
                 addrlist.push_back(uaddr);
             }
             mapping[series_id] = std::move(addrlist);

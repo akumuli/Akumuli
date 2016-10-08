@@ -436,6 +436,8 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     aku_Timestamp last_;
     std::vector<LogicAddr> rescue_points_;
     bool initialized_;
+    //! Number of write operations performed on object
+    u64 write_count_;
 
     void open();
     void repair();

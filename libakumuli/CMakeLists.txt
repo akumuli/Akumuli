@@ -19,7 +19,10 @@ add_library(akumuli2 SHARED
     query_processing/queryparser.cpp
     queryprocessor.cpp
     queryprocessor_framework.cpp
+    hashfnfamily.cpp
+    anomalydetector.cpp
     query_processing/anomaly.cpp
+    saxencoder.cpp
     query_processing/sax.cpp
     query_processing/paa.cpp
     query_processing/filterbyid.cpp

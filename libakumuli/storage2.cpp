@@ -189,8 +189,10 @@ Storage::Storage(const char* path)
     bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
     // Update series matcher
-    u64 baseline = metadata_->get_prev_largest_id();
-    global_matcher_.series_id = baseline + 1;
+    boost::optional<u64> baseline = metadata_->get_prev_largest_id();
+    if (baseline) {
+        global_matcher_.series_id = baseline.get() + 1;
+    }
     auto status = metadata_->load_matcher_data(global_matcher_);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
@@ -203,6 +205,7 @@ Storage::Storage(const char* path)
         Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
         AKU_PANIC("Can't read rescue points");
     }
+    cstore_->open_or_restore(mapping);
     start_sync_worker();
 }
 
@@ -249,18 +252,23 @@ void Storage::start_sync_worker() {
 }
 
 void Storage::close() {
-    // Close column store
-    auto mapping = cstore_->close();
-    for (auto kv: mapping) {
-        u64 id;
-        std::vector<u64> vals;
-        std::tie(id, vals) = kv;
-        metadata_->add_rescue_point(id, std::move(vals));
-    }
     // Wait for all ingestion sessions to stop
     done_.store(1);
     metadata_->force_sync();
     close_barrier_.wait();
+    // Close column store
+    auto mapping = cstore_->close();
+    if (!mapping.empty()) {
+        for (auto kv: mapping) {
+            u64 id;
+            std::vector<u64> vals;
+            std::tie(id, vals) = kv;
+            metadata_->add_rescue_point(id, std::move(vals));
+        }
+        // Save finall mapping (should contain all affected columns)
+        metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+    }
+    bstore_->flush();
 }
 
 

@@ -975,3 +975,56 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_candlesticks) {
         test_nbtree_superblock_candlesticks(it.first, it.second);
     }
 }
+
+// Check that subsequent reopen procedures doesn't increases file size
+BOOST_AUTO_TEST_CASE(test_reopen_storage_twice) {
+    std::vector<LogicAddr> addrlist;
+    std::shared_ptr<BlockStore> bstore =
+        BlockStoreBuilder::create_memstore();
+
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    std::vector<aku_Timestamp> tss = {
+        1000ul, 1001ul, 1002ul, 1003ul, 1004ul,
+        1005ul, 1006ul, 1007ul, 1008ul, 1009ul,
+    };
+    std::vector<double> xss = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 0
+    };
+
+    for (u32 i = 0; i < xss.size(); i++) {
+        collection->append(tss[i], xss[i]);
+    }
+
+    // Close first time
+    addrlist = collection->close();
+
+    BOOST_REQUIRE_EQUAL(addrlist.size(), 1);
+
+    // Reopen first time (this will change tree configuration from single leaf node to superblock+leaf)
+    collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    auto extents = collection->get_extents();
+    for (size_t i = 0; i < extents.size(); i++) {
+        auto extent = extents[i];
+        check_tree_consistency(bstore, i, extent);
+    }
+
+    // Close second time
+    auto addrlist2 = collection->close();
+
+    BOOST_REQUIRE_EQUAL(addrlist2.size(), 1);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(addrlist.begin(), addrlist.end(), addrlist2.begin(), addrlist2.end());
+
+    // Reopen second time (this should preserve 'superblock+leaf' tree configuration)
+    collection = std::make_shared<NBTreeExtentsList>(42, addrlist2, bstore);
+    collection->force_init();
+
+    extents = collection->get_extents();
+    for (size_t i = 0; i < extents.size(); i++) {
+        auto extent = extents[i];
+        check_tree_consistency(bstore, i, extent);
+    }
+}

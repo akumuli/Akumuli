@@ -1848,6 +1848,7 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     , last_(0ull)
     , rescue_points_(std::move(addresses))
     , initialized_(false)
+    , write_count_(0ul)
 {
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
@@ -1889,13 +1890,14 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
 NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
                              //       recursively (maybe even many times).
+    if (!initialized_) {
+        AKU_PANIC("NB+tree not imitialized");
+    }
     if (ts < last_) {
         return NBTreeAppendResult::FAIL_LATE_WRITE;
     }
     last_ = ts;
-    if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
-    }
+    write_count_++;
     if (extents_.size() == 0) {
         // create first leaf node
         std::unique_ptr<NBTreeExtent> leaf;
@@ -2024,6 +2026,19 @@ void NBTreeExtentsList::open() {
         }
 
         extents_.push_back(std::move(root));
+    }
+    // Restore `last_`
+    if (extents_.size()) {
+        auto it = extents_.back()->search(AKU_MAX_TIMESTAMP, 0);
+        aku_Timestamp ts;
+        double val;
+        aku_Status status;
+        size_t nread;
+        std::tie(status, nread) = it->read(&ts, &val, 1);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Can't restore last timestamp from tree");
+            AKU_PANIC("Can't restore last timestamp from tree");
+        }
     }
 }
 
@@ -2217,7 +2232,7 @@ std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::candlesticks(aku_Timestamp 
 
 std::vector<LogicAddr> NBTreeExtentsList::close() {
     UniqueLock lock(lock_);
-    if (initialized_) {
+    if (initialized_ && write_count_) {
         Logger::msg(AKU_LOG_TRACE, std::to_string(id_) + " Going to close the tree.");
         LogicAddr addr = EMPTY_ADDR;
         bool parent_saved = false;
