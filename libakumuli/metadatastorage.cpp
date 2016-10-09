@@ -344,7 +344,13 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
         for (auto const& kv: batch) {
             query << "( " << kv.first;
             for (auto id: kv.second) {
-                query << ", " << id;
+                if (id == ~0ull) {
+                    // Values that big can't be represented in SQLite. Null values should be interpreted as EMPTY_ADDR,
+                    // until first meaningful value found.
+                    query << ", null";
+                } else {
+                    query << ", " << id;
+                }
             }
             for(auto i = kv.second.size(); i < 8; i++) {
                 query << ", null";
@@ -450,14 +456,29 @@ aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vect
                 continue;
             }
             auto series_id = boost::lexical_cast<u64>(row.at(0));
+            if (errno == ERANGE) {
+                Logger::msg(AKU_LOG_ERROR, "Can't parse series id, database corrupted");
+                return AKU_EBAD_DATA;
+            }
             std::vector<u64> addrlist;
+            bool first_value_decoded = false;
             for (size_t i = 0; i < 8; i++) {
                 auto addr = row.at(1 + i);
                 if (addr.empty()) {
-                    break;
+                    if (!first_value_decoded) {
+                        addrlist.push_back(~0ull);
+                    } else {
+                        break;
+                    }
+                } else {
+                    first_value_decoded = true;
+                    auto uaddr = boost::lexical_cast<u64>(addr);
+                    if (errno == ERANGE) {
+                        Logger::msg(AKU_LOG_ERROR, "Can't parse rescue point, database corrupted");
+                        return AKU_EBAD_DATA;
+                    }
+                    addrlist.push_back(uaddr);
                 }
-                auto uaddr = boost::lexical_cast<u64>(addr);
-                addrlist.push_back(uaddr);
             }
             mapping[series_id] = std::move(addrlist);
         }
