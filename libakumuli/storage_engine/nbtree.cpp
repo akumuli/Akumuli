@@ -2234,20 +2234,27 @@ std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::candlesticks(aku_Timestamp 
 
 std::vector<LogicAddr> NBTreeExtentsList::close() {
     UniqueLock lock(lock_);
-    if (initialized_ && write_count_) {
-        Logger::msg(AKU_LOG_TRACE, std::to_string(id_) + " Going to close the tree.");
-        LogicAddr addr = EMPTY_ADDR;
-        bool parent_saved = false;
-        for(size_t index = 0ul; index < extents_.size(); index++) {
-            if (extents_.at(index)->is_dirty()) {
-                std::tie(parent_saved, addr) = extents_.at(index)->commit(true);
+    if (initialized_) {
+        if (write_count_) {
+            Logger::msg(AKU_LOG_TRACE, std::to_string(id_) + " Going to close the tree.");
+            LogicAddr addr = EMPTY_ADDR;
+            bool parent_saved = false;
+            for(size_t index = 0ul; index < extents_.size(); index++) {
+                if (extents_.at(index)->is_dirty()) {
+                    std::tie(parent_saved, addr) = extents_.at(index)->commit(true);
+                }
+            }
+            assert(!parent_saved);
+            // NOTE: at this point `addr` should contain address of the tree's root.
+            std::vector<LogicAddr> result(rescue_points_.size(), EMPTY_ADDR);
+            result.back() = addr;
+            std::swap(rescue_points_, result);
+        } else {
+            // Special case, tree was opened but left unmodified
+            if (rescue_points_.size() == 2 && rescue_points_.back() == EMPTY_ADDR) {
+                rescue_points_.pop_back();
             }
         }
-        assert(!parent_saved);
-        // NOTE: at this point `addr` should contain address of the tree's root.
-        std::vector<LogicAddr> result(rescue_points_.size(), EMPTY_ADDR);
-        result.back() = addr;
-        std::swap(rescue_points_, result);
     }
     #ifdef AKU_UNIT_TEST_CONTEXT
     // This code should be executed only from unit-test.
