@@ -338,8 +338,8 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
     return AKU_SUCCESS;
 }
 
-std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
-    std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
+std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
     std::lock_guard<std::mutex> tl(table_lock_);
     Logger::msg(AKU_LOG_INFO, "Column-store commit called");
     for (auto it: columns_) {

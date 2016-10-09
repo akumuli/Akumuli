@@ -447,75 +447,6 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
-void continous_query(Storage *storage, Query query, std::vector<DataPoint> expected, std::vector<DataPoint> datatoadd) {
-    auto require_equal = [](Cursor::RowT row, DataPoint exp) {
-        if (row.timestamp != exp.timestamp) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad timestamp, get " << row.timestamp
-                      << ", expected " << exp.timestamp << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        if (row.seriesname != exp.id) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad id, get " << row.seriesname << " (" << row.rawid << ")"
-                      << ", expected " << exp.id << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        // payload
-        #ifdef VERBOSE_OUTPUT
-        std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
-        #endif
-        if (row.value != exp.float_value) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad float, get " << row.value
-                      << ", expected " << exp.float_value << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-    };
-
-    std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
-    for (auto item: expected) {
-        if (cursor->done()) {
-            std::runtime_error err("Not enough data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        Cursor::RowT row;
-        if (cursor->get_next_row(row)) {
-            require_equal(row, item);
-        } else {
-            std::runtime_error err("Can't read data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-    }
-
-    // Add new data
-    for (auto item: datatoadd) {
-        storage->add(item.timestamp, item.id, item.float_value);
-    }
-
-    // Read the rest of the data
-    for (auto item: datatoadd) {
-        if (cursor->done()) {
-            std::runtime_error err("Not enough data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        Cursor::RowT row;
-        int cnt = 0;
-        while (!cursor->get_next_row(row)) {
-            if(cnt++ == 10) {
-                std::runtime_error err("Can't read data");
-                BOOST_THROW_EXCEPTION(err);
-            }
-        }
-        std::cout << "Expected: " << item.id << ", " << item.timestamp << ", " << item.float_value << std::endl;
-        std::cout << "Atcual:   " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
-        //require_equal(row, item);
-    }
-}
-
 aku_Timestamp to_timestamp(std::string ts) {
     aku_Sample s;
     if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
@@ -853,12 +784,6 @@ int main(int argc, const char** argv) {
                 "cpu key=4",
                 "cpu key=5",
             };
-            Query q = {
-                std::string("20150101T000020.000000000"),
-                std::string("20150101T000029.000000000"),
-                ids
-            };
-            continous_query(&storage, q, exppoints, newpoints);
         }
 
         std::cout << "OK!" << std::endl;

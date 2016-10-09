@@ -77,7 +77,7 @@ public:
     //! Open storage or restore if needed
     aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping);
 
-    std::map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> close();
+    std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
 
     /** Create new column.
       * @return completion status
