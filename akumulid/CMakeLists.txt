@@ -25,10 +25,6 @@ target_link_libraries(akumulid
     libboost_context.a
 )
 
-# Temporary measure
-# TODO: remove
-set_target_properties(akumulid PROPERTIES EXCLUDE_FROM_ALL 1)
-
 include(CppcheckTargets)
 add_cppcheck(akumulid UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)
 
