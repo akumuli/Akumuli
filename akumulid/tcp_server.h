@@ -48,16 +48,16 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
         BUFFER_SIZE           = 0x1000,  //< Buffer size
         BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
     };
-    IOServiceT*                    io_;
-    SocketT                        socket_;
-    StrandT                        strand_;
-    std::shared_ptr<PipelineSpout> spout_;
-    ProtocolParser                 parser_;
-    Logger                         logger_;
+    IOServiceT*                     io_;
+    SocketT                         socket_;
+    StrandT                         strand_;
+    std::shared_ptr<AkumuliSession> spout_;
+    ProtocolParser                  parser_;
+    Logger                          logger_;
 
 public:
     typedef std::shared_ptr<Byte> BufferT;
-    TcpSession(IOServiceT* io, std::shared_ptr<PipelineSpout> spout);
+    TcpSession(IOServiceT* io, std::shared_ptr<AkumuliSession> spout);
 
     SocketT& socket();
 
@@ -95,7 +95,7 @@ class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
     AcceptorT                acceptor_;     //< Acceptor
     std::vector<IOServiceT*> sessions_io_;  //< List of io-services for sessions
     std::vector<WorkT> sessions_work_;      //< Work to block io-services from completing too early
-    std::shared_ptr<IngestionPipeline> pipeline_;  //< Pipeline instance
+    std::shared_ptr<AkumuliConnection> connection_;  //< DB connection
     std::atomic<int>                   io_index_;  //< I/O service index
 
     boost::barrier start_barrier_;  //< Barrier to start worker thread
@@ -112,7 +112,7 @@ public:
     TcpAcceptor(  // Server parameters
         std::vector<IOServiceT*> io, int port,
         // Storage & pipeline
-        std::shared_ptr<IngestionPipeline> pipeline);
+        std::shared_ptr<AkumuliConnection> connection);
 
     //! Start listening on socket
     void start();
@@ -136,7 +136,7 @@ private:
 
 
 struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
-    std::shared_ptr<IngestionPipeline> pline;
+    std::shared_ptr<AkumuliConnection> connection_;
     std::shared_ptr<TcpAcceptor>       serv;
     boost::asio::io_service            io;
     std::vector<IOServiceT*>           iovec;
@@ -144,7 +144,7 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
     std::atomic<int>                   stopped;
     Logger                             logger_;
 
-    TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port);
+    TcpServer(std::shared_ptr<AkumuliConnection> connection, int concurrency, int port);
 
     //! Run IO service
     virtual void start(SignalHandler* sig_handler, int id);

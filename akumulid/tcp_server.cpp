@@ -146,10 +146,10 @@ void TcpSession::handle_write_error(boost::system::error_code error) {
 TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
                         // Storage & pipeline
-                        std::shared_ptr<IngestionPipeline> pipeline )
+                        std::shared_ptr<AkumuliConnection> connection )
     : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
     , sessions_io_(io)
-    , pipeline_(pipeline)
+    , pipeline_(connection)
     , io_index_{0}
     , start_barrier_(2)
     , stop_barrier_(2)
@@ -244,8 +244,8 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port)
-    : pline(pipeline)
+TcpServer::TcpServer(std::shared_ptr<AkumuliConnection> connection, int concurrency, int port)
+    : connection_(connection)
     , barrier(concurrency)
     , stopped{0}
     , logger_("tcp-server", 32)
@@ -253,8 +253,8 @@ TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrenc
     for(;concurrency --> 0;) {
         iovec.push_back(&io);
     }
-    serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
-    pline->start();
+    serv = std::make_shared<TcpAcceptor>(iovec, port, connection_);
+    connection_->start();
     serv->start();
 }
 
@@ -293,7 +293,7 @@ void TcpServer::stop() {
         barrier.wait();
         logger_.info() << "I/O threads stopped";
 
-        pline->stop();
+        connection_->stop();
         logger_.info() << "Pipeline stopped";
 
         for (auto io: iovec) {

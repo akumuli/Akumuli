@@ -118,7 +118,13 @@ void ProtocolParser::worker(Caller& caller) {
                 }
             };
 
-            consumer_->write(sample);
+            status = consumer_->write(sample);
+            if (status != AKU_SUCCESS) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = get_error_context(aku_error_message(status));
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
         }
     } catch(EStopIteration const&) {
         logger_.info() << "EStopIteration";

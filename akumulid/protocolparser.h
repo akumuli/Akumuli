@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "logger.h"
-#include "protocol_consumer.h"
+#include "ingestion_pipeline.h"
 #include "resp.h"
 #include "stream.h"
 
@@ -79,7 +79,7 @@ class ProtocolParser : ByteStreamReader {
     mutable std::queue<PDU>            buffers_;
     static const PDU                   POISON_;  //< This object marks end of the stream
     bool                               done_;
-    std::shared_ptr<ProtocolConsumer>  consumer_;
+    std::shared_ptr<AkumuliSession>    consumer_;
     Logger                             logger_;
 
     void worker(Caller& yield);

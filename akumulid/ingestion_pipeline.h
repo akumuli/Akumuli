@@ -29,6 +29,8 @@
 #include "akumuli.h"
 #include "akumuli_config.h"
 
+// TODO: rename file
+
 namespace Akumuli {
 
 //! Abstraction layer above aku_Cursor
@@ -46,12 +48,10 @@ struct DbCursor {
     virtual void close() = 0;
 };
 
-//! Abstraction layer above aku_Database
-struct DbConnection {
 
-    virtual ~DbConnection() {}
-
-    virtual void close() = 0;
+//! Database session, maps to aku_Session directly
+struct DbSession {
+    virtual ~DbSession() = 0;
 
     //! Write value to DB
     virtual aku_Status write(const aku_Sample& sample) = 0;
@@ -63,38 +63,44 @@ struct DbConnection {
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
 
     virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample) = 0;
+};
+
+
+//! Abstraction layer above aku_Database
+struct DbConnection {
+
+    virtual ~DbConnection() = 0;
 
     virtual std::string get_all_stats() = 0;
+
+    virtual std::unique_ptr<DbSession> create_session() = 0;
+};
+
+
+class AkumuliSession : public DbSession {
+    aku_Session* session_;
+public:
+    AkumuliSession(aku_Session* session);
+    virtual ~AkumuliSession() override;
+    virtual aku_Status write(const aku_Sample &sample) override;
+    virtual std::shared_ptr<DbCursor> search(std::string query) override;
+    virtual int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) override;
+    virtual aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) override;
 };
 
 
 //! Object of this class writes everything to the database
 class AkumuliConnection : public DbConnection {
-public:
-    enum Durability {
-        MaxDurability     = 1,
-        RelaxedDurability = 2,
-        MaxThroughput     = 4,
-    };
 
-private:
     std::string   dbpath_;
     aku_Database* db_;
 
 public:
     AkumuliConnection(const char* path);
 
-    virtual void close();
+    virtual ~AkumuliConnection() override;
 
-    virtual aku_Status write(const aku_Sample& sample);
-
-    virtual std::shared_ptr<DbCursor> search(std::string query);
-
-    virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size);
-
-    virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample);
-
-    virtual std::string get_all_stats();
+    virtual std::string get_all_stats() override;
 };
 
 }  // namespace Akumuli

@@ -17,6 +17,8 @@
 #pragma once
 #include "akumuli.h"
 
+// FIXME: depricated
+
 namespace Akumuli {
 
 typedef char Byte;
