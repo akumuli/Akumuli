@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "logger.h"
-#include "ingestion_pipeline.h"
 #include "resp.h"
 #include "stream.h"
 
@@ -72,6 +71,8 @@ struct ProtocolParserError : StreamError {
 //! Stop iteration exception
 struct EStopIteration {};
 
+//! Fwd
+struct DbSession;
 
 class ProtocolParser : ByteStreamReader {
     mutable std::shared_ptr<Coroutine> coroutine_;
@@ -79,7 +80,7 @@ class ProtocolParser : ByteStreamReader {
     mutable std::queue<PDU>            buffers_;
     static const PDU                   POISON_;  //< This object marks end of the stream
     bool                               done_;
-    std::shared_ptr<AkumuliSession>    consumer_;
+    std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
 
     void worker(Caller& yield);
@@ -94,7 +95,7 @@ class ProtocolParser : ByteStreamReader {
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
 public:
-    ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer);
+    ProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();
     void parse_next(PDU pdu);
 

@@ -1,7 +1,9 @@
 #include "protocolparser.h"
-#include "resp.h"
 #include <sstream>
 #include <boost/algorithm/string.hpp>
+
+#include "resp.h"
+#include "ingestion_pipeline.h"
 
 namespace Akumuli {
 
@@ -16,7 +18,7 @@ const PDU ProtocolParser::POISON_ = {
     0u, 0u
 };
 
-ProtocolParser::ProtocolParser(std::shared_ptr<ProtocolConsumer> consumer)
+ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
     : caller_(nullptr)
     , done_(false)
     , consumer_(consumer)
@@ -118,13 +120,7 @@ void ProtocolParser::worker(Caller& caller) {
                 }
             };
 
-            status = consumer_->write(sample);
-            if (status != AKU_SUCCESS) {
-                std::string msg;
-                size_t pos;
-                std::tie(msg, pos) = get_error_context(aku_error_message(status));
-                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-            }
+            consumer_->write(sample);
         }
     } catch(EStopIteration const&) {
         logger_.info() << "EStopIteration";

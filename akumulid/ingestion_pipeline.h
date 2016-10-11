@@ -24,7 +24,6 @@
 #include <boost/thread/barrier.hpp>
 
 #include "logger.h"
-#include "protocol_consumer.h"
 // akumuli-storage API
 #include "akumuli.h"
 #include "akumuli_config.h"
@@ -35,6 +34,7 @@ namespace Akumuli {
 
 //! Abstraction layer above aku_Cursor
 struct DbCursor {
+    virtual ~DbCursor() = default;
     //! Read data from cursor
     virtual size_t read(void* dest, size_t dest_size) = 0;
 
@@ -51,7 +51,7 @@ struct DbCursor {
 
 //! Database session, maps to aku_Session directly
 struct DbSession {
-    virtual ~DbSession() = 0;
+    virtual ~DbSession() = default;
 
     //! Write value to DB
     virtual aku_Status write(const aku_Sample& sample) = 0;
@@ -69,7 +69,7 @@ struct DbSession {
 //! Abstraction layer above aku_Database
 struct DbConnection {
 
-    virtual ~DbConnection() = 0;
+    virtual ~DbConnection() = default;
 
     virtual std::string get_all_stats() = 0;
 

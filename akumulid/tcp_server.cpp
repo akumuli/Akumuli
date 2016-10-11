@@ -9,7 +9,7 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
-TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout)
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<AkumuliSession> spout)
     : io_(io)
     , socket_(*io)
     , strand_(*io)
@@ -85,7 +85,6 @@ void TcpSession::handle_read(BufferT buffer,
     if (error) {
         logger_.error() << error.message();
         parser_.close();
-        drain_pipeline_spout();
     } else {
         try {
             PDU pdu = {
@@ -120,12 +119,6 @@ void TcpSession::handle_read(BufferT buffer,
                                                  boost::asio::placeholders::error)
                                      );
         }
-    }
-}
-
-void TcpSession::drain_pipeline_spout() {
-    if (!spout_->is_empty()) {
-        io_->post(boost::bind(&TcpSession::drain_pipeline_spout, shared_from_this()));
     }
 }
 

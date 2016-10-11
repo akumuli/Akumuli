@@ -50,7 +50,7 @@ add_executable(
 )
 target_link_libraries(
     test_protocolparser
-    akumuli
+    akumuli2
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"

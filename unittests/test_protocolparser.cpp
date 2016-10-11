@@ -4,36 +4,43 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 
+#include "ingestion_pipeline.h"
 #include "protocolparser.h"
 #include "resp.h"
 
 using namespace Akumuli;
 
-struct ConsumerMock : ProtocolConsumer {
+struct ConsumerMock : DbSession {
     std::vector<aku_ParamId>     param_;
     std::vector<aku_Timestamp>   ts_;
     std::vector<double>          data_;
-    std::vector<std::string>     bulk_;
 
-    void write(const aku_Sample& sample) {
+    virtual ~ConsumerMock() {}
+
+    virtual aku_Status write(const aku_Sample &sample) override {
         param_.push_back(sample.paramid);
         ts_.push_back(sample.timestamp);
         data_.push_back(sample.payload.float64);
+        return AKU_SUCCESS;
     }
 
-    void add_bulk_string(const Byte *buffer, size_t n) {
-        bulk_.push_back(std::string(buffer, buffer + n));
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
+        throw "Not implemented";
     }
 
-    aku_Status series_to_param_id(const char *str, size_t strlen, aku_Sample *sample) {
-        throw "not implemented";
+    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
+        throw "Not implemented";
+    }
+
+    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
+        throw "Not implemented";
     }
 };
 
-void null_deleter(const char* s) {}
+void null_deleter(const char*) {}
 
-std::shared_ptr<const Byte> buffer_from_static_string(const char* str) {
-    return std::shared_ptr<const Byte>(str, &null_deleter);
+std::shared_ptr<const char> buffer_from_static_string(const char* str) {
+    return std::shared_ptr<const char>(str, &null_deleter);
 }
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
