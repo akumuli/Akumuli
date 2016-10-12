@@ -92,4 +92,11 @@ std::string AkumuliConnection::get_all_stats() {
     return "Can't generate stats, buffer is too small";
 }
 
+std::unique_ptr<DbSession> AkumuliConnection::create_session() {
+    auto session = aku_create_session(db_);
+    std::unique_ptr<DbSession> result;
+    result.reset(new AkumuliSession(session));
+    return result;
+}
+
 }

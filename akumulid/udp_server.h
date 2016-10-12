@@ -33,7 +33,7 @@ namespace Akumuli {
 /** UDP server for data ingestion.
   */
 class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server {
-    std::shared_ptr<IngestionPipeline> pipeline_;
+    std::shared_ptr<AkumuliConnection> db_;
     boost::barrier                     start_barrier_;  //< Barrier to start worker thread
     boost::barrier                     stop_barrier_;   //< Barrier to stop worker thread
     std::atomic<int>                   stop_;
@@ -65,8 +65,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
             }
         }
 
-    } __attribute__((aligned(
-        64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
+    } __attribute__((aligned(64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
 
 public:
     /** C-tor.
@@ -74,7 +73,7 @@ public:
       * @param port port number
       * @param pipeline pointer to ingestion pipeline
       */
-    UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port);
+    UdpServer(std::shared_ptr<AkumuliConnection> pipeline, int nworkers, int port);
 
     //! Start processing packets
     virtual void start(SignalHandler* sig, int id);
@@ -83,7 +82,7 @@ private:
     //! Stop processing packets
     void stop();
 
-    void worker(std::shared_ptr<PipelineSpout> spout);
+    void worker(std::shared_ptr<AkumuliSession> spout);
 };
 
 }  // namespace

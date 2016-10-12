@@ -382,28 +382,14 @@ void create_db_files(const char* path,
   * If config file can't be found - report error.
   */
 void cmd_run_server() {
-    auto config_path = ConfigFile::default_config_path();
-
+    auto config_path            = ConfigFile::default_config_path();
     auto config                 = ConfigFile::read_config_file(config_path);
-    auto window                 = ConfigFile::get_window(config);
-    auto durability             = ConfigFile::get_durability(config);
     auto path                   = ConfigFile::get_path(config);
-    auto compression_threshold  = ConfigFile::get_compression_threshold(config);
-    auto huge_tlb               = ConfigFile::get_huge_tlb(config);
-    auto cache_size             = ConfigFile::get_cache_size(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
-
-    auto full_path = boost::filesystem::path(path) / "db.akumuli";
-
-    auto connection = std::make_shared<AkumuliConnection>(full_path.c_str(),
-                                                          huge_tlb,
-                                                          durability,
-                                                          compression_threshold,
-                                                          window,
-                                                          cache_size);
-
-    auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
-    auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
+    auto full_path              = boost::filesystem::path(path) / "db.akumuli";
+    auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
+    auto session                = connection->create_session();
+    auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
 
     SignalHandler sighandler;
     int srvid = 0;
@@ -428,9 +414,9 @@ void cmd_run_server() {
 void cmd_create_database(bool test_db=false) {
     auto config_path = ConfigFile::default_config_path();
 
-    auto config     = ConfigFile::read_config_file(config_path);
-    auto path       = ConfigFile::get_path(config);
-    auto volumes    = ConfigFile::get_nvolumes(config);
+    auto config      = ConfigFile::read_config_file(config_path);
+    auto path        = ConfigFile::get_path(config);
+    auto volumes     = ConfigFile::get_nvolumes(config);
 
     create_db_files(path.c_str(), volumes, test_db ? AKU_TEST_PAGE_SIZE : 0);
 }

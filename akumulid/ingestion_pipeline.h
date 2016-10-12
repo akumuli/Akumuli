@@ -101,6 +101,8 @@ public:
     virtual ~AkumuliConnection() override;
 
     virtual std::string get_all_stats() override;
+
+    virtual std::unique_ptr<DbSession> create_session() override;
 };
 
 }  // namespace Akumuli

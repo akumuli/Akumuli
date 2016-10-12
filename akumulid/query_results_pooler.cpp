@@ -25,13 +25,13 @@ static boost::property_tree::ptree from_json(std::string json) {
 
 struct CSVOutputFormatter : OutputFormatter {
 
-    std::shared_ptr<DbConnection> connection_;
+    std::shared_ptr<DbSession> session_;
     const bool iso_timestamps_;
 
     // TODO: parametrize column separator
 
-    CSVOutputFormatter(std::shared_ptr<DbConnection> con, bool iso_timestamps)
-        : connection_(con)
+    CSVOutputFormatter(std::shared_ptr<DbSession> con, bool iso_timestamps)
+        : session_(con)
         , iso_timestamps_(iso_timestamps)
     {
     }
@@ -48,7 +48,7 @@ struct CSVOutputFormatter : OutputFormatter {
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
-            len = connection_->param_id_to_series(sample.paramid, begin, size);
+            len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
                 len = snprintf(begin, size, "id=%lu", sample.paramid);
@@ -165,11 +165,11 @@ struct CSVOutputFormatter : OutputFormatter {
 //! RESP output implementation
 struct RESPOutputFormatter : OutputFormatter {
 
-    std::shared_ptr<DbConnection> connection_;
+    std::shared_ptr<DbSession> session_;
     const bool iso_timestamps_;
 
-    RESPOutputFormatter(std::shared_ptr<DbConnection> con, bool iso_timestamps)
-        : connection_(con)
+    RESPOutputFormatter(std::shared_ptr<DbSession> con, bool iso_timestamps)
+        : session_(con)
         , iso_timestamps_(iso_timestamps)
     {
     }
@@ -192,7 +192,7 @@ struct RESPOutputFormatter : OutputFormatter {
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
-            len = connection_->param_id_to_series(sample.paramid, begin, size);
+            len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
                 len = snprintf(begin, size, "id=%lu", sample.paramid);
@@ -288,8 +288,8 @@ struct RESPOutputFormatter : OutputFormatter {
     }
 };
 
-QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize)
-    : connection_(con)
+QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize)
+    : session_(session)
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
 {
@@ -347,14 +347,14 @@ void QueryResultsPooler::start() {
     }
     switch(output_format) {
     case RESP:
-        formatter_.reset(new RESPOutputFormatter(connection_, use_iso_timestamps));
+        formatter_.reset(new RESPOutputFormatter(session_, use_iso_timestamps));
         break;
     case CSV:
-        formatter_.reset(new CSVOutputFormatter(connection_, use_iso_timestamps));
+        formatter_.reset(new CSVOutputFormatter(session_, use_iso_timestamps));
         break;
     };
 
-    cursor_ = connection_->search(query_text_);
+    cursor_ = session_->search(query_text_);
 }
 
 void QueryResultsPooler::append(const char *data, size_t data_size) {
@@ -421,7 +421,7 @@ QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
 }
 
 ReadOperation *QueryProcessor::create() {
-    return new QueryResultsPooler(con_, rdbufsize_);
+    return new QueryResultsPooler(con_->create_session(), rdbufsize_);
 }
 
 std::string QueryProcessor::get_all_stats() {

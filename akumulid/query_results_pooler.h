@@ -16,7 +16,7 @@ struct OutputFormatter {
 struct QueryResultsPooler : ReadOperation {
 
     std::string                      query_text_;
-    std::shared_ptr<DbConnection>    connection_;
+    std::shared_ptr<DbSession>       session_;
     std::shared_ptr<DbCursor>        cursor_;
     std::unique_ptr<OutputFormatter> formatter_;
 
@@ -26,7 +26,7 @@ struct QueryResultsPooler : ReadOperation {
     static const size_t DEFAULT_RDBUF_SIZE_ = 1000u;
     static const size_t DEFAULT_ITEM_SIZE_  = sizeof(aku_Sample);
 
-    QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize);
+    QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize);
 
     void throw_if_started() const;
 
