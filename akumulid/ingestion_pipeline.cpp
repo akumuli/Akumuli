@@ -13,10 +13,6 @@ namespace Akumuli
 
 static Logger db_logger_ = Logger("akumuli-storage", 32);
 
-static void db_logger(aku_LogLevel tag, const char *msg) {
-    db_logger_.error() << "(" << tag << ") " << msg;
-}
-
 //! Abstraction layer above aku_Cursor
 struct AkumuliCursor : DbCursor {
     aku_Cursor* cursor_;
@@ -92,9 +88,9 @@ std::string AkumuliConnection::get_all_stats() {
     return "Can't generate stats, buffer is too small";
 }
 
-std::unique_ptr<DbSession> AkumuliConnection::create_session() {
+std::shared_ptr<DbSession> AkumuliConnection::create_session() {
     auto session = aku_create_session(db_);
-    std::unique_ptr<DbSession> result;
+    std::shared_ptr<DbSession> result;
     result.reset(new AkumuliSession(session));
     return result;
 }

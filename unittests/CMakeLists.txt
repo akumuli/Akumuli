@@ -57,9 +57,7 @@ target_link_libraries(
     libboost_coroutine.a
     libboost_context.a
 )
-#add_test(protocol-parser test_protocolparser)
-
-set_target_properties(test_protocolparser PROPERTIES EXCLUDE_FROM_ALL 1)
+add_test(protocol-parser test_protocolparser)
 
 # Pipeline test
 add_executable(

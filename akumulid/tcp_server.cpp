@@ -9,7 +9,7 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
-TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<AkumuliSession> spout)
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout)
     : io_(io)
     , socket_(*io)
     , strand_(*io)
@@ -53,11 +53,11 @@ void TcpSession::start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_re
                 ));
 }
 
-PipelineErrorCb TcpSession::get_error_cb() {
+ErrorCallback TcpSession::get_error_cb() {
     logger_.info() << "Creating error handler for session";
     auto self = shared_from_this();
     auto weak = std::weak_ptr<TcpSession>(self);
-    auto fn = [weak](aku_Status status, u64 counter) {
+    auto fn = [weak](aku_Status status, u64) {
         auto session = weak.lock();
         if (session) {
             const char* msg = aku_error_message(status);
@@ -72,7 +72,7 @@ PipelineErrorCb TcpSession::get_error_cb() {
                                                  boost::asio::placeholders::error));
         }
     };
-    return PipelineErrorCb(fn);
+    return ErrorCallback(fn);
 }
 
 std::shared_ptr<Byte> TcpSession::NO_BUFFER = std::shared_ptr<Byte>();
@@ -139,10 +139,10 @@ void TcpSession::handle_write_error(boost::system::error_code error) {
 TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
                         // Storage & pipeline
-                        std::shared_ptr<AkumuliConnection> connection )
-    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
+                        std::shared_ptr<DbConnection> connection )
+    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
     , sessions_io_(io)
-    , pipeline_(connection)
+    , connection_(connection)
     , io_index_{0}
     , start_barrier_(2)
     , stop_barrier_(2)
@@ -193,10 +193,9 @@ void TcpAcceptor::_run_one() {
 
 void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
-    auto spout = pipeline_->make_spout();
-    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), spout));
+    auto spout = connection_->create_session();
+    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout)));
     // attach session to spout
-    spout->set_error_cb(session->get_error_cb());
     // run session
     acceptor_.async_accept(
                 session->socket(),
@@ -237,9 +236,9 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<AkumuliConnection> connection, int concurrency, int port)
+TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port)
     : connection_(connection)
-    , barrier(concurrency)
+    , barrier(static_cast<u32>(concurrency))
     , stopped{0}
     , logger_("tcp-server", 32)
 {
@@ -247,7 +246,6 @@ TcpServer::TcpServer(std::shared_ptr<AkumuliConnection> connection, int concurre
         iovec.push_back(&io);
     }
     serv = std::make_shared<TcpAcceptor>(iovec, port, connection_);
-    connection_->start();
     serv->start();
 }
 
@@ -286,9 +284,6 @@ void TcpServer::stop() {
         barrier.wait();
         logger_.info() << "I/O threads stopped";
 
-        connection_->stop();
-        logger_.info() << "Pipeline stopped";
-
         for (auto io: iovec) {
             io->stop();
         }
@@ -302,10 +297,10 @@ struct TcpServerBuilder {
         ServerFactory::instance().register_type("TCP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline,
+    std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        return std::make_shared<TcpServer>(pipeline, settings.nworkers, settings.port);
+        return std::make_shared<TcpServer>(con, settings.nworkers, settings.port);
     }
 };
 

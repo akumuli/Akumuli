@@ -73,7 +73,7 @@ struct DbConnection {
 
     virtual std::string get_all_stats() = 0;
 
-    virtual std::unique_ptr<DbSession> create_session() = 0;
+    virtual std::shared_ptr<DbSession> create_session() = 0;
 };
 
 
@@ -102,7 +102,7 @@ public:
 
     virtual std::string get_all_stats() override;
 
-    virtual std::unique_ptr<DbSession> create_session() override;
+    virtual std::shared_ptr<DbSession> create_session() override;
 };
 
 }  // namespace Akumuli

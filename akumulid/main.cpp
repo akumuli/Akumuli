@@ -172,39 +172,8 @@ struct ConfigFile {
         return conf.get<u64>("max_cache_size");
     }
 
-    static int get_window(PTree conf) {
-        std::string window = conf.get<std::string>("window");
-        int r = 0;
-        auto status = aku_parse_duration(window.c_str(), &r);
-        if (status != AKU_SUCCESS) {
-            throw std::runtime_error("can't parse `window` parameter");
-        }
-        return r;
-    }
-
-    static bool get_huge_tlb(PTree conf) {
-        return conf.get<bool>("huge_tlb");
-    }
-
     static int get_nvolumes(PTree conf) {
         return conf.get<int>("nvolumes");
-    }
-
-    static int get_compression_threshold(PTree conf) {
-        return conf.get<int>("compression_threshold");
-    }
-
-    static AkumuliConnection::Durability get_durability(PTree conf) {
-        std::string m = conf.get<std::string>("durability");
-        AkumuliConnection::Durability res;
-        if (m == "max") {
-            res = AkumuliConnection::MaxDurability;
-        } else if (m == "min") {
-            res = AkumuliConnection::MaxThroughput;
-        } else {
-            throw std::runtime_error("unknown durability level");
-        }
-        return res;
     }
 
     static ServerSettings get_http_server(PTree conf) {
@@ -388,14 +357,13 @@ void cmd_run_server() {
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
     auto full_path              = boost::filesystem::path(path) / "db.akumuli";
     auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
-    auto session                = connection->create_session();
     auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
 
     SignalHandler sighandler;
     int srvid = 0;
     std::map<int, std::string> srvnames;
     for(auto settings: ingestion_servers) {
-        auto srv = ServerFactory::instance().create(pipeline, qproc, settings);
+        auto srv = ServerFactory::instance().create(connection, qproc, settings);
 	assert(srv != nullptr);
         srvnames[srvid] = settings.name;
         srv->start(&sighandler, srvid++);
@@ -429,7 +397,9 @@ void cmd_delete_database() {
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
-        auto status = aku_remove_database(full_path.c_str(), &static_logger);
+        // TODO: don't delete database if it's not empty
+        // FIXME: add command line argument --force to delete nonempty database
+        auto status = aku_remove_database(full_path.c_str(), true);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);

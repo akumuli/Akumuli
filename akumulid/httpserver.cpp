@@ -152,7 +152,7 @@ struct HttpServerBuilder {
         ServerFactory::instance().register_type("HTTP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline>,
+    std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection>,
                                          std::shared_ptr<ReadOperationBuilder> qproc,
                                          const ServerSettings& settings) {
         return std::make_shared<HttpServer>(settings.port, qproc);

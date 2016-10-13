@@ -14,7 +14,7 @@
 
 namespace Akumuli {
 
-UdpServer::UdpServer(std::shared_ptr<AkumuliConnection> db, int nworkers, int port)
+UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
     : db_(db)
     , start_barrier_(static_cast<u32>(nworkers + 1))
     , stop_barrier_(static_cast<u32>(nworkers + 1))
@@ -33,7 +33,7 @@ void UdpServer::start(SignalHandler *sig, int id) {
     // Create workers
     for (int i = 0; i < nworkers_; i++) {
         auto session = db_->create_session();
-        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), session));
+        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), std::move(session)));
         thread.detach();
     }
     start_barrier_.wait();
@@ -47,7 +47,7 @@ void UdpServer::stop() {
 }
 
 
-void UdpServer::worker(std::shared_ptr<AkumuliSession> spout) {
+void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     start_barrier_.wait();
 
     int sockfd, retval;
