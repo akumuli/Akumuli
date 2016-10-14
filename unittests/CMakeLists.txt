@@ -96,7 +96,7 @@ add_executable(
 )
 target_link_libraries(test_tcp_server
     jemalloc
-    akumuli
+    akumuli2
     sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
@@ -105,9 +105,7 @@ target_link_libraries(test_tcp_server
     libboost_coroutine.a
     libboost_context.a
 )
-#add_test(tcp-server test_tcp_server)
-
-set_target_properties(test_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
+add_test(tcp-server test_tcp_server)
 
 # QueryCursor
 
@@ -121,7 +119,7 @@ add_executable(
 )
 target_link_libraries(
     test_querycursor
-    akumuli
+    akumuli2
     jemalloc
     sqlite3
     "${LOG4CXX_LIBRARIES}"
@@ -131,9 +129,7 @@ target_link_libraries(
     libboost_coroutine.a
     libboost_context.a
 )
-#add_test(querycursor test_querycursor)
-
-set_target_properties(test_querycursor PROPERTIES EXCLUDE_FROM_ALL 1)
+add_test(querycursor test_querycursor)
 
 
 ##########################################
