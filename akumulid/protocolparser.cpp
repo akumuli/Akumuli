@@ -13,6 +13,16 @@ ProtocolParserError::ProtocolParserError(std::string line, int pos)
 {
 }
 
+DatabaseError::DatabaseError(aku_Status status)
+    : std::exception()
+    , status(status)
+{
+}
+
+const char* DatabaseError::what() const noexcept {
+    return aku_error_message(status);
+}
+
 const PDU ProtocolParser::POISON_ = {
     std::shared_ptr<const Byte>(),
     0u, 0u
@@ -120,7 +130,10 @@ void ProtocolParser::worker(Caller& caller) {
                 }
             };
 
-            consumer_->write(sample);
+            status = consumer_->write(sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_THROW_EXCEPTION(DatabaseError(status));
+            }
         }
     } catch(EStopIteration const&) {
         logger_.info() << "EStopIteration";

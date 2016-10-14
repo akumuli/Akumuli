@@ -302,3 +302,4 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 3), "-DB");
     });
 }
+

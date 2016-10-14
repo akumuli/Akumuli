@@ -13,7 +13,7 @@ StreamError::StreamError(std::string line, int pos)
 {
 }
 
-const char* StreamError::what() const throw() {
+const char* StreamError::what() const noexcept {
     return line_.c_str();
 }
 

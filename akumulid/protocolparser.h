@@ -67,6 +67,11 @@ struct ProtocolParserError : StreamError {
     ProtocolParserError(std::string line, int pos);
 };
 
+struct DatabaseError : std::exception {
+    aku_Status status;
+    DatabaseError(aku_Status status);
+    virtual const char* what() const noexcept;
+};
 
 //! Stop iteration exception
 struct EStopIteration {};

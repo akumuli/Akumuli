@@ -94,7 +94,7 @@ void TcpSession::handle_read(BufferT buffer,
             };
             parser_.parse_next(pdu);
             start(buffer, buf_size, pos, nbytes);
-        } catch (RESPError const& resp_err) {
+        } catch (StreamError const& resp_err) {
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
             logger_.error() << resp_err.get_bottom_line();
@@ -102,6 +102,17 @@ void TcpSession::handle_read(BufferT buffer,
             std::ostream os(&stream);
             os << "-PARSER " << resp_err.what() << "\r\n";
             os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        } catch (DatabaseError const& dberr) {
+            // Database error
+            logger_.error() << boost::current_exception_diagnostic_information();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-DB " << dberr.what() << "\r\n";
             boost::asio::async_write(socket_, stream,
                                      boost::bind(&TcpSession::handle_write_error,
                                                  shared_from_this(),
