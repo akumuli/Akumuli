@@ -15,9 +15,8 @@ add_executable(
 target_link_libraries(test_streams
     ${Boost_LIBRARIES}
 )
-#add_test(streams test_streams)
+add_test(streams test_streams)
 
-set_target_properties(test_streams PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # RESP
 add_executable(
