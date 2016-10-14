@@ -31,9 +31,8 @@ add_executable(
 target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
 )
-#add_test(respstream test_respstream)
+add_test(respstream test_respstream)
 
-set_target_properties(test_respstream PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Protocol parser
 add_executable(
@@ -59,28 +58,6 @@ target_link_libraries(
 )
 add_test(protocol-parser test_protocolparser)
 
-# Pipeline test
-add_executable(
-    test_pipeline
-    test_pipeline.cpp
-    ../akumulid/ingestion_pipeline.cpp
-    ../akumulid/logger.cpp
-)
-target_link_libraries(
-    test_pipeline
-    jemalloc
-    akumuli
-    sqlite3
-    "${LOG4CXX_LIBRARIES}"
-    "${APR_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-)
-#add_test(pipeline test_pipeline)
-
-set_target_properties(test_pipeline PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # TCPServer test
 add_executable(
