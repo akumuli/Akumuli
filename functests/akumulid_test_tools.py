@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import socket
 import datetime
@@ -6,7 +7,6 @@ try:
     import ConfigParser as ini
 except ImportError:
     import configparser as ini
-import os
 import StringIO
 
 
@@ -118,6 +118,7 @@ def get_window_width():
             raise ValueError("Can't read `window` value from config")
     return parse(config.get("root", "window"))
 
+
 class Akumulid:
     """akumulid daemon instance"""
     def __init__(self, path):
@@ -148,3 +149,33 @@ class Akumulid:
     def terminate(self):
         self.__process.terminate()
 
+class FakeAkumulid:
+    """akumulid daemon instance"""
+    def __init__(self):
+        pass
+
+    def create_database(self):
+        pass
+
+    def create_test_database(self):
+        pass
+
+    def delete_database(self):
+        pass
+
+    def serve(self):
+        pass
+
+    def stop(self):
+        pass
+        
+    def terminate(self):
+        pass
+
+def create_akumulid(path):
+    if path == "DEBUG":
+        return FakeAkumulid()
+    if not os.path.exists(path):
+        print("Path {0} doesn't exists".format(path))
+        sys.exit(1)
+    return Akumulid(path)

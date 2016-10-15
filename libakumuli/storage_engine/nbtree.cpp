@@ -1658,7 +1658,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
     aku_Status status;
     std::tie(status, addr) = curr_->commit(bstore_);
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
+        AKU_PANIC("Can't write superblock to block-store, " + StatusUtil::str(status));
     }
     // Gather stats and send them to upper-level node
     SubtreeRef payload = INIT_SUBTREE_REF;

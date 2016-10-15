@@ -391,10 +391,16 @@ aku_Status Storage::new_database( const char     *file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , i32             num_volumes
-                                , u64             page_size)
+                                , u64             volume_size)
 {
+    // Check for max volume size
+    const u64 MAX_SIZE = 0x100000000 * 4096 - 1;
+    if (volume_size > MAX_SIZE) {
+        Logger::msg(AKU_LOG_ERROR, "Volume size is too big: " + std::to_string(volume_size));
+        return AKU_EBAD_ARG;
+    }
     // Create volumes and metapage
-    u32 vol_size = static_cast<u32>(page_size / 4096);
+    u32 volsize = static_cast<u32>(volume_size / 4096);
 
     boost::filesystem::path volpath(volumes_path);
     boost::filesystem::path metpath(metadata_path);
@@ -432,7 +438,7 @@ aku_Status Storage::new_database( const char     *file_name
     for (i32 i = 0; i < num_volumes; i++) {
         std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
         boost::filesystem::path p = volpath / basename;
-        paths.push_back(std::make_tuple(vol_size, p.string()));
+        paths.push_back(std::make_tuple(volsize, p.string()));
     }
     // Volumes meta-page
     std::string basename = std::string(file_name) + ".metavol";

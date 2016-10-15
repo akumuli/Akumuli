@@ -14,6 +14,7 @@
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <apr_errno.h>
 
@@ -23,7 +24,6 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
-const i64 AKU_TEST_PAGE_SIZE  = 0x1000000;
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -32,46 +32,14 @@ const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automat
 path=~/.akumuli
 
 # Number of volumes used  to store data.  Each volume  is
-# 4Gb in size and  allocated beforehand. To change number
+# 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
 nvolumes=4
 
-# Sliding window  width. Can  be specified in nanoseconds
-# (unit  of  measure  is  not  specified),  seconds  (s),
-# milliseconds (ms),  microseconds (us) or minutes (min).
-#
-# Examples:
-#
-# window=10s
-# window=500us
-# window=1000   (in this case sliding window will be 1000
-#                nanoseconds long)
-window=10s
-
-# Number of data  points stored in one  compressed chunk.
-# Akumuli stores data  in chunks.  If chunks is too large
-# decompression can be slow; in opposite case compression
-# can  be less  effective.  Good compression_threshold is
-# about 1000. In this case chunk size will be around 4Kb.
-compression_threshold=1000
-
-# Durability level can  be set  to  max  or  min.  In the
-# first case  durability will  be maximal but speed won't
-# be  optimal.  If durability is  set  to min write speed
-# will be better.
-durability=max
-
-# This parameter  can  be used to  emable huge  pages for
-# data volumes.  This can speed up searching  and writing
-# process a bit. Setting  this  option can't  do any harm
-# except performance loss in some circumstances.
-huge_tlb = 0
-
-# Max cache capacity in bytes.  Akumuli  caches  recently
-# used chunks  in memory. This  parameter can  be used to
-# define size of this cache (default value: 512Mb).
-max_cache_size=536870912
+# Size of the individual volume. You can use MB or GB suffix.
+# Default value is 4GB (if value is not set).
+volume_size=4GB
 
 
 # HTTP server config
@@ -168,12 +136,46 @@ struct ConfigFile {
         return result;
     }
 
-    static u64 get_cache_size(PTree conf) {
-        return conf.get<u64>("max_cache_size");
+    static i32 get_nvolumes(PTree conf) {
+        return conf.get<i32>("nvolumes");
     }
 
-    static int get_nvolumes(PTree conf) {
-        return conf.get<int>("nvolumes");
+    static u64 get_volume_size(PTree conf) {
+        u64 result = 0;
+        auto strsize = conf.get<std::string>("volume_size", "4GB");
+        try {
+            result = boost::lexical_cast<u64>(strsize);
+        } catch (boost::bad_lexical_cast const&) {
+            // Try to read suffix (GB or MB)
+            auto throw_decode_error = [strsize]() {
+                std::stringstream fmt;
+                fmt << "can't decode volume size: `" << strsize << "`";
+                std::runtime_error err(fmt.str());
+                BOOST_THROW_EXCEPTION(err);
+            };
+            auto tmp = strsize;
+            u64 mul = 1;
+            if (tmp.back() != 'B' && tmp.back() != 'b') {
+                throw_decode_error();
+            }
+            tmp.pop_back();
+            char symbol = tmp.back();
+            tmp.pop_back();
+            if (symbol == 'G' || symbol == 'g') {
+                mul = 1024*1024*1024;
+            } else if (symbol == 'M' || symbol == 'm') {
+                mul = 1024*1024;
+            } else {
+                throw_decode_error();
+            }
+            try {
+                result = boost::lexical_cast<u64>(tmp);
+            } catch (boost::bad_lexical_cast const&) {
+                throw_decode_error();
+            }
+            result *= mul;
+        }
+        return result;
     }
 
     static ServerSettings get_http_server(PTree conf) {
@@ -322,12 +324,12 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
   */
 void create_db_files(const char* path,
                      i32 nvolumes,
-                     u64 page_size=0)
+                     u64 volume_size)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        status = aku_create_database_ex("db", path, path, nvolumes, page_size);
+        status = aku_create_database_ex("db", path, path, nvolumes, volume_size);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -364,7 +366,7 @@ void cmd_run_server() {
     std::map<int, std::string> srvnames;
     for(auto settings: ingestion_servers) {
         auto srv = ServerFactory::instance().create(connection, qproc, settings);
-	assert(srv != nullptr);
+        assert(srv != nullptr);
         srvnames[srvid] = settings.name;
         srv->start(&sighandler, srvid++);
         std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
@@ -385,8 +387,9 @@ void cmd_create_database(bool test_db=false) {
     auto config      = ConfigFile::read_config_file(config_path);
     auto path        = ConfigFile::get_path(config);
     auto volumes     = ConfigFile::get_nvolumes(config);
+    auto volsize     = ConfigFile::get_volume_size(config);
 
-    create_db_files(path.c_str(), volumes, test_db ? AKU_TEST_PAGE_SIZE : 0);
+    create_db_files(path.c_str(), volumes, volsize);
 }
 
 void cmd_delete_database() {
