@@ -191,9 +191,8 @@ public:
         return static_cast<aku_Session*>(ptr);
     }
 
-    // Stats
-    void get_storage_stats(aku_StorageStats*) {
-        AKU_PANIC("Not implemented");
+    boost::property_tree::ptree get_stats() {
+        return storage_->get_stats();
     }
 };
 
@@ -329,7 +328,24 @@ void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
 }
 
 int aku_json_stats(aku_Database *db, char* buffer, size_t size) {
-    AKU_PANIC("Not implemented");
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    try {
+        auto ptree = dbi->get_stats();
+        // encode json
+        std::stringstream out;
+        boost::property_tree::json_parser::write_json(out, ptree, true);
+        auto str = out.str();
+        if (str.size() > size) {
+            return -1*static_cast<int>(str.size());
+        }
+        strcpy(buffer, str.c_str());
+        return static_cast<int>(str.size());
+    } catch (std::exception const& e) {
+        Logger::msg(AKU_LOG_ERROR, e.what());
+    } catch (...) {
+        AKU_PANIC("unexpected error in `aku_json_stats`");
+    }
+    return -1;
 }
 
 void aku_debug_print(aku_Database *db) {

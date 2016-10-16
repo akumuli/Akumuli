@@ -125,6 +125,8 @@ public:
       *         AKU_EACCESS if database there is not enough priveleges to delete the files
       */
     static aku_Status remove_storage(const char* file_name, bool force);
+
+    boost::property_tree::ptree get_stats();
 };
 
 }

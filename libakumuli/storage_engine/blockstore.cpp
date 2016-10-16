@@ -134,6 +134,7 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
     , current_volume_(0)
     , current_gen_(0)
     , total_size_(0)
+    , volume_names_(volpaths)
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -345,6 +346,29 @@ BlockStoreStats FixedSizeFileStorage::get_stats() const {
     return stats;
 }
 
+PerVolumeStats FixedSizeFileStorage::get_volume_stats() const {
+    PerVolumeStats result;
+    size_t nvol = meta_->get_nvolumes();
+    for (u32 ix = 0; ix < nvol; ix++) {
+        BlockStoreStats stats = {};
+        stats.block_size = 4096;
+        aku_Status stat;
+        u32 res;
+        std::tie(stat, res) = meta_->get_capacity(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.capacity += res;
+        }
+        std::tie(stat, res) = meta_->get_nblocks(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.nblocks += res;
+        }
+        auto name = volume_names_.at(ix);
+        result[name] = stats;
+    }
+    return result;
+
+}
+
 static u32 crc32c(const u8* data, size_t size) {
     static crc32c_impl_t impl = chose_crc32c_implementation();
     return impl(0, data, size);
@@ -422,6 +446,16 @@ BlockStoreStats MemStore::get_stats() const {
     s.capacity = 1024*4096;
     s.nblocks = write_pos_;
     return s;
+}
+
+PerVolumeStats MemStore::get_volume_stats() const {
+    PerVolumeStats result;
+    BlockStoreStats s;
+    s.block_size = 4096;
+    s.capacity = 1024*4096;
+    s.nblocks = write_pos_;
+    result["mem"] = s;
+    return result;
 }
 
 bool MemStore::exists(LogicAddr addr) const {

@@ -526,4 +526,20 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
     return AKU_SUCCESS;
 }
 
+boost::property_tree::ptree Storage::get_stats() {
+    boost::property_tree::ptree result;
+    auto volstats = bstore_->get_volume_stats();
+    int ix = 0;
+    for (auto kv: volstats) {
+        auto name = kv.first;
+        auto stats = kv.second;
+        auto capacity = stats.capacity * stats.block_size;
+        auto free_vol = capacity - stats.nblocks * stats.block_size;
+        std::string path = "volume_" + std::to_string(ix++);
+        result.put(path + ".free_space", free_vol);
+        result.put(path + ".file_name", name);
+    }
+    return result;
+}
+
 }

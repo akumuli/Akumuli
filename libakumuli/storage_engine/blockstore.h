@@ -19,6 +19,8 @@
 #include "volume.h"
 #include <random>
 #include <mutex>
+#include <map>
+#include <string>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -61,6 +63,8 @@ struct BlockStoreStats {
     size_t nblocks;
 };
 
+typedef std::map<std::string, BlockStoreStats> PerVolumeStats;
+
 
 struct BlockStore {
 
@@ -86,6 +90,8 @@ struct BlockStore {
     virtual u32 checksum(u8 const* begin, size_t size) const = 0;
 
     virtual BlockStoreStats get_stats() const = 0;
+
+    virtual PerVolumeStats get_volume_stats() const = 0;
 };
 
 /** Blockstore. Contains collection of volumes.
@@ -107,6 +113,8 @@ class FixedSizeFileStorage : public BlockStore,
     size_t total_size_;
     //! Used to protect all internal state
     mutable std::mutex lock_;
+    //! Volume names (for nice statistics)
+    std::vector<std::string> volume_names_;
 
     //! Secret c-tor.
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
@@ -138,6 +146,8 @@ public:
     virtual u32 checksum(u8 const* data, size_t size) const;
 
     virtual BlockStoreStats get_stats() const;
+
+    virtual PerVolumeStats get_volume_stats() const;
 };
 
 
@@ -159,7 +169,8 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
     virtual u32 checksum(u8 const* data, size_t size) const;
-    BlockStoreStats get_stats() const;
+    virtual BlockStoreStats get_stats() const;
+    virtual PerVolumeStats get_volume_stats() const;
     void remove(size_t addr);
 };
 
