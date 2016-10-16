@@ -42,10 +42,10 @@ script:
   - akumulid/akumulid --init
   - python functests/test_data_ingestion.py akumulid/ TCP
   - python functests/test_data_ingestion.py akumulid/ UDP
-  #- python functests/test_query_language.py akumulid/
+  - python functests/test_query_language.py akumulid/
   ##- python functests/test_continuous_queries.py akumulid/
   #- python functests/test_volume_overflow.py akumulid/
-  #- python functests/test_restart.py akumulid/
-  #- python functests/test_kill.py akumulid/
+  - python functests/test_restart.py akumulid/
+  - python functests/test_kill.py akumulid/
   #- python functests/test_concurrency.py akumulid/
-  #- python functests/test_ingestion_errors.py akumulid/
+  - python functests/test_ingestion_errors.py akumulid/
