@@ -164,6 +164,19 @@ void StorageSession::clear_series_matcher() const {
 
 //----------- Storage ----------
 
+Storage::Storage()
+    : done_{0}
+    , close_barrier_(2)
+{
+    //! In-memory SQLite database
+    metadata_.reset(new MetadataStorage(":memory:"));
+
+    bstore_ = StorageEngine::BlockStoreBuilder::create_memstore();
+    cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
+
+    start_sync_worker();
+}
+
 Storage::Storage(const char* path)
     : done_{0}
     , close_barrier_(2)

@@ -157,8 +157,12 @@ class DatabaseImpl : public aku_Database
 public:
     // private fields
     DatabaseImpl(const char* path)
-        : storage_(std::make_shared<Storage>(path))
     {
+        if (path == std::string(":memory:")) {
+            storage_ = std::make_shared<Storage>();
+        } else {
+            storage_ = std::make_shared<Storage>(path);
+        }
     }
 
     void close() {

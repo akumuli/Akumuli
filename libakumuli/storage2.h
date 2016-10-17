@@ -77,6 +77,10 @@ class Storage : public std::enable_shared_from_this<Storage> {
     void start_sync_worker();
 public:
 
+    // Create empty in-memory storage
+    Storage();
+
+    // Open file-backed storage
     Storage(const char* path);
 
     /** C-tor for test */
