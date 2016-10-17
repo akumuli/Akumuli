@@ -22,7 +22,7 @@ def test_read_all(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))

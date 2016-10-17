@@ -61,7 +61,6 @@ struct CSVOutputFormatter : OutputFormatter {
                 // Not enough space
                 return nullptr;
             }
-            len--;  // terminating '\0' character should be rewritten
             begin += len;
             size  -= len;
             newline_required = true;

@@ -56,7 +56,6 @@ def msg(timestamp, value, metric, **tags):
     strval  = '+{0}'.format(value)
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
-
 def generate_messages(dt, delta, N, metric_name, **kwargs):
     for i in xrange(0, N):
         tags = dict([(key, val[i % len(val)] if type(val) is list else val)
@@ -104,19 +103,6 @@ def get_config_file():
     config_fp = StringIO.StringIO(config_data)
     config.readfp(config_fp)
     return config
-
-def get_window_width():
-    config = get_config_file()
-    def parse(val):
-        if val.endswith('s'):
-            return datetime.timedelta(seconds=int(val[:-1]))
-        elif val.endswith('sec'):
-            return datetime.timedelta(seconds=int(val[:-3]))
-        elif val.enswith('ms'):
-            return datetime.timedelta(milliseconds=int(val[:-2]))
-        else:
-            raise ValueError("Can't read `window` value from config")
-    return parse(config.get("root", "window"))
 
 
 class Akumulid:
