@@ -48,7 +48,7 @@ add_executable(
 )
 target_link_libraries(
     test_protocolparser
-    akumuli2
+    akumuli
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
@@ -72,7 +72,7 @@ add_executable(
 )
 target_link_libraries(test_tcp_server
     jemalloc
-    akumuli2
+    akumuli
     sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
@@ -95,7 +95,7 @@ add_executable(
 )
 target_link_libraries(
     test_querycursor
-    akumuli2
+    akumuli
     jemalloc
     sqlite3
     "${LOG4CXX_LIBRARIES}"

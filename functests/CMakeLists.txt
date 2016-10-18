@@ -3,7 +3,7 @@ add_executable(storage_test storage_test.cpp)
 include_directories(../libakumuli)
 
 target_link_libraries(storage_test
-    akumuli2
+    akumuli
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"

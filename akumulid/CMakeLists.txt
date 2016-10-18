@@ -14,7 +14,7 @@ add_executable(akumulid
 )
 
 target_link_libraries(akumulid
-    akumuli2
+    akumuli
     sqlite3
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"

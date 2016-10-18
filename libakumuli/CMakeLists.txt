@@ -1,4 +1,4 @@
-add_library(akumuli2 SHARED
+add_library(akumuli SHARED
     akumuli.cpp
     seriesparser.cpp
     metadatastorage.cpp
@@ -35,13 +35,13 @@ add_library(akumuli2 SHARED
 include_directories(.)
 
 include(CppcheckTargets)
-add_cppcheck(akumuli2 UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)
+add_cppcheck(akumuli UNUSED_FUNCTIONS STYLE POSSIBLE_ERROR FORCE)
 
 # libakumuli
 
 install(
     TARGETS
-        akumuli2
+        akumuli
     LIBRARY DESTINATION
         ${CMAKE_INSTALL_PREFIX}/lib
 )
@@ -62,10 +62,10 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Evgeny Lazin")
 set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Time-series storage engine")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 
-set(CPACK_PACKAGE_VERSION "0.5.0")
+set(CPACK_PACKAGE_VERSION "0.5.1")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "5")
-set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_PACKAGE_VERSION_PATCH "1")
 
 include(CPack)
 
