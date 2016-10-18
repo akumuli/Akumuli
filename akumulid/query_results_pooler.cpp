@@ -413,18 +413,28 @@ void QueryResultsPooler::close() {
     cursor_->close();
 }
 
-QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
+QueryProcessor::QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf)
     : con_(con)
     , rdbufsize_(rdbuf)
 {
 }
 
 ReadOperation *QueryProcessor::create() {
-    return new QueryResultsPooler(con_->create_session(), rdbufsize_);
+    auto con = con_.lock();
+    if (con) {
+        return new QueryResultsPooler(con->create_session(), rdbufsize_);
+    }
+    std::runtime_error err("Database connection was closed");
+    BOOST_THROW_EXCEPTION(err);
 }
 
 std::string QueryProcessor::get_all_stats() {
-    return con_->get_all_stats();
+    auto con = con_.lock();
+    if (con) {
+        return con->get_all_stats();
+    }
+    std::runtime_error err("Database connection was closed");
+    BOOST_THROW_EXCEPTION(err);
 }
 
 }  // namespace

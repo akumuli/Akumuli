@@ -44,10 +44,10 @@ struct QueryResultsPooler : ReadOperation {
 };
 
 struct QueryProcessor : ReadOperationBuilder {
-    std::shared_ptr<DbConnection> con_;
-    int                           rdbufsize_;
+    std::weak_ptr<DbConnection> con_;
+    int                         rdbufsize_;
 
-    QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf);
+    QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf);
 
     virtual ReadOperation* create();
 

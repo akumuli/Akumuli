@@ -21,7 +21,7 @@ HTTPPORT = 8181
 def test_read_all(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
-    begin = dtstart + delta*(N-1)
+    begin = dtstart + delta*N
     end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
@@ -34,7 +34,7 @@ def test_read_all(dtstart, delta, N):
         "tag3=G",
         "tag3=H",
     ]
-    exp_ts = begin
+    exp_ts = dtstart + delta*(N-1)
     exp_value = N-1
     iterations = 0
     print("Test - read all data in backward direction")
@@ -62,14 +62,11 @@ def test_read_all(dtstart, delta, N):
 
 
 def main(path):
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    akumulid = att.Akumulid(path)
+    akumulid = att.create_akumulid(path)
     # Reset database
     akumulid.delete_database()
     akumulid.create_database()
+
     # start ./akumulid server
     print("Starting server...")
     akumulid.serve()

@@ -371,7 +371,6 @@ void cmd_run_server() {
         srv->start(&sighandler, srvid++);
         std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
     }
-
     auto srvids = sighandler.wait();
 
     for(int id: srvids) {
