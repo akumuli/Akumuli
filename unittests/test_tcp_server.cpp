@@ -75,7 +75,7 @@ struct DbSessionErrorMock : DbSession {
 
 template<aku_Status ERR>
 struct DbConnectionErrorMock : DbConnection {
-    std::string get_all_stats() { throw "not impelemented"; }
+    virtual std::string get_all_stats() override { throw "not impelemented"; }
 
     virtual std::shared_ptr<DbSession> create_session() override {
         return std::make_shared<DbSessionErrorMock<ERR>>();

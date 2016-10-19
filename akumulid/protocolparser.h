@@ -46,8 +46,8 @@ typedef typename Coroutine::caller_type Caller;
 
 namespace Akumuli {
 
-typedef typename boost::coroutines::asymmetric_coroutine<void()>::push_type Coroutine;
-typedef typename boost::coroutines::asymmetric_coroutine<void()>::pull_type Caller;
+typedef typename boost::coroutines::asymmetric_coroutine<void>::push_type Coroutine;
+typedef typename boost::coroutines::asymmetric_coroutine<void>::pull_type Caller;
 
 }
 
