@@ -475,7 +475,12 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
     // Cache lookup
     auto it = cache_.find(sample.paramid);
     if (it != cache_.end()) {
-        return it->second->append(sample.timestamp, sample.payload.float64);
+        auto res = it->second->append(sample.timestamp, sample.payload.float64);
+        if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+            auto tmp = it->second->get_roots();
+            rescue_points->swap(tmp);
+        }
+        return res;
     }
     // Cache miss - access global registry
     return cstore_->write(sample, rescue_points, &cache_);

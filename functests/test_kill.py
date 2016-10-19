@@ -18,46 +18,52 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-def test_read_all(dtstart, delta, N):
-    """Read all data in backward direction.
+def test_read_all(exp_tags, dtstart, delta, N):
+    """Read all series one by one in backward direction.
     All data should be received as expected."""
-    begin = dtstart + delta*(N-1)
-    end = dtstart
-    query = att.makequery("test", begin, end, output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-    response = urlopen(queryurl, json.dumps(query))
+    for tags in exp_tags:
+        begin = dtstart + delta*(N-1)
+        end = dtstart
+        query_params = {
+            "output": { "format":  "csv" },
+            "where": tags
+        }
+        query = att.makequery("test", begin, end, **query_params)
+        queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+        print(query)
+        response = urlopen(queryurl, json.dumps(query))
 
-    expected_tags = [
-        "tag3=D",
-        "tag3=E",
-        "tag3=F",
-        "tag3=G",
-        "tag3=H",
-    ]
-    exp_ts = None
-    exp_value = N-1
-    iterations = 0
-    print("Test - read all data in backward direction")
-    for line in response:
-        try:
-            columns = line.split(',')
-            timestamp = att.parse_timestamp(columns[1].strip())
+        exp_ts = None
+        iterations = 0
+        print("Test - read all data in backward direction")
+        prev_line = ''
+        nerrors = 0
+        for line in response:
+            try:
+                columns = line.split(',')
+                timestamp = att.parse_timestamp(columns[1].strip())
 
-            if exp_ts is None:
-                exp_ts = timestamp
+                if exp_ts is None:
+                    exp_ts = timestamp
 
-            if exp_ts and exp_ts != timestamp:
-                raise ValueError("Invalid timestamp at {0}".format(iterations))
+                if exp_ts and exp_ts != timestamp:
+                    print("Error at line: {0}".format(line.strip()))
+                    print("Previous line: {0}".format(prev_line.strip()))
+                    nerrors += 1
+                    if nerrors == 10:
+                        raise ValueError("Invalid timestamp at {0}, expected {1}, actual {2}".format(iterations, exp_ts, timestamp))
 
-            exp_ts -= delta
-            iterations += 1
-        except:
-            print("Error at line: {0}".format(line))
-            raise
+                exp_ts -= delta
+                iterations += 1
+                prev_line = line
+            except ValueError as err:
+                print(err)
+                raise
 
-    # Check that we received all values
-    if iterations == 0:
-        raise ValueError("Unable to read any data")
+        # Check that we received all values
+        if iterations == 0:
+            raise ValueError("Unable to read any data")
+
     print("Test passed")
 
 
@@ -76,6 +82,23 @@ def main(path):
     time.sleep(5)
 
     nmsgs = 100000
+    tags = {
+        "tag1": ['A'],
+        "tag2": ['B', 'C'],
+        "tag3": ['D', 'E', 'F', 'G', 'H'],
+    }
+    expected_tags = [
+        {"tag3": "D", "tag2": "B"},
+        {"tag3": "E", "tag2": "B"},
+        {"tag3": "F", "tag2": "B"},
+        {"tag3": "G", "tag2": "B"},
+        {"tag3": "H", "tag2": "B"},
+        {"tag3": "D", "tag2": "C"},
+        {"tag3": "E", "tag2": "C"},
+        {"tag3": "F", "tag2": "C"},
+        {"tag3": "G", "tag2": "C"},
+        {"tag3": "H", "tag2": "C"},
+    ]
     dt = datetime.datetime.utcnow() - (datetime.timedelta(milliseconds=1)*nmsgs)
     delta = datetime.timedelta(milliseconds=1)
     try:
@@ -83,13 +106,8 @@ def main(path):
 
         # fill data in
         print("Sending {0} messages through TCP...".format(nmsgs))
-        tags = {
-            "tag1": ['A'],
-            "tag2": ['B', 'C'],
-            "tag3": ['D', 'E', 'F', 'G', 'H'],
-        }
 
-        for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
+        for it in att.generate_messages3(dt, delta, nmsgs, 'test', **tags):
             chan.send(it)
 
         # kill process
@@ -105,7 +123,7 @@ def main(path):
     time.sleep(5)
     print("Server started")
     try:
-        test_read_all(dt, delta, nmsgs)
+        test_read_all(expected_tags, dt, delta, nmsgs)
 
         # Try to write some data
         chan = att.TCPChan(HOST, TCPPORT)
