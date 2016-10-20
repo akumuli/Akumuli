@@ -25,11 +25,7 @@
 
 #include "akumuli.h"
 
-//#ifdef libakumuli2
 #include "storage2.h"
-//#else
-//#include "storage.h"
-//#endif
 
 #include "datetime.h"
 #include "log_iface.h"
@@ -77,6 +73,10 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t 
     if (status != APR_SUCCESS) {
         AKU_PANIC("DBD initialization error");
     }
+}
+
+aku_Status aku_debug_report_dump(const char* path2db, const char* outfile) {
+    return Storage::generate_report(path2db, outfile);
 }
 
 const char* aku_error_message(int error_code) {

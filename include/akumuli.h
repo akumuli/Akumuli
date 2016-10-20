@@ -287,3 +287,5 @@ AKU_EXPORT void aku_global_storage_stats(aku_Database* db, aku_StorageStats* rcv
 AKU_EXPORT void aku_debug_print(aku_Database* db);
 
 AKU_EXPORT int aku_json_stats(aku_Database* db, char* buffer, size_t size);
+
+AKU_EXPORT aku_Status aku_debug_report_dump(const char* path2db, const char* outfile);

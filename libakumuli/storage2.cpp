@@ -21,6 +21,7 @@
 #include "queryprocessor.h"
 #include "query_processing/queryparser.h"
 #include "log_iface.h"
+#include "status_util.h"
 
 #include <algorithm>
 #include <atomic>
@@ -220,6 +221,144 @@ Storage::Storage(const char* path)
     }
     cstore_->open_or_restore(mapping);
     start_sync_worker();
+}
+
+aku_Status Storage::generate_report(const char* path, const char *output) {
+    auto metadata = std::make_shared<MetadataStorage>(path);
+
+    std::string metapath;
+    std::vector<std::string> volpaths;
+
+    // first volume is a metavolume
+    auto volumes = metadata->get_volumes();
+    for (auto vol: volumes) {
+        std::string path;
+        int index;
+        std::tie(index, path) = vol;
+        if (index == 0) {
+            metapath = path;
+        } else {
+            volpaths.push_back(path);
+        }
+    }
+
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+
+    // Load series matcher data
+    SeriesMatcher matcher;
+    auto status = metadata->load_matcher_data(matcher);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't read series names");
+        return status;
+    }
+
+    // Load column-store mapping
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
+    status = metadata->load_rescue_points(mapping);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
+        return status;
+    }
+    // Do not restore column-store!
+
+    std::fstream outfile;
+    if (output) {
+        outfile.open(output);
+    }
+    std::ostream& stream = output == nullptr ? std::cout : outfile;
+
+    stream << "<report>" << std::endl;
+    stream << "<file_name>" << path << "</file_name>" << std::endl;
+    stream << "<num_volumes>" << volpaths.size() << "</num_volumes>" << std::endl;
+    stream << "<volumes>" << std::endl;
+    for(auto volpath: volpaths) {
+        stream << "\t<volume_path>" << volpath << "</volume_path>" << std::endl;
+    }
+    stream << "</volumes>" << std::endl;
+
+    // Run through mappings and dump contents
+    auto dump_tree = [&stream, &bstore, &matcher](aku_ParamId id, std::vector<StorageEngine::LogicAddr> rescue_points) {
+        auto namekv = matcher.id2str(id);
+        std::string name(namekv.first, namekv.first + namekv.second);
+        stream << "\t<id>" << id << "</id>" << std::endl;
+        stream << "\t<name>" << name << "</name>" << std::endl;
+        stream << "\t<rescue_points>" << std::endl;
+        int tagix = 0;
+        for(auto rp: rescue_points) {
+            std::string tag = "addr_" + std::to_string(tagix++);
+            stream << "\t\t<" << tag << ">" << rp << "</" << tag << ">" << std::endl;
+        }
+        stream << "\t<\rescue_points>" << std::endl;
+
+        // Repair status
+
+        using namespace StorageEngine;
+
+        auto treestate = NBTreeExtentsList::repair_status(rescue_points);
+        switch(treestate) {
+        case NBTreeExtentsList::RepairStatus::OK:
+            stream << "\t<repair_status>OK</repair_status>" << std::endl;
+        break;
+        case NBTreeExtentsList::RepairStatus::REPAIR:
+            stream << "\t<repair_status>Repair needed</repair_status>" << std::endl;
+        break;
+        case NBTreeExtentsList::RepairStatus::SKIP:
+            stream << "\t<repair_status>Skip</repair_status>" << std::endl;
+        break;
+        }
+
+        // Iterate tree in depth first order
+        std::stack<LogicAddr> stack;
+        for(auto rp: rescue_points) {
+            stack.push(rp);
+        }
+
+        while(!stack.empty()) {
+            LogicAddr curr = stack.top();
+            stack.pop();
+            std::shared_ptr<Block> block;
+            aku_Status status;
+            std::tie(status, block) = bstore->read_block(curr);
+            if (status != AKU_SUCCESS) {
+                stream << "\t<node>" << std::endl;
+                stream << "\t\t<addr>" << curr << "</addr>" << std::endl;
+                stream << "\t\t<error>" << StatusUtil::c_str(status) << "</error>" << std::endl;
+                stream << "\t</node>" << std::endl;
+                continue;
+            }
+            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+            u16 level = subtreeref->level;
+            if (level == 0) {
+                // Dump leaf node's content
+                stream << "\t<node>" << std::endl;
+                stream << "\t\t<addr>" << curr << "</addr>" << std::endl;
+                stream << "\t\t<type>Leaf</type>" << std::endl;
+                NBTreeLeaf leaf(block);
+                stream << "\t\t<prev_addr>" << leaf.get_prev_addr() << "</prev_addr>" << std::endl;
+                stream << "\t</node>" << std::endl;
+            } else {
+                // Dump inner node's content and children
+                NBTreeSuperblock sblock(block);
+                std::vector<SubtreeRef> children;
+                status = sblock.read_all(&children);
+                for(auto sref: children) {
+                    stack.push(sref.addr);
+                }
+            }
+        }
+    };
+
+    stream << "<column_store>" << std::endl;
+    for(auto kv: mapping) {
+        aku_ParamId id = kv.first;
+        std::vector<StorageEngine::LogicAddr> rescue_points = kv.second;
+        stream << "<tree>" << std::endl;
+        dump_tree(id, rescue_points);
+        stream << "</tree>" << std::endl;
+    }
+    stream << "</column_store>" << std::endl;
+    stream << "</report>" << std::endl;
+    return AKU_SUCCESS;
 }
 
 Storage::Storage(std::shared_ptr<MetadataStorage>                  meta,

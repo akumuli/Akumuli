@@ -122,6 +122,13 @@ public:
                                   , i32             num_volumes
                                   , u64             page_size);
 
+    /**
+     * @brief Open storage and generate report (dont' modify anything)
+     * @param path to sqlite3 database file
+     * @return status
+     */
+    static aku_Status generate_report(const char* path, const char* output);
+
     /** Remove existing database
       * @param file_name is a database name
       * @param force forces database deletion even if database is not empty
