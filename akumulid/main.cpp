@@ -421,6 +421,35 @@ void cmd_delete_database() {
     }
 }
 
+void cmd_dump_debug_information() {
+    auto config_path = ConfigFile::default_config_path();
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (boost::filesystem::exists(full_path)) {
+        // TODO: don't delete database if it's not empty
+        // FIXME: add command line argument --force to delete nonempty database
+        auto status = aku_debug_report_dump(full_path.c_str(), nullptr);
+        if (status != APR_SUCCESS) {
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::stringstream fmt;
+            fmt << "can't dump debug info: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        } else {
+            std::stringstream fmt;
+            fmt << "**OK** `dump.xml` successfully generated for `" << path << "`";
+            std::cout << cli_format(fmt.str()) << std::endl;
+        }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists";
+        std::cout << cli_format(fmt.str()) << std::endl;
+    }
+}
+
 
 /** Panic handler for libakumuli.
   * Shouldn't be called directly, writes error message and
@@ -452,7 +481,9 @@ int main(int argc, char** argv) {
                 ("create", "Create database")
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
-                ("init", "Create default configuration");
+                ("init", "Create default configuration")
+                ("debug-dump", "Create debug dump")
+                ;
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
@@ -484,6 +515,11 @@ int main(int argc, char** argv) {
 
         if (vm.count("delete")) {
             cmd_delete_database();
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("debug-dump")) {
+            cmd_dump_debug_information();
             exit(EXIT_SUCCESS);
         }
 
