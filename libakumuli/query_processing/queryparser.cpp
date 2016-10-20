@@ -122,16 +122,22 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
             std::string tag = item.first;
             auto idslist = item.second;
             // Read idlist
-            for (auto idnode: idslist) {
-                std::string value = idnode.second.get_value<std::string>();
-                if (firstitem) {
-                    firstitem = false;
-                    series_regexp << "(?:";
-                } else {
-                    series_regexp << "|";
+            if (!idslist.empty()) {
+                for (auto idnode: idslist) {
+                    std::string value = idnode.second.get_value<std::string>();
+                    if (firstitem) {
+                        firstitem = false;
+                        series_regexp << "(?:";
+                    } else {
+                        series_regexp << "|";
+                    }
+                    series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
                 }
-                series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
-                              << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+            } else {
+                std::string value = idslist.get_value<std::string>();
+                series_regexp << "(?:" << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
             }
             series_regexp << ")";
             std::string regex = series_regexp.str();
