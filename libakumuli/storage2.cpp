@@ -328,7 +328,9 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
         typedef std::tuple<LogicAddr, int, StackItemType> StackItem;  // (addr, indent, close)
         std::stack<StackItem> stack;
         for(auto it = rescue_points.rbegin(); it != rescue_points.rend(); it++) {
-            stack.push(std::make_tuple(*it, 1, StackItemType::NORMAL));
+            stack.push(std::make_tuple(*it, 1, treestate == NBTreeExtentsList::RepairStatus::OK
+                                                          ? StackItemType::NORMAL
+                                                          : StackItemType::RECOVERY ));
         }
 
         while(!stack.empty()) {
