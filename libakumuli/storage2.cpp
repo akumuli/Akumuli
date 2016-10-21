@@ -22,6 +22,7 @@
 #include "query_processing/queryparser.h"
 #include "log_iface.h"
 #include "status_util.h"
+#include "datetime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -223,6 +224,15 @@ Storage::Storage(const char* path)
     start_sync_worker();
 }
 
+static std::string to_isostring(aku_Timestamp ts) {
+    char buffer[0x100];
+    int len = DateTimeUtil::to_iso_string(ts, buffer, 0x100);
+    if (len < 1) {
+        AKU_PANIC("Can't convert timestamp to ISO string");
+    }
+    return std::string(buffer, buffer + len - 1);
+}
+
 aku_Status Storage::generate_report(const char* path, const char *output) {
     auto metadata = std::make_shared<MetadataStorage>(path);
 
@@ -288,7 +298,7 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
             std::string tag = "addr_" + std::to_string(tagix++);
             stream << "\t\t<" << tag << ">" << rp << "</" << tag << ">" << std::endl;
         }
-        stream << "\t<\rescue_points>" << std::endl;
+        stream << "\t</rescue_points>" << std::endl;
 
         // Repair status
 
@@ -308,42 +318,126 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
         }
 
         // Iterate tree in depth first order
-        std::stack<LogicAddr> stack;
-        for(auto rp: rescue_points) {
-            stack.push(rp);
+
+        typedef std::tuple<LogicAddr, int, bool> StackItem;  // (addr, indent, close)
+        std::stack<StackItem> stack;
+        for(auto it = rescue_points.rbegin(); it != rescue_points.rend(); it++) {
+            stack.push(std::make_tuple(*it, 1, false));
         }
 
+
         while(!stack.empty()) {
-            LogicAddr curr = stack.top();
+            int indent;
+            LogicAddr curr;
+            bool close;
+            std::tie(curr, indent, close) = stack.top();
             stack.pop();
-            std::shared_ptr<Block> block;
-            aku_Status status;
-            std::tie(status, block) = bstore->read_block(curr);
-            if (status != AKU_SUCCESS) {
-                stream << "\t<node>" << std::endl;
-                stream << "\t\t<addr>" << curr << "</addr>" << std::endl;
-                stream << "\t\t<error>" << StatusUtil::c_str(status) << "</error>" << std::endl;
-                stream << "\t</node>" << std::endl;
-                continue;
-            }
-            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
-            u16 level = subtreeref->level;
-            if (level == 0) {
-                // Dump leaf node's content
-                stream << "\t<node>" << std::endl;
-                stream << "\t\t<addr>" << curr << "</addr>" << std::endl;
-                stream << "\t\t<type>Leaf</type>" << std::endl;
-                NBTreeLeaf leaf(block);
-                stream << "\t\t<prev_addr>" << leaf.get_prev_addr() << "</prev_addr>" << std::endl;
-                stream << "\t</node>" << std::endl;
-            } else {
-                // Dump inner node's content and children
-                NBTreeSuperblock sblock(block);
-                std::vector<SubtreeRef> children;
-                status = sblock.read_all(&children);
-                for(auto sref: children) {
-                    stack.push(sref.addr);
+
+            auto tag = [](int idnt, const char* tag_name, const char* token) {
+                std::stringstream str;
+                for (int i = 0; i < idnt; i++) {
+                    str << '\t';
                 }
+                str << token << tag_name << '>';
+                return str.str();
+            };
+
+            auto _tag = [indent, tag](const char* tag_name) {
+                return tag(indent, tag_name, "<");
+            };
+
+            auto tag_ = [indent, tag](const char* tag_name) {
+                return tag(indent, tag_name, "</");
+            };
+
+            auto __tag = [indent, tag](const char* tag_name) {
+                return tag(indent+1, tag_name, "<");
+            };
+
+            auto tag__ = [indent, tag](const char* tag_name) {
+                return tag(indent+1, tag_name, "</");
+            };
+
+            auto afmt = [](LogicAddr a) {
+                if (a == EMPTY_ADDR) {
+                    return std::string("");
+                }
+                return std::to_string(a);
+            };
+
+            if (!close) {
+                std::shared_ptr<Block> block;
+                aku_Status status;
+                std::tie(status, block) = bstore->read_block(curr);
+                if (status != AKU_SUCCESS) {
+                    stream << _tag("node") << std::endl;
+                    stream << __tag("addr") << afmt(curr) << "</addr>" << std::endl;
+                    stream << __tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
+                    stream << tag_("node") << std::endl;
+                    continue;
+                }
+                auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+                u16 level = subtreeref->level;
+                if (level == 0) {
+                    // Dump leaf node's content
+                    NBTreeLeaf leaf(block);
+                    SubtreeRef const* ref = leaf.get_leafmeta();
+                    stream << _tag("node") << std::endl;
+                    stream << __tag("addr")         << afmt(curr)                   << "</addr>\n";
+                    stream << __tag("type")         << "Leaf"                       << "</type>\n";
+                    stream << __tag("prev_addr")    << afmt(leaf.get_prev_addr())   << "</prev_addr>\n";
+                    stream << __tag("begin")        << to_isostring(ref->begin)     << "</begin>\n";
+                    stream << __tag("end")          << to_isostring(ref->end)       << "</end>\n";
+                    stream << __tag("count")        << ref->count                   << "</count>\n";
+                    stream << __tag("min")          << ref->min                     << "</min>\n";
+                    stream << __tag("min_time")     << to_isostring(ref->min_time)  << "</min_time>\n";
+                    stream << __tag("max")          << ref->max                     << "</max>\n";
+                    stream << __tag("max_time")     << to_isostring(ref->max_time)  << "</max_time>\n";
+                    stream << __tag("sum")          << ref->sum                     << "</sum>\n";
+                    stream << __tag("first")        << ref->first                   << "</first>\n";
+                    stream << __tag("last")         << ref->last                    << "</last>\n";
+                    stream << __tag("version")      << ref->version                 << "</version>\n";
+                    stream << __tag("level")        << ref->level                   << "</level>\n";
+                    stream << __tag("payload_size") << ref->payload_size            << "</payload_size>\n";
+                    stream << __tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
+                    stream << __tag("checksum")     << ref->checksum                << "</checksum>\n";
+                    stream << tag_("node") << std::endl;
+                } else {
+                    // Dump inner node's content and children
+                    NBTreeSuperblock sblock(block);
+                    SubtreeRef const* ref = sblock.get_sblockmeta();
+                    stream << _tag("node") << std::endl;
+                    stream << __tag("addr")         << afmt(curr)                   << "</addr>\n";
+                    stream << __tag("type")         << "Superblock"                 << "</type>\n";
+                    stream << __tag("prev_addr")    << afmt(sblock.get_prev_addr()) << "</prev_addr>\n";
+                    stream << __tag("begin")        << to_isostring(ref->begin)     << "</begin>\n";
+                    stream << __tag("end")          << to_isostring(ref->end)       << "</end>\n";
+                    stream << __tag("count")        << ref->count                   << "</count>\n";
+                    stream << __tag("min")          << ref->min                     << "</min>\n";
+                    stream << __tag("min_time")     << to_isostring(ref->min_time)  << "</min_time>\n";
+                    stream << __tag("max")          << ref->max                     << "</max>\n";
+                    stream << __tag("max_time")     << to_isostring(ref->max_time)  << "</max_time>\n";
+                    stream << __tag("sum")          << ref->sum                     << "</sum>\n";
+                    stream << __tag("first")        << ref->first                   << "</first>\n";
+                    stream << __tag("last")         << ref->last                    << "</last>\n";
+                    stream << __tag("version")      << ref->version                 << "</version>\n";
+                    stream << __tag("level")        << ref->level                   << "</level>\n";
+                    stream << __tag("payload_size") << ref->payload_size            << "</payload_size>\n";
+                    stream << __tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
+                    stream << __tag("checksum")     << ref->checksum                << "</checksum>\n";
+                    stream << __tag("children") << std::endl;
+                    std::vector<SubtreeRef> children;
+                    status = sblock.read_all(&children);
+                    stack.push(std::make_tuple(EMPTY_ADDR, indent, true));
+                    for(auto sref: children) {
+                        LogicAddr addr = sref.addr;
+                        stack.push(std::make_tuple(addr, indent + 2, false));
+                    }
+                }
+            } else {
+                // Close superblock tag
+                stream << tag__("children") << std::endl;
+                stream << tag_("node") << std::endl;
             }
         }
     };

@@ -77,7 +77,7 @@ def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
 def generate_messages3(dt, delta, N, metric_name, **kwargs):
     """Each series will get the same set of timestamps"""
     nseries = sum([len(v) if type(v) is list else 1 for k, v in kwargs.iteritems()])
-    for i in xrange(0, N):
+    for i in xrange(1, N+1):
         tags = dict([(key, val[i % len(val)] if type(val) is list else val)
                      for key, val in kwargs.iteritems()])
         m = msg(dt, i, metric_name, **tags)

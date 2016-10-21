@@ -42,13 +42,12 @@ def test_read_all(exp_tags, dtstart, delta, N):
             try:
                 columns = line.split(',')
                 timestamp = att.parse_timestamp(columns[1].strip())
-
+                # TODO: remove
+                print(line.strip())
                 if exp_ts is None:
                     exp_ts = timestamp
 
                 if exp_ts and exp_ts != timestamp:
-                    print("Error at line: {0}".format(line.strip()))
-                    print("Previous line: {0}".format(prev_line.strip()))
                     nerrors += 1
                     if nerrors == 10:
                         raise ValueError("Invalid timestamp at {0}, expected {1}, actual {2}".format(iterations, exp_ts, timestamp))
@@ -84,20 +83,21 @@ def main(path):
     nmsgs = 100000
     tags = {
         "tag1": ['A'],
-        "tag2": ['B', 'C'],
-        "tag3": ['D', 'E', 'F', 'G', 'H'],
+        #"tag2": ['B', 'C'],
+        #"tag3": ['D', 'E', 'F', 'G', 'H'],
     }
     expected_tags = [
-        {"tag3": "D", "tag2": "B"},
-        {"tag3": "E", "tag2": "B"},
-        {"tag3": "F", "tag2": "B"},
-        {"tag3": "G", "tag2": "B"},
-        {"tag3": "H", "tag2": "B"},
-        {"tag3": "D", "tag2": "C"},
-        {"tag3": "E", "tag2": "C"},
-        {"tag3": "F", "tag2": "C"},
-        {"tag3": "G", "tag2": "C"},
-        {"tag3": "H", "tag2": "C"},
+        {"tag1": "A"},
+        #{"tag3": "D", "tag2": "B"},
+        #{"tag3": "E", "tag2": "B"},
+        #{"tag3": "F", "tag2": "B"},
+        #{"tag3": "G", "tag2": "B"},
+        #{"tag3": "H", "tag2": "B"},
+        #{"tag3": "D", "tag2": "C"},
+        #{"tag3": "E", "tag2": "C"},
+        #{"tag3": "F", "tag2": "C"},
+        #{"tag3": "G", "tag2": "C"},
+        #{"tag3": "H", "tag2": "C"},
     ]
     dt = datetime.datetime.utcnow() - (datetime.timedelta(milliseconds=1)*nmsgs)
     delta = datetime.timedelta(milliseconds=1)
@@ -107,7 +107,11 @@ def main(path):
         # fill data in
         print("Sending {0} messages through TCP...".format(nmsgs))
 
-        for it in att.generate_messages3(dt, delta, nmsgs, 'test', **tags):
+        icnt = 0
+        for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
+            if icnt < 10:
+                print(it)
+                icnt += 10
             chan.send(it)
 
         # kill process

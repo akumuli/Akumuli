@@ -1255,6 +1255,11 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     }
 }
 
+SubtreeRef const* NBTreeSuperblock::get_sblockmeta() const {
+    SubtreeRef const* pref = subtree_cast(block_->get_data());
+    return pref;
+}
+
 size_t NBTreeSuperblock::nelements() const {
     return write_pos_;
 }

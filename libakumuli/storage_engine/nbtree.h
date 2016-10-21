@@ -354,6 +354,8 @@ public:
     //! Get fanout index of the node
     u16 get_fanout() const;
 
+    SubtreeRef const* get_sblockmeta() const;
+
     size_t nelements() const;
 
     //! Return id of the tree
