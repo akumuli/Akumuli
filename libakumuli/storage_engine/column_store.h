@@ -95,6 +95,11 @@ public:
     void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     size_t _get_uncommitted_memory() const;
+
+    //! For debug reports
+    std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> _get_columns() {
+        return columns_;
+    }
 };
 
 

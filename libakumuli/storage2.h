@@ -129,6 +129,8 @@ public:
      */
     static aku_Status generate_report(const char* path, const char* output);
 
+    static aku_Status generate_recovery_report(const char* path, const char* output);
+
     /** Remove existing database
       * @param file_name is a database name
       * @param force forces database deletion even if database is not empty

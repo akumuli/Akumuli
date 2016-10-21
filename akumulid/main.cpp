@@ -482,7 +482,8 @@ int main(int argc, char** argv) {
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
-                ("debug-dump", po::value<std::string>()->default_value("")->implicit_value(""), "Create debug dump")
+                ("debug-dump", po::value<std::string>(), "Create debug dump")
+                ("debug-recovery-dump", "Create debug dump of the system after crash recovery")
                 ;
 
         po::variables_map vm;
@@ -520,7 +521,7 @@ int main(int argc, char** argv) {
 
         if (vm.count("debug-dump")) {
             auto path = vm["debug-dump"].as<std::string>();
-            if (path.empty()) {
+            if (path == "stdout") {
                 cmd_dump_debug_information(nullptr);
             } else {
                 cmd_dump_debug_information(path.c_str());
