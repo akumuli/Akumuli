@@ -318,19 +318,24 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
         }
 
         // Iterate tree in depth first order
+        enum class StackItemType {
+            NORMAL,
+            RECOVERY,
+            CLOSE_CHILDREN,
+            CLOSE_FANOUT,
+        };
 
-        typedef std::tuple<LogicAddr, int, bool> StackItem;  // (addr, indent, close)
+        typedef std::tuple<LogicAddr, int, StackItemType> StackItem;  // (addr, indent, close)
         std::stack<StackItem> stack;
         for(auto it = rescue_points.rbegin(); it != rescue_points.rend(); it++) {
-            stack.push(std::make_tuple(*it, 1, false));
+            stack.push(std::make_tuple(*it, 1, StackItemType::NORMAL));
         }
-
 
         while(!stack.empty()) {
             int indent;
             LogicAddr curr;
-            bool close;
-            std::tie(curr, indent, close) = stack.top();
+            StackItemType type;
+            std::tie(curr, indent, type) = stack.top();
             stack.pop();
 
             auto tag = [](int idnt, const char* tag_name, const char* token) {
@@ -365,7 +370,7 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
                 return std::to_string(a);
             };
 
-            if (!close) {
+            if (type == StackItemType::NORMAL || type == StackItemType::RECOVERY) {
                 std::shared_ptr<Block> block;
                 aku_Status status;
                 std::tie(status, block) = bstore->read_block(curr);
@@ -383,8 +388,8 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
                     NBTreeLeaf leaf(block);
                     SubtreeRef const* ref = leaf.get_leafmeta();
                     stream << _tag("node") << std::endl;
-                    stream << __tag("addr")         << afmt(curr)                   << "</addr>\n";
                     stream << __tag("type")         << "Leaf"                       << "</type>\n";
+                    stream << __tag("addr")         << afmt(curr)                   << "</addr>\n";
                     stream << __tag("prev_addr")    << afmt(leaf.get_prev_addr())   << "</prev_addr>\n";
                     stream << __tag("begin")        << to_isostring(ref->begin)     << "</begin>\n";
                     stream << __tag("end")          << to_isostring(ref->end)       << "</end>\n";
@@ -401,7 +406,25 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
                     stream << __tag("payload_size") << ref->payload_size            << "</payload_size>\n";
                     stream << __tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
                     stream << __tag("checksum")     << ref->checksum                << "</checksum>\n";
-                    stream << tag_("node") << std::endl;
+                    if (type == StackItemType::NORMAL) {
+                        // Just close tag and proceed
+                        stream << tag_("node") << std::endl;
+                    } else {
+                        // type is RECOVERY, open fanout tag and dump all connected nodes
+                        stream << __tag("fanout") << std::endl;
+                        stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::CLOSE_FANOUT));
+                        LogicAddr prev = leaf.get_prev_addr();
+                        while(prev != EMPTY_ADDR) {
+                            stack.push(std::make_tuple(prev, indent + 2, StackItemType::NORMAL));
+                            std::tie(status, block) = bstore->read_block(prev);
+                            if (status != AKU_SUCCESS) {
+                                // Block was deleted but it should be on the stack anyway
+                                break;
+                            }
+                            NBTreeLeaf lnext(block);
+                            prev = lnext.get_prev_addr();
+                        }
+                    }
                 } else {
                     // Dump inner node's content and children
                     NBTreeSuperblock sblock(block);
@@ -428,15 +451,35 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
                     stream << __tag("children") << std::endl;
                     std::vector<SubtreeRef> children;
                     status = sblock.read_all(&children);
-                    stack.push(std::make_tuple(EMPTY_ADDR, indent, true));
+                    stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::CLOSE_CHILDREN));
                     for(auto sref: children) {
                         LogicAddr addr = sref.addr;
-                        stack.push(std::make_tuple(addr, indent + 2, false));
+                        stack.push(std::make_tuple(addr, indent + 2, StackItemType::NORMAL));
+                    }
+                    if (type != StackItemType::NORMAL) {
+                        // type is RECOVERY, open fanout tag and dump all connected nodes (if any)
+                        stream << __tag("fanout") << std::endl;
+                        stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::CLOSE_FANOUT));
+                        LogicAddr prev = sblock.get_prev_addr();
+                        while(prev != EMPTY_ADDR) {
+                            stack.push(std::make_tuple(prev, indent + 2, StackItemType::NORMAL));
+                            std::tie(status, block) = bstore->read_block(prev);
+                            if (status != AKU_SUCCESS) {
+                                // Block was deleted but it should be on the stack anyway
+                                break;
+                            }
+                            NBTreeSuperblock sbnext(block);
+                            prev = sbnext.get_prev_addr();
+                        }
                     }
                 }
-            } else {
+            } else if (type == StackItemType::CLOSE_CHILDREN) {
                 // Close superblock tag
                 stream << tag__("children") << std::endl;
+                stream << tag_("node") << std::endl;
+            } else if (type == StackItemType::CLOSE_FANOUT) {
+                // Close fanout tag
+                stream << tag__("fanout") << std::endl;
                 stream << tag_("node") << std::endl;
             }
         }
