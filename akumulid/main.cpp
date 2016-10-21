@@ -421,7 +421,7 @@ void cmd_delete_database() {
     }
 }
 
-void cmd_dump_debug_information() {
+void cmd_dump_debug_information(const char* outfname) {
     auto config_path = ConfigFile::default_config_path();
     auto config     = ConfigFile::read_config_file(config_path);
     auto path       = ConfigFile::get_path(config);
@@ -430,7 +430,7 @@ void cmd_dump_debug_information() {
     if (boost::filesystem::exists(full_path)) {
         // TODO: don't delete database if it's not empty
         // FIXME: add command line argument --force to delete nonempty database
-        auto status = aku_debug_report_dump(full_path.c_str(), nullptr);
+        auto status = aku_debug_report_dump(full_path.c_str(), outfname);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -482,7 +482,7 @@ int main(int argc, char** argv) {
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
-                ("debug-dump", "Create debug dump")
+                ("debug-dump", po::value<std::string>()->default_value("")->implicit_value(""), "Create debug dump")
                 ;
 
         po::variables_map vm;
@@ -519,7 +519,12 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("debug-dump")) {
-            cmd_dump_debug_information();
+            auto path = vm["debug-dump"].as<std::string>();
+            if (path.empty()) {
+                cmd_dump_debug_information(nullptr);
+            } else {
+                cmd_dump_debug_information(path.c_str());
+            }
             exit(EXIT_SUCCESS);
         }
 
