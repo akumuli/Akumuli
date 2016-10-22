@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <vector>
 #include <sstream>
+#include <stack>
 
 // App
 #include "nbtree.h"
@@ -1463,7 +1464,61 @@ struct NBTreeLeafExtent : NBTreeExtent {
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
     virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual bool is_dirty() const;
+    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
 };
+
+
+static void dump_subtree_ref(std::ostream& stream,
+                             SubtreeRef const* ref,
+                             LogicAddr prev_addr,
+                             int base_indent,
+                             std::function<std::string(aku_Timestamp)> tsformat)
+{
+    auto tag = [base_indent](const char* tag_name) {
+        std::stringstream str;
+        for (int i = 0; i < base_indent; i++) {
+            str << '\t';
+        }
+        str << '<' << tag_name << '>';
+        return str.str();
+    };
+    auto afmt = [](LogicAddr addr) {
+        if (addr == EMPTY_ADDR) {
+            return std::string();
+        }
+        return std::to_string(addr);
+    };
+    if (ref->level == 0) {
+        stream << tag("type")     << "Leaf"                       << "</type>\n";
+    } else {
+        stream << tag("type")     << "Superblock"                 << "</type>\n";
+    }
+    stream << tag("id")           << ref->id                      << "</id>\n";
+    stream << tag("prev_addr")    << afmt(prev_addr)              << "</prev_addr>\n";
+    stream << tag("begin")        << tsformat(ref->begin)         << "</begin>\n";
+    stream << tag("end")          << tsformat(ref->end)           << "</end>\n";
+    stream << tag("count")        << ref->count                   << "</count>\n";
+    stream << tag("min")          << ref->min                     << "</min>\n";
+    stream << tag("min_time")     << tsformat(ref->min_time)      << "</min_time>\n";
+    stream << tag("max")          << ref->max                     << "</max>\n";
+    stream << tag("max_time")     << tsformat(ref->max_time)      << "</max_time>\n";
+    stream << tag("sum")          << ref->sum                     << "</sum>\n";
+    stream << tag("first")        << ref->first                   << "</first>\n";
+    stream << tag("last")         << ref->last                    << "</last>\n";
+    stream << tag("version")      << ref->version                 << "</version>\n";
+    stream << tag("level")        << ref->level                   << "</level>\n";
+    stream << tag("payload_size") << ref->payload_size            << "</payload_size>\n";
+    stream << tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
+    stream << tag("checksum")     << ref->checksum                << "</checksum>\n";
+}
+
+
+void NBTreeLeafExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
+    SubtreeRef const* ref = leaf_->get_leafmeta();
+    stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
+    dump_subtree_ref(stream, ref, leaf_->get_prev_addr(), base_indent + 1, tsformat);
+    stream << std::string(static_cast<size_t>(base_indent), '\t') << "</node>\n";
+}
 
 std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(SubtreeRef const&) {
     AKU_PANIC("Can't append subtree to leaf node");
@@ -1635,7 +1690,113 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
     virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual bool is_dirty() const;
+    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
 };
+
+void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
+    SubtreeRef const* ref = curr_->get_sblockmeta();
+    stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
+    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, tsformat);
+
+    std::vector<SubtreeRef> refs;
+    aku_Status status = curr_->read_all(&refs);
+    if (status != AKU_SUCCESS) {
+        // TODO: error message
+        return;
+    }
+
+    if (refs.empty()) {
+        stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "</node>\n";
+        return;
+    }
+
+    // Traversal control
+    enum class Action {
+        DUMP_NODE,
+        OPEN_NODE,
+        CLOSE_NODE,
+        OPEN_CHILDREN,
+        CLOSE_CHILDREN,
+    };
+
+    typedef std::tuple<LogicAddr, Action, int> StackItem;
+
+    std::stack<StackItem> stack;
+
+    stack.push(std::make_tuple(0, Action::CLOSE_NODE, base_indent));
+    stack.push(std::make_tuple(0, Action::CLOSE_CHILDREN, base_indent + 1));
+    for (auto const& ref: refs) {
+        LogicAddr addr = ref.addr;
+        stack.push(std::make_tuple(0, Action::CLOSE_NODE, base_indent + 2));
+        stack.push(std::make_tuple(addr, Action::DUMP_NODE, base_indent + 3));
+        stack.push(std::make_tuple(0, Action::OPEN_NODE, base_indent + 2));
+    }
+    stack.push(std::make_tuple(0, Action::OPEN_CHILDREN, base_indent + 1));
+
+    // Tree traversal (depth first)
+    while(!stack.empty()) {
+        LogicAddr addr;
+        Action action;
+        int indent;
+        std::tie(addr, action, indent) = stack.top();
+        stack.pop();
+
+        auto tag = [indent](const char* tag_name, const char* tag_opener = "<") {
+            return std::string(static_cast<size_t>(indent), '\t') + tag_opener + tag_name + ">";
+        };
+
+        switch(action) {
+        case Action::DUMP_NODE: {
+            aku_Status status;
+            std::shared_ptr<Block> block;
+            std::tie(status, block) = bstore_->read_block(addr);
+            if (status != AKU_SUCCESS) {
+                stream << tag("addr") << addr << "</addr>\n";
+                stream << tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
+                continue;
+            }
+            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+            u16 level = subtreeref->level;
+            if (level == 0) {
+                // leaf node
+                NBTreeLeaf leaf(block);
+                SubtreeRef const* ref = leaf.get_leafmeta();
+                dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, tsformat);
+            } else {
+                // superblock
+                NBTreeSuperblock sblock(block);
+                SubtreeRef const* ref = sblock.get_sblockmeta();
+                dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, tsformat);
+                std::vector<SubtreeRef> children;
+                status = sblock.read_all(&children);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Can't read superblock");
+                }
+                stack.push(std::make_tuple(0, Action::CLOSE_CHILDREN, indent));
+                for(const SubtreeRef& sref: children) {
+                    stack.push(std::make_tuple(0, Action::CLOSE_NODE, indent + 1));
+                    stack.push(std::make_tuple(sref.addr, Action::DUMP_NODE, indent + 2));
+                    stack.push(std::make_tuple(0, Action::OPEN_NODE, indent + 1));
+                }
+                stack.push(std::make_tuple(0, Action::OPEN_CHILDREN, indent));
+            }
+        }
+        break;
+        case Action::OPEN_NODE:
+            stream << tag("node") << std::endl;
+        break;
+        case Action::CLOSE_NODE:
+            stream << tag("node", "</") << std::endl;
+        break;
+        case Action::OPEN_CHILDREN:
+            stream << tag("children") << std::endl;
+        break;
+        case Action::CLOSE_CHILDREN:
+            stream << tag("children", "</") << std::endl;
+        break;
+        };
+    }
+}
 
 std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(aku_Timestamp, double) {
     AKU_PANIC("Data should be added to the root 0");
@@ -2076,6 +2237,7 @@ void NBTreeExtentsList::repair() {
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
     std::vector<LogicAddr> rescue_points(rescue_points_.begin(), rescue_points_.end());
+
     // Construct roots using CoW
     if (rescue_points.size() < 2) {
         // All data was lost.

@@ -585,11 +585,13 @@ aku_Status Storage::generate_recovery_report(const char* path, const char *outpu
         std::string name(namekv.first, namekv.first + namekv.second);
         stream << "\t\t<id>" << id << "</id>\n";
         stream << "\t\t<name>" << name << "</name>\n";
+        stream << "\t\t<extents>" << std::endl;
         for(auto ext: column->get_extents()) {
-            stream << "\t\t<extents>" << std::endl;
-            ext->debug_dump(stream, 3);
-            stream << "\t\t</extents>" << std::endl;
+            stream << "\t\t\t<extent>" << std::endl;
+            ext->debug_dump(stream, 4, to_isostring);
+            stream << "\t\t\t</extent>" << std::endl;
         }
+        stream << "\t\t</extents>" << std::endl;
         stream << "\t</column>" << std::endl;
     }
     stream << "</column_store>" << std::endl;

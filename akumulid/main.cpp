@@ -428,9 +428,34 @@ void cmd_dump_debug_information(const char* outfname) {
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
-        // TODO: don't delete database if it's not empty
-        // FIXME: add command line argument --force to delete nonempty database
         auto status = aku_debug_report_dump(full_path.c_str(), outfname);
+        if (status != APR_SUCCESS) {
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::stringstream fmt;
+            fmt << "can't dump debug info: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        } else {
+            std::stringstream fmt;
+            fmt << "**OK** `dump.xml` successfully generated for `" << path << "`";
+            std::cout << cli_format(fmt.str()) << std::endl;
+        }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists";
+        std::cout << cli_format(fmt.str()) << std::endl;
+    }
+}
+
+void cmd_dump_recovery_debug_information(const char* outfname) {
+    auto config_path = ConfigFile::default_config_path();
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (boost::filesystem::exists(full_path)) {
+        auto status = aku_debug_recovery_report_dump(full_path.c_str(), outfname);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -483,7 +508,7 @@ int main(int argc, char** argv) {
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
-                ("debug-recovery-dump", "Create debug dump of the system after crash recovery")
+                ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
                 ;
 
         po::variables_map vm;
@@ -525,6 +550,16 @@ int main(int argc, char** argv) {
                 cmd_dump_debug_information(nullptr);
             } else {
                 cmd_dump_debug_information(path.c_str());
+            }
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("debug-recovery-dump")) {
+            auto path = vm["debug-recovery-dump"].as<std::string>();
+            if (path == "stdout") {
+                cmd_dump_recovery_debug_information(nullptr);
+            } else {
+                cmd_dump_recovery_debug_information(path.c_str());
             }
             exit(EXIT_SUCCESS);
         }

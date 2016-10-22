@@ -79,6 +79,10 @@ aku_Status aku_debug_report_dump(const char* path2db, const char* outfile) {
     return Storage::generate_report(path2db, outfile);
 }
 
+aku_Status aku_debug_recovery_report_dump(const char* path2db, const char* outfile) {
+    return Storage::generate_recovery_report(path2db, outfile);
+}
+
 const char* aku_error_message(int error_code) {
     return StatusUtil::c_str((aku_Status)error_code);
 }

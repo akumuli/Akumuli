@@ -412,7 +412,7 @@ struct NBTreeExtent {
 
     virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const = 0;
 
-    virtual void debug_dump(std::ostream& stream, int base_indent) const = 0;
+    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
