@@ -345,9 +345,8 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
             query << "( " << kv.first;
             for (auto id: kv.second) {
                 if (id == ~0ull) {
-                    // Values that big can't be represented in SQLite. Null values should be interpreted as EMPTY_ADDR,
-                    // until first meaningful value found.
-                    query << ", null";
+                    // Values that big can't be represented in SQLite, -1 value should be interpreted as EMPTY_ADDR,
+                    query << ", -1";
                 } else {
                     query << ", " << id;
                 }
@@ -461,21 +460,17 @@ aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vect
                 return AKU_EBAD_DATA;
             }
             std::vector<u64> addrlist;
-            bool first_value_decoded = false;
             for (size_t i = 0; i < 8; i++) {
                 auto addr = row.at(1 + i);
                 if (addr.empty()) {
-                    if (!first_value_decoded) {
-                        addrlist.push_back(~0ull);
-                    } else {
-                        break;
-                    }
+                    break;
                 } else {
-                    first_value_decoded = true;
-                    auto uaddr = boost::lexical_cast<u64>(addr);
-                    if (errno == ERANGE) {
-                        Logger::msg(AKU_LOG_ERROR, "Can't parse rescue point, database corrupted");
-                        return AKU_EBAD_DATA;
+                    u64 uaddr;
+                    i64 iaddr = boost::lexical_cast<i64>(addr);
+                    if (iaddr < 0) {
+                        uaddr = ~0ull;
+                    } else {
+                        uaddr = static_cast<u64>(iaddr);
                     }
                     addrlist.push_back(uaddr);
                 }
