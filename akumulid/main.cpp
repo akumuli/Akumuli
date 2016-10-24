@@ -437,9 +437,14 @@ void cmd_dump_debug_information(const char* outfname) {
             std::runtime_error err(fmt.str());
             BOOST_THROW_EXCEPTION(err);
         } else {
-            std::stringstream fmt;
-            fmt << "**OK** `dump.xml` successfully generated for `" << path << "`";
-            std::cout << cli_format(fmt.str()) << std::endl;
+            if (outfname) {
+                // Don't generate this message if output was written to stdout. User
+                // should be able to use this command this way:
+                // ./akumulid --debug-dump=stdout >> outfile.xml
+                std::stringstream fmt;
+                fmt << "**OK** `" << outfname << "` successfully generated for `" << path << "`";
+                std::cout << cli_format(fmt.str()) << std::endl;
+            }
         }
     } else {
         std::stringstream fmt;
@@ -464,9 +469,14 @@ void cmd_dump_recovery_debug_information(const char* outfname) {
             std::runtime_error err(fmt.str());
             BOOST_THROW_EXCEPTION(err);
         } else {
-            std::stringstream fmt;
-            fmt << "**OK** `dump.xml` successfully generated for `" << path << "`";
-            std::cout << cli_format(fmt.str()) << std::endl;
+            if (outfname) {
+                // Don't generate this message if output was written to stdout. User
+                // should be able to use this command this way:
+                // ./akumulid --debug-recovery-dump=stdout >> outfile.xml
+                std::stringstream fmt;
+                fmt << "**OK** `" << outfname << "` successfully generated for `" << path << "`";
+                std::cout << cli_format(fmt.str()) << std::endl;
+            }
         }
     } else {
         std::stringstream fmt;
