@@ -396,11 +396,12 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         check_tree_consistency(bstore, i, extent);
     }
 
+    // Scan entire tree
     std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);
     std::vector<double> xs(nitems, 0);
-    aku_Status status = AKU_SUCCESS;
     size_t sz = 0;
+    aku_Status status;
     std::tie(status, sz) = it->read(ts.data(), xs.data(), nitems);
     if (addrlist.empty()) {
         // Expect zero, data was stored in single leaf-node.
@@ -425,6 +426,32 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         if (!same_value(xs[i], static_cast<double>(i))) {
             BOOST_FAIL("Invalid timestamp at " << i);
         }
+    }
+
+    if (sz) {
+        // Expected aggregates (calculated by hand)
+        NBTreeAggregationResult exp_agg = INIT_AGGRES;
+        exp_agg.do_the_math(ts.data(), xs.data(), sz, false);
+
+        // Single leaf node will be lost and aggregates will be empty anyway
+        auto agg_iter = collection->aggregate(0, nitems);
+        aku_Timestamp new_agg_ts;
+        NBTreeAggregationResult new_agg_result = INIT_AGGRES;
+        size_t agg_size;
+        std::tie(status, agg_size) = agg_iter->read(&new_agg_ts, &new_agg_result, 1);
+        if (status != AKU_SUCCESS) {
+            BOOST_FAIL("Can't aggregate after recovery " + StatusUtil::str(status));
+        }
+
+        // Check that results are correct and match the one that was calculated by hand
+        BOOST_REQUIRE_EQUAL(new_agg_result.cnt, exp_agg.cnt);
+        BOOST_REQUIRE_EQUAL(new_agg_result.first, exp_agg.first);
+        BOOST_REQUIRE_EQUAL(new_agg_result.last, exp_agg.last);
+        BOOST_REQUIRE_EQUAL(new_agg_result.max, exp_agg.max);
+        BOOST_REQUIRE_EQUAL(new_agg_result.maxts, exp_agg.maxts);
+        BOOST_REQUIRE_EQUAL(new_agg_result.min, exp_agg.min);
+        BOOST_REQUIRE_EQUAL(new_agg_result.mints, exp_agg.mints);
+        BOOST_REQUIRE_EQUAL(new_agg_result.sum, exp_agg.sum);
     }
 }
 
@@ -466,28 +493,54 @@ void test_storage_recovery_2(u32 N_blocks) {
     u32 nleafs = 0;
     u32 nitems = 0;
 
-    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist) {
+    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N) {
         auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
         col->force_init();
 
-        auto it = col->search(0, nitems);
-        std::vector<aku_Timestamp> ts(nitems, 0);
-        std::vector<double> xs(nitems, 0);
+        // scan
+        auto it = col->search(0, N);
+        std::vector<aku_Timestamp> ts(N, 0);
+        std::vector<double> xs(N, 0);
         aku_Status status = AKU_SUCCESS;
         size_t sz = 0;
-        std::tie(status, sz) = it->read(ts.data(), xs.data(), nitems);
-        BOOST_REQUIRE(sz == nitems);
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+        BOOST_REQUIRE(sz == N);
         BOOST_REQUIRE(status == AKU_ENO_DATA || status  == AKU_SUCCESS);
         if (sz > 0) {
             BOOST_REQUIRE(ts[0] == 0);
             BOOST_REQUIRE(ts[sz - 1] == sz - 1);
+        }
+
+        if (sz) {
+            // aggregate
+            NBTreeAggregationResult exp_agg = INIT_AGGRES;
+            exp_agg.do_the_math(ts.data(), xs.data(), sz, false);
+
+            auto agg_iter = collection->aggregate(0, nitems);
+            aku_Timestamp agg_ts;
+            NBTreeAggregationResult act_agg = INIT_AGGRES;
+            size_t agg_size;
+            std::tie(status, agg_size) = agg_iter->read(&agg_ts, &act_agg, 1);
+            if (status != AKU_SUCCESS) {
+                BOOST_FAIL("Can't aggregate after recovery " + StatusUtil::str(status));
+            }
+
+            // Check that results are correct and match the one that was calculated by hand
+            BOOST_REQUIRE_EQUAL(act_agg.cnt, exp_agg.cnt);
+            BOOST_REQUIRE_EQUAL(act_agg.first, exp_agg.first);
+            BOOST_REQUIRE_EQUAL(act_agg.last, exp_agg.last);
+            BOOST_REQUIRE_EQUAL(act_agg.max, exp_agg.max);
+            BOOST_REQUIRE_EQUAL(act_agg.maxts, exp_agg.maxts);
+            BOOST_REQUIRE_EQUAL(act_agg.min, exp_agg.min);
+            BOOST_REQUIRE_EQUAL(act_agg.mints, exp_agg.mints);
+            BOOST_REQUIRE_EQUAL(act_agg.sum, exp_agg.sum);
         }
     };
 
     for (u32 i = 0; true; i++) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
-            try_to_recover(collection->get_roots());
+            try_to_recover(collection->get_roots(), i);
             nleafs++;
             if (nleafs == N_blocks) {
                 nitems = i;
