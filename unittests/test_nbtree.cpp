@@ -491,7 +491,6 @@ void test_storage_recovery_2(u32 N_blocks) {
     collection->force_init();
 
     u32 nleafs = 0;
-    //u32 nitems = 0;
 
     auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N) {
         auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
@@ -537,10 +536,11 @@ void test_storage_recovery_2(u32 N_blocks) {
     for (u32 i = 0; true; i++) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
-            try_to_recover(collection->get_roots(), i);
+            if (nleafs % 10 == 0) {
+                try_to_recover(collection->get_roots(), i);
+            }
             nleafs++;
             if (nleafs == N_blocks) {
-                //nitems = i;
                 break;
             }
         }
@@ -548,7 +548,7 @@ void test_storage_recovery_2(u32 N_blocks) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_7) {
-    test_storage_recovery_2(2048);
+    test_storage_recovery_2(4096);
 }
 
 
