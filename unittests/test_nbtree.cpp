@@ -491,7 +491,7 @@ void test_storage_recovery_2(u32 N_blocks) {
     collection->force_init();
 
     u32 nleafs = 0;
-    u32 nitems = 0;
+    //u32 nitems = 0;
 
     auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N) {
         auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
@@ -503,7 +503,7 @@ void test_storage_recovery_2(u32 N_blocks) {
         std::vector<double> xs(N, 0);
         aku_Status status = AKU_SUCCESS;
         size_t sz = 0;
-        std::tie(status, sz) = it->read(ts.data(), xs.data(), N);
+        std::tie(status, sz) = it->read(ts.data(), xs.data(), N+1);
         BOOST_REQUIRE(sz == N);
         BOOST_REQUIRE(status == AKU_ENO_DATA || status  == AKU_SUCCESS);
         if (sz > 0) {
@@ -512,11 +512,7 @@ void test_storage_recovery_2(u32 N_blocks) {
         }
 
         if (sz) {
-            // aggregate
-            NBTreeAggregationResult exp_agg = INIT_AGGRES;
-            exp_agg.do_the_math(ts.data(), xs.data(), sz, false);
-
-            auto agg_iter = collection->aggregate(0, nitems);
+            auto agg_iter = col->aggregate(0, N+1);
             aku_Timestamp agg_ts;
             NBTreeAggregationResult act_agg = INIT_AGGRES;
             size_t agg_size;
@@ -526,14 +522,15 @@ void test_storage_recovery_2(u32 N_blocks) {
             }
 
             // Check that results are correct and match the one that was calculated by hand
-            BOOST_REQUIRE_EQUAL(act_agg.cnt, exp_agg.cnt);
-            BOOST_REQUIRE_EQUAL(act_agg.first, exp_agg.first);
-            BOOST_REQUIRE_EQUAL(act_agg.last, exp_agg.last);
-            BOOST_REQUIRE_EQUAL(act_agg.max, exp_agg.max);
-            BOOST_REQUIRE_EQUAL(act_agg.maxts, exp_agg.maxts);
-            BOOST_REQUIRE_EQUAL(act_agg.min, exp_agg.min);
-            BOOST_REQUIRE_EQUAL(act_agg.mints, exp_agg.mints);
-            BOOST_REQUIRE_EQUAL(act_agg.sum, exp_agg.sum);
+            double exp_sum = (static_cast<double>(N - 1) * N) / 2.0;  // sum of the arithmetic progression [0:N-1]
+            BOOST_REQUIRE_EQUAL(act_agg.cnt, N);
+            BOOST_REQUIRE_EQUAL(act_agg.first, 0);
+            BOOST_REQUIRE_EQUAL(act_agg.last, N-1);
+            BOOST_REQUIRE_EQUAL(act_agg.max, N-1);
+            BOOST_REQUIRE_EQUAL(act_agg.maxts, N-1);
+            BOOST_REQUIRE_EQUAL(act_agg.min, 0);
+            BOOST_REQUIRE_EQUAL(act_agg.mints, 0);
+            BOOST_REQUIRE_EQUAL(act_agg.sum, exp_sum);
         }
     };
 
@@ -543,7 +540,7 @@ void test_storage_recovery_2(u32 N_blocks) {
             try_to_recover(collection->get_roots(), i);
             nleafs++;
             if (nleafs == N_blocks) {
-                nitems = i;
+                //nitems = i;
                 break;
             }
         }
@@ -551,7 +548,7 @@ void test_storage_recovery_2(u32 N_blocks) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_7) {
-    test_storage_recovery_2(4096);
+    test_storage_recovery_2(2048);
 }
 
 

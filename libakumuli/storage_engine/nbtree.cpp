@@ -712,7 +712,7 @@ public:
         std::tie(nodemin, nodemax) = node.get_timestamps();
         min = std::min(begin, end);
         max = std::max(begin, end);
-        if (min < nodemin && nodemax < max) {
+        if (min <= nodemin && nodemax < max) {
             // Leaf totally inside the search range, we can use metadata.
             metacache_ = *node.get_leafmeta();
             enable_cached_metadata_ = true;
@@ -740,8 +740,12 @@ std::tuple<aku_Status, size_t> NBTreeLeafAggregator::read(aku_Timestamp *destts,
         // Fast path. Use metadata to compute results.
         outval.copy_from(metacache_);
         outts = metacache_.begin;
-        enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
+        enable_cached_metadata_ = false;
+        // next call to `read` should return AKU_ENO_DATA
     } else {
+        if (!iter_.get_size()) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
         size_t size_hint = iter_.get_size();
         std::vector<double> xs(size_hint, .0);
         std::vector<aku_Timestamp> ts(size_hint, 0);
@@ -898,7 +902,7 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator> > NBTreeSBlockAggregato
     aku_Timestamp min = std::min(begin_, end_);
     aku_Timestamp max = std::max(begin_, end_);
     std::unique_ptr<NBTreeAggregator> result;
-    if (min < ref.begin && ref.end < max) {
+    if (min <= ref.begin && ref.end < max) {
         // We don't need to go to lower level, value from subtree ref can be used instead.
         auto agg = INIT_AGGRES;
         agg.copy_from(ref);
