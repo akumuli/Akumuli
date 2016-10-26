@@ -548,7 +548,7 @@ void test_storage_recovery_2(u32 N_blocks) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_7) {
-    test_storage_recovery_2(4096);
+    test_storage_recovery_2(32*32);
 }
 
 
