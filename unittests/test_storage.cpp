@@ -540,19 +540,23 @@ static std::string make_scan_query_with_where(aku_Timestamp begin, aku_Timestamp
             str << ", " << key;
         }
     }
-    str << "]}}";
+    str << "], \"zzz\": 0 }}";
     return str.str();
 
 }
 
 void test_storage_where_clause(aku_Timestamp begin, aku_Timestamp end, int nseries) {
     std::vector<std::string> series_names;
+    std::vector<std::string> all_series_names;
     for (int i = 0; i < nseries; i++) {
-        series_names.push_back("test key=" + std::to_string(i));
+        series_names.push_back("test key=" + std::to_string(i) + " zzz=0");
+        all_series_names.push_back("test key=" + std::to_string(i) + " zzz=0");
+        all_series_names.push_back("test key=" + std::to_string(i) + " zzz=1");
     }
+    // We will fill all series but will read only zzz=0 series to check multi-tag queries
     auto storage = create_storage();
     auto session = storage->create_write_session();
-    fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
+    fill_data(session, std::min(begin, end), std::max(begin, end), all_series_names);
     auto check_case = [&](std::vector<int> ids2read) {
         Caller caller;
         CursorMock cursor;

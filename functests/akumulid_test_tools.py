@@ -74,16 +74,13 @@ def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
         dt = dt + delta
         yield m
 
-def generate_messages3(dt, delta, N, metric_name, **kwargs):
+def generate_messages3(dt, delta, N, metric_name, tagslist):
     """Each series will get the same set of timestamps"""
-    nseries = sum([len(v) if type(v) is list else 1 for k, v in kwargs.iteritems()])
-    for i in xrange(1, N+1):
-        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
-                     for key, val in kwargs.iteritems()])
-        m = msg(dt, i, metric_name, **tags)
-        if i % nseries == 0:
-            dt = dt + delta
-        yield m
+    for i in xrange(0, N):
+        for tags in tagslist:
+            m = msg(dt, i, metric_name, **tags)
+            yield m
+        dt = dt + delta
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0

@@ -22,6 +22,7 @@ def test_read_all(exp_tags, dtstart, delta, N):
     """Read all series one by one in backward direction.
     All data should be received as expected."""
     for tags in exp_tags:
+        print(tags)
         begin = dtstart + delta*(N-1)
         end = dtstart
         query_params = {
@@ -30,26 +31,39 @@ def test_read_all(exp_tags, dtstart, delta, N):
         }
         query = att.makequery("test", begin, end, **query_params)
         queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-        print(query)
+        print("Query: {0}".format(json.dumps(query)))
         response = urlopen(queryurl, json.dumps(query))
 
         exp_ts = None
-        iterations = 0
         print("Test - read all data in backward direction")
         prev_line = ''
         nerrors = 0
+        iterations = 0
+        #TODO: remove
+        queue_depth = 10
+        lines = [''] * queue_depth
+        #end
         for line in response:
             try:
+                #TODO: remove
+                lines[iterations % queue_depth] = line.strip()
+                #end
                 columns = line.split(',')
                 timestamp = att.parse_timestamp(columns[1].strip())
-                # TODO: remove
-                print(line.strip())
                 if exp_ts is None:
                     exp_ts = timestamp
 
                 if exp_ts and exp_ts != timestamp:
                     nerrors += 1
-                    if nerrors == 10:
+                    if nerrors == 5:
+                        #TODO: remove
+                        print("Error after {0} lines".format(iterations))
+                        print("Context:")
+                        for ix in range(iterations - queue_depth, iterations):
+                            print(lines[ix % queue_depth])
+                        print("End of context")
+                        print()
+                        #end
                         raise ValueError("Invalid timestamp at {0}, expected {1}, actual {2}".format(iterations, exp_ts, timestamp))
 
                 exp_ts -= delta
@@ -81,23 +95,17 @@ def main(path):
     time.sleep(5)
 
     nmsgs = 100000
-    tags = {
-        "tag1": ['A'],
-        #"tag2": ['B', 'C'],
-        #"tag3": ['D', 'E', 'F', 'G', 'H'],
-    }
-    expected_tags = [
-        {"tag1": "A"},
-        #{"tag3": "D", "tag2": "B"},
-        #{"tag3": "E", "tag2": "B"},
-        #{"tag3": "F", "tag2": "B"},
-        #{"tag3": "G", "tag2": "B"},
-        #{"tag3": "H", "tag2": "B"},
-        #{"tag3": "D", "tag2": "C"},
-        #{"tag3": "E", "tag2": "C"},
-        #{"tag3": "F", "tag2": "C"},
-        #{"tag3": "G", "tag2": "C"},
-        #{"tag3": "H", "tag2": "C"},
+    tags = [
+        {"tag3": "D", "tag2": "B", "tag1": "A"},
+        {"tag3": "E", "tag2": "B", "tag1": "A"},
+        {"tag3": "F", "tag2": "B", "tag1": "A"},
+        {"tag3": "G", "tag2": "B", "tag1": "A"},
+        {"tag3": "H", "tag2": "B", "tag1": "A"},
+        {"tag3": "D", "tag2": "C", "tag1": "A"},
+        {"tag3": "E", "tag2": "C", "tag1": "A"},
+        {"tag3": "F", "tag2": "C", "tag1": "A"},
+        {"tag3": "G", "tag2": "C", "tag1": "A"},
+        {"tag3": "H", "tag2": "C", "tag1": "A"},
     ]
     dt = datetime.datetime.utcnow() - (datetime.timedelta(milliseconds=1)*nmsgs)
     delta = datetime.timedelta(milliseconds=1)
@@ -107,11 +115,7 @@ def main(path):
         # fill data in
         print("Sending {0} messages through TCP...".format(nmsgs))
 
-        icnt = 0
-        for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
-            if icnt < 10:
-                print(it)
-                icnt += 10
+        for it in att.generate_messages3(dt, delta, nmsgs, 'test', tags):
             chan.send(it)
 
         # kill process
@@ -127,26 +131,21 @@ def main(path):
     time.sleep(5)
     print("Server started")
     try:
-        test_read_all(expected_tags, dt, delta, nmsgs)
+        test_read_all(tags, dt, delta, nmsgs)
 
         # Try to write some data
         chan = att.TCPChan(HOST, TCPPORT)
         dt = datetime.datetime.utcnow()
-        tags = {
-            "tag1": ['A'],
-            "tag2": ['B', 'C'],
-            "tag3": ['D', 'E', 'F', 'G', 'H'],
-        }
 
         print("Sending {0} messages through TCP...".format(nmsgs))
-        for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
+        for it in att.generate_messages3(dt, delta, nmsgs, 'test', tags):
             chan.send(it)
 
         time.sleep(5)  # wait untill all messagess will be processed
         print("Trying to close channel")
         chan.close()
 
-        test_read_all(dt, delta, nmsgs)
+        test_read_all(tags, dt, delta, nmsgs)
     finally:
         print("Stopping server...")
         akumulid.stop()
