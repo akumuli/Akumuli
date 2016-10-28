@@ -116,13 +116,25 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
             Logger::msg(AKU_LOG_ERROR, "Metric is not set");
             return std::make_tuple(AKU_EQUERY_PARSING_ERROR, output);
         }
+        typedef std::pair<std::string, boost::property_tree::ptree> PTreeItem;
+        std::vector<PTreeItem> taglist;
         for (auto item: *where) {
-            bool firstitem = true;
-            std::stringstream series_regexp;
+            taglist.push_back(item);
+        }
+        // Tags should be in alphanumeric order
+        std::sort(taglist.begin(), taglist.end(), [](PTreeItem const& lhs, PTreeItem const& rhs) {
+            return lhs.first < rhs.first;
+        });
+        std::stringstream series_regexp;
+        series_regexp << metric;
+        for (auto item: taglist) {
             std::string tag = item.first;
+            bool firstitem = true;
             auto idslist = item.second;
             // Read idlist
             if (!idslist.empty()) {
+                // regex: metric(?:(?:\s\w+=\w+)*\sTAG=VALUE1(?:\s\w+=\w+)*)|...)
+                series_regexp << "(";
                 for (auto idnode: idslist) {
                     std::string value = idnode.second.get_value<std::string>();
                     if (firstitem) {
@@ -131,19 +143,18 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
                     } else {
                         series_regexp << "|";
                     }
-                    series_regexp << "(" << metric << R"((?:\s\w+=\w+)*\s)"
-                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                    series_regexp << R"((?:\s\w+=\w+)*\s)" << tag << "=" << value << R"((?:\s\w+=\w+)*))";
                 }
+                series_regexp << ")";
             } else {
                 std::string value = idslist.get_value<std::string>();
-                series_regexp << "(?:" << "(" << metric << R"((?:\s\w+=\w+)*\s)"
+                series_regexp << "(?:" << "(" << R"((?:\s\w+=\w+)*\s)"
                                   << tag << "=" << value << R"((?:\s\w+=\w+)*))";
             }
-            series_regexp << ")";
-            std::string regex = series_regexp.str();
-            RegexFilter filter(regex, matcher);
-            output = filter.get_ids();
         }
+        std::string regex = series_regexp.str();
+        RegexFilter filter(regex, matcher);
+        output = filter.get_ids();
     } else if (metric_is_set) {
         // only metric is specified
         std::stringstream series_regex;
