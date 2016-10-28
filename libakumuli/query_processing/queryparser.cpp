@@ -7,9 +7,83 @@
 #include "datetime.h"
 #include "query_processing/limiter.h"
 
-
 namespace Akumuli {
 namespace QP {
+
+SeriesRetreiver::SeriesRetreiver()
+{
+}
+
+//! Matches all series from one metric
+SeriesRetreiver::SeriesRetreiver(std::string metric)
+    : metric_(metric)
+{
+}
+
+//! Add tag-name and tag-value pair
+aku_Status SeriesRetreiver::add_tag(std::string name, std::string value) {
+    if (tags_.count(name)) {
+        // Duplicates not allowed
+        Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
+        return AKU_EBAD_ARG;
+    }
+    tags_[name] = { value };
+    return AKU_SUCCESS;
+}
+
+//! Add tag name and set of possible values
+aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> values) {
+    if (tags_.count(name)) {
+        // Duplicates not allowed
+        Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
+        return AKU_EBAD_ARG;
+    }
+    tags_[name] = std::move(values);
+    return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(SeriesMatcher const& matcher) const {
+    std::vector<aku_ParamId> ids;
+    // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
+    if (!metric_) {
+        // Case 1, metric not set.
+        ids = matcher.get_all_ids();
+    } else if (tags_.empty()) {
+        // Case 2, only metric is set
+        std::stringstream regex;
+        regex << metric_ << "(?:\\s\\w+=\\w+)*";
+        std::string expression = regex.str();
+        auto results = matcher.regex_match(expression.c_str());
+        for (auto res: results) {
+            ids.push_back(std::get<2>(res));
+        }
+    } else {
+        // Case 3, both metric and tags are set
+        std::stringstream regexp;
+        regexp << "(?:" << metric_;
+        for (auto kv: tags_) {
+            auto const& key = kv.first;
+            bool first = true;
+            regexp << "(";
+            for (auto const& val: kv.second) {
+                if (first) {
+                    first = false;
+                } else {
+                    regexp << "|";
+                }
+                regexp << "(?:\\s\\w+=\\w+)*\\s" << key << "=" << val << "(?:\\s\\w+=\\w+)*";
+            }
+            regexp << ")";
+        }
+        regexp << ")" << std::endl;
+        std::string expression = regexp.str();
+        auto results = matcher.regex_match(expression.c_str());
+        for (auto res: results) {
+            ids.push_back(std::get<2>(res));
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, ids);
+}
 
 
 static std::tuple<aku_Status, bool, std::string> parse_select_stmt(boost::property_tree::ptree const& ptree) {

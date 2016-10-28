@@ -8,6 +8,7 @@
 #include "queryprocessor_framework.h"
 #include "metadatastorage.h"
 #include "storage2.h"
+#include "query_processing/queryparser.h"
 
 #include "akumuli.h"
 #include "log_iface.h"
@@ -604,6 +605,47 @@ BOOST_AUTO_TEST_CASE(Test_storage_where_clause) {
         std::tie(begin, end, nseries) = tup;
         test_storage_where_clause(begin, end, nseries);
     }
+}
+
+// Test SeriesRetreiver
+
+void test_retreiver() {
+    std::vector<u64> ids;
+    std::vector<std::string> test_data = {
+        "aaa foo=1 bar=1 buz=1",
+        "aaa foo=1 bar=1 buz=2",
+        "aaa foo=1 bar=2 buz=2",
+        "aaa foo=2 bar=2 buz=2",
+        "aaa foo=2 bar=2 buz=3",
+        "bbb foo=2 bar=3 buz=3",
+        "bbb foo=3 bar=3 buz=3",
+        "bbb foo=3 bar=3 buz=4",
+        "bbb foo=3 bar=4 buz=4",
+        "bbb foo=4 bar=4 buz=4",
+    };
+    SeriesMatcher m;
+    for (auto s: test_data) {
+        auto id = m.add(s.data(), s.data() + s.size());
+        ids.push_back(id);
+    }
+
+    std::vector<u64> act;
+    aku_Status status;
+
+    SeriesRetreiver rt1;
+    std::tie(status, act) = rt1.extract_ids(m);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin(), ids.end(), act.begin(), act.end());
+
+    SeriesRetreiver rt2("bbb");
+    std::tie(status, act) = rt2.extract_ids(m);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 5, ids.end(), act.begin(), act.end());
+}
+
+
+BOOST_AUTO_TEST_CASE(Test_series_retreiver_1) {
+    test_retreiver();
 }
 
 // Test reopen

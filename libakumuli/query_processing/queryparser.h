@@ -16,6 +16,27 @@ enum class QueryKind {
     AGGREGATE,  //! Aggregation query
 };
 
+class SeriesRetreiver {
+    boost::optional<std::string> metric_;
+    std::map<std::string, std::vector<std::string>> tags_;
+public:
+    //! Matches all series names
+    SeriesRetreiver();
+
+    //! Matches all series from one metric
+    SeriesRetreiver(std::string metric);
+
+    //! Add tag-name and tag-value pair
+    aku_Status add_tag(std::string name, std::string value);
+
+    //! Add tag name and set of possible values
+    aku_Status add_tags(std::string name, std::vector<std::string> values);
+
+    //! Get results
+    std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(SeriesMatcher const& matcher) const;
+};
+
+
 struct QueryParser {
 
     static std::tuple<aku_Status, boost::property_tree::ptree> parse_json(const char* query);
