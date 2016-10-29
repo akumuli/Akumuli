@@ -622,10 +622,19 @@ void test_retreiver() {
         "bbb foo=3 bar=3 buz=4",
         "bbb foo=3 bar=4 buz=4",
         "bbb foo=4 bar=4 buz=4",
+        "bbb foo=4 bar=4 buz=5",
+        "bbb foo=4 bar=4 buz=6",
     };
     SeriesMatcher m;
     for (auto s: test_data) {
-        auto id = m.add(s.data(), s.data() + s.size());
+        char buffer[0x100];
+        const char* pkeys_begin;
+        const char* pkeys_end;
+        aku_Status status = SeriesParser::to_normal_form(s.data(), s.data() + s.size(),
+                                                         buffer, buffer + 0x100,
+                                                         &pkeys_begin, &pkeys_end);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        auto id = m.add(buffer, pkeys_end);
         ids.push_back(id);
     }
 
@@ -633,6 +642,8 @@ void test_retreiver() {
     aku_Status status;
 
     SeriesRetreiver rt1;
+    status = rt1.add_tag("foo", "1");
+    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
     std::tie(status, act) = rt1.extract_ids(m);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin(), ids.end(), act.begin(), act.end());
@@ -641,6 +652,26 @@ void test_retreiver() {
     std::tie(status, act) = rt2.extract_ids(m);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 5, ids.end(), act.begin(), act.end());
+
+    SeriesRetreiver rt3("bbb");
+    status = rt3.add_tag("foo", "3");
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = rt3.add_tag("buz", "4");
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = rt3.add_tag("buz", "4");
+    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
+    std::tie(status, act) = rt3.extract_ids(m);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 7, ids.begin() + 9, act.begin(), act.end());
+
+    SeriesRetreiver rt4("bbb");
+    status = rt4.add_tag("foo", "4");
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    status = rt4.add_tags("buz", {"4", "5"});
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    std::tie(status, act) = rt4.extract_ids(m);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 9, ids.begin() + 11, act.begin(), act.end());
 }
 
 

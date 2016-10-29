@@ -22,6 +22,10 @@ SeriesRetreiver::SeriesRetreiver(std::string metric)
 
 //! Add tag-name and tag-value pair
 aku_Status SeriesRetreiver::add_tag(std::string name, std::string value) {
+    if (!metric_) {
+        Logger::msg(AKU_LOG_ERROR, "Metric not set");
+        return AKU_EBAD_ARG;
+    }
     if (tags_.count(name)) {
         // Duplicates not allowed
         Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
@@ -33,6 +37,10 @@ aku_Status SeriesRetreiver::add_tag(std::string name, std::string value) {
 
 //! Add tag name and set of possible values
 aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> values) {
+    if (!metric_) {
+        Logger::msg(AKU_LOG_ERROR, "Metric not set");
+        return AKU_EBAD_ARG;
+    }
     if (tags_.count(name)) {
         // Duplicates not allowed
         Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
@@ -51,7 +59,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     } else if (tags_.empty()) {
         // Case 2, only metric is set
         std::stringstream regex;
-        regex << metric_ << "(?:\\s\\w+=\\w+)*";
+        regex << metric_.get() << "(?:\\s\\w+=\\w+)*";
         std::string expression = regex.str();
         auto results = matcher.regex_match(expression.c_str());
         for (auto res: results) {
@@ -60,11 +68,11 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     } else {
         // Case 3, both metric and tags are set
         std::stringstream regexp;
-        regexp << "(?:" << metric_;
+        regexp << metric_.get();
         for (auto kv: tags_) {
             auto const& key = kv.first;
             bool first = true;
-            regexp << "(";
+            regexp << "(?:";
             for (auto const& val: kv.second) {
                 if (first) {
                     first = false;
@@ -75,7 +83,6 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
             }
             regexp << ")";
         }
-        regexp << ")" << std::endl;
         std::string expression = regexp.str();
         auto results = matcher.regex_match(expression.c_str());
         for (auto res: results) {
@@ -182,8 +189,8 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
                                                                            std::string metric,
                                                                            SeriesMatcher const& matcher)
 {
+    aku_Status status = AKU_SUCCESS;
     std::vector<aku_ParamId> output;
-    std::shared_ptr<RegexFilter> result;
     auto where = ptree.get_child_optional("where");
     if (where) {
         if (!metric_is_set) {
@@ -195,53 +202,33 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
         for (auto item: *where) {
             taglist.push_back(item);
         }
-        // Tags should be in alphanumeric order
-        std::sort(taglist.begin(), taglist.end(), [](PTreeItem const& lhs, PTreeItem const& rhs) {
-            return lhs.first < rhs.first;
-        });
-        std::stringstream series_regexp;
-        series_regexp << metric;
+        SeriesRetreiver retreiver(metric.c_str());
         for (auto item: taglist) {
             std::string tag = item.first;
-            bool firstitem = true;
             auto idslist = item.second;
             // Read idlist
             if (!idslist.empty()) {
-                // regex: metric(?:(?:\s\w+=\w+)*\sTAG=VALUE1(?:\s\w+=\w+)*)|...)
-                series_regexp << "(";
+                std::vector<std::string> tag_values;
                 for (auto idnode: idslist) {
-                    std::string value = idnode.second.get_value<std::string>();
-                    if (firstitem) {
-                        firstitem = false;
-                        series_regexp << "(?:";
-                    } else {
-                        series_regexp << "|";
-                    }
-                    series_regexp << R"((?:\s\w+=\w+)*\s)" << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                    tag_values.push_back(idnode.second.get_value<std::string>());
                 }
-                series_regexp << ")";
+                retreiver.add_tags(tag, tag_values);
             } else {
-                std::string value = idslist.get_value<std::string>();
-                series_regexp << "(?:" << "(" << R"((?:\s\w+=\w+)*\s)"
-                                  << tag << "=" << value << R"((?:\s\w+=\w+)*))";
+                retreiver.add_tag(tag, idslist.get_value<std::string>());
             }
         }
-        std::string regex = series_regexp.str();
-        RegexFilter filter(regex, matcher);
-        output = filter.get_ids();
+        std::tie(status, output) = retreiver.extract_ids(matcher);
     } else if (metric_is_set) {
         // only metric is specified
-        std::stringstream series_regex;
-        series_regex << metric << "(?:\\s\\w+=\\w+)*";
-        std::string regex = series_regex.str();
-        RegexFilter filter(regex, matcher);
-        output = filter.get_ids();
+        SeriesRetreiver retreiver(metric);
+        std::tie(status, output) = retreiver.extract_ids(matcher);
     } else {
         // we need to include all series
         // were stmt is not used
-        output = matcher.get_all_ids();
+        SeriesRetreiver retreiver;
+        std::tie(status, output) = retreiver.extract_ids(matcher);
     }
-    return std::make_tuple(AKU_SUCCESS, output);
+    return std::make_tuple(status, output);
 }
 
 static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
