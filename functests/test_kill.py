@@ -22,7 +22,6 @@ def test_read_all(exp_tags, dtstart, delta, N):
     """Read all series one by one in backward direction.
     All data should be received as expected."""
     for tags in exp_tags:
-        print(tags)
         begin = dtstart + delta*(N-1)
         end = dtstart
         query_params = {
@@ -31,40 +30,21 @@ def test_read_all(exp_tags, dtstart, delta, N):
         }
         query = att.makequery("test", begin, end, **query_params)
         queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-        print("Query: {0}".format(json.dumps(query)))
         response = urlopen(queryurl, json.dumps(query))
 
         exp_ts = None
         print("Test - read all data in backward direction")
         prev_line = ''
-        nerrors = 0
         iterations = 0
-        #TODO: remove
-        queue_depth = 10
-        lines = [''] * queue_depth
-        #end
         for line in response:
             try:
-                #TODO: remove
-                lines[iterations % queue_depth] = line.strip()
-                #end
                 columns = line.split(',')
                 timestamp = att.parse_timestamp(columns[1].strip())
                 if exp_ts is None:
                     exp_ts = timestamp
 
                 if exp_ts and exp_ts != timestamp:
-                    nerrors += 1
-                    if nerrors == 5:
-                        #TODO: remove
-                        print("Error after {0} lines".format(iterations))
-                        print("Context:")
-                        for ix in range(iterations - queue_depth, iterations):
-                            print(lines[ix % queue_depth])
-                        print("End of context")
-                        print()
-                        #end
-                        raise ValueError("Invalid timestamp at {0}, expected {1}, actual {2}".format(iterations, exp_ts, timestamp))
+                    raise ValueError("Invalid timestamp at {0}, expected {1}, actual {2}".format(iterations, exp_ts, timestamp))
 
                 exp_ts -= delta
                 iterations += 1
