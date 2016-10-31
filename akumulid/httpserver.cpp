@@ -8,6 +8,8 @@
 namespace Akumuli {
 namespace Http {
 
+static Logger logger("http", 10);
+
 //! Microhttpd callback functions
 namespace MHD {
 static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
@@ -15,12 +17,15 @@ static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     ReadOperation* cur = (ReadOperation*)data;
     auto status = cur->get_error();
     if (status) {
+        const char* error_msg = aku_error_message(status);
+        logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " error (in callback): " << error_msg;
         return MHD_CONTENT_READER_END_OF_STREAM;
     }
     size_t sz;
     bool is_done;
     std::tie(sz, is_done) = cur->read_some(buf, max);
     if (is_done) {
+        logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " done";
         return MHD_CONTENT_READER_END_OF_STREAM;
     } else {
         if (sz == 0u) {
@@ -35,6 +40,7 @@ static void free_callback(void *data) {
     ReadOperation* cur = (ReadOperation*)data;
     cur->close();
     delete cur;
+    logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " destroyed";
 }
 
 static int accept_connection(void           *cls,
@@ -53,6 +59,7 @@ static int accept_connection(void           *cls,
         if (cursor == nullptr) {
             cursor = queryproc->create();
             *con_cls = cursor;
+            logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
             return MHD_YES;
         }
         if (*upload_data_size) {
@@ -72,8 +79,10 @@ static int accept_connection(void           *cls,
 
         // Should be called once
         try {
+            logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " started";
             cursor->start();
         } catch (const std::exception& err) {
+            logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " start error: " << err.what();
             return error_response(err.what());
         }
 
@@ -81,6 +90,7 @@ static int accept_connection(void           *cls,
         auto err = cursor->get_error();
         if (err != AKU_SUCCESS) {
             const char* error_msg = aku_error_message(err);
+            logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " error: " << error_msg;
             return error_response(error_msg);
         }
 
@@ -127,6 +137,7 @@ HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder
 }
 
 void HttpServer::start(SignalHandler* sig, int id) {
+    logger.info() << "Start MHD daemon";
     daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
                                port_,
                                NULL,
@@ -143,6 +154,7 @@ void HttpServer::start(SignalHandler* sig, int id) {
 }
 
 void HttpServer::stop() {
+    logger.info() << "Stop MHD daemon";
     MHD_stop_daemon(daemon_);
 }
 

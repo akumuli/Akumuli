@@ -1,4 +1,5 @@
 #include "query_results_pooler.h"
+#include "logger.h"
 #include <cstdio>
 #include <thread>
 #include <boost/property_tree/ptree.hpp>
@@ -6,6 +7,8 @@
 #include <boost/exception/all.hpp>
 
 namespace Akumuli {
+
+static Logger logger("query_results_pooler", 10);
 
 static boost::property_tree::ptree from_json(std::string json) {
     //! C-string to streambuf adapter
@@ -417,6 +420,11 @@ QueryProcessor::QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf)
     : con_(con)
     , rdbufsize_(rdbuf)
 {
+    logger.info() << "QueryProcessor created";
+}
+
+QueryProcessor::~QueryProcessor() {
+    logger.info() << "QueryProcessor destructed";
 }
 
 ReadOperation *QueryProcessor::create() {

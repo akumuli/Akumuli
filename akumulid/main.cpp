@@ -5,6 +5,7 @@
 #include "utility.h"
 #include "query_results_pooler.h"
 #include "signal_handler.h"
+#include "logger.h"
 
 #include <iostream>
 #include <fstream>
@@ -24,6 +25,7 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
+static Logger logger("main", 10);
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -72,7 +74,7 @@ pool_size=1
 log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
+log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %m%n
 log4j.appender.file.filename=/tmp/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
@@ -368,8 +370,10 @@ void cmd_run_server() {
         auto srv = ServerFactory::instance().create(connection, qproc, settings);
         assert(srv != nullptr);
         srvnames[srvid] = settings.name;
-        srv->start(&sighandler, srvid++);
+        srv->start(&sighandler, srvid);
+        logger.info() << "Starting " << settings.name << " index " << srvid;
         std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+        srvid++;
     }
     auto srvids = sighandler.wait();
 
@@ -525,6 +529,15 @@ int main(int argc, char** argv) {
         po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
         po::notify(vm);
 
+        std::stringstream header;
+        header << "\n\nStarted\n\n";
+        header << "Command line: ";
+        for (int i = 0; i < argc; i++) {
+            header << argv[i] << ' ';
+        }
+        header << "\n\n";
+        logger.info() << header.str();
+
         if (vm.count("help")) {
             rich_print(CLI_HELP_MESSAGE);
             exit(EXIT_SUCCESS);
@@ -575,6 +588,8 @@ int main(int argc, char** argv) {
         }
 
         cmd_run_server();
+
+        logger.info() << "\n\nClean exit\n\n";
 
     } catch(const std::exception& e) {
         std::stringstream fmt;

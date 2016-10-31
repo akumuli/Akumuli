@@ -48,6 +48,7 @@ struct QueryProcessor : ReadOperationBuilder {
     int                         rdbufsize_;
 
     QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf);
+    ~QueryProcessor() override;
 
     virtual ReadOperation* create();
 

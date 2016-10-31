@@ -70,11 +70,13 @@ aku_Status AkumuliSession::series_to_param_id(const char *name, size_t size, aku
 AkumuliConnection::AkumuliConnection(const char *path)
     : dbpath_(path)
 {
+    db_logger_.info() << "Open database at: " << path;
     aku_FineTuneParams params = {};
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 
 AkumuliConnection::~AkumuliConnection() {
+    db_logger_.info() << "Close database at: " << dbpath_;
     aku_close_database(db_);
 }
 
