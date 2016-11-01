@@ -205,12 +205,17 @@ struct ConfigFile {
     }
 
     static std::vector<ServerSettings> get_server_settings(PTree conf) {
-        //TODO: this should be generic
-        std::vector<ServerSettings> result = {
-            get_tcp_server(conf),
-            get_udp_server(conf),
-            get_http_server(conf),
+        std::map<std::string, std::function<ServerSettings(PTree)>> mapping = {
+            { "TCP", &get_tcp_server },
+            { "UDP", &get_udp_server },
+            { "HTTP", &get_http_server },
         };
+        std::vector<ServerSettings> result;
+        for (auto kv: mapping) {
+            if (conf.count(kv.first)) {
+                result.push_back(kv.second(conf));
+            }
+        }
         return result;
     }
 };
