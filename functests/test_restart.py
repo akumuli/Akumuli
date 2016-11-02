@@ -39,8 +39,6 @@ def test_read_all(dtstart, delta, N):
     iterations = 0
     print("Test - read all data in backward direction")
     for line in response:
-        if iterations < 10:
-            print(line)
         try:
             columns = line.split(',')
             tagline = columns[0].strip()

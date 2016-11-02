@@ -56,7 +56,7 @@ public:
 
     ~Formatter();
 
-    void set_info_sink(log4cxx::LoggerPtr logger);
+    void set_info_sink(log4cxx::LoggerPtr logger, details::CircularBuffer *buffer);
     void set_trace_sink(details::CircularBuffer* buffer);
     void set_error_sink(log4cxx::LoggerPtr logger, details::CircularBuffer* buffer);
 
@@ -74,6 +74,7 @@ class Logger {
 
 public:
     Logger(const char* log_name, int depth);
+    Logger(std::string log_name, int depth);
 
     Formatter&& trace(Formatter&& fmt = Formatter());
     Formatter&& info(Formatter&& fmt = Formatter());

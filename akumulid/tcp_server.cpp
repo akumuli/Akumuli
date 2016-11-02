@@ -1,6 +1,7 @@
 #include "tcp_server.h"
 #include "utility.h"
 #include <thread>
+#include <atomic>
 #include <boost/function.hpp>
 
 namespace Akumuli {
@@ -9,16 +10,27 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
+std::string make_unique_session_name() {
+    static std::atomic<int> counter = {0};
+    std::stringstream str;
+    str << "tcp-session-" << counter.fetch_add(1);
+    return str.str();
+}
+
 TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout)
     : io_(io)
     , socket_(*io)
     , strand_(*io)
     , spout_(spout)
     , parser_(spout)
-    , logger_("tcp-session", 10)
+    , logger_(make_unique_session_name(), 10)
 {
     logger_.info() << "Session created";
     parser_.start();
+}
+
+TcpSession::~TcpSession() {
+    logger_.info() << "Session destroyed";
 }
 
 SocketT& TcpSession::socket() {
@@ -135,6 +147,7 @@ void TcpSession::handle_read(BufferT buffer,
 
 void TcpSession::handle_write_error(boost::system::error_code error) {
     if (!error) {
+        logger_.info() << "Clean shutdown";
         socket_.shutdown(SocketT::shutdown_both);
     } else {
         logger_.error() << "Error sending error message to client";
@@ -168,13 +181,16 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     }
 }
 
+TcpAcceptor::~TcpAcceptor() {
+    logger_.info() << "TCP acceptor destroyed";
+}
+
 void TcpAcceptor::start() {
     WorkT work(own_io_);
 
     // Run detached thread for accepts
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
-
         self->logger_.info() << "Starting acceptor worker thread";
         self->start_barrier_.wait();
         self->logger_.info() << "Acceptor worker thread have started";
@@ -204,8 +220,13 @@ void TcpAcceptor::_run_one() {
 
 void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
-    auto spout = connection_->create_session();
-    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout)));
+    auto con = connection_.lock();
+    if (con) {
+        auto spout = con->create_session();
+        session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout)));
+    } else {
+        logger_.error() << "Database was already closed";
+    }
     // attach session to spout
     // run session
     acceptor_.async_accept(
@@ -218,18 +239,32 @@ void TcpAcceptor::_start() {
 }
 
 void TcpAcceptor::stop() {
-    logger_.error() << "Stopping acceptor";
-    acceptor_.close();
+    logger_.info() << "Stopping acceptor";
+    // TODO: remove
+    //std::cout << "acceptor.close" << std::endl;
+    //acceptor_.close();
+    // TODO: remove
+    std::cout << "acceptor.cancel" << std::endl;
+    acceptor_.cancel();
+    // TODO: remove
+    std::cout << "io.stop" << std::endl;
     own_io_.stop();
+    // TODO: remove
+    std::cout << "sessions_work.clear" << std::endl;
     sessions_work_.clear();
     logger_.info() << "Trying to stop acceptor";
+    // TODO: remove
+    std::cout << "stop_barrier.wait" << std::endl;
     stop_barrier_.wait();
     logger_.info() << "Acceptor successfully stopped";
+    // TODO: remove
+    std::cout << "acceptor.exit" << std::endl;
 }
 
 void TcpAcceptor::_stop() {
-    logger_.error() << "Stopping acceptor";
+    logger_.info() << "Stopping acceptor";
     acceptor_.close();
+    acceptor_.cancel();
     own_io_.stop();
     sessions_work_.clear();
 }
@@ -256,8 +291,19 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     for(;concurrency --> 0;) {
         iovec.push_back(&io);
     }
-    serv = std::make_shared<TcpAcceptor>(iovec, port, connection_);
-    serv->start();
+    auto con = connection_.lock();
+    if (con) {
+        serv = std::make_shared<TcpAcceptor>(iovec, port, con);
+        serv->start();
+    } else {
+        logger_.error() << "Can't start TCP server, database closed";
+        std::runtime_error err("DB connection closed");
+        BOOST_THROW_EXCEPTION(err);
+    }
+}
+
+TcpServer::~TcpServer() {
+    logger_.info() << "TCP server destroyed";
 }
 
 void TcpServer::start(SignalHandler* sig, int id) {
@@ -265,17 +311,23 @@ void TcpServer::start(SignalHandler* sig, int id) {
     auto self = shared_from_this();
     sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)), id);
 
-    auto logger = &logger_;
-    auto iorun = [logger](IOServiceT& io, boost::barrier& bar) {
+    auto iorun = [](IOServiceT& io, boost::barrier& bar) {
         auto fn = [&]() {
+            Logger logger("tcp-server-worker", 10);
             try {
+                logger.info() << "Event loop started";
                 io.run();
+                logger.info() << "Event loop stopped";
                 bar.wait();
             } catch (RESPError const& e) {
-                logger->error() << e.what();
-                logger->error() << e.get_bottom_line();
+                logger.error() << e.what();
+                logger.info() << e.get_bottom_line();
+                throw;
+            } catch (...) {
+                logger.error() << "Error in TCP server worker thread: " << boost::current_exception_diagnostic_information();
                 throw;
             }
+            logger.info() << "Stopped";
         };
         return fn;
     };
