@@ -25,6 +25,11 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
+enum {
+    // This is a database size on CI
+    AKU_TEST_DB_SIZE = 4096,  // 16MB
+};
+
 static Logger logger("main", 10);
 
 //! Default configuration for `akumulid`
@@ -396,6 +401,10 @@ void cmd_create_database(bool test_db=false) {
     auto path        = ConfigFile::get_path(config);
     auto volumes     = ConfigFile::get_nvolumes(config);
     auto volsize     = ConfigFile::get_volume_size(config);
+
+    if (test_db) {
+        volsize = AKU_TEST_DB_SIZE;
+    }
 
     create_db_files(path.c_str(), volumes, volsize);
 }
