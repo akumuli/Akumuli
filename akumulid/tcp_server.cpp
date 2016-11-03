@@ -252,7 +252,6 @@ void TcpAcceptor::stop() {
 void TcpAcceptor::_stop() {
     logger_.info() << "Stopping acceptor";
     acceptor_.close();
-    acceptor_.cancel();
     own_io_.stop();
     sessions_work_.clear();
 }
