@@ -240,25 +240,13 @@ void TcpAcceptor::_start() {
 
 void TcpAcceptor::stop() {
     logger_.info() << "Stopping acceptor";
-    // TODO: remove
-    //std::cout << "acceptor.close" << std::endl;
-    //acceptor_.close();
-    // TODO: remove
     std::cout << "acceptor.cancel" << std::endl;
     acceptor_.cancel();
-    // TODO: remove
-    std::cout << "io.stop" << std::endl;
     own_io_.stop();
-    // TODO: remove
-    std::cout << "sessions_work.clear" << std::endl;
     sessions_work_.clear();
     logger_.info() << "Trying to stop acceptor";
-    // TODO: remove
-    std::cout << "stop_barrier.wait" << std::endl;
     stop_barrier_.wait();
     logger_.info() << "Acceptor successfully stopped";
-    // TODO: remove
-    std::cout << "acceptor.exit" << std::endl;
 }
 
 void TcpAcceptor::_stop() {
