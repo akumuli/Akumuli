@@ -270,7 +270,7 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 
 TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port)
     : connection_(connection)
-    , barrier(static_cast<u32>(concurrency))
+    , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
     , logger_("tcp-server", 32)
 {
