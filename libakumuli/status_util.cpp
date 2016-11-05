@@ -22,6 +22,7 @@ static const char* g_error_messages[] = {
     "retry required",
     "access denied",
     "operation not permitted",
+    "resource is not available",
     "unknown error code"
 };
 

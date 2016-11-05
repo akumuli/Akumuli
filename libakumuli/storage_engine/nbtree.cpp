@@ -403,8 +403,8 @@ std::tuple<aku_Status, size_t> IteratorConcat::read(aku_Timestamp *destts, doubl
         if (size == 0) {
             break;
         }
-        if (status == AKU_ENO_DATA) {
-            // this leaf node is empty, continue with next
+        if (status == AKU_ENO_DATA || status == AKU_EUNAVAILABLE) {
+            // this leaf node is empty or removed, continue with next
             iter_index_++;
             continue;
         }
@@ -617,8 +617,11 @@ struct NBTreeSBlockIteratorBase : NBTreeIteratorBase<TVal> {
             if (!iter_) {
                 // initialize `iter_`
                 std::tie(status, iter_) = get_next_iter();
-                if (status == AKU_ENOT_FOUND) {
-                    // Subtree exists but doesn't contains values from begin-end timerange.
+                if (status == AKU_ENOT_FOUND || status == AKU_EUNAVAILABLE) {
+                    // Subtree exists but doesn't contains values from begin-end timerange or
+                    // entire subtree was deleted
+                    // TODO: remove
+                    Logger::msg(AKU_LOG_TRACE, "Can't open next iterator because " + StatusUtil::str(status));
                     continue;
                 } else if (status != AKU_SUCCESS) {
                     // We're out of iterators and should stop.
@@ -1313,7 +1316,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
         aku_Status status;
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore, prev_);
-        if (status == AKU_EBAD_ARG) {
+        if (status == AKU_EUNAVAILABLE) {
             // Previous root was deleted due to retention policy
             backref->addr = EMPTY_ADDR;
         } else if (status !=  AKU_SUCCESS) {
@@ -1422,7 +1425,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore_, last_);
-            if (status == AKU_EBAD_ARG) {
+            if (status == AKU_EUNAVAILABLE) {
                 // Can't read previous node (retention)
                 fanout_index_ = 0;
                 last_ = EMPTY_ADDR;
@@ -1648,7 +1651,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             aku_Status status;
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore_, addr);
-            if (status  == AKU_EBAD_ARG) {
+            if (status  == AKU_EUNAVAILABLE) {
                 addr = EMPTY_ADDR;
             } else if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
@@ -1914,7 +1917,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
         // Try to read block and check stats
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore, refs[i].addr);
-        if (status == AKU_EBAD_ARG) {
+        if (status == AKU_EUNAVAILABLE) {
             // block was deleted due to retention.
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
         } else if (status == AKU_SUCCESS) {

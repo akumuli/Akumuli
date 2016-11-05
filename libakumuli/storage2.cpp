@@ -786,7 +786,7 @@ aku_Status Storage::new_database( const char     *file_name
 {
     // Check for max volume size
     const u64 MAX_SIZE = 0x100000000 * 4096 - 1;  // 15TB
-    const u64 MIN_SIZE = 0x100;  // 1MB
+    const u64 MIN_SIZE = 0x100000;  // 1MB
     if (volume_size > MAX_SIZE) {
         Logger::msg(AKU_LOG_ERROR, "Volume size is too big: " + std::to_string(volume_size) + ", it can't be greater than 15TB");
         return AKU_EBAD_ARG;

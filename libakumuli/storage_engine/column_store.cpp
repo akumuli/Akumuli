@@ -415,7 +415,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
     while(status == AKU_SUCCESS) {
         size_t size;
         std::tie(status, size) = iter->read(dest.data(), dest_size);
-        if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
             Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
             qproc.set_error(status);
             return;

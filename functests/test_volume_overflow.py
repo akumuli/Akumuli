@@ -95,22 +95,16 @@ def read_in_backward_direction(batch_size):
 
     print("Test passed")
 
-def main(path, debug):
-
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    if not debug:
-        akumulid = att.Akumulid(path)
-        # delete database
-        akumulid.delete_database()
-        # create empty database
-        akumulid.create_test_database()
-        # start ./akumulid server
-        print("Starting server...")
-        akumulid.serve()
-        time.sleep(5)
+def main(path):
+    akumulid = att.create_akumulid(path)
+    # delete database
+    akumulid.delete_database()
+    # create empty database
+    akumulid.create_test_database()
+    # start ./akumulid server
+    print("Starting server...")
+    akumulid.serve()
+    time.sleep(5)
     try:
         # fill data in
         statsurl = "http://{0}:{1}/stats".format(host, httpport)
@@ -142,19 +136,14 @@ def main(path, debug):
         traceback.print_exc()
         sys.exit(1)
     finally:
-        if not debug:
-            print("Stopping server...")
-            akumulid.stop()
-            time.sleep(5)
+        print("Stopping server...")
+        akumulid.stop()
+        time.sleep(5)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Not enough arguments")
         sys.exit(1)
-    debug = False
-    if len(sys.argv) == 3:
-        if sys.argv[2] == 'debug':
-            debug = True
-    main(sys.argv[1], debug)
+    main(sys.argv[1])
 else:
     raise ImportError("This module shouldn't be imported")

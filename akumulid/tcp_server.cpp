@@ -240,7 +240,6 @@ void TcpAcceptor::_start() {
 
 void TcpAcceptor::stop() {
     logger_.info() << "Stopping acceptor";
-    std::cout << "acceptor.cancel" << std::endl;
     acceptor_.cancel();
     own_io_.stop();
     sessions_work_.clear();

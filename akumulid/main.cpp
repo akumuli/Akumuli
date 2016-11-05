@@ -27,7 +27,7 @@ using namespace Akumuli;
 
 enum {
     // This is a database size on CI
-    AKU_TEST_DB_SIZE = 4096,  // 16MB
+    AKU_TEST_DB_SIZE = 10*256*4096,  // 10MB
 };
 
 static Logger logger("main", 10);

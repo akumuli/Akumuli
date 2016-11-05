@@ -244,7 +244,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
     if (actual_gen != gen || vol >= nblocks) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
     }
     std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[volix]->read_block(vol, dest.data());
