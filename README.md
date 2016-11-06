@@ -10,30 +10,20 @@ Disclaimer
 
 Akumuli is work in progress and not ready for production yet.
 
-
 Features
 -------
 
-* Log-structured storage. 
-* Row oriented at large scale, column oriented at small scale.
-* Crash recovery.
-* In-memory storage for recent data.
-* Accepts unordered data (at some configurable extent).
-* Real-time compression (up to 2.5 bytes per element on appropriate data).
+* Column-oriented time-series database.
+* Log-structured append-only B+tree with multiversion concurrency control.
+* Crash safety.
+* Fast aggregation without pre-configured rollups or materialized views.
+* Custom compression algorithm (dictionary + entropy) with small memory overhead (about 2.5 bytes per element on appropriate data).
+* Compressed in-memory storage for recent data.
+* Can be used as a server application or an embedded library.
 * Simple query language based on JSON over HTTP.
-* Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second).
-* Series are organized using metrics and tags.
-* Time-series can be grouped by time (find aggregate for each 5sec interval).
-* Time-series can be joined together by tags.
-* Resampling (PAA transform), sliding window methods.
-* Random sampling.
-* Frequent items and heavy hitters.
-* SAX transformation.
-* Anomaly detection (SMA, EWMA, Holt-Winters).
-* Data ingestion through TCP or UDP based protocols (over 1M data points/second).
-* Continuous queries (streaming).
+* Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second) per core.
+* Data ingestion through TCP or UDP (over 1M data points/second).
 
- 
 Documentation
 -------------
 * [Wiki](https://github.com/akumuli/Akumuli/wiki)
