@@ -90,12 +90,12 @@ boost::property_tree::ptree from_json(std::string json) {
 }
 
 struct LocalCursor : Cursor {
-    aku_Database*   db_;
-    aku_Cursor* cursor_;
-    aku_Sample  sample_;
+    aku_Session* session_;
+    aku_Cursor*  cursor_;
+    aku_Sample   sample_;
 
-    LocalCursor(aku_Database *db, aku_Cursor *cursor)
-        : db_(db)
+    LocalCursor(aku_Session *s, aku_Cursor *cursor)
+        : session_(s)
         , cursor_(cursor)
         , sample_()
     {
@@ -107,7 +107,6 @@ struct LocalCursor : Cursor {
         if (aku_cursor_is_error(cursor_, &status)) {
             std::runtime_error err(aku_error_message(status));
             BOOST_THROW_EXCEPTION(err);
-            return false;
         }
         return true;
     }
@@ -143,12 +142,12 @@ struct LocalCursor : Cursor {
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
             char buffer[buffer_size];
             // Convert id
-            auto len = aku_param_id_to_series(db_, sample_.paramid, buffer, buffer_size);
+            auto len = aku_param_id_to_series(session_, sample_.paramid, buffer, buffer_size);
             if (len <= 0) {
                 std::runtime_error err("no such id");
                 BOOST_THROW_EXCEPTION(err);
             }
-            std::string paramid(buffer, buffer + len - 1);
+            std::string paramid(buffer, buffer + len);
 
             std::string timestamp;
             if (sample_.payload.type & aku_PData::TIMESTAMP_BIT) {
@@ -182,6 +181,7 @@ struct LocalStorage : Storage {
     bool enable_huge_tlb_;
     const char* DBNAME_;
     aku_Database *db_;
+    aku_Session  *session_;
 
     LocalStorage(
             std::string work_dir,
@@ -201,6 +201,7 @@ struct LocalStorage : Storage {
         , enable_huge_tlb_(huge_tlb)
         , DBNAME_("test")
         , db_(nullptr)
+        , session_(nullptr)
     {
     }
 
@@ -236,17 +237,17 @@ struct LocalStorage : Storage {
 
 // Storage interface
 void LocalStorage::close() {
-    if (db_ == nullptr) {
+    if (session_ == nullptr || db_ == nullptr) {
         std::logic_error err("Database allready closed");
         BOOST_THROW_EXCEPTION(err);
     }
+    aku_destroy_session(session_);
     aku_close_database(db_);
     db_ = nullptr;
 }
 
 void LocalStorage::create_new() {
-    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_,
-                                              nullptr);
+    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_);
     throw_on_error(result);
 }
 
@@ -264,13 +265,14 @@ void LocalStorage::open() {
 
     std::string path = get_db_file_path();
     db_ = aku_open_database(path.c_str(), params);
-    auto status = aku_open_status(db_);
-    throw_on_error(status);
+    session_ = aku_create_session(db_);
+    //auto status = aku_open_status(db_);
+    //throw_on_error(status);
 }
 
 void LocalStorage::delete_all() {
     std::string path = get_db_file_path();
-    auto status = aku_remove_database(path.c_str(), &aku_console_logger);
+    auto status = aku_remove_database(path.c_str(), true);
     throw_on_error(status);
 }
 
@@ -282,13 +284,13 @@ void LocalStorage::add(std::string ts, std::string id, double value) {
             std::runtime_error err("invalid timestamp");
             BOOST_THROW_EXCEPTION(err);
         }
-        if (aku_series_to_param_id(db_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
+        if (aku_series_to_param_id(session_, id.data(), id.data() + id.size(), &sample) != AKU_SUCCESS) {
             std::runtime_error err("invalid series name");
             BOOST_THROW_EXCEPTION(err);
         }
         sample.payload.type = AKU_PAYLOAD_FLOAT;
         sample.payload.float64 = value;
-        status = aku_write(db_, &sample);
+        status = aku_write(session_, &sample);
     }
     throw_on_error(status);
 }
@@ -321,8 +323,8 @@ std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
     boost::property_tree::json_parser::write_json(stream, query, true);
     std::string query_text = stream.str();
 
-    auto cursor = aku_query(db_, query_text.c_str());
-    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    auto cursor = aku_query(session_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(session_, cursor));
     return std::move(ptr);
 }
 
@@ -347,8 +349,8 @@ std::unique_ptr<Cursor> LocalStorage::metadata_query(std::string metric, std::st
     boost::property_tree::json_parser::write_json(stream, query, true);
     std::string query_text = stream.str();
 
-    auto cursor = aku_query(db_, query_text.c_str());
-    std::unique_ptr<LocalCursor> ptr(new LocalCursor(db_, cursor));
+    auto cursor = aku_query(session_, query_text.c_str());
+    std::unique_ptr<LocalCursor> ptr(new LocalCursor(session_, cursor));
     return std::move(ptr);
 }
 
@@ -445,75 +447,6 @@ void query_data(Storage *storage, Query query, std::vector<DataPoint> expected) 
     }
 }
 
-void continous_query(Storage *storage, Query query, std::vector<DataPoint> expected, std::vector<DataPoint> datatoadd) {
-    auto require_equal = [](Cursor::RowT row, DataPoint exp) {
-        if (row.timestamp != exp.timestamp) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad timestamp, get " << row.timestamp
-                      << ", expected " << exp.timestamp << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        if (row.seriesname != exp.id) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad id, get " << row.seriesname << " (" << row.rawid << ")"
-                      << ", expected " << exp.id << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        // payload
-        #ifdef VERBOSE_OUTPUT
-        std::cout << "Read " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
-        #endif
-        if (row.value != exp.float_value) {
-            std::cout << "Error" << std::endl;
-            std::cout << "bad float, get " << row.value
-                      << ", expected " << exp.float_value << std::endl;
-            std::runtime_error err("Bad result");
-            BOOST_THROW_EXCEPTION(err);
-        }
-    };
-
-    std::unique_ptr<Cursor> cursor = storage->query(query.begin, query.end, query.ids);
-    for (auto item: expected) {
-        if (cursor->done()) {
-            std::runtime_error err("Not enough data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        Cursor::RowT row;
-        if (cursor->get_next_row(row)) {
-            require_equal(row, item);
-        } else {
-            std::runtime_error err("Can't read data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-    }
-
-    // Add new data
-    for (auto item: datatoadd) {
-        storage->add(item.timestamp, item.id, item.float_value);
-    }
-
-    // Read the rest of the data
-    for (auto item: datatoadd) {
-        if (cursor->done()) {
-            std::runtime_error err("Not enough data");
-            BOOST_THROW_EXCEPTION(err);
-        }
-        Cursor::RowT row;
-        int cnt = 0;
-        while (!cursor->get_next_row(row)) {
-            if(cnt++ == 10) {
-                std::runtime_error err("Can't read data");
-                BOOST_THROW_EXCEPTION(err);
-            }
-        }
-        std::cout << "Expected: " << item.id << ", " << item.timestamp << ", " << item.float_value << std::endl;
-        std::cout << "Atcual:   " << row.seriesname << ", " << row.timestamp << ", " << row.value << std::endl;
-        //require_equal(row, item);
-    }
-}
-
 aku_Timestamp to_timestamp(std::string ts) {
     aku_Sample s;
     if (aku_parse_timestamp(ts.c_str(), &s) != AKU_SUCCESS) {
@@ -571,11 +504,20 @@ void query_subset(Storage* storage, std::string begin, std::string end, bool inv
         auto point = TEST_DATA[i];
         auto id_match = idsmap.count(point.id);
         auto point_ts = to_timestamp(point.timestamp);
-        if (id_match &&
-            point_ts >= begin_ts &&
-            point_ts <= end_ts)
-        {
-            expected.push_back(point);
+        if (invert) {
+            if (id_match &&
+                point_ts > begin_ts &&
+                point_ts <= end_ts)
+            {
+                expected.push_back(point);
+            }
+        } else {
+            if (id_match &&
+                point_ts >= begin_ts &&
+                point_ts < end_ts)
+            {
+                expected.push_back(point);
+            }
         }
     }
     if (invert) {
@@ -699,15 +641,15 @@ int main(int argc, const char** argv) {
             query_metadata(&storage, "cpu", include_even,   evenseries);
 
             // Read in forward direction
-            query_subset(&storage, "20150101T000000", "20150101T000014", false, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000015", false, false, allseries);
             // Read in backward direction, result-set shouldn't be empty
             query_subset(&storage, "20150101T000000", "20150101T000020", true, false, allseries);
             // Try to read only half of the data-points in forward direction
-            query_subset(&storage, "20150101T000005", "20150101T000014", false, false, allseries);
+            query_subset(&storage, "20150101T000005", "20150101T000015", false, false, allseries);
             // Try to read only half of the data-points in backward direction
-            query_subset(&storage, "20150101T000005", "20150101T000014", true, false, allseries);
-            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, evenseries);
-            query_subset(&storage, "20150101T000000", "20150101T000014", true, false, oddseries);
+            query_subset(&storage, "20150101T000005", "20150101T000015", true, false, allseries);
+            query_subset(&storage, "20150101T000000", "20150101T000015", true, false, evenseries);
+            query_subset(&storage, "20150101T000000", "20150101T000015", true, false, oddseries);
 
             storage.close();
         }
@@ -842,12 +784,6 @@ int main(int argc, const char** argv) {
                 "cpu key=4",
                 "cpu key=5",
             };
-            Query q = {
-                std::string("20150101T000020.000000000"),
-                std::string("20150101T000029.000000000"),
-                ids
-            };
-            continous_query(&storage, q, exppoints, newpoints);
         }
 
         std::cout << "OK!" << std::endl;

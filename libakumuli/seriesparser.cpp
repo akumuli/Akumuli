@@ -46,8 +46,9 @@ SeriesMatcher::SeriesMatcher(u64 starting_id)
 
 u64 SeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
-    StringT pstr = pool.add(begin, end, id);
+    StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
+    std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
     names.push_back(tup);
@@ -60,16 +61,25 @@ void SeriesMatcher::_add(std::string series, u64 id) {
     }
     const char* begin = &series[0];
     const char* end = begin + series.size();
-    StringT pstr = pool.add(begin, end, id);
+    StringT pstr = pool.add(begin, end);
+    std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
-u64 SeriesMatcher::match(const char* begin, const char* end) {
+void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+    StringT pstr = pool.add(begin, end);
+    std::lock_guard<std::mutex> guard(mutex);
+    table[pstr] = id;
+    inv_table[id] = pstr;
+}
 
-    int len = end - begin;
+u64 SeriesMatcher::match(const char* begin, const char* end) const {
+
+    int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
 
+    std::lock_guard<std::mutex> guard(mutex);
     auto it = table.find(str);
     if (it == table.end()) {
         return 0ul;
@@ -78,6 +88,7 @@ u64 SeriesMatcher::match(const char* begin, const char* end) {
 }
 
 SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
+    std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
         return EMPTY;
@@ -86,15 +97,43 @@ SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
 }
 
 void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
+    std::lock_guard<std::mutex> guard(mutex);
     std::swap(names, *buffer);
 }
 
 std::vector<u64> SeriesMatcher::get_all_ids() const {
     std::vector<u64> result;
-    for (auto const &tup: inv_table) {
-        result.push_back(tup.first);
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        for (auto const &tup: inv_table) {
+            result.push_back(tup.first);
+        }
     }
+    std::sort(result.begin(), result.end());
     return result;
+}
+
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp) const {
+    StringPoolOffset offset = {};
+    size_t size = 0;
+    return regex_match(rexp, &offset, &size);
+}
+
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
+    std::vector<SeriesNameT> series;
+    std::vector<StringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
+
+    std::lock_guard<std::mutex> guard(mutex);
+    std::transform(res.begin(), res.end(), std::back_inserter(series), [this](StringT s) {
+        auto it = table.find(s);
+        if (it == table.end()) {
+            // We should always find id by string, otherwise - invariant is
+            // broken (due to memory corruption most likely).
+            AKU_PANIC("Invalid string-pool.");
+        }
+        return std::make_tuple(s.first, s.second, it->second);
+    });
+    return series;
 }
 
 //                         //
@@ -305,6 +344,108 @@ std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesPa
     }
 
     return std::make_tuple(AKU_SUCCESS, std::make_pair(out_begin, it_out - out_begin));
+}
+
+
+// /////////// //
+// RegexFilter //
+// /////////// //
+
+RegexFilter::RegexFilter(std::string regex, SeriesMatcher const& matcher)
+    : regex_(regex)
+    , matcher_(matcher)
+    , offset_{}
+    , prev_size_(0ul)
+{
+    refresh();
+}
+
+void RegexFilter::refresh() {
+    std::vector<SeriesMatcher::SeriesNameT> results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
+    for (SeriesMatcher::SeriesNameT item: results) {
+        ids_.insert(std::get<2>(item));
+    }
+}
+
+std::vector<aku_ParamId> RegexFilter::get_ids() {
+    std::vector<aku_ParamId> result;
+    std::copy(ids_.begin(), ids_.end(), std::back_inserter(result));
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+
+// ////////// //
+// GroupByTag //
+// ////////// //
+
+
+GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+    : matcher_(matcher)
+    , offset_{}
+    , prev_size_(0)
+    , tags_(tags)
+    , local_matcher_(1ul)
+    , snames_(StringTools::create_set(64))
+{
+    std::sort(tags_.begin(), tags_.end());
+    // Build regexp
+    std::stringstream series_regexp;
+    //cpu(?:\s\w+=\w+)* (?:\s\w+=\w+)*\s hash=\w+ (?:\s\w+=\w+)*
+    series_regexp << metric << "(?:\\s\\w+=\\w+)*";
+    for (auto tag: tags) {
+        series_regexp << "(?:\\s\\w+=\\w+)*\\s" << tag << "=\\w+";
+    }
+    series_regexp << "(?:\\s\\w+=\\w+)*";
+    regex_ = series_regexp.str();
+    refresh_();
+}
+
+std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
+    return ids_;
+}
+
+void GroupByTag::refresh_() {
+    auto results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
+    auto filter = StringTools::create_set(tags_.size());
+    for (const auto& tag: tags_) {
+        filter.insert(std::make_pair(tag.data(), tag.size()));
+    }
+    char buffer[AKU_LIMITS_MAX_SNAME];
+    for (auto item: results) {
+        aku_Status status;
+        SeriesParser::StringT result, stritem;
+        stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
+        std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
+        if (status == AKU_SUCCESS) {
+            if (snames_.count(result) == 0) {
+                // put result to local stringpool and ids list
+                auto localid = local_matcher_.add(result.first, result.first + result.second);
+                auto str = local_matcher_.id2str(localid);
+                snames_.insert(str);
+                ids_[std::get<2>(item)] = localid;
+            } else {
+                // local name already created
+                auto localid = local_matcher_.match(result.first, result.first + result.second);
+                if (localid == 0ul) {
+                    AKU_PANIC("inconsistent matcher state");
+                }
+                ids_[std::get<2>(item)] = localid;
+            }
+        }
+    }
+}
+
+bool GroupByTag::apply(aku_Sample* sample) {
+    if (matcher_.pool.size() != prev_size_) {
+        refresh_();
+    }
+    auto it = ids_.find(sample->paramid);
+    if (it != ids_.end()) {
+        sample->paramid = it->second;
+        return true;
+    }
+    return false;
 }
 
 }

@@ -102,7 +102,7 @@ typedef struct {
 //! Max number of tags in series name
 #define AKU_LIMITS_MAX_TAGS 32
 //! Longest possible series name
-#define AKU_LIMITS_MAX_SNAME 0x200
+#define AKU_LIMITS_MAX_SNAME 0x1000
 #define AKU_MIN_TIMESTAMP 0ull
 #define AKU_MAX_TIMESTAMP (~0ull)
 #define AKU_STACK_SIZE 0x100000
@@ -147,9 +147,21 @@ typedef enum {
     AKU_EMERGE_REQUIRED = 13,
     //! Operation on device can't be completed because device was closed
     AKU_ECLOSED = 14,
-
-    AKU_EMAX_ERROR = 15,
+    //! Timeout detected
+    AKU_ETIMEOUT = 15,
+    //! Retry required
+    AKU_ERETRY = 16,
+    //! Access denied
+    AKU_EACCESS = 17,
+    //! Operation not permitted
+    AKU_ENOT_PERMITTED = 18,
+    //! Resource is not available
+    AKU_EUNAVAILABLE = 19,
+    //! All error codes should be less then AKU_EMAX_ERROR
+    AKU_EMAX_ERROR = 20,
+    // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
+
 
 
 // Cursor directions

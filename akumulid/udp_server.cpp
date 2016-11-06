@@ -14,10 +14,10 @@
 
 namespace Akumuli {
 
-UdpServer::UdpServer(std::shared_ptr<IngestionPipeline> pipeline, int nworkers, int port)
-    : pipeline_(pipeline)
-    , start_barrier_(nworkers + 1)
-    , stop_barrier_(nworkers + 1)
+UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
+    : db_(db)
+    , start_barrier_(static_cast<u32>(nworkers + 1))
+    , stop_barrier_(static_cast<u32>(nworkers + 1))
     , stop_{0}
     , port_(port)
     , nworkers_(nworkers)
@@ -30,16 +30,10 @@ void UdpServer::start(SignalHandler *sig, int id) {
     auto self = shared_from_this();
     sig->add_handler(boost::bind(&UdpServer::stop, std::move(self)), id);
 
-    auto logger = &logger_;
-    auto error_cb = [logger](aku_Status status, u64 counter) {
-        const char* msg = aku_error_message(status);
-        logger->error() << msg;
-    };
     // Create workers
     for (int i = 0; i < nworkers_; i++) {
-        auto spout = pipeline_->make_spout();
-        spout->set_error_cb(error_cb);
-        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), spout));
+        auto session = db_->create_session();
+        std::thread thread(std::bind(&UdpServer::worker, shared_from_this(), std::move(session)));
         thread.detach();
     }
     start_barrier_.wait();
@@ -53,7 +47,7 @@ void UdpServer::stop() {
 }
 
 
-void UdpServer::worker(std::shared_ptr<PipelineSpout> spout) {
+void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     start_barrier_.wait();
 
     int sockfd, retval;
@@ -164,10 +158,10 @@ struct UdpServerBuilder {
         ServerFactory::instance().register_type("UDP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline,
+    std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        return std::make_shared<UdpServer>(pipeline, settings.nworkers, settings.port);
+        return std::make_shared<UdpServer>(con, settings.nworkers, settings.port);
     }
 };
 

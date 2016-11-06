@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "cursor.h"
-#include "page.h"
+#include "akumuli_def.h"
 
 
 using namespace Akumuli;
@@ -30,7 +30,7 @@ void test_cursor(int n_iter, int buf_size) {
     cursor.start(generator);
     while(!cursor.is_done()) {
         char results[buf_size*sizeof(aku_Sample)];
-        int n_read = cursor.read_ex(results, buf_size*sizeof(aku_Sample));
+        int n_read = cursor.read(results, buf_size*sizeof(aku_Sample));
         // copy with clipping
         int offset = 0;
         while(offset < n_read) {
@@ -66,7 +66,7 @@ void test_cursor_error(int n_iter, int buf_size) {
     cursor.start(generator);
     while(!cursor.is_done()) {
         char results[buf_size*sizeof(aku_Sample)];
-        int n_read = cursor.read_ex(results, buf_size*sizeof(aku_Sample));
+        int n_read = cursor.read(results, buf_size*sizeof(aku_Sample));
         // copy with clipping
         int offset = 0;
         while(offset < n_read) {

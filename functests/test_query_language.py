@@ -22,7 +22,7 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
@@ -65,7 +65,7 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
         "group-by": {  "tag": "tag3" },
@@ -110,7 +110,7 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
 def test_where_clause_in_backward_direction(dtstart, delta, N):
     """Filter data by tag"""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
         "where": {
@@ -158,7 +158,7 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
 def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     """Filter data by tag and group by another tag"""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
         "group-by": { "tag": "tag3" },
@@ -234,12 +234,9 @@ def test_metadata_query(tags):
 
 def test_read_in_forward_direction(dtstart, delta, N):
     """Read data in forward direction"""
-    window = att.get_window_width()
-    end = dtstart + delta*(N-1) - window
     begin = dtstart
+    end = dtstart + delta*(N + 1)
     timedelta = end - begin
-    points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / (delta.seconds*1000000.0 + delta.microseconds))) + 1
-    # We need to add 1 because query will include both begin and end timestamps.
 
     query_params = {
         "output": { "format":  "csv" },
@@ -277,7 +274,7 @@ def test_read_in_forward_direction(dtstart, delta, N):
             raise
 
     # Check that we received all values
-    if iterations != points_required:
+    if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
     print("Test #6 passed")
 
@@ -365,9 +362,8 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
     print("Test #7 - late write")
-    window = att.get_window_width()
-    ts = dtstart + delta*(N-1) - 2*window
-    message = att.msg(ts, 1.0, 'test', key='value')
+    ts = dtstart
+    message = att.msg(ts, 1.0, 'test', tag1='A', tag2='B', tag3='D')
     chan.send(message)
     resp = chan.recv().strip()
     if resp != '-DB late write':
@@ -381,22 +377,16 @@ def med(buf):
     return buf[len(buf)/2]
 
 
-def main(path, debug=False):
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
+def main(path):
+    akumulid = att.create_akumulid(path)
 
-    akumulid = att.Akumulid(path)
-    if not debug:
-        # Reset database
-        akumulid.delete_database()
-        akumulid.create_database()
-        # start ./akumulid server
-        print("Starting server...")
-        akumulid.serve()
-        time.sleep(5)
-    else:
-        print("Akumulid should be started first")
+    # Reset database
+    akumulid.delete_database()
+    akumulid.create_database()
+    # start ./akumulid server
+    print("Starting server...")
+    akumulid.serve()
+    time.sleep(5)
     try:
 
         chan = att.TCPChan(HOST, TCPPORT)
@@ -422,25 +412,26 @@ def main(path, debug=False):
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
+        """
         test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
         test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
         test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
         test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
         test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
         test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
+        """
     except:
         traceback.print_exc()
         sys.exit(1)
     finally:
-        if not debug:
-            print("Stopping server...")
-            akumulid.stop()
-            time.sleep(5)
+        print("Stopping server...")
+        akumulid.stop()
+        time.sleep(5)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Not enough arguments")
         sys.exit(1)
-    main(sys.argv[1], sys.argv[2] == 'debug' if len(sys.argv) == 3 else False)
+    main(sys.argv[1])
 else:
     raise ImportError("This module shouldn't be imported")

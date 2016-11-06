@@ -28,6 +28,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <vector>
+#include <tuple>
 
 #include "akumuli.h"
 #include "util.h"
@@ -148,8 +149,7 @@ struct Base128StreamWriter {
 
     bool empty() const { return begin_ == end_; }
 
-    /** Put value into stream (transactional).
-      */
+    //! Put value into stream (transactional).
     template <class TVal> bool tput(TVal const* iter, size_t n) {
         auto oldpos = pos_;
         for (size_t i = 0; i < n; i++) {
@@ -162,8 +162,7 @@ struct Base128StreamWriter {
         return commit();  // no-op
     }
 
-    /** Put value into stream.
-     */
+    //! Put value into stream.
     template <class TVal> bool put(TVal value) {
         Base128Int<TVal> val(value);
         unsigned char*   p = val.put(pos_, end_);
@@ -186,14 +185,13 @@ struct Base128StreamWriter {
     //! Commit stream
     bool commit() { return true; }
 
-    size_t size() const { return pos_ - begin_; }
+    size_t size() const { return static_cast<size_t>(pos_ - begin_); }
 
-    size_t space_left() const { return end_ - pos_; }
+    size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
 
-    /** Try to allocate space inside a stream in current position without
-      * compression (needed for size prefixes).
-      * @returns pointer to the value inside the stream or nullptr
-      */
+    // Try to allocate space inside a stream in current position without
+    // compression (needed for size prefixes).
+    // @returns pointer to the value inside the stream or nullptr
     template <class T> T* allocate() {
         size_t sz = sizeof(T);
         if (space_left() < sz) {
@@ -238,6 +236,296 @@ struct Base128StreamReader {
     size_t space_left() const { return end_ - pos_; }
 
     const unsigned char* pos() const { return pos_; }
+};
+
+
+/** VByte for DeltaDelta encoding.
+  * Delta-RLE encoding used to work great for majority of time-series. But sometimes
+  * it doesn't work because timestamps have some noise in low registers. E.g. timestamps
+  * have 1s period but each timestamp has nonzero amount of usec in it. In this case 
+  * Delta encoding will produce series of different values (probably about 4 bytes each).
+  * Run length encoding will have trouble compressing it. Actually it will make output larger
+  * then simple delta-encoding (but it will be smaller then input anyway). To solve this
+  * DeltaDelta encoding was introduced. After delta encoding step we're searching for smallest
+  * value and substract it from each element of the chunk (we're doing it for each chunk).
+  * This will make timestamps smaller (1-2 bytes instead of 3-4). But if series of timestamps
+  * is regullar Delta-RLE will achive much better results. In this case DeltaDelta will
+  * produce one value followed by series of zeroes [42, 0, 0, ... 0].
+  * 
+  * This encoding was introduced to solve this problem. It combines values into pairs (x1, x2)
+  * and writes them using one control byte. This is basically the same as LEB128 but with
+  * all control bits moved to separate location. In this case each byte stores control byte or 8-bits
+  * of value (7-bits in LEB128). This makes encoder simplier because we can get rid of most branches.
+  * Control world consist of two flags (first one corresponds to x1, the second one to x2). Each flag
+  * is a size of the value in bytes (size(x1) | (size(x3) << 4)). E.g. if both values can be stored
+  * using one byte cotrol word will be 0x11, and if first value can be stored using only one byte
+  * and second needs eight bytes control word will be 0x81.
+  *
+  * It also provides method to store leb128 encoded values to store min values for the DeltaDelta
+  * encoder. When 16 values are encoded using DeltaDelta encoder it produce 17 values, min value and
+  * 16 delta values. This first min value should be stored using leb128.
+  * 
+  * To store effectively combination of signle value followed by the series of zeroes special shortcut
+  * was introduced. In this case control word will be equall to 0xFF. If decoder encounters 0xFF control
+  * world it returns 16 zeroes.
+  * This encoding combines upsides of both Delta-RLE and DeltaDelta encodings without its downsides.
+  */
+struct VByteStreamWriter {
+    // underlying memory region
+    const u8* begin_;
+    const u8* end_;
+    u8*       pos_;
+    // tail elements
+    u32       cnt_;
+    u64       prev_;
+
+    VByteStreamWriter(u8* begin, const unsigned char* end)
+        : begin_(begin)
+        , end_(end)
+        , pos_(begin)
+        , cnt_(0)
+        , prev_(0)
+    {}
+
+    VByteStreamWriter(VByteStreamWriter& other)
+        : begin_(other.begin_)
+        , end_(other.end_)
+        , pos_(other.pos_)
+        , cnt_(0)
+        , prev_(0)
+    {}
+
+    bool empty() const { return begin_ == end_; }
+
+    //! Perform combined write (TVal should be integer)
+    template<class TVal> bool encode(TVal fst, TVal snd) {
+        static_assert(sizeof(TVal) <= 8, "Value is to large");
+        int fstlen = 8*sizeof(TVal);
+        int sndlen = 8*sizeof(TVal);
+        if (fst) {
+            fstlen = __builtin_clzl(fst);
+        }
+        if (snd) {
+            sndlen = __builtin_clzl(snd);
+        }
+        int fstctrl = sizeof(TVal) - fstlen / 8;  // value should be in 0-8 range
+        int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
+        u8 ctrlword = static_cast<u8>(fstctrl | (sndctrl << 4));
+        // Check size
+        if (space_left() < static_cast<size_t>(1 + fstctrl + sndctrl)) {
+            return false;
+        }
+        // Write ctrl world
+        *pos_++ = ctrlword;
+        for (int i = 0; i < fstctrl; i++) {
+            *pos_++ = static_cast<u8>(fst);
+            fst >>= 8;
+        }
+        for (int i = 0; i < sndctrl; i++) {
+            *pos_++ = static_cast<u8>(snd);
+            snd >>= 8;
+        }
+        return true;
+    }
+
+    /** This method is used by DeltaDelta coding.
+      */
+    template<class TVal> bool put_base128(TVal value) {
+        Base128Int<TVal> val(value);
+        unsigned char*   p = val.put(pos_, end_);
+        if (pos_ == p) {
+            return false;
+        }
+        pos_ = p;
+        return true;
+    }
+    
+    bool shortcut() {
+        // put sentinel
+        if (space_left() == 0) {
+            return false;
+        }
+        *pos_++ = 0xFF;
+        return true;
+    }
+
+    /** Put value into stream (transactional).
+      */
+    template <class TVal> bool tput(TVal const* iter, size_t n) {
+        assert(n % 2 == 0);  // n expected to be eq 16 
+        auto oldpos = pos_;
+        // Fast path for DeltaDelta encoding
+        bool take_shortcut = true;
+        for (u32 i = 0; i < n; i++) {
+            if (iter[i] != 0) {
+                take_shortcut = false;
+                break;
+            }
+        }
+        if (take_shortcut) {
+            return shortcut();
+        } else {
+            for (u32 i = 0; i < n; i+=2) {
+                if (!encode(iter[i], iter[i+1])) {
+                    // restore old pos_ value
+                    pos_ = oldpos;
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Put value into stream. This method should be used after
+      * tput. The idea is that user should write most of the data
+      * using `tput` method and then the rest of the data (less then 
+      * chunksize elements) should be written using this one. If one
+      * call `put` before `tput` stream will be broken and unreadable.
+      */
+    template <class TVal> bool put(TVal value) {
+        cnt_++;
+        union {
+            TVal val;
+            u64 uint;
+        } prev;
+        if (cnt_ % 2 != 0) {
+            prev.val = value;
+            prev_ = prev.uint;
+        } else {
+            prev.uint = prev_;
+            return encode(prev.val, value);
+        }
+        return true;
+    }
+
+    template <class TVal> bool put_raw(TVal value) {
+        if ((end_ - pos_) < static_cast<i32>(sizeof(TVal))) {
+            return false;
+        }
+        *reinterpret_cast<TVal*>(pos_) = value;
+        pos_ += sizeof(value);
+        return true;
+    }
+
+    //! Commit stream
+    bool commit() {
+        // write tail if needed
+        if (cnt_ % 2 == 1) {
+            int len = 64;
+            if (prev_) {
+                len = __builtin_clzl(prev_);
+            }
+            int ctrl = 8 - len / 8;  // value should be in 0-8 range
+            u8 ctrlword = static_cast<u8>(ctrl);
+            // Check size
+            if (space_left() < static_cast<size_t>(1 + ctrl)) {
+                return false;
+            }
+            // Write ctrl world
+            *pos_++ = ctrlword;
+            for (int i = 0; i < ctrl; i++) {
+                *pos_++ = static_cast<u8>(prev_);
+                prev_ >>= 8;
+            }
+        }
+        return true;
+    }
+
+    size_t size() const { return static_cast<size_t>(pos_ - begin_); }
+
+    size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
+
+    /** Try to allocate space inside a stream in current position without
+      * compression (needed for size prefixes).
+      * @returns pointer to the value inside the stream or nullptr
+      */
+    template <class T> T* allocate() {
+        size_t sz = sizeof(T);
+        if (space_left() < sz) {
+            return nullptr;
+        }
+        T* result = reinterpret_cast<T*>(pos_);
+        pos_ += sz;
+        return result;
+    }
+};
+
+
+//! Base128 decoder
+struct VByteStreamReader {
+    const u8* pos_;
+    const u8* end_;
+    u32 cnt_;
+    int ctrl_;
+    int scut_elements_;
+
+    enum {
+        CHUNK_SIZE = 16,
+    };
+
+    VByteStreamReader(const u8* begin, const u8* end)
+        : pos_(begin)
+        , end_(end)
+        , cnt_(0)
+        , ctrl_(0)
+        , scut_elements_(0)
+    {}
+
+    template <class TVal>
+    TVal next() {
+        if (ctrl_ == 0xFF && scut_elements_) {
+            scut_elements_--;
+            cnt_++;
+            return 0;
+        }
+        int bytelen = 0;
+        if (cnt_++ % 2 == 0) {
+            // Read control byte
+            ctrl_ = read_raw<u8>();
+            bytelen = ctrl_ & 0xF;
+            if ((ctrl_ >> 4) == 0xF) {
+                scut_elements_ = CHUNK_SIZE-1;
+                return 0;
+            }
+        } else {
+            bytelen = ctrl_ >> 4;
+        }
+        TVal acc = {};
+        if (space_left() < static_cast<size_t>(bytelen)) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        for(int i = 0; i < bytelen*8; i += 8) {
+            TVal byte = *pos_;
+            acc |= (byte << i);
+            pos_++;
+        }
+        return acc;
+    }
+
+    template <class TVal> TVal next_base128() {
+        Base128Int<TVal> value;
+        auto             p = value.get(pos_, end_);
+        if (p == pos_) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        pos_ = p;
+        return static_cast<TVal>(value);
+    }
+
+    //! Read uncompressed value from stream
+    template <class TVal> TVal read_raw() {
+        size_t sz = sizeof(TVal);
+        if (space_left() < sz) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        auto val = *reinterpret_cast<const TVal*>(pos_);
+        pos_ += sz;
+        return val;
+    }
+
+    size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
+
+    const u8* pos() const { return pos_; }
 };
 
 template <class Stream, class TVal> struct ZigZagStreamWriter {
@@ -289,9 +577,11 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
     Stream stream_;
     TVal   prev_;
 
-    DeltaStreamWriter(Base128StreamWriter& stream)
+    template<class Substream>
+    DeltaStreamWriter(Substream& stream)
         : stream_(stream)
-        , prev_() {}
+        , prev_{}
+    {}
 
     bool tput(TVal const* iter, size_t n) {
         assert(n < 1000);
@@ -322,7 +612,8 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
     Stream stream_;
     TVal   prev_;
 
-    DeltaStreamReader(Base128StreamReader& stream)
+    template<class Substream>
+    DeltaStreamReader(Substream& stream)
         : stream_(stream)
         , prev_() {}
 
@@ -338,11 +629,11 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
 
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
-    Base128StreamWriter& stream_;
+    VByteStreamWriter&   stream_;
     TVal                 prev_;
     int                  put_calls_;
 
-    DeltaDeltaStreamWriter(Base128StreamWriter& stream)
+    DeltaDeltaStreamWriter(VByteStreamWriter& stream)
         : stream_(stream)
         , prev_()
         , put_calls_(0) {}
@@ -350,23 +641,19 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
     bool tput(TVal const* iter, size_t n) {
         assert(n == Step);
         TVal outbuf[n];
-        memset(outbuf, 0, n);
+        TVal min = iter[0] - prev_;
         for (size_t i = 0; i < n; i++) {
             auto value  = iter[i];
             auto result = value - prev_;
             outbuf[i]   = result;
             prev_       = value;
+            min         = std::min(result, min);
         }
-        TVal min = outbuf[0];
-        for (size_t i = 1; i < n; i++) {
-            min = std::min(outbuf[i], min);
+        if (!stream_.put_base128(min)) {
+            return false;
         }
         for (size_t i = 0; i < n; i++) {
             outbuf[i] -= min;
-        }
-        // encode min value
-        if (!stream_.put(min)) {
-            return false;
         }
         return stream_.tput(outbuf, n);
     }
@@ -374,7 +661,8 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
     bool put(TVal value) {
         bool success = false;
         if (put_calls_ == 0) {
-            success = stream_.put(0);
+            // put fake min value
+            success = stream_.put_base128(0);
             if (!success) {
                 return false;
             }
@@ -391,12 +679,12 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
 };
 
 template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
-    Base128StreamReader& stream_;
+    VByteStreamReader&   stream_;
     TVal                 prev_;
     TVal                 min_;
     int                  counter_;
 
-    DeltaDeltaStreamReader(Base128StreamReader& stream)
+    DeltaDeltaStreamReader(VByteStreamReader& stream)
         : stream_(stream)
         , prev_()
         , min_()
@@ -405,7 +693,7 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
     TVal next() {
         if (counter_ % Step == 0) {
             // read min
-            min_ = stream_.next<TVal>();
+            min_ = stream_.next_base128<TVal>();
         }
         counter_++;
         TVal delta = stream_.next<TVal>();
@@ -529,16 +817,36 @@ struct DfcmPredictor {
     void update(u64 value);
 };
 
-typedef FcmPredictor PredictorT;
+// 2nd order DFCM predictor
+struct Dfcm2Predictor {
+    std::vector<u64> table1;
+    std::vector<u64> table2;
+    u64              last_hash;
+    u64              last_value1;
+    u64              last_value2;
+    const u64        MASK_;
 
+    //! C-tor. `table_size` should be a power of two.
+    Dfcm2Predictor(int table_size);
+
+    u64 predict_next() const;
+
+    void update(u64 value);
+};
+
+typedef DfcmPredictor PredictorT;
+
+//! Double to FCM encoder
 struct FcmStreamWriter {
-    Base128StreamWriter& stream_;
+    VByteStreamWriter&   stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
     int                  nelements_;
 
-    FcmStreamWriter(Base128StreamWriter& stream);
+    FcmStreamWriter(VByteStreamWriter& stream);
+
+    inline std::tuple<u64, unsigned char> encode(double value);
 
     bool tput(double const* values, size_t n);
 
@@ -549,13 +857,14 @@ struct FcmStreamWriter {
     bool commit();
 };
 
+//! FCM to double decoder
 struct FcmStreamReader {
-    Base128StreamReader& stream_;
+    VByteStreamReader&   stream_;
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
 
-    FcmStreamReader(Base128StreamReader& stream);
+    FcmStreamReader(VByteStreamReader& stream);
 
     double next();
 
@@ -608,7 +917,7 @@ struct CompressionUtil {
       * @param params array of parameter ids
       * @param buffer resulting byte array
       */
-    static size_t compress_doubles(const std::vector<double>& input, Base128StreamWriter& wstream);
+    static size_t compress_doubles(const std::vector<double>& input, Base128StreamWriter &wstream);
 
     /** Decompress list of doubles.
       * @param buffer input data
@@ -616,7 +925,7 @@ struct CompressionUtil {
       * @param params list of parameter ids
       * @param output resulting array
       */
-    static void decompress_doubles(Base128StreamReader& rstream, size_t numvalues,
+    static void decompress_doubles(Base128StreamReader &rstream, size_t numvalues,
                                    std::vector<double>* output);
 
     /** Convert from chunk order to time order.
@@ -632,10 +941,8 @@ struct CompressionUtil {
     static bool convert_from_time_order(const UncompressedChunk& header, UncompressedChunk* out);
 };
 
-
 // Length -> RLE -> Base128
 typedef RLEStreamWriter<u32> RLELenWriter;
-
 // Base128 -> RLE -> Length
 typedef RLEStreamReader<u32> RLELenReader;
 
@@ -649,10 +956,12 @@ typedef RLEStreamReader<i64> __RLEReader;
 typedef ZigZagStreamReader<__RLEReader, i64>   __ZigZagReader;
 typedef DeltaStreamReader<__ZigZagReader, i64> ZDeltaRLEReader;
 
-// u64 -> Delta -> RLE -> Base128
 typedef DeltaStreamWriter<RLEStreamWriter<u64>, u64> DeltaRLEWriter;
-// Base128 -> RLE -> Delta -> u64
 typedef DeltaStreamReader<RLEStreamReader<u64>, u64> DeltaRLEReader;
+
+
+typedef DeltaDeltaStreamReader<16, u64> DeltaDeltaReader;
+typedef DeltaDeltaStreamWriter<16, u64> DeltaDeltaWriter;
 
 
 namespace StorageEngine {
@@ -663,8 +972,8 @@ struct DataBlockWriter {
         CHUNK_MASK  = 15,
         HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
-    Base128StreamWriter stream_;
-    DeltaRLEWriter      ts_stream_;
+    VByteStreamWriter   stream_;
+    DeltaDeltaWriter    ts_stream_;
     FcmStreamWriter     val_stream_;
     int                 write_index_;
     aku_Timestamp       ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
@@ -708,8 +1017,8 @@ struct DataBlockReader {
         CHUNK_MASK = 15,
     };
     const u8*           begin_;
-    Base128StreamReader stream_;
-    DeltaRLEReader      ts_stream_;
+    VByteStreamReader   stream_;
+    DeltaDeltaReader    ts_stream_;
     FcmStreamReader     val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
     u32                 read_index_;

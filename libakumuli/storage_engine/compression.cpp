@@ -21,17 +21,17 @@ u64 FcmPredictor::predict_next() const {
 
 void FcmPredictor::update(u64 value) {
     table[last_hash] = value;
-    last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+    last_hash = ((last_hash << 5) ^ (value >> 50)) & MASK_;
 }
 
 //! C-tor. `table_size` should be a power of two.
 DfcmPredictor::DfcmPredictor(int table_size)
     : last_hash (0ul)
     , last_value(0ul)
-    , MASK_(table_size - 1)
+    , MASK_(static_cast<u64>(table_size - 1))
 {
    assert((table_size & MASK_) == 0);
-   table.resize(table_size);
+   table.resize(static_cast<u64>(table_size));
 }
 
 u64 DfcmPredictor::predict_next() const {
@@ -40,13 +40,14 @@ u64 DfcmPredictor::predict_next() const {
 
 void DfcmPredictor::update(u64 value) {
     table[last_hash] = value - last_value;
-    last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
+    last_hash = ((last_hash << 5) ^ ((value - last_value) >> 50)) & MASK_;
     last_value = value;
 }
 
-static const int PREDICTOR_N = 1 << 10;
+static const int PREDICTOR_N = 1 << 7;
 
-static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned char flag) {
+template<class StreamT>
+static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
@@ -95,11 +96,12 @@ static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned
     return true;
 }
 
-static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag) {
+template<class StreamT>
+static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
     u64 diff = 0ul;
     int nbytes = (flag & 7) + 1;
     for (int i = 0; i < nbytes; i++) {
-        u64 delta = rstream.read_raw<unsigned char>();
+        u64 delta = rstream.template read_raw<unsigned char>();
         diff |= delta << (i*8);
     }
     int shift_width = (64 - nbytes*8)*(flag >> 3);
@@ -108,7 +110,13 @@ static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag)
 }
 
 
-FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
+        // ///////////////////////////////// //
+        // FcmStreamWriter & FcmStreamReader //
+        // ///////////////////////////////// //
+
+
+
+FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , prev_diff_(0)
@@ -118,15 +126,27 @@ FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
 }
 
 bool FcmStreamWriter::tput(double const* values, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        if (!put(values[i])) {
+    assert(n % 2 == 0);
+    for (size_t i = 0; i < n; i+=2) {
+        u64 prev_diff, curr_diff;
+        unsigned char prev_flag, curr_flag;
+        std::tie(prev_diff, prev_flag) = encode(values[i]);
+        std::tie(curr_diff, curr_flag) = encode(values[i + 1]);
+        unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
+        if (!stream_.put_raw(flags)) {
+            return false;
+        }
+        if (!encode_value(stream_, prev_diff, prev_flag)) {
+            return false;
+        }
+        if (!encode_value(stream_, curr_diff, curr_flag)) {
             return false;
         }
     }
     return commit();
 }
 
-bool FcmStreamWriter::put(double value) {
+std::tuple<u64, unsigned char> FcmStreamWriter::encode(double value) {
     union {
         double real;
         u64 bits;
@@ -165,7 +185,13 @@ bool FcmStreamWriter::put(double value) {
         // zeroed 4th bit indicates that only trailing bytes are stored
         flag = nbytes&7;
     }
+    return std::make_tuple(diff, flag);
+}
 
+bool FcmStreamWriter::put(double value) {
+    u64 diff;
+    unsigned char flag;
+    std::tie(diff, flag) = encode(value);
     if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
         prev_flag_ = flag;
@@ -207,7 +233,7 @@ bool FcmStreamWriter::commit() {
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         Base128StreamWriter&       wstream)
+                                         Base128StreamWriter &wstream)
 {
     PredictorT predictor(PREDICTOR_N);
     u64 prev_diff = 0;
@@ -282,7 +308,7 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     return input.size();
 }
 
-FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
+FcmStreamReader::FcmStreamReader(VByteStreamReader& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , flags_(0)
@@ -311,7 +337,7 @@ double FcmStreamReader::next() {
 
 const u8 *FcmStreamReader::pos() const { return stream_.pos(); }
 
-void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
+void CompressionUtil::decompress_doubles(Base128StreamReader &rstream,
                                          size_t                   numvalues,
                                          std::vector<double>     *output)
 {
@@ -344,6 +370,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         }
     }
 }
+
 
 /** NOTE:
   * Data should be ordered by paramid and timestamp.

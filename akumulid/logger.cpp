@@ -27,9 +27,12 @@ Formatter::Formatter()
 
 Formatter::~Formatter() {
     switch (sink_) {
-    case LOGGER_INFO:
+    case LOGGER_INFO: {
+        std::lock_guard<std::mutex> guard(buffer_->mutex_);
+        buffer_->trace_.push_back(str_.str());
         LOG4CXX_INFO(logger_, str_.str());
         break;
+    }
     case LOGGER_ERROR: {
         std::vector<std::string> trace;
         {
@@ -64,9 +67,10 @@ Formatter::~Formatter() {
     };
 }
 
-void Formatter::set_info_sink(log4cxx::LoggerPtr logger) {
+void Formatter::set_info_sink(log4cxx::LoggerPtr logger, details::CircularBuffer *buffer) {
     sink_ = LOGGER_INFO;
     logger_ = logger;
+    buffer_ = buffer;
 }
 
 void Formatter::set_trace_sink(details::CircularBuffer *buffer) {
@@ -86,13 +90,19 @@ Logger::Logger(const char* log_name, int depth)
 {
 }
 
+Logger::Logger(std::string log_name, int depth)
+    : trace_(depth)
+    , plogger_(log4cxx::Logger::getLogger(log_name))
+{
+}
+
 Formatter&& Logger::trace(Formatter&& fmt) {
     fmt.set_trace_sink(&trace_);
     return std::move(fmt);
 }
 
 Formatter&& Logger::info(Formatter&& fmt) {
-    fmt.set_info_sink(plogger_);
+    fmt.set_info_sink(plogger_, &trace_);
     return std::move(fmt);
 }
 

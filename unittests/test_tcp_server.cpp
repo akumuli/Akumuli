@@ -14,53 +14,72 @@ using namespace Akumuli;
 
 
 static Logger logger_ = Logger("tcp-server-test", 10);
+typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
 
 
-struct DbMock : DbConnection {
-    typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
-    std::vector<ValueT> results;
+struct SessionMock : DbSession {
+    std::vector<ValueT>& results;
 
-    void close() {
-    }
+    SessionMock(std::vector<ValueT>& results)
+        : results(results) {}
 
-    aku_Status write(const aku_Sample &sample) {
+    virtual aku_Status write(const aku_Sample &sample) override {
         logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
         results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64));
         return AKU_SUCCESS;
     }
-    std::shared_ptr<DbCursor> search(std::string query) {
+
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
-    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+
+    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
         throw "not implemented";
     }
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+
+    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
         throw "not implemented";
     }
-    std::string get_all_stats() { throw "not impelemnted"; }
+};
+
+
+struct ConnectionMock : DbConnection {
+    std::vector<ValueT> results;
+
+    virtual std::string get_all_stats() override { throw "not impelemnted"; }
+
+    virtual std::shared_ptr<DbSession> create_session() override {
+        return std::make_shared<SessionMock>(results);
+    }
 };
 
 
 template<aku_Status ERR>
-struct DbErrMock : DbConnection {
+struct DbSessionErrorMock : DbSession {
     aku_Status err = ERR;
 
-    void close() {
-    }
-
-    aku_Status write(const aku_Sample &sample) {
+    virtual aku_Status write(const aku_Sample&) override {
         return err;
     }
-    std::shared_ptr<DbCursor> search(std::string query) {
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
-    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
         throw "not implemented";
     }
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
         throw "not implemented";
     }
-    std::string get_all_stats() { throw "not impelemented"; }
+
+};
+
+template<aku_Status ERR>
+struct DbConnectionErrorMock : DbConnection {
+    virtual std::string get_all_stats() override { throw "not impelemented"; }
+
+    virtual std::shared_ptr<DbSession> create_session() override {
+        return std::make_shared<DbSessionErrorMock<ERR>>();
+    }
 };
 
 const int PORT = 14096;
@@ -68,19 +87,16 @@ const int PORT = 14096;
 template<class Mock>
 struct TCPServerTestSuite {
     std::shared_ptr<Mock>               dbcon;
-    std::shared_ptr<IngestionPipeline>  pline;
     IOServiceT                          io;
     std::shared_ptr<TcpAcceptor>        serv;
 
     TCPServerTestSuite() {
         // Create mock pipeline
         dbcon = std::make_shared<Mock>();
-        pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
-        pline->start();
 
         // Run server
         std::vector<IOServiceT*> iovec = { &io };
-        serv = std::make_shared<TcpAcceptor>(iovec, PORT, pline);
+        serv = std::make_shared<TcpAcceptor>(iovec, PORT, dbcon);
 
         // Start reading but don't start iorun thread
         serv->_start();
@@ -110,7 +126,7 @@ struct TCPServerTestSuite {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -121,7 +137,6 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
         // TCPSession.handle_read
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         if (suite.dbcon->results.size() != 1) {
@@ -141,7 +156,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -157,7 +172,6 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
         n = boost::asio::write(socket, stream);
         // Process last
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
@@ -174,7 +188,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -194,7 +208,6 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
         // Process last
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 2);
@@ -219,7 +232,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -258,7 +271,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
 
-    TCPServerTestSuite<DbErrMock<AKU_EBAD_DATA>> suite;
+    TCPServerTestSuite<DbConnectionErrorMock<AKU_EBAD_DATA>> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
@@ -289,3 +302,4 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 3), "-DB");
     });
 }
+

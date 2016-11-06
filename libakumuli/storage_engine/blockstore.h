@@ -18,6 +18,9 @@
 #pragma once
 #include "volume.h"
 #include <random>
+#include <mutex>
+#include <map>
+#include <string>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -53,6 +56,16 @@ struct BlockCache {
     PBlock loockup(LogicAddr addr);
 };
 
+
+struct BlockStoreStats {
+    size_t block_size;
+    size_t capacity;
+    size_t nblocks;
+};
+
+typedef std::map<std::string, BlockStoreStats> PerVolumeStats;
+
+
 struct BlockStore {
 
     virtual ~BlockStore() = default;
@@ -75,6 +88,10 @@ struct BlockStore {
 
     //! Compute checksum of the input data.
     virtual u32 checksum(u8 const* begin, size_t size) const = 0;
+
+    virtual BlockStoreStats get_stats() const = 0;
+
+    virtual PerVolumeStats get_volume_stats() const = 0;
 };
 
 /** Blockstore. Contains collection of volumes.
@@ -94,6 +111,10 @@ class FixedSizeFileStorage : public BlockStore,
     u32 current_gen_;
     //! Size of the blockstore in blocks.
     size_t total_size_;
+    //! Used to protect all internal state
+    mutable std::mutex lock_;
+    //! Volume names (for nice statistics)
+    std::vector<std::string> volume_names_;
 
     //! Secret c-tor.
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
@@ -123,7 +144,36 @@ public:
     virtual bool exists(LogicAddr addr) const;
 
     virtual u32 checksum(u8 const* data, size_t size) const;
+
+    virtual BlockStoreStats get_stats() const;
+
+    virtual PerVolumeStats get_volume_stats() const;
 };
+
+
+//! Memory resident blockstore for tests (and machines with infinite RAM)
+struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
+    std::vector<u8> buffer_;
+    std::function<void(LogicAddr)> append_callback_;
+    u32 write_pos_;
+    u32 removed_pos_;
+    u32 pad_;
+    mutable std::mutex lock_;
+
+    MemStore();
+
+    MemStore(std::function<void(LogicAddr)> append_cb);
+
+    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
+    virtual void flush();
+    virtual bool exists(LogicAddr addr) const;
+    virtual u32 checksum(u8 const* data, size_t size) const;
+    virtual BlockStoreStats get_stats() const;
+    virtual PerVolumeStats get_volume_stats() const;
+    void remove(size_t addr);
+};
+
 
 //! Represents memory block
 class Block {

@@ -36,7 +36,7 @@ public:
     };
     StreamError(std::string line, int pos);
 
-    virtual const char* what() const throw();
+    virtual const char* what() const noexcept;
     std::string         get_bottom_line() const;
 };
 

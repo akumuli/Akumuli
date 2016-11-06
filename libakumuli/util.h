@@ -23,6 +23,7 @@
 #pragma once
 
 #include "akumuli.h"
+
 #include <apr_general.h>
 #include <apr_mmap.h>
 #include <atomic>
@@ -141,6 +142,10 @@ class RWLock {
 public:
     RWLock();
 
+    RWLock(RWLock const&) = delete;
+    RWLock(RWLock &&) = delete;
+    RWLock& operator = (RWLock const&) = delete;
+
     ~RWLock();
 
     void rdlock();
@@ -154,6 +159,27 @@ public:
     void unlock();
 };
 
+template<class T, void (T::*on_enter)()>
+struct LockGuard {
+    T& lock;
+    LockGuard(T& lock)
+        : lock(lock)
+    {
+        (lock.*on_enter)();
+    }
+
+    LockGuard(LockGuard const&) = delete;
+    LockGuard(LockGuard &&) = delete;
+    LockGuard& operator = (LockGuard const&) = delete;
+
+    ~LockGuard() {
+        lock.unlock();
+    }
+};
+
+using UniqueLock = LockGuard<RWLock, &RWLock::wrlock>;
+using SharedLock = LockGuard<RWLock, &RWLock::wrlock>;
+
 //! Compare two double values and return true if they are equal at bit-level (needed to supress CLang analyzer warnings).
 bool same_value(double a, double b);
 }
@@ -162,7 +188,7 @@ bool same_value(double a, double b);
   * @param msg error message
   * @throws Exception.
   */
-#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(std::move(msg)));
+#define AKU_PANIC(msg) BOOST_THROW_EXCEPTION(Akumuli::Exception(msg));
 
 /** Panic macro that can use APR error code to panic more informative.
   * @param msg error message
@@ -181,4 +207,3 @@ bool same_value(double a, double b);
 #define AKU_LIKELY(x) (x)
 #define AKU_UNLIKELY(x) (x)
 #endif
-

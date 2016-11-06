@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import socket
 import datetime
@@ -6,7 +7,6 @@ try:
     import ConfigParser as ini
 except ImportError:
     import configparser as ini
-import os
 import StringIO
 
 
@@ -74,6 +74,13 @@ def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
         dt = dt + delta
         yield m
 
+def generate_messages3(dt, delta, N, metric_name, tagslist):
+    """Each series will get the same set of timestamps"""
+    for i in xrange(0, N):
+        for tags in tagslist:
+            m = msg(dt, i, metric_name, **tags)
+            yield m
+        dt = dt + delta
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
@@ -105,18 +112,6 @@ def get_config_file():
     config.readfp(config_fp)
     return config
 
-def get_window_width():
-    config = get_config_file()
-    def parse(val):
-        if val.endswith('s'):
-            return datetime.timedelta(seconds=int(val[:-1]))
-        elif val.endswith('sec'):
-            return datetime.timedelta(seconds=int(val[:-3]))
-        elif val.enswith('ms'):
-            return datetime.timedelta(milliseconds=int(val[:-2]))
-        else:
-            raise ValueError("Can't read `window` value from config")
-    return parse(config.get("root", "window"))
 
 class Akumulid:
     """akumulid daemon instance"""
@@ -148,3 +143,33 @@ class Akumulid:
     def terminate(self):
         self.__process.terminate()
 
+class FakeAkumulid:
+    """akumulid daemon instance"""
+    def __init__(self):
+        pass
+
+    def create_database(self):
+        pass
+
+    def create_test_database(self):
+        pass
+
+    def delete_database(self):
+        pass
+
+    def serve(self):
+        pass
+
+    def stop(self):
+        pass
+        
+    def terminate(self):
+        pass
+
+def create_akumulid(path):
+    if path == "DEBUG":
+        return FakeAkumulid()
+    if not os.path.exists(path):
+        print("Path {0} doesn't exists".format(path))
+        sys.exit(1)
+    return Akumulid(path)
