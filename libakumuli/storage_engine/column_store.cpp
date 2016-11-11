@@ -30,7 +30,7 @@ static std::string to_string(ReshapeRequest const& req) {
         str << "group-by: disabled, ";
     }
     str << "range-begin: " << req.select.begin << ", range-end: " << req.select.end << ", ";
-    str << "select: " << req.select.ids.size() << ")";
+    str << "select: " << req.select.columns.size() << ")";
     return str.str();
 }
 
@@ -366,10 +366,19 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
 }
 
 
-void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
-    Logger::msg(AKU_LOG_TRACE, "ColumnStore query: " + to_string(req));
+void ColumnStore::select_query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `select` query: " + to_string(req));
+    if (req.select.columns.size() > 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, too many columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    } else if (req.select.columns.size() == 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, no columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
-    for (auto id: req.select.ids) {
+    for (auto id: req.select.columns.at(0).ids) {
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
         auto it = columns_.find(id);
         if (it != columns_.end()) {
@@ -381,7 +390,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
     }
 
     std::unique_ptr<RowIterator> iter;
-    auto ids = req.select.ids;
+    auto ids = req.select.columns.at(0).ids;
     if (req.group_by.enabled) {
         // Transform each id
         for (size_t i = 0; i < ids.size(); i++) {
@@ -405,6 +414,63 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             iter.reset(new ChainIterator(std::move(ids), std::move(iters)));
         } else {
             iter.reset(new MergeIterator<TimeOrder>(std::move(ids), std::move(iters)));
+        }
+    }
+
+    const size_t dest_size = 0x1000;
+    std::vector<aku_Sample> dest;
+    dest.resize(dest_size);
+    aku_Status status = AKU_SUCCESS;
+    while(status == AKU_SUCCESS) {
+        size_t size;
+        std::tie(status, size) = iter->read(dest.data(), dest_size);
+        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+            qproc.set_error(status);
+            return;
+        }
+        for (size_t ix = 0; ix < size; ix++) {
+            if (!qproc.put(dest[ix])) {
+                return;
+            }
+        }
+    }
+}
+
+void ColumnStore::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `aggregate` query: " + to_string(req));
+    if (req.select.columns.size() > 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, too many columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    } else if (req.select.columns.size() == 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, no columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
+    std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+    for (auto id: req.select.columns.at(0).ids) {
+        std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+        auto it = columns_.find(id);
+        if (it != columns_.end()) {
+            std::unique_ptr<NBTreeAggregator> agg = it->second->aggregate(req.select.begin, req.select.end);
+            agglist.push_back(std::move(agg));
+        } else {
+            qproc.set_error(AKU_ENOT_FOUND);
+        }
+    }
+
+    std::unique_ptr<RowIterator> iter;
+    auto ids = req.select.columns.at(0).ids;
+    if (req.group_by.enabled) {
+        // FIXME: Not yet supported
+    } else {
+        if (req.order_by == OrderBy::SERIES) {
+            iter.reset(new ChainIterator(std::move(ids), std::move(agglist)));
+        } else {
+            // Error: invalid query
+            Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
+            qproc.set_error(AKU_ENOT_PERMITTED);
         }
     }
 
@@ -487,7 +553,7 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
 }
 
 void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
-    cstore_->query(req, proc);
+    cstore_->select_query(req, proc);
 }
 
 }}  // namespace

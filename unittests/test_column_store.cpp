@@ -117,7 +117,8 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     req.group_by.enabled = false;
     req.select.begin = 0;
     req.select.end = 100;
-    req.select.ids.push_back(sample.paramid);
+    req.select.columns.emplace_back();
+    req.select.columns[0].ids.push_back(sample.paramid);
     req.order_by = OrderBy::SERIES;
     session->query(req, qproc);
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -164,8 +165,9 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
+        req.select.columns.emplace_back();
         for(size_t i = base_ix; i < ids.size(); i += inc) {
-            req.select.ids.push_back(ids[i]);
+            req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
         session->query(req, qproc);
@@ -188,8 +190,9 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin-1; // we need to read data in range (begin-1, end] to hit value with `begin` timestamp
+        req.select.columns.emplace_back();
         for(size_t i = base_ix; i < invids.size(); i += inc) {
-            req.select.ids.push_back(invids[i]);
+            req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::SERIES;
         session->query(req, qproc);
@@ -212,8 +215,9 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
+        req.select.columns.emplace_back();
         for(size_t i = base_ix; i < ids.size(); i += inc) {
-            req.select.ids.push_back(ids[i]);
+            req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
         session->query(req, qproc);
@@ -236,8 +240,9 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin - 1;
+        req.select.columns.emplace_back();
         for(size_t i = base_ix; i < invids.size(); i += inc) {
-            req.select.ids.push_back(invids[i]);
+            req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::TIME;
         session->query(req, qproc);
@@ -312,8 +317,9 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
     req.group_by.enabled = false;
     req.select.begin = begin;
     req.select.end = end;
+    req.select.columns.emplace_back();
     for(size_t i = 0; i < ids.size(); i++) {
-        req.select.ids.push_back(ids[i]);
+        req.select.columns[0].ids.push_back(ids[i]);
     }
     req.order_by = OrderBy::SERIES;
     session->query(req, qproc);

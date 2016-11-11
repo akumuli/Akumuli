@@ -37,9 +37,14 @@ namespace QP {
  * It is possible to add processing steps via IQueryProcessor.
  */
 
+struct Column {
+    std::vector<aku_ParamId> ids;
+};
+
 //! Set of ids returned by the query (defined by select and where clauses)
 struct Selection {
-    std::vector<aku_ParamId> ids;
+    //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
+    std::vector<Column> columns;
     aku_Timestamp begin;
     aku_Timestamp end;
 };
