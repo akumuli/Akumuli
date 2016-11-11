@@ -96,14 +96,9 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
 static std::tuple<aku_Status, bool, std::string> parse_select_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("select");
     if (select && select->empty()) {
-        // simple select query
+        // select query
         auto str = select->get_value<std::string>("");
-        if (str == "names") {
-            // the only supported select query for now
-            return std::make_tuple(AKU_SUCCESS, true, str);
-        }
-        Logger::msg(AKU_LOG_ERROR, "Invalid `select` query");
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, false, "");
+        return std::make_tuple(AKU_SUCCESS, true, str);
     }
     return std::make_tuple(AKU_SUCCESS, false, "");
 }
@@ -267,36 +262,44 @@ std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(cons
 std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tree::ptree const& ptree) {
     aku_Status status;
     bool sel;
-    std::string dummy;
-    std::tie(status, sel, dummy) = parse_select_stmt(ptree);
+    std::string series;
+    std::tie(status, sel, series) = parse_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
         QueryKind empty;
         return std::make_tuple(status, empty);
     }
     if (!sel) {
-        return std::make_tuple(status, QueryKind::SCAN);
+        // Join or Aggregate
+        QueryKind empty;
+        return std::make_tuple(AKU_ENOT_IMPLEMENTED, empty);
     }
-    return std::make_tuple(status, QueryKind::SELECT);
+    if (series == "meta:names") {
+        return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META);
+    }
+    return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT);
 }
 
-std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_query(
+/** Select statement should look like this:
+ * { "select": "meta:*", ...}
+ */
+std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta_query(
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
 {
+    // FIXME:
+    // TODO: filter `select meta:names` not only by tags but by metric and tags (different
+    //       syntax required).
     aku_Status status;
     bool sel;
     std::string name;
     std::tie(status, sel, name) = parse_select_stmt(ptree);
     std::vector<aku_ParamId> ids;
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || name != "meta:name") {
         return std::make_tuple(status, ids);
     }
     if (sel) {
-        bool metricset;
-        std::string metric;
-        std::tie(metricset, metric) = parse_metric(ptree);
         aku_Status status;
-        std::tie(status, ids) = parse_where_clause(ptree, metricset, metric, matcher);
+        std::tie(status, ids) = parse_where_clause(ptree, false, "", matcher);
         if (status == AKU_SUCCESS) {
             return std::make_tuple(AKU_SUCCESS, ids);
         }

@@ -11,9 +11,11 @@ namespace Akumuli {
 namespace QP {
 
 enum class QueryKind {
-    SELECT,     //! Metadata query
-    SCAN,       //! Scan query
-    AGGREGATE,  //! Aggregation query
+    // New
+    SELECT,
+    SELECT_META,
+    JOIN,
+    AGGREGATE
 };
 
 class SeriesRetreiver {
@@ -55,7 +57,7 @@ struct QueryParser {
       * @param ptree is a property tree generated from query json
       * @param matcher is a global matcher
       */
-    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_meta_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query
