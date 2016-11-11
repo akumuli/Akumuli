@@ -108,6 +108,60 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
     return std::tie(status, accsz);
 }
 
+
+class Aggregator {
+    std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+public:
+    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeAggregator>>&& it)
+        : iters_(std::move(it))
+    , ids_(std::move(ids))
+        , pos_(0)
+    {
+    }
+
+    /**
+     * @brief read data from iterators collection
+     * @param dest is a destination for aggregate
+     * @param id is a destination for ids
+     * @param size size of both arrays (dest and id)
+     * @return status and number of elements in dest and id
+     */
+    std::tuple<aku_Status, size_t> read(NBTreeAggregationResult *dest, aku_ParamId *id, size_t size) {
+        aku_Status status = AKU_ENO_DATA;
+        size_t nelements = 0;
+
+        while(pos_ < iters_.size()) {
+            aku_Timestamp destts = 0;
+            size_t outsz = 0;
+            std::tie(status, outsz) = iters_[pos_]->read(&destts, dest, size);
+            if (outsz != 1) {
+                Logger::msg(AKU_LOG_TRACE, "Unexpected aggregate size " + std::to_string(outsz));
+                continue;
+            }
+            nelements += 1;
+            size -= 1;
+            dest += 1;
+            *id++ = ids_.at(pos_);
+            if (size == 0) {
+                break;
+            }
+            pos_++;
+            if (status == AKU_ENO_DATA) {
+                // this iterator is done, continue with next
+                continue;
+            }
+            if (status != AKU_SUCCESS) {
+                // Stop iteration on error!
+                break;
+            }
+        }
+        return std::tie(status, nelements);
+    }
+};
+
+
 static const size_t RANGE_SIZE = 1024;
 
 
@@ -304,6 +358,7 @@ struct MergeIterator : RowIterator {
 
 };
 
+
 // ////////////// //
 //  Column-store  //
 // ////////////// //
@@ -460,13 +515,15 @@ void ColumnStore::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProc
         }
     }
 
-    std::unique_ptr<RowIterator> iter;
+    std::unique_ptr<Aggregator> iter;
     auto ids = req.select.columns.at(0).ids;
     if (req.group_by.enabled) {
         // FIXME: Not yet supported
+        Logger::msg(AKU_LOG_ERROR, "Group-by in `aggregate` query is not supported yet");
+        qproc.set_error(AKU_ENOT_PERMITTED);
     } else {
         if (req.order_by == OrderBy::SERIES) {
-            iter.reset(new ChainIterator(std::move(ids), std::move(agglist)));
+            iter.reset(new Aggregator(std::move(ids), std::move(agglist)));
         } else {
             // Error: invalid query
             Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
@@ -474,22 +531,39 @@ void ColumnStore::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProc
         }
     }
 
-    const size_t dest_size = 0x1000;
-    std::vector<aku_Sample> dest;
-    dest.resize(dest_size);
     aku_Status status = AKU_SUCCESS;
     while(status == AKU_SUCCESS) {
         size_t size;
-        std::tie(status, size) = iter->read(dest.data(), dest_size);
+        NBTreeAggregationResult result = INIT_AGGRES;
+        aku_ParamId paramid;
+        std::tie(status, size) = iter->read(&result, &paramid, 1);
         if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
             Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
             qproc.set_error(status);
             return;
         }
-        for (size_t ix = 0; ix < size; ix++) {
-            if (!qproc.put(dest[ix])) {
-                return;
-            }
+        if (size != 1) {
+            Logger::msg(AKU_LOG_TRACE, "Unexpected number of aggregates " + std::to_string(size));
+            continue;
+        }
+        char buffer[sizeof(aku_Sample) + sizeof(aku_AggregatePayload)];
+        aku_Sample* sample = reinterpret_cast<aku_Sample*>(buffer);
+        sample->paramid = paramid;
+        sample->payload.type = AKU_PAYLOAD_AGGREGATE;
+        auto payload = reinterpret_cast<aku_AggregatePayload*>(sample->payload.data);
+        payload->cnt = result.cnt;
+        payload->sum = result.sum;
+        payload->min = result.min;
+        payload->max = result.max;
+        payload->first = result.first;
+        payload->last = result.last;
+        payload->mints = result.mints;
+        payload->maxts = result.maxts;
+        payload->_begin = result._begin;
+        payload->_end = result._end;
+        // TODO: change IQueryProcessor interface, pass sample by pointer, not by reference
+        if (!qproc.put(*sample)) {
+            return;
         }
     }
 }
