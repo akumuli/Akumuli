@@ -626,8 +626,12 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
     return cstore_->write(sample, rescue_points, &cache_);
 }
 
-void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
+void CStoreSession::select_query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
     cstore_->select_query(req, proc);
+}
+
+void CStoreSession::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    cstore_->aggregate_query(req, qproc);
 }
 
 }}  // namespace

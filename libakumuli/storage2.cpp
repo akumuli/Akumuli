@@ -742,7 +742,27 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
             proc->stop();
         }
     } else if (kind == QueryKind::AGGREGATE) {
-        AKU_PANIC("Not implemented");
+        ReshapeRequest req;
+        std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        GroupByTime groupbytime;
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+
+        // Matcher can be substituted by previous call
+        session->clear_series_matcher();
+        if (proc->start()) {
+            cstore_->aggregate_query(req, *proc);
+            proc->stop();
+        }
     } else if (kind == QueryKind::SELECT) {
         ReshapeRequest req;
         std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);

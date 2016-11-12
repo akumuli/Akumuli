@@ -127,7 +127,9 @@ public:
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
+    void select_query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
+
+    void aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 };
 
 }}  // namespace
