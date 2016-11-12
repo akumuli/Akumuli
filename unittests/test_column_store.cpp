@@ -127,18 +127,21 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
 }
 
-static void fill_data_in(std::shared_ptr<ColumnStore> cstore, std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
+static double fill_data_in(std::shared_ptr<ColumnStore> cstore, std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
     assert(begin < end);
     cstore->create_new_column(id);
     aku_Sample sample;
     sample.paramid = id;
     sample.payload.type = AKU_PAYLOAD_FLOAT;
     std::vector<u64> rpoints;
+    double sum = 0;
     for (aku_Timestamp ix = begin; ix < end; ix++) {
         sample.payload.float64 = ix*0.1;
         sample.timestamp = ix;
         session->write(sample, &rpoints);  // rescue points are ignored now
+        sum += sample.payload.float64;
     }
+    return sum;
 }
 
 static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
@@ -347,5 +350,69 @@ BOOST_AUTO_TEST_CASE(Test_column_store_reopen_2) {
 
 BOOST_AUTO_TEST_CASE(Test_column_store_reopen_3) {
     test_reopen(1000, 11000);  // 10000 el.
+}
+
+struct AggProcessorMock : QP::IStreamProcessor {
+    bool started = false;
+    bool stopped = false;
+    std::vector<aku_AggregatePayload> payloads;
+    std::vector<aku_Sample>           samples;
+    aku_Status error = AKU_SUCCESS;
+
+    virtual bool start() override {
+        started = true;
+        return true;
+    }
+    virtual void stop() override {
+        stopped = true;
+    }
+    virtual bool put(const aku_Sample &sample) override {
+        samples.push_back(sample);
+        auto plptr = reinterpret_cast<aku_AggregatePayload const*>(sample.payload.data);
+        payloads.push_back(*plptr);
+        return true;
+    }
+    virtual void set_error(aku_Status err) override {
+        error = err;
+    }
+};
+
+void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<double> sums;
+    for (auto id: ids) {
+        double sum = fill_data_in(cstore, session, id, begin, end);
+        sums.push_back(sum);
+    }
+    AggProcessorMock mock;
+    ReshapeRequest req;
+    req.group_by.enabled = false;
+    req.order_by = OrderBy::SERIES;
+    req.select.begin = begin;
+    req.select.end = end;
+    req.select.columns.push_back({ids});
+    cstore->aggregate_query(req, mock);
+
+    BOOST_REQUIRE_EQUAL(mock.payloads.size(), ids.size());
+    for (auto i = 0u; i < mock.payloads.size(); i++) {
+        BOOST_REQUIRE_EQUAL(mock.samples.at(i).paramid, ids.at(i));
+        BOOST_REQUIRE_CLOSE(mock.payloads.at(i).sum, sums.at(i), 10E-5);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_1) {
+    test_aggregation(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_2) {
+    test_aggregation(1000, 11000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_3) {
+    test_aggregation(10000, 110000);
 }
 

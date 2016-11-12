@@ -144,10 +144,10 @@ public:
             size -= 1;
             dest += 1;
             *id++ = ids_.at(pos_);
+            pos_++;
             if (size == 0) {
                 break;
             }
-            pos_++;
             if (status == AKU_ENO_DATA) {
                 // this iterator is done, continue with next
                 continue;
@@ -427,7 +427,7 @@ void ColumnStore::select_query(const ReshapeRequest &req, QP::IStreamProcessor& 
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, too many columns");
         qproc.set_error(AKU_EBAD_ARG);
         return;
-    } else if (req.select.columns.size() == 1) {
+    } else if (req.select.columns.size() == 0) {
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, no columns");
         qproc.set_error(AKU_EBAD_ARG);
         return;
@@ -498,7 +498,7 @@ void ColumnStore::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProc
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, too many columns");
         qproc.set_error(AKU_EBAD_ARG);
         return;
-    } else if (req.select.columns.size() == 1) {
+    } else if (req.select.columns.size() == 0) {
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, no columns");
         qproc.set_error(AKU_EBAD_ARG);
         return;
