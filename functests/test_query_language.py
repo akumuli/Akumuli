@@ -68,7 +68,7 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
-        "group-by": {  "tag": "tag3" },
+        "group-by": [ "tag3" ],
     }
     query = att.makequery("test", begin, end, **query_params)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
@@ -161,7 +161,7 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
-        "group-by": { "tag": "tag3" },
+        "group-by": [ "tag3" ],
         "where": {
             "tag2": ["C"], # read only odd
         }
@@ -217,7 +217,7 @@ def test_metadata_query(tags):
     # read metadata from server
     actual_series = []
     query = {
-        "select": "names",
+        "select": "meta:names",
         "output": { "format":  "csv" },
     }
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
