@@ -331,8 +331,11 @@ std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
 std::unique_ptr<Cursor> LocalStorage::metadata_query(std::string metric, std::string where_clause) {
     boost::property_tree::ptree query;
 
-    // No (re)sampling
-    query.add("select", "meta:names");
+    if (metric.empty()) {
+        query.add("select", "meta:names");
+    } else {
+        query.add("select", "meta:names:" + metric);
+    }
 
     // Where clause
     if (!where_clause.empty()) {

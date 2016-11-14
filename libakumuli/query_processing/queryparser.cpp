@@ -3,6 +3,7 @@
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/algorithm/string.hpp>
 #include <set>
 
 #include "datetime.h"
@@ -93,6 +94,19 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     return std::make_tuple(AKU_SUCCESS, ids);
 }
 
+
+static const std::set<std::string> META_QUERIES = {
+    "meta:names"
+};
+
+bool is_meta_query(std::string name) {
+    for (auto perf: META_QUERIES) {
+        if (boost::starts_with(name, perf)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static std::tuple<aku_Status, std::string> parse_select_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("select");
@@ -255,10 +269,6 @@ std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(cons
     return std::make_tuple(AKU_SUCCESS, ptree);
 }
 
-static const std::set<std::string> META_QUERIES = {
-    "meta:names"
-};
-
 std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tree::ptree const& ptree) {
     aku_Status status;
     for (const auto& item: ptree) {
@@ -268,7 +278,7 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
             if (status != AKU_SUCCESS) {
                 return std::make_tuple(status, QueryKind::SELECT);
             }
-            if (META_QUERIES.count(series)) {
+            if (is_meta_query(series)) {
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META);
             } else {
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT);
@@ -289,8 +299,6 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
 {
-    // TODO: filter `select meta:names` not only by tags but by metric and tags (different
-    //       syntax required).
     aku_Status status;
     std::string name;
     std::tie(status, name) = parse_select_stmt(ptree);
@@ -298,10 +306,17 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);
     }
-    if (name != "meta:names") {
+    if (!is_meta_query(name)) {
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ids);
     }
-    std::tie(status, ids) = parse_where_clause(ptree, false, "", matcher);
+
+    bool metric_set = false;
+    if (name.length() > 10 && boost::starts_with(name, "meta:names")) {
+        boost::erase_first(name, "meta:names:");
+        metric_set = true;
+    }
+
+    std::tie(status, ids) = parse_where_clause(ptree, metric_set, name, matcher);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);
     }
