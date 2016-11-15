@@ -252,7 +252,7 @@ struct CursorMock : InternalCursor {
 
 std::string make_scan_query(aku_Timestamp begin, aku_Timestamp end, OrderBy order) {
     std::stringstream str;
-    str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "},";
+    str << "{ \"select\": \"test\", \"range\": { \"from\": " << begin << ", \"to\": " << end << "},";
     str << "  \"order-by\": " << (order == OrderBy::SERIES ? "\"series\"" : "\"time\"");
     str << "}";
     return str.str();
@@ -263,18 +263,20 @@ void check_timestamps(CursorMock const& mock, std::vector<aku_Timestamp> expecte
     if (order == OrderBy::SERIES) {
         for (auto s: names) {
             for (auto expts: expected) {
-                if (expts != mock.samples.at(tsix++).timestamp) {
-                    BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix++).timestamp);
+                if (expts != mock.samples.at(tsix).timestamp) {
+                    BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix).timestamp);
                 }
+                tsix++;
             }
         }
         BOOST_REQUIRE_EQUAL(tsix, mock.samples.size());
     } else {
         for (auto expts: expected) {
             for (auto s: names) {
-                if (expts != mock.samples.at(tsix++).timestamp) {
-                    BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix++).timestamp);
+                if (expts != mock.samples.at(tsix).timestamp) {
+                    BOOST_REQUIRE_EQUAL(expts, mock.samples.at(tsix).timestamp);
                 }
+                tsix++;
             }
         }
         BOOST_REQUIRE_EQUAL(tsix, mock.samples.size());
@@ -402,7 +404,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_query) {
 // Test metadata query
 
 static void test_metadata_query() {
-    auto query = "{\"select\": \"names\"}";
+    auto query = "{\"select\": \"meta:names\"}";
     auto storage = create_storage();
     auto session = storage->create_write_session();
     std::vector<std::string> series_names = {
@@ -456,10 +458,10 @@ static const aku_Timestamp gb_end   = 200;
 
 static std::string make_group_by_query(std::string tag, OrderBy order) {
     std::stringstream str;
-    str << "{ \"metric\": \"test\",";
+    str << "{ \"select\": \"test\",";
     str << "  \"range\": { \"from\": " << gb_begin << ", \"to\": " << gb_end << "},";
     str << "  \"order-by\": " << (order == OrderBy::SERIES ? "\"series\"": "\"time\"") << ",";
-    str << "  \"group-by\": {\"tag\": " << "\"" << tag << "\"}";
+    str << "  \"group-by\": [\"" << tag << "\"]";
     str << "}";
     return str.str();
 }
@@ -529,7 +531,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_groupby_query_1) {
 static std::string make_scan_query_with_where(aku_Timestamp begin, aku_Timestamp end, std::vector<int> keys) {
     std::stringstream str;
     str << "{ \"range\": { \"from\": " << begin << ", \"to\": " << end << "},";
-    str << "  \"metric\": \"test\",";
+    str << "  \"select\": \"test\",";
     str << "  \"order-by\": \"series\",";
     str << "  \"where\": { \"key\": [";
     bool first = true;

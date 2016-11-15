@@ -301,7 +301,7 @@ std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
 {
     boost::property_tree::ptree query;
     // Add metric name
-    query.add("metric", "cpu");
+    query.add("select", "cpu");
     // Add time constraints
     boost::property_tree::ptree range;
     range.add("from", begin);
@@ -331,12 +331,10 @@ std::unique_ptr<Cursor> LocalStorage::query(std::string begin,
 std::unique_ptr<Cursor> LocalStorage::metadata_query(std::string metric, std::string where_clause) {
     boost::property_tree::ptree query;
 
-    // No (re)sampling
-    query.add("select", "names");
-
-    // Add metric name
-    if (!metric.empty()) {
-        query.add("metric", metric);
+    if (metric.empty()) {
+        query.add("select", "meta:names");
+    } else {
+        query.add("select", "meta:names:" + metric);
     }
 
     // Where clause

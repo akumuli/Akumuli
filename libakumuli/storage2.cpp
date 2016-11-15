@@ -724,41 +724,59 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         cur->set_error(caller, status);
         return;
     }
-    if (kind == QueryKind::SELECT) {
+    if (kind == QueryKind::SELECT_META) {
         std::vector<aku_ParamId> ids;
-        std::tie(status, ids) = QueryParser::parse_select_query(ptree, global_matcher_);
+        std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
             cur->set_error(caller, status);
             return;
         }
-        GroupByTime tm;
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, tm, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
         if (status != AKU_SUCCESS) {
             cur->set_error(caller, status);
             return;
         }
-        AKU_UNUSED(tm);
         std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
         if (proc->start()) {
             proc->stop();
         }
     } else if (kind == QueryKind::AGGREGATE) {
-        AKU_PANIC("Not implemented");
-    } else if (kind == QueryKind::SCAN) {
         ReshapeRequest req;
-        std::tie(status, req) = QueryParser::parse_scan_query(ptree, global_matcher_);
+        std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
             cur->set_error(caller, status);
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        GroupByTime groupbytime;
-        std::tie(status, groupbytime, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
         if (status != AKU_SUCCESS) {
             cur->set_error(caller, status);
             return;
         }
+        GroupByTime groupbytime;
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+
+        // Matcher can be substituted by previous call
+        session->clear_series_matcher();
+        if (proc->start()) {
+            cstore_->aggregate_query(req, *proc);
+            proc->stop();
+        }
+    } else if (kind == QueryKind::SELECT) {
+        ReshapeRequest req;
+        std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        GroupByTime groupbytime;
         std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (req.group_by.enabled) {
             session->set_series_matcher(req.group_by.matcher);
@@ -767,7 +785,7 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         }
         // Scan column store
         if (proc->start()) {
-            cstore_->query(req, *proc);
+            cstore_->select_query(req, *proc);
             proc->stop();
         }
     }

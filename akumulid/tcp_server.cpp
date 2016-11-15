@@ -249,7 +249,7 @@ void TcpAcceptor::stop() {
 }
 
 void TcpAcceptor::_stop() {
-    logger_.info() << "Stopping acceptor";
+    logger_.info() << "Stopping acceptor (test runner)";
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
@@ -274,6 +274,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     , stopped{0}
     , logger_("tcp-server", 32)
 {
+    logger_.info() << "TCP server created, concurrency: " << concurrency;
     for(;concurrency --> 0;) {
         iovec.push_back(&io);
     }
@@ -295,31 +296,32 @@ TcpServer::~TcpServer() {
 void TcpServer::start(SignalHandler* sig, int id) {
 
     auto self = shared_from_this();
-    sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)), id);
+    sig->add_handler(boost::bind(&TcpServer::stop, self), id);
 
-    auto iorun = [](IOServiceT& io, boost::barrier& bar) {
-        auto fn = [&]() {
+    auto iorun = [self](IOServiceT& io, int cnt) {
+        auto fn = [self, &io, cnt]() {
             Logger logger("tcp-server-worker", 10);
             try {
-                logger.info() << "Event loop started";
+                logger.info() << "Event loop " << cnt << " started";
                 io.run();
-                logger.info() << "Event loop stopped";
-                bar.wait();
+                logger.info() << "Event loop " << cnt << " stopped";
+                self->barrier.wait();
             } catch (RESPError const& e) {
                 logger.error() << e.what();
                 logger.info() << e.get_bottom_line();
                 throw;
             } catch (...) {
-                logger.error() << "Error in TCP server worker thread: " << boost::current_exception_diagnostic_information();
+                logger.error() << "Error in event loop " << cnt << ": " << boost::current_exception_diagnostic_information();
                 throw;
             }
-            logger.info() << "Stopped";
+            logger.info() << "Worker thread " << cnt << " stopped";
         };
         return fn;
     };
 
+    int cnt = 0;
     for (auto io: iovec) {
-        std::thread iothread(iorun(*io, barrier));
+        std::thread iothread(iorun(*io, cnt++));
         iothread.detach();
     }
 }
@@ -329,14 +331,11 @@ void TcpServer::stop() {
         serv->stop();
         logger_.info() << "TcpServer stopped";
 
-        // No need to joint I/O threads, just wait until they completes.
+        io.stop();
+        logger_.info() << "I/O service stopped";
+
         barrier.wait();
         logger_.info() << "I/O threads stopped";
-
-        for (auto io: iovec) {
-            io->stop();
-        }
-        logger_.info() << "I/O service stopped";
     }
 }
 

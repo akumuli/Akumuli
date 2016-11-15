@@ -95,7 +95,7 @@ def infinite_msg_stream(batch_size, metric_name, **kwargs):
 
 def makequery(metric, begin, end, **kwargs):
     query = {
-            "metric": metric,
+            "select": metric,
             "range": {
                 "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
                 "to": end.strftime('%Y%m%dT%H%M%S.%f'),

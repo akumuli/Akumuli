@@ -30,7 +30,7 @@ static std::string to_string(ReshapeRequest const& req) {
         str << "group-by: disabled, ";
     }
     str << "range-begin: " << req.select.begin << ", range-end: " << req.select.end << ", ";
-    str << "select: " << req.select.ids.size() << ")";
+    str << "select: " << req.select.columns.size() << ")";
     return str.str();
 }
 
@@ -107,6 +107,60 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
     }
     return std::tie(status, accsz);
 }
+
+
+class Aggregator {
+    std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+public:
+    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeAggregator>>&& it)
+        : iters_(std::move(it))
+    , ids_(std::move(ids))
+        , pos_(0)
+    {
+    }
+
+    /**
+     * @brief read data from iterators collection
+     * @param dest is a destination for aggregate
+     * @param id is a destination for ids
+     * @param size size of both arrays (dest and id)
+     * @return status and number of elements in dest and id
+     */
+    std::tuple<aku_Status, size_t> read(NBTreeAggregationResult *dest, aku_ParamId *id, size_t size) {
+        aku_Status status = AKU_ENO_DATA;
+        size_t nelements = 0;
+
+        while(pos_ < iters_.size()) {
+            aku_Timestamp destts = 0;
+            size_t outsz = 0;
+            std::tie(status, outsz) = iters_[pos_]->read(&destts, dest, size);
+            if (outsz != 1) {
+                Logger::msg(AKU_LOG_TRACE, "Unexpected aggregate size " + std::to_string(outsz));
+                continue;
+            }
+            nelements += 1;
+            size -= 1;
+            dest += 1;
+            *id++ = ids_.at(pos_);
+            pos_++;
+            if (size == 0) {
+                break;
+            }
+            if (status == AKU_ENO_DATA) {
+                // this iterator is done, continue with next
+                continue;
+            }
+            if (status != AKU_SUCCESS) {
+                // Stop iteration on error!
+                break;
+            }
+        }
+        return std::tie(status, nelements);
+    }
+};
+
 
 static const size_t RANGE_SIZE = 1024;
 
@@ -304,6 +358,7 @@ struct MergeIterator : RowIterator {
 
 };
 
+
 // ////////////// //
 //  Column-store  //
 // ////////////// //
@@ -366,10 +421,19 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
 }
 
 
-void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
-    Logger::msg(AKU_LOG_TRACE, "ColumnStore query: " + to_string(req));
+void ColumnStore::select_query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `select` query: " + to_string(req));
+    if (req.select.columns.size() > 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, too many columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    } else if (req.select.columns.size() == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, no columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
     std::vector<std::unique_ptr<NBTreeIterator>> iters;
-    for (auto id: req.select.ids) {
+    for (auto id: req.select.columns.at(0).ids) {
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
         auto it = columns_.find(id);
         if (it != columns_.end()) {
@@ -381,7 +445,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
     }
 
     std::unique_ptr<RowIterator> iter;
-    auto ids = req.select.ids;
+    auto ids = req.select.columns.at(0).ids;
     if (req.group_by.enabled) {
         // Transform each id
         for (size_t i = 0; i < ids.size(); i++) {
@@ -424,6 +488,82 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             if (!qproc.put(dest[ix])) {
                 return;
             }
+        }
+    }
+}
+
+void ColumnStore::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `aggregate` query: " + to_string(req));
+    if (req.select.columns.size() > 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, too many columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    } else if (req.select.columns.size() == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggreagate` request, no columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
+    std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+    for (auto id: req.select.columns.at(0).ids) {
+        std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+        auto it = columns_.find(id);
+        if (it != columns_.end()) {
+            std::unique_ptr<NBTreeAggregator> agg = it->second->aggregate(req.select.begin, req.select.end);
+            agglist.push_back(std::move(agg));
+        } else {
+            qproc.set_error(AKU_ENOT_FOUND);
+        }
+    }
+
+    std::unique_ptr<Aggregator> iter;
+    auto ids = req.select.columns.at(0).ids;
+    if (req.group_by.enabled) {
+        // FIXME: Not yet supported
+        Logger::msg(AKU_LOG_ERROR, "Group-by in `aggregate` query is not supported yet");
+        qproc.set_error(AKU_ENOT_PERMITTED);
+    } else {
+        if (req.order_by == OrderBy::SERIES) {
+            iter.reset(new Aggregator(std::move(ids), std::move(agglist)));
+        } else {
+            // Error: invalid query
+            Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
+            qproc.set_error(AKU_ENOT_PERMITTED);
+        }
+    }
+
+    aku_Status status = AKU_SUCCESS;
+    while(status == AKU_SUCCESS) {
+        size_t size;
+        NBTreeAggregationResult result = INIT_AGGRES;
+        aku_ParamId paramid;
+        std::tie(status, size) = iter->read(&result, &paramid, 1);
+        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+            qproc.set_error(status);
+            return;
+        }
+        if (size != 1) {
+            Logger::msg(AKU_LOG_TRACE, "Unexpected number of aggregates " + std::to_string(size));
+            continue;
+        }
+        char buffer[sizeof(aku_Sample) + sizeof(aku_AggregatePayload)];
+        aku_Sample* sample = reinterpret_cast<aku_Sample*>(buffer);
+        sample->paramid = paramid;
+        sample->payload.type = AKU_PAYLOAD_AGGREGATE;
+        auto payload = reinterpret_cast<aku_AggregatePayload*>(sample->payload.data);
+        payload->cnt = result.cnt;
+        payload->sum = result.sum;
+        payload->min = result.min;
+        payload->max = result.max;
+        payload->first = result.first;
+        payload->last = result.last;
+        payload->mints = result.mints;
+        payload->maxts = result.maxts;
+        payload->_begin = result._begin;
+        payload->_end = result._end;
+        // TODO: change IQueryProcessor interface, pass sample by pointer, not by reference
+        if (!qproc.put(*sample)) {
+            return;
         }
     }
 }
@@ -486,8 +626,12 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
     return cstore_->write(sample, rescue_points, &cache_);
 }
 
-void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
-    cstore_->query(req, proc);
+void CStoreSession::select_query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
+    cstore_->select_query(req, proc);
+}
+
+void CStoreSession::aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    cstore_->aggregate_query(req, qproc);
 }
 
 }}  // namespace

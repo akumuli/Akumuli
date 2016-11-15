@@ -11,9 +11,11 @@ namespace Akumuli {
 namespace QP {
 
 enum class QueryKind {
-    SELECT,     //! Metadata query
-    SCAN,       //! Scan query
-    AGGREGATE,  //! Aggregation query
+    // New
+    SELECT,
+    SELECT_META,
+    JOIN,
+    AGGREGATE
 };
 
 class SeriesRetreiver {
@@ -49,19 +51,23 @@ struct QueryParser {
       * @param ptree contains query
       * @returns status and ReshapeRequest
       */
-    static std::tuple<aku_Status, ReshapeRequest> parse_scan_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, ReshapeRequest> parse_select_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
     /** Parse select query (metadata query).
       * @param ptree is a property tree generated from query json
       * @param matcher is a global matcher
       */
-    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_meta_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+
+    /** Parse aggregate query and produce reshape request.
+     */
+    static std::tuple<aku_Status, ReshapeRequest> parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query
       * @returns vector of Nodes in proper order
       */
-    static std::tuple<aku_Status, GroupByTime, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+    static std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
             boost::property_tree::ptree const& ptree,
             Caller& caller,
             InternalCursor* cursor);
