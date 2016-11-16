@@ -352,31 +352,6 @@ BOOST_AUTO_TEST_CASE(Test_column_store_reopen_3) {
     test_reopen(1000, 11000);  // 10000 el.
 }
 
-struct AggProcessorMock : QP::IStreamProcessor {
-    bool started = false;
-    bool stopped = false;
-    std::vector<aku_AggregatePayload> payloads;
-    std::vector<aku_Sample>           samples;
-    aku_Status error = AKU_SUCCESS;
-
-    virtual bool start() override {
-        started = true;
-        return true;
-    }
-    virtual void stop() override {
-        stopped = true;
-    }
-    virtual bool put(const aku_Sample &sample) override {
-        samples.push_back(sample);
-        auto plptr = reinterpret_cast<aku_AggregatePayload const*>(sample.payload.data);
-        payloads.push_back(*plptr);
-        return true;
-    }
-    virtual void set_error(aku_Status err) override {
-        error = err;
-    }
-};
-
 void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     auto cstore = create_cstore();
     auto session = create_session(cstore);
@@ -388,8 +363,10 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
         double sum = fill_data_in(cstore, session, id, begin, end);
         sums.push_back(sum);
     }
-    AggProcessorMock mock;
+    QueryProcessorMock mock;
     ReshapeRequest req;
+    req.agg.enabled = true;
+    req.agg.func = AggregationFunction::SUM;
     req.group_by.enabled = false;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
@@ -397,10 +374,10 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     req.select.columns.push_back({ids});
     cstore->aggregate_query(req, mock);
 
-    BOOST_REQUIRE_EQUAL(mock.payloads.size(), ids.size());
-    for (auto i = 0u; i < mock.payloads.size(); i++) {
+    BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
+    for (auto i = 0u; i < mock.samples.size(); i++) {
         BOOST_REQUIRE_EQUAL(mock.samples.at(i).paramid, ids.at(i));
-        BOOST_REQUIRE_CLOSE(mock.payloads.at(i).sum, sums.at(i), 10E-5);
+        BOOST_REQUIRE_CLOSE(mock.samples.at(i).payload.float64, sums.at(i), 10E-5);
     }
 }
 

@@ -118,14 +118,18 @@ static std::tuple<aku_Status, std::string> parse_select_stmt(boost::property_tre
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "");
 }
 
-static std::tuple<aku_Status, std::string> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::string, std::string> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("aggregate");
     if (select && select->empty()) {
         // select query
-        auto str = select->get_value<std::string>("");
-        return std::make_tuple(AKU_SUCCESS, str);
+        for (auto kv: *select) {
+            auto metric_name = kv.first;
+            auto func = kv.second.get_value<std::string>("cnt");
+            // Note: only one key-value is parsed at this time, this can be extended to tuples in the future
+            return std::make_tuple(AKU_SUCCESS, metric_name, func);
+        }
     }
-    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "");
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "");
 }
 
 static std::tuple<aku_Status, OrderBy> parse_orderby(boost::property_tree::ptree const& ptree) {
@@ -377,7 +381,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
     }
 
     // Initialize request
-
+    result.agg.enabled = false;
     result.select.begin = ts_begin;
     result.select.end = ts_end;
     result.select.columns.push_back(Column{ids});
@@ -403,7 +407,13 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
 
     // Metric name
     std::string metric;
-    std::tie(status, metric) = parse_aggregate_stmt(ptree);
+    std::string aggfun;
+    std::tie(status, metric, aggfun) = parse_aggregate_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+    AggregationFunction func;
+    std::tie(status, func) = Aggregation::from_string(aggfun);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -445,6 +455,8 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     }
 
     // Initialize request
+    result.agg.enabled = true;
+    result.agg.func = func;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;

@@ -92,10 +92,7 @@ public:
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
     //! Slice and dice data according to request and feed it to query processor
-    void select_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
-    //! Perform aggregate query and return result through query processor
-    void aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     size_t _get_uncommitted_memory() const;
 
@@ -127,9 +124,7 @@ public:
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void select_query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
-
-    void aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
 };
 
 }}  // namespace

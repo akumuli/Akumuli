@@ -37,6 +37,28 @@ namespace QP {
  * It is possible to add processing steps via IQueryProcessor.
  */
 
+enum class AggregationFunction {
+    MIN, MAX, SUM, CNT,
+};
+
+struct Aggregation {
+    bool enabled;
+    AggregationFunction func;
+
+    static std::tuple<aku_Status, AggregationFunction> from_string(std::string str) {
+        if (str == "min") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MIN);
+        } else if (str == "max") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MAX);
+        } else if (str == "sum") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::SUM);
+        } else if (str == "count") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::CNT);
+        }
+        return std::make_tuple(AKU_EBAD_ARG, AggregationFunction::CNT);
+    }
+};
+
 struct Column {
     std::vector<aku_ParamId> ids;
 };
@@ -64,6 +86,7 @@ enum class OrderBy {
 
 //! Reshape request defines what should be sent to query processor
 struct ReshapeRequest {
+    Aggregation  agg;
     Selection select;
     GroupBy group_by;
     OrderBy order_by;

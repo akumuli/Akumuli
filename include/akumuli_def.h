@@ -69,7 +69,6 @@ typedef struct {
         ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
                                             (extra payload stored in `data` was lost) */
         SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
-        AGGREGATE      = 1 << 11, /** indicates that aggregation results is stored in extra payload */
 
         MARGIN    = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
         LO_MARGIN = 1 << 14, /** backward direction margin */
@@ -87,7 +86,6 @@ typedef struct {
 } aku_PData;
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
-#define AKU_PAYLOAD_AGGREGATE (aku_PData::PARAMID_BIT | aku_PData::AGGREGATE)
 
 //! Cursor result type
 typedef struct {
