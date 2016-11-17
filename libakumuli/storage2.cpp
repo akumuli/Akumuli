@@ -760,7 +760,7 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         // Matcher can be substituted by previous call
         session->clear_series_matcher();
         if (proc->start()) {
-            cstore_->aggregate_query(req, *proc);
+            cstore_->query(req, *proc);
             proc->stop();
         }
     } else if (kind == QueryKind::SELECT) {
@@ -785,7 +785,7 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         }
         // Scan column store
         if (proc->start()) {
-            cstore_->select_query(req, *proc);
+            cstore_->query(req, *proc);
             proc->stop();
         }
     }
