@@ -120,7 +120,7 @@ static std::tuple<aku_Status, std::string> parse_select_stmt(boost::property_tre
 
 static std::tuple<aku_Status, std::string, std::string> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("aggregate");
-    if (select && select->empty()) {
+    if (select) {
         // select query
         for (auto kv: *select) {
             auto metric_name = kv.first;

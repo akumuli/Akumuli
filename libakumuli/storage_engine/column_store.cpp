@@ -146,6 +146,7 @@ public:
             aku_Sample sample;
             sample.paramid = ids_.at(pos_);
             sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.payload.size = sizeof(aku_Sample);
             switch (func_) {
             case AggregationFunction::MIN:
                 sample.timestamp = destval.mints;

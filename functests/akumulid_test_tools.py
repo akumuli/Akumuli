@@ -104,6 +104,17 @@ def makequery(metric, begin, end, **kwargs):
     query.update(**kwargs)
     return query
 
+def make_aggregate_query(metric, begin, end, func, **kwargs):
+    query = {
+            "aggregate": { metric: func },
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
+
 def get_config_file():
     abspath = os.path.expanduser("~/.akumulid")
     config_data = '[root]\n' + open(abspath, 'r').read()
