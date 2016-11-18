@@ -113,7 +113,7 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     cstore->create_new_column(42);
     std::vector<u64> rpoints;
     session->write(sample, &rpoints);
-    ReshapeRequest req;
+    ReshapeRequest req = {};
     req.group_by.enabled = false;
     req.select.begin = 0;
     req.select.end = 100;
@@ -164,7 +164,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in series order in forward direction
     auto read_ordered_by_series = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
@@ -189,7 +189,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in series order in backward direction
     auto inv_read_ordered_by_series = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin-1; // we need to read data in range (begin-1, end] to hit value with `begin` timestamp
@@ -214,7 +214,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in time order in forward direction
     auto read_ordered_by_time = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
@@ -239,7 +239,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in time order in backward direction
     auto inv_read_ordered_by_time = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin - 1;
@@ -316,7 +316,7 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
     session = create_session(cstore);
 
     QueryProcessorMock qproc;
-    ReshapeRequest req;
+    ReshapeRequest req = {};
     req.group_by.enabled = false;
     req.select.begin = begin;
     req.select.end = end;
@@ -364,7 +364,7 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
         sums.push_back(sum);
     }
     QueryProcessorMock mock;
-    ReshapeRequest req;
+    ReshapeRequest req = {};
     req.agg.enabled = true;
     req.agg.func = AggregationFunction::SUM;
     req.group_by.enabled = false;

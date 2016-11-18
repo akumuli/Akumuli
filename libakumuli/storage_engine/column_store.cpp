@@ -470,12 +470,14 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
                 agglist.push_back(std::move(agg));
             } else {
                 qproc.set_error(AKU_ENOT_FOUND);
+                return;
             }
         }
         if (req.group_by.enabled) {
             // FIXME: Not yet supported
             Logger::msg(AKU_LOG_ERROR, "Group-by in `aggregate` query is not supported yet");
             qproc.set_error(AKU_ENOT_PERMITTED);
+            return;
         } else {
             if (req.order_by == OrderBy::SERIES) {
                 iter.reset(new Aggregator(std::move(ids), std::move(agglist), req.agg.func));
@@ -483,6 +485,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
                 // Error: invalid query
                 Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
                 qproc.set_error(AKU_ENOT_PERMITTED);
+                return;
             }
         }
     } else {
@@ -495,6 +498,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
                 iters.push_back(std::move(iter));
             } else {
                 qproc.set_error(AKU_ENOT_FOUND);
+                return;
             }
         }
         if (req.group_by.enabled) {

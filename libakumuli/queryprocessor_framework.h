@@ -80,7 +80,7 @@ struct GroupBy {
 
 //! Output order
 enum class OrderBy {
-    SERIES,
+    SERIES = 0,
     TIME,
 };
 
