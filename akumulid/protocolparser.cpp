@@ -23,11 +23,6 @@ const char* DatabaseError::what() const noexcept {
     return aku_error_message(status);
 }
 
-const PDU ProtocolParser::POISON_ = {
-    std::shared_ptr<const Byte>(),
-    0u, 0u, 0u
-};
-
 ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
     : done_(false)
     , consumer_(consumer)
@@ -316,11 +311,25 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_context(const char* ms
 }
 
 void ProtocolParser::consume() {
-    throw "not implemented";
+    if (buffers_.size()) {
+        auto& top = buffers_.front();
+        top.cons = top.pos;
+    }
+    std::queue<PDU> tmp;
+    backlog_.swap(tmp);
 }
 
 void ProtocolParser::discard() {
-    throw "not implemented";
+    if (buffers_.size()) {
+        auto& top = buffers_.front();
+        top.pos = top.cons;
+    }
+    while(backlog_.size()) {
+        auto& top = backlog_.front();
+        top.pos = top.cons;
+        buffers_.push(top);
+        backlog_.pop();
+    }
 }
 
 }

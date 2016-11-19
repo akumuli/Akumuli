@@ -55,6 +55,9 @@ std::tuple<bool, u64> RESPStream::_read_int_body() {
             // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
             return std::make_tuple(true, result);
         } else if (c == '\r') {
+            if (stream_->is_eof()) {
+                return std::make_tuple(false, 0ull);
+            }
             c = stream_->get();
             if (c == '\n') {
                 return std::make_tuple(true, result);
