@@ -3,6 +3,7 @@
 #include <thread>
 #include <atomic>
 #include <boost/function.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
 
@@ -101,8 +102,9 @@ void TcpSession::handle_read(BufferT buffer,
         try {
             PDU pdu = {
                 buffer,
-                nbytes,
-                pos
+                static_cast<u32>(nbytes),
+                static_cast<u32>(pos),
+                static_cast<u32>(pos)
             };
             parser_.parse_next(pdu);
             start(buffer, buf_size, pos, nbytes);
