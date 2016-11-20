@@ -101,6 +101,9 @@ std::tuple<bool, int> RESPStream::_read_string_body(Byte *buffer, size_t byte_bu
         if (c == '\n') {
             return std::make_tuple(true, static_cast<int>(p - buffer));
         } else if (c == '\r') {
+            if (stream_->is_eof()) {
+                return std::make_tuple(false, 0ull);
+            }
             c = stream_->get();
             if (c == '\n') {
                 return std::make_tuple(true, static_cast<int>(p - buffer));
