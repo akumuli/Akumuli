@@ -63,6 +63,10 @@ struct QueryParser {
      */
     static std::tuple<aku_Status, ReshapeRequest> parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
+    /** Parse join query and create `reshape` request for column-store.
+     */
+    static std::tuple<aku_Status, ReshapeRequest> parse_join_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+
     /** Parse stream processing pipeline.
       * @param ptree contains query
       * @returns vector of Nodes in proper order

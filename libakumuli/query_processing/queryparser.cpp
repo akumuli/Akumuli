@@ -290,10 +290,47 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
         } else if (item.first == "aggregate") {
             return std::make_tuple(AKU_SUCCESS, QueryKind::AGGREGATE);
         } else if (item.first == "join") {
-            return std::make_tuple(AKU_ENOT_IMPLEMENTED, QueryKind::JOIN);
+            return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN);
         }
     }
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, QueryKind::SELECT);
+}
+
+aku_Status validate_querey(boost::property_tree::ptree const& ptree) {
+    static const std::vector<std::string> UNIQUE_STMTS = {
+        "select",
+        "aggregate",
+        "join"
+    };
+    static const std::set<std::string> ALLOWED_STMTS = {
+        "select",
+        "aggregate",
+        "join",
+        "output",
+        "order-by",
+        "group-by",
+        "limit",
+        "offset"
+    };
+    std::set<std::string> keywords;
+    for (const auto& item: ptree) {
+        std::string keyword = item.first;
+        if (ALLOWED_STMTS.count(keyword) == 0) {
+            Logger::msg(AKU_LOG_ERROR, "Unexpected `" + keyword + "` statement");
+            return AKU_EQUERY_PARSING_ERROR;
+        }
+        if (keywords.count(keyword)) {
+            Logger::msg(AKU_LOG_ERROR, "Duplicate `" + keyword + "` statement");
+            return AKU_EQUERY_PARSING_ERROR;
+        }
+        for (auto kw: UNIQUE_STMTS) {
+            if (keywords.count(kw)) {
+                Logger::msg(AKU_LOG_ERROR, "Statement `" + keyword + "` can't be used with `" + kw + "`");
+                return AKU_EQUERY_PARSING_ERROR;
+            }
+        }
+    }
+    return AKU_SUCCESS;
 }
 
 /** Select statement should look like this:
@@ -303,10 +340,13 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
 {
-    aku_Status status;
+    std::vector<aku_ParamId> ids;
+    aku_Status status = validate_querey(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
     std::string name;
     std::tie(status, name) = parse_select_stmt(ptree);
-    std::vector<aku_ParamId> ids;
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);
     }
@@ -331,8 +371,12 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
                                                     boost::property_tree::ptree const& ptree,
                                                     const SeriesMatcher &matcher)
 {
-    aku_Status status;
     ReshapeRequest result = {};
+
+    aku_Status status = validate_querey(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
 
     Logger::msg(AKU_LOG_INFO, "Parsing query:");
     Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
@@ -398,9 +442,12 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
 }
 
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
-    // TODO: query validation (e.g. fail if aggregate and select used simultaneously)
-    aku_Status status;
     ReshapeRequest result = {};
+
+    aku_Status status = validate_querey(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
 
     Logger::msg(AKU_LOG_INFO, "Parsing query:");
     Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
@@ -471,7 +518,17 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
+}
 
+std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::property_tree::ptree const& ptree,
+                                                                     SeriesMatcher const& matcher)
+{
+    ReshapeRequest result = {};
+    aku_Status status = validate_querey(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+    throw "not implemented";
 }
 
 struct TerminalNode : QP::Node {
