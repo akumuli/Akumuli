@@ -42,7 +42,9 @@ struct RESPStream {
         ARRAY,
         BULK_STR,
         ERROR,
-        BAD,
+        // Control words
+        _BAD,    //< Invalid element type
+        _AGAIN,  //< Element is not received completley
     };
 
     ByteStreamReader* stream_;  //< Stream

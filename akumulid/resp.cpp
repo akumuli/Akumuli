@@ -15,10 +15,10 @@ RESPStream::RESPStream(ByteStreamReader *stream) {
 
 RESPStream::Type RESPStream::next_type() const {
     if (stream_->is_eof()) {
-        return BAD;
+        return _AGAIN;
     }
     auto ch = stream_->pick();
-    Type result = BAD;
+    Type result = _BAD;
     switch(ch) {
     case '+':
         result = STRING;
@@ -36,7 +36,7 @@ RESPStream::Type RESPStream::next_type() const {
         result = ERROR;
         break;
     default:
-        result = BAD;
+        result = _BAD;
         break;
     };
     return result;

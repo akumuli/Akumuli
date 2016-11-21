@@ -50,7 +50,7 @@ void ProtocolParser::worker() {
             // read id
             auto next = stream.next_type();
             switch(next) {
-            case RESPStream::BAD:
+            case RESPStream::_AGAIN:
                 discard();
                 return;
             case RESPStream::INTEGER:
@@ -77,6 +77,7 @@ void ProtocolParser::worker() {
             case RESPStream::ARRAY:
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 // Bad frame
                 {
                     std::string msg;
@@ -89,7 +90,7 @@ void ProtocolParser::worker() {
             // read ts
             next = stream.next_type();
             switch(next) {
-            case RESPStream::BAD:
+            case RESPStream::_AGAIN:
                 discard();
                 return;
             case RESPStream::INTEGER:
@@ -112,6 +113,7 @@ void ProtocolParser::worker() {
             case RESPStream::ARRAY:
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 {
                     std::string msg;
                     size_t pos;
@@ -123,7 +125,7 @@ void ProtocolParser::worker() {
             // read value
             next = stream.next_type();
             switch(next) {
-            case RESPStream::BAD:
+            case RESPStream::_AGAIN:
                 discard();
                 return;
             case RESPStream::INTEGER:
@@ -156,6 +158,7 @@ void ProtocolParser::worker() {
             case RESPStream::ARRAY:
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 // Bad frame
                 {
                     std::string msg;
