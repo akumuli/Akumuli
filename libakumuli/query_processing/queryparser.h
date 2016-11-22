@@ -19,14 +19,14 @@ enum class QueryKind {
 };
 
 class SeriesRetreiver {
-    boost::optional<std::string> metric_;
+    std::vector<std::string> metric_;
     std::map<std::string, std::vector<std::string>> tags_;
 public:
     //! Matches all series names
     SeriesRetreiver();
 
     //! Matches all series from one metric
-    SeriesRetreiver(std::string metric);
+    SeriesRetreiver(std::vector<std::string> const& metric);
 
     //! Add tag-name and tag-value pair
     aku_Status add_tag(std::string name, std::string value);
