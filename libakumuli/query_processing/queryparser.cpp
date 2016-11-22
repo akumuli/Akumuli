@@ -310,7 +310,9 @@ aku_Status validate_querey(boost::property_tree::ptree const& ptree) {
         "order-by",
         "group-by",
         "limit",
-        "offset"
+        "offset",
+        "range",
+        "where"
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
