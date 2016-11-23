@@ -650,12 +650,12 @@ void test_retreiver() {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin(), ids.end(), act.begin(), act.end());
 
-    SeriesRetreiver rt2("bbb");
+    SeriesRetreiver rt2({"bbb"});
     std::tie(status, act) = rt2.extract_ids(m);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 5, ids.end(), act.begin(), act.end());
 
-    SeriesRetreiver rt3("bbb");
+    SeriesRetreiver rt3({"bbb"});
     status = rt3.add_tag("foo", "3");
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     status = rt3.add_tag("buz", "4");
@@ -666,7 +666,7 @@ void test_retreiver() {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL_COLLECTIONS(ids.begin() + 7, ids.begin() + 9, act.begin(), act.end());
 
-    SeriesRetreiver rt4("bbb");
+    SeriesRetreiver rt4({"bbb"});
     status = rt4.add_tag("foo", "4");
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     status = rt4.add_tags("buz", {"4", "5"});

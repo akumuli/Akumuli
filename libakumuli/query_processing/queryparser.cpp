@@ -595,11 +595,11 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
         return std::make_tuple(status, result);
     }
 
-    // Order-by statment is disallowed
-    auto orderby = ptree.get_child_optional("order-by");
-    if (orderby) {
-        Logger::msg(AKU_LOG_INFO, "Unexpected `order-by` statement found in `aggregate` query");
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+    // Order-by statment
+    OrderBy order;
+    std::tie(status, order) = parse_orderby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
     }
 
     // Where statement
@@ -620,14 +620,13 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
 
     // Initialize request
     result.agg.enabled = false;
-    result.agg.func = func;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
 
     // TODO: init result.select.columns
 
-    result.order_by = orderby;
+    result.order_by = order;
 
     result.group_by.enabled = false;
 
