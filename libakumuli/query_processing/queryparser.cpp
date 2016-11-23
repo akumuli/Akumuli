@@ -617,6 +617,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     }
 
     // TODO: implement group-by
+    result.group_by.enabled = false;
 
     // Initialize request
     result.agg.enabled = false;
@@ -624,11 +625,22 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     result.select.begin = ts_begin;
     result.select.end = ts_end;
 
-    // TODO: init result.select.columns
+    size_t ncolumns = metrics.size();
+    size_t nentries = ids.size() / ncolumns;
+    if (ids.size() % ncolumns != 0) {
+        AKU_PANIC("Invalid `where` statement processing results");
+    }
+    u32 idix = 0;
+    for (auto i = 0u; i < ncolumns; i++) {
+        Column column;
+        for (auto j = 0u; j < nentries; j++) {
+            column.ids.push_back(ids.at(idix));
+            idix++;
+        }
+        result.select.columns.push_back(column);
+    }
 
     result.order_by = order;
-
-    result.group_by.enabled = false;
 
     return std::make_tuple(AKU_SUCCESS, result);
 }

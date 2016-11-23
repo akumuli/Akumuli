@@ -384,6 +384,73 @@ struct MergeIterator : RowIterator {
 
 };
 
+/** Iterator used to join several trees together
+  */
+struct JoinIterator {
+
+    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    static const size_t BUFFER_SIZE = 1024;
+    std::vector<std::vector<aku_Sample>> buffers_;
+    u32 buffer_pos_;
+    u32 buffer_size_;
+
+    JoinIterator()
+        : buffer_pos_(0)
+        , buffer_size_(0)
+    {
+        // TODO: init ids_ and iters_
+        buffers_.resize(iters_.size());
+        for(u32 i = 0; i < iters_.size(); i++) {
+            buffers_.at(i).resize(BUFFER_SIZE);
+        }
+    }
+
+    aku_Status fill_buffers() {
+        if (buffer_pos_ != buffer_size_) {
+            // Logic error
+            AKU_PANIC("Buffers is not consumed");
+        }
+        aku_Timestamp destts[BUFFER_SIZE];
+        double destval[BUFFER_SIZE];
+        std::vector<size_t> sizes;
+        size_t ixbuf = 0;
+        for (auto const& it: iters_) {
+            aku_Status status;
+            size_t size;
+            std::tie(status, size) = it->read(destts, destval, BUFFER_SIZE);
+            if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                return status;
+            }
+            for (size_t i = 0; i < size; i++) {
+                aku_Sample sample = {};
+                sample.paramid = ids_.at(ixbuf);
+                sample.timestamp = destts[i];
+                sample.payload.type = AKU_PAYLOAD_FLOAT;
+                sample.payload.float64 = destval[i];
+                buffers_[ixbuf][i] = sample;
+            }
+            ixbuf++;
+        }
+        buffer_pos_ = 0;
+        buffer_size_ = std::accumulate(sizes.begin(), sizes.end(), sizes.front(), [](size_t a, size_t b) { return std::min(a, b); });
+        return AKU_SUCCESS;
+    }
+
+    /** Read values to buffer. Values is aku_Sample with variable sized payload.
+      * @param dest is a pointer to recieving buffer
+      * @param size is a size of the recieving buffer
+      * @return status and output size (in bytes)
+      */
+    std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
+        if (buffer_pos_ == buffer_size_) {
+            // buffers consumed (or not used yet)
+        }
+        // Fill buffers
+        // Consume buffers
+        throw "not implemented";
+    }
+};
 
 // ////////////// //
 //  Column-store  //
@@ -547,6 +614,16 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             }
         }
     }
+}
+
+void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `json` query: " + to_string(req));
+    if (req.select.columns.size() < 2) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `join` request, not enough columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
+    throw "Not implemented";
 }
 
 size_t ColumnStore::_get_uncommitted_memory() const {

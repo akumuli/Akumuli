@@ -94,6 +94,8 @@ public:
     //! Slice and dice data according to request and feed it to query processor
     void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
+    void join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
     size_t _get_uncommitted_memory() const;
 
     //! For debug reports
