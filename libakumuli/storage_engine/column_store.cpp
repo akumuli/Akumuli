@@ -390,17 +390,21 @@ struct JoinIterator {
 
     std::vector<std::unique_ptr<NBTreeIterator>> iters_;
     std::vector<aku_ParamId> ids_;
-    static const size_t BUFFER_SIZE = 1024;
+    static const size_t BUFFER_SIZE = 4096;
     std::vector<std::vector<aku_Sample>> buffers_;
-    u32 buffer_pos_;
-    u32 buffer_size_;
+    std::vector<u32> buffer_pos_;
+    std::vector<u32> buffer_size_;
 
-    JoinIterator()
-        : buffer_pos_(0)
+    JoinIterator(std::vector<std::unique_ptr<NBTreeIterator>>&& iters, std::vector<aku_ParamId>&& ids)
+        : iters_(std::move(iters))
+        , ids_(std::move(ids))
+        , buffer_pos_(0)
         , buffer_size_(0)
     {
-        // TODO: init ids_ and iters_
-        buffers_.resize(iters_.size());
+        auto ncol = iters_.size();
+        buffers_.resize(ncol);
+        buffer_pos_.resize(ncol);
+        buffer_size_.resize(ncol);
         for(u32 i = 0; i < iters_.size(); i++) {
             buffers_.at(i).resize(BUFFER_SIZE);
         }
@@ -413,7 +417,7 @@ struct JoinIterator {
         }
         aku_Timestamp destts[BUFFER_SIZE];
         double destval[BUFFER_SIZE];
-        std::vector<size_t> sizes;
+        std::vector<u32> sizes;
         size_t ixbuf = 0;
         for (auto const& it: iters_) {
             aku_Status status;
@@ -431,9 +435,10 @@ struct JoinIterator {
                 buffers_[ixbuf][i] = sample;
             }
             ixbuf++;
+            sizes.push_back(static_cast<u32>(size));  // safe to cast because size < BUFFER_SIZE
         }
-        buffer_pos_ = 0;
-        buffer_size_ = std::accumulate(sizes.begin(), sizes.end(), sizes.front(), [](size_t a, size_t b) { return std::min(a, b); });
+        buffer_pos_ = {};
+        buffer_size_.swap(sizes);
         return AKU_SUCCESS;
     }
 
@@ -443,12 +448,55 @@ struct JoinIterator {
       * @return status and output size (in bytes)
       */
     std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
+        aku_Status status = AKU_SUCCESS;
+        // Fill buffers
         if (buffer_pos_ == buffer_size_) {
             // buffers consumed (or not used yet)
+            status = fill_buffers();
+            if (status != AKU_SUCCESS) {
+                return std::make_tuple(status, 0);
+            }
         }
-        // Fill buffers
         // Consume buffers
-        throw "not implemented";
+        size_t ncolumns = iters_.size();
+        size_t sample_size = sizeof(aku_Sample) + ncolumns - 1;
+        size_t output_size = 0;
+        while(size >= sample_size) {
+            aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
+            double* tuple_tail = reinterpret_cast<double*>(sample->payload.data);
+            sample->payload.float64 = buffers_[0][buffer_pos_[0]].payload.float64;
+            aku_Timestamp key = buffers_[0][buffer_pos_[0]].timestamp;
+            sample->timestamp = key;
+            for (u32 i = 1; i < ncolumns; i++) {
+                aku_Timestamp ts = 0;
+                while(true) {
+                    if (buffer_pos_[i] < buffer_size_[i]) {
+                        ts = buffers_[i][buffer_pos_[i]].timestamp;
+                        if (ts >= key) {
+                            break;
+                        }
+                        buffer_pos_[i] += 1;
+                    } else {
+                        // TODO: store information about missing value somewhere
+                        continue;
+                    }
+                }
+                if (ts == key) {
+                    // value is found
+                    double val = buffers_[i][buffer_pos_[i]].payload.float64;
+                    tuple_tail[i - 1] = val;
+                    // TODO: store information about present value somewhere
+                } else {
+                    // TODO: store information about missing value somewhere
+                    continue;
+                }
+            }
+            // TODO: store tuple's metadata
+            output_size += sample_size;
+            size -= sample_size;
+            dest += sample_size;
+        }
+        return std::make_tuple(AKU_SUCCESS, output_size);
     }
 };
 
@@ -623,6 +671,27 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
         qproc.set_error(AKU_EBAD_ARG);
         return;
     }
+    std::vector<std::unique_ptr<JoinIterator>> iters;
+    for (u32 ix = 0; ix < req.select.columns.front().ids.size(); ix++) {
+        std::vector<std::unique_ptr<NBTreeIterator>> row;
+        std::vector<aku_ParamId> ids;
+        for (u32 col = 0; col < req.select.columns.size(); col++) {
+            auto id = req.select.columns[col].ids[ix];
+            ids.push_back(id);
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                std::unique_ptr<NBTreeIterator> iter = it->second->search(req.select.begin, req.select.end);
+                row.push_back(std::move(iter));
+            } else {
+                qproc.set_error(AKU_ENOT_FOUND);
+                return;
+            }
+        }
+        auto it = new JoinIterator(std::move(row), std::move(ids));
+        iters.push_back(std::unique_ptr<JoinIterator>(it));
+    }
+
     throw "Not implemented";
 }
 

@@ -393,3 +393,35 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_3) {
     test_aggregation(10000, 110000);
 }
 
+void test_join(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col1 = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> col2 = {
+        20,21,22,23,24,25,26,27,28,29
+    };
+    for (auto id: col1) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+    for (auto id: col2) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+    QueryProcessorMock mock;
+    ReshapeRequest req = {};
+    req.agg.enabled = false;
+    req.group_by.enabled = false;
+    req.order_by = OrderBy::SERIES;
+    req.select.begin = begin;
+    req.select.end = end;
+    req.select.columns.push_back({col1});
+    req.select.columns.push_back({col2});
+    cstore->join_query(req, mock);
+
+    BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_join_1) {
+    test_join(100, 1100);
+}
