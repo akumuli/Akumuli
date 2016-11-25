@@ -59,20 +59,21 @@ typedef struct {
 
     //! Data element flags
     enum {
-        EMPTY         = 0,
-        URGENT        = 1 << 8, /** urgent flag (anomaly or error) */
-        PARAMID_BIT   = 1,
-        TIMESTAMP_BIT = 1 << 1,
-        CUSTOM_TIMESTAMP =
-            1 << 2, /** indicates that timestamp shouldn't be formatted during output */
+        EMPTY          = 0,
+        URGENT         = 1 << 8,  /** urgent flag (anomaly or error) */
+        PARAMID_BIT    = 1,
+        TIMESTAMP_BIT  = 1 << 1,
+        CUSTOM_TIMESTAMP
+                       = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT      = 1 << 4,
+        TUPLE_BIT      = 1 << 5,  /** tuple type */
         ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
                                             (extra payload stored in `data` was lost) */
         SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
 
-        MARGIN    = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
-        LO_MARGIN = 1 << 14, /** backward direction margin */
-        HI_MARGIN = 1 << 15, /** forward direction margin */
+        MARGIN         = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
+        LO_MARGIN      = 1 << 14, /** backward direction margin */
+        HI_MARGIN      = 1 << 15, /** forward direction margin */
     };
     u16 type;
 
@@ -86,6 +87,7 @@ typedef struct {
 } aku_PData;
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
+#define AKU_PAYLOAD_TUPLE (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::TUPLE_BIT)
 
 //! Cursor result type
 typedef struct {

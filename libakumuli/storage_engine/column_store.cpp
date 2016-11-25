@@ -391,6 +391,7 @@ struct JoinIterator {
     std::vector<std::unique_ptr<NBTreeIterator>> iters_;
     std::vector<aku_ParamId> ids_;
     static const size_t BUFFER_SIZE = 4096;
+    static const size_t MAX_TUPLE_SIZE = 64;
     std::vector<std::vector<aku_Sample>> buffers_;
     std::vector<u32> buffer_pos_;
     std::vector<u32> buffer_size_;
@@ -401,6 +402,9 @@ struct JoinIterator {
         , buffer_pos_(0)
         , buffer_size_(0)
     {
+        if (iters.size() != ids.size() || ids.size() > MAX_TUPLE_SIZE) {
+            AKU_PANIC("Invalid join");
+        }
         auto ncol = iters_.size();
         buffers_.resize(ncol);
         buffer_pos_.resize(ncol);
@@ -411,7 +415,7 @@ struct JoinIterator {
     }
 
     aku_Status fill_buffers() {
-        if (buffer_pos_ != buffer_size_) {
+        if (buffer_pos_.at(0) != buffer_size_.at(0)) {
             // Logic error
             AKU_PANIC("Buffers is not consumed");
         }
@@ -437,12 +441,14 @@ struct JoinIterator {
             ixbuf++;
             sizes.push_back(static_cast<u32>(size));  // safe to cast because size < BUFFER_SIZE
         }
-        buffer_pos_ = {};
+        std::fill(buffer_pos_.begin(), buffer_pos_.end(), 0);
         buffer_size_.swap(sizes);
         return AKU_SUCCESS;
     }
 
     /** Read values to buffer. Values is aku_Sample with variable sized payload.
+      * Format: float64 contains bitmap, data contains array of nonempty values (whether a
+      * value is empty or not is defined by bitmap)
       * @param dest is a pointer to recieving buffer
       * @param size is a size of the recieving buffer
       * @return status and output size (in bytes)
@@ -450,7 +456,7 @@ struct JoinIterator {
     std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
         aku_Status status = AKU_SUCCESS;
         // Fill buffers
-        if (buffer_pos_ == buffer_size_) {
+        if (buffer_pos_.at(0) == buffer_size_.at(0)) {
             // buffers consumed (or not used yet)
             status = fill_buffers();
             if (status != AKU_SUCCESS) {
@@ -459,12 +465,13 @@ struct JoinIterator {
         }
         // Consume buffers
         size_t ncolumns = iters_.size();
-        size_t sample_size = sizeof(aku_Sample) + ncolumns - 1;
+        size_t max_sample_size = sizeof(aku_Sample) + ncolumns;
         size_t output_size = 0;
-        while(size >= sample_size) {
+        while(size >= max_sample_size) {
             aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
-            double* tuple_tail = reinterpret_cast<double*>(sample->payload.data);
-            sample->payload.float64 = buffers_[0][buffer_pos_[0]].payload.float64;
+            u64 bitmap = 1;
+            double* tuple = reinterpret_cast<double*>(sample->payload.data);
+            tuple[0] = buffers_[0][buffer_pos_[0]].payload.float64;
             aku_Timestamp key = buffers_[0][buffer_pos_[0]].timestamp;
             sample->timestamp = key;
             for (u32 i = 1; i < ncolumns; i++) {
@@ -476,22 +483,18 @@ struct JoinIterator {
                             break;
                         }
                         buffer_pos_[i] += 1;
-                    } else {
-                        // TODO: store information about missing value somewhere
-                        continue;
                     }
                 }
                 if (ts == key) {
                     // value is found
                     double val = buffers_[i][buffer_pos_[i]].payload.float64;
-                    tuple_tail[i - 1] = val;
-                    // TODO: store information about present value somewhere
-                } else {
-                    // TODO: store information about missing value somewhere
-                    continue;
+                    tuple[i] = val;
+                    bitmap |= (1 << i);
                 }
             }
-            // TODO: store tuple's metadata
+            u16 sample_size = sizeof(aku_Sample) + static_cast<u16>(log2(static_cast<i64>(bitmap)));
+            sample->payload.size = sample_size;
+            sample->payload.type = AKU_PAYLOAD_TUPLE;
             output_size += sample_size;
             size -= sample_size;
             dest += sample_size;
@@ -692,7 +695,33 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
         iters.push_back(std::unique_ptr<JoinIterator>(it));
     }
 
-    throw "Not implemented";
+    // Todo compose iterators
+    for (auto& it: iters) {
+        const size_t dest_size = 4096;
+        std::vector<u8> dest;
+        dest.resize(dest_size);
+        aku_Status status = AKU_SUCCESS;
+        while(status == AKU_SUCCESS) {
+            size_t size;
+            std::tie(status, size) = it->read(dest.data(), dest_size);
+            if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+                Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+                qproc.set_error(status);
+                return;
+            }
+            // Parse `dest` buffer
+            u8 const* ptr = dest.data();
+            u8 const* end = ptr + size;
+            while (ptr < end) {
+                aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(ptr);
+                if (!qproc.put(*sample)) {
+                    return;
+                }
+                ptr += sample->payload.size;
+            }
+        }
+
+    }
 }
 
 size_t ColumnStore::_get_uncommitted_memory() const {
