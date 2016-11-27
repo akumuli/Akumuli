@@ -393,6 +393,48 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_3) {
     test_aggregation(10000, 110000);
 }
 
+struct TupleQueryProcessorMock : QP::IStreamProcessor {
+    bool started = false;
+    bool stopped = false;
+    std::vector<u64> bitmaps;
+    std::vector<u64> paramids;
+    std::vector<u64> timestamps;
+    std::vector<std::vector<double>> columns;
+    aku_Status error = AKU_SUCCESS;
+
+    TupleQueryProcessorMock(u32 ncol) {
+        columns.resize(ncol);
+    }
+
+    virtual bool start() override {
+        started = true;
+        return true;
+    }
+    virtual void stop() override {
+        stopped = true;
+    }
+    virtual bool put(const aku_Sample &sample) override {
+        BOOST_REQUIRE(sample.payload.type == AKU_PAYLOAD_TUPLE);
+        union {
+            double d;
+            u64    u;
+        } bitmap;
+        bitmap.d = sample.payload.float64;
+        bitmaps.push_back(bitmap.u);
+        paramids.push_back(sample.paramid);
+        timestamps.push_back(sample.timestamp);
+        double const* tup = reinterpret_cast<double const*>(sample.payload.data);
+        for (auto i = 0u; i < columns.size(); i++) {
+            BOOST_REQUIRE((bitmap.u & (1 << i)) != 0);
+            columns.at(i).push_back(tup[i]);
+        }
+        return true;
+    }
+    virtual void set_error(aku_Status err) override {
+        error = err;
+    }
+};
+
 void test_join(aku_Timestamp begin, aku_Timestamp end) {
     auto cstore = create_cstore();
     auto session = create_session(cstore);
@@ -402,13 +444,17 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
     std::vector<aku_ParamId> col2 = {
         20,21,22,23,24,25,26,27,28,29
     };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
     for (auto id: col1) {
         fill_data_in(cstore, session, id, begin, end);
     }
     for (auto id: col2) {
         fill_data_in(cstore, session, id, begin, end);
     }
-    QueryProcessorMock mock;
+    TupleQueryProcessorMock mock(2);
     ReshapeRequest req = {};
     req.agg.enabled = false;
     req.group_by.enabled = false;
@@ -420,6 +466,19 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
     cstore->join_query(req, mock);
 
     BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+    u32 ix = 0;
+    for (auto id: col1) {
+        for (auto ts: timestamps) {
+            BOOST_REQUIRE(mock.paramids.at(ix) == id);
+            BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+            double expected = ts*0.1;
+            double col0 = mock.columns[0][ix];
+            double col1 = mock.columns[1][ix];
+            BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
+            BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
+            ix++;
+        }
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_column_store_join_1) {

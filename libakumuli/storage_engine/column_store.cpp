@@ -389,33 +389,31 @@ struct MergeIterator : RowIterator {
 struct JoinIterator {
 
     std::vector<std::unique_ptr<NBTreeIterator>> iters_;
-    std::vector<aku_ParamId> ids_;
+    aku_ParamId id_;
     static const size_t BUFFER_SIZE = 4096;
     static const size_t MAX_TUPLE_SIZE = 64;
-    std::vector<std::vector<aku_Sample>> buffers_;
-    std::vector<u32> buffer_pos_;
-    std::vector<u32> buffer_size_;
+    std::vector<std::vector<std::pair<aku_Timestamp, double>>> buffers_;
+    u32 buffer_pos_;
+    u32 buffer_size_;
 
-    JoinIterator(std::vector<std::unique_ptr<NBTreeIterator>>&& iters, std::vector<aku_ParamId>&& ids)
+    JoinIterator(std::vector<std::unique_ptr<NBTreeIterator>>&& iters, aku_ParamId id)
         : iters_(std::move(iters))
-        , ids_(std::move(ids))
+        , id_(id)
         , buffer_pos_(0)
         , buffer_size_(0)
     {
-        if (iters.size() != ids.size() || ids.size() > MAX_TUPLE_SIZE) {
+        if (iters.size() > MAX_TUPLE_SIZE) {
             AKU_PANIC("Invalid join");
         }
         auto ncol = iters_.size();
         buffers_.resize(ncol);
-        buffer_pos_.resize(ncol);
-        buffer_size_.resize(ncol);
         for(u32 i = 0; i < iters_.size(); i++) {
             buffers_.at(i).resize(BUFFER_SIZE);
         }
     }
 
     aku_Status fill_buffers() {
-        if (buffer_pos_.at(0) != buffer_size_.at(0)) {
+        if (buffer_pos_ != buffer_size_) {
             // Logic error
             AKU_PANIC("Buffers is not consumed");
         }
@@ -431,19 +429,29 @@ struct JoinIterator {
                 return status;
             }
             for (size_t i = 0; i < size; i++) {
-                aku_Sample sample = {};
-                sample.paramid = ids_.at(ixbuf);
-                sample.timestamp = destts[i];
-                sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.payload.float64 = destval[i];
-                buffers_[ixbuf][i] = sample;
+                buffers_[ixbuf][i] = std::make_pair(destts[i], destval[i]);
             }
             ixbuf++;
             sizes.push_back(static_cast<u32>(size));  // safe to cast because size < BUFFER_SIZE
         }
-        std::fill(buffer_pos_.begin(), buffer_pos_.end(), 0);
-        buffer_size_.swap(sizes);
+        buffer_pos_ = 0;
+        buffer_size_ = sizes.front();
+        for(auto sz: sizes) {
+            if (sz != buffer_size_) {
+                return AKU_EBAD_DATA;
+            }
+        }
+        if (buffer_size_ == 0) {
+            return AKU_ENO_DATA;
+        }
         return AKU_SUCCESS;
+    }
+
+    /** Get pointer to buffer and return pointer to sample and tuple data */
+    static std::tuple<aku_Sample*, double*> cast(u8* dest) {
+        aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
+        double* tuple      = reinterpret_cast<double*>(sample->payload.data);
+        return std::make_tuple(sample, tuple);
     }
 
     /** Read values to buffer. Values is aku_Sample with variable sized payload.
@@ -454,50 +462,55 @@ struct JoinIterator {
       * @return status and output size (in bytes)
       */
     std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
-        aku_Status status = AKU_SUCCESS;
-        // Fill buffers
-        if (buffer_pos_.at(0) == buffer_size_.at(0)) {
-            // buffers consumed (or not used yet)
-            status = fill_buffers();
-            if (status != AKU_SUCCESS) {
-                return std::make_tuple(status, 0);
-            }
-        }
-        // Consume buffers
-        size_t ncolumns = iters_.size();
+        aku_Status status      = AKU_SUCCESS;
+        size_t ncolumns        = iters_.size();
         size_t max_sample_size = sizeof(aku_Sample) + ncolumns;
-        size_t output_size = 0;
+        size_t output_size     = 0;
+
         while(size >= max_sample_size) {
-            aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
-            u64 bitmap = 1;
-            double* tuple = reinterpret_cast<double*>(sample->payload.data);
-            tuple[0] = buffers_[0][buffer_pos_[0]].payload.float64;
-            aku_Timestamp key = buffers_[0][buffer_pos_[0]].timestamp;
-            sample->timestamp = key;
-            for (u32 i = 1; i < ncolumns; i++) {
-                aku_Timestamp ts = 0;
-                while(true) {
-                    if (buffer_pos_[i] < buffer_size_[i]) {
-                        ts = buffers_[i][buffer_pos_[i]].timestamp;
-                        if (ts >= key) {
-                            break;
-                        }
-                        buffer_pos_[i] += 1;
-                    }
+            // Fill buffers
+            if (buffer_pos_ == buffer_size_) {
+                // buffers consumed (or not used yet)
+                status = fill_buffers();
+                if (status != AKU_SUCCESS) {
+                    return std::make_tuple(status, output_size);
                 }
+            }
+            // Allocate new element inside `dest` array
+            u64 bitmap = 1;
+            aku_Sample* sample;
+            double* tuple;
+            std::tie(sample, tuple) = cast(dest);
+
+            tuple[0] = buffers_[0][buffer_pos_].second;
+            aku_Timestamp key = buffers_[0][buffer_pos_].first;
+            u32 nelements = 1;
+
+            for (u32 i = 1; i < ncolumns; i++) {
+                aku_Timestamp ts = buffers_[i][buffer_pos_].first;
                 if (ts == key) {
                     // value is found
-                    double val = buffers_[i][buffer_pos_[i]].payload.float64;
+                    double val = buffers_[i][buffer_pos_].second;
                     tuple[i] = val;
                     bitmap |= (1 << i);
+                    nelements += 1;
                 }
             }
-            u16 sample_size = sizeof(aku_Sample) + static_cast<u16>(log2(static_cast<i64>(bitmap)));
-            sample->payload.size = sample_size;
-            sample->payload.type = AKU_PAYLOAD_TUPLE;
-            output_size += sample_size;
-            size -= sample_size;
-            dest += sample_size;
+            buffer_pos_++;
+            union {
+                u64 u;
+                double d;
+            } bits;
+            bits.u = bitmap;
+            size_t sample_size      = sizeof(aku_Sample) + sizeof(double)*nelements;
+            sample->paramid         = id_;
+            sample->timestamp       = key;
+            sample->payload.size    = static_cast<u16>(sample_size);
+            sample->payload.type    = AKU_PAYLOAD_TUPLE;
+            sample->payload.float64 = bits.d;
+            size                   -= sample_size;
+            dest                   += sample_size;
+            output_size            += sample_size;
         }
         return std::make_tuple(AKU_SUCCESS, output_size);
     }
@@ -691,7 +704,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
                 return;
             }
         }
-        auto it = new JoinIterator(std::move(row), std::move(ids));
+        auto it = new JoinIterator(std::move(row), ids.front());
         iters.push_back(std::unique_ptr<JoinIterator>(it));
     }
 
