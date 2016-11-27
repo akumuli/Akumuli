@@ -40,11 +40,14 @@ static std::string to_string(ReshapeRequest const& req) {
 struct RowIterator {
 
     virtual ~RowIterator() = default;
+
     /** Read samples in batch.
-      * @param dest is an array that will receive values from cursor
-      * @param size is an arrays size
+      * Samples can be of variable size.
+      * @param dest is a pointer to buffer that will receive series of aku_Sample values
+      * @param size is a size of the buffer in bytes
+      * @return status of the operation (success or error code) and number of written bytes
       */
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) = 0;
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) = 0;
 };
 
 
@@ -54,7 +57,7 @@ class ChainIterator : public RowIterator {
     size_t pos_;
 public:
     ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size);
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
 };
 
 
@@ -65,10 +68,11 @@ ChainIterator::ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::un
 {
 }
 
-std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size) {
+std::tuple<aku_Status, size_t> ChainIterator::read(u8 *dest, size_t dest_size) {
     aku_Status status = AKU_ENO_DATA;
     size_t ressz = 0;  // current size
     size_t accsz = 0;  // accumulated size
+    size_t size = dest_size / sizeof(aku_Sample);
     std::vector<aku_Timestamp> destts_vec(size, 0);
     std::vector<double> destval_vec(size, 0);
     std::vector<aku_ParamId> outids(size, 0);
@@ -99,13 +103,15 @@ std::tuple<aku_Status, size_t> ChainIterator::read(aku_Sample *dest, size_t size
     }
     // Convert vectors to series of samples
     for (size_t i = 0; i < accsz; i++) {
-        dest[i].payload.type = AKU_PAYLOAD_FLOAT;
-        dest[i].payload.size = sizeof(aku_Sample);
-        dest[i].paramid = outids[i];
-        dest[i].timestamp = destts_vec[i];
-        dest[i].payload.float64 = destval_vec[i];
+        aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
+        dest += sizeof(aku_Sample);
+        sample->payload.type = AKU_PAYLOAD_FLOAT;
+        sample->payload.size = sizeof(aku_Sample);
+        sample->paramid = outids[i];
+        sample->timestamp = destts_vec[i];
+        sample->payload.float64 = destval_vec[i];
     }
-    return std::tie(status, accsz);
+    return std::make_tuple(status, accsz*sizeof(aku_Sample));
 }
 
 
@@ -126,11 +132,10 @@ public:
     /**
      * @brief read data from iterators collection
      * @param dest is a destination for aggregate
-     * @param id is a destination for ids
-     * @param size size of both arrays (dest and id)
-     * @return status and number of elements in dest and id
+     * @param size size of both array
+     * @return status and number of elements in dest
      */
-    std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) {
+    std::tuple<aku_Status, size_t> read(u8* dest, size_t size) {
         aku_Status status = AKU_ENO_DATA;
         size_t nelements = 0;
         while(pos_ < iters_.size()) {
@@ -165,13 +170,13 @@ public:
                 sample.payload.float64 = destval.cnt;
             break;
             }
-            *dest = sample;
+            memcpy(dest, &sample, sizeof(sample));
             // move to next
             nelements += 1;
-            size -= 1;
-            dest += 1;
+            size -= sizeof(sample);
+            dest += sizeof(sample);
             pos_++;
-            if (size == 0) {
+            if (size < sizeof(sample)) {
                 break;
             }
             if (status == AKU_ENO_DATA) {
@@ -285,7 +290,7 @@ struct MergeIterator : RowIterator {
         }
     }
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Sample *dest, size_t size) override {
+    virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) override {
         if (forward_) {
             return kway_merge<0>(dest, size);
         }
@@ -293,7 +298,7 @@ struct MergeIterator : RowIterator {
     }
 
     template<int dir>
-    std::tuple<aku_Status, size_t> kway_merge(aku_Sample* dest, size_t size) {
+    std::tuple<aku_Status, size_t> kway_merge(u8* dest, size_t size) {
         if (iters_.empty()) {
             return std::make_tuple(AKU_ENO_DATA, 0);
         }
@@ -349,9 +354,9 @@ struct MergeIterator : RowIterator {
             sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.payload.size = sizeof(aku_Sample);
             sample.payload.float64 = std::get<VALUE>(item);
-
-            if (outpos < size) {
-                dest[outpos++] = sample;
+            if (size - outpos >= sizeof(aku_Sample)) {
+                memcpy(dest + outpos, &sample, sizeof(sample));
+                outpos += sizeof(sample);
             } else {
                 // Output buffer is fully consumed
                 return std::make_tuple(AKU_SUCCESS, size);
@@ -666,7 +671,9 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
     aku_Status status = AKU_SUCCESS;
     while(status == AKU_SUCCESS) {
         size_t size;
-        std::tie(status, size) = iter->read(dest.data(), dest_size);
+        // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
+        //
+        std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size*sizeof(aku_Sample));
         if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
             Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
             qproc.set_error(status);

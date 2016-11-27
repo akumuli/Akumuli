@@ -454,29 +454,60 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
     for (auto id: col2) {
         fill_data_in(cstore, session, id, begin, end);
     }
-    TupleQueryProcessorMock mock(2);
-    ReshapeRequest req = {};
-    req.agg.enabled = false;
-    req.group_by.enabled = false;
-    req.order_by = OrderBy::SERIES;
-    req.select.begin = begin;
-    req.select.end = end;
-    req.select.columns.push_back({col1});
-    req.select.columns.push_back({col2});
-    cstore->join_query(req, mock);
 
-    BOOST_REQUIRE(mock.error == AKU_SUCCESS);
-    u32 ix = 0;
-    for (auto id: col1) {
+    {
+        TupleQueryProcessorMock mock(2);
+        ReshapeRequest req = {};
+        req.agg.enabled = false;
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col1});
+        req.select.columns.push_back({col2});
+        cstore->join_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto id: col1) {
+            for (auto ts: timestamps) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double col0 = mock.columns[0][ix];
+                double col1 = mock.columns[1][ix];
+                BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
+                BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
+                ix++;
+            }
+        }
+    }
+
+    {
+        TupleQueryProcessorMock mock(2);
+        ReshapeRequest req = {};
+        req.agg.enabled = false;
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::TIME;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col1});
+        req.select.columns.push_back({col2});
+        cstore->join_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
         for (auto ts: timestamps) {
-            BOOST_REQUIRE(mock.paramids.at(ix) == id);
-            BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
-            double expected = ts*0.1;
-            double col0 = mock.columns[0][ix];
-            double col1 = mock.columns[1][ix];
-            BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
-            BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
-            ix++;
+            for (auto id: col1) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double col0 = mock.columns[0][ix];
+                double col1 = mock.columns[1][ix];
+                BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
+                BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
+                ix++;
+            }
         }
     }
 }
