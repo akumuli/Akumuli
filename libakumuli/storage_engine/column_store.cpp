@@ -188,7 +188,7 @@ public:
                 break;
             }
         }
-        return std::tie(status, nelements);
+        return std::make_tuple(status, nelements*sizeof(aku_Sample));
     }
 };
 
@@ -679,7 +679,8 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             qproc.set_error(status);
             return;
         }
-        for (size_t ix = 0; ix < size; ix++) {
+        size_t ixsize = size / sizeof(aku_Sample);
+        for (size_t ix = 0; ix < ixsize; ix++) {
             if (!qproc.put(dest[ix])) {
                 return;
             }
