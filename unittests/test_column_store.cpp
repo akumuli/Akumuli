@@ -483,7 +483,7 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         }
     }
 
-    {   return;
+    {
         TupleQueryProcessorMock mock(2);
         ReshapeRequest req = {};
         req.agg.enabled = false;
