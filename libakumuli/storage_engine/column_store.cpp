@@ -646,11 +646,11 @@ struct MergeJoinIterator : RowIterator {
             size_t index = item.index;
             aku_Sample const* sample = item.sample;
             if (size - outpos >= sample->payload.size) {
-                memcpy(dest + outpos, &sample, sizeof(sample));
-                outpos += sizeof(sample);
+                memcpy(dest + outpos, sample, sample->payload.size);
+                outpos += sample->payload.size;
             } else {
                 // Output buffer is fully consumed
-                return std::make_tuple(AKU_SUCCESS, size);
+                return std::make_tuple(AKU_SUCCESS, outpos);
             }
             heap.pop();
             ranges_[index].advance(sample->payload.size);
@@ -841,6 +841,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
         size_t ixsize = size / sizeof(aku_Sample);
         for (size_t ix = 0; ix < ixsize; ix++) {
             if (!qproc.put(dest[ix])) {
+                Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
                 return;
             }
         }
@@ -854,7 +855,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
         qproc.set_error(AKU_EBAD_ARG);
         return;
     }
-    std::vector<std::unique_ptr<JoinIterator>> iters;
+    std::vector<std::unique_ptr<RowIterator>> iters;
     for (u32 ix = 0; ix < req.select.columns.front().ids.size(); ix++) {
         std::vector<std::unique_ptr<NBTreeIterator>> row;
         std::vector<aku_ParamId> ids;
@@ -875,32 +876,60 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
         iters.push_back(std::unique_ptr<JoinIterator>(it));
     }
 
-    // Todo compose iterators
-    for (auto& it: iters) {
-        const size_t dest_size = 4096;
+    if (req.order_by == OrderBy::SERIES) {
+        for (auto& it: iters) {
+            const size_t dest_size = 4096;
+            std::vector<u8> dest;
+            dest.resize(dest_size);
+            aku_Status status = AKU_SUCCESS;
+            while(status == AKU_SUCCESS) {
+                size_t size;
+                std::tie(status, size) = it->read(dest.data(), dest_size);
+                if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+                    Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+                    qproc.set_error(status);
+                    return;
+                }
+                // Parse `dest` buffer
+                u8 const* ptr = dest.data();
+                u8 const* end = ptr + size;
+                while (ptr < end) {
+                    aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(ptr);
+                    if (!qproc.put(*sample)) {
+                        Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
+                        return;
+                    }
+                    ptr += sample->payload.size;
+                }
+            }
+        }
+    } else {
+        std::unique_ptr<RowIterator> iter;
+        bool forward = req.select.begin < req.select.end;
+        iter.reset(new MergeJoinIterator(std::move(iters), forward));
+
+        const size_t dest_size = 0x1000;
         std::vector<u8> dest;
         dest.resize(dest_size);
         aku_Status status = AKU_SUCCESS;
         while(status == AKU_SUCCESS) {
             size_t size;
-            std::tie(status, size) = it->read(dest.data(), dest_size);
+            std::tie(status, size) = iter->read(dest.data(), dest_size);
             if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
                 Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
                 qproc.set_error(status);
                 return;
             }
-            // Parse `dest` buffer
-            u8 const* ptr = dest.data();
-            u8 const* end = ptr + size;
-            while (ptr < end) {
-                aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(ptr);
+            size_t pos = 0;
+            while(pos < size) {
+                aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
                 if (!qproc.put(*sample)) {
+                    Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
                     return;
                 }
-                ptr += sample->payload.size;
+                pos += sample->payload.size;
             }
         }
-
     }
 }
 
