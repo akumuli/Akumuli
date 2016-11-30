@@ -713,6 +713,7 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
     using namespace QP;
     boost::property_tree::ptree ptree;
     aku_Status status;
+    session->clear_series_matcher();
     std::tie(status, ptree) = QueryParser::parse_json(query);
     if (status != AKU_SUCCESS) {
         cur->set_error(caller, status);
@@ -780,10 +781,31 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (req.group_by.enabled) {
             session->set_series_matcher(req.group_by.matcher);
-        } else {
-            session->clear_series_matcher();
         }
         // Scan column store
+        if (proc->start()) {
+            cstore_->query(req, *proc);
+            proc->stop();
+        }
+    } else if (kind == QueryKind::JOIN) {
+        ReshapeRequest req;
+        std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(caller, status);
+            return;
+        }
+        // Replace matcher with local one
+        session->set_series_matcher(req.select.matcher);
+
+        // Start scanning
+        GroupByTime groupbytime;
+        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (proc->start()) {
             cstore_->query(req, *proc);
             proc->stop();

@@ -580,6 +580,45 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
+static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
+                                             SeriesMatcher const& global_matcher,
+                                             std::vector<std::string> const& metric_names)
+{
+    if (req->select.columns.size() < 2) {
+        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Query is not a `JOIN` query.");
+        return AKU_EBAD_ARG;
+    }
+    if (req->select.columns.size() != metric_names.size()) {
+        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Invalid metric names.");
+        return AKU_EBAD_ARG;
+    }
+    std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
+    auto matcher = std::make_shared<SeriesMatcher>();
+    for (auto id: ids) {
+        auto sname = global_matcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        if (!boost::algorithm::starts_with(name, metric_names.front())) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid metric names.");
+            return AKU_EBAD_DATA;
+        }
+        auto tags = name.substr(metric_names.front().size());
+        std::stringstream str;
+        bool first = true;
+        for (auto metric: metric_names) {
+            if (first) {
+                first = false;
+            } else {
+                str << ':';
+            }
+            str << metric;
+        }
+        str << tags;
+        matcher->_add(str.str(), id);
+    }
+    req->select.matcher = matcher;
+    return AKU_SUCCESS;
+}
+
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::property_tree::ptree const& ptree,
                                                                      SeriesMatcher const& matcher)
 {
@@ -624,6 +663,11 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
+
+    status = init_matcher_in_join_query(&result, matcher, metrics);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
 
     size_t ncolumns = metrics.size();
     size_t nentries = ids.size() / ncolumns;
