@@ -152,8 +152,8 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
     return name.second;
 }
 
-void StorageSession::query(Caller& caller, InternalCursor* cur, const char* query) const {
-    storage_->query(this, caller, cur, query);
+void StorageSession::query(InternalCursor* cur, const char* query) const {
+    storage_->query(this, cur, query);
 }
 
 void StorageSession::set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const {
@@ -709,33 +709,33 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     return str.second;
 }
 
-void Storage::query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const {
+void Storage::query(StorageSession const* session, InternalCursor* cur, const char* query) const {
     using namespace QP;
     boost::property_tree::ptree ptree;
     aku_Status status;
     session->clear_series_matcher();
     std::tie(status, ptree) = QueryParser::parse_json(query);
     if (status != AKU_SUCCESS) {
-        cur->set_error(caller, status);
+        cur->set_error(status);
         return;
     }
     QueryKind kind;
     std::tie(status, kind) = QueryParser::get_query_kind(ptree);
     if (status != AKU_SUCCESS) {
-        cur->set_error(caller, status);
+        cur->set_error(status);
         return;
     }
     if (kind == QueryKind::SELECT_META) {
         std::vector<aku_ParamId> ids;
         std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
@@ -746,13 +746,13 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         ReshapeRequest req;
         std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         GroupByTime groupbytime;
@@ -768,13 +768,13 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         ReshapeRequest req;
         std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         GroupByTime groupbytime;
@@ -791,13 +791,13 @@ void Storage::query(StorageSession const* session, Caller& caller, InternalCurso
         ReshapeRequest req;
         std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
         if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
+            cur->set_error(status);
             return;
         }
         // Replace matcher with local one

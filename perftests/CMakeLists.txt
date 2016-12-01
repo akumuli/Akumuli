@@ -37,8 +37,6 @@ target_link_libraries(perf_pipeline
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_pipeline PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -61,8 +59,6 @@ target_link_libraries(perf_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -168,8 +164,6 @@ target_link_libraries(perf_ingestion
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -182,8 +176,6 @@ target_link_libraries(perf_parallel_ingestion
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_parallel_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 

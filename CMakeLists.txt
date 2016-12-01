@@ -27,8 +27,6 @@ find_package(Boost 1.54.0
     system
     thread
     filesystem
-    coroutine
-    context
     regex
     date_time
     REQUIRED

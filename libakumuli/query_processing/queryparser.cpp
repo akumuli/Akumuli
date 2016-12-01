@@ -640,6 +640,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
+    result.order_by = order;
 
     // Where statement
     std::vector<aku_ParamId> ids;
@@ -660,14 +661,8 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
 
     // Initialize request
     result.agg.enabled = false;
-
     result.select.begin = ts_begin;
     result.select.end = ts_end;
-
-    status = init_matcher_in_join_query(&result, matcher, metrics);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
-    }
 
     size_t ncolumns = metrics.size();
     size_t nentries = ids.size() / ncolumns;
@@ -684,37 +679,38 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
         result.select.columns.push_back(column);
     }
 
-    result.order_by = order;
+    status = init_matcher_in_join_query(&result, matcher, metrics);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
 
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
 struct TerminalNode : QP::Node {
 
-    Caller &caller;
     InternalCursor* cursor;
 
-    TerminalNode(Caller& ca, InternalCursor* cur)
-        : caller(ca)
-        , cursor(cur)
+    TerminalNode(InternalCursor* cur)
+        : cursor(cur)
     {
     }
 
     // Node interface
 
     void complete() {
-        cursor->complete(caller);
+        cursor->complete();
     }
 
     bool put(const aku_Sample& sample) {
         if (sample.payload.type != aku_PData::MARGIN) {
-            return cursor->put(caller, sample);
+            return cursor->put(sample);
         }
         return true;
     }
 
     void set_error(aku_Status status) {
-        cursor->set_error(caller, status);
+        cursor->set_error(status);
         throw std::runtime_error("search error detected");
     }
 
@@ -739,11 +735,10 @@ std::tuple<aku_Status, std::shared_ptr<Node>>
 
 std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> QueryParser::parse_processing_topology(
     boost::property_tree::ptree const& ptree,
-    Caller& caller,
     InternalCursor* cursor)
 {
     // TODO: all processing steps are bypassed now, this should be fixed
-    auto terminal = std::make_shared<TerminalNode>(caller, cursor);
+    auto terminal = std::make_shared<TerminalNode>(cursor);
     std::vector<std::shared_ptr<Node>> result;
 
     auto limoff = parse_limit_offset(ptree);

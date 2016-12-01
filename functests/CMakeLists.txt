@@ -9,8 +9,7 @@ target_link_libraries(storage_test
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a)
+    )
 
 file(COPY
     akumulid_test_tools.py

@@ -226,7 +226,7 @@ struct CursorMock : InternalCursor {
         error = AKU_SUCCESS;
     }
 
-    virtual bool put(Caller&, const aku_Sample &val) override {
+    virtual bool put(const aku_Sample &val) override {
         if (done) {
             BOOST_FAIL("Cursor invariant broken");
         }
@@ -234,14 +234,14 @@ struct CursorMock : InternalCursor {
         return true;
     }
 
-    virtual void complete(Caller&) override {
+    virtual void complete() override {
         if (done) {
             BOOST_FAIL("Cursor invariant broken");
         }
         done = true;
     }
 
-    virtual void set_error(Caller &, aku_Status error_code) override {
+    virtual void set_error( aku_Status error_code) override {
         if (done) {
             BOOST_FAIL("Cursor invariant broken");
         }
@@ -352,10 +352,9 @@ void test_storage_read_query(aku_Timestamp begin, aku_Timestamp end, OrderBy ord
     auto storage = create_storage();
     auto session = storage->create_write_session();
     fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
-    Caller caller;
     CursorMock cursor;
     auto query = make_scan_query(begin, end, order);
-    session->query(caller, &cursor, query.c_str());
+    session->query(&cursor, query.c_str());
     BOOST_REQUIRE(cursor.done);
     BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
     size_t expected_size;
@@ -429,9 +428,8 @@ static void test_metadata_query() {
         status = session->write(s);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     }
-    Caller caller;
     CursorMock cursor;
-    session->query(caller, &cursor, query);
+    session->query(&cursor, query);
     BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names.size());
     for (auto sample: cursor.samples) {
@@ -499,10 +497,9 @@ static void test_storage_group_by_query(OrderBy order) {
     auto storage = create_storage();
     auto session = storage->create_write_session();
     fill_data(session, gb_begin, gb_end, series_names);
-    Caller caller;
     CursorMock cursor;
     auto query = make_group_by_query("group", order);
-    session->query(caller, &cursor, query.c_str());
+    session->query(&cursor, query.c_str());
     BOOST_REQUIRE(cursor.done);
     BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
     size_t expected_size;
@@ -561,14 +558,13 @@ void test_storage_where_clause(aku_Timestamp begin, aku_Timestamp end, int nseri
     auto session = storage->create_write_session();
     fill_data(session, std::min(begin, end), std::max(begin, end), all_series_names);
     auto check_case = [&](std::vector<int> ids2read) {
-        Caller caller;
         CursorMock cursor;
         auto query = make_scan_query_with_where(begin, end, ids2read);
         std::vector<std::string> expected_series;
         for(auto id: ids2read) {
             expected_series.push_back(series_names[static_cast<size_t>(id)]);
         }
-        session->query(caller, &cursor, query.c_str());
+        session->query(&cursor, query.c_str());
         BOOST_REQUIRE(cursor.done);
         BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
         size_t expected_size = (end - begin)*expected_series.size();

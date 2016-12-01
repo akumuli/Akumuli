@@ -21,8 +21,6 @@ target_link_libraries(akumulid
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     microhttpd
-    libboost_coroutine.a
-    libboost_context.a
 )
 
 include(CppcheckTargets)
