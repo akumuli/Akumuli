@@ -41,6 +41,29 @@ ConcurrentCursor::ConcurrentCursor()
     , error_code_{AKU_SUCCESS}
 {}
 
+
+/**
+ * This function copies samples from one buffer to another with respect of individual
+ * sample boundaries. Each sample is fully copied or not copied at all.
+ */
+static u32 samplecpy(u8* dest, u8 const* source, u32 size) {
+    u8* rcvbuf = dest;
+    u8* rcvend = dest + size;
+    u8 const* sndbuf = source;
+
+    while(rcvbuf < rcvend) {
+        aku_Sample const* s = reinterpret_cast<aku_Sample const*>(sndbuf);
+        auto sz = s->payload.size;
+        if ((rcvend - rcvbuf) < sz) {
+            break;
+        }
+        memcpy(rcvbuf, sndbuf, sz);
+        rcvbuf += sz;
+        sndbuf += sz;
+    }
+    return static_cast<u32>(rcvbuf - dest);
+}
+
 u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
     u32 nbytes = 0;
     u8* dest = static_cast<u8*>(buffer);
@@ -55,11 +78,11 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
         }
         auto front = queue_.front();
         auto bytes2read = std::min(buffer_size, static_cast<u32>(front->wrpos - front->rdpos));
-        memcpy(dest, front->buf.data() + front->rdpos, bytes2read);
-        front->rdpos += bytes2read;
-        nbytes += bytes2read;
-        dest += bytes2read;
-        buffer_size -= bytes2read;
+        auto out = samplecpy(dest, front->buf.data() + front->rdpos, bytes2read);
+        front->rdpos += out;
+        nbytes += out;
+        dest += out;
+        buffer_size -= out;
         if (front->rdpos == front->wrpos) {
             queue_.pop_front();
             cond_.notify_all();
