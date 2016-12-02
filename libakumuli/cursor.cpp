@@ -79,6 +79,10 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
         auto front = queue_.front();
         auto bytes2read = std::min(buffer_size, static_cast<u32>(front->wrpos - front->rdpos));
         auto out = samplecpy(dest, front->buf.data() + front->rdpos, bytes2read);
+        if (out == 0) {
+            // The last sample in the array doesn't fit
+            break;
+        }
         front->rdpos += out;
         nbytes += out;
         dest += out;

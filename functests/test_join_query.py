@@ -45,7 +45,7 @@ def test_join_query(columns, dtstart, delta, N):
             columns = line.split(',')
             tagline = columns[0].strip()
             timestamp = att.parse_timestamp(columns[1].strip())
-            values = float(columns[2:].strip())
+            values = [float(it.strip()) for it in columns[2:]]
             exp_tags = expected_tags[(iterations) % len(expected_tags)]
 
             for value in values:

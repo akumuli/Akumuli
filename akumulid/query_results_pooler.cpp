@@ -152,13 +152,13 @@ struct CSVOutputFormatter : OutputFormatter {
             } bits;
             bits.d = sample.payload.float64;
             int nelements = popcount(bits.u);
-            int ix = 0;
-            while(nelements) {
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements; ix++) {
                 if (bits.u & (1 << ix)) {
                     if (ix == 0) {
-                        len = snprintf(begin, size, "%.17g", sample.payload.float64);
+                        len = snprintf(begin, size, "%.17g", tuple[ix]);
                     } else {
-                        len = snprintf(begin, size, ",%.17g", sample.payload.float64);
+                        len = snprintf(begin, size, ",%.17g", tuple[ix]);
                     }
                 } else {
                     len = snprintf(begin, size, ",");
@@ -321,10 +321,10 @@ struct RESPOutputFormatter : OutputFormatter {
             } bits;
             bits.d = sample.payload.float64;
             int nelements_set = popcount(bits.u);
-            int ix = 0;
-            while (nelements_set) {
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements_set; ix++) {
                 if (bits.d && (1 << ix)) {
-                    len = snprintf(begin, size, "+%.17g\r\n", sample.payload.float64);
+                    len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
                 } else {
                     // Empty tuple value
                     len = snprintf(begin, size, "+\r\n");
@@ -334,8 +334,6 @@ struct RESPOutputFormatter : OutputFormatter {
                 }
                 begin += len;
                 size  -= len;
-                ix++;
-                nelements_set--;
             }
         }
 

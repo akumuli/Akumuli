@@ -807,7 +807,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
         GroupByTime groupbytime;
         std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (proc->start()) {
-            cstore_->query(req, *proc);
+            cstore_->join_query(req, *proc);
             proc->stop();
         }
     }
