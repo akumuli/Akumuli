@@ -160,6 +160,8 @@ struct NBTreeAggregationResult {
     void copy_from(SubtreeRef const&);
     //! Calculate values from raw data.
     void do_the_math(aku_Timestamp *tss, double const* xss, size_t size, bool inverted);
+    //! Add value to aggregate
+    void add(aku_Timestamp ts, double xs);
     //! Combine this value with the other one (inplace update).
     void combine(const NBTreeAggregationResult& other);
 };
@@ -468,11 +470,32 @@ public:
       */
     NBTreeAppendResult append(aku_Timestamp ts, double value);
 
+    /**
+     * @brief search function
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return
+     */
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
+    /**
+     * @brief aggregate all values in search interval
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return iterator that produces single value
+     */
     std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+
+    /**
+     * @brief Group values into buckets and return aggregate from each one of them
+     * @param begin start of the search interval
+     * @param end end of the search interval
+     * @param step bucket size
+     * @return iterator
+     */
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();

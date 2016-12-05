@@ -94,8 +94,6 @@ void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss,
             max = xss[i];
             maxts = tss[i];
         }
-        min = std::min(min, xss[i]);
-        max = std::max(max, xss[i]);
     }
     if (!inverted) {
         first = xss[0];
@@ -108,6 +106,26 @@ void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss,
         _end = tss[0];
         _begin = tss[size - 1];
     }
+}
+
+void NBTreeAggregationResult::add(aku_Timestamp ts, double xs) {
+    sum += xs;
+    if (min > xs) {
+        min = xs;
+        mints = ts;
+    }
+    if (max < xs) {
+        max = xs;
+        maxts = ts;
+    }
+    if (cnt == 0) {
+        first = xs;
+        _begin = ts;
+    } else {
+        last = xs;
+        _end = ts;
+    }
+    cnt += 1;
 }
 
 void NBTreeAggregationResult::combine(const NBTreeAggregationResult& other) {
@@ -493,6 +511,80 @@ std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NB
 NBTreeAggregator::Direction IteratorAggregate::get_direction() {
     return dir_;
 }
+
+// ////////////////////////// //
+// Group-Aggregation iterator //
+// ////////////////////////// //
+
+
+/** Aggregating iterator (group-by + aggregate).
+  */
+struct GroupAggregate : NBTreeAggregator {
+    typedef std::vector<std::unique_ptr<NBTreeAggregator>> IterVec;
+    IterVec             iter_;
+    Direction           dir_;
+    u32                 iter_index_;
+
+    //! C-tor. Create iterator from list of iterators.
+    template<class TVec>
+    GroupAggregate(TVec&& iter)
+        : iter_(std::forward<TVec>(iter))
+        , iter_index_(0)
+    {
+        if (iter_.empty()) {
+            dir_ = Direction::FORWARD;
+        } else {
+            dir_ = iter_.front()->get_direction();
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size);
+    virtual Direction get_direction();
+};
+
+std::tuple<aku_Status, size_t> GroupAggregate::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
+    if (size == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, 0);
+    }
+    if (iter_index_ == iter_.size()) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    const size_t SZBUF = 1024;
+    aku_Status status = AKU_ENO_DATA;
+    NBTreeAggregationResult xsresult = INIT_AGGRES;
+    aku_Timestamp tsresult = 0;
+    std::vector<NBTreeAggregationResult> outval(SZBUF, INIT_AGGRES);
+    std::vector<aku_Timestamp> outts(SZBUF, 0);
+    ssize_t ressz;
+    while(iter_index_ < iter_.size()) {
+        std::tie(status, ressz) = iter_[iter_index_]->read(outts.data(), outval.data(), SZBUF);
+        if (ressz != 0) {
+            xsresult = std::accumulate(outval.begin(), outval.begin() + ressz, xsresult,
+                            [](NBTreeAggregationResult lhs, NBTreeAggregationResult rhs) {
+                                lhs.combine(rhs);
+                                return lhs;
+                            });
+            tsresult = outts[static_cast<size_t>(ressz)-1];
+        }
+        if (status == AKU_ENO_DATA) {
+            // This leaf node is empty, continue with next.
+            iter_index_++;
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Failure, stop iteration.
+            return std::make_pair(status, 0);
+        }
+    }
+    destts[0] = tsresult;
+    destval[0] = xsresult;
+    return std::make_tuple(AKU_SUCCESS, 1);
+}
+
+GroupAggregate::Direction GroupAggregate::get_direction() {
+    return dir_;
+}
+
 
 // ///////////////////////// //
 //    Superblock Iterator    //
@@ -914,6 +1006,110 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator> > NBTreeSBlockAggregato
         result.reset(new NBTreeSBlockAggregator(bstore_, ref.addr, begin_, end_));
     }
     return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+
+// ///////////////////////// //
+// NBTreeLeafGroupAggregator //
+// ///////////////////////// //
+
+class NBTreeLeafGroupAggregator : public NBTreeAggregator {
+    NBTreeLeafIterator iter_;
+    bool enable_cached_metadata_;
+    SubtreeRef metacache_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    aku_Timestamp step_;
+public:
+    NBTreeLeafGroupAggregator(aku_Timestamp begin, aku_Timestamp end, u64 step, NBTreeLeaf const& node)
+        : iter_(begin, end, node, true)
+        , enable_cached_metadata_(false)
+        , metacache_(INIT_SUBTREE_REF)
+        , begin_(begin)
+        , end_(end)
+        , step_(step)
+    {
+        aku_Timestamp nodemin, nodemax, min, max;
+        std::tie(nodemin, nodemax) = node.get_timestamps();
+        if (begin < end) {
+            auto a = (nodemin - begin) / step;
+            auto b = (nodemax - begin) / step;
+            if (a == b) {
+                // Leaf totally inside one step range, we can use metadata.
+                if (!meta_init) {
+                    metacache_ = *node.get_leafmeta();
+                    enable_cached_metadata_ = true;
+                }
+            } else {
+                // Otherwise we need to compute aggregate from subset of leaf's values.
+                if (!iter_init) {
+                    iter_.init(node);
+                    iter_init = true;
+                }
+            }
+            if (iter_init && enable_cached_metadata_) {
+                break;
+            }
+        } else {
+            throw "not implemented";
+        }
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destxs, size_t size);
+    virtual Direction get_direction();
+};
+
+NBTreeLeafGroupAggregator::Direction NBTreeLeafGroupAggregator::get_direction() {
+    return iter_.get_direction() == NBTreeLeafIterator::Direction::FORWARD ? Direction::FORWARD : Direction::BACKWARD;
+}
+
+std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *destts, NBTreeAggregationResult *destxs, size_t size) {
+    if (size == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, 0);
+    }
+    if (enable_cached_metadata_) {
+        // Fast path. Use metadata to compute results.
+        destts[0] = metacache_.begin;
+        destxs[0].copy_from(metacache_);
+        enable_cached_metadata_ = false;
+        // next call to `read` should return AKU_ENO_DATA
+    } else {
+        if (begin_ < end_) {
+            if (!iter_.get_size()) {
+                return std::make_tuple(AKU_ENO_DATA, 0);
+            }
+            size_t size_hint = iter_.get_size();
+            std::vector<double> xs(size_hint, .0);
+            std::vector<aku_Timestamp> ts(size_hint, 0);
+            aku_Status status;
+            size_t out_size;
+            std::tie(status, out_size) = iter_.read(ts.data(), xs.data(), size_hint);
+            if (status != AKU_SUCCESS) {
+                return std::tie(status, out_size);
+            }
+            if (out_size == 0) {
+                return std::make_tuple(AKU_ENO_DATA, 0);
+            }
+            assert(out_size == size_hint);
+            if (begin_ < end_) {
+                int valcnt = 0;
+                NBTreeAggregationResult outval = INIT_AGGRES;
+                size_t outix = 0;
+                for (size_t ix = 0; ix < out_size; ix++) {
+                    outval.add(ts[ix], xs[ix]);
+                    aku_Timestamp normts = ts[ix] - begin_;
+                    if (valcnt && normts % step_ == 0) {
+                        destxs[outix] = outval;
+                        destts[outix] = normts - step_;
+                        outix++;
+                    }
+                    valcnt++;
+                }
+            }
+            return std::make_tuple(AKU_SUCCESS, outix);
+        }
+    }
+    AKU_PANIC("Not implemented");
 }
 
 
@@ -2379,6 +2575,10 @@ std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::aggregate(aku_Timestamp beg
     concat.reset(new IteratorAggregate(std::move(iterators)));
     return concat;
 
+}
+
+std::unique_ptr<NBTreeAggregator> NBTreeExtentsList::group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const {
+    throw "Not implemented";
 }
 
 
