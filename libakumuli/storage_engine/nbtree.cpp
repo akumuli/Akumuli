@@ -712,7 +712,6 @@ struct NBTreeSBlockIteratorBase : NBTreeIteratorBase<TVal> {
                 if (status == AKU_ENOT_FOUND || status == AKU_EUNAVAILABLE) {
                     // Subtree exists but doesn't contains values from begin-end timerange or
                     // entire subtree was deleted
-                    // TODO: remove
                     Logger::msg(AKU_LOG_TRACE, "Can't open next iterator because " + StatusUtil::str(status));
                     continue;
                 } else if (status != AKU_SUCCESS) {
@@ -1029,26 +1028,18 @@ public:
         , end_(end)
         , step_(step)
     {
-        aku_Timestamp nodemin, nodemax, min, max;
+        aku_Timestamp nodemin, nodemax;
         std::tie(nodemin, nodemax) = node.get_timestamps();
         if (begin < end) {
             auto a = (nodemin - begin) / step;
             auto b = (nodemax - begin) / step;
             if (a == b) {
                 // Leaf totally inside one step range, we can use metadata.
-                if (!meta_init) {
-                    metacache_ = *node.get_leafmeta();
-                    enable_cached_metadata_ = true;
-                }
+                metacache_ = *node.get_leafmeta();
+                enable_cached_metadata_ = true;
             } else {
                 // Otherwise we need to compute aggregate from subset of leaf's values.
-                if (!iter_init) {
-                    iter_.init(node);
-                    iter_init = true;
-                }
-            }
-            if (iter_init && enable_cached_metadata_) {
-                break;
+                iter_.init(node);
             }
         } else {
             throw "not implemented";
@@ -1071,11 +1062,12 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         // Fast path. Use metadata to compute results.
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
-        enable_cached_metadata_ = false;
-        // next call to `read` should return AKU_ENO_DATA
+        enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
+        return std::make_tuple(AKU_SUCCESS, 1);
     } else {
         if (begin_ < end_) {
             if (!iter_.get_size()) {
+                // Second call to read will lead here if fast path have been taken on first call.
                 return std::make_tuple(AKU_ENO_DATA, 0);
             }
             size_t size_hint = iter_.get_size();
@@ -1091,25 +1083,133 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
                 return std::make_tuple(AKU_ENO_DATA, 0);
             }
             assert(out_size == size_hint);
-            if (begin_ < end_) {
-                int valcnt = 0;
-                NBTreeAggregationResult outval = INIT_AGGRES;
-                size_t outix = 0;
-                for (size_t ix = 0; ix < out_size; ix++) {
-                    outval.add(ts[ix], xs[ix]);
-                    aku_Timestamp normts = ts[ix] - begin_;
-                    if (valcnt && normts % step_ == 0) {
-                        destxs[outix] = outval;
-                        destts[outix] = normts - step_;
-                        outix++;
-                    }
-                    valcnt++;
+            size_t outix = 0;
+            int valcnt = 0;
+            NBTreeAggregationResult outval = INIT_AGGRES;
+            for (size_t ix = 0; ix < out_size; ix++) {
+                outval.add(ts[ix], xs[ix]);
+                aku_Timestamp normts = ts[ix] - begin_;
+                if (valcnt && normts % step_ == 0) {
+                    destxs[outix] = outval;
+                    destts[outix] = normts - step_;
+                    outix++;
                 }
+                valcnt++;
             }
             return std::make_tuple(AKU_SUCCESS, outix);
         }
     }
     AKU_PANIC("Not implemented");
+}
+
+
+//
+
+/** Superblock aggregator (iterator that computes different aggregates e.g. min/max/avg/sum).
+  * Uses metadata stored in superblocks in some cases.
+  */
+class NBTreeSBlockGroupAggregator : public NBTreeSBlockIteratorBase<NBTreeAggregationResult> {
+    u64 step_;
+public:
+    NBTreeSBlockGroupAggregator(std::shared_ptr<BlockStore> bstore,
+                                NBTreeSuperblock const& sblock,
+                                aku_Timestamp begin,
+                                aku_Timestamp end,
+                                u64 step)
+        : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, sblock, begin, end)
+        , step_(step)
+    {
+    }
+
+    NBTreeSBlockGroupAggregator(std::shared_ptr<BlockStore> bstore,
+                                LogicAddr addr,
+                                aku_Timestamp begin,
+                                aku_Timestamp end,
+                                u64 step)
+        : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, addr, begin, end)
+        , step_(step)
+    {
+    }
+
+    virtual std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> make_leaf_iterator(const SubtreeRef &ref) override;
+    virtual std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> make_superblock_iterator(const SubtreeRef &ref) override;
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) override;
+};
+
+std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
+    if (begin_ > end_) {
+        AKU_PANIC("Not implemented");
+    }
+    if (size == 0) {
+        return std::make_pair(AKU_EBAD_ARG, 0ul);
+    }
+    if (!fsm_pos_ ) {
+        aku_Status status = init();
+        if (status != AKU_SUCCESS) {
+            return std::make_pair(status, 0ul);
+        }
+        fsm_pos_++;
+    }
+    size_t SZBUF = 1024;
+    std::vector<NBTreeAggregationResult> xss(SZBUF, INIT_AGGRES);
+    std::vector<aku_Timestamp> tss(SZBUF, 0);
+    aku_Timestamp outts = 0;
+    NBTreeAggregationResult outxs = INIT_AGGRES;
+    ssize_t outsz = 0;
+    aku_Status status;
+    size_t outix = 0;
+    while(true) {
+        std::tie(status, outsz) = iter(tss.data(), xss.data(), SZBUF);
+        if ((status == AKU_SUCCESS || status == AKU_ENO_DATA) && outsz != 0) {
+            NBTreeAggregationResult curr = INIT_AGGRES;
+            for (u32 i = 0; i < outsz; i++) {
+                aku_Timestamp ts = tss[i];
+                curr.combine(xss[i]);
+                if ((ts - begin_) % step_ == 0) {
+                    if (i != 0) {
+                        destval[outix] = curr;
+                        curr = INIT_AGGRES;
+                        tss[outix] = ts - step_;
+                        // FIXME: outix is not checked!
+                    }
+                }
+            }
+        } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            size = 0;
+            break;
+        } else if (outsz == 0) {
+            break;
+        }
+    }
+    return std::make_tuple(status, size);
+}
+
+std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockGroupAggregator::make_leaf_iterator(SubtreeRef const& ref) {
+    aku_Status status;
+    std::shared_ptr<Block> block;
+    std::tie(status, block) = read_and_check(bstore_, ref.addr);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, std::unique_ptr<NBTreeAggregator>());
+    }
+    NBTreeLeaf leaf(block);
+    std::unique_ptr<NBTreeAggregator> result;
+    result.reset(new NBTreeLeafGroupAggregator(begin_, end_, step_, leaf));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockGroupAggregator::make_superblock_iterator(SubtreeRef const& ref) {
+    aku_Timestamp min = std::min(begin_, end_);
+    aku_Timestamp max = std::max(begin_, end_);
+    std::unique_ptr<NBTreeAggregator> result;
+    if (min <= ref.begin && ref.end < max) {
+        // We don't need to go to lower level, value from subtree ref can be used instead.
+        auto agg = INIT_AGGRES;
+        agg.copy_from(ref);
+        result.reset(new ValueAggregator(ref.end, agg, get_direction()));
+    } else {
+        result.reset(new NBTreeSBlockGroupAggregator(bstore_, ref.addr, begin_, end_, step_));
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
 
