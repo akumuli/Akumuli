@@ -1153,8 +1153,6 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
     size_t SZBUF = 1024;
     std::vector<NBTreeAggregationResult> xss(SZBUF, INIT_AGGRES);
     std::vector<aku_Timestamp> tss(SZBUF, 0);
-    aku_Timestamp outts = 0;
-    NBTreeAggregationResult outxs = INIT_AGGRES;
     ssize_t outsz = 0;
     aku_Status status;
     size_t outix = 0;
