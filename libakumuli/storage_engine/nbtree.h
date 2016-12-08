@@ -312,6 +312,9 @@ public:
 
     //! Return iterator that returns candlesticks
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
 };
 
 
@@ -378,6 +381,11 @@ public:
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
                                                    std::shared_ptr<BlockStore> bstore,
                                                    NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin,
+                                                      aku_Timestamp end,
+                                                      u64 step) const;
 };
 
 
@@ -413,6 +421,11 @@ struct NBTreeExtent {
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
     virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const = 0;
+
+    //! Return group-aggregate query results iterator
+    virtual std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const = 0;
+
+    // Service functions //
 
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
 
