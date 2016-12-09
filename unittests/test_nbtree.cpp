@@ -1185,10 +1185,11 @@ void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
     RandomWalk rwalk(1.0, 0.1, 0.1);
     NBTreeAggregationResult acc = INIT_AGGRES;
     std::vector<NBTreeAggregationResult> buckets;
-    aku_Timestamp prev_bucket = end;
+    auto bucket_ix = 0ull;
     while(ncommits < commit_limit) {
-        if ((prev_bucket % step) != (end % step)) {
-            prev_bucket = end;
+        auto current_bucket = (end - begin) / step;
+        if (current_bucket > bucket_ix) {
+            bucket_ix = current_bucket;
             buckets.push_back(acc);
             acc = INIT_AGGRES;
         }
@@ -1197,7 +1198,9 @@ void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
         extents->append(ts, value);
         acc.add(ts, value);
     }
-    buckets.push_back(acc);
+    if (acc.cnt > 0) {
+        //buckets.push_back(acc);
+    }
 
     // Check actual output
     auto it = extents->group_aggregate(begin, end, step);

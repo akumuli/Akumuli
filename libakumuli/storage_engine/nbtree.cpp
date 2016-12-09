@@ -551,7 +551,7 @@ std::tuple<aku_Status, size_t> GroupAggregate::read(aku_Timestamp *destts, NBTre
     }
     aku_Status status = AKU_ENO_DATA;
     size_t outix = 0;
-    while(iter_index_ < iter_.size()) {
+    while(iter_index_ < iter_.size() && outix < size) {
         std::vector<NBTreeAggregationResult> outval(size - outix, INIT_AGGRES);
         std::vector<aku_Timestamp> outts(size - outix, 0);
         u32 outsz;
@@ -1080,15 +1080,21 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
             int valcnt = 0;
             NBTreeAggregationResult outval = INIT_AGGRES;
             for (size_t ix = 0; ix < out_size; ix++) {
-                outval.add(ts[ix], xs[ix]);
                 aku_Timestamp normts = ts[ix] - begin_;
                 if (valcnt && normts % step_ == 0) {
                     destxs[outix] = outval;
-                    destts[outix] = normts - step_;
+                    destts[outix] = normts - step_ + begin_;
                     outix++;
+                    outval = INIT_AGGRES;
                 }
                 valcnt++;
+                outval.add(ts[ix], xs[ix]);
             }
+//            if (outval.cnt > 0) {
+//                destxs[outix] = outval;
+//                destts[outix] = (ts[out_size - 1] - begin_ - step_) / step_ * step_ + begin_;
+//                outix++;
+//            }
             return std::make_tuple(AKU_SUCCESS, outix);
         }
     }
@@ -1175,6 +1181,11 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
                 }
                 curr_.combine(xss[i]);
             }
+//            if (curr_.cnt > 0) {
+//                destval[outix] = curr_;
+//                destts[outix]  = curr_ts_;
+//                outix++;
+//            }
         } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
             size = 0;
             break;
