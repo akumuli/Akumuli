@@ -559,7 +559,7 @@ std::tuple<aku_Status, size_t> GroupAggregate::read(aku_Timestamp *destts, NBTre
         for (size_t ix = 0; ix < outsz; ix++) {
             destts[outix] = outts[ix];
             destval[outix] = outval[ix];
-            ix++;
+            outix++;
         }
         if (status == AKU_ENO_DATA) {
             // This leaf node is empty, continue with next.
@@ -1113,8 +1113,8 @@ public:
                                 u64 step)
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, sblock, begin, end)
         , step_(step)
-        , curr_{INIT_AGGRES}
-        , curr_ts_{0}
+        , curr_(INIT_AGGRES)
+        , curr_ts_(0)
     {
     }
 
@@ -1125,8 +1125,8 @@ public:
                                 u64 step)
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, addr, begin, end)
         , step_(step)
-        , curr_{INIT_AGGRES}
-        , curr_ts_{0}
+        , curr_(INIT_AGGRES)
+        , curr_ts_(0)
     {
     }
 
@@ -1696,7 +1696,8 @@ std::unique_ptr<NBTreeAggregator> NBTreeSuperblock::candlesticks(aku_Timestamp b
 
 std::unique_ptr<NBTreeAggregator> NBTreeSuperblock::group_aggregate(aku_Timestamp begin,
                                                                     aku_Timestamp end,
-                                                                    u64 step) const
+                                                                    u64 step,
+                                                                    std::shared_ptr<BlockStore> bstore) const
 {
     std::unique_ptr<NBTreeAggregator> result;
     result.reset(new NBTreeSBlockGroupAggregator(bstore, *this, begin, end, step));
@@ -2185,19 +2186,19 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
 }
 
 std::unique_ptr<NBTreeIterator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
-    return std::move(curr_->search(begin, end, bstore_));
+    return curr_->search(begin, end, bstore_);
 }
 
 std::unique_ptr<NBTreeAggregator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
-    return std::move(curr_->aggregate(begin, end, bstore_));
+    return curr_->aggregate(begin, end, bstore_);
 }
 
 std::unique_ptr<NBTreeAggregator> NBTreeSBlockExtent::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
-    return std::move(curr_->candlesticks(begin, end, bstore_, hint));
+    return curr_->candlesticks(begin, end, bstore_, hint);
 }
 
 std::unique_ptr<NBTreeAggregator> NBTreeSBlockExtent::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
-    return std::move(curr_->group_aggregate(begin, end, step));
+    return curr_->group_aggregate(begin, end, step, bstore_);
 }
 
 bool NBTreeSBlockExtent::is_dirty() const {

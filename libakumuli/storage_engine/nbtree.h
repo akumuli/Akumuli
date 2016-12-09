@@ -385,7 +385,7 @@ public:
     //! Group-aggregate query results iterator
     std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin,
                                                       aku_Timestamp end,
-                                                      u64 step) const;
+                                                      u64 step, std::shared_ptr<BlockStore> bstore) const;
 };
 
 

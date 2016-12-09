@@ -1168,3 +1168,54 @@ BOOST_AUTO_TEST_CASE(Test_reopen_write_reopen) {
         check_tree_consistency(bstore, i, extent);
     }
 }
+
+
+void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
+    // Build this tree structure.
+    aku_Timestamp begin = 1000;
+    aku_Timestamp end = begin;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    NBTreeAggregationResult acc = INIT_AGGRES;
+    std::vector<NBTreeAggregationResult> buckets;
+    aku_Timestamp prev_bucket = end;
+    while(ncommits < commit_limit) {
+        if ((prev_bucket % step) != (end % step)) {
+            prev_bucket = end;
+            buckets.push_back(acc);
+            acc = INIT_AGGRES;
+        }
+        double value = rwalk.next();
+        aku_Timestamp ts = end++;
+        extents->append(ts, value);
+        acc.add(ts, value);
+    }
+    buckets.push_back(acc);
+
+    // Check actual output
+    auto it = extents->group_aggregate(begin, end, step);
+    aku_Status status;
+    size_t size = buckets.size();
+    std::vector<aku_Timestamp> destts(size, 0);
+    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    size_t out_size;
+    std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(out_size, buckets.size());
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    for(size_t i = 1; i < size; i++) {
+        BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_1) {
+    test_nbtree_group_aggregate(10, 100);
+}
+
