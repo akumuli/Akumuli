@@ -556,6 +556,7 @@ std::tuple<aku_Status, size_t> GroupAggregate::read(aku_Timestamp *destts, NBTre
         std::vector<aku_Timestamp> outts(size - outix, 0);
         u32 outsz;
         std::tie(status, outsz) = iter_[iter_index_]->read(outts.data(), outval.data(), outval.size());
+        // FIXME: buckets can be split between iterators!
         for (size_t ix = 0; ix < outsz; ix++) {
             destts[outix] = outts[ix];
             destval[outix] = outval[ix];
@@ -1083,18 +1084,18 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
                 aku_Timestamp normts = ts[ix] - begin_;
                 if (valcnt && normts % step_ == 0) {
                     destxs[outix] = outval;
-                    destts[outix] = normts - step_ + begin_;
+                    destts[outix] = outval._begin;
                     outix++;
                     outval = INIT_AGGRES;
                 }
                 valcnt++;
                 outval.add(ts[ix], xs[ix]);
             }
-//            if (outval.cnt > 0) {
-//                destxs[outix] = outval;
-//                destts[outix] = (ts[out_size - 1] - begin_ - step_) / step_ * step_ + begin_;
-//                outix++;
-//            }
+            if (outval.cnt > 0) {
+                destxs[outix] = outval;
+                destts[outix] = outval._begin;
+                outix++;
+            }
             return std::make_tuple(AKU_SUCCESS, outix);
         }
     }
@@ -1174,18 +1175,18 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
                 aku_Timestamp ts = tss[i];
                 if (i != 0 && ts > curr_ts_) {
                     destval[outix] = curr_;
-                    destts[outix] = curr_ts_;
+                    destts[outix] = curr_._begin;
                     curr_ = INIT_AGGRES;
                     curr_ts_ = ts;
                     outix++;
                 }
                 curr_.combine(xss[i]);
             }
-//            if (curr_.cnt > 0) {
-//                destval[outix] = curr_;
-//                destts[outix]  = curr_ts_;
-//                outix++;
-//            }
+            if (curr_.cnt > 0) {
+                destval[outix] = curr_;
+                destts[outix]  = curr_._begin;
+                outix++;
+            }
         } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
             size = 0;
             break;

@@ -1199,7 +1199,7 @@ void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
         acc.add(ts, value);
     }
     if (acc.cnt > 0) {
-        //buckets.push_back(acc);
+        buckets.push_back(acc);
     }
 
     // Check actual output
@@ -1219,6 +1219,6 @@ void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_1) {
-    test_nbtree_group_aggregate(10, 100);
+    test_nbtree_group_aggregate(1, 100);
 }
 
