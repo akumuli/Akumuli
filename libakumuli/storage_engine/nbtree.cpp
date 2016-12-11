@@ -600,6 +600,7 @@ struct GroupAggregate : NBTreeAggregator {
 
         rdbuf_.clear();
         rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+        rdpos_ = 0;
         u32 pos_ = 0;
 
         while(iter_index_ < iter_.size()) {
@@ -1189,10 +1190,13 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
   * Uses metadata stored in superblocks in some cases.
   */
 class NBTreeSBlockGroupAggregator : public NBTreeSBlockIteratorBase<NBTreeAggregationResult> {
+    typedef std::vector<NBTreeAggregationResult> ReadBuffer;
     u64 step_;
-    NBTreeAggregationResult curr_;
-    aku_Timestamp curr_ts_;
-    // TODO: implement the same logic as in GroupAggregate iterator
+    ReadBuffer rdbuf_;
+    u32 rdpos_;
+    enum {
+        RDBUF_SIZE = 0x1000
+    };
 public:
     NBTreeSBlockGroupAggregator(std::shared_ptr<BlockStore> bstore,
                                 NBTreeSuperblock const& sblock,
@@ -1201,8 +1205,7 @@ public:
                                 u64 step)
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, sblock, begin, end)
         , step_(step)
-        , curr_(INIT_AGGRES)
-        , curr_ts_(0)
+        , rdpos_(0)
     {
     }
 
@@ -1213,9 +1216,114 @@ public:
                                 u64 step)
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, addr, begin, end)
         , step_(step)
-        , curr_(INIT_AGGRES)
-        , curr_ts_(0)
+        , rdpos_(0)
     {
+    }
+
+    //! Return true if `rdbuf_` is not empty and have some data to read.
+    bool can_read() const {
+        return rdpos_ < rdbuf_.size();
+    }
+
+    //! Return number of elements in rdbuf_ available for reading
+    u32 elements_in_rdbuf() const {
+        return static_cast<u32>(rdbuf_.size()) - rdpos_;  // Safe to cast because rdbuf_.size() <= RDBUF_SIZE
+    }
+
+    /**
+     * @brief Copy as much elements as possible to the dest arrays.
+     * @param desttx timestamps array
+     * @param destxs values array
+     * @param size size of both arrays
+     * @return number of elements copied
+     */
+    std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
+        aku_Status status = AKU_SUCCESS;
+        size_t copied = 0;
+        while (size > 0) {
+            size_t n = elements_in_rdbuf();
+            if (n == 0) {
+                status = refill_read_buffer();
+                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                    break;
+                } else {
+                    n = elements_in_rdbuf();
+                    if (n == 0) {
+                        break;
+                    }
+                }
+            }
+            // Copy elements
+            auto tocopy = std::min(n, size);
+            for (size_t i = 0; i < tocopy; i++) {
+                auto const& bottom = rdbuf_.at(rdpos_);
+                rdpos_++;
+                *desttx++ = bottom._begin;  // TODO: this will work only for forward direction, need to add support for backward dir
+                *destxs++ = bottom;
+                size--;
+            }
+            copied += tocopy;
+        }
+        return std::make_tuple(status, copied);
+    }
+
+    /**
+     * @brief Refils read buffer.
+     * @return AKU_SUCCESS on success, AKU_ENO_DATA if there is no more data to read, error code on error
+     */
+    aku_Status refill_read_buffer() {
+        aku_Status status = AKU_ENO_DATA;
+        rdbuf_.clear();
+        rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+        rdpos_ = 0;
+        u32 pos_ = 0;
+
+        while(true) {
+            if (!iter_) {
+                std::tie(status, iter_) = get_next_iter();
+                if (status == AKU_ENOT_FOUND || status == AKU_EUNAVAILABLE) {
+                    // Subtree exists but doesn't contains values from begin-end timerange or
+                    // entire subtree was deleted
+                    Logger::msg(AKU_LOG_TRACE, "Can't open next iterator because " + StatusUtil::str(status));
+                    continue;
+                } else if (status != AKU_SUCCESS) {
+                    // We're out of iterators and should stop.
+                    break;
+                }
+            }
+            size_t size = rdbuf_.size() - pos_;
+            if (size == 0) {
+                break;
+            }
+            std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
+            std::vector<aku_Timestamp>           outts(size, 0);
+            u32 outsz;
+            std::tie(status, outsz) = iter_->read(outts.data(), outxs.data(), outxs.size());
+            if (outsz != 0) {
+                if (pos_ > 0) {
+                    auto const& last  = rdbuf_.at(pos_ - 1);
+                    auto const& first = outxs.front();
+                    auto const  delta = first._end - last._begin;
+                    if (delta < step_) {
+                        pos_--;
+                    }
+                }
+                for (size_t ix = 0; ix < outsz; ix++) {
+                    rdbuf_.at(pos_).combine(outxs.at(ix));
+                    pos_++;
+                }
+            }
+            if (status == AKU_ENO_DATA) {
+                iter_.reset();
+                continue;
+            }
+            if (status != AKU_SUCCESS) {
+                size = 0;
+                break;
+            }
+        }
+        rdbuf_.resize(pos_);
+        return status;
     }
 
     virtual std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> make_leaf_iterator(const SubtreeRef &ref) override;
@@ -1240,42 +1348,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
         }
         fsm_pos_++;
     }
-
-    aku_Status status;
-    size_t outix = 0;
-
-    while(true) {
-        size_t freespace = size - outix;
-        std::vector<NBTreeAggregationResult> xss(freespace, INIT_AGGRES);
-        std::vector<aku_Timestamp> tss(freespace, 0);
-        ssize_t outsz = 0;
-
-        std::tie(status, outsz) = iter(tss.data(), xss.data(), freespace);
-        if ((status == AKU_SUCCESS || status == AKU_ENO_DATA) && outsz != 0) {
-            for (u32 i = 0; i < outsz; i++) {
-                aku_Timestamp ts = tss[i];
-                if (i != 0 && ts > curr_ts_) {
-                    destval[outix] = curr_;
-                    destts[outix] = curr_._begin;
-                    curr_ = INIT_AGGRES;
-                    curr_ts_ = ts;
-                    outix++;
-                }
-                curr_.combine(xss[i]);
-            }
-            if (curr_.cnt > 0) {
-                destval[outix] = curr_;
-                destts[outix]  = curr_._begin;
-                outix++;
-            }
-        } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
-            size = 0;
-            break;
-        } else if (outsz == 0) {
-            break;
-        }
-    }
-    return std::make_tuple(status, outix);
+    return copy_to(destts, destval, size);
 }
 
 std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockGroupAggregator::make_leaf_iterator(SubtreeRef const& ref) {

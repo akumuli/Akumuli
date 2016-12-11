@@ -1222,7 +1222,6 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_1) {
     test_nbtree_group_aggregate(1, 100);
 }
 
-
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_2) {
     test_nbtree_group_aggregate(2, 100);
 }
