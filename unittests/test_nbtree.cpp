@@ -1226,3 +1226,15 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_2) {
     test_nbtree_group_aggregate(2, 100);
 }
 
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_3) {
+    test_nbtree_group_aggregate(10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_4) {
+    test_nbtree_group_aggregate(32, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_5) {
+    test_nbtree_group_aggregate(32*32, 100);
+}
+
