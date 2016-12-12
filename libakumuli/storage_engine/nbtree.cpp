@@ -566,6 +566,8 @@ struct GroupAggregate : NBTreeAggregator {
      * @return number of elements copied
      */
     std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
+        // TODO: remove
+        auto tmpxs = destxs;
         aku_Status status = AKU_SUCCESS;
         size_t copied = 0;
         while (status == AKU_SUCCESS && size > 0) {
@@ -584,6 +586,14 @@ struct GroupAggregate : NBTreeAggregator {
                 size--;
             }
             copied += tocopy;
+        }
+        // TODO: remove
+        {
+            if (copied > 0) {
+                std::cout << "GA-Iter: " << tmpxs[0]._begin << " - " << tmpxs[copied - 1]._end << " #" << copied << std::endl;
+            } else {
+                std::cout << "GA-Iter: empty" << std::endl;
+            }
         }
         return std::make_tuple(status, copied);
     }
@@ -605,6 +615,9 @@ struct GroupAggregate : NBTreeAggregator {
 
         while(iter_index_ < iter_.size()) {
             size_t size = rdbuf_.size() - pos_;
+            if (size == 0) {
+                break;
+            }
             // NOTE: We can't read data from iterator directly to the rdbuf_ because buckets
             //       can be split between two iterators. In this case we should join such
             //       values together.
@@ -1138,6 +1151,8 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
         enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
+        // TODO: remove
+        std::cout << "GA-Leaf (shortcut): " << metacache_.begin << " - " << metacache_.end << std::endl;
         return std::make_tuple(AKU_SUCCESS, 1);
     } else {
         if (begin_ < end_) {
@@ -1177,6 +1192,8 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
                 destts[outix] = outval._begin;
                 outix++;
             }
+            // TODO: remove
+            std::cout << "GA-Leaf: " << destxs[0]._begin << " - " << destxs[outix - 1]._end << " #" << outix << std::endl;
             return std::make_tuple(AKU_SUCCESS, outix);
         }
     }
@@ -1238,6 +1255,8 @@ public:
      * @return number of elements copied
      */
     std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
+        // TODO: remove
+        auto tmpxs = destxs;
         aku_Status status = AKU_SUCCESS;
         size_t copied = 0;
         while (size > 0) {
@@ -1263,6 +1282,14 @@ public:
                 size--;
             }
             copied += tocopy;
+        }
+        // TODO: remove
+        {
+            if (copied > 0) {
+                std::cout << "GA-SBlk: " << tmpxs[0]._begin << " - " << tmpxs[copied - 1]._end << " #" << copied << std::endl;
+            } else {
+                std::cout << "GA-SBlk: empty" << std::endl;
+            }
         }
         return std::make_tuple(status, copied);
     }
