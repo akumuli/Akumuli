@@ -1365,10 +1365,10 @@ std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockGroupAggre
 }
 
 std::tuple<aku_Status, std::unique_ptr<NBTreeAggregator>> NBTreeSBlockGroupAggregator::make_superblock_iterator(SubtreeRef const& ref) {
-    aku_Timestamp min = std::min(begin_, end_);
-    aku_Timestamp max = std::max(begin_, end_);
     std::unique_ptr<NBTreeAggregator> result;
-    if (min <= ref.begin && ref.end < max) {
+    auto const start_bucket = (ref.begin - begin_) / step_;
+    auto const stop_bucket = (ref.end - begin_) / step_;
+    if (start_bucket == stop_bucket) {
         // We don't need to go to lower level, value from subtree ref can be used instead.
         auto agg = INIT_AGGRES;
         agg.copy_from(ref);
