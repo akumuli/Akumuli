@@ -1170,7 +1170,7 @@ BOOST_AUTO_TEST_CASE(Test_reopen_write_reopen) {
 }
 
 
-void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
+void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
     // Build this tree structure.
     aku_Timestamp begin = 1000;
     aku_Timestamp end = begin;
@@ -1218,23 +1218,26 @@ void test_nbtree_group_aggregate(size_t commit_limit, u64 step) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_group_aggregate_1) {
-    test_nbtree_group_aggregate(1, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_group_aggregate_2) {
-    test_nbtree_group_aggregate(2, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_group_aggregate_3) {
-    test_nbtree_group_aggregate(10, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_group_aggregate_4) {
-    test_nbtree_group_aggregate(32, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_group_aggregate_5) {
-    test_nbtree_group_aggregate(32*32, 100);
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
+    std::vector<std::pair<u32, u32>> cases = {
+        { 1, 100 },
+        { 2, 100 },
+        {10, 100 },
+        {32, 100 },
+        {32*32, 100 },
+        { 1, 1000 },
+        { 2, 1000 },
+        {10, 1000 },
+        {32, 1000 },
+        {32*32, 1000 },
+        { 1, 10000 },
+        { 2, 10000 },
+        {10, 10000 },
+        {32, 10000 },
+        {32*32, 10000 },
+    };
+    for (auto kv: cases) {
+        test_nbtree_group_aggregate_forward(kv.first, kv.second);
+    }
 }
 
