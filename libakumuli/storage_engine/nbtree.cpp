@@ -121,10 +121,9 @@ void NBTreeAggregationResult::add(aku_Timestamp ts, double xs) {
     if (cnt == 0) {
         first = xs;
         _begin = ts;
-    } else {
-        last = xs;
-        _end = ts;
     }
+    last = xs;
+    _end = ts;
     cnt += 1;
 }
 
@@ -529,6 +528,16 @@ struct GroupAggregate : NBTreeAggregator {
     ReadBuffer          rdbuf_;
     u32                 rdpos_;
 
+    // NOTE: object of this class joins several iterators into one. Time intervals
+    // covered by this iterators shouldn't overlap. Each iterator should be group-
+    // aggregate iterator. This iterators output contains aggregated values. Each
+    // value covers time interval defined by `step_` variable. The first and the last
+    // values returned by each iterator can be incomplete (contain only part of the
+    // range). In this case `GroupAggregate` iterator should join the last value of
+    // the previous iterator with the first one of the next iterator.
+    //
+    //
+
     enum {
         RDBUF_SIZE = 0x1000,
     };
@@ -566,18 +575,27 @@ struct GroupAggregate : NBTreeAggregator {
      * @return number of elements copied
      */
     std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
-        // TODO: remove
-        auto tmpxs = destxs;
         aku_Status status = AKU_SUCCESS;
         size_t copied = 0;
         while (status == AKU_SUCCESS && size > 0) {
             size_t n = elements_in_rdbuf();
-            if (n == 0) {
-                status = refill_read_buffer();
-                continue;
+            if (iter_index_ != iter_.size()) {
+                if (n < 2) {
+                    status = refill_read_buffer();
+                    continue;
+                }
+                // We can copy last element of the rdbuf_ to the output only if all
+                // iterators were consumed! Otherwise invariant will be broken.
+                n--;
+            } else {
+                if (n == 0) {
+                    break;
+                }
             }
-            // Copy elements
+
             auto tocopy = std::min(n, size);
+
+            // Copy elements
             for (size_t i = 0; i < tocopy; i++) {
                 auto const& bottom = rdbuf_.at(rdpos_);
                 rdpos_++;
@@ -586,14 +604,6 @@ struct GroupAggregate : NBTreeAggregator {
                 size--;
             }
             copied += tocopy;
-        }
-        // TODO: remove
-        {
-            if (copied > 0) {
-                std::cout << "GA-Iter: " << tmpxs[0]._begin << " - " << tmpxs[copied - 1]._end << " #" << copied << std::endl;
-            } else {
-                std::cout << "GA-Iter: empty" << std::endl;
-            }
         }
         return std::make_tuple(status, copied);
     }
@@ -608,13 +618,25 @@ struct GroupAggregate : NBTreeAggregator {
             return AKU_ENO_DATA;
         }
 
-        rdbuf_.clear();
-        rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
-        rdpos_ = 0;
-        u32 pos_ = 0;
+        u32 pos = 0;
+        if (!rdbuf_.empty()) {
+            auto tail = rdbuf_.back();  // the last element should be saved because it is possible that
+                                        // it's not full (part of the range contained in first iterator
+                                        // and another part in second iterator or even in more than one
+                                        // iterators).
+            rdbuf_.clear();
+            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+            rdpos_ = 0;
+            rdbuf_.at(0) = tail;
+            pos = 1;
+        } else {
+            rdbuf_.clear();
+            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+            rdpos_ = 0;
+        }
 
         while(iter_index_ < iter_.size()) {
-            size_t size = rdbuf_.size() - pos_;
+            size_t size = rdbuf_.size() - pos;
             if (size == 0) {
                 break;
             }
@@ -629,19 +651,19 @@ struct GroupAggregate : NBTreeAggregator {
             u32 outsz;
             std::tie(status, outsz) = iter_[iter_index_]->read(outts.data(), outxs.data(), outxs.size());
             if (outsz != 0) {
-                if (pos_ > 0) {
+                if (pos > 0) {
                     // Check last and first values of rdbuf_ and outxs
-                    auto const& last  = rdbuf_.at(pos_ - 1);
+                    auto const& last  = rdbuf_.at(pos - 1);
                     auto const& first = outxs.front();
                     auto const  delta = first._end - last._begin;
                     if (delta < step_) {
-                        pos_--;
+                        pos--;
                     }
                 }
             }
             for (size_t ix = 0; ix < outsz; ix++) {
-                rdbuf_.at(pos_).combine(outxs.at(ix));
-                pos_++;
+                rdbuf_.at(pos).combine(outxs.at(ix));
+                pos++;
             }
             if (status == AKU_ENO_DATA) {
                 // This leaf node is empty, continue with next.
@@ -650,11 +672,11 @@ struct GroupAggregate : NBTreeAggregator {
             }
             if (status != AKU_SUCCESS) {
                 // Failure, stop iteration.
-                rdbuf_.resize(pos_);
+                rdbuf_.resize(pos);
                 return status;
             }
         }
-        rdbuf_.resize(pos_);
+        rdbuf_.resize(pos);
         return AKU_SUCCESS;
     }
 
@@ -1151,8 +1173,6 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
         enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
-        // TODO: remove
-        std::cout << "GA-Leaf (shortcut): " << metacache_.begin << " - " << metacache_.end << std::endl;
         return std::make_tuple(AKU_SUCCESS, 1);
     } else {
         if (begin_ < end_) {
@@ -1192,8 +1212,6 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
                 destts[outix] = outval._begin;
                 outix++;
             }
-            // TODO: remove
-            std::cout << "GA-Leaf: " << destxs[0]._begin << " - " << destxs[outix - 1]._end << " #" << outix << std::endl;
             return std::make_tuple(AKU_SUCCESS, outix);
         }
     }
@@ -1255,8 +1273,6 @@ public:
      * @return number of elements copied
      */
     std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
-        // TODO: remove
-        auto tmpxs = destxs;
         aku_Status status = AKU_SUCCESS;
         size_t copied = 0;
         while (size > 0) {
@@ -1282,14 +1298,6 @@ public:
                 size--;
             }
             copied += tocopy;
-        }
-        // TODO: remove
-        {
-            if (copied > 0) {
-                std::cout << "GA-SBlk: " << tmpxs[0]._begin << " - " << tmpxs[copied - 1]._end << " #" << copied << std::endl;
-            } else {
-                std::cout << "GA-SBlk: empty" << std::endl;
-            }
         }
         return std::make_tuple(status, copied);
     }
@@ -1325,6 +1333,11 @@ public:
             std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
             std::vector<aku_Timestamp>           outts(size, 0);
             u32 outsz;
+            if (pos_ == 4095) {
+                std::cout << "Bad read" << std::endl;
+            } else if (pos_ > 4060 && pos_ < 4095){
+                std::cout << "Last good read" << std::endl;
+            }
             std::tie(status, outsz) = iter_->read(outts.data(), outxs.data(), outxs.size());
             if (outsz != 0) {
                 if (pos_ > 0) {
