@@ -1286,6 +1286,7 @@ public:
                     if (n == 0) {
                         break;
                     }
+                    status = AKU_SUCCESS;
                 }
             }
             // Copy elements
@@ -1333,11 +1334,6 @@ public:
             std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
             std::vector<aku_Timestamp>           outts(size, 0);
             u32 outsz;
-            if (pos_ == 4095) {
-                std::cout << "Bad read" << std::endl;
-            } else if (pos_ > 4060 && pos_ < 4095){
-                std::cout << "Last good read" << std::endl;
-            }
             std::tie(status, outsz) = iter_->read(outts.data(), outxs.data(), outxs.size());
             if (outsz != 0) {
                 if (pos_ > 0) {
