@@ -1152,7 +1152,16 @@ public:
                 iter_.init(node);
             }
         } else {
-            throw "not implemented";
+            auto a = (begin - nodemin) / step;
+            auto b = (begin - nodemax) / step;
+            if (a == b) {
+                // Leaf totally inside one step range, we can use metadata.
+                metacache_ = *node.get_leafmeta();
+                enable_cached_metadata_ = true;
+            } else {
+                // Otherwise we need to compute aggregate from subset of leaf's values.
+                iter_.init(node);
+            }
         }
     }
 
@@ -1165,6 +1174,7 @@ NBTreeLeafGroupAggregator::Direction NBTreeLeafGroupAggregator::get_direction() 
 }
 
 std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *destts, NBTreeAggregationResult *destxs, size_t size) {
+    size_t outix = 0;
     if (size == 0) {
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
@@ -1175,25 +1185,24 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
         return std::make_tuple(AKU_SUCCESS, 1);
     } else {
+        if (!iter_.get_size()) {
+            // Second call to read will lead here if fast path have been taken on first call.
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
+        size_t size_hint = iter_.get_size();
+        std::vector<double> xs(size_hint, .0);
+        std::vector<aku_Timestamp> ts(size_hint, 0);
+        aku_Status status;
+        size_t out_size;
+        std::tie(status, out_size) = iter_.read(ts.data(), xs.data(), size_hint);
+        if (status != AKU_SUCCESS) {
+            return std::tie(status, out_size);
+        }
+        if (out_size == 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
+        assert(out_size == size_hint);
         if (begin_ < end_) {
-            if (!iter_.get_size()) {
-                // Second call to read will lead here if fast path have been taken on first call.
-                return std::make_tuple(AKU_ENO_DATA, 0);
-            }
-            size_t size_hint = iter_.get_size();
-            std::vector<double> xs(size_hint, .0);
-            std::vector<aku_Timestamp> ts(size_hint, 0);
-            aku_Status status;
-            size_t out_size;
-            std::tie(status, out_size) = iter_.read(ts.data(), xs.data(), size_hint);
-            if (status != AKU_SUCCESS) {
-                return std::tie(status, out_size);
-            }
-            if (out_size == 0) {
-                return std::make_tuple(AKU_ENO_DATA, 0);
-            }
-            assert(out_size == size_hint);
-            size_t outix = 0;
             int valcnt = 0;
             NBTreeAggregationResult outval = INIT_AGGRES;
             for (size_t ix = 0; ix < out_size; ix++) {
@@ -1212,10 +1221,28 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
                 destts[outix] = outval._begin;
                 outix++;
             }
-            return std::make_tuple(AKU_SUCCESS, outix);
+        } else {
+            int valcnt = 0;
+            NBTreeAggregationResult outval = INIT_AGGRES;
+            for (i32 ix = static_cast<i32>(out_size); ix --> 0;) {
+                aku_Timestamp normts = begin_ - ts[ix];
+                if (valcnt && normts % step_ == 0) {
+                    destxs[outix] = outval;
+                    destts[outix] = outval._end;
+                    outix++;
+                    outval = INIT_AGGRES;
+                }
+                valcnt++;
+                outval.add(ts[ix], xs[ix]);
+            }
+            if (outval.cnt > 0) {
+                destxs[outix] = outval;
+                destts[outix] = outval._end;
+                outix++;
+            }
         }
     }
-    AKU_PANIC("Not implemented");
+    return std::make_tuple(AKU_SUCCESS, outix);
 }
 
 

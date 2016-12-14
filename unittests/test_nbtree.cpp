@@ -1241,3 +1241,83 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
     }
 }
 
+void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
+    // Build this tree structure.
+    aku_Timestamp begin = 1000;
+    aku_Timestamp end = begin;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents->force_init();
+
+    // Original values
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    std::vector<aku_Timestamp> tss;
+    std::vector<double> xss;
+    while(ncommits < commit_limit) {
+        double value = rwalk.next();
+        aku_Timestamp ts = end++;
+        extents->append(ts, value);
+    }
+
+    // Calculate aggregates in backward direction
+    std::reverse(xss.begin(), xss.end());
+    std::reverse(tss.begin(), tss.end());
+    NBTreeAggregationResult acc = INIT_AGGRES;
+    std::vector<NBTreeAggregationResult> buckets;
+    auto bucket_ix = 0ull;
+    for (auto ix = 0ul; ix < xss.size(); ix++) {
+        auto current_bucket = (end - tss[ix]) / step;
+        if (current_bucket != bucket_ix) {
+            bucket_ix = current_bucket;
+            buckets.push_back(acc);
+            acc = INIT_AGGRES;
+        }
+        acc.add(tss[ix], xss[ix]);
+    }
+    if (acc.cnt > 0) {
+        buckets.push_back(acc);
+    }
+
+    // Check actual output
+    auto it = extents->group_aggregate(end, begin, step);
+    aku_Status status;
+    size_t size = buckets.size();
+    std::vector<aku_Timestamp> destts(size, 0);
+    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    size_t out_size;
+    std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
+    BOOST_REQUIRE_EQUAL(out_size, buckets.size());
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    for(size_t i = 1; i < size; i++) {
+        BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
+    std::vector<std::pair<u32, u32>> cases = {
+        { 1, 100 },
+        /*{ 2, 100 },
+        {10, 100 },
+        {32, 100 },
+        {32*32, 100 },
+        { 1, 1000 },
+        { 2, 1000 },
+        {10, 1000 },
+        {32, 1000 },
+        {32*32, 1000 },
+        { 1, 10000 },
+        { 2, 10000 },
+        {10, 10000 },
+        {32, 10000 },
+        {32*32, 10000 },*/
+    };
+    for (auto kv: cases) {
+        test_nbtree_group_aggregate_backward(kv.first, kv.second);
+    }
+}
