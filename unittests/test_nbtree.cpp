@@ -1262,6 +1262,8 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
         double value = rwalk.next();
         aku_Timestamp ts = end++;
         extents->append(ts, value);
+        tss.push_back(ts);
+        xss.push_back(value);
     }
 
     // Calculate aggregates in backward direction

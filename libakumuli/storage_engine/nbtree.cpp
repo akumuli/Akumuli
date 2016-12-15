@@ -599,7 +599,7 @@ struct GroupAggregate : NBTreeAggregator {
             for (size_t i = 0; i < tocopy; i++) {
                 auto const& bottom = rdbuf_.at(rdpos_);
                 rdpos_++;
-                *desttx++ = bottom._begin;  // TODO: this will work only for forward direction, need to add support for backward dir
+                *desttx++ = dir_ == Direction::FORWARD ? bottom._begin : bottom._end;
                 *destxs++ = bottom;
                 size--;
             }
@@ -655,7 +655,8 @@ struct GroupAggregate : NBTreeAggregator {
                     // Check last and first values of rdbuf_ and outxs
                     auto const& last  = rdbuf_.at(pos - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = first._end - last._begin;
+                    auto const  delta = dir_ == Direction::FORWARD ? first._end - last._begin
+                                                                   : last._end - first._begin;
                     if (delta < step_) {
                         pos--;
                     }
@@ -1202,44 +1203,24 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
             return std::make_tuple(AKU_ENO_DATA, 0);
         }
         assert(out_size == size_hint);
-        if (begin_ < end_) {
-            int valcnt = 0;
-            NBTreeAggregationResult outval = INIT_AGGRES;
-            for (size_t ix = 0; ix < out_size; ix++) {
-                aku_Timestamp normts = ts[ix] - begin_;
-                if (valcnt && normts % step_ == 0) {
-                    destxs[outix] = outval;
-                    destts[outix] = outval._begin;
-                    outix++;
-                    outval = INIT_AGGRES;
-                }
-                valcnt++;
-                outval.add(ts[ix], xs[ix]);
-            }
-            if (outval.cnt > 0) {
+        int valcnt = 0;
+        NBTreeAggregationResult outval = INIT_AGGRES;
+        for (size_t ix = 0; ix < out_size; ix++) {
+            aku_Timestamp normts = begin_ < end_ ? ts[ix] - begin_
+                                                 : begin_ - ts[ix];
+            if (valcnt && normts % step_ == 0) {
                 destxs[outix] = outval;
-                destts[outix] = outval._begin;
+                destts[outix] = begin_ < end_ ? outval._begin : outval._end;
                 outix++;
+                outval = INIT_AGGRES;
             }
-        } else {
-            int valcnt = 0;
-            NBTreeAggregationResult outval = INIT_AGGRES;
-            for (i32 ix = static_cast<i32>(out_size); ix --> 0;) {
-                aku_Timestamp normts = begin_ - ts[ix];
-                if (valcnt && normts % step_ == 0) {
-                    destxs[outix] = outval;
-                    destts[outix] = outval._end;
-                    outix++;
-                    outval = INIT_AGGRES;
-                }
-                valcnt++;
-                outval.add(ts[ix], xs[ix]);
-            }
-            if (outval.cnt > 0) {
-                destxs[outix] = outval;
-                destts[outix] = outval._end;
-                outix++;
-            }
+            valcnt++;
+            outval.add(ts[ix], xs[ix]);
+        }
+        if (outval.cnt > 0) {
+            destxs[outix] = outval;
+            destts[outix] = begin_ < end_ ? outval._begin : outval._end;
+            outix++;
         }
     }
     return std::make_tuple(AKU_SUCCESS, outix);
@@ -1321,7 +1302,8 @@ public:
             for (size_t i = 0; i < tocopy; i++) {
                 auto const& bottom = rdbuf_.at(rdpos_);
                 rdpos_++;
-                *desttx++ = bottom._begin;  // TODO: this will work only for forward direction, need to add support for backward dir
+                *desttx++ = begin_ < end_ ? bottom._begin
+                                          : bottom._end;
                 *destxs++ = bottom;
                 size--;
             }
@@ -1366,7 +1348,8 @@ public:
                 if (pos_ > 0) {
                     auto const& last  = rdbuf_.at(pos_ - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = first._end - last._begin;
+                    auto const  delta = begin_ < end_ ? first._end - last._begin
+                                                      : last._end - first._begin;
                     if (delta < step_) {
                         pos_--;
                     }
@@ -1398,9 +1381,6 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
                                                                  NBTreeAggregationResult *destval,
                                                                  size_t size)
 {
-    if (begin_ > end_) {
-        AKU_PANIC("Not implemented");
-    }
     if (size == 0) {
         return std::make_pair(AKU_EBAD_ARG, 0ul);
     }
