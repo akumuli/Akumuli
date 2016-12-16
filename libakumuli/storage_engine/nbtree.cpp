@@ -664,7 +664,7 @@ struct GroupAggregate : NBTreeAggregator {
                     auto const& last  = rdbuf_.at(pos - 1);
                     auto const& first = outxs.front();
                     auto const  delta = dir_ == Direction::FORWARD ? first._begin - last._begin
-                                                                   : last._begin - first._begin;
+                                                                   : last._end - first._end;
                     if (delta < step_) {
                         pos--;
                     }
@@ -672,6 +672,10 @@ struct GroupAggregate : NBTreeAggregator {
             }
             for (size_t ix = 0; ix < outsz; ix++) {
                 rdbuf_.at(pos).combine(outxs.at(ix));
+                const auto newdelta = rdbuf_.at(pos)._end - rdbuf_.at(pos)._begin;
+                if (newdelta > step_) {
+                    assert(newdelta <= step_);
+                }
                 pos++;
             }
             if (status == AKU_ENO_DATA) {
@@ -1357,13 +1361,17 @@ public:
                     auto const& last  = rdbuf_.at(pos_ - 1);
                     auto const& first = outxs.front();
                     auto const  delta = begin_ < end_ ? first._begin - last._begin
-                                                      : last._begin - first._begin;
+                                                      : last._end - first._end;
                     if (delta < step_) {
                         pos_--;
                     }
                 }
                 for (size_t ix = 0; ix < outsz; ix++) {
                     rdbuf_.at(pos_).combine(outxs.at(ix));
+                    const auto newdelta = rdbuf_.at(pos_)._end - rdbuf_.at(pos_)._begin;
+                    if (newdelta > step_) {
+                        assert(newdelta <= step_);
+                    }
                     pos_++;
                 }
             }

@@ -1170,7 +1170,7 @@ BOOST_AUTO_TEST_CASE(Test_reopen_write_reopen) {
 }
 
 
-void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
+void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int start_offset) {
     // Build this tree structure.
     aku_Timestamp begin = 1000;
     aku_Timestamp end = begin;
@@ -1185,10 +1185,11 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
     RandomWalk rwalk(1.0, 0.1, 0.1);
     NBTreeAggregationResult acc = INIT_AGGRES;
     std::vector<NBTreeAggregationResult> buckets;
+    auto query_begin = static_cast<u64>(static_cast<i64>(begin) + start_offset);
     auto bucket_ix = 0ull;
     while(ncommits < commit_limit) {
-        auto current_bucket = (end - begin) / step;
-        if (current_bucket > bucket_ix) {
+        auto current_bucket = (end - query_begin) / step;
+        if (end >= query_begin && current_bucket > bucket_ix) {
             bucket_ix = current_bucket;
             buckets.push_back(acc);
             acc = INIT_AGGRES;
@@ -1196,14 +1197,16 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
         double value = rwalk.next();
         aku_Timestamp ts = end++;
         extents->append(ts, value);
-        acc.add(ts, value, true);
+        if (ts >= query_begin) {
+            acc.add(ts, value, true);
+        }
     }
     if (acc.cnt > 0) {
         buckets.push_back(acc);
     }
 
     // Check actual output
-    auto it = extents->group_aggregate(begin, end, step);
+    auto it = extents->group_aggregate(query_begin, end, step);
     aku_Status status;
     size_t size = buckets.size();
     std::vector<aku_Timestamp> destts(size, 0);
@@ -1214,6 +1217,7 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     for(size_t i = 1; i < size; i++) {
+        BOOST_REQUIRE(destts.at(i) >= query_begin);
         BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
         BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-10);
         BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-10);
@@ -1226,29 +1230,37 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
-    std::vector<std::pair<u32, u32>> cases = {
-        { 1, 100 },
-        { 2, 100 },
-        {10, 100 },
-        {32, 100 },
-        {32*32, 100 },
-        { 1, 1000 },
-        { 2, 1000 },
-        {10, 1000 },
-        {32, 1000 },
-        {32*32, 1000 },
-        { 1, 10000 },
-        { 2, 10000 },
-        {10, 10000 },
-        {32, 10000 },
-        {32*32, 10000 },
+    std::vector<std::tuple<u32, u32, int>> cases = {
+        std::make_tuple( 1,     100, 0),
+        std::make_tuple( 2,     100, 0),
+        std::make_tuple(10,     100, 0),
+        std::make_tuple(32,     100, 0),
+        std::make_tuple(32*32,  100, 0),
+        std::make_tuple(32*32,  100, 1),
+        std::make_tuple(32*32,  100,-1),
+
+        std::make_tuple( 1,    1000, 0),
+        std::make_tuple( 2,    1000, 0),
+        std::make_tuple(10,    1000, 0),
+        std::make_tuple(32,    1000, 0),
+        std::make_tuple(32*32, 1000, 0),
+        std::make_tuple(32*32, 1000, 1),
+        std::make_tuple(32*32, 1000,-1),
+
+        std::make_tuple( 1,   10000, 0),
+        std::make_tuple( 2,   10000, 0),
+        std::make_tuple(10,   10000, 0),
+        std::make_tuple(32,   10000, 0),
+        std::make_tuple(32*32,10000, 0),
+        std::make_tuple(32*32,10000, 1),
+        std::make_tuple(32*32,10000,-1),
     };
-    for (auto kv: cases) {
-        test_nbtree_group_aggregate_forward(kv.first, kv.second);
+    for (auto t: cases) {
+        test_nbtree_group_aggregate_forward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
     }
 }
 
-void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
+void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int start_offset) {
     // Build this tree structure.
     aku_Timestamp begin = 1000;
     aku_Timestamp end = begin;
@@ -1279,14 +1291,16 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
     NBTreeAggregationResult acc = INIT_AGGRES;
     std::vector<NBTreeAggregationResult> buckets;
     auto bucket_ix = 0ull;
+    auto query_begin = static_cast<u64>(static_cast<i64>(end) - start_offset);
+    auto query_end = static_cast<u64>(static_cast<i64>(begin) + start_offset);
     for (auto ix = 0ul; ix < xss.size(); ix++) {
-        auto current_bucket = (end - tss[ix]) / step;
-        if (current_bucket != bucket_ix) {
+        auto current_bucket = (query_begin - tss[ix]) / step;
+        if (tss[ix] <= query_begin && tss[ix] > query_end && current_bucket != bucket_ix) {
             bucket_ix = current_bucket;
             buckets.push_back(acc);
             acc = INIT_AGGRES;
         }
-        if (tss[ix] > begin) {
+        if (tss[ix] <= query_begin && tss[ix] > query_end) {
             acc.add(tss[ix], xss[ix], false);
         }
     }
@@ -1295,21 +1309,24 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
     }
 
     // Check actual output
-    auto it = extents->group_aggregate(end, begin, step);
+    auto it = extents->group_aggregate(query_begin, query_end, step);
     aku_Status status;
     size_t size = buckets.size();
     std::vector<aku_Timestamp> destts(size, 0);
     std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
     size_t out_size;
     std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
-    BOOST_REQUIRE_EQUAL(out_size, buckets.size());
+    //BOOST_REQUIRE_EQUAL(out_size, buckets.size());
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     for(size_t i = 1; i < size; i++) {
-        BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
-        BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-10);
-        BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-10);
-        BOOST_REQUIRE_CLOSE(buckets.at(i).max, destxs.at(i).max, 1E-10);
+        BOOST_REQUIRE(destts.at(i) > query_end && destts.at(i) <= query_begin);
+        if (std::abs(buckets.at(i).sum - destxs.at(i).sum) > 1e-5) {
+            BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-5);
+        }
+        BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-5);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-5);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).max, destxs.at(i).max, 1E-5);
         BOOST_REQUIRE_EQUAL(buckets.at(i)._begin, destxs.at(i)._begin);
         BOOST_REQUIRE_EQUAL(buckets.at(i)._end, destxs.at(i)._end);
         BOOST_REQUIRE_EQUAL(buckets.at(i).mints, destxs.at(i).mints);
@@ -1318,24 +1335,32 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
-    std::vector<std::pair<u32, u32>> cases = {
-        { 1, 100 },
-        { 2, 100 },
-        {10, 100 },
-        {32, 100 },
-        {32*32, 100 },
-        { 1, 1000 },
-        { 2, 1000 },
-        {10, 1000 },
-        {32, 1000 },
-        {32*32, 1000 },
-        { 1, 10000 },
-        { 2, 10000 },
-        {10, 10000 },
-        {32, 10000 },
-        {32*32, 10000 },
+    std::vector<std::tuple<u32, u32, int>> cases = {
+        std::make_tuple( 1,     100, 0),
+        std::make_tuple( 2,     100, 0),
+        std::make_tuple(10,     100, 0),
+        std::make_tuple(32,     100, 0),
+        std::make_tuple(32*32,  100, 0),
+        std::make_tuple(32*32,  100, 1),
+        std::make_tuple(32*32,  100,-1),
+
+        std::make_tuple( 1,    1000, 0),
+        std::make_tuple( 2,    1000, 0),
+        std::make_tuple(10,    1000, 0),
+        std::make_tuple(32,    1000, 0),
+        std::make_tuple(32*32, 1000, 0),
+        std::make_tuple(32*32, 1000, 1),
+        std::make_tuple(32*32, 1000,-1),
+
+        std::make_tuple( 1,   10000, 0),
+        std::make_tuple( 2,   10000, 0),
+        std::make_tuple(10,   10000, 0),
+        std::make_tuple(32,   10000, 0),
+        std::make_tuple(32*32,10000, 0),
+        std::make_tuple(32*32,10000, 1),
+        std::make_tuple(32*32,10000,-1),
     };
-    for (auto kv: cases) {
-        test_nbtree_group_aggregate_backward(kv.first, kv.second);
+    for (auto t: cases) {
+        test_nbtree_group_aggregate_backward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
     }
 }
