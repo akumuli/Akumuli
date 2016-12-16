@@ -933,6 +933,44 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
     }
 }
 
+void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    Logger::msg(AKU_LOG_TRACE, "ColumnStore `json` query: " + to_string(req));
+    if (req.select.columns.size() > 1) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `group-aggregate` request, too many columns");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
+    if (!req.agg.enabled || req.agg.step == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Bad column-store `group-aggregate` request, aggregation disabled");
+        qproc.set_error(AKU_EBAD_ARG);
+        return;
+    }
+    std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+    for (auto id: req.select.columns.at(0).ids) {
+        std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+        auto it = columns_.find(id);
+        if (it != columns_.end()) {
+            std::unique_ptr<NBTreeAggregator> agg = it->second->group_aggregate(req.select.begin, req.select.end, req.agg.step);
+            agglist.push_back(std::move(agg));
+        } else {
+            qproc.set_error(AKU_ENOT_FOUND);
+            return;
+        }
+    }
+    std::unique_ptr<RowIterator> iter;
+    auto ids = req.select.columns.at(0).ids;
+    if (req.group_by.enabled) {
+        // FIXME: Not yet supported
+        Logger::msg(AKU_LOG_ERROR, "Group-by in `group-aggregate` query is not supported yet");
+        qproc.set_error(AKU_ENOT_PERMITTED);
+        return;
+    } else {
+        if (req.order_by == OrderBy::SERIES) {
+        }
+    }
+    throw "not implemented";
+}
+
 size_t ColumnStore::_get_uncommitted_memory() const {
     std::lock_guard<std::mutex> guard(table_lock_);
     size_t total_size = 0;

@@ -44,6 +44,7 @@ enum class AggregationFunction {
 struct Aggregation {
     bool enabled;
     AggregationFunction func;
+    u64 step;  // 0 if group by time disabled
 
     static std::tuple<aku_Status, AggregationFunction> from_string(std::string str) {
         if (str == "min") {
