@@ -1196,7 +1196,7 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
         double value = rwalk.next();
         aku_Timestamp ts = end++;
         extents->append(ts, value);
-        acc.add(ts, value);
+        acc.add(ts, value, true);
     }
     if (acc.cnt > 0) {
         buckets.push_back(acc);
@@ -1215,6 +1215,13 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step) {
 
     for(size_t i = 1; i < size; i++) {
         BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).max, destxs.at(i).max, 1E-10);
+        BOOST_REQUIRE_EQUAL(buckets.at(i)._begin, destxs.at(i)._begin);
+        BOOST_REQUIRE_EQUAL(buckets.at(i)._end, destxs.at(i)._end);
+        BOOST_REQUIRE_EQUAL(buckets.at(i).mints, destxs.at(i).mints);
+        BOOST_REQUIRE_EQUAL(buckets.at(i).maxts, destxs.at(i).maxts);
     }
 }
 
@@ -1279,7 +1286,9 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
             buckets.push_back(acc);
             acc = INIT_AGGRES;
         }
-        acc.add(tss[ix], xss[ix]);
+        if (tss[ix] > begin) {
+            acc.add(tss[ix], xss[ix], false);
+        }
     }
     if (acc.cnt > 0) {
         buckets.push_back(acc);
@@ -1298,13 +1307,20 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step) {
 
     for(size_t i = 1; i < size; i++) {
         BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-10);
+        BOOST_REQUIRE_CLOSE(buckets.at(i).max, destxs.at(i).max, 1E-10);
+        BOOST_REQUIRE_EQUAL(buckets.at(i)._begin, destxs.at(i)._begin);
+        BOOST_REQUIRE_EQUAL(buckets.at(i)._end, destxs.at(i)._end);
+        BOOST_REQUIRE_EQUAL(buckets.at(i).mints, destxs.at(i).mints);
+        BOOST_REQUIRE_EQUAL(buckets.at(i).maxts, destxs.at(i).maxts);
     }
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
     std::vector<std::pair<u32, u32>> cases = {
         { 1, 100 },
-        /*{ 2, 100 },
+        { 2, 100 },
         {10, 100 },
         {32, 100 },
         {32*32, 100 },
@@ -1317,7 +1333,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
         { 2, 10000 },
         {10, 10000 },
         {32, 10000 },
-        {32*32, 10000 },*/
+        {32*32, 10000 },
     };
     for (auto kv: cases) {
         test_nbtree_group_aggregate_backward(kv.first, kv.second);

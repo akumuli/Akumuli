@@ -108,7 +108,7 @@ void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss,
     }
 }
 
-void NBTreeAggregationResult::add(aku_Timestamp ts, double xs) {
+void NBTreeAggregationResult::add(aku_Timestamp ts, double xs, bool forward) {
     sum += xs;
     if (min > xs) {
         min = xs;
@@ -120,10 +120,18 @@ void NBTreeAggregationResult::add(aku_Timestamp ts, double xs) {
     }
     if (cnt == 0) {
         first = xs;
-        _begin = ts;
+        if (forward) {
+            _begin = ts;
+        } else {
+            _end = ts;
+        }
     }
     last = xs;
-    _end = ts;
+    if (forward) {
+        _end = ts;
+    } else {
+        _begin = ts;
+    }
     cnt += 1;
 }
 
@@ -599,7 +607,7 @@ struct GroupAggregate : NBTreeAggregator {
             for (size_t i = 0; i < tocopy; i++) {
                 auto const& bottom = rdbuf_.at(rdpos_);
                 rdpos_++;
-                *desttx++ = dir_ == Direction::FORWARD ? bottom._begin : bottom._end;
+                *desttx++ = bottom._begin;
                 *destxs++ = bottom;
                 size--;
             }
@@ -655,8 +663,8 @@ struct GroupAggregate : NBTreeAggregator {
                     // Check last and first values of rdbuf_ and outxs
                     auto const& last  = rdbuf_.at(pos - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = dir_ == Direction::FORWARD ? first._end - last._begin
-                                                                   : last._end - first._begin;
+                    auto const  delta = dir_ == Direction::FORWARD ? first._begin - last._begin
+                                                                   : last._begin - first._begin;
                     if (delta < step_) {
                         pos--;
                     }
@@ -1144,7 +1152,7 @@ public:
         if (begin < end) {
             auto a = (nodemin - begin) / step;
             auto b = (nodemax - begin) / step;
-            if (a == b) {
+            if (a == b && nodemin >= begin && nodemax < end) {
                 // Leaf totally inside one step range, we can use metadata.
                 metacache_ = *node.get_leafmeta();
                 enable_cached_metadata_ = true;
@@ -1155,7 +1163,7 @@ public:
         } else {
             auto a = (begin - nodemin) / step;
             auto b = (begin - nodemax) / step;
-            if (a == b) {
+            if (a == b && nodemax <= begin && nodemin > end) {
                 // Leaf totally inside one step range, we can use metadata.
                 metacache_ = *node.get_leafmeta();
                 enable_cached_metadata_ = true;
@@ -1205,21 +1213,22 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         assert(out_size == size_hint);
         int valcnt = 0;
         NBTreeAggregationResult outval = INIT_AGGRES;
+        const bool forward = begin_ < end_;
         for (size_t ix = 0; ix < out_size; ix++) {
-            aku_Timestamp normts = begin_ < end_ ? ts[ix] - begin_
-                                                 : begin_ - ts[ix];
+            aku_Timestamp normts = forward ? ts[ix] - begin_
+                                           : begin_ - ts[ix];
             if (valcnt && normts % step_ == 0) {
                 destxs[outix] = outval;
-                destts[outix] = begin_ < end_ ? outval._begin : outval._end;
+                destts[outix] = outval._begin;
                 outix++;
                 outval = INIT_AGGRES;
             }
             valcnt++;
-            outval.add(ts[ix], xs[ix]);
+            outval.add(ts[ix], xs[ix], forward);
         }
         if (outval.cnt > 0) {
             destxs[outix] = outval;
-            destts[outix] = begin_ < end_ ? outval._begin : outval._end;
+            destts[outix] = outval._begin;
             outix++;
         }
     }
@@ -1302,8 +1311,7 @@ public:
             for (size_t i = 0; i < tocopy; i++) {
                 auto const& bottom = rdbuf_.at(rdpos_);
                 rdpos_++;
-                *desttx++ = begin_ < end_ ? bottom._begin
-                                          : bottom._end;
+                *desttx++ = bottom._begin;
                 *destxs++ = bottom;
                 size--;
             }
@@ -1348,8 +1356,8 @@ public:
                 if (pos_ > 0) {
                     auto const& last  = rdbuf_.at(pos_ - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = begin_ < end_ ? first._end - last._begin
-                                                      : last._end - first._begin;
+                    auto const  delta = begin_ < end_ ? first._begin - last._begin
+                                                      : last._begin - first._begin;
                     if (delta < step_) {
                         pos_--;
                     }

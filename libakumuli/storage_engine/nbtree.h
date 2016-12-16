@@ -160,8 +160,13 @@ struct NBTreeAggregationResult {
     void copy_from(SubtreeRef const&);
     //! Calculate values from raw data.
     void do_the_math(aku_Timestamp *tss, double const* xss, size_t size, bool inverted);
-    //! Add value to aggregate
-    void add(aku_Timestamp ts, double xs);
+    /**
+     * Add value to aggregate
+     * @param ts is a timestamp
+     * @param xs is a value
+     * @param forward is used to indicate external order of added elements
+     */
+    void add(aku_Timestamp ts, double xs, bool forward);
     //! Combine this value with the other one (inplace update).
     void combine(const NBTreeAggregationResult& other);
 };
