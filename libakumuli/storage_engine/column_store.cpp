@@ -680,6 +680,141 @@ struct MergeJoinIterator : RowIterator {
 
 };
 
+
+namespace GroupAggregate {
+
+    enum class TupleComponent {
+        COUNT,
+        SUM,
+        MIN,
+        MIN_TIMESTAMP,
+        MAX,
+        MAX_TIMESTAMP,
+        MEAN
+    };
+
+    struct SeriesOrderIterator : RowIterator {
+        std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+        std::vector<aku_ParamId> ids_;
+        std::vector<TupleComponent> tuple_;
+        u32 pos_;
+
+        SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
+                            std::vector<std::unique_ptr<NBTreeAggregator>>&& it,
+                            std::vector<TupleComponent>&& components)
+            : iters_(std::move(it))
+            , ids_(std::move(ids))
+            , tuple_(std::move(components))
+            , pos_(0)
+        {
+        }
+
+        /** Get pointer to buffer and return pointer to sample and tuple data */
+        static std::tuple<aku_Sample*, double*> cast(u8* dest) {
+            aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
+            double* tuple      = reinterpret_cast<double*>(sample->payload.data);
+            return std::make_tuple(sample, tuple);
+        }
+
+        static double get_flags(std::vector<TupleComponent> const& tup) {
+            // Shift will produce power of two (e.g. if tup.size() == 3 then
+            // (1 << tup.size) will give us 8, 8-1 is 7 (exactly three lower
+            // bits is set)).
+            return (1 << tup.size()) - 1;
+        }
+
+        static void set_tuple(double* tuple, std::vector<TupleComponent> const& comp, NBTreeAggregationResult const& res) {
+            for (size_t i = 0; i < comp.size(); i++) {
+                auto elem = comp[i];
+                switch (elem) {
+                case TupleComponent::COUNT:
+                    *tuple = res.cnt;
+                    break;
+                case TupleComponent::SUM:
+                    *tuple = res.sum;
+                    break;
+                case TupleComponent::MIN:
+                    *tuple = res.min;
+                    break;
+                case TupleComponent::MIN_TIMESTAMP:
+                    *tuple = static_cast<double>(res.mints);
+                    break;
+                case TupleComponent::MAX:
+                    *tuple = res.max;
+                    break;
+                case TupleComponent::MAX_TIMESTAMP:
+                    *tuple = res.maxts;
+                    break;
+                case TupleComponent::MEAN:
+                    *tuple = res.sum / res.cnt;
+                    break;
+                }
+                tuple++;
+            }
+        }
+
+        static size_t get_tuple_size(const std::vector<TupleComponent>& tup) {
+            size_t payload = 0;
+            assert(!tup.empty());
+            payload = sizeof(double)*tup.size();
+            return sizeof(aku_Sample) + payload;
+        }
+
+        virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override;
+    };
+
+    std::tuple<aku_Status, size_t> SeriesOrderIterator::read(u8 *dest, size_t dest_size) {
+        aku_Status status = AKU_ENO_DATA;
+        size_t ressz = 0;  // current size
+        size_t accsz = 0;  // accumulated size
+        size_t sample_size = get_tuple_size(tuple_);
+        size_t size = dest_size / sample_size;
+        std::vector<aku_Timestamp> destts_vec(size, 0);
+        std::vector<NBTreeAggregationResult> destval_vec(size, INIT_AGGRES);
+        std::vector<aku_ParamId> outids(size, 0);
+        aku_Timestamp* destts = destts_vec.data();
+        NBTreeAggregationResult* destval = destval_vec.data();
+        while(pos_ < iters_.size()) {
+            aku_ParamId curr = ids_[pos_];
+            std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
+            for (size_t i = accsz; i < accsz+ressz; i++) {
+                outids[i] = curr;
+            }
+            destts += ressz;
+            destval += ressz;
+            size -= ressz;
+            accsz += ressz;
+            if (size == 0) {
+                break;
+            }
+            pos_++;
+            if (status == AKU_ENO_DATA) {
+                // this iterator is done, continue with next
+                continue;
+            }
+            if (status != AKU_SUCCESS) {
+                // Stop iteration on error!
+                break;
+            }
+        }
+        // Convert vectors to series of samples
+        for (size_t i = 0; i < accsz; i++) {
+            double* tup;
+            aku_Sample* sample;
+            std::tie(sample, tup)   = cast(dest);
+            dest                   += sample_size;
+            sample->payload.type    = AKU_PAYLOAD_TUPLE;
+            sample->payload.size    = static_cast<u16>(sample_size);
+            sample->paramid         = outids[i];
+            sample->timestamp       = destts_vec[i];
+            sample->payload.float64 = get_flags(tuple_);
+            set_tuple(tup, tuple_, destval_vec[i]);
+        }
+        return std::make_tuple(status, accsz*sample_size);
+
+    }
+}
+
 // ////////////// //
 //  Column-store  //
 // ////////////// //
