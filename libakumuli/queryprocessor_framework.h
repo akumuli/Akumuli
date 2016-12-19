@@ -38,7 +38,13 @@ namespace QP {
  */
 
 enum class AggregationFunction {
-    MIN, MAX, SUM, CNT,
+    MIN,
+    MAX,
+    SUM,
+    CNT,
+    MIN_TIMESTAMP,
+    MAX_TIMESTAMP,
+    MEAN
 };
 
 struct Aggregation {
@@ -55,6 +61,12 @@ struct Aggregation {
             return std::make_tuple(AKU_SUCCESS, AggregationFunction::SUM);
         } else if (str == "count") {
             return std::make_tuple(AKU_SUCCESS, AggregationFunction::CNT);
+        } else if (str == "min_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MIN_TIMESTAMP);
+        } else if (str == "max_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MAX_TIMESTAMP);
+        } else if (str == "mean") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MEAN);
         }
         return std::make_tuple(AKU_EBAD_ARG, AggregationFunction::CNT);
     }

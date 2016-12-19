@@ -157,9 +157,17 @@ public:
                 sample.timestamp = destval.mints;
                 sample.payload.float64 = destval.min;
             break;
+            case AggregationFunction::MIN_TIMESTAMP:
+                sample.timestamp = destval.mints;
+                sample.payload.float64 = destval.mints;
+            break;
             case AggregationFunction::MAX:
                 sample.timestamp = destval.maxts;
                 sample.payload.float64 = destval.max;
+            break;
+            case AggregationFunction::MAX_TIMESTAMP:
+                sample.timestamp = destval.maxts;
+                sample.payload.float64 = destval.maxts;
             break;
             case AggregationFunction::SUM:
                 sample.timestamp = destval._end;
@@ -168,6 +176,10 @@ public:
             case AggregationFunction::CNT:
                 sample.timestamp = destval._end;
                 sample.payload.float64 = destval.cnt;
+            break;
+            case AggregationFunction::MEAN:
+                sample.timestamp = destval._end;
+                sample.payload.float64 = destval.sum/destval.cnt;
             break;
             }
             memcpy(dest, &sample, sizeof(sample));
@@ -683,25 +695,15 @@ struct MergeJoinIterator : RowIterator {
 
 namespace GroupAggregate {
 
-    enum class TupleComponent {
-        COUNT,
-        SUM,
-        MIN,
-        MIN_TIMESTAMP,
-        MAX,
-        MAX_TIMESTAMP,
-        MEAN
-    };
-
     struct SeriesOrderIterator : RowIterator {
         std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
         std::vector<aku_ParamId> ids_;
-        std::vector<TupleComponent> tuple_;
+        std::vector<AggregationFunction> tuple_;
         u32 pos_;
 
         SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
                             std::vector<std::unique_ptr<NBTreeAggregator>>&& it,
-                            std::vector<TupleComponent>&& components)
+                            const std::vector<AggregationFunction>& components)
             : iters_(std::move(it))
             , ids_(std::move(ids))
             , tuple_(std::move(components))
@@ -716,44 +718,50 @@ namespace GroupAggregate {
             return std::make_tuple(sample, tuple);
         }
 
-        static double get_flags(std::vector<TupleComponent> const& tup) {
+        static double get_flags(std::vector<AggregationFunction> const& tup) {
             // Shift will produce power of two (e.g. if tup.size() == 3 then
             // (1 << tup.size) will give us 8, 8-1 is 7 (exactly three lower
             // bits is set)).
             return (1 << tup.size()) - 1;
         }
 
-        static void set_tuple(double* tuple, std::vector<TupleComponent> const& comp, NBTreeAggregationResult const& res) {
+        static double get(NBTreeAggregationResult const& res, AggregationFunction afunc) {
+            double out;
+            switch (afunc) {
+            case AggregationFunction::CNT:
+                out = res.cnt;
+                break;
+            case AggregationFunction::SUM:
+                out = res.sum;
+                break;
+            case AggregationFunction::MIN:
+                out = res.min;
+                break;
+            case AggregationFunction::MIN_TIMESTAMP:
+                out = static_cast<double>(res.mints);
+                break;
+            case AggregationFunction::MAX:
+                out = res.max;
+                break;
+            case AggregationFunction::MAX_TIMESTAMP:
+                out = res.maxts;
+                break;
+            case AggregationFunction::MEAN:
+                out = res.sum / res.cnt;
+                break;
+            }
+            return out;
+        }
+
+        static void set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, NBTreeAggregationResult const& res) {
             for (size_t i = 0; i < comp.size(); i++) {
                 auto elem = comp[i];
-                switch (elem) {
-                case TupleComponent::COUNT:
-                    *tuple = res.cnt;
-                    break;
-                case TupleComponent::SUM:
-                    *tuple = res.sum;
-                    break;
-                case TupleComponent::MIN:
-                    *tuple = res.min;
-                    break;
-                case TupleComponent::MIN_TIMESTAMP:
-                    *tuple = static_cast<double>(res.mints);
-                    break;
-                case TupleComponent::MAX:
-                    *tuple = res.max;
-                    break;
-                case TupleComponent::MAX_TIMESTAMP:
-                    *tuple = res.maxts;
-                    break;
-                case TupleComponent::MEAN:
-                    *tuple = res.sum / res.cnt;
-                    break;
-                }
+                *tuple = get(res, elem);
                 tuple++;
             }
         }
 
-        static size_t get_tuple_size(const std::vector<TupleComponent>& tup) {
+        static size_t get_tuple_size(const std::vector<AggregationFunction>& tup) {
             size_t payload = 0;
             assert(!tup.empty());
             payload = sizeof(double)*tup.size();
@@ -1101,9 +1109,34 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         return;
     } else {
         if (req.order_by == OrderBy::SERIES) {
+            iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), {req.agg.func}));
+        } else {
+            Logger::msg(AKU_LOG_ERROR, "Time-order in `group-aggregate` query is not supported yet");
+            qproc.set_error(AKU_ENOT_IMPLEMENTED);
         }
     }
-    throw "not implemented";
+    const size_t dest_size = 0x1000;
+    std::vector<u8> dest;
+    dest.resize(dest_size);
+    aku_Status status = AKU_SUCCESS;
+    while(status == AKU_SUCCESS) {
+        size_t size;
+        std::tie(status, size) = iter->read(dest.data(), dest_size);
+        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+            qproc.set_error(status);
+            return;
+        }
+        size_t pos = 0;
+        while(pos < size) {
+            aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
+            if (!qproc.put(*sample)) {
+                Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
+                return;
+            }
+            pos += sample->payload.size;
+        }
+    }
 }
 
 size_t ColumnStore::_get_uncommitted_memory() const {
