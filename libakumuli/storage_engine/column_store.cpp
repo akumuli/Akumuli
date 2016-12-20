@@ -432,7 +432,7 @@ struct JoinIterator : RowIterator {
     aku_Status fill_buffers() {
         if (buffer_pos_ != buffer_size_) {
             // Logic error
-            AKU_PANIC("Buffers is not consumed");
+            AKU_PANIC("Buffers are not consumed");
         }
         aku_Timestamp destts[BUFFER_SIZE];
         double destval[BUFFER_SIZE];
@@ -722,7 +722,12 @@ namespace GroupAggregate {
             // Shift will produce power of two (e.g. if tup.size() == 3 then
             // (1 << tup.size) will give us 8, 8-1 is 7 (exactly three lower
             // bits is set)).
-            return (1 << tup.size()) - 1;
+            union {
+                double d;
+                u64 u;
+            } bits;
+            bits.u = (1ull << tup.size()) - 1;
+            return bits.d;
         }
 
         static double get(NBTreeAggregationResult const& res, AggregationFunction afunc) {

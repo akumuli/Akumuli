@@ -517,3 +517,61 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
 BOOST_AUTO_TEST_CASE(Test_column_store_join_1) {
     test_join(100, 1100);
 }
+
+void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    for (auto id: col) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    auto testfn = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = AggregationFunction::MIN;
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+        cstore->group_aggregate_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto id: col) {
+            for (auto ts: model_timestamps) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double xs = mock.columns[0][ix];
+                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
+                ix++;
+            }
+        }
+        BOOST_REQUIRE(ix != 0);
+    };
+    testfn(10);
+    testfn(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_1) {
+    test_group_aggregate(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_2) {
+    test_group_aggregate(1000, 11000);
+}
