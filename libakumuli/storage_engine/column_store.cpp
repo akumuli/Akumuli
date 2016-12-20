@@ -695,22 +695,7 @@ struct MergeJoinIterator : RowIterator {
 
 namespace GroupAggregate {
 
-    struct SeriesOrderIterator : RowIterator {
-        std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
-        std::vector<aku_ParamId> ids_;
-        std::vector<AggregationFunction> tuple_;
-        u32 pos_;
-
-        SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
-                            std::vector<std::unique_ptr<NBTreeAggregator>>&& it,
-                            const std::vector<AggregationFunction>& components)
-            : iters_(std::move(it))
-            , ids_(std::move(ids))
-            , tuple_(std::move(components))
-            , pos_(0)
-        {
-        }
-
+    struct TupleOutputUtils {
         /** Get pointer to buffer and return pointer to sample and tuple data */
         static std::tuple<aku_Sample*, double*> cast(u8* dest) {
             aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
@@ -772,6 +757,23 @@ namespace GroupAggregate {
             payload = sizeof(double)*tup.size();
             return sizeof(aku_Sample) + payload;
         }
+    };
+
+    struct SeriesOrderIterator : TupleOutputUtils, RowIterator {
+        std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+        std::vector<aku_ParamId> ids_;
+        std::vector<AggregationFunction> tuple_;
+        u32 pos_;
+
+        SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
+                            std::vector<std::unique_ptr<NBTreeAggregator>>&& it,
+                            const std::vector<AggregationFunction>& components)
+            : iters_(std::move(it))
+            , ids_(std::move(ids))
+            , tuple_(std::move(components))
+            , pos_(0)
+        {
+        }
 
         virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override;
     };
@@ -826,7 +828,35 @@ namespace GroupAggregate {
         return std::make_tuple(status, accsz*sample_size);
 
     }
+
+    struct TimeOrderIterator : TupleOutputUtils, RowIterator {
+        std::unique_ptr<MergeJoinIterator> join_iter_;
+
+        TimeOrderIterator(const std::vector<aku_ParamId>& ids,
+                          std::vector<std::unique_ptr<NBTreeAggregator>> &it,
+                          const std::vector<AggregationFunction>& components)
+        {
+            assert(it.size());
+            bool forward = it.front()->get_direction() == NBTreeAggregator::Direction::FORWARD;
+            std::vector<std::unique_ptr<RowIterator>> iters;
+            for (size_t i = 0; i < ids.size(); i++) {
+                std::unique_ptr<RowIterator> iter;
+                auto agg = std::move(it.at(i));
+                std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+                agglist.push_back(std::move(agg));
+                auto ptr = new SeriesOrderIterator({ ids[i] }, std::move(agglist), components);
+                iter.reset(ptr);
+                iters.push_back(std::move(iter));
+            }
+            join_iter_.reset(new MergeJoinIterator(std::move(iters), forward));
+        }
+
+        virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override {
+            return join_iter_->read(dest, size);
+        }
+    };
 }
+
 
 // ////////////// //
 //  Column-store  //
@@ -1116,8 +1146,7 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         if (req.order_by == OrderBy::SERIES) {
             iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), {req.agg.func}));
         } else {
-            Logger::msg(AKU_LOG_ERROR, "Time-order in `group-aggregate` query is not supported yet");
-            qproc.set_error(AKU_ENOT_IMPLEMENTED);
+            iter.reset(new GroupAggregate::TimeOrderIterator(ids, agglist, {req.agg.func}));
         }
     }
     const size_t dest_size = 0x1000;
