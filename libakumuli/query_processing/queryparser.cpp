@@ -181,6 +181,102 @@ static std::tuple<aku_Status, std::string, std::string> parse_aggregate_stmt(boo
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "");
 }
 
+/**
+ * Result of the group-aggregate stmt parsing
+ */
+struct GroupAggregate {
+    std::string metric;
+    std::vector<AggregationFunction> func;
+    aku_Duration step;
+};
+
+/** Parse `group-aggregate` statement, format:
+  * { "group-aggregate": { "step": "30s", "metric": "name", "func": ["cnt", "avg"] }, ... }
+  * @return status, metric name, functions array, step (as timestamp)
+  */
+static std::tuple<aku_Status, GroupAggregate> parse_group_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+    bool components[] = {
+        false, false, false
+    };
+    GroupAggregate result;
+    auto aggregate = ptree.get_child_optional("group-aggregate");
+    if (aggregate) {
+        // select query
+        for (auto kv: *aggregate) {
+            auto tag_name = kv.first;
+            auto value = kv.second.get_value_optional<std::string>();
+            if (tag_name == "step") {
+                if (components[0]) {
+                    // Duplicate "step" tag
+                    Logger::msg(AKU_LOG_ERROR, "Duplicate `step` tag in `group-aggregate` statement");
+                    break;
+                } else {
+                    if (!value) {
+                        Logger::msg(AKU_LOG_ERROR, "Tag `step` is not set in `group-aggregate` statement");
+                        break;
+                    }
+                    aku_Duration step = DateTimeUtil::parse_duration(value.get().data(), value.get().size());
+                    result.step = step;
+                    components[0] = true;
+                }
+            } else if (tag_name == "metric") {
+                if (!value) {
+                    Logger::msg(AKU_LOG_ERROR, "Tag `metric` is not set in `group-aggregate` statement");
+                    break;
+                }
+                if (components[1]) {
+                    // Duplicate "metric" tag
+                    Logger::msg(AKU_LOG_ERROR, "Duplicate `metric` tag in `group-aggregate` statement");
+                    break;
+                } else {
+                    result.metric = value.get();
+                    components[1] = true;
+                }
+            } else if (tag_name == "func") {
+                if (components[2]) {
+                    // Duplicate "func" tag
+                    Logger::msg(AKU_LOG_ERROR, "Duplicate `func` tag in `group-aggregate` statement");
+                    break;
+                } else {
+                    int n = 0;
+                    bool error = false;
+                    for (auto child: aggregate->get_child("func")) {
+                        auto fn = child.second.get_value_optional<std::string>();
+                        if (fn) {
+                            aku_Status status;
+                            AggregationFunction func;
+                            std::tie(status, func) = Aggregation::from_string(*fn);
+                            if (status == AKU_SUCCESS) {
+                                result.func.push_back(func);
+                                n++;
+                            } else {
+                                Logger::msg(AKU_LOG_ERROR, "Invalid aggregation function `" + fn.get() + "`");
+                                error = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (error) {
+                        break;
+                    }
+                    components[2] = n;
+                }
+            }
+        }
+    }
+    bool complete = components[0] && components[1] && components[2];
+    if (complete) {
+        return std::make_tuple(AKU_SUCCESS, result);
+    } else if (components[0] == false) {
+        Logger::msg(AKU_LOG_ERROR, "Can't validate `group-aggregate` statement, `step` field required");
+    } else if (components[1] == false) {
+        Logger::msg(AKU_LOG_ERROR, "Can't validate `group-aggregate` statement, `metric` field required");
+    } else if (components[2] == false) {
+        Logger::msg(AKU_LOG_ERROR, "Can't validate `group-aggregate` statement, `func` field required");
+    }
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+}
+
 /** Parse `oreder-by` statement, format:
   * { "oreder-by": "series", ... }
   */
@@ -347,8 +443,7 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
             std::tie(status, series) = parse_select_stmt(ptree);
             if (status != AKU_SUCCESS) {
                 return std::make_tuple(status, QueryKind::SELECT);
-            }
-            if (is_meta_query(series)) {
+            } else if (is_meta_query(series)) {
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META);
             } else {
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT);
@@ -357,6 +452,8 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
             return std::make_tuple(AKU_SUCCESS, QueryKind::AGGREGATE);
         } else if (item.first == "join") {
             return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN);
+        } else if (item.first == "group-aggregate") {
+            return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE);
         }
     }
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, QueryKind::SELECT);
@@ -366,7 +463,8 @@ aku_Status validate_querey(boost::property_tree::ptree const& ptree) {
     static const std::vector<std::string> UNIQUE_STMTS = {
         "select",
         "aggregate",
-        "join"
+        "join",
+        "group-aggregate"
     };
     static const std::set<std::string> ALLOWED_STMTS = {
         "select",
@@ -378,7 +476,8 @@ aku_Status validate_querey(boost::property_tree::ptree const& ptree) {
         "limit",
         "offset",
         "range",
-        "where"
+        "where",
+        "group-aggregate"
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
@@ -578,6 +677,85 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
+}
+
+std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
+    ReshapeRequest result = {};
+
+    aku_Status status = validate_querey(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    Logger::msg(AKU_LOG_INFO, "Parsing query:");
+    Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
+
+    // Metric name
+    GroupAggregate gagg;
+    std::tie(status, gagg) = parse_group_aggregate_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    if (gagg.func.size() != 1) {
+        Logger::msg(AKU_LOG_ERROR, "Only one fuction per `group-aggregate` query supported");
+    }
+
+    // Group-by statement
+    std::vector<std::string> tags;
+    std::tie(status, tags) = parse_groupby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+    auto groupbytag = std::shared_ptr<GroupByTag>();
+    if (!tags.empty()) {
+        groupbytag.reset(new GroupByTag(matcher, gagg.metric, tags));
+    }
+
+    // Order-by statment is disallowed
+    auto orderby = ptree.get_child_optional("order-by");
+    if (orderby) {
+        Logger::msg(AKU_LOG_INFO, "Unexpected `order-by` statement found in `aggregate` query");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+    }
+
+    // Where statement
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids) = parse_where_clause(ptree, {gagg.metric}, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Read timestamps
+    aku_Timestamp ts_begin, ts_end;
+    std::tie(status, ts_begin, ts_end) = parse_range_timestamp(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Initialize request
+    result.agg.enabled = true;
+    result.agg.func = gagg.func.front();
+
+    result.select.begin = ts_begin;
+    result.select.end = ts_end;
+    result.select.columns.push_back(Column{ids});
+
+    std::tie(status, result.order_by) = parse_orderby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // TODO: use matcher substitution (names should be replaced with "cpu.avg:cpu.max:cpu.min" or something similar)
+
+    result.group_by.enabled = static_cast<bool>(groupbytag);
+    if (groupbytag) {
+        result.group_by.transient_map = groupbytag->get_mapping();
+        result.group_by.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+    }
+
+    return std::make_tuple(AKU_SUCCESS, result);
+
 }
 
 static aku_Status init_matcher_in_join_query(ReshapeRequest* req,

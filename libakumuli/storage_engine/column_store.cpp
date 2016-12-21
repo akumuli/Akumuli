@@ -1144,6 +1144,7 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         return;
     } else {
         if (req.order_by == OrderBy::SERIES) {
+            // TODO: change ReshapeRequest to support aggregate query with that uses more than one aggregation function
             iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), {req.agg.func}));
         } else {
             iter.reset(new GroupAggregate::TimeOrderIterator(ids, agglist, {req.agg.func}));

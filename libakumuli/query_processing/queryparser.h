@@ -11,11 +11,11 @@ namespace Akumuli {
 namespace QP {
 
 enum class QueryKind {
-    // New
     SELECT,
     SELECT_META,
     JOIN,
-    AGGREGATE
+    AGGREGATE,
+    GROUP_AGGREGATE,
 };
 
 class SeriesRetreiver {
@@ -66,6 +66,15 @@ struct QueryParser {
     /** Parse join query and create `reshape` request for column-store.
      */
     static std::tuple<aku_Status, ReshapeRequest> parse_join_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+
+    /**
+     * Parse group-aggregate query
+     * @param ptree is a json query
+     * @param matcher is a series matcher
+     * @return status and request object
+     */
+    static std::tuple<aku_Status, ReshapeRequest> parse_group_aggregate_query(boost::property_tree::ptree const& ptree,
+                                                                              SeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query
