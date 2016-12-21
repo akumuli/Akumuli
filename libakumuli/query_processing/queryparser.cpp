@@ -679,6 +679,38 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
+static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
+                                                  SeriesMatcher const& global_matcher,
+                                                  std::string metric_name,
+                                                  std::vector<AggregationFunction> const& func_names)
+{
+    std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
+    auto matcher = std::make_shared<SeriesMatcher>();
+    for (auto id: ids) {
+        auto sname = global_matcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        if (!boost::algorithm::starts_with(name, metric_name)) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid metric name.");
+            return AKU_EBAD_DATA;
+        }
+        auto tags = name.substr(metric_name.size());
+        std::stringstream str;
+        bool first = true;
+        for (auto func: func_names) {
+            if (first) {
+                first = false;
+            } else {
+                str << ':';
+            }
+            str << metric_name << "." << Aggregation::to_string(func);
+        }
+        str << tags;
+        matcher->_add(str.str(), id);
+    }
+    req->select.matcher = matcher;
+    return AKU_SUCCESS;
+}
+
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
     ReshapeRequest result = {};
 
@@ -696,9 +728,8 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
-
-    if (gagg.func.size() != 1) {
-        Logger::msg(AKU_LOG_ERROR, "Only one fuction per `group-aggregate` query supported");
+    if (gagg.func.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Aggregation fuction is not set");
     }
 
     // Group-by statement
@@ -735,7 +766,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
 
     // Initialize request
     result.agg.enabled = true;
-    result.agg.func = gagg.func.front();
+    result.agg.func = gagg.func;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
@@ -746,7 +777,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
         return std::make_tuple(status, result);
     }
 
-    // TODO: use matcher substitution (names should be replaced with "cpu.avg:cpu.max:cpu.min" or something similar)
+    status = init_matcher_in_group_aggregate(&result, matcher, gagg.metric, gagg.func);
 
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {

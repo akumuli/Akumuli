@@ -366,7 +366,7 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     QueryProcessorMock mock;
     ReshapeRequest req = {};
     req.agg.enabled = true;
-    req.agg.func = AggregationFunction::SUM;
+    req.agg.func = { AggregationFunction::SUM };
     req.group_by.enabled = false;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
@@ -542,7 +542,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = AggregationFunction::MIN;
+        req.agg.func = { AggregationFunction::MIN };
         req.group_by.enabled = false;
         req.order_by = OrderBy::SERIES;
         req.select.begin = begin;
@@ -574,7 +574,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = AggregationFunction::MIN;
+        req.agg.func = { AggregationFunction::MIN };
         req.group_by.enabled = false;
         req.order_by = OrderBy::TIME;
         req.select.begin = begin;

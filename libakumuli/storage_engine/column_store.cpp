@@ -922,6 +922,8 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
 
 void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
     Logger::msg(AKU_LOG_TRACE, "ColumnStore `select` query: " + to_string(req));
+
+    // Query validations
     if (req.select.columns.size() > 1) {
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, too many columns");
         qproc.set_error(AKU_EBAD_ARG);
@@ -930,6 +932,17 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
         Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, no columns");
         qproc.set_error(AKU_EBAD_ARG);
         return;
+    }
+    if (req.agg.enabled) {
+        if (req.agg.func.size() > 1) {
+            Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggregate` request, too many aggregation functions (not yet supported)");
+            qproc.set_error(AKU_EBAD_ARG);
+            return;
+        } else if (req.agg.func.empty()) {
+            Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggregate` request, aggregation function is not set");
+            qproc.set_error(AKU_EBAD_ARG);
+            return;
+        }
     }
 
     std::unique_ptr<RowIterator> iter;
@@ -954,7 +967,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             return;
         } else {
             if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new Aggregator(std::move(ids), std::move(agglist), req.agg.func));
+                iter.reset(new Aggregator(std::move(ids), std::move(agglist), req.agg.func.front()));
             } else {
                 // Error: invalid query
                 Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
@@ -1144,10 +1157,9 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         return;
     } else {
         if (req.order_by == OrderBy::SERIES) {
-            // TODO: change ReshapeRequest to support aggregate query with that uses more than one aggregation function
-            iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), {req.agg.func}));
+            iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), req.agg.func));
         } else {
-            iter.reset(new GroupAggregate::TimeOrderIterator(ids, agglist, {req.agg.func}));
+            iter.reset(new GroupAggregate::TimeOrderIterator(ids, agglist, req.agg.func));
         }
     }
     const size_t dest_size = 0x1000;

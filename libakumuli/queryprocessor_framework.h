@@ -49,8 +49,28 @@ enum class AggregationFunction {
 
 struct Aggregation {
     bool enabled;
-    AggregationFunction func;
+    std::vector<AggregationFunction> func;
     u64 step;  // 0 if group by time disabled
+
+    static std::string to_string(AggregationFunction f) {
+        switch(f) {
+        case AggregationFunction::SUM:
+            return "sum";
+        case AggregationFunction::CNT:
+            return "count";
+        case AggregationFunction::MAX:
+            return "max";
+        case AggregationFunction::MAX_TIMESTAMP:
+            return "max_timestamp";
+        case AggregationFunction::MEAN:
+            return "mean";
+        case AggregationFunction::MIN:
+            return "min";
+        case AggregationFunction::MIN_TIMESTAMP:
+            return "min_timestamp";
+        };
+        AKU_PANIC("Invalid aggregation function");
+    }
 
     static std::tuple<aku_Status, AggregationFunction> from_string(std::string str) {
         if (str == "min") {
