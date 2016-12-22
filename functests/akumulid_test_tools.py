@@ -117,6 +117,23 @@ def make_aggregate_query(metric, begin, end, func, **kwargs):
     query.update(**kwargs)
     return query
 
+def make_group_aggregate_query(metric, begin, end, func, step, **kwargs):
+    if type(func) is not list:
+        raise ValueError("`func` should be a list")
+    query = {
+            "group-aggregate": { 
+                "metric":metric,
+                "func": func,
+                "step": step
+            },
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
+
 def make_join_query(metrics, begin, end, **kwargs):
     query = {
             "join": metrics,

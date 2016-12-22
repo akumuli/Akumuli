@@ -4,6 +4,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 #include <set>
 
 #include "datetime.h"
@@ -215,9 +216,14 @@ static std::tuple<aku_Status, GroupAggregate> parse_group_aggregate_stmt(boost::
                         Logger::msg(AKU_LOG_ERROR, "Tag `step` is not set in `group-aggregate` statement");
                         break;
                     }
-                    aku_Duration step = DateTimeUtil::parse_duration(value.get().data(), value.get().size());
-                    result.step = step;
-                    components[0] = true;
+                    try {
+                        aku_Duration step = DateTimeUtil::parse_duration(value.get().data(), value.get().size());
+                        result.step = step;
+                        components[0] = true;
+                    } catch (const BadDateTimeFormat& e) {
+                        Logger::msg(AKU_LOG_ERROR, "Can't parse time-duration: " + *value);
+                        Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information());
+                    }
                 }
             } else if (tag_name == "metric") {
                 if (!value) {
@@ -662,7 +668,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
 
     // Initialize request
     result.agg.enabled = true;
-    result.agg.func = func;
+    result.agg.func = { func };
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
@@ -730,6 +736,11 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     }
     if (gagg.func.empty()) {
         Logger::msg(AKU_LOG_ERROR, "Aggregation fuction is not set");
+        return std::make_tuple(status, result);
+    }
+    if (gagg.step == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Step can't be zero");
+        return std::make_tuple(status, result);
     }
 
     // Group-by statement
@@ -741,13 +752,6 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
         groupbytag.reset(new GroupByTag(matcher, gagg.metric, tags));
-    }
-
-    // Order-by statment is disallowed
-    auto orderby = ptree.get_child_optional("order-by");
-    if (orderby) {
-        Logger::msg(AKU_LOG_INFO, "Unexpected `order-by` statement found in `aggregate` query");
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
     }
 
     // Where statement
@@ -767,6 +771,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     // Initialize request
     result.agg.enabled = true;
     result.agg.func = gagg.func;
+    result.agg.step = gagg.step;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
@@ -920,7 +925,7 @@ struct TerminalNode : QP::Node {
 
     void set_error(aku_Status status) {
         cursor->set_error(status);
-        throw std::runtime_error("search error detected");
+        //throw std::runtime_error("search error detected");
     }
 
     int get_requirements() const {

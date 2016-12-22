@@ -25,10 +25,6 @@ typedef std::chrono::nanoseconds DurationT;
 
 static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
 
-struct BadDateTimeFormat : std::runtime_error {
-    BadDateTimeFormat(const char* str) : std::runtime_error(str) {}
-};
-
 aku_Timestamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_point timestamp) {
     auto duration = timestamp.time_since_epoch();
     DurationT result = std::chrono::duration_cast<DurationT>(duration);

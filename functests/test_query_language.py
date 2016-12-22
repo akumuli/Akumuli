@@ -387,6 +387,63 @@ def test_aggregate_where(dtstart, delta, N):
     print("Test #8 passed")
 
 
+def test_group_aggregate_all(dtstart, delta, N, nsteps):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    step = int((delta * 1000 / nsteps).total_seconds())
+    query = att.make_group_aggregate_query("test", begin, end, ["sum"], "{0}ms".format(step), output=dict(format='csv'))
+    print(query)
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    M = N/10
+    expected_values = [
+        5*M**2 - 5*M,
+        5*M**2 - 4*M,
+        5*M**2 - 3*M,
+        5*M**2 - 2*M,
+        5*M**2 - M,
+        5*M**2,
+        5*M**2 + M,
+        5*M**2 + 2*M,
+        5*M**2 + 3*M,
+        5*M**2 + 4*M,
+        5*M**2 + 5*M,
+    ]
+    iterations = 0
+    print("Test #8 - group aggregate all data")
+    for line in response:
+        print(line)
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+            exp_val = expected_values[iterations % len(expected_values)]
+            if abs(value - exp_val) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(exp_val, value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(expected_tags)*2:
+        raise ValueError("Results incomplete")
+    print("Test #8 passed")
+
+
 def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     expected_values = [
         reversed(range(9, 100000, 10)),
@@ -512,7 +569,7 @@ def main(path):
         for it in att.generate_messages(dt, delta, nmsgs, 'test', **tags):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
-        
+        """
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
@@ -522,6 +579,8 @@ def main(path):
         test_late_write(dt, delta, nmsgs, chan)
         test_aggregate_all(dt, delta, nmsgs)
         test_aggregate_where(dt, delta, nmsgs)
+        """
+        test_group_aggregate_all(dt, delta, nmsgs, 10)
         """
         test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
         test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
