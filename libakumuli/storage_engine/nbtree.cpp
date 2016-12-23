@@ -1195,6 +1195,10 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         // Fast path. Use metadata to compute results.
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
+        auto delta = destxs[0]._end - destxs[0]._begin;
+        if (delta > step_) {
+            assert(delta <= step_);
+        }
         enable_cached_metadata_ = false;  // next call to `read` should return AKU_ENO_DATA
         return std::make_tuple(AKU_SUCCESS, 1);
     } else {
@@ -1218,10 +1222,14 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         int valcnt = 0;
         NBTreeAggregationResult outval = INIT_AGGRES;
         const bool forward = begin_ < end_;
+        u64 bin = 0;
         for (size_t ix = 0; ix < out_size; ix++) {
             aku_Timestamp normts = forward ? ts[ix] - begin_
                                            : begin_ - ts[ix];
-            if (valcnt && normts % step_ == 0) {
+            if (valcnt == 0) {
+                bin = normts / step_;
+            } else if (normts / step_ != bin) {
+                bin = normts / step_;
                 destxs[outix] = outval;
                 destts[outix] = outval._begin;
                 outix++;
@@ -1229,6 +1237,11 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
             }
             valcnt++;
             outval.add(ts[ix], xs[ix], forward);
+            // Check invariant
+            auto delta = outval._end - outval._begin;
+            if (delta > step_) {
+                assert(delta <= step_);
+            }
         }
         if (outval.cnt > 0) {
             destxs[outix] = outval;

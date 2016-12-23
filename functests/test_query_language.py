@@ -391,7 +391,9 @@ def test_group_aggregate_all(dtstart, delta, N, nsteps):
     """Aggregate all data and check result"""
     begin = dtstart + delta*(N-1)
     end = dtstart - delta
-    step = int((delta * 1000 / nsteps).total_seconds())
+    print("Delta: {0}, nsteps: {1}".format(delta.total_seconds(), nsteps))
+    step = int((delta * N * 1000).total_seconds() / nsteps)
+    print("Step: {0}".format(step))
     query = att.make_group_aggregate_query("test", begin, end, ["sum"], "{0}ms".format(step), output=dict(format='csv'))
     print(query)
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
