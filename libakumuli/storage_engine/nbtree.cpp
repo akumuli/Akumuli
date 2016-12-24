@@ -547,7 +547,7 @@ struct GroupAggregate : NBTreeAggregator {
     //
 
     enum {
-        RDBUF_SIZE = 0x1000,
+        RDBUF_SIZE = 0x100,
     };
 
     //! C-tor. Create iterator from list of iterators.
@@ -1264,7 +1264,7 @@ class NBTreeSBlockGroupAggregator : public NBTreeSBlockIteratorBase<NBTreeAggreg
     ReadBuffer rdbuf_;
     u32 rdpos_;
     enum {
-        RDBUF_SIZE = 0x1000
+        RDBUF_SIZE = 0x100
     };
 public:
     NBTreeSBlockGroupAggregator(std::shared_ptr<BlockStore> bstore,
@@ -1365,10 +1365,10 @@ public:
             if (size == 0) {
                 break;
             }
-            std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
-            std::vector<aku_Timestamp>           outts(size, 0);
+            std::array<NBTreeAggregationResult, RDBUF_SIZE> outxs;
+            std::array<aku_Timestamp, RDBUF_SIZE>           outts;
             u32 outsz;
-            std::tie(status, outsz) = iter_->read(outts.data(), outxs.data(), outxs.size());
+            std::tie(status, outsz) = iter_->read(outts.data(), outxs.data(), size);
             if (outsz != 0) {
                 if (pos_ > 0) {
                     auto const& last  = rdbuf_.at(pos_ - 1);

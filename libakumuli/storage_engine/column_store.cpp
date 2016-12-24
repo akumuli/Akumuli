@@ -716,7 +716,7 @@ namespace GroupAggregate {
         }
 
         static double get(NBTreeAggregationResult const& res, AggregationFunction afunc) {
-            double out;
+            double out = 0;
             switch (afunc) {
             case AggregationFunction::CNT:
                 out = res.cnt;
