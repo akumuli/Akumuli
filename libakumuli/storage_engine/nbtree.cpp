@@ -1206,7 +1206,7 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
             // Second call to read will lead here if fast path have been taken on first call.
             return std::make_tuple(AKU_ENO_DATA, 0);
         }
-        size_t size_hint = iter_.get_size();
+        size_t size_hint = std::min(iter_.get_size(), size);
         std::vector<double> xs(size_hint, .0);
         std::vector<aku_Timestamp> ts(size_hint, 0);
         aku_Status status;
@@ -1249,6 +1249,7 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
             outix++;
         }
     }
+    assert(outix <= size);
     return std::make_tuple(AKU_SUCCESS, outix);
 }
 
