@@ -1264,6 +1264,7 @@ class NBTreeSBlockGroupAggregator : public NBTreeSBlockIteratorBase<NBTreeAggreg
     u64 step_;
     ReadBuffer rdbuf_;
     u32 rdpos_;
+    bool done_;
     enum {
         RDBUF_SIZE = 0x100
     };
@@ -1276,6 +1277,7 @@ public:
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, sblock, begin, end)
         , step_(step)
         , rdpos_(0)
+        , done_(false)
     {
     }
 
@@ -1287,6 +1289,7 @@ public:
         : NBTreeSBlockIteratorBase<NBTreeAggregationResult>(bstore, addr, begin, end)
         , step_(step)
         , rdpos_(0)
+        , done_(false)
     {
     }
 
@@ -1310,20 +1313,26 @@ public:
     std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
         aku_Status status = AKU_SUCCESS;
         size_t copied = 0;
-        while (size > 0) {
+        while (status == AKU_SUCCESS && size > 0) {
             size_t n = elements_in_rdbuf();
-            if (n == 0) {
-                status = refill_read_buffer();
-                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
-                    break;
-                } else {
-                    n = elements_in_rdbuf();
-                    if (n == 0) {
-                        break;
+            if (!done_) {
+                if (n < 2) {
+                    status = refill_read_buffer();
+                    if (status == AKU_ENO_DATA && can_read()) {
+                        status = AKU_SUCCESS;
                     }
-                    status = AKU_SUCCESS;
+                    continue;
+                }
+                // We can copy last element of the rdbuf_ to the output only if all
+                // iterators were consumed! Otherwise invariant will be broken.
+                n--;
+            } else {
+                if (n == 0) {
+                    status = AKU_ENO_DATA;
+                    break;
                 }
             }
+            //
             // Copy elements
             auto tocopy = std::min(n, size);
             for (size_t i = 0; i < tocopy; i++) {
@@ -1344,10 +1353,23 @@ public:
      */
     aku_Status refill_read_buffer() {
         aku_Status status = AKU_ENO_DATA;
-        rdbuf_.clear();
-        rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
-        rdpos_ = 0;
         u32 pos_ = 0;
+
+        if (!rdbuf_.empty()) {
+            auto tail = rdbuf_.back();  // the last element should be saved because it is possible that
+                                        // it's not full (part of the range contained in first iterator
+                                        // and another part in second iterator or even in more than one
+                                        // iterators).
+            rdbuf_.clear();
+            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+            rdpos_ = 0;
+            rdbuf_.at(0) = tail;
+            pos_ = 1;
+        } else {
+            rdbuf_.clear();
+            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
+            rdpos_ = 0;
+        }
 
         while(true) {
             if (!iter_) {
@@ -1359,6 +1381,7 @@ public:
                     continue;
                 } else if (status != AKU_SUCCESS) {
                     // We're out of iterators and should stop.
+                    done_ = true;
                     break;
                 }
             }

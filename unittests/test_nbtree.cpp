@@ -648,6 +648,7 @@ struct RandomWalk {
         , distribution(mean, stddev)
         , value(start)
     {
+        generator.seed(0);
     }
 
     double next() {
@@ -1316,11 +1317,13 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
     size_t out_size;
     std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
-    //BOOST_REQUIRE_EQUAL(out_size, buckets.size());
+    BOOST_REQUIRE_EQUAL(out_size, buckets.size());
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    for(size_t i = 1; i < size; i++) {
-        BOOST_REQUIRE(destts.at(i) > query_end && destts.at(i) <= query_begin);
+    for(size_t i = 0; i < size; i++) {
+        if (!(destts.at(i) > query_end && destts.at(i) <= query_begin)) {
+            BOOST_REQUIRE(destts.at(i) > query_end && destts.at(i) <= query_begin);
+        }
         if (std::abs(buckets.at(i).sum - destxs.at(i).sum) > 1e-5) {
             BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-5);
         }
@@ -1336,6 +1339,7 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
     std::vector<std::tuple<u32, u32, int>> cases = {
+
         std::make_tuple( 1,     100, 0),
         std::make_tuple( 2,     100, 0),
         std::make_tuple(10,     100, 0),
