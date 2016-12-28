@@ -1232,7 +1232,7 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
-    const int N_runs = 10;
+    const int N_runs = 1;
     std::vector<std::tuple<u32, u32, int, int>> cases = {
         std::make_tuple( 1,     100, 0, 1),
         std::make_tuple( 2,     100, 0, 1),
@@ -1357,7 +1357,7 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
-    const int N_runs = 10;
+    const int N_runs = 1;
     std::vector<std::tuple<u32, u32, int, int>> cases = {
         std::make_tuple( 1,     100, 0, 1),
         std::make_tuple( 2,     100, 0, 1),
