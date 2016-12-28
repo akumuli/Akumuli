@@ -10,6 +10,13 @@ namespace Akumuli {
 
 static Logger logger("query_results_pooler", 10);
 
+static int popcount(u64 value) {
+    u32 hi = static_cast<u32>(value);
+    u32 lo = static_cast<u32>(value >> 32);
+    int res = __builtin_popcount(hi) + __builtin_popcount(lo);
+    return res;
+}
+
 static boost::property_tree::ptree from_json(std::string json) {
     //! C-string to streambuf adapter
     struct MemStreambuf : std::streambuf {
@@ -129,6 +136,42 @@ struct CSVOutputFormatter : OutputFormatter {
             newline_required = true;
         }
 
+        if (sample.payload.type & aku_PData::TUPLE_BIT) {
+            if (newline_required) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
+            union {
+                u64 u;
+                double d;
+            } bits;
+            bits.d = sample.payload.float64;
+            int nelements = popcount(bits.u);
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements; ix++) {
+                if (bits.u & (1 << ix)) {
+                    if (ix == 0) {
+                        len = snprintf(begin, size, "%.17g", tuple[ix]);
+                    } else {
+                        len = snprintf(begin, size, ",%.17g", tuple[ix]);
+                    }
+                } else {
+                    len = snprintf(begin, size, ",");
+                }
+                if (len == size || len < 0) {
+                    return nullptr;
+                }
+                begin += len;
+                size  -= len;
+                newline_required = true;
+            }
+        }
+
         if (sample.payload.type & aku_PData::SAX_WORD) {
             if (newline_required) {
                 // Add trailing ',' to the end
@@ -164,6 +207,7 @@ struct CSVOutputFormatter : OutputFormatter {
         return begin;
     }
 };
+
 //! RESP output implementation
 struct RESPOutputFormatter : OutputFormatter {
 
@@ -268,6 +312,29 @@ struct RESPOutputFormatter : OutputFormatter {
             }
             begin += len;
             size  -= len;
+        }
+
+        if (sample.payload.type & aku_PData::TUPLE_BIT) {
+            union {
+                u64 u;
+                double d;
+            } bits;
+            bits.d = sample.payload.float64;
+            int nelements_set = popcount(bits.u);
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements_set; ix++) {
+                if (bits.d && (1 << ix)) {
+                    len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
+                } else {
+                    // Empty tuple value
+                    len = snprintf(begin, size, "+\r\n");
+                }
+                if (len == size || len < 0) {
+                    return nullptr;
+                }
+                begin += len;
+                size  -= len;
+            }
         }
 
         if (sample.payload.type & aku_PData::SAX_WORD) {

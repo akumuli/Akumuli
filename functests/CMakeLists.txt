@@ -9,8 +9,7 @@ target_link_libraries(storage_test
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a)
+    )
 
 file(COPY
     akumulid_test_tools.py
@@ -23,6 +22,7 @@ file(COPY
     test_kill.py
     test_concurrency.py
     test_ingestion_errors.py
+    test_join_query.py
     DESTINATION
     ./
 )

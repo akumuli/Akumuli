@@ -37,6 +37,61 @@ namespace QP {
  * It is possible to add processing steps via IQueryProcessor.
  */
 
+enum class AggregationFunction {
+    MIN,
+    MAX,
+    SUM,
+    CNT,
+    MIN_TIMESTAMP,
+    MAX_TIMESTAMP,
+    MEAN
+};
+
+struct Aggregation {
+    bool enabled;
+    std::vector<AggregationFunction> func;
+    u64 step;  // 0 if group by time disabled
+
+    static std::string to_string(AggregationFunction f) {
+        switch(f) {
+        case AggregationFunction::SUM:
+            return "sum";
+        case AggregationFunction::CNT:
+            return "count";
+        case AggregationFunction::MAX:
+            return "max";
+        case AggregationFunction::MAX_TIMESTAMP:
+            return "max_timestamp";
+        case AggregationFunction::MEAN:
+            return "mean";
+        case AggregationFunction::MIN:
+            return "min";
+        case AggregationFunction::MIN_TIMESTAMP:
+            return "min_timestamp";
+        };
+        AKU_PANIC("Invalid aggregation function");
+    }
+
+    static std::tuple<aku_Status, AggregationFunction> from_string(std::string str) {
+        if (str == "min") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MIN);
+        } else if (str == "max") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MAX);
+        } else if (str == "sum") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::SUM);
+        } else if (str == "count") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::CNT);
+        } else if (str == "min_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MIN_TIMESTAMP);
+        } else if (str == "max_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MAX_TIMESTAMP);
+        } else if (str == "mean") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::MEAN);
+        }
+        return std::make_tuple(AKU_EBAD_ARG, AggregationFunction::CNT);
+    }
+};
+
 struct Column {
     std::vector<aku_ParamId> ids;
 };
@@ -47,6 +102,14 @@ struct Selection {
     std::vector<Column> columns;
     aku_Timestamp begin;
     aku_Timestamp end;
+
+    //! This matcher should be used by Join-statement
+    std::shared_ptr<SeriesMatcher> matcher;
+
+    // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
+    // The samples will have ids from first column but textual representation should be different
+    // thus we need to use another matcher. Series names should have the following form:
+    // "column1:column2:column3 tag1=val1 tag2=val2 .. tagn=valn
 };
 
 //! Mapping from persistent series names to transient series names
@@ -58,12 +121,13 @@ struct GroupBy {
 
 //! Output order
 enum class OrderBy {
-    SERIES,
+    SERIES = 0,
     TIME,
 };
 
 //! Reshape request defines what should be sent to query processor
 struct ReshapeRequest {
+    Aggregation  agg;
     Selection select;
     GroupBy group_by;
     OrderBy order_by;

@@ -152,8 +152,8 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
     return name.second;
 }
 
-void StorageSession::query(Caller& caller, InternalCursor* cur, const char* query) const {
-    storage_->query(this, caller, cur, query);
+void StorageSession::query(InternalCursor* cur, const char* query) const {
+    storage_->query(this, cur, query);
 }
 
 void StorageSession::set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const {
@@ -709,86 +709,142 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     return str.second;
 }
 
-void Storage::query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const {
+void Storage::query(StorageSession const* session, InternalCursor* cur, const char* query) const {
     using namespace QP;
     boost::property_tree::ptree ptree;
     aku_Status status;
+    session->clear_series_matcher();
     std::tie(status, ptree) = QueryParser::parse_json(query);
     if (status != AKU_SUCCESS) {
-        cur->set_error(caller, status);
+        cur->set_error(status);
         return;
     }
     QueryKind kind;
     std::tie(status, kind) = QueryParser::get_query_kind(ptree);
     if (status != AKU_SUCCESS) {
-        cur->set_error(caller, status);
+        cur->set_error(status);
         return;
     }
-    if (kind == QueryKind::SELECT_META) {
-        std::vector<aku_ParamId> ids;
-        std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
+    switch (kind) {
+    case QueryKind::SELECT_META: {
+            std::vector<aku_ParamId> ids;
+            std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::vector<std::shared_ptr<Node>> nodes;
+            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+            if (proc->start()) {
+                proc->stop();
+            }
         }
-        std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
-        }
-        std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
-        if (proc->start()) {
-            proc->stop();
-        }
-    } else if (kind == QueryKind::AGGREGATE) {
-        ReshapeRequest req;
-        std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
-        }
-        std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
-        }
-        GroupByTime groupbytime;
-        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+        break;
+    case QueryKind::AGGREGATE: {
+            ReshapeRequest req;
+            std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::vector<std::shared_ptr<Node>> nodes;
+            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            GroupByTime groupbytime;
+            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
 
-        // Matcher can be substituted by previous call
-        session->clear_series_matcher();
-        if (proc->start()) {
-            cstore_->aggregate_query(req, *proc);
-            proc->stop();
-        }
-    } else if (kind == QueryKind::SELECT) {
-        ReshapeRequest req;
-        std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
-        }
-        std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, caller, cur);
-        if (status != AKU_SUCCESS) {
-            cur->set_error(caller, status);
-            return;
-        }
-        GroupByTime groupbytime;
-        std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-        if (req.group_by.enabled) {
-            session->set_series_matcher(req.group_by.matcher);
-        } else {
+            // Matcher can be substituted by previous call
             session->clear_series_matcher();
+            if (proc->start()) {
+                cstore_->query(req, *proc);
+                proc->stop();
+            }
         }
-        // Scan column store
-        if (proc->start()) {
-            cstore_->select_query(req, *proc);
-            proc->stop();
+        break;
+    case QueryKind::GROUP_AGGREGATE: {
+            ReshapeRequest req;
+            std::tie(status, req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::vector<std::shared_ptr<Node>> nodes;
+            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            // Replace matcher with local one
+            session->set_series_matcher(req.select.matcher);
+
+            // Start scanning
+            GroupByTime groupbytime;
+            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            if (proc->start()) {
+                cstore_->group_aggregate_query(req, *proc);
+                proc->stop();
+            }
         }
-    }
+        break;
+    case QueryKind::SELECT: {
+            ReshapeRequest req;
+            std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::vector<std::shared_ptr<Node>> nodes;
+            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            GroupByTime groupbytime;
+            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            if (req.group_by.enabled) {
+                session->set_series_matcher(req.group_by.matcher);
+            }
+            // Scan column store
+            if (proc->start()) {
+                cstore_->query(req, *proc);
+                proc->stop();
+            }
+        }
+        break;
+    case QueryKind::JOIN: {
+            ReshapeRequest req;
+            std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            std::vector<std::shared_ptr<Node>> nodes;
+            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+            if (status != AKU_SUCCESS) {
+                cur->set_error(status);
+                return;
+            }
+            // Replace matcher with local one
+            session->set_series_matcher(req.select.matcher);
+
+            // Start scanning
+            GroupByTime groupbytime;
+            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            if (proc->start()) {
+                cstore_->join_query(req, *proc);
+                proc->stop();
+            }
+        }
+        break;
+    };
 }
 
 void Storage::debug_print() const {

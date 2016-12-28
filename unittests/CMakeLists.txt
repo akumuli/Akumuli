@@ -52,8 +52,6 @@ target_link_libraries(
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(protocol-parser test_protocolparser)
 
@@ -78,8 +76,6 @@ target_link_libraries(test_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(tcp-server test_tcp_server)
 
@@ -102,8 +98,6 @@ target_link_libraries(
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(querycursor test_querycursor)
 
@@ -130,8 +124,6 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
     pthread
 )
 

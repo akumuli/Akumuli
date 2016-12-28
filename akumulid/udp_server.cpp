@@ -11,6 +11,7 @@
 
 #include <boost/bind.hpp>
 #include <boost/scope_exit.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
 
@@ -126,13 +127,14 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
             for (int i = 0; i < retval; i++) {
                 // reset buffer to receive new message
                 iobuf->bps += iobuf->msgs[i].msg_len;
-                size_t mlen = iobuf->msgs[i].msg_len;
+                auto mlen = iobuf->msgs[i].msg_len;
                 iobuf->msgs[i].msg_len = 0;
 
                 // parse message content
                 PDU pdu = {
                     std::shared_ptr<Byte>(iobuf, iobuf->bufs[i]),
                     mlen,
+                    0u,
                     0u,
                 };
 

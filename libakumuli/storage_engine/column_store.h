@@ -17,8 +17,8 @@
 
 #pragma once
 
-/* In general this is a tree-roots collection combined with series name parser
- * and series registery (backed by sqlite). One TreeRegistery should be created
+/* In general this is a tree-roots collection combined with various algorithms (
+ * (aggregate, join, group-aggregate). One TreeRegistery should be created
  * per database. This registery can be used to create sessions. Session instances
  * should be created per-connection for each connection to operate locally (without
  * synchronization). This code assumes that each connection works with its own
@@ -91,11 +91,28 @@ public:
     NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
-    //! Slice and dice data according to request and feed it to query processor
-    void select_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    /**
+     * Slice and dice data according to request and feed it to query processor.
+     * This method should be used for select and aggregate queries.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
-    //! Perform aggregate query and return result through query processor
-    void aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    /**
+     * Joins several columns together by timestamps. Can be used to create a table from
+     * several time-series that came from the same source. This query returns list of tuples.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    /**
+     * Group values by time and aggregate values in each bucket.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     size_t _get_uncommitted_memory() const;
 
@@ -127,9 +144,7 @@ public:
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void select_query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
-
-    void aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
 };
 
 }}  // namespace

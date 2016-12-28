@@ -58,7 +58,7 @@ public:
 
     int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
 
-    void query(Caller& caller, InternalCursor* cur, const char* query) const;
+    void query(InternalCursor* cur, const char* query) const;
 
     // Temporary reset series matcher
     void set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const;
@@ -97,7 +97,7 @@ public:
     //! Create new write session
     std::shared_ptr<StorageSession> create_write_session();
 
-    void query(StorageSession const* session, Caller& caller, InternalCursor* cur, const char* query) const;
+    void query(StorageSession const* session, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
 

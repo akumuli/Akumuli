@@ -19,162 +19,158 @@
 #include "search.h"
 
 #include <iostream>
-
+#include <string.h>
 #include <algorithm>
-#include <boost/crc.hpp>
 
 
 namespace Akumuli {
 
-// CursorFSM
+// CoroCursor //
 
-CursorFSM::CursorFSM()
-    : usr_buffer_(nullptr)
-    , usr_buffer_len_(0)
-    , write_offset_(0)
-    , error_(false)
-    , error_code_(AKU_SUCCESS)
-    , complete_(false)
-    , closed_(false)
-{
+namespace {
+    enum {
+        BUFFER_SIZE = 0x4000,
+        QUEUE_MAX = 0x20,
+    };
 }
 
-CursorFSM::~CursorFSM() {
-#ifdef DEBUG
-    if (!closed_) {
-        std::cout << "Warning in " << __FUNCTION__ << " - cursor isn't closed" << std::endl;
+// External cursor implementation //
+
+ConcurrentCursor::ConcurrentCursor()
+    : done_{false}
+    , error_code_{AKU_SUCCESS}
+{}
+
+
+/**
+ * This function copies samples from one buffer to another with respect of individual
+ * sample boundaries. Each sample is fully copied or not copied at all.
+ */
+static u32 samplecpy(u8* dest, u8 const* source, u32 size) {
+    u8* rcvbuf = dest;
+    u8* rcvend = dest + size;
+    u8 const* sndbuf = source;
+
+    while(rcvbuf < rcvend) {
+        aku_Sample const* s = reinterpret_cast<aku_Sample const*>(sndbuf);
+        auto sz = s->payload.size;
+        if ((rcvend - rcvbuf) < sz) {
+            break;
+        }
+        memcpy(rcvbuf, sndbuf, sz);
+        rcvbuf += sz;
+        sndbuf += sz;
     }
-#endif
+    return static_cast<u32>(rcvbuf - dest);
 }
 
-void CursorFSM::update_buffer(void* buf, size_t buf_len) {
-    usr_buffer_ = buf;
-    usr_buffer_len_ = buf_len;
-    write_offset_ = 0;
-}
-
-void CursorFSM::update_buffer(CursorFSM *other_fsm) {
-    usr_buffer_ = other_fsm->usr_buffer_;
-    usr_buffer_len_ = other_fsm->usr_buffer_len_;
-    write_offset_ = other_fsm->write_offset_;
-}
-
-bool CursorFSM::can_put(int size) const {
-    return usr_buffer_ != nullptr && (write_offset_ + size) < usr_buffer_len_;
-}
-
-void CursorFSM::put(const aku_Sample &result) {
-    auto len = std::max(result.payload.size, (u16)sizeof(aku_Sample));
-    auto ptr = (char*)usr_buffer_ + write_offset_;
-    assert(len >= sizeof(aku_Sample));
-    assert((result.payload.type & aku_PData::SAX_WORD) == 0 ?
-           result.payload.size == sizeof(aku_Sample) :
-           result.payload.size >= sizeof(aku_Sample));
-    memcpy(ptr, &result, len);
-    write_offset_ += len;
-}
-
-bool CursorFSM::close() {
-    bool old = closed_;
-    closed_ = true;
-    return old != closed_;
-}
-
-void CursorFSM::complete() {
-    complete_ = true;
-}
-
-void CursorFSM::set_error(aku_Status error_code) {
-    error_code_ = error_code;
-    error_ = true;
-    complete_ = true;
-}
-
-bool CursorFSM::is_done() const {
-    return complete_ || closed_;
-}
-
-bool CursorFSM::get_error(aku_Status *error_code) const {
-    if (error_ && error_code) {
-        *error_code = error_code_;
-        return true;
+u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
+    u32 nbytes = 0;
+    u8* dest = static_cast<u8*>(buffer);
+    std::unique_lock<std::mutex> lock(mutex_);
+    while(true) {
+        if (queue_.empty()) {
+            if (done_) {
+                return nbytes;
+            }
+            cond_.wait(lock);
+            continue;
+        }
+        auto front = queue_.front();
+        auto bytes2read = std::min(buffer_size, static_cast<u32>(front->wrpos - front->rdpos));
+        auto out = samplecpy(dest, front->buf.data() + front->rdpos, bytes2read);
+        if (out == 0) {
+            // The last sample in the array doesn't fit
+            break;
+        }
+        front->rdpos += out;
+        nbytes += out;
+        dest += out;
+        buffer_size -= out;
+        if (front->rdpos == front->wrpos) {
+            queue_.pop_front();
+            cond_.notify_all();
+        }
+        if (buffer_size < sizeof(aku_Sample)) {
+            break;
+        }
     }
-    return error_;
+    return nbytes;
 }
 
-size_t CursorFSM::get_data_len() const {
-    return write_offset_;
+bool ConcurrentCursor::is_done() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return done_ && queue_.empty();
 }
 
-// CoroCursor
-
-// coverity[+alloc]
-void CoroCursorStackAllocator::allocate(boost::coroutines::stack_context& ctx, size_t size) const
-{
-    ctx.size = size;
-    // TODO: this is not an error, add to coverity mapping
-    ctx.sp = reinterpret_cast<char*>(malloc(size)) + size;
+bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (out_error_code_or_null != nullptr) {
+        *out_error_code_or_null = error_code_;
+    }
+    return done_ && error_code_ != AKU_SUCCESS;
 }
 
-// coverity[+free : arg-1]
-void CoroCursorStackAllocator::deallocate(boost::coroutines::stack_context& ctx) const {
-    free(reinterpret_cast<char*>(ctx.sp) - ctx.size);
-}
-
-// External cursor implementation
-
-u32 CoroCursor::read(void* buffer, u32 buffer_size) {
-    cursor_fsm_.update_buffer(buffer, buffer_size);
-    coroutine_->operator()(this);
-    return static_cast<u32>(cursor_fsm_.get_data_len());
-}
-
-bool CoroCursor::is_done() const {
-    return cursor_fsm_.is_done();
-}
-
-bool CoroCursor::is_error(aku_Status* out_error_code_or_null) const {
-    return cursor_fsm_.get_error(out_error_code_or_null);
-}
-
-void CoroCursor::close() {
-    if (cursor_fsm_.close()) {
-        coroutine_->operator()(this);
-        coroutine_.reset();
+void ConcurrentCursor::close() {
+    done_ = true;
+    cond_.notify_all();
+    if (thread_.joinable()) {
+        thread_.join();
     }
 }
 
 // Internal cursor implementation
 
-void CoroCursor::set_error(Caller& caller, aku_Status error_code) {
-    cursor_fsm_.set_error(error_code);
-    caller();
+void ConcurrentCursor::set_error(aku_Status error_code) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    done_ = true;
+    error_code_ = error_code;
+    cond_.notify_all();
 }
 
-bool CoroCursor::put(Caller& caller, aku_Sample const& result) {
-    if (cursor_fsm_.is_done()) {
+static std::shared_ptr<ConcurrentCursor::BufferT> make_empty() {
+    auto buf = std::make_shared<ConcurrentCursor::BufferT>();
+    buf->buf.resize(BUFFER_SIZE);
+    buf->rdpos = 0;
+    buf->wrpos = 0;
+    return buf;
+}
+
+bool ConcurrentCursor::put(aku_Sample const& result) {
+    if (done_) {
         return false;
     }
-    if (!cursor_fsm_.can_put(std::max(result.payload.size, (u16)sizeof(aku_Sample)))) {
-        caller();
-        if (cursor_fsm_.is_done()) {
-            return false;
+    u32 bytes = result.payload.size;
+    std::unique_lock<std::mutex> lock(mutex_);
+    std::shared_ptr<BufferT> top;
+    while(true) {
+        if(queue_.empty()) {
+            top = make_empty();
+            queue_.push_back(top);
+        }
+        top = queue_.back();
+        if (top->wrpos + bytes > BUFFER_SIZE) {
+            // Overflow
+            if (queue_.size() < QUEUE_MAX) {
+                top = make_empty();
+                queue_.push_back(top);
+            } else {
+                cond_.wait(lock);
+            }
+            continue;
+        } else {
+            break;
         }
     }
-    cursor_fsm_.put(result);
-    if (result.payload.type&aku_PData::URGENT) {
-        // Important sample received (anomaly). Cursor should call consumer immediately.
-        caller();
-        if (cursor_fsm_.is_done()) {
-            return false;
-        }
-    }
+    memcpy(top->buf.data() + top->wrpos, &result, bytes);
+    top->wrpos += bytes;
+    cond_.notify_all();
     return true;
 }
 
-void CoroCursor::complete(Caller& caller) {
-    cursor_fsm_.complete();
-    caller();
+void ConcurrentCursor::complete() {
+    done_ = true;
+    cond_.notify_all();
 }
 
 }

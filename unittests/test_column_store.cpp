@@ -113,14 +113,14 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     cstore->create_new_column(42);
     std::vector<u64> rpoints;
     session->write(sample, &rpoints);
-    ReshapeRequest req;
+    ReshapeRequest req = {};
     req.group_by.enabled = false;
     req.select.begin = 0;
     req.select.end = 100;
     req.select.columns.emplace_back();
     req.select.columns[0].ids.push_back(sample.paramid);
     req.order_by = OrderBy::SERIES;
-    session->select_query(req, qproc);
+    session->query(req, qproc);
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
     BOOST_REQUIRE(qproc.samples.size() == 1);
     BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
@@ -164,7 +164,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in series order in forward direction
     auto read_ordered_by_series = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
@@ -173,7 +173,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->select_query(req, qproc);
+        session->query(req, qproc);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == ids.size()/inc*timestamps.size());
         size_t niter = 0;
@@ -189,7 +189,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in series order in backward direction
     auto inv_read_ordered_by_series = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin-1; // we need to read data in range (begin-1, end] to hit value with `begin` timestamp
@@ -198,7 +198,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->select_query(req, qproc);
+        session->query(req, qproc);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == invids.size()/inc*invtimestamps.size());
         size_t niter = 0;
@@ -214,7 +214,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in time order in forward direction
     auto read_ordered_by_time = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = begin;
         req.select.end = end;
@@ -223,7 +223,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->select_query(req, qproc);
+        session->query(req, qproc);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), ids.size()/inc*timestamps.size());
         size_t niter = 0;
@@ -239,7 +239,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
     // Read in time order in backward direction
     auto inv_read_ordered_by_time = [&](size_t base_ix, size_t inc) {
         QueryProcessorMock qproc;
-        ReshapeRequest req;
+        ReshapeRequest req = {};
         req.group_by.enabled = false;
         req.select.begin = end;
         req.select.end = begin - 1;
@@ -248,7 +248,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->select_query(req, qproc);
+        session->query(req, qproc);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), invids.size()/inc*invtimestamps.size());
         size_t niter = 0;
@@ -316,7 +316,7 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
     session = create_session(cstore);
 
     QueryProcessorMock qproc;
-    ReshapeRequest req;
+    ReshapeRequest req = {};
     req.group_by.enabled = false;
     req.select.begin = begin;
     req.select.end = end;
@@ -325,7 +325,7 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
         req.select.columns[0].ids.push_back(ids[i]);
     }
     req.order_by = OrderBy::SERIES;
-    session->select_query(req, qproc);
+    session->query(req, qproc);
 
     // Check everything
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -352,31 +352,6 @@ BOOST_AUTO_TEST_CASE(Test_column_store_reopen_3) {
     test_reopen(1000, 11000);  // 10000 el.
 }
 
-struct AggProcessorMock : QP::IStreamProcessor {
-    bool started = false;
-    bool stopped = false;
-    std::vector<aku_AggregatePayload> payloads;
-    std::vector<aku_Sample>           samples;
-    aku_Status error = AKU_SUCCESS;
-
-    virtual bool start() override {
-        started = true;
-        return true;
-    }
-    virtual void stop() override {
-        stopped = true;
-    }
-    virtual bool put(const aku_Sample &sample) override {
-        samples.push_back(sample);
-        auto plptr = reinterpret_cast<aku_AggregatePayload const*>(sample.payload.data);
-        payloads.push_back(*plptr);
-        return true;
-    }
-    virtual void set_error(aku_Status err) override {
-        error = err;
-    }
-};
-
 void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     auto cstore = create_cstore();
     auto session = create_session(cstore);
@@ -388,19 +363,21 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
         double sum = fill_data_in(cstore, session, id, begin, end);
         sums.push_back(sum);
     }
-    AggProcessorMock mock;
-    ReshapeRequest req;
+    QueryProcessorMock mock;
+    ReshapeRequest req = {};
+    req.agg.enabled = true;
+    req.agg.func = { AggregationFunction::SUM };
     req.group_by.enabled = false;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
     req.select.end = end;
     req.select.columns.push_back({ids});
-    cstore->aggregate_query(req, mock);
+    cstore->query(req, mock);
 
-    BOOST_REQUIRE_EQUAL(mock.payloads.size(), ids.size());
-    for (auto i = 0u; i < mock.payloads.size(); i++) {
+    BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
+    for (auto i = 0u; i < mock.samples.size(); i++) {
         BOOST_REQUIRE_EQUAL(mock.samples.at(i).paramid, ids.at(i));
-        BOOST_REQUIRE_CLOSE(mock.payloads.at(i).sum, sums.at(i), 10E-5);
+        BOOST_REQUIRE_CLOSE(mock.samples.at(i).payload.float64, sums.at(i), 10E-5);
     }
 }
 
@@ -416,3 +393,219 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_3) {
     test_aggregation(10000, 110000);
 }
 
+struct TupleQueryProcessorMock : QP::IStreamProcessor {
+    bool started = false;
+    bool stopped = false;
+    std::vector<u64> bitmaps;
+    std::vector<u64> paramids;
+    std::vector<u64> timestamps;
+    std::vector<std::vector<double>> columns;
+    aku_Status error = AKU_SUCCESS;
+
+    TupleQueryProcessorMock(u32 ncol) {
+        columns.resize(ncol);
+    }
+
+    virtual bool start() override {
+        started = true;
+        return true;
+    }
+    virtual void stop() override {
+        stopped = true;
+    }
+    virtual bool put(const aku_Sample &sample) override {
+        if (sample.payload.type != AKU_PAYLOAD_TUPLE) {
+            BOOST_REQUIRE(sample.payload.type == AKU_PAYLOAD_TUPLE);
+        }
+        union {
+            double d;
+            u64    u;
+        } bitmap;
+        bitmap.d = sample.payload.float64;
+        bitmaps.push_back(bitmap.u);
+        paramids.push_back(sample.paramid);
+        timestamps.push_back(sample.timestamp);
+        double const* tup = reinterpret_cast<double const*>(sample.payload.data);
+        for (auto i = 0u; i < columns.size(); i++) {
+            BOOST_REQUIRE((bitmap.u & (1 << i)) != 0);
+            columns.at(i).push_back(tup[i]);
+        }
+        return true;
+    }
+    virtual void set_error(aku_Status err) override {
+        error = err;
+    }
+};
+
+void test_join(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col1 = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> col2 = {
+        20,21,22,23,24,25,26,27,28,29
+    };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    for (auto id: col1) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+    for (auto id: col2) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    {
+        TupleQueryProcessorMock mock(2);
+        ReshapeRequest req = {};
+        req.agg.enabled = false;
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col1});
+        req.select.columns.push_back({col2});
+        cstore->join_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto id: col1) {
+            for (auto ts: timestamps) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double col0 = mock.columns[0][ix];
+                double col1 = mock.columns[1][ix];
+                BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
+                BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
+                ix++;
+            }
+        }
+    }
+
+    {
+        TupleQueryProcessorMock mock(2);
+        ReshapeRequest req = {};
+        req.agg.enabled = false;
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::TIME;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col1});
+        req.select.columns.push_back({col2});
+        cstore->join_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto ts: timestamps) {
+            for (auto id: col1) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double col0 = mock.columns[0][ix];
+                double col1 = mock.columns[1][ix];
+                BOOST_REQUIRE_CLOSE(expected, col0, 10E-10);
+                BOOST_REQUIRE_CLOSE(col0, col1, 10E-10);
+                ix++;
+            }
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_join_1) {
+    test_join(100, 1100);
+}
+
+void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    for (auto id: col) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    auto test_series_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MIN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+        cstore->group_aggregate_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto id: col) {
+            for (auto ts: model_timestamps) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double xs = mock.columns[0][ix];
+                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
+                ix++;
+            }
+        }
+        BOOST_REQUIRE(ix != 0);
+    };
+    auto test_time_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MIN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::TIME;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+        cstore->group_aggregate_query(req, mock);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (auto ts: model_timestamps) {
+            for (auto id: col) {
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double xs = mock.columns[0][ix];
+                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
+                ix++;
+            }
+        }
+        BOOST_REQUIRE(ix != 0);
+    };
+    test_series_order(10);
+    test_series_order(100);
+    test_time_order(10);
+    test_time_order(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_1) {
+    test_group_aggregate(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_2) {
+    test_group_aggregate(1000, 11000);
+}

@@ -26,45 +26,19 @@
 #include "resp.h"
 #include "stream.h"
 
-#include <boost/version.hpp>
-
-#if BOOST_VERSION <= 105500
-
-#define BOOST_COROUTINES_BIDIRECT
-#include <boost/coroutine/all.hpp>
-
-namespace Akumuli {
-
-typedef boost::coroutines::coroutine<void()> Coroutine;
-typedef typename Coroutine::caller_type Caller;
-
-}
-
-#else
-
-#include <boost/coroutine/asymmetric_coroutine.hpp>
-
-namespace Akumuli {
-
-typedef typename boost::coroutines::asymmetric_coroutine<void>::push_type Coroutine;
-typedef typename boost::coroutines::asymmetric_coroutine<void>::pull_type Caller;
-
-}
-
-#endif
-
 namespace Akumuli {
 
 /** Protocol Data Unit */
 struct PDU {
     std::shared_ptr<const Byte>
-           buffer;  //< Pointer to buffer (buffer can be referenced by several PDU)
-    size_t size;    //< Size of the buffer
-    size_t pos;     //< Position in the buffer
+        buffer;  //< Pointer to buffer (buffer can be referenced by several PDU)
+    u32 size;    //< Size of the buffer
+    u32 pos;     //< Position in the buffer
+    u32 cons;    //< Consumed part
 };
 
 struct ProtocolParserError : StreamError {
-    ProtocolParserError(std::string line, int pos);
+    ProtocolParserError(std::string line, size_t pos);
 };
 
 struct DatabaseError : std::exception {
@@ -80,22 +54,14 @@ struct EStopIteration {};
 struct DbSession;
 
 class ProtocolParser : ByteStreamReader {
-    mutable std::shared_ptr<Coroutine> coroutine_;
-    mutable Caller*                    caller_;
     mutable std::queue<PDU>            buffers_;
-    static const PDU                   POISON_;  //< This object marks end of the stream
+    mutable std::queue<PDU>            backlog_;
     bool                               done_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
 
-    void worker(Caller& yield);
-    void set_caller(Caller& caller);
-    //! Yield control to worker
-    void yield_to_worker();
-    //! Yield control to external code
-    void yield_to_client() const;
-    //! Throw exception if poisoned
-    void throw_if_poisoned(PDU const& top) const;
+    //! Process frames from queue
+    void worker();
     //! Generate error message
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
@@ -112,6 +78,8 @@ public:
     virtual int read(Byte* buffer, size_t buffer_len);
     virtual void close();
     virtual std::tuple<std::string, size_t> get_error_context(const char* msg) const;
+    virtual void consume();
+    virtual void discard();
 };
 
 

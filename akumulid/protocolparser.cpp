@@ -8,7 +8,7 @@
 namespace Akumuli {
 
 
-ProtocolParserError::ProtocolParserError(std::string line, int pos)
+ProtocolParserError::ProtocolParserError(std::string line, size_t pos)
     : StreamError(line, pos)
 {
 }
@@ -23,14 +23,8 @@ const char* DatabaseError::what() const noexcept {
     return aku_error_message(status);
 }
 
-const PDU ProtocolParser::POISON_ = {
-    std::shared_ptr<const Byte>(),
-    0u, 0u
-};
-
 ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
-    : caller_(nullptr)
-    , done_(false)
+    : done_(false)
     , consumer_(consumer)
     , logger_("protocol-parser", 32)
 {
@@ -38,34 +32,41 @@ ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
 
 void ProtocolParser::start() {
     logger_.info() << "Starting protocol parser";
-    auto fn = std::bind(&ProtocolParser::worker, this, std::placeholders::_1);
-    coroutine_.reset(new Coroutine(fn));
 }
 
-void ProtocolParser::worker(Caller& caller) {
-    // Remember caller for use in ByteStreamReader's methods
-    set_caller(caller);
+void ProtocolParser::worker() {
     // Buffer to read strings from
     const int     buffer_len         = RESPStream::STRING_LENGTH_MAX;
     Byte          buffer[buffer_len] = {};
     int           bytes_read         = 0;
     // Data to read
-    std::string   sid;
     aku_Sample    sample;
     aku_Status    status = AKU_SUCCESS;
     //
     try {
         RESPStream stream(this);
         while(true) {
+            bool success;
             // read id
             auto next = stream.next_type();
             switch(next) {
+            case RESPStream::_AGAIN:
+                discard();
+                return;
             case RESPStream::INTEGER:
-                sample.paramid = stream.read_int();
+                std::tie(success, sample.paramid) = stream.read_int();
+                if (!success) {
+                    discard();
+                    return;
+                }
                 break;
             case RESPStream::STRING:
-                bytes_read = stream.read_string(buffer, buffer_len);
-                status = consumer_->series_to_param_id(buffer, bytes_read, &sample);
+                std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
+                if (!success) {
+                    discard();
+                    return;
+                }
+                status = consumer_->series_to_param_id(buffer, static_cast<size_t>(bytes_read), &sample);
                 if (status != AKU_SUCCESS){
                     std::string msg;
                     size_t pos;
@@ -73,7 +74,10 @@ void ProtocolParser::worker(Caller& caller) {
                     BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
                 break;
-            default:
+            case RESPStream::ARRAY:
+            case RESPStream::BULK_STR:
+            case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 // Bad frame
                 {
                     std::string msg;
@@ -86,20 +90,34 @@ void ProtocolParser::worker(Caller& caller) {
             // read ts
             next = stream.next_type();
             switch(next) {
+            case RESPStream::_AGAIN:
+                discard();
+                return;
             case RESPStream::INTEGER:
-                sample.timestamp = stream.read_int();
+                std::tie(success, sample.timestamp) = stream.read_int();
+                if (!success) {
+                    discard();
+                    return;
+                }
                 break;
             case RESPStream::STRING:
-                bytes_read = stream.read_string(buffer, buffer_len);
+                std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
+                if (!success) {
+                    discard();
+                    return;
+                }
                 buffer[bytes_read] = '\0';
                 if (aku_parse_timestamp(buffer, &sample) == AKU_SUCCESS) {
                     break;
                 }
-            default:
+            case RESPStream::ARRAY:
+            case RESPStream::BULK_STR:
+            case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 {
                     std::string msg;
                     size_t pos;
-                    std::tie(msg, pos) = get_error_context("Unexpected parameter timestamp format");
+                    std::tie(msg, pos) = get_error_context("unexpected parameter timestamp format");
                     BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             };
@@ -107,30 +125,51 @@ void ProtocolParser::worker(Caller& caller) {
             // read value
             next = stream.next_type();
             switch(next) {
+            case RESPStream::_AGAIN:
+                discard();
+                return;
             case RESPStream::INTEGER:
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
-                sample.payload.float64 = stream.read_int();
+                std::tie(success, sample.payload.float64) = stream.read_int();
+                if (!success) {
+                    discard();
+                    return;
+                }
                 sample.payload.size = sizeof(aku_Sample);
                 break;
             case RESPStream::STRING:
-                bytes_read = stream.read_string(buffer, buffer_len);
+                std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
+                if (!success) {
+                    discard();
+                    return;
+                }
+                if (bytes_read < 0) {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = get_error_context("array size can't be negative");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                }
                 buffer[bytes_read] = '\0';
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 sample.payload.float64 = strtod(buffer, nullptr);
                 sample.payload.size = sizeof(aku_Sample);
-                memset(buffer, 0, bytes_read);
+                memset(buffer, 0, static_cast<size_t>(bytes_read));
                 break;
-            default:
+            case RESPStream::ARRAY:
+            case RESPStream::BULK_STR:
+            case RESPStream::ERROR:
+            case RESPStream::_BAD:
                 // Bad frame
                 {
                     std::string msg;
                     size_t pos;
-                    std::tie(msg, pos) = get_error_context("Unexpected parameter value format");
+                    std::tie(msg, pos) = get_error_context("unexpected parameter value format");
                     BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             };
-
             status = consumer_->write(sample);
+            // Message processed and frame can be removed (if possible)
+            consume();
             if (status != AKU_SUCCESS) {
                 BOOST_THROW_EXCEPTION(DatabaseError(status));
             }
@@ -141,42 +180,27 @@ void ProtocolParser::worker(Caller& caller) {
     }
 }
 
-void ProtocolParser::set_caller(Caller& caller) {
-    caller_ = &caller;
-}
-
-void ProtocolParser::yield_to_worker() {
-    coroutine_->operator()();
-}
-
-void ProtocolParser::yield_to_client() const {
-    (*caller_)();
-}
-
-void ProtocolParser::throw_if_poisoned(PDU const& top) const {
-    if (top.size == 0 && top.pos == 0) {
-        throw EStopIteration();
-    }
-}
-
 void ProtocolParser::parse_next(PDU pdu) {
     buffers_.push(pdu);
-    yield_to_worker();
+    worker();
 }
 
 Byte ProtocolParser::get() {
     while(true) {
         if (buffers_.empty()) {
-            yield_to_client();
+            auto ctx = get_error_context("can't read from empty stream");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
         }
         auto& top = buffers_.front();
-        throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
             return buf[top.pos++];
         }
+        backlog_.push(buffers_.back());
         buffers_.pop();
-        yield_to_client();
+        if (buffers_.empty()) {
+            break;
+        }
     }
     auto ctx = get_error_context("unexpected end of stream");
     BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
@@ -185,37 +209,49 @@ Byte ProtocolParser::get() {
 Byte ProtocolParser::pick() const {
     while(true) {
         if (buffers_.empty()) {
-            yield_to_client();
+            auto ctx = get_error_context("can't read from empty stream");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
         }
         auto& top = buffers_.front();
-        throw_if_poisoned(top);
         if (top.pos < top.size) {
             auto buf = top.buffer.get();
             return buf[top.pos];
         }
+        backlog_.push(buffers_.back());
         buffers_.pop();
-        yield_to_client();
+        if (buffers_.empty()) {
+            break;
+        }
     }
     auto ctx = get_error_context("unexpected end of stream");
     BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
 bool ProtocolParser::is_eof() {
-    return done_;
+    auto size = buffers_.size();
+    if (size) {
+        auto& top = buffers_.front();
+        if (top.pos < top.size) {
+            return false;
+        } else {
+            size--;
+        }
+    }
+    return size == 0;
 }
 
 int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
     int bytes_copied = 0;
     while(true) {
         if (buffers_.empty()) {
-            yield_to_client();
+            return bytes_copied;
         }
         auto& top = buffers_.front();
         if (top.pos < top.size) {
             size_t sz = top.size - top.pos;
             size_t bytes_to_copy = std::min(sz, buffer_len);
             memcpy(buffer, top.buffer.get() + top.pos, bytes_to_copy);
-            bytes_copied += (int)bytes_to_copy;
+            bytes_copied += static_cast<int>(bytes_to_copy);
             top.pos += bytes_to_copy;
             if (bytes_to_copy == buffer_len) {
                 // everything is copied!
@@ -226,15 +262,14 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
                 buffer_len -= bytes_to_copy;
             }
         }
+        backlog_.push(buffers_.back());
         buffers_.pop();
     }
     return bytes_copied;
 }
 
 void ProtocolParser::close() {
-    buffers_.push(POISON_);
-    // stop worker
-    yield_to_worker();
+    done_ = true;
 }
 
 std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pdu) const {
@@ -242,7 +277,7 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pd
     // Scan to PDU head
     if (pdu.pos == 0) {
         // Error in first symbol
-        size_t size = std::min(pdu.size, (size_t)StreamError::MAX_LENGTH);
+        size_t size = std::min(pdu.size, static_cast<u32>(StreamError::MAX_LENGTH));
         auto res = std::string(origin, origin + size);
         boost::algorithm::replace_all(res, "\r", "\\r");
         boost::algorithm::replace_all(res, "\n", "\\n");
@@ -258,13 +293,13 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_from_pdu(PDU const& pd
         begin = ipos;
         ipos--;
     }
-    auto delta = (begin - origin);       // PDU begining position from the origin
+    auto delta = static_cast<u32>(begin - origin);  // PDU begining position from the origin
     auto size = pdu.size - delta;
     auto position = pdu_pos - delta;
     if (position < StreamError::MAX_LENGTH) {
         // Truncate string if it wouldn't hide error (most of the PDU's is small so
         // this will be almost always the case).
-        size = std::min(size, (size_t)StreamError::MAX_LENGTH);
+        size = std::min(size, static_cast<u32>(StreamError::MAX_LENGTH));
     }
     auto res = std::string(begin, begin + size);
     boost::algorithm::replace_all(res, "\r", "\\r");
@@ -285,6 +320,28 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_context(const char* ms
     pos += message.str().size();
     message << err;
     return std::make_tuple(message.str(), pos);
+}
+
+void ProtocolParser::consume() {
+    if (buffers_.size()) {
+        auto& top = buffers_.front();
+        top.cons = top.pos;
+    }
+    std::queue<PDU> tmp;
+    backlog_.swap(tmp);
+}
+
+void ProtocolParser::discard() {
+    if (buffers_.size()) {
+        auto& top = buffers_.front();
+        top.pos = top.cons;
+    }
+    while(backlog_.size()) {
+        auto& top = backlog_.front();
+        top.pos = top.cons;
+        buffers_.push(top);
+        backlog_.pop();
+    }
 }
 
 }

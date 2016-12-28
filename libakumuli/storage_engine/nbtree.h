@@ -160,6 +160,13 @@ struct NBTreeAggregationResult {
     void copy_from(SubtreeRef const&);
     //! Calculate values from raw data.
     void do_the_math(aku_Timestamp *tss, double const* xss, size_t size, bool inverted);
+    /**
+     * Add value to aggregate
+     * @param ts is a timestamp
+     * @param xs is a value
+     * @param forward is used to indicate external order of added elements
+     */
+    void add(aku_Timestamp ts, double xs, bool forward);
     //! Combine this value with the other one (inplace update).
     void combine(const NBTreeAggregationResult& other);
 };
@@ -310,6 +317,9 @@ public:
 
     //! Return iterator that returns candlesticks
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
 };
 
 
@@ -376,6 +386,11 @@ public:
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
                                                    std::shared_ptr<BlockStore> bstore,
                                                    NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin,
+                                                      aku_Timestamp end,
+                                                      u64 step, std::shared_ptr<BlockStore> bstore) const;
 };
 
 
@@ -411,6 +426,11 @@ struct NBTreeExtent {
     virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
     virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const = 0;
+
+    //! Return group-aggregate query results iterator
+    virtual std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const = 0;
+
+    // Service functions //
 
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
 
@@ -468,11 +488,32 @@ public:
       */
     NBTreeAppendResult append(aku_Timestamp ts, double value);
 
+    /**
+     * @brief search function
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return
+     */
     std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
+    /**
+     * @brief aggregate all values in search interval
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return iterator that produces single value
+     */
     std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+
+    /**
+     * @brief Group values into buckets and return aggregate from each one of them
+     * @param begin start of the search interval
+     * @param end end of the search interval
+     * @param step bucket size
+     * @return iterator
+     */
+    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();

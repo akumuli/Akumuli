@@ -33,11 +33,7 @@ def send_malicious_message(msg):
 
 def main(path):
 
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    akumulid = att.Akumulid(path)
+    akumulid = att.create_akumulid(path)
     # delete database
     akumulid.delete_database()
     # create empty database
