@@ -1397,9 +1397,14 @@ public:
                 if (pos_ > 0) {
                     auto const& last  = rdbuf_.at(pos_ - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = begin_ < end_ ? first._begin - last._begin
-                                                      : last._end - first._end;
-                    if (delta < step_) {
+                    aku_Timestamp lastts = begin_ < end_ ? last._begin - begin_
+                                                         : begin_ - last._begin;
+                    aku_Timestamp firstts = begin_ < end_ ? first._begin - begin_
+                                                          : begin_ - first._begin;
+                    auto lastbin = lastts / step_;
+                    auto firstbin = firstts / step_;
+
+                    if (lastbin == firstbin) {
                         pos_--;
                     }
                 }

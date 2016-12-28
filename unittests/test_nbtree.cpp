@@ -648,7 +648,7 @@ struct RandomWalk {
         , distribution(mean, stddev)
         , value(start)
     {
-        generator.seed(0);
+        //generator.seed(1);
     }
 
     double next() {
@@ -1231,6 +1231,7 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
+    const int N_runs = 10;
     std::vector<std::tuple<u32, u32, int>> cases = {
         std::make_tuple( 1,     100, 0),
         std::make_tuple( 2,     100, 0),
@@ -1256,8 +1257,10 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
         std::make_tuple(32*32,10000, 1),
         std::make_tuple(32*32,10000,-1),
     };
-    for (auto t: cases) {
-        test_nbtree_group_aggregate_forward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+    for (int i = 0; i < N_runs; i++) {
+        for (auto t: cases) {
+            test_nbtree_group_aggregate_forward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+        }
     }
 }
 
@@ -1338,8 +1341,8 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
+    const int N_runs = 10;
     std::vector<std::tuple<u32, u32, int>> cases = {
-
         std::make_tuple( 1,     100, 0),
         std::make_tuple( 2,     100, 0),
         std::make_tuple(10,     100, 0),
@@ -1355,7 +1358,6 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
         std::make_tuple(32*32, 1000, 0),
         std::make_tuple(32*32, 1000, 1),
         std::make_tuple(32*32, 1000,-1),
-
         std::make_tuple( 1,   10000, 0),
         std::make_tuple( 2,   10000, 0),
         std::make_tuple(10,   10000, 0),
@@ -1364,7 +1366,9 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
         std::make_tuple(32*32,10000, 1),
         std::make_tuple(32*32,10000,-1),
     };
-    for (auto t: cases) {
-        test_nbtree_group_aggregate_backward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+    for (int i = 0; i < N_runs; i++) {
+        for (auto t: cases) {
+            test_nbtree_group_aggregate_backward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+        }
     }
 }
