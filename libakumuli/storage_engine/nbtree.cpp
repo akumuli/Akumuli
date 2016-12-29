@@ -47,9 +47,9 @@ static const SubtreeRef INIT_SUBTREE_REF = {
     //! Registration time of the smallest value
     std::numeric_limits<aku_Timestamp>::max(),
     //! Largest value
-    std::numeric_limits<double>::min(),
+    std::numeric_limits<double>::lowest(),
     //! Registration time of the largest value
-    std::numeric_limits<aku_Timestamp>::min(),
+    std::numeric_limits<aku_Timestamp>::lowest(),
     //! Summ of all elements in subtree
     .0,
     //! First value in subtree

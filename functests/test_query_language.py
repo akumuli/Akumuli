@@ -427,6 +427,11 @@ def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
                 raise ValueError(msg)
 
             cnt_expected = N/nsteps/nseries
+            if cnt_expected == 0:
+                # expected count is less then 1 but not 0
+                # there is more than 1 step per value in raw series
+                cnt_expected = 1
+
             if cnt_value != cnt_expected:
                 msg = "Invalid cnt value, expected: {0}, actual: {1}".format(cnt_expected, cnt_value)
                 raise ValueError(msg)
@@ -489,6 +494,11 @@ def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
                 raise ValueError(msg)
 
             cnt_expected = N/nsteps/nseries
+            if cnt_expected == 0:
+                # expected count is less then 1 but not 0
+                # there is more than 1 step per value in raw series
+                cnt_expected = 1
+
             if cnt_value != cnt_expected:
                 msg = "Invalid cnt value, expected: {0}, actual: {1}".format(cnt_expected, cnt_value)
                 raise ValueError(msg)

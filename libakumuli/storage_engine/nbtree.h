@@ -176,13 +176,13 @@ static const NBTreeAggregationResult INIT_AGGRES = {
     .0,
     .0,
     std::numeric_limits<double>::max(),
-    std::numeric_limits<double>::min(),
+    std::numeric_limits<double>::lowest(),
     .0,
     .0,
     std::numeric_limits<aku_Timestamp>::max(),
-    std::numeric_limits<aku_Timestamp>::min(),
+    std::numeric_limits<aku_Timestamp>::lowest(),
     std::numeric_limits<aku_Timestamp>::max(),
-    std::numeric_limits<aku_Timestamp>::min(),
+    std::numeric_limits<aku_Timestamp>::lowest(),
 };
 
 
