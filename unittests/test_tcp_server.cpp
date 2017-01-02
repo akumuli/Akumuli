@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include "tcp_server.h"
 #include "logger.h"
@@ -33,12 +34,17 @@ struct SessionMock : DbSession {
         throw "not implemented";
     }
 
-    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
-        throw "not implemented";
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        auto str = std::to_string(id);
+        assert(str.size() <= sz);
+        memcpy(buf, str.data(), str.size());
+        return static_cast<int>(str.size());
     }
 
-    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
-        throw "not implemented";
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string num(begin, begin + sz);
+        sample->paramid = boost::lexical_cast<u64>(num);
+        return AKU_SUCCESS;
     }
 };
 
@@ -64,13 +70,17 @@ struct DbSessionErrorMock : DbSession {
     virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
-    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
-        throw "not implemented";
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        auto str = std::to_string(id);
+        assert(str.size() <= sz);
+        memcpy(buf, str.data(), str.size());
+        return static_cast<int>(str.size());
     }
-    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
-        throw "not implemented";
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string num(begin, begin + sz);
+        sample->paramid = boost::lexical_cast<u64>(num);
+        return AKU_SUCCESS;
     }
-
 };
 
 template<aku_Status ERR>
@@ -131,7 +141,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
+        os << "+1\r\n" << ":2\r\n" << "+3.14\r\n";
 
         boost::asio::write(socket, stream);
 
@@ -161,7 +171,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n" << ":2\r\n";
+        os << "+1\r\n" << ":2\r\n";
         size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
@@ -195,7 +205,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         std::ostream os(&stream);
 
         // Fist message
-        os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
+        os << "+1\r\n" << ":2\r\n" << "+3.14\r\n";
         size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
@@ -203,7 +213,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         suite.io.run_one();
 
         // Second message
-        os << ":3\r\n" << ":4\r\n" << "+1.61\r\n";
+        os << "+3\r\n" << ":4\r\n" << "+1.61\r\n";
         n = boost::asio::write(socket, stream);
 
         // Process last
@@ -237,7 +247,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n:E\r\n+3.14\r\n";
+        os << "+1\r\n:E\r\n+3.14\r\n";
         //      error ^
 
         boost::asio::streambuf instream;
@@ -276,7 +286,7 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n:2\r\n+3.14\r\n";
+        os << "+1\r\n:2\r\n+3.14\r\n";
 
         boost::asio::streambuf instream;
         std::istream is(&instream);
