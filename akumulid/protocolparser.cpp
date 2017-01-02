@@ -53,13 +53,6 @@ void ProtocolParser::worker() {
             case RESPStream::_AGAIN:
                 discard();
                 return;
-            case RESPStream::INTEGER:
-                std::tie(success, sample.paramid) = stream.read_int();
-                if (!success) {
-                    discard();
-                    return;
-                }
-                break;
             case RESPStream::STRING:
                 std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
                 if (!success) {
@@ -74,6 +67,7 @@ void ProtocolParser::worker() {
                     BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
                 break;
+            case RESPStream::INTEGER:
             case RESPStream::ARRAY:
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
@@ -196,7 +190,7 @@ Byte ProtocolParser::get() {
             auto buf = top.buffer.get();
             return buf[top.pos++];
         }
-        backlog_.push(buffers_.back());
+        backlog_.push(buffers_.front());
         buffers_.pop();
         if (buffers_.empty()) {
             break;
@@ -217,7 +211,7 @@ Byte ProtocolParser::pick() const {
             auto buf = top.buffer.get();
             return buf[top.pos];
         }
-        backlog_.push(buffers_.back());
+        backlog_.push(buffers_.front());
         buffers_.pop();
         if (buffers_.empty()) {
             break;
@@ -262,7 +256,7 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
                 buffer_len -= bytes_to_copy;
             }
         }
-        backlog_.push(buffers_.back());
+        backlog_.push(buffers_.front());
         buffers_.pop();
     }
     return bytes_copied;
