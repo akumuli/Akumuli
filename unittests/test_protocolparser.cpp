@@ -3,6 +3,7 @@
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include "ingestion_pipeline.h"
 #include "protocolparser.h"
@@ -28,12 +29,17 @@ struct ConsumerMock : DbSession {
         throw "Not implemented";
     }
 
-    virtual int param_id_to_series(aku_ParamId, char*, size_t) override {
-        throw "Not implemented";
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        auto str = std::to_string(id);
+        assert(str.size() <= sz);
+        memcpy(buf, str.data(), str.size());
+        return static_cast<int>(str.size());
     }
 
-    virtual aku_Status series_to_param_id(const char*, size_t, aku_Sample*) override {
-        throw "Not implemented";
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string num(begin, begin + sz);
+        sample->paramid = boost::lexical_cast<u64>(num);
+        return AKU_SUCCESS;
     }
 };
 
@@ -45,7 +51,7 @@ std::shared_ptr<const char> buffer_from_static_string(const char* str) {
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 
-    const char *messages = ":1\r\n:2\r\n+34.5\r\n:6\r\n:7\r\n+8.9\r\n";
+    const char *messages = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9\r\n";
     auto buffer = buffer_from_static_string(messages);
     PDU pdu = {
         buffer,
@@ -68,8 +74,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 
-    const char *message1 = ":1\r\n:2\r\n+34.5\r\n:6\r\n:7\r\n+8.9";
-    const char *message2 = "\r\n:10\r\n:11\r\n+12.13\r\n:14\r\n:15\r\n+16.7\r\n";
+    const char *message1 = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9";
+    const char *message2 = "\r\n+10\r\n:11\r\n+12.13\r\n+14\r\n:15\r\n+16.7\r\n";
     auto buffer1 = buffer_from_static_string(message1);
     auto buffer2 = buffer_from_static_string(message2);
     PDU pdu1 = {
@@ -112,7 +118,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
 
-    const char *messages = ":1\r\n:2\r\n+34.5\r\n:d\r\n:7\r\n+8.9\r\n";
+    const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
     auto buffer = buffer_from_static_string(messages);
     PDU pdu = {
         buffer,
