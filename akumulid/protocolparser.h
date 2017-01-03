@@ -65,6 +65,7 @@ class ProtocolParser : ByteStreamReader {
     //! Generate error message
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
+    void backlog_top() const;
 public:
     ProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();

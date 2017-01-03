@@ -190,8 +190,7 @@ Byte ProtocolParser::get() {
             auto buf = top.buffer.get();
             return buf[top.pos++];
         }
-        backlog_.push(buffers_.front());
-        buffers_.pop();
+        backlog_top();
         if (buffers_.empty()) {
             break;
         }
@@ -211,8 +210,7 @@ Byte ProtocolParser::pick() const {
             auto buf = top.buffer.get();
             return buf[top.pos];
         }
-        backlog_.push(buffers_.front());
-        buffers_.pop();
+        backlog_top();
         if (buffers_.empty()) {
             break;
         }
@@ -256,8 +254,7 @@ int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
                 buffer_len -= bytes_to_copy;
             }
         }
-        backlog_.push(buffers_.front());
-        buffers_.pop();
+        backlog_top();
     }
     return bytes_copied;
 }
@@ -330,12 +327,21 @@ void ProtocolParser::discard() {
         auto& top = buffers_.front();
         top.pos = top.cons;
     }
-    while(backlog_.size()) {
-        auto& top = backlog_.front();
-        top.pos = top.cons;
-        buffers_.push(top);
-        backlog_.pop();
+    if (backlog_.size()) {
+        while(!buffers_.empty()) {
+            auto& top = buffers_.front();
+            backlog_.push(top);
+            buffers_.pop();
+        }
+        std::swap(buffers_, backlog_);
     }
+}
+
+void ProtocolParser::backlog_top() const {
+    auto& top = buffers_.front();
+    top.pos = top.cons;
+    backlog_.push(top);
+    buffers_.pop();
 }
 
 }

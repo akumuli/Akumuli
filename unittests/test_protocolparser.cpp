@@ -167,12 +167,6 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
         0u
     };
 
-    // TODO: remove
-    std::cout << std::string(pdu1.buffer.get(), pdu1.size) << std::endl;
-    std::cout << std::string(pdu2.buffer.get(), pdu2.size) << std::endl;
-    std::cout << std::string(pdu3.buffer.get(), pdu3.size) << std::endl;
-    // TODO: remove
-
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
     ProtocolParser parser(cons);
     parser.start();
@@ -207,7 +201,7 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
  * but in the real world scenario this envariant can be broken and each record can be
  * scattered between many PDUs.
  */
-BOOST_AUTO_TEST_CASE(Test_protocol_paser_framing) {
+BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing) {
 
     const char *message = "+1\r\n:2\r\n+34.5\r\n"
                           "+6\r\n:7\r\n+8.9\r\n"
@@ -218,8 +212,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_paser_framing) {
 
     for (int i = 0; i < 100; i++) {
         size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
-        size_t pivot2 = static_cast<size_t>(rand()) % (msglen - pivot1 - 1) + pivot1;
-        std::cout << "pivot1: " << pivot1 << ", pivot2: " << pivot2 << std::endl;
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
         find_framing_issues(message, msglen, pivot1, pivot2);
     }
 }
