@@ -6,6 +6,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 #include <set>
+#include <regex>
 
 #include "datetime.h"
 #include "query_processing/limiter.h"
@@ -64,7 +65,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
         if (tags_.empty()) {
             // Case 2, only metric is set
             std::stringstream regex;
-            regex << first_metric << "(?:\\s\\w+=\\w+)*";
+            regex << first_metric << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
@@ -84,7 +85,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
                     } else {
                         regexp << "|";
                     }
-                    regexp << "(?:\\s\\w+=\\w+)*\\s" << key << "=" << val << "(?:\\s\\w+=\\w+)*";
+                    regexp << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*\\s" << key << "=" << val << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
                 }
                 regexp << ")";
             }
