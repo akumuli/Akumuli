@@ -5,8 +5,8 @@ set(CMAKE_MACOSX_RPATH 1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -fsanitize=address -ggdb")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -fsanitize=address -ggdb")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb")
 if (!APPLE)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -static-libasan")
 else(!APPLE)
@@ -46,6 +46,9 @@ include_directories("${SQLITE3_INCLUDE_DIR}")
 #if(CMAKE_COMPILER_IS_GNUCXX)
 add_definitions(-std=c++1y -fvisibility=hidden)
 #endif()
+
+# json parser from boost::property_tree needs this badly
+add_definitions(-DBOOST_SPIRIT_THREADSAFE)
 
 include_directories(./include)
 

@@ -73,7 +73,7 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
             if (done_) {
                 return nbytes;
             }
-            cond_.wait(lock);
+            cond_.wait_for(lock, std::chrono::milliseconds(1));
             continue;
         }
         auto front = queue_.front();
