@@ -763,6 +763,16 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
 
             // Matcher can be substituted by previous call
             session->clear_series_matcher();
+
+            // Return error if no series was found
+            if (req.select.columns.empty()) {
+                cur->set_error(AKU_EQUERY_PARSING_ERROR);
+                return;
+            }
+            if (req.select.columns.at(0).ids.empty()) {
+                cur->set_error(AKU_ENOT_FOUND);
+                return;
+            }
             if (proc->start()) {
                 cstore_->query(req, *proc);
                 proc->stop();
@@ -788,6 +798,16 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             // Start scanning
             GroupByTime groupbytime;
             std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+
+            // Return error if no series was found
+            if (req.select.columns.empty()) {
+                cur->set_error(AKU_EQUERY_PARSING_ERROR);
+                return;
+            }
+            if (req.select.columns.at(0).ids.empty()) {
+                cur->set_error(AKU_ENOT_FOUND);
+                return;
+            }
             if (proc->start()) {
                 cstore_->group_aggregate_query(req, *proc);
                 proc->stop();
@@ -811,6 +831,15 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
             if (req.group_by.enabled) {
                 session->set_series_matcher(req.group_by.matcher);
+            }
+            // Return error if no series was found
+            if (req.select.columns.empty()) {
+                cur->set_error(AKU_EQUERY_PARSING_ERROR);
+                return;
+            }
+            if (req.select.columns.at(0).ids.empty()) {
+                cur->set_error(AKU_ENOT_FOUND);
+                return;
             }
             // Scan column store
             if (proc->start()) {
@@ -838,6 +867,16 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             // Start scanning
             GroupByTime groupbytime;
             std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+
+            // Return error if no series was found
+            if (req.select.columns.empty()) {
+                cur->set_error(AKU_EQUERY_PARSING_ERROR);
+                return;
+            }
+            if (req.select.columns.at(0).ids.empty()) {
+                cur->set_error(AKU_ENOT_FOUND);
+                return;
+            }
             if (proc->start()) {
                 cstore_->join_query(req, *proc);
                 proc->stop();

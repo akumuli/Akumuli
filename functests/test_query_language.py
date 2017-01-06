@@ -18,7 +18,23 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
+g_test_run = 0
 
+
+def api_test(test_name):
+    def decorator(func):
+        def wrapper(*pos, **kv):
+            global g_test_run
+            n = g_test_run
+            g_test_run += 1
+            print("Test #{0} - {1}".format(n, test_name))
+            func(*pos, **kv)
+            print("Test #{0} passed".format(n))
+        return wrapper
+    return decorator
+
+
+@api_test("read all data in backward direction")
 def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
@@ -38,7 +54,6 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #1 - read all data in backward direction")
     for line in response:
         try:
             columns = line.split(',')
@@ -59,9 +74,9 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #1 passed")
 
 
+@api_test("group by tag in backward direction")
 def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
@@ -78,7 +93,6 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #2 - group by tag in backward direction")
     expected_tags = [
         "test tag3=D",
         "test tag3=E",
@@ -106,8 +120,9 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #2 passed")
 
+
+@api_test("filter by tag")
 def test_where_clause_in_backward_direction(dtstart, delta, N):
     """Filter data by tag"""
     begin = dtstart + delta*(N-1)
@@ -125,7 +140,6 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #3 - filter by tag")
     expected_tags = [
         "tag3=D",
         "tag3=E",
@@ -153,9 +167,9 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #3 passed")
 
 
+@api_test("where + group-by")
 def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     """Filter data by tag and group by another tag"""
     begin = dtstart + delta*(N-1)
@@ -174,7 +188,6 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #4 - where + group-by")
     expected_tags = [
         "test tag3=D",
         "test tag3=E",
@@ -202,10 +215,9 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #4 passed")
 
+@api_test("metadata query")
 def test_metadata_query(tags):
-    print("Test #5 - metadata query")
     # generate all possible series
     taglist = sorted(itertools.product(*tags.values()))
     expected_series = []
@@ -230,9 +242,9 @@ def test_metadata_query(tags):
         print("Expected series: {0}".format(expected_series))
         print("Actual series: {0}".format(actual_series))
         raise ValueError("Output didn't match")
-    print("Test #5 passed")
 
 
+@api_test("filter by tag")
 def test_read_in_forward_direction(dtstart, delta, N):
     """Read data in forward direction"""
     begin = dtstart
@@ -249,7 +261,6 @@ def test_read_in_forward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = 0
     iterations = 0
-    print("Test #6 - filter by tag")
     expected_tags = [
         "tag3=D",
         "tag3=E",
@@ -277,9 +288,9 @@ def test_read_in_forward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
-    print("Test #6 passed")
 
 
+@api_test("aggregate all data")
 def test_aggregate_all(dtstart, delta, N):
     """Aggregate all data and check result"""
     begin = dtstart + delta*(N-1)
@@ -309,7 +320,6 @@ def test_aggregate_all(dtstart, delta, N):
         5*M**2 + 5*M,
     ]
     iterations = 0
-    print("Test #7 - aggregate all data")
     for line in response:
         try:
             columns = line.split(',')
@@ -331,9 +341,9 @@ def test_aggregate_all(dtstart, delta, N):
             raise
     if iterations != len(expected_tags)*2:
         raise ValueError("Results incomplete")
-    print("Test #7 passed")
 
 
+@api_test("aggregate + where")
 def test_aggregate_where(dtstart, delta, N):
     """Aggregate all data and check result"""
     begin = dtstart + delta*(N-1)
@@ -362,7 +372,6 @@ def test_aggregate_where(dtstart, delta, N):
         5*M**2 + 4*M,
     ]
     iterations = 0
-    print("Test #8 - aggregate + where")
     for line in response:
         try:
             columns = line.split(',')
@@ -384,9 +393,9 @@ def test_aggregate_where(dtstart, delta, N):
             raise
     if iterations != len(expected_tags)*2:
         raise ValueError("Results incomplete")
-    print("Test #8 passed")
 
 
+@api_test("group aggregate all data")
 def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
     """Aggregate all data and check result"""
     nseries = 10
@@ -409,7 +418,6 @@ def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
     ]
     registerd_values = {}
     iterations = 0
-    print("Test #8 - group aggregate all data ({0} steps)".format(nsteps))
     for line in response:
         try:
             columns = line.split(',')
@@ -452,8 +460,9 @@ def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
             raise
     if iterations == 0:
         raise ValueError("Results incomplete")
-    print("Test #8 passed")
 
+
+@api_test("group aggregate all data")
 def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
     """Aggregate all data and check result"""
     nseries = 10
@@ -476,7 +485,6 @@ def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
     ]
     registerd_values = {}
     iterations = 0
-    print("Test #8 - group aggregate all data ({0} steps)".format(nsteps))
     for line in response:
         try:
             columns = line.split(',')
@@ -519,10 +527,10 @@ def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
             raise
     if iterations == 0:
         raise ValueError("Results incomplete")
-    print("Test #8 passed")
 
 
-def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
+@api_test("PAA in backward direction")
+def test_paa_in_backward_direction(dtstart, delta, N, fn, query):
     expected_values = [
         reversed(range(9, 100000, 10)),
         reversed(range(8, 100000, 10)),
@@ -563,7 +571,6 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     response = urlopen(queryurl, json.dumps(query))
     exp_ts = begin
     iterations = 0
-    print(testname)
     expected_tags = [
         "tag3=H",
         "tag3=G",
@@ -599,12 +606,11 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     # Check that we received all values
     if iterations != 990:
         raise ValueError("Expect {0} data points, get {1} data points".format(990, iterations))
-    print("{0} passed".format(testname[:testname.index(" - ")]))
 
 
+@api_test("late write")
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
-    print("Test #7 - late write")
     ts = dtstart
     message = att.msg(ts, 1.0, 'test', tag1='A', tag2='B', tag3='D')
     chan.send(message)
@@ -612,8 +618,53 @@ def test_late_write(dtstart, delta, N, chan):
     if resp != '-DB late write':
         print(resp)
         raise ValueError("Late write not detected")
-    print("Test #7 passed")
 
+
+def check_error_message(dtstart, delta, N, query, errmsg):
+    """Try to issue a broken query that doesn't match any existing time-series
+    name in the storage."""
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    lines = []
+    for line in response:
+        lines.append(line)
+    if len(lines) != 1:
+        raise ValueError("Error message expected")
+    if not lines[0].startswith(errmsg):
+        raise ValueError("Invalid error message")
+
+
+@api_test("select query error message")
+def select_from_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_select_query("err", begin, end)
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("aggregate query error message")
+def aggregate_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_aggregate_query("err", begin, end, "sum")
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("group aggregate query error message")
+def group_aggregate_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_group_aggregate_query("err", begin, end, ["sum"], "10ms")
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("join query error message")
+def join_nonexistent_metrics(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_join_query(["foo", "bar"], begin, end)
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
 
 def med(buf):
     buf = sorted(buf)
@@ -648,6 +699,10 @@ def main(path):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
+        select_from_nonexistent_metric(dt, delta, nmsgs)
+        aggregate_nonexistent_metric(dt, delta, nmsgs)
+        group_aggregate_nonexistent_metric(dt, delta, nmsgs)
+        join_nonexistent_metrics(dt, delta, nmsgs)
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
