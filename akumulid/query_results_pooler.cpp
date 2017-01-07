@@ -387,7 +387,15 @@ void QueryResultsPooler::start() {
     enum Format { RESP, CSV };  // TODO: add protobuf support
     bool use_iso_timestamps = true;
     Format output_format = RESP;
-    boost::property_tree::ptree tree = from_json(query_text_);
+    boost::property_tree::ptree tree;
+    try {
+        tree = from_json(query_text_);
+    } catch (boost::property_tree::json_parser_error const& e) {
+        logger.error() << "Bad JSON document received, error: " << e.what();
+        // We need to pass invalid document further to generate proper error response
+        cursor_ = session_->search(query_text_);
+        return;
+    }
     auto output = tree.get_child_optional("output");
     if (output) {
         for (auto kv: *output) {

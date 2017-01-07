@@ -350,12 +350,20 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
         for(auto child: *range) {
             if (child.first == "from") {
                 auto iso_string = child.second.get_value<std::string>();
-                begin = DateTimeUtil::from_iso_string(iso_string.c_str());
-                begin_set = true;
+                try {
+                    begin = DateTimeUtil::from_iso_string(iso_string.c_str());
+                    begin_set = true;
+                } catch (std::exception const& e) {
+                    Logger::msg(AKU_LOG_ERROR, std::string("Can't parse begin timestmp, ") + e.what());
+                }
             } else if (child.first == "to") {
                 auto iso_string = child.second.get_value<std::string>();
-                end = DateTimeUtil::from_iso_string(iso_string.c_str());
-                end_set = true;
+                try {
+                    end = DateTimeUtil::from_iso_string(iso_string.c_str());
+                    end_set = true;
+                } catch (std::exception const& e) {
+                    Logger::msg(AKU_LOG_ERROR, std::string("Can't parse end timestmp, ") + e.what());
+                }
             }
         }
     }
@@ -434,7 +442,7 @@ std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(cons
     std::istream stream(&strbuf);
     try {
         boost::property_tree::json_parser::read_json(stream, ptree);
-    } catch (boost::property_tree::json_parser_error& e) {
+    } catch (boost::property_tree::json_parser_error const& e) {
         // Error, bad query
         Logger::msg(AKU_LOG_ERROR, e.what());
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree);
