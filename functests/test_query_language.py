@@ -716,7 +716,7 @@ def group_aggregate_nonexistent_time_range(dtstart, delta, N):
 
 @api_test("join nonexistent time range")
 def join_nonexistent_time_range(dtstart, delta, N):
-    begin = dtstart #+ delta*(N*2)
+    begin = dtstart + delta*(N*2)
     end = dtstart + delta*(N*3)
     query = att.make_join_query(["test", "test"], begin, end)
     require_empty_response(query)
