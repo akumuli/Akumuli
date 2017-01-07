@@ -7,9 +7,9 @@ import time
 import akumulid_test_tools as att
 import json
 try:
-    from urllib2 import urlopen
+    from urllib2 import urlopen, HTTPError
 except ImportError:
-    from urllib import urlopen
+    from urllib import urlopen, HTTPError
 import traceback
 import itertools
 import math
@@ -636,7 +636,9 @@ def check_error_message(dtstart, delta, N, query, errmsg):
     """Try to issue a broken query that doesn't match any existing time-series
     name in the storage."""
     queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
-    response = urlopen(queryurl, json.dumps(query))
+    if type(query) is dict:
+        query = json.dumps(query)
+    response = urlopen(queryurl, query)
     lines = []
     for line in response:
         lines.append(line)
@@ -721,6 +723,66 @@ def join_nonexistent_time_range(dtstart, delta, N):
     query = att.make_join_query(["test", "test"], begin, end)
     require_empty_response(query)
 
+def check_bad_query_handling():
+    queries = {
+        "invalid json": """
+            {
+                "select": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+        """,
+        "invalid timestamp": """
+            {
+                "select": "test",
+                "range": { "from": "2017-01-07 12:03:00", "to": "20170107T120300" }
+            }
+        """,
+        "timestamp out of range": """
+            {
+                "select": "test",
+                "range": { "from": "20172107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregation function": """
+            {
+                "group-aggregate": { "metric": "test", "func": "bad_func_name", "step": "1s" },
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregation step": """
+            {
+                "group-aggregate": { "metric": "test", "sum": "bad_func_name", "step": "1 sec." },
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad join": """
+            {
+                "join": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """
+    }
+    for title, query in queries.iteritems():
+        @api_test(title)
+        def test():
+            queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+            try:
+                response = urlopen(queryurl, query)
+                lines = []
+                for line in response:
+                    lines.append(line)
+                if len(lines) != 1:
+                    print("Error: empty response expected, some data recieved. First 10 lines:")
+                    print("------------------------------")
+                    for line in lines[:10]:
+                        print(line.replace("\r", "\\r").replace("\n", "\\n"))
+                    print("------------------------------")
+                else:
+                    if not lines[0].startswith("-query parsing error"):
+                        raise ValueError("Invalid response")
+            except HTTPError as e:
+                raise ValueError("Invalid response: " + str(e))
+        test()
+
 def med(buf):
     buf = sorted(buf)
     return buf[len(buf)/2]
@@ -754,6 +816,9 @@ def main(path):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
+        check_bad_query_handling()
+
+        """
         # Test normal operation
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
@@ -781,6 +846,7 @@ def main(path):
         aggregate_nonexistent_time_range(dt, delta, nmsgs)
         group_aggregate_nonexistent_time_range(dt, delta, nmsgs)
         join_nonexistent_time_range(dt, delta, nmsgs)
+        """
     finally:
         print("Stopping server...")
         akumulid.stop()
