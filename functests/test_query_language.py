@@ -724,7 +724,18 @@ def join_nonexistent_time_range(dtstart, delta, N):
     require_empty_response(query)
 
 def check_bad_query_handling():
+    """Send hideous queries to akumuli. Check proper error handling"""
     queries = {
+        "totally empty query": "",
+
+        "empty json doc": """
+            {}
+        """,
+        "invalid keyword": """
+            {
+                "foo": "bar"
+            }
+        """,
         "invalid json": """
             {
                 "select": "test",
@@ -757,6 +768,12 @@ def check_bad_query_handling():
         "bad join": """
             {
                 "join": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregate": """
+            {
+                "aggregate": "test",
                 "range": { "from": "20170107T120300", "to": "20170107T120300" }
             }
         """
@@ -816,9 +833,7 @@ def main(path):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
-        check_bad_query_handling()
 
-        """
         # Test normal operation
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
@@ -846,7 +861,7 @@ def main(path):
         aggregate_nonexistent_time_range(dt, delta, nmsgs)
         group_aggregate_nonexistent_time_range(dt, delta, nmsgs)
         join_nonexistent_time_range(dt, delta, nmsgs)
-        """
+        check_bad_query_handling()
     finally:
         print("Stopping server...")
         akumulid.stop()

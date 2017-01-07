@@ -163,6 +163,9 @@ static std::tuple<aku_Status, std::vector<std::string>> parse_join_stmt(boost::p
             }
         }
     }
+    if (result.empty()) {
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+    }
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
