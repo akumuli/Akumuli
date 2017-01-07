@@ -143,6 +143,11 @@ public:
             NBTreeAggregationResult destval;
             size_t outsz = 0;
             std::tie(status, outsz) = iters_[pos_]->read(&destts, &destval, size);
+            if (outsz == 0 && status == AKU_ENO_DATA) {
+                // Move to next iterator
+                pos_++;
+                continue;
+            }
             if (outsz != 1) {
                 Logger::msg(AKU_LOG_TRACE, "Unexpected aggregate size " + std::to_string(outsz));
                 continue;
