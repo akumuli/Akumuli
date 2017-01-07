@@ -18,21 +18,33 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-g_test_run = 0
+g_test_run = 1
+g_num_fail = 0
 
 
 def api_test(test_name):
     def decorator(func):
         def wrapper(*pos, **kv):
             global g_test_run
+            global g_num_fail
             n = g_test_run
             g_test_run += 1
             print("Test #{0} - {1}".format(n, test_name))
-            func(*pos, **kv)
-            print("Test #{0} passed".format(n))
+            try:
+                func(*pos, **kv)
+                print("Test #{0} passed".format(n))
+            except ValueError as e:
+                print("Test #{0} failed: {1}".format(n, e))
+                g_num_fail += 1
+                traceback.print_exc()
         return wrapper
     return decorator
 
+def on_exit():
+    global g_num_fail
+    if g_num_fail != 0:
+        print("{0} tests failed".format(g_num_fail))
+        sys.exit(1)
 
 @api_test("read all data in backward direction")
 def test_read_all_in_backward_direction(dtstart, delta, N):
@@ -666,6 +678,49 @@ def join_nonexistent_metrics(dtstart, delta, N):
     msg = "-not found"
     check_error_message(dtstart, delta, N, query, msg)
 
+def require_empty_response(query):
+    """Make request and check that response is empty"""
+    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    lines = []
+    for line in response:
+        lines.append(line)
+    if len(lines) != 0:
+        print("Error: empty response expected, some data recieved. First 10 lines:")
+        print("------------------------------")
+        for line in lines[:10]:
+            print(line.replace("\r", "\\r").replace("\n", "\\n"))
+        print("------------------------------")
+        raise ValueError("Empty response expected")
+
+@api_test("select nonexistent time range")
+def select_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_select_query("test", begin, end)
+    require_empty_response(query)
+
+@api_test("aggregate nonexistent time range")
+def aggregate_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_aggregate_query("test", begin, end, "sum")
+    require_empty_response(query)
+
+@api_test("group-aggregate nonexistent time range")
+def group_aggregate_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_group_aggregate_query("test", begin, end, ["sum"], "10ms")
+    require_empty_response(query)
+
+@api_test("join nonexistent time range")
+def join_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart #+ delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_join_query(["test", "test"], begin, end)
+    require_empty_response(query)
+
 def med(buf):
     buf = sorted(buf)
     return buf[len(buf)/2]
@@ -699,10 +754,7 @@ def main(path):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
-        select_from_nonexistent_metric(dt, delta, nmsgs)
-        aggregate_nonexistent_metric(dt, delta, nmsgs)
-        group_aggregate_nonexistent_metric(dt, delta, nmsgs)
-        join_nonexistent_metrics(dt, delta, nmsgs)
+        # Test normal operation
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
@@ -720,21 +772,20 @@ def main(path):
         test_group_aggregate_all_backward(dt, delta, nmsgs, 100)
         test_group_aggregate_all_backward(dt, delta, nmsgs, 1000)
         test_group_aggregate_all_backward(dt, delta, nmsgs, 100000)
-        """
-        test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
-        test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
-        test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
-        test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
-        test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
-        test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
-        """
-    except:
-        traceback.print_exc()
-        sys.exit(1)
+        # Test error handling
+        select_from_nonexistent_metric(dt, delta, nmsgs)
+        aggregate_nonexistent_metric(dt, delta, nmsgs)
+        group_aggregate_nonexistent_metric(dt, delta, nmsgs)
+        join_nonexistent_metrics(dt, delta, nmsgs)
+        select_nonexistent_time_range(dt, delta, nmsgs)
+        aggregate_nonexistent_time_range(dt, delta, nmsgs)
+        group_aggregate_nonexistent_time_range(dt, delta, nmsgs)
+        join_nonexistent_time_range(dt, delta, nmsgs)
     finally:
         print("Stopping server...")
         akumulid.stop()
         time.sleep(5)
+    on_exit()
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
