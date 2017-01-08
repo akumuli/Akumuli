@@ -53,7 +53,7 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     begin = dtstart + delta*(N-1)
     end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     expected_tags = [
@@ -99,7 +99,7 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
         "group-by": [ "tag3" ],
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -146,7 +146,7 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
         }
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -194,7 +194,7 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
         }
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -245,7 +245,7 @@ def test_metadata_query(tags):
         "select": "meta:names",
         "output": { "format":  "csv" },
     }
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     for line in response:
         actual_series.append(line.strip())
@@ -267,7 +267,7 @@ def test_read_in_forward_direction(dtstart, delta, N):
         "output": { "format":  "csv" },
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -308,7 +308,7 @@ def test_aggregate_all(dtstart, delta, N):
     begin = dtstart + delta*(N-1)
     end = dtstart - delta
     query = att.make_aggregate_query("test", begin, end, "sum", output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     expected_tags = [
         "tag3=D",
@@ -367,7 +367,7 @@ def test_aggregate_where(dtstart, delta, N):
         }
     }
     query = att.make_aggregate_query("test", begin, end, "sum", **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     expected_tags = [
         "tag3=D",
@@ -419,7 +419,7 @@ def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
                                            agg_funcs, 
                                            "{0}ms".format(step), 
                                            output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     expected_tags = [
         "tag3=D",
@@ -486,7 +486,7 @@ def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
                                            agg_funcs, 
                                            "{0}ms".format(step), 
                                            output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     expected_tags = [
         "tag3=D",
@@ -579,7 +579,7 @@ def test_paa_in_backward_direction(dtstart, delta, N, fn, query):
         "group-by":{   "time": "1s"  },
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     exp_ts = begin
     iterations = 0
@@ -635,7 +635,7 @@ def test_late_write(dtstart, delta, N, chan):
 def check_error_message(dtstart, delta, N, query, errmsg):
     """Try to issue a broken query that doesn't match any existing time-series
     name in the storage."""
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     if type(query) is dict:
         query = json.dumps(query)
     response = urlopen(queryurl, query)
@@ -682,7 +682,7 @@ def join_nonexistent_metrics(dtstart, delta, N):
 
 def require_empty_response(query):
     """Make request and check that response is empty"""
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     lines = []
     for line in response:
@@ -781,7 +781,7 @@ def check_bad_query_handling():
     for title, query in queries.iteritems():
         @api_test(title)
         def test():
-            queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+            queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
             try:
                 response = urlopen(queryurl, query)
                 lines = []

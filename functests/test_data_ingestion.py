@@ -59,7 +59,7 @@ def main(path, protocol):
 
         # check stats
         httpport = 8181
-        statsurl = "http://{0}:{1}/stats".format(host, httpport)
+        statsurl = "http://{0}:{1}/api/stats".format(host, httpport)
         rawstats = urllib.urlopen(statsurl).read()
         stats = json.loads(rawstats)
 
