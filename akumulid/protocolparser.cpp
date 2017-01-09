@@ -220,16 +220,16 @@ Byte ProtocolParser::pick() const {
 }
 
 bool ProtocolParser::is_eof() {
-    auto size = buffers_.size();
-    if (size) {
+    if (!buffers_.empty()) {
         auto& top = buffers_.front();
         if (top.pos < top.size) {
             return false;
         } else {
-            size--;
+            // Top is consumed
+            return buffers_.size() == 1;
         }
     }
-    return size == 0;
+    return true;
 }
 
 int ProtocolParser::read(Byte *buffer, size_t buffer_len) {
