@@ -314,7 +314,7 @@ std::tuple<std::string, size_t> ProtocolParser::get_error_context(const char* ms
 }
 
 void ProtocolParser::consume() {
-    if (buffers_.size()) {
+    if (!buffers_.empty()) {
         auto& top = buffers_.front();
         top.cons = top.pos;
     }
