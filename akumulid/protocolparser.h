@@ -21,6 +21,7 @@
 #include <memory>
 #include <queue>
 #include <vector>
+#include <cassert>  // TODO: move to cpp
 
 #include "logger.h"
 #include "resp.h"
@@ -53,9 +54,125 @@ struct EStopIteration {};
 //! Fwd
 struct DbSession;
 
-class ProtocolParser : ByteStreamReader {
-    mutable std::queue<PDU>            buffers_;
-    mutable std::queue<PDU>            backlog_;
+
+/** ChunkedWriter used by servers to acquire buffers.
+  * Server should follow the protocol:
+  * - pull buffer
+  * - fill buffer with data
+  * - push buffer
+  * - pull next buffer
+  * - etc...
+  */
+struct ChunkedWriter {
+    typedef Byte* BufferT;
+    virtual BufferT pull() = 0;
+    virtual void push(BufferT buffer, u32 size) = 0;
+};
+
+
+/** This class should be used in conjunction with tcp-server class.
+ * It allocates buffers for server and makes them available to parser.
+ */
+class ReadBuffer : public ByteStreamReader, public ChunkedWriter {
+    const size_t BUFFER_SIZE;
+    std::vector<Byte> buffer_;
+    mutable u32 rpos_;   // Current read position
+    mutable u32 wpos_;   // Current write position
+    mutable u32 cons_;   // Consumed part of the buffer
+    int buffers_allocated_; // Buffer counter (only one allocated buffer is allowed)
+
+public:
+    ReadBuffer(const size_t buffer_size)
+        : BUFFER_SIZE(buffer_size)
+        , buffer_(buffer_size, 0)
+        , rpos_(0)
+        , wpos_(0)
+        , cons_(0)
+        , buffers_allocated_(0)
+    {
+    }
+
+    // ByteStreamReader interface
+public:
+    virtual Byte get() override {
+        if (rpos_ == wpos_) {
+            auto ctx = get_error_context("unexpected end of stream");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
+        }
+        return buffer_[rpos_++];
+    }
+    virtual Byte pick() const override {
+        if (rpos_ == wpos_) {
+            auto ctx = get_error_context("unexpected end of stream");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
+        }
+        return buffer_[rpos_];
+    }
+    virtual bool is_eof() override {
+        return rpos_ == wpos_;
+    }
+    virtual int read(Byte *buffer, size_t buffer_len) override {
+        assert(buffer_len < 0x100000000ul);
+        u32 to_read = wpos_ - rpos_;
+        to_read = std::min(static_cast<u32>(buffer_len), to_read);
+        std::copy(buffer_.begin() + rpos_, buffer_.begin() + rpos_ + to_read, buffer);
+        rpos_ += to_read;
+        return static_cast<int>(to_read);
+    }
+    virtual void close() override {
+    }
+    virtual std::tuple<std::string, size_t> get_error_context(const char *error_message) const override {
+        return std::make_tuple(std::string("Can't generate error, not implemented"), 0u);
+    }
+    virtual void consume() {
+        assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
+        cons_ = rpos_;
+        if (cons_ > buffer_.size()) {
+            buffer_.erase(buffer_.begin(), buffer_.begin() + cons_);
+            rpos_ -= cons_;
+            wpos_ -= cons_;
+            cons_ = 0;
+        }
+    }
+    virtual void discard() {
+        assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
+        rpos_ = cons_;
+    }
+
+    // BufferAllocator interface
+public:
+
+// TODO: move implementation to cpp
+
+    /** Return pointer to buffer. Size of the buffer is guaranteed to be at least
+      * BUFFER_SIZE bytes.
+      */
+    virtual BufferT pull() override {
+        assert(buffers_allocated_ == 0);  // Invariant check: buffer will be invalidated after vector.resize!
+        buffers_allocated_++;
+        while(true) {
+            u32 sz = static_cast<u32>(buffer_.size()) - wpos_;  // because previous push can bring partially filled buffer
+            if (sz < BUFFER_SIZE) {
+                // Double the size
+                buffer_.resize(buffer_.size() * 2);
+            } else {
+                break;
+            }
+        }
+        Byte* ptr = buffer_.data() + wpos_;
+        return ptr;
+    }
+
+    virtual void push(BufferT, u32 size) override {
+        assert(buffers_allocated_ == 1);
+        buffers_allocated_--;
+        wpos_ += size;
+    }
+};
+
+
+class ProtocolParser {
+    ReadBuffer                         rdbuf_;
     bool                               done_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
@@ -67,20 +184,14 @@ class ProtocolParser : ByteStreamReader {
 
     void backlog_top() const;
 public:
+    enum {
+        RDBUF_SIZE = 0x1000,  // 4KB
+    };
     ProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();
-    void parse_next(PDU pdu);
-
-    // ByteStreamReader interface
-public:
-    virtual Byte get();
-    virtual Byte pick() const;
-    virtual bool is_eof();
-    virtual int read(Byte* buffer, size_t buffer_len);
-    virtual void close();
-    virtual std::tuple<std::string, size_t> get_error_context(const char* msg) const;
-    virtual void consume();
-    virtual void discard();
+    void parse_next(Byte *buffer, u32 sz);
+    void close();
+    Byte* get_next_buffer();
 };
 
 

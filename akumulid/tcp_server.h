@@ -46,8 +46,7 @@ typedef std::function<void(aku_Status, u64)> ErrorCallback;
 class TcpSession : public std::enable_shared_from_this<TcpSession> {
     // TODO: Unique session ID
     enum {
-        BUFFER_SIZE           = 0x1000,  //< Buffer size
-        BUFFER_SIZE_THRESHOLD = 0x0200,  //< Min free buffer space
+        BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
     };
     IOServiceT*                     io_;
     SocketT                         socket_;
@@ -57,7 +56,7 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     Logger                          logger_;
 
 public:
-    typedef std::shared_ptr<Byte> BufferT;
+    typedef Byte* BufferT;
     TcpSession(IOServiceT* io, std::shared_ptr<DbSession> spout);
 
     ~TcpSession();
