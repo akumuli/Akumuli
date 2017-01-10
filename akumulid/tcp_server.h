@@ -63,25 +63,16 @@ public:
 
     SocketT& socket();
 
-    void start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_read);
+    void start();
 
     ErrorCallback get_error_cb();
 
-    static BufferT NO_BUFFER;
-
 private:
-    /** Allocate new buffer or reuse old if there is enough space in there.
-      * @param prev_buf previous buffer or NO_BUFFER
-      * @param size buffer full size
-      * @param pos position in the buffer
-      * @param bytes_read number of newly overwritten bytes in the buffer
-      * @return buffer (allocated or reused), full buffer size and write position (three element tuple)
+    /** Allocate new buffer.
       */
-    std::tuple<BufferT, size_t, size_t> get_next_buffer(BufferT prev_buf, size_t size, size_t pos,
-                                                        size_t bytes_read);
+    std::tuple<BufferT, size_t> get_next_buffer();
 
-    void handle_read(BufferT buffer, size_t pos, size_t buf_size, boost::system::error_code error,
-                     size_t nbytes);
+    void handle_read(BufferT buffer, boost::system::error_code error, size_t nbytes);
 
     void handle_write_error(boost::system::error_code error);
 

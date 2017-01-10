@@ -74,6 +74,9 @@ struct ChunkedWriter {
  * It allocates buffers for server and makes them available to parser.
  */
 class ReadBuffer : public ByteStreamReader, public ChunkedWriter {
+    enum {
+        N_BUF = 8,
+    };
     const size_t BUFFER_SIZE;
     std::vector<Byte> buffer_;
     mutable u32 rpos_;   // Current read position
@@ -84,7 +87,7 @@ class ReadBuffer : public ByteStreamReader, public ChunkedWriter {
 public:
     ReadBuffer(const size_t buffer_size)
         : BUFFER_SIZE(buffer_size)
-        , buffer_(buffer_size, 0)
+        , buffer_(buffer_size*N_BUF, 0)
         , rpos_(0)
         , wpos_(0)
         , cons_(0)
@@ -127,12 +130,6 @@ public:
     virtual void consume() {
         assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
         cons_ = rpos_;
-        if (cons_ > buffer_.size()) {
-            buffer_.erase(buffer_.begin(), buffer_.begin() + cons_);
-            rpos_ -= cons_;
-            wpos_ -= cons_;
-            cons_ = 0;
-        }
     }
     virtual void discard() {
         assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
@@ -150,13 +147,18 @@ public:
     virtual BufferT pull() override {
         assert(buffers_allocated_ == 0);  // Invariant check: buffer will be invalidated after vector.resize!
         buffers_allocated_++;
-        while(true) {
-            u32 sz = static_cast<u32>(buffer_.size()) - wpos_;  // because previous push can bring partially filled buffer
-            if (sz < BUFFER_SIZE) {
-                // Double the size
-                buffer_.resize(buffer_.size() * 2);
+
+        u32 sz = static_cast<u32>(buffer_.size()) - wpos_;  // because previous push can bring partially filled buffer
+        if (sz < BUFFER_SIZE) {
+            if ((cons_ + sz) > BUFFER_SIZE) {
+                // Problem can be solved by rotating the buffer and asjusting wpos_, rpos_ and cons_
+                std::copy(buffer_.begin() + cons_, buffer_.end(), buffer_.begin());
+                wpos_ -= cons_;
+                rpos_ -= cons_;
+                cons_ = 0;
             } else {
-                break;
+                // Double the size of the buffer
+                buffer_.resize(buffer_.size() * 2);
             }
         }
         Byte* ptr = buffer_.data() + wpos_;

@@ -52,12 +52,12 @@ void ProtocolParser::worker() {
             auto next = stream.next_type();
             switch(next) {
             case RESPStream::_AGAIN:
-                discard();
+                rdbuf_.discard();
                 return;
             case RESPStream::STRING:
                 std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
                 if (!success) {
-                    discard();
+                    rdbuf_.discard();
                     return;
                 }
                 status = consumer_->series_to_param_id(buffer, static_cast<size_t>(bytes_read), &sample);
@@ -86,19 +86,19 @@ void ProtocolParser::worker() {
             next = stream.next_type();
             switch(next) {
             case RESPStream::_AGAIN:
-                discard();
+                rdbuf_.discard();
                 return;
             case RESPStream::INTEGER:
                 std::tie(success, sample.timestamp) = stream.read_int();
                 if (!success) {
-                    discard();
+                    rdbuf_.discard();
                     return;
                 }
                 break;
             case RESPStream::STRING:
                 std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
                 if (!success) {
-                    discard();
+                    rdbuf_.discard();
                     return;
                 }
                 buffer[bytes_read] = '\0';
@@ -121,13 +121,13 @@ void ProtocolParser::worker() {
             next = stream.next_type();
             switch(next) {
             case RESPStream::_AGAIN:
-                discard();
+                rdbuf_.discard();
                 return;
             case RESPStream::INTEGER:
                 sample.payload.type = AKU_PAYLOAD_FLOAT;
                 std::tie(success, sample.payload.float64) = stream.read_int();
                 if (!success) {
-                    discard();
+                    rdbuf_.discard();
                     return;
                 }
                 sample.payload.size = sizeof(aku_Sample);
@@ -135,7 +135,7 @@ void ProtocolParser::worker() {
             case RESPStream::STRING:
                 std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
                 if (!success) {
-                    discard();
+                    rdbuf_.discard();
                     return;
                 }
                 if (bytes_read < 0) {
@@ -164,7 +164,7 @@ void ProtocolParser::worker() {
             };
             status = consumer_->write(sample);
             // Message processed and frame can be removed (if possible)
-            consume();
+            rdbuf_.consume();
             if (status != AKU_SUCCESS) {
                 BOOST_THROW_EXCEPTION(DatabaseError(status));
             }

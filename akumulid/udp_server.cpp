@@ -138,7 +138,9 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
                     0u,
                 };
 
-                parser.parse_next(pdu);
+                auto buf = parser.get_next_buffer();
+                memcpy(buf, iobuf->bufs[i], mlen);
+                parser.parse_next(buf, mlen);
             }
             if (retval != 0) {
                 iobuf = std::make_shared<IOBuf>();

@@ -51,18 +51,13 @@ std::shared_ptr<const char> buffer_from_static_string(const char* str) {
 
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
-
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9\r\n";
-    auto buffer = buffer_from_static_string(messages);
-    PDU pdu = {
-        buffer,
-        29,
-        0u
-    };
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
     ProtocolParser parser(cons);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages, 29);
     parser.start();
-    parser.parse_next(pdu);
+    parser.parse_next(buf, 29);
     parser.close();
 
     BOOST_REQUIRE_EQUAL(cons->param_[0], 1);
@@ -77,29 +72,24 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 
     const char *message1 = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9";
     const char *message2 = "\r\n+10\r\n:11\r\n+12.13\r\n+14\r\n:15\r\n+16.7\r\n";
-    auto buffer1 = buffer_from_static_string(message1);
-    auto buffer2 = buffer_from_static_string(message2);
-    PDU pdu1 = {
-        buffer1,
-        27,
-        0u
-    };
-    PDU pdu2 = {
-        buffer2,
-        37,
-        0u
-    };
+
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
     ProtocolParser parser(cons);
     parser.start();
-    parser.parse_next(pdu1);
+
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message1, 27);
+    parser.parse_next(buf, 27);
 
     BOOST_REQUIRE_EQUAL(cons->param_.size(), 1);
     // 0
     BOOST_REQUIRE_EQUAL(cons->param_[0], 1);
     BOOST_REQUIRE_EQUAL(cons->ts_[0], 2);
     BOOST_REQUIRE_EQUAL(cons->data_[0], 34.5);
-    parser.parse_next(pdu2);
+
+    buf = parser.get_next_buffer();
+    memcpy(buf, message2, 37);
+    parser.parse_next(buf, 37);
 
     BOOST_REQUIRE_EQUAL(cons->param_.size(), 4);
     // 1
@@ -118,14 +108,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
-
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
-    auto buffer = buffer_from_static_string(messages);
-    PDU pdu = {
-        buffer,
-        29,
-        0u
-    };
     auto check_resp_error = [](const RESPError& error) {
         auto bl = error.get_bottom_line();
         std::string what = error.what();
@@ -142,7 +125,9 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
     ProtocolParser parser(cons);
     parser.start();
-    BOOST_REQUIRE_EXCEPTION(parser.parse_next(pdu), RESPError, check_resp_error);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages, 29);
+    BOOST_REQUIRE_EXCEPTION(parser.parse_next(buf, 29), RESPError, check_resp_error);
 }
 
 void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2) {
@@ -170,9 +155,18 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
     ProtocolParser parser(cons);
     parser.start();
-    parser.parse_next(pdu1);
-    parser.parse_next(pdu2);
-    parser.parse_next(pdu3);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message, pivot1);
+    parser.parse_next(buf, pivot1);
+
+    buf = parser.get_next_buffer();
+    memcpy(buf, message + pivot1, pivot2 - pivot1);
+    parser.parse_next(buf, pivot2 - pivot1);
+
+    buf = parser.get_next_buffer();
+    memcpy(buf, message + pivot2, msglen - pivot2);
+    parser.parse_next(buf, msglen - pivot2);
+
     parser.close();
 
     BOOST_REQUIRE_EQUAL(cons->param_.size(), 4);

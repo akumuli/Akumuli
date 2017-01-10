@@ -241,7 +241,7 @@ void TcpAcceptor::_stop() {
 
 void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
-        session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
+        session->start();
         _start();
     } else {
         logger_.error() << "Acceptor error " << err.message();
