@@ -122,6 +122,23 @@ public:
         rpos_ += to_read;
         return static_cast<int>(to_read);
     }
+    virtual int read_line(Byte* buffer, size_t quota) override {
+        assert(quota < 0x100000000ul);
+        u32 available = wpos_ - rpos_;
+        auto to_read = std::min(static_cast<u32>(quota), available);
+        for (u32 i = 0; i < to_read; i++) {
+            Byte c = buffer_[rpos_ + i];
+            buffer[i] = c;
+            if (c == '\n') {
+                // Stop iteration
+                u32 bytes_copied = i + 1;
+                rpos_ += bytes_copied;
+                return static_cast<int>(bytes_copied);
+            }
+        }
+        // No end of line found
+        return -1*static_cast<int>(to_read);
+    }
     virtual void close() override {
     }
     virtual std::tuple<std::string, size_t> get_error_context(const char *error_message) const override {
