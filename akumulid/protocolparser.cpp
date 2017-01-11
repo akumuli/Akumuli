@@ -1,5 +1,6 @@
 #include "protocolparser.h"
 #include <sstream>
+#include <cassert>
 #include <boost/algorithm/string.hpp>
 
 #include "resp.h"
@@ -22,6 +23,147 @@ DatabaseError::DatabaseError(aku_Status status)
 const char* DatabaseError::what() const noexcept {
     return aku_error_message(status);
 }
+
+
+// ReadBuffer class //
+
+ReadBuffer::ReadBuffer(const size_t buffer_size)
+    : BUFFER_SIZE(buffer_size)
+    , buffer_(buffer_size*N_BUF, 0)
+    , rpos_(0)
+    , wpos_(0)
+    , cons_(0)
+    , buffers_allocated_(0)
+{
+}
+
+Byte ReadBuffer::get() {
+    if (rpos_ == wpos_) {
+        auto ctx = get_error_context("unexpected end of stream");
+        BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
+    }
+    return buffer_[rpos_++];
+}
+
+Byte ReadBuffer::pick() const {
+    if (rpos_ == wpos_) {
+        auto ctx = get_error_context("unexpected end of stream");
+        BOOST_THROW_EXCEPTION(ProtocolParserError(std::get<0>(ctx), std::get<1>(ctx)));
+    }
+    return buffer_[rpos_];
+}
+
+bool ReadBuffer::is_eof() {
+    return rpos_ == wpos_;
+}
+
+int ReadBuffer::read(Byte *buffer, size_t buffer_len) {
+    assert(buffer_len < 0x100000000ul);
+    u32 to_read = wpos_ - rpos_;
+    to_read = std::min(static_cast<u32>(buffer_len), to_read);
+    std::copy(buffer_.begin() + rpos_, buffer_.begin() + rpos_ + to_read, buffer);
+    rpos_ += to_read;
+    return static_cast<int>(to_read);
+}
+
+int ReadBuffer::read_line(Byte* buffer, size_t quota) {
+    assert(quota < 0x100000000ul);
+    u32 available = wpos_ - rpos_;
+    auto to_read = std::min(static_cast<u32>(quota), available);
+    for (u32 i = 0; i < to_read; i++) {
+        Byte c = buffer_[rpos_ + i];
+        buffer[i] = c;
+        if (c == '\n') {
+            // Stop iteration
+            u32 bytes_copied = i + 1;
+            rpos_ += bytes_copied;
+            return static_cast<int>(bytes_copied);
+        }
+    }
+    // No end of line found
+    return -1*static_cast<int>(to_read);
+}
+
+void ReadBuffer::close() {
+}
+
+std::tuple<std::string, size_t> ReadBuffer::get_error_context(const char *error_message) const {
+    // Invariant: rpos_ points to bad symbol
+    size_t position = 0;
+    auto origin = buffer_.data() + cons_;
+    const Byte* it = buffer_.data() + rpos_;
+    const Byte* start = it;
+    while(it > origin) {
+        if (*it == '\n') {
+            break;
+        }
+        start = it;
+        it--;
+        position++;
+    }
+    // Now start contains pointer to the begining of the bad line
+    it = buffer_.data() + rpos_;
+    const Byte* stop = it;
+    const Byte* end = buffer_.data() + wpos_;
+    while(it < end) {
+        if (*it == '\r' || *it == '\n') {
+            break;
+        }
+        stop = it;
+        it++;
+        if (it - start > StreamError::MAX_LENGTH) {
+            break;
+        }
+    }
+    auto err = std::string(start, stop);
+    boost::algorithm::replace_all(err, "\r", "\\r");
+    boost::algorithm::replace_all(err, "\n", "\\n");
+    std::stringstream message;
+    message << error_message << " - ";
+    position += message.str().size();
+    message << err;
+    return std::make_tuple(message.str(), position);
+}
+
+void ReadBuffer::consume() {
+    assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
+    cons_ = rpos_;
+}
+
+void ReadBuffer::discard() {
+    assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!
+    rpos_ = cons_;
+}
+
+ReadBuffer::BufferT ReadBuffer::pull() {
+    assert(buffers_allocated_ == 0);  // Invariant check: buffer will be invalidated after vector.resize!
+    buffers_allocated_++;
+
+    u32 sz = static_cast<u32>(buffer_.size()) - wpos_;  // because previous push can bring partially filled buffer
+    if (sz < BUFFER_SIZE) {
+        if ((cons_ + sz) > BUFFER_SIZE) {
+            // Problem can be solved by rotating the buffer and asjusting wpos_, rpos_ and cons_
+            std::copy(buffer_.begin() + cons_, buffer_.end(), buffer_.begin());
+            wpos_ -= cons_;
+            rpos_ -= cons_;
+            cons_ = 0;
+        } else {
+            // Double the size of the buffer
+            buffer_.resize(buffer_.size() * 2);
+        }
+    }
+    Byte* ptr = buffer_.data() + wpos_;
+    return ptr;
+}
+
+void ReadBuffer::push(ReadBuffer::BufferT, u32 size) {
+    assert(buffers_allocated_ == 1);
+    buffers_allocated_--;
+    wpos_ += size;
+}
+
+
+// ProtocolParser class //
 
 ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
     : rdbuf_(RDBUF_SIZE)
