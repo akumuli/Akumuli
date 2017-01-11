@@ -47,7 +47,7 @@ std::tuple<bool, u64> RESPStream::_read_int_body() {
     Byte buf[MAX_DIGITS];
     u64 result = 0;
     int res = stream_->read_line(buf, MAX_DIGITS);
-    if (res < 0) {
+    if (res <= 0) {
         if (res == -1*MAX_DIGITS) {
             // Invalid input, too many digits in the number
             auto ctx = stream_->get_error_context("integer is too long");
@@ -57,16 +57,24 @@ std::tuple<bool, u64> RESPStream::_read_int_body() {
     }
     for (int i = 0; i < res; i++) {
         Byte c = buf[i];
-        if (c == '\r' || c == '\n') {
+        // c must be in [0x30:0x39] range
+        if (c <= 0x39 && c >= 0x30) {
+            result = result*10 + static_cast<u32>(c & 0x0F);
+        } else if (c == '\n') {
             // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
             return std::make_tuple(true, result);
-        }
-        // c must be in [0x30:0x39] range
-        if (c > 0x39 || c < 0x30) {
+        } else if (c == '\r') {
+            // The next one should be \n
+            i++;
+            if (i < res && buf[i] == '\n') {
+                return std::make_tuple(true, result);
+            }
+            auto ctx = stream_->get_error_context("invalid symbol inside stream - '\\r'");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        } else {
             auto ctx = stream_->get_error_context("can't parse integer (character value out of range)");
             BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
         }
-        result = result*10 + static_cast<u32>(c & 0x0F);
     }
     // Bad stream
     auto ctx = stream_->get_error_context("error in stream decoding routine");
@@ -90,9 +98,15 @@ std::tuple<bool, int> RESPStream::_read_string_body(Byte *buffer, size_t byte_bu
     auto res = stream_->read_line(buffer, quota);
     if (res > 0) {
         // Success
+        if (buffer[res - 1] == '\n') {
+            res--;
+            if (buffer[res - 1] == '\r') {
+                res--;
+            }
+        }
         return std::make_tuple(true, res);
     }
-    if (res == -1*RESPStream::STRING_LENGTH_MAX) {
+    if (res == -1*static_cast<int>(quota)) {
         // Max string length reached, invalid input.
         auto ctx = stream_->get_error_context("out of quota");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));

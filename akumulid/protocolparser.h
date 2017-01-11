@@ -142,7 +142,8 @@ public:
     virtual void close() override {
     }
     virtual std::tuple<std::string, size_t> get_error_context(const char *error_message) const override {
-        return std::make_tuple(std::string("Can't generate error, not implemented"), 0u);
+        return std::make_tuple(std::string(), 0);
+        //return std::make_tuple(std::string("Can't generate error, not implemented"), 0u);
     }
     virtual void consume() {
         assert(buffers_allocated_ == 0);  // Invariant check: buffer can be invalidated!

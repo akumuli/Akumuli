@@ -111,7 +111,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
     auto check_resp_error = [](const RESPError& error) {
         auto bl = error.get_bottom_line();
-        std::string what = error.what();
+        std::string what = error.what();https://tweetdeck.twitter.com/
         auto bls = bl.size();
         if (bls == 0) {
             return false;
