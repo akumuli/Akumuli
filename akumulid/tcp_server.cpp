@@ -93,11 +93,9 @@ void TcpSession::handle_read(BufferT buffer,
         } catch (StreamError const& resp_err) {
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
-            logger_.error() << resp_err.get_bottom_line();
             boost::asio::streambuf stream;
             std::ostream os(&stream);
             os << "-PARSER " << resp_err.what() << "\r\n";
-            os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
             boost::asio::async_write(socket_, stream,
                                      boost::bind(&TcpSession::handle_write_error,
                                                  shared_from_this(),
@@ -292,7 +290,6 @@ void TcpServer::start(SignalHandler* sig, int id) {
                 self->barrier.wait();
             } catch (RESPError const& e) {
                 logger.error() << e.what();
-                logger.info() << e.get_bottom_line();
                 throw;
             } catch (...) {
                 logger.error() << "Error in event loop " << cnt << ": " << boost::current_exception_diagnostic_information();

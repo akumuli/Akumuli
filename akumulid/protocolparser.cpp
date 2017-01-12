@@ -88,41 +88,27 @@ void ReadBuffer::close() {
 }
 
 std::tuple<std::string, size_t> ReadBuffer::get_error_context(const char *error_message) const {
-    // Invariant: rpos_ points to bad symbol
-    size_t position = 0;
+    // Get the frame: [...\r\n...\r\n...\r\n]
     auto origin = buffer_.data() + cons_;
-    const Byte* it = buffer_.data() + rpos_;
-    const Byte* start = it;
-    while(it > origin) {
-        if (*it == '\n') {
-            break;
-        }
-        start = it;
-        it--;
-        position++;
-    }
-    // Now start contains pointer to the begining of the bad line
-    it = buffer_.data() + rpos_;
-    const Byte* stop = it;
+    const Byte* stop = origin;
+    int nlcnt = 0;
     const Byte* end = buffer_.data() + wpos_;
-    while(it < end) {
-        if (*it == '\r' || *it == '\n') {
-            break;
+    while (stop < end) {
+        if (*stop == '\n') {
+            nlcnt++;
+            if (nlcnt == 3) {
+                break;
+            }
         }
-        stop = it;
-        it++;
-        if (it - start > StreamError::MAX_LENGTH) {
-            break;
-        }
+        stop++;
     }
-    auto err = std::string(start, stop);
+    auto err = std::string(origin, stop);
     boost::algorithm::replace_all(err, "\r", "\\r");
     boost::algorithm::replace_all(err, "\n", "\\n");
     std::stringstream message;
     message << error_message << " - ";
-    position += message.str().size();
     message << err;
-    return std::make_tuple(message.str(), position);
+    return std::make_tuple(message.str(), 0);
 }
 
 void ReadBuffer::consume() {

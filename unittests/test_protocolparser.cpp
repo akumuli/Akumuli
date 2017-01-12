@@ -109,25 +109,12 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
-    auto check_resp_error = [](const RESPError& error) {
-        auto bl = error.get_bottom_line();
-        std::string what = error.what();
-        auto bls = bl.size();
-        if (bls == 0) {
-            return false;
-        }
-        if (bls == what.size()) {
-            return false;
-        }
-        auto c = what[bls-1];
-        return c == 'd';
-    };
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
     ProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
-    BOOST_REQUIRE_EXCEPTION(parser.parse_next(buf, 29), RESPError, check_resp_error);
+    BOOST_REQUIRE_THROW(parser.parse_next(buf, 29), RESPError);
 }
 
 void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2) {
