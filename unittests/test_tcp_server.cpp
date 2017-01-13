@@ -273,8 +273,6 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
         char buffer[0x1000];
         is.getline(buffer, 0x1000);
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
-        is.getline(buffer, 0x1000);
-        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
     });
 }
 
