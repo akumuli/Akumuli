@@ -1205,6 +1205,9 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
     if (enable_cached_metadata_) {
+        if (metacache_.count == 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
         // Fast path. Use metadata to compute results.
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
