@@ -125,6 +125,10 @@ class ProtocolParser {
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
     void backlog_top() const;
+    
+    bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
+    bool parse_value(RESPStream& stream, aku_Sample& sample);
+    bool parse_bulk_format(RESPStream& stream, Byte* buffer, size_t buffer_len);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
