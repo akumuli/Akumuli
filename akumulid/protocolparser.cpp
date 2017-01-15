@@ -354,12 +354,6 @@ void ProtocolParser::worker() {
                 break;
             case RESPStream::INTEGER:
             case RESPStream::ARRAY:
-                if (!parse_bulk_format(stream, buffer, buffer_len)) {
-                    rdbuf_.discard();
-                    return;
-                }
-                rdbuf_.consume();
-                break;
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
             case RESPStream::_BAD:
