@@ -192,13 +192,14 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         if (!id) {
             // go to global registery
             aku_Sample tmp;
-            status = storage_->init_series_id(dest, end, &tmp, &local_matcher_);
+            status = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
             ids[i] = tmp.paramid;
         } else {
             // initialize using local info
             ids[i] = id;
         }
     }
+    return nmetric;
 }
 
 int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {

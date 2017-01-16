@@ -46,6 +46,24 @@ struct SessionMock : DbSession {
         sample->paramid = boost::lexical_cast<u64>(num);
         return AKU_SUCCESS;
     }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        auto nelem = std::count(begin, end, ':') + 1;
+        if (nelem > cap) {
+            return -1*static_cast<int>(nelem);
+        }
+        const char* it_begin = begin;
+        const char* it_end = begin;
+        for (int i = 0; i < nelem; i++) {
+            //move it_end
+            while(*it_end != ':' && it_end != end) {
+                it_end++;
+            }
+            std::string val(it_begin, it_end);
+            ids[i] = boost::lexical_cast<u64>(val);
+        }
+        return static_cast<int>(nelem);
+    }
 };
 
 
@@ -80,6 +98,23 @@ struct DbSessionErrorMock : DbSession {
         std::string num(begin, begin + sz);
         sample->paramid = boost::lexical_cast<u64>(num);
         return AKU_SUCCESS;
+    }
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        auto nelem = std::count(begin, end, ':') + 1;
+        if (nelem > cap) {
+            return -1*static_cast<int>(nelem);
+        }
+        const char* it_begin = begin;
+        const char* it_end = begin;
+        for (int i = 0; i < nelem; i++) {
+            //move it_end
+            while(*it_end != ':' && it_end != end) {
+                it_end++;
+            }
+            std::string val(it_begin, it_end);
+            ids[i] = boost::lexical_cast<u64>(val);
+        }
+        return static_cast<int>(nelem);
     }
 };
 

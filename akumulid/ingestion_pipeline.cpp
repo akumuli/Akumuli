@@ -65,6 +65,10 @@ aku_Status AkumuliSession::series_to_param_id(const char *name, size_t size, aku
     return aku_series_to_param_id(session_, name, name + size, sample);
 }
 
+int AkumuliSession::name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) {
+    return aku_name_to_param_id_list(session_, begin, end, ids, cap);
+}
+
 // Connection //
 
 AkumuliConnection::AkumuliConnection(const char *path)
