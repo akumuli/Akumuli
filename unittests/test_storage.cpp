@@ -677,5 +677,25 @@ BOOST_AUTO_TEST_CASE(Test_series_retreiver_1) {
     test_retreiver();
 }
 
+BOOST_AUTO_TEST_CASE(Test_series_add_1) {
+    const char* sname = "hello|world tag=1";
+    const char* end = sname + strlen(sname);
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[10];
+    auto nids = session->get_series_ids(sname, end, ids, 10);
+    BOOST_REQUIRE_EQUAL(nids, 2);
+
+    char buf[100];
+    auto buflen = session->get_series_name(ids[0], buf, 100);
+    std::string name0(buf, buf + buflen);
+    BOOST_REQUIRE_EQUAL(name0, "hello tag=1");
+    buflen = session->get_series_name(ids[1], buf, 100);
+    std::string name1(buf, buf + buflen);
+    BOOST_REQUIRE_EQUAL(name1, "world tag=1");
+}
+
 // Test reopen
 
