@@ -191,7 +191,7 @@ AKU_EXPORT aku_Status aku_series_to_param_id(aku_Session* ist, const char* begin
                                              aku_Sample* sample);
 
 /**
-  * Convert series name to id or list of ids (if metric name is composed from several metric names e.g. foo:bar)
+  * Convert series name to id or list of ids (if metric name is composed from several metric names e.g. foo|bar)
   * @param ist is an opened ingestion stream
   * @param begin should point to the begining of the string
   * @param end should point to the next after end character of the string

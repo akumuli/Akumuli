@@ -146,12 +146,12 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     }
 
     // String in buf should contain normal metric "cpu.user" or compound metric like
-    // "cpu.user:cpu.system". The later means that we should find ids for two series:
+    // "cpu.user|cpu.system". The later means that we should find ids for two series:
     // "cpu.user ..." and "cpu.system ..." (tags should be the same in both cases).
     // At first we should determain numer of metrics.
 
-    long nmetric = std::count(const_cast<const char*>(ob), ksend, ':') + 1;
-    if (nmetric < static_cast<int>(ids_size)) {
+    long nmetric = std::count(const_cast<const char*>(ob), ksend, '|') + 1;
+    if (nmetric > static_cast<int>(ids_size)) {
         return -1*static_cast<int>(nmetric);
     }
 
@@ -168,7 +168,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         assert(!done);
         // copy i'th metric to the `series` array
         int metric_len = 0;
-        while(*metric_it != ':' && *metric_it != ' ') {
+        while(*metric_it != '|' && *metric_it != ' ') {
             metric_len += 1;
             metric_it  += 1;
         }

@@ -54,6 +54,7 @@ def msg(timestamp, value, metric, **tags):
     timestr = timestamp.strftime('+%Y%m%dT%H%M%S.%f')
     sseries = '+{0} '.format(metric) + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
     strval  = '+{0}'.format(value)
+    return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 def bulk_msg(ts, measurements, **tags):
     ncol = 2 + len(measurements)*2

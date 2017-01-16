@@ -834,7 +834,7 @@ static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
             if (first) {
                 first = false;
             } else {
-                str << ':';
+                str << '|';
             }
             str << metric;
         }

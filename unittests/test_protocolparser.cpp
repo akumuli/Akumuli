@@ -43,7 +43,7 @@ struct ConsumerMock : DbSession {
     }
 
     virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
-        auto nelem = std::count(begin, end, ':') + 1;
+        auto nelem = std::count(begin, end, '|') + 1;
         if (nelem > cap) {
             return -1*static_cast<int>(nelem);
         }
@@ -51,7 +51,7 @@ struct ConsumerMock : DbSession {
         const char* it_end = begin;
         for (int i = 0; i < nelem; i++) {
             //move it_end
-            while(*it_end != ':' && it_end < end) {
+            while(*it_end != '|' && it_end < end) {
                 it_end++;
             }
             std::string val(it_begin, it_end);
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parser_bulk_1) {
-    const char *messages = "+1:2\r\n:3\r\n*2\r\n+45.6\r\n+7.89\r\n+10:11:12\r\n:13\r\n*3\r\n+1.4\r\n+15\r\n+1.6\r\n";
+    const char *messages = "+1|2\r\n:3\r\n*2\r\n+45.6\r\n+7.89\r\n+10|11|12\r\n:13\r\n*3\r\n+1.4\r\n+15\r\n+1.6\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
     ProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
@@ -252,8 +252,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing) {
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
 
-    const char *message = "+1:6\r\n:2\r\n*2\r\n+34.5\r\n+8.9\r\n"
-                          "+10:14:15\r\n:11\r\n*3\r\n+12.13\r\n+16.17\r\n+18.19\r\n";
+    const char *message = "+1|6\r\n:2\r\n*2\r\n+34.5\r\n+8.9\r\n"
+                          "+10|14|15\r\n:11\r\n*3\r\n+12.13\r\n+16.17\r\n+18.19\r\n";
 
     auto pred = [] (std::shared_ptr<ConsumerMock> cons) {
 
