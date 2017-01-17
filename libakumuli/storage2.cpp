@@ -142,7 +142,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
     aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
-        return status;
+        return -1*status;
     }
 
     // String in buf should contain normal metric "cpu.user" or compound metric like
@@ -150,56 +150,74 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     // "cpu.user ..." and "cpu.system ..." (tags should be the same in both cases).
     // At first we should determain numer of metrics.
 
-    long nmetric = std::count(const_cast<const char*>(ob), ksend, '|') + 1;
+    long nmetric = std::count(const_cast<const char*>(ob), ksbegin, '|') + 1;
     if (nmetric > static_cast<int>(ids_size)) {
-        return -1*static_cast<int>(nmetric);
+        return -1*AKU_EBAD_ARG;
     }
 
-    char series[AKU_LIMITS_MAX_SNAME];
-    // Copy tags without metrics to the end of the `series` array
-    int tagline_len = static_cast<int>(ksend - ksbegin + 1);  // +1 for space, cast is safe because ksend-ksbegin < AKU_LIMITS_MAX_SNAME
-    char* tagline = series + AKU_LIMITS_MAX_SNAME - tagline_len;
-    memcpy(tagline, buf + AKU_LIMITS_MAX_SNAME - tagline_len, static_cast<size_t>(tagline_len));
-    const char* send = series + AKU_LIMITS_MAX_SNAME;
-
-    const char* metric_it = ob;
-    bool done = false;
-    for (int i = 0; i < nmetric; i++) {
-        assert(!done);
-        // copy i'th metric to the `series` array
-        int metric_len = 0;
-        while(*metric_it != '|' && *metric_it != ' ') {
-            metric_len += 1;
-            metric_it  += 1;
-        }
-        if (*metric_it == ' ') {
-            // This is the last metric
-            done = true;
-        }
-        const char* src = metric_it - 1;
-        char* sbegin = tagline - 1;
-        for (; metric_len --> 0 ;) {
-            *sbegin = *src;
-            src--;
-            sbegin--;
-        }
-
+    if (nmetric == 1) {
+        // Fast path
         // Match series name locally (on success use local information)
         // Otherwise - match using global registry. On success - add global information to
         //  the local matcher. On error - add series name to global registry and then to
         //  the local matcher.
-        u64 id = local_matcher_.match(sbegin, send);
+        u64 id = local_matcher_.match(ob, ksend);
         if (!id) {
             // go to global registery
-            aku_Sample tmp;
-            status = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
-            ids[i] = tmp.paramid;
+            aku_Sample sample;
+            status = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
+            ids[0] = sample.paramid;
         } else {
             // initialize using local info
-            ids[i] = id;
+            ids[0] = id;
+        }
+    } else {
+        char series[AKU_LIMITS_MAX_SNAME];
+        // Copy tags without metrics to the end of the `series` array
+        int tagline_len = static_cast<int>(ksend - ksbegin + 1);  // +1 for space, cast is safe because ksend-ksbegin < AKU_LIMITS_MAX_SNAME
+        char* tagline = series + AKU_LIMITS_MAX_SNAME - tagline_len;
+        memcpy(tagline, buf + AKU_LIMITS_MAX_SNAME - tagline_len, static_cast<size_t>(tagline_len));
+        const char* send = series + AKU_LIMITS_MAX_SNAME;
+
+        const char* metric_it = ob;
+        bool done = false;
+        for (int i = 0; i < nmetric; i++) {
+            assert(!done);
+            // copy i'th metric to the `series` array
+            int metric_len = 0;
+            while(*metric_it != '|' && *metric_it != ' ') {
+                metric_len += 1;
+                metric_it  += 1;
+            }
+            if (*metric_it == ' ') {
+                // This is the last metric
+                done = true;
+            }
+            const char* src = metric_it - 1;
+            char* sbegin = tagline - 1;
+            for (; metric_len --> 0 ;) {
+                *sbegin = *src;
+                src--;
+                sbegin--;
+            }
+
+            // Match series name locally (on success use local information)
+            // Otherwise - match using global registry. On success - add global information to
+            //  the local matcher. On error - add series name to global registry and then to
+            //  the local matcher.
+            u64 id = local_matcher_.match(sbegin, send);
+            if (!id) {
+                // go to global registery
+                aku_Sample tmp;
+                status = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
+                ids[i] = tmp.paramid;
+            } else {
+                // initialize using local info
+                ids[i] = id;
+            }
         }
     }
-    return nmetric;
+    return static_cast<int>(nmetric);
 }
 
 int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {

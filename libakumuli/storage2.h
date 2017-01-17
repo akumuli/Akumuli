@@ -58,7 +58,7 @@ public:
 
     /** Match series name in joined form (foo:bar:buz tag=val will is a shorthand for foo tag=val, bar tag=val
      * and buz tag=val). Return array of series ids in order (foo, bar, buz) through ids array.
-     * Return number of series or negative value on error.
+     * Return number of series or negative value on error (error code * -1).
      */
     int get_series_ids(const char* begin, const char* end, aku_ParamId* ids, size_t ids_size);
 
