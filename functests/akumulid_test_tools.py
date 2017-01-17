@@ -57,13 +57,13 @@ def msg(timestamp, value, metric, **tags):
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
 def bulk_msg(ts, measurements, **tags):
-    ncol = 2 + len(measurements)*2
-    header = "*{0}".format(ncol)
-    tagline = "+" + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
+    ncol = len(measurements)
+    metric = "|".join(measurements.keys())
+    sname = "+" + metric + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
     timestr = ts.strftime('+%Y%m%dT%H%M%S.%f')
-    lines = [header, tagline, timestr]
+    header = "*{0}".format(ncol)
+    lines = [sname, timestr, header]
     for metric, val in measurements.iteritems():
-        lines.append("+{0}".format(metric))
         lines.append("+{0}".format(val))
     return '\r\n'.join(lines) + '\r\n'
 
