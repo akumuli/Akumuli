@@ -175,31 +175,27 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         char series[AKU_LIMITS_MAX_SNAME];
         // Copy tags without metrics to the end of the `series` array
         int tagline_len = static_cast<int>(ksend - ksbegin + 1);  // +1 for space, cast is safe because ksend-ksbegin < AKU_LIMITS_MAX_SNAME
+        const char* metric_end = ksbegin - 1;  // -1 for space
         char* tagline = series + AKU_LIMITS_MAX_SNAME - tagline_len;
-        memcpy(tagline, buf + AKU_LIMITS_MAX_SNAME - tagline_len, static_cast<size_t>(tagline_len));
-        const char* send = series + AKU_LIMITS_MAX_SNAME;
+        memcpy(tagline, metric_end, static_cast<size_t>(tagline_len));
+        char* send = series + AKU_LIMITS_MAX_SNAME;
 
-        const char* metric_it = ob;
         bool done = false;
+        const char* it_begin = ob;
+        const char* it_end = ob;
         for (int i = 0; i < nmetric; i++) {
             assert(!done);
             // copy i'th metric to the `series` array
-            int metric_len = 0;
-            while(*metric_it != '|' && *metric_it != ' ') {
-                metric_len += 1;
-                metric_it  += 1;
+            while(*it_end != '|' && it_end < metric_end) {
+                it_end++;
             }
-            if (*metric_it == ' ') {
-                // This is the last metric
-                done = true;
-            }
-            const char* src = metric_it - 1;
-            char* sbegin = tagline - 1;
-            for (; metric_len --> 0 ;) {
-                *sbegin = *src;
-                src--;
-                sbegin--;
-            }
+            // Copy metric name to `series` array
+            auto metric_len = it_end - it_begin;
+            char* sbegin = tagline - metric_len;
+            memcpy(sbegin, it_begin, metric_len);
+            // Move to next metric (if any)
+            it_end++;
+            it_begin = it_end;
 
             // Match series name locally (on success use local information)
             // Otherwise - match using global registry. On success - add global information to
