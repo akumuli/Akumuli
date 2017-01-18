@@ -180,11 +180,9 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         memcpy(tagline, metric_end, static_cast<size_t>(tagline_len));
         char* send = series + AKU_LIMITS_MAX_SNAME;
 
-        bool done = false;
         const char* it_begin = ob;
         const char* it_end = ob;
         for (int i = 0; i < nmetric; i++) {
-            assert(!done);
             // copy i'th metric to the `series` array
             while(*it_end != '|' && it_end < metric_end) {
                 it_end++;

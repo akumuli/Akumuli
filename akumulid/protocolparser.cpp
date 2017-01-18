@@ -331,7 +331,7 @@ void ProtocolParser::worker() {
     // Buffer to read strings from
     u64 paramids[AKU_LIMITS_MAX_ROW_WIDTH];
     double values[AKU_LIMITS_MAX_ROW_WIDTH];
-    int rowwidth;
+    int rowwidth = 0;
     const int buffer_len = RESPStream::STRING_LENGTH_MAX;
     Byte buffer[buffer_len] = {};
     int bytes_read = 0;
