@@ -4,8 +4,19 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <iostream>
 
 namespace Akumuli {
+
+SimplePredictor::SimplePredictor(size_t) : last_value(0) {}
+
+u64 SimplePredictor::predict_next() const {
+    return last_value;
+}
+
+void SimplePredictor::update(u64 value) {
+    last_value = value;
+}
 
 FcmPredictor::FcmPredictor(size_t table_size)
     : last_hash(0ull)
@@ -114,7 +125,17 @@ static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
         // FcmStreamWriter & FcmStreamReader //
         // ///////////////////////////////// //
 
+struct StreamStats {
+    u64 ncalls = 0;
+    u64 nzeros = 0;
 
+    ~StreamStats() {
+        std::cout << "NCalls: " << ncalls << std::endl;
+        std::cout << "NZeros: " << nzeros << std::endl;
+    }
+};
+
+static StreamStats sstat;
 
 FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
     : stream_(stream)
@@ -125,22 +146,49 @@ FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
 {
 }
 
+
 bool FcmStreamWriter::tput(double const* values, size_t n) {
-    assert(n % 2 == 0);
-    for (size_t i = 0; i < n; i+=2) {
-        u64 prev_diff, curr_diff;
-        unsigned char prev_flag, curr_flag;
-        std::tie(prev_diff, prev_flag) = encode(values[i]);
-        std::tie(curr_diff, curr_flag) = encode(values[i + 1]);
-        unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
-        if (!stream_.put_raw(flags)) {
+    sstat.ncalls++;
+    assert(n == 16);
+    u8  flags[16];
+    u64 diffs[16];
+    for (u32 i = 0; i < n; i++) {
+        std::tie(diffs[i], flags[i]) = encode(values[i]);
+    }
+    u64 sum_diff = 0;
+    for (u32 i = 0; i < n; i++) {
+        sum_diff |= diffs[i];
+    }
+    if (sum_diff == 0) {
+        // Shortcut
+        sstat.nzeros++;
+        if (!stream_.put_raw((u8)0xFF)) {
             return false;
         }
-        if (!encode_value(stream_, prev_diff, prev_flag)) {
-            return false;
-        }
-        if (!encode_value(stream_, curr_diff, curr_flag)) {
-            return false;
+    } else {
+        for (size_t i = 0; i < n; i+=2) {
+            u64 prev_diff, curr_diff;
+            unsigned char prev_flag, curr_flag;
+            prev_diff = diffs[i];
+            curr_diff = diffs[i+1];
+            prev_flag = flags[i];
+            curr_flag = flags[i+1];
+            if (curr_flag == 0xF) {
+                curr_flag = 0;
+            }
+            if (prev_flag == 0xF) {
+                prev_flag = 0;
+            }
+            unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
+            if (!stream_.put_raw(flags)) {
+                return false;
+            }
+            if (!encode_value(stream_, prev_diff, prev_flag)) {
+                return false;
+            }
+            if (!encode_value(stream_, curr_diff, curr_flag)) {
+                return false;
+            }
         }
     }
     return commit();
@@ -156,29 +204,35 @@ std::tuple<u64, unsigned char> FcmStreamWriter::encode(double value) {
     predictor_.update(curr.bits);
     u64 diff = curr.bits ^ predicted;
 
-    int leading_zeros = 64;
-    int trailing_zeros = 64;
+    // Number of trailing and leading zero-bytes
+    int leading_bytes = 8;
+    int trailing_bytes = 8;
 
     if (diff != 0) {
-        trailing_zeros = __builtin_ctzl(diff);
-    }
-    if (diff != 0) {
-        leading_zeros = __builtin_clzl(diff);
+        trailing_bytes = __builtin_ctzl(diff) / 8;
+        leading_bytes = __builtin_clzl(diff) / 8;
+    } else {
+        // Fast path for 0-diff values.
+        // Flags 7 and 15 are interchangeable.
+        // If there is 0 trailing zero bytes and 0 leading bytes
+        // code will always generate flag 7 so we can use flag 17
+        // for something different (like 0 indication)
+        return std::make_tuple(0, 0xF);
     }
 
     int nbytes;
     unsigned char flag;
 
-    if (trailing_zeros > leading_zeros) {
+    if (trailing_bytes > leading_bytes) {
         // this would be the case with low precision values
-        nbytes = 8 - trailing_zeros / 8;
+        nbytes = 8 - trailing_bytes;
         if (nbytes > 0) {
             nbytes--;
         }
         // 4th bit indicates that only leading bytes are stored
         flag = 8 | (nbytes&7);
     } else {
-        nbytes = 8 - leading_zeros / 8;
+        nbytes = 8 - leading_bytes;
         if (nbytes > 0) {
             nbytes--;
         }
