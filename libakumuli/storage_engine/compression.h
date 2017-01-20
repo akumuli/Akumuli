@@ -844,8 +844,8 @@ struct Dfcm2Predictor {
     void update(u64 value);
 };
 
-//typedef DfcmPredictor PredictorT;
-typedef SimplePredictor PredictorT;
+typedef DfcmPredictor PredictorT;
+//typedef SimplePredictor PredictorT;
 
 //! Double to FCM encoder
 struct FcmStreamWriter {
