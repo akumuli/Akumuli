@@ -165,6 +165,7 @@ bool FcmStreamWriter::tput(double const* values, size_t n) {
         if (!stream_.put_raw((u8)0xFF)) {
             return false;
         }
+        return true;
     } else {
         for (size_t i = 0; i < n; i+=2) {
             u64 prev_diff, curr_diff;
