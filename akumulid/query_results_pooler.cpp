@@ -321,13 +321,24 @@ struct RESPOutputFormatter : OutputFormatter {
             } bits;
             bits.d = sample.payload.float64;
             int nelements_set = popcount(bits.u);
+
+            // Output RESP array, start with number of elements
+            len = snprintf(begin, size, "*%d\r\n", nelements_set);
+            if (len == size || len < 0) {
+                return nullptr;
+            }
+            begin += len;
+            size  -= len;
+
+            // Output array elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
             for (int ix = 0; ix < nelements_set; ix++) {
                 if (bits.d && (1 << ix)) {
                     len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
                 } else {
-                    // Empty tuple value
-                    len = snprintf(begin, size, "+\r\n");
+                    // Empty tuple value encountered. RESP uses bulk string with length equal to -1
+                    // to represent Null values.
+                    len = snprintf(begin, size, "$-1\r\n");
                 }
                 if (len == size || len < 0) {
                     return nullptr;
