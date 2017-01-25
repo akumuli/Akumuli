@@ -874,6 +874,7 @@ struct FcmStreamReader {
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
+    u32                  nzeroes_;
 
     FcmStreamReader(VByteStreamReader& stream);
 

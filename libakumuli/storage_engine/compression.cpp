@@ -57,38 +57,11 @@ void DfcmPredictor::update(u64 value) {
 
 static const int PREDICTOR_N = 1 << 7;
 
-struct StreamStats {
-    u64 ncalls = 0;
-    u64 nzeros = 0;
-    std::unordered_map<int, int> sizes = {
-        { 0, 0 },
-        { 1, 0 },
-        { 2, 0 },
-        { 3, 0 },
-        { 4, 0 },
-        { 5, 0 },
-        { 6, 0 },
-        { 7, 0 },
-        { 8, 0 },
-    };
-
-    ~StreamStats() {
-        std::cout << "NCalls: " << ncalls << std::endl;
-        std::cout << "NZeros: " << nzeros << std::endl;
-        for (auto kv: sizes) {
-            std::cout << "size " << kv.first << " - " << kv.second << " times" << std::endl;
-        }
-    }
-};
-
-static StreamStats sstat;
-
 template<class StreamT>
 static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
-    sstat.sizes[nbytes]++;
     switch(nbytes) {
     case 8:
         if (!wstream.put_raw(diff)) {
@@ -163,7 +136,6 @@ FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
 
 
 bool FcmStreamWriter::tput(double const* values, size_t n) {
-    sstat.ncalls++;
     assert(n == 16);
     u8  flags[16];
     u64 diffs[16];
@@ -176,8 +148,6 @@ bool FcmStreamWriter::tput(double const* values, size_t n) {
     }
     if (sum_diff == 0) {
         // Shortcut
-        sstat.nzeros++;
-        sstat.sizes[0] += 16;
         if (!stream_.put_raw((u8)0xFF)) {
             return false;
         }
@@ -262,6 +232,9 @@ bool FcmStreamWriter::put(double value) {
     u64 diff;
     unsigned char flag;
     std::tie(diff, flag) = encode(value);
+    if (flag == 0xF) {
+        flag = 0;  // Just store one byte, space opt. is disabled
+    }
     if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
         prev_flag_ = flag;
@@ -383,18 +356,29 @@ FcmStreamReader::FcmStreamReader(VByteStreamReader& stream)
     , predictor_(PREDICTOR_N)
     , flags_(0)
     , iter_(0)
+    , nzeroes_(0)
 {
 }
 
 double FcmStreamReader::next() {
     unsigned char flag = 0;
-    if (iter_++ % 2 == 0) {
+    if (iter_++ % 2 == 0 && nzeroes_ == 0) {
         flags_ = static_cast<u32>(stream_.read_raw<u8>());
+        if (flags_ == 0xFF) {
+            // Shortcut
+            nzeroes_ = 16;
+        }
         flag = static_cast<unsigned char>(flags_ >> 4);
     } else {
         flag = static_cast<unsigned char>(flags_ & 0xF);
     }
-    u64 diff = decode_value(stream_, flag);
+    u64 diff;
+    if (nzeroes_ == 0) {
+        diff = decode_value(stream_, flag);
+    } else {
+        diff = 0ull;
+        nzeroes_--;
+    }
     union {
         u64 bits;
         double real;

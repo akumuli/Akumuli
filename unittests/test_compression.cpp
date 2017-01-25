@@ -343,6 +343,13 @@ BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
     test_doubles_compression(input);
 }
 
+BOOST_AUTO_TEST_CASE(Test_doubles_compression_3_series) {
+    std::vector<double> input(32, 0);
+    input.push_back(111.222);
+    input.push_back(333.444);
+    test_doubles_compression(input);
+}
+
 //! Generate time-series from random walk
 struct RandomWalk {
     std::random_device                  randdev;
@@ -364,7 +371,7 @@ struct RandomWalk {
 };
 
 
-void test_float_compression(double start) {
+void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
     RandomWalk rwalk(start, 1., .11);
     int N = 10000;
     std::vector<double> samples;
@@ -374,17 +381,23 @@ void test_float_compression(double start) {
     // Compress
     VByteStreamWriter wstream(block.data(), block.data() + block.size());
     FcmStreamWriter writer(wstream);
-    for (int ix = 0; ix < N; ix++) {
+    if (psrc == nullptr) {
         double val = rwalk.generate();
-        writer.put(val);
         samples.push_back(val);
+    } else {
+        samples = *psrc;
+    }
+
+    for (size_t ix = 0; ix < samples.size(); ix++) {
+        auto val = samples.at(ix);
+        writer.put(val);
     }
     writer.commit();
 
     // Decompress
     VByteStreamReader rstream(block.data(), block.data() + block.size());
     FcmStreamReader reader(rstream);
-    for (int ix = 0; ix < N; ix++) {
+    for (size_t ix = 0; ix < samples.size(); ix++) {
         double val = reader.next();
         if (val != samples.at(ix)) {
             BOOST_REQUIRE(val == samples.at(ix));
@@ -410,6 +423,13 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_3) {
 
 BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
     test_float_compression(-1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_float_compression_5) {
+    std::vector<double> samples(998, 3.14159);
+    samples.push_back(111.222);
+    samples.push_back(222.333);
+    test_float_compression(0, &samples);
 }
 
 void test_block_compression(double start, unsigned N=10000, bool regullar=false) {
