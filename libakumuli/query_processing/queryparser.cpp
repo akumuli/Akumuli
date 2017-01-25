@@ -718,9 +718,9 @@ static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
             if (first) {
                 first = false;
             } else {
-                str << ':';
+                str << '|';
             }
-            str << metric_name << "." << Aggregation::to_string(func);
+            str << metric_name << ":" << Aggregation::to_string(func);
         }
         str << tags;
         matcher->_add(str.str(), id);
