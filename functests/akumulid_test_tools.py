@@ -108,9 +108,9 @@ def infinite_msg_stream(batch_size, metric_name, **kwargs):
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
     sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
     while True:
-        divider = 1.0 + random.random()*10.0
+        value = float(i) * random.random()
         dt = datetime.datetime.utcnow()
-        m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), float(i), sseries)
+        m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), value, sseries)
         yield m
         i += 1
 
