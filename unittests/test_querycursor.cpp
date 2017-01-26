@@ -79,9 +79,13 @@ struct SessionMock : DbSession {
         if (strid.size() < buffer_size) {
             memcpy(buffer, strid.data(), strid.size());
             buffer[strid.size()] = 0;
-            return strid.size() + 1;
+            return static_cast<int>(strid.size()) + 1;
         }
-        return -1*strid.size();
+        return -1*static_cast<int>(strid.size());
+    }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        throw "not implemented";
     }
 
     aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {

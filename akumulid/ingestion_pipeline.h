@@ -63,6 +63,8 @@ struct DbSession {
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
 
     virtual aku_Status series_to_param_id(const char* name, size_t size, aku_Sample* sample) = 0;
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) = 0;
 };
 
 
@@ -86,6 +88,7 @@ public:
     virtual std::shared_ptr<DbCursor> search(std::string query) override;
     virtual int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) override;
     virtual aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) override;
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override;
 };
 
 

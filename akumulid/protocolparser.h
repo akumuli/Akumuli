@@ -114,8 +114,8 @@ public:
 
 
 class ProtocolParser {
-    ReadBuffer                         rdbuf_;
     bool                               done_;
+    ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
 
@@ -124,7 +124,8 @@ class ProtocolParser {
     //! Generate error message
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
-    void backlog_top() const;
+    bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
+    bool parse_values(RESPStream& stream, double* values, int nvalues);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB

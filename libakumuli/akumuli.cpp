@@ -137,6 +137,10 @@ public:
         return session_->init_series_id(begin, end, out_sample);
     }
 
+    int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* out_ids, u32 out_ids_cap) {
+        return session_->get_series_ids(begin, end, out_ids, out_ids_cap);
+    }
+
     int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
         return session_->get_series_name(id, buffer, size);
     }
@@ -274,6 +278,11 @@ aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sample) {
 aku_Status aku_series_to_param_id(aku_Session* session, const char* begin, const char* end, aku_Sample* sample) {
     auto ises = reinterpret_cast<Session*>(session);
     return ises->series_to_param_id(begin, end, sample);
+}
+
+int aku_name_to_param_id_list(aku_Session* ist, const char* begin, const char* end, aku_ParamId* out_ids, u32 out_ids_cap) {
+    auto ises = reinterpret_cast<Session*>(ist);
+    return ises->name_to_param_id_list(begin, end, out_ids, out_ids_cap);
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters) {

@@ -14,6 +14,7 @@ target_link_libraries(storage_test
 file(COPY
     akumulid_test_tools.py
     test_data_ingestion.py
+    test_data_ingestion_bulk.py
     test_query_language.py
     test_continuous_queries.py
     test_volume_overflow.py
