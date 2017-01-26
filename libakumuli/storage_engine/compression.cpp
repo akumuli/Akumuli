@@ -733,7 +733,7 @@ DataBlockReader::DataBlockReader(u8 const* buf, size_t bufsize)
     , read_buffer_{}
     , read_index_(0)
 {
-    assert(bufsize > 14);
+    assert(bufsize > 13);
 }
 
 static u16 get_block_version(const u8* pdata) {
