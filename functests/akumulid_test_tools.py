@@ -107,12 +107,14 @@ def infinite_msg_stream(batch_size, metric_name, **kwargs):
     dt = datetime.datetime.utcnow()
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
     sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
+    usec_delta = 0
     while True:
-        value = 2*float(i)
-        dt = datetime.datetime.utcnow()
+        value = float(i)
+        dt = dt + datetime.timedelta(microseconds=usec_delta)
         m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), value, sseries)
         yield m
         i += 1
+        usec_delta += i * 100 * random.random()
 
 def make_select_query(metric, begin, end, **kwargs):
     query = {

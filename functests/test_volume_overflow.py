@@ -75,7 +75,7 @@ def read_in_backward_direction(batch_size):
 
             if exp_value:
                 if val_count % batch_size == 0:
-                    exp_value = 2 * (exp_value/2 - 1)
+                    exp_value -= 1
 
             if iterations % batch_size == 0:
                 if iterations % (batch_size*1000) == 0:
