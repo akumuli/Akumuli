@@ -104,17 +104,13 @@ def generate_messages3(dt, delta, N, metric_name, tagslist):
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
-    dt = datetime.datetime.utcnow()
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
     sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
-    usec_delta = 0
     while True:
-        value = float(i)
-        dt = dt + datetime.timedelta(microseconds=usec_delta)
-        m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), value, sseries)
+        dt = datetime.datetime.utcnow()
+        m = template.format(dt.strftime('%Y%m%dT%H%M%S.%f'), float(i), sseries)
         yield m
         i += 1
-        usec_delta += i * 100 * random.random()
 
 def make_select_query(metric, begin, end, **kwargs):
     query = {
