@@ -102,7 +102,7 @@ def reader(dtstart, delta, N):
             try:
                 query = att.makequery("test", begin, end, **query_params)
                 print("Query: {0}".format(query))
-                queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+                queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
                 response = urlopen(queryurl, json.dumps(query))
                 def count_lines(seq):
                     global processed

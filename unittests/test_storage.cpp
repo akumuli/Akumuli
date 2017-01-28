@@ -677,5 +677,83 @@ BOOST_AUTO_TEST_CASE(Test_series_retreiver_1) {
     test_retreiver();
 }
 
+BOOST_AUTO_TEST_CASE(Test_series_add_1) {
+    const char* sname = "hello|world tag=1";
+    const char* end = sname + strlen(sname);
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[10];
+    auto nids = session->get_series_ids(sname, end, ids, 10);
+    BOOST_REQUIRE_EQUAL(nids, 2);
+
+    char buf[100];
+    auto buflen = session->get_series_name(ids[0], buf, 100);
+    std::string name0(buf, buf + buflen);
+    BOOST_REQUIRE_EQUAL(name0, "hello tag=1");
+    buflen = session->get_series_name(ids[1], buf, 100);
+    std::string name1(buf, buf + buflen);
+    BOOST_REQUIRE_EQUAL(name1, "world tag=1");
+}
+
+// No input
+BOOST_AUTO_TEST_CASE(Test_series_add_2) {
+    const char* sname = "";
+    const char* end = sname;
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[10];
+    auto nids = session->get_series_ids(sname, end, ids, 10);
+    BOOST_REQUIRE_EQUAL(-1*nids, AKU_EBAD_DATA);
+}
+
+// No tags
+BOOST_AUTO_TEST_CASE(Test_series_add_3) {
+    const char* sname = "hello|world";
+    const char* end = sname + strlen(sname);
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[10];
+    auto nids = session->get_series_ids(sname, end, ids, 10);
+    BOOST_REQUIRE_EQUAL(-1*nids, AKU_EBAD_DATA);
+}
+
+// ids array is too small
+BOOST_AUTO_TEST_CASE(Test_series_add_4) {
+    const char* sname = "hello|world tag=val";
+    const char* end = sname + strlen(sname);
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[1];
+    auto nids = session->get_series_ids(sname, end, ids, 1);
+    BOOST_REQUIRE_EQUAL(-1*nids, AKU_EBAD_ARG);
+}
+
+// Series too long
+BOOST_AUTO_TEST_CASE(Test_series_add_5) {
+    std::stringstream strstr;
+    strstr << "metric0";
+    for (int i = 1; i < 1000; i++) {
+        strstr << "|metric" << i;
+    }
+    strstr << " tag=value";
+
+    auto sname = strstr.str();
+
+    auto store = create_storage();
+    auto session = store->create_write_session();
+
+    aku_ParamId ids[100];
+    auto nids = session->get_series_ids(sname.data(), sname.data() + sname.size(), ids, 100);
+    BOOST_REQUIRE_EQUAL(-1*nids, AKU_EBAD_DATA);
+}
+
 // Test reopen
 

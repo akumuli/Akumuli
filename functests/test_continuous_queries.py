@@ -69,7 +69,7 @@ def reader(dtstart, delta, N):
                                         (delta.seconds*1000000.0 + delta.microseconds))) + 1
         query_params = {"output": { "format":  "csv" }}
         query = att.makequery("test", begin, end, **query_params)
-        queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+        queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
         response = urlopen(queryurl, json.dumps(query))
 
         exp_ts = begin

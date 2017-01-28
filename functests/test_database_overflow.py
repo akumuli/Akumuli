@@ -38,7 +38,7 @@ def read_in_backward_direction(batch_size):
     begin = datetime.datetime(year=2100, month=1, day=1)
     end = datetime.datetime(year=1970, month=1, day=1)
     query = att.makequery("temp", begin, end, output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(host, httpport)
+    queryurl = "http://{0}:{1}/api/query".format(host, httpport)
     response = urllib.urlopen(queryurl, json.dumps(query))
 
     iterations = 0
@@ -109,7 +109,7 @@ def main(path):
     time.sleep(5)
     try:
         # fill data in
-        statsurl = "http://{0}:{1}/stats".format(host, httpport)
+        statsurl = "http://{0}:{1}/api/stats".format(host, httpport)
         chan = TCPChan(host, tcpport)
 
         def get_free_space():

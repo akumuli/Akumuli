@@ -321,13 +321,24 @@ struct RESPOutputFormatter : OutputFormatter {
             } bits;
             bits.d = sample.payload.float64;
             int nelements_set = popcount(bits.u);
+
+            // Output RESP array, start with number of elements
+            len = snprintf(begin, size, "*%d\r\n", nelements_set);
+            if (len == size || len < 0) {
+                return nullptr;
+            }
+            begin += len;
+            size  -= len;
+
+            // Output array elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
             for (int ix = 0; ix < nelements_set; ix++) {
                 if (bits.d && (1 << ix)) {
                     len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
                 } else {
-                    // Empty tuple value
-                    len = snprintf(begin, size, "+\r\n");
+                    // Empty tuple value encountered. RESP uses bulk string with length equal to -1
+                    // to represent Null values.
+                    len = snprintf(begin, size, "$-1\r\n");
                 }
                 if (len == size || len < 0) {
                     return nullptr;
@@ -387,7 +398,15 @@ void QueryResultsPooler::start() {
     enum Format { RESP, CSV };  // TODO: add protobuf support
     bool use_iso_timestamps = true;
     Format output_format = RESP;
-    boost::property_tree::ptree tree = from_json(query_text_);
+    boost::property_tree::ptree tree;
+    try {
+        tree = from_json(query_text_);
+    } catch (boost::property_tree::json_parser_error const& e) {
+        logger.error() << "Bad JSON document received, error: " << e.what();
+        // We need to pass invalid document further to generate proper error response
+        cursor_ = session_->search(query_text_);
+        return;
+    }
     auto output = tree.get_child_optional("output");
     if (output) {
         for (auto kv: *output) {
@@ -453,9 +472,9 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
             // Some error occured, put error message to the outgoing buffer and return
             int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
             if (len > 0) {
-                return std::make_tuple((size_t)len, true);
+                return std::make_tuple((size_t)len, false);
             }
-            return std::make_tuple(0u, true);
+            return std::make_tuple(0u, false);
         }
     }
 

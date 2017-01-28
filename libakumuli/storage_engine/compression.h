@@ -791,6 +791,16 @@ template <typename TVal> struct RLEStreamReader {
     const unsigned char* pos() const { return stream_.pos(); }
 };
 
+struct SimplePredictor {
+    u64 last_value;
+
+    SimplePredictor(size_t);
+
+    u64 predict_next() const;
+
+    void update(u64 value);
+};
+
 struct FcmPredictor {
     std::vector<u64> table;
     u64              last_hash;
@@ -835,6 +845,7 @@ struct Dfcm2Predictor {
 };
 
 typedef DfcmPredictor PredictorT;
+//typedef SimplePredictor PredictorT;
 
 //! Double to FCM encoder
 struct FcmStreamWriter {
@@ -863,6 +874,7 @@ struct FcmStreamReader {
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
+    u32                  nzeroes_;
 
     FcmStreamReader(VByteStreamReader& stream);
 

@@ -54,7 +54,7 @@ def main(path, protocol):
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 1000000
         print("Sending {0} messages through {1}...".format(nmsgs, protocol))
-        for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
+        for it in att.generate_bulk_messages(dt, delta, nmsgs, ['foo', 'bar', 'buz'], tag='test'):
             chan.send(it)
 
         # check stats

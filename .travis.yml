@@ -42,6 +42,8 @@ script:
   - akumulid/akumulid --init
   - python functests/test_data_ingestion.py akumulid/ TCP
   - python functests/test_data_ingestion.py akumulid/ UDP
+  - python functests/test_data_ingestion_bulk.py akumulid/ TCP
+  - python functests/test_data_ingestion_bulk.py akumulid/ UDP
   - python functests/test_query_language.py akumulid/
   - python functests/test_volume_overflow.py akumulid/
   - python functests/test_database_overflow.py akumulid/

@@ -76,6 +76,11 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
             BadDateTimeFormat error("can't parse unix-timestamp from string");
             BOOST_THROW_EXCEPTION(error);
         }
+        long parsed_len = end - iso_str;
+        if (parsed_len < len) {
+            BadDateTimeFormat error("unknown timestamp format");
+            BOOST_THROW_EXCEPTION(error);
+        }
         return ts;
     }
     if (len < 15) {

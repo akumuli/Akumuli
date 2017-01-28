@@ -3,6 +3,7 @@ import sys
 import subprocess
 import socket
 import datetime
+import random
 try:
     import ConfigParser as ini
 except ImportError:
@@ -56,6 +57,25 @@ def msg(timestamp, value, metric, **tags):
     strval  = '+{0}'.format(value)
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
+def bulk_msg(ts, measurements, **tags):
+    ncol = len(measurements)
+    metric = "|".join(measurements.keys())
+    sname = "+" + metric + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
+    timestr = ts.strftime('+%Y%m%dT%H%M%S.%f')
+    header = "*{0}".format(ncol)
+    lines = [sname, timestr, header]
+    for metric, val in measurements.iteritems():
+        lines.append("+{0}".format(val))
+    return '\r\n'.join(lines) + '\r\n'
+
+def generate_bulk_messages(dt, delta, N, metric_names, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        values = [(name, i + i*(ix*10)) for ix, name in enumerate(metric_names)]
+        m = bulk_msg(dt, dict(values), **tags)
+        dt = dt + delta
+        yield m
 
 def generate_messages(dt, delta, N, metric_name, **kwargs):
     for i in xrange(0, N):
@@ -84,7 +104,6 @@ def generate_messages3(dt, delta, N, metric_name, tagslist):
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
-    dt = datetime.datetime.utcnow()
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
     sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
     while True:

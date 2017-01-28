@@ -38,29 +38,21 @@ SocketT& TcpSession::socket() {
     return socket_;
 }
 
-std::tuple<TcpSession::BufferT, size_t, size_t> TcpSession::get_next_buffer(BufferT prev_buf,
-                                                                            size_t size,
-                                                                            size_t pos,
-                                                                            size_t bytes_read)
-{
-    Byte *buffer = (Byte*)malloc(BUFFER_SIZE);
-    auto deleter = [](Byte* p) {
-        free((void*)p);
-    };
-    std::shared_ptr<Byte> bufptr(buffer, deleter);
-    return std::make_tuple(bufptr, BUFFER_SIZE, 0u);
+std::tuple<TcpSession::BufferT, size_t> TcpSession::get_next_buffer() {
+    Byte *buffer = parser_.get_next_buffer();
+    return std::make_tuple(buffer, BUFFER_SIZE);
 }
 
-void TcpSession::start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_read) {
-    std::tie(buf, buf_size, pos) = get_next_buffer(buf, buf_size, pos, bytes_read);
+void TcpSession::start() {
+    BufferT buf;
+    size_t buf_size;
+    std::tie(buf, buf_size) = get_next_buffer();
     socket_.async_read_some(
-                boost::asio::buffer(buf.get() + pos, buf_size - pos),
+                boost::asio::buffer(buf, buf_size),
                 strand_.wrap(
                     boost::bind(&TcpSession::handle_read,
                                 shared_from_this(),
                                 buf,
-                                pos,
-                                buf_size,
                                 boost::asio::placeholders::error,
                                 boost::asio::placeholders::bytes_transferred)
                 ));
@@ -88,11 +80,7 @@ ErrorCallback TcpSession::get_error_cb() {
     return ErrorCallback(fn);
 }
 
-std::shared_ptr<Byte> TcpSession::NO_BUFFER = std::shared_ptr<Byte>();
-
 void TcpSession::handle_read(BufferT buffer,
-                             size_t pos,
-                             size_t buf_size,
                              boost::system::error_code error,
                              size_t nbytes) {
     if (error) {
@@ -100,22 +88,14 @@ void TcpSession::handle_read(BufferT buffer,
         parser_.close();
     } else {
         try {
-            PDU pdu = {
-                buffer,
-                static_cast<u32>(nbytes),
-                static_cast<u32>(pos),
-                static_cast<u32>(pos)
-            };
-            parser_.parse_next(pdu);
-            start(buffer, buf_size, pos, nbytes);
+            parser_.parse_next(buffer, static_cast<u32>(nbytes));
+            start();
         } catch (StreamError const& resp_err) {
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
-            logger_.error() << resp_err.get_bottom_line();
             boost::asio::streambuf stream;
             std::ostream os(&stream);
             os << "-PARSER " << resp_err.what() << "\r\n";
-            os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
             boost::asio::async_write(socket_, stream,
                                      boost::bind(&TcpSession::handle_write_error,
                                                  shared_from_this(),
@@ -259,7 +239,7 @@ void TcpAcceptor::_stop() {
 
 void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
-        session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
+        session->start();
         _start();
     } else {
         logger_.error() << "Acceptor error " << err.message();
@@ -310,7 +290,6 @@ void TcpServer::start(SignalHandler* sig, int id) {
                 self->barrier.wait();
             } catch (RESPError const& e) {
                 logger.error() << e.what();
-                logger.info() << e.get_bottom_line();
                 throw;
             } catch (...) {
                 logger.error() << "Error in event loop " << cnt << ": " << boost::current_exception_diagnostic_information();

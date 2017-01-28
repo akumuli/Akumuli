@@ -47,9 +47,9 @@ static const SubtreeRef INIT_SUBTREE_REF = {
     //! Registration time of the smallest value
     std::numeric_limits<aku_Timestamp>::max(),
     //! Largest value
-    std::numeric_limits<double>::min(),
+    std::numeric_limits<double>::lowest(),
     //! Registration time of the largest value
-    std::numeric_limits<aku_Timestamp>::min(),
+    std::numeric_limits<aku_Timestamp>::lowest(),
     //! Summ of all elements in subtree
     .0,
     //! First value in subtree
@@ -490,6 +490,7 @@ std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NB
     std::vector<NBTreeAggregationResult> outval(SZBUF, INIT_AGGRES);
     std::vector<aku_Timestamp> outts(SZBUF, 0);
     ssize_t ressz;
+    int nagg = 0;
     while(iter_index_ < iter_.size()) {
         std::tie(status, ressz) = iter_[iter_index_]->read(outts.data(), outval.data(), SZBUF);
         if (ressz != 0) {
@@ -499,6 +500,7 @@ std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NB
                                 return lhs;
                             });
             tsresult = outts[static_cast<size_t>(ressz)-1];
+            nagg++;
         }
         if (status == AKU_ENO_DATA) {
             // This leaf node is empty, continue with next.
@@ -510,9 +512,13 @@ std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NB
             return std::make_pair(status, 0);
         }
     }
-    destts[0] = tsresult;
-    destval[0] = xsresult;
-    return std::make_tuple(AKU_SUCCESS, 1);
+    size_t result_size = 0;
+    if (nagg != 0) {
+        result_size = 1;
+        destts[0] = tsresult;
+        destval[0] = xsresult;
+    }
+    return std::make_tuple(AKU_SUCCESS, result_size);
 }
 
 NBTreeAggregator::Direction IteratorAggregate::get_direction() {
@@ -1080,6 +1086,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
     NBTreeAggregationResult outxs = INIT_AGGRES;
     ssize_t outsz = 0;
     aku_Status status;
+    int nagg = 0;
     while(true) {
         std::tie(status, outsz) = iter(tss.data(), xss.data(), SZBUF);
         if ((status == AKU_SUCCESS || status == AKU_ENO_DATA) && outsz != 0) {
@@ -1090,12 +1097,18 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
                             return lhs;
                         });
             size = 1;
+            nagg++;
         } else if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
             size = 0;
             break;
         } else if (outsz == 0) {
-            destval[0] = outxs;
-            destts[0] = outts;
+            if (nagg) {
+                destval[0] = outxs;
+                destts[0] = outts;
+                size = 1;
+            } else {
+                size = 0;
+            }
             break;
         }
     }
@@ -1192,6 +1205,9 @@ std::tuple<aku_Status, size_t> NBTreeLeafGroupAggregator::read(aku_Timestamp *de
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
     if (enable_cached_metadata_) {
+        if (metacache_.count == 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
         // Fast path. Use metadata to compute results.
         destts[0] = metacache_.begin;
         destxs[0].copy_from(metacache_);
@@ -1397,9 +1413,14 @@ public:
                 if (pos_ > 0) {
                     auto const& last  = rdbuf_.at(pos_ - 1);
                     auto const& first = outxs.front();
-                    auto const  delta = begin_ < end_ ? first._begin - last._begin
-                                                      : last._end - first._end;
-                    if (delta < step_) {
+                    aku_Timestamp lastts = begin_ < end_ ? last._begin - begin_
+                                                         : begin_ - last._begin;
+                    aku_Timestamp firstts = begin_ < end_ ? first._begin - begin_
+                                                          : begin_ - first._begin;
+                    auto lastbin = lastts / step_;
+                    auto firstbin = firstts / step_;
+
+                    if (lastbin == firstbin) {
                         pos_--;
                     }
                 }

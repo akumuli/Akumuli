@@ -24,7 +24,7 @@ def test_read_all(dtstart, delta, N):
     begin = dtstart + delta*N
     end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     expected_tags = [

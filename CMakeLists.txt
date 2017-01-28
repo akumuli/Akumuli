@@ -47,6 +47,10 @@ include_directories("${SQLITE3_INCLUDE_DIR}")
 add_definitions(-std=c++1y -fvisibility=hidden)
 #endif()
 
+# json parser from boost::property_tree needs this badly
+add_definitions(-DBOOST_SPIRIT_THREADSAFE)
+add_definitions(-DBOOST_PHOENIX_THREADSAFE)
+
 include_directories(./include)
 
 add_subdirectory(libakumuli)

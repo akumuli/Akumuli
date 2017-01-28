@@ -648,7 +648,7 @@ struct RandomWalk {
         , distribution(mean, stddev)
         , value(start)
     {
-        generator.seed(0);
+        //generator.seed(1);
     }
 
     double next() {
@@ -1171,7 +1171,7 @@ BOOST_AUTO_TEST_CASE(Test_reopen_write_reopen) {
 }
 
 
-void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int start_offset) {
+void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int start_offset, const int ts_increment=1) {
     // Build this tree structure.
     aku_Timestamp begin = 1000;
     aku_Timestamp end = begin;
@@ -1190,13 +1190,14 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
     auto bucket_ix = 0ull;
     while(ncommits < commit_limit) {
         auto current_bucket = (end - query_begin) / step;
-        if (end >= query_begin && current_bucket > bucket_ix) {
+        if (end >= query_begin && current_bucket > bucket_ix && acc.cnt) {
             bucket_ix = current_bucket;
             buckets.push_back(acc);
             acc = INIT_AGGRES;
         }
         double value = rwalk.next();
-        aku_Timestamp ts = end++;
+        aku_Timestamp ts = end;
+        end += ts_increment;
         extents->append(ts, value);
         if (ts >= query_begin) {
             acc.add(ts, value, true);
@@ -1231,37 +1232,54 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
-    std::vector<std::tuple<u32, u32, int>> cases = {
-        std::make_tuple( 1,     100, 0),
-        std::make_tuple( 2,     100, 0),
-        std::make_tuple(10,     100, 0),
-        std::make_tuple(32,     100, 0),
-        std::make_tuple(32*32,  100, 0),
-        std::make_tuple(32*32,  100, 1),
-        std::make_tuple(32*32,  100,-1),
+    const int N_runs = 1;
+    std::vector<std::tuple<u32, u32, int, int>> cases = {
+        std::make_tuple( 1,     100, 0, 1),
+        std::make_tuple( 2,     100, 0, 1),
+        std::make_tuple(10,     100, 0, 1),
+        std::make_tuple(32,     100, 0, 1),
+        std::make_tuple(32*32,  100, 0, 1),
+        std::make_tuple(32*32,  100, 1, 1),
+        std::make_tuple(32*32,  100,-1, 1),
 
-        std::make_tuple( 1,    1000, 0),
-        std::make_tuple( 2,    1000, 0),
-        std::make_tuple(10,    1000, 0),
-        std::make_tuple(32,    1000, 0),
-        std::make_tuple(32*32, 1000, 0),
-        std::make_tuple(32*32, 1000, 1),
-        std::make_tuple(32*32, 1000,-1),
+        std::make_tuple( 1,    1000, 0, 1),
+        std::make_tuple( 2,    1000, 0, 1),
+        std::make_tuple(10,    1000, 0, 1),
+        std::make_tuple(32,    1000, 0, 1),
+        std::make_tuple(32*32, 1000, 0, 1),
+        std::make_tuple(32*32, 1000, 1, 1),
+        std::make_tuple(32*32, 1000,-1, 1),
 
-        std::make_tuple( 1,   10000, 0),
-        std::make_tuple( 2,   10000, 0),
-        std::make_tuple(10,   10000, 0),
-        std::make_tuple(32,   10000, 0),
-        std::make_tuple(32*32,10000, 0),
-        std::make_tuple(32*32,10000, 1),
-        std::make_tuple(32*32,10000,-1),
+        std::make_tuple( 1,   10000, 0, 1),
+        std::make_tuple( 2,   10000, 0, 1),
+        std::make_tuple(10,   10000, 0, 1),
+        std::make_tuple(32,   10000, 0, 1),
+        std::make_tuple(32*32,10000, 0, 1),
+        std::make_tuple(32*32,10000, 1, 1),
+        std::make_tuple(32*32,10000,-1, 1),
+
+        std::make_tuple(    1, 100, 0, 100),
+        std::make_tuple(   10, 100, 0, 100),
+        std::make_tuple(   32, 100, 0, 100),
+        std::make_tuple(32*32, 100, 0, 100),
+        std::make_tuple(32*32, 100, 1, 100),
+        std::make_tuple(32*32, 100,-1, 100),
+
+        std::make_tuple(    1, 100, 0, 1000),
+        std::make_tuple(   10, 100, 0, 1000),
+        std::make_tuple(   32, 100, 0, 1000),
+        std::make_tuple(32*32, 100, 0, 1000),
+        std::make_tuple(32*32, 100, 1, 1000),
+        std::make_tuple(32*32, 100,-1, 1000),
     };
-    for (auto t: cases) {
-        test_nbtree_group_aggregate_forward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+    for (int i = 0; i < N_runs; i++) {
+        for (auto t: cases) {
+            test_nbtree_group_aggregate_forward(std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t));
+        }
     }
 }
 
-void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int start_offset) {
+void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int start_offset, const int ts_inc=1) {
     // Build this tree structure.
     aku_Timestamp begin = 1000;
     aku_Timestamp end = begin;
@@ -1280,7 +1298,8 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     std::vector<double> xss;
     while(ncommits < commit_limit) {
         double value = rwalk.next();
-        aku_Timestamp ts = end++;
+        aku_Timestamp ts = end;
+        end += ts_inc;
         extents->append(ts, value);
         tss.push_back(ts);
         xss.push_back(value);
@@ -1296,7 +1315,7 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     auto query_end = static_cast<u64>(static_cast<i64>(begin) + start_offset);
     for (auto ix = 0ul; ix < xss.size(); ix++) {
         auto current_bucket = (query_begin - tss[ix]) / step;
-        if (tss[ix] <= query_begin && tss[ix] > query_end && current_bucket != bucket_ix) {
+        if (tss[ix] <= query_begin && tss[ix] > query_end && current_bucket != bucket_ix && acc.cnt) {
             bucket_ix = current_bucket;
             buckets.push_back(acc);
             acc = INIT_AGGRES;
@@ -1338,33 +1357,50 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
 }
 
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
-    std::vector<std::tuple<u32, u32, int>> cases = {
+    const int N_runs = 1;
+    std::vector<std::tuple<u32, u32, int, int>> cases = {
+        std::make_tuple( 1,     100, 0, 1),
+        std::make_tuple( 2,     100, 0, 1),
+        std::make_tuple(10,     100, 0, 1),
+        std::make_tuple(32,     100, 0, 1),
+        std::make_tuple(32*32,  100, 0, 1),
+        std::make_tuple(32*32,  100, 1, 1),
+        std::make_tuple(32*32,  100,-1, 1),
 
-        std::make_tuple( 1,     100, 0),
-        std::make_tuple( 2,     100, 0),
-        std::make_tuple(10,     100, 0),
-        std::make_tuple(32,     100, 0),
-        std::make_tuple(32*32,  100, 0),
-        std::make_tuple(32*32,  100, 1),
-        std::make_tuple(32*32,  100,-1),
+        std::make_tuple( 1,    1000, 0, 1),
+        std::make_tuple( 2,    1000, 0, 1),
+        std::make_tuple(10,    1000, 0, 1),
+        std::make_tuple(32,    1000, 0, 1),
+        std::make_tuple(32*32, 1000, 0, 1),
+        std::make_tuple(32*32, 1000, 1, 1),
+        std::make_tuple(32*32, 1000,-1, 1),
 
-        std::make_tuple( 1,    1000, 0),
-        std::make_tuple( 2,    1000, 0),
-        std::make_tuple(10,    1000, 0),
-        std::make_tuple(32,    1000, 0),
-        std::make_tuple(32*32, 1000, 0),
-        std::make_tuple(32*32, 1000, 1),
-        std::make_tuple(32*32, 1000,-1),
+        std::make_tuple( 1,   10000, 0, 1),
+        std::make_tuple( 2,   10000, 0, 1),
+        std::make_tuple(10,   10000, 0, 1),
+        std::make_tuple(32,   10000, 0, 1),
+        std::make_tuple(32*32,10000, 0, 1),
+        std::make_tuple(32*32,10000, 1, 1),
+        std::make_tuple(32*32,10000,-1, 1),
 
-        std::make_tuple( 1,   10000, 0),
-        std::make_tuple( 2,   10000, 0),
-        std::make_tuple(10,   10000, 0),
-        std::make_tuple(32,   10000, 0),
-        std::make_tuple(32*32,10000, 0),
-        std::make_tuple(32*32,10000, 1),
-        std::make_tuple(32*32,10000,-1),
+        std::make_tuple(    1, 100, 0, 100),
+        std::make_tuple(   10, 100, 0, 100),
+        std::make_tuple(   32, 100, 0, 100),
+        std::make_tuple(32*32, 100, 0, 100),
+        std::make_tuple(32*32, 100, 1, 100),
+        std::make_tuple(32*32, 100,-1, 100),
+
+        std::make_tuple(    1, 100, 0, 1000),
+        std::make_tuple(   10, 100, 0, 1000),
+        std::make_tuple(   32, 100, 0, 1000),
+        std::make_tuple(32*32, 100, 0, 1000),
+        std::make_tuple(32*32, 100, 1, 1000),
+        std::make_tuple(32*32, 100,-1, 1000),
     };
-    for (auto t: cases) {
-        test_nbtree_group_aggregate_backward(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+    for (int i = 0; i < N_runs; i++) {
+        for (auto t: cases) {
+            test_nbtree_group_aggregate_backward(std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t));
+        }
     }
 }
+

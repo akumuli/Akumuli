@@ -29,7 +29,7 @@ def test_read_all(exp_tags, dtstart, delta, N):
             "where": tags
         }
         query = att.makequery("test", begin, end, **query_params)
-        queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+        queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
         response = urlopen(queryurl, json.dumps(query))
 
         exp_ts = None

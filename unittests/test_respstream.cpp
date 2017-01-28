@@ -52,8 +52,8 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_value) {
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_end_seq) {
 
-    const char* buffer = ":1234567890\r00";
-    MemStreamReader stream(buffer, 14);
+    const char* buffer = ":1234567890\r00\r\n";
+    MemStreamReader stream(buffer, 16);
     RESPStream resp(&stream);
     BOOST_CHECK_THROW(resp.read_int(), RESPError);
 }

@@ -32,6 +32,7 @@ struct RESPStream {
     enum {
         KB                = 1024,
         MB                = 1024 * KB,
+        METRIC_LENGTH_MAX = 256,
         STRING_LENGTH_MAX = 1 * KB,  //< Longest possible string
         BULK_LENGTH_MAX   = 1 * MB,  //< Longest possible bulk string
     };

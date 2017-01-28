@@ -190,6 +190,18 @@ AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sampl
 AKU_EXPORT aku_Status aku_series_to_param_id(aku_Session* ist, const char* begin, const char* end,
                                              aku_Sample* sample);
 
+/**
+  * Convert series name to id or list of ids (if metric name is composed from several metric names e.g. foo|bar)
+  * @param ist is an opened ingestion stream
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param out_ids is a destination array
+  * @param out_ids_cap is a size of the dest array
+  * @return number of elemnts stored in the out_ids array (can be less then out_ids_cap) or -1*number_of_series
+  *         if dest is too small.
+  */
+AKU_EXPORT int aku_name_to_param_id_list(aku_Session* ist, const char* begin, const char* end,
+                                         aku_ParamId* out_ids, u32 out_ids_cap);
 /** Try to parse duration.
   * @param str should point to the begining of the string
   * @param value is an output parameter

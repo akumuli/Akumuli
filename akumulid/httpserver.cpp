@@ -52,53 +52,59 @@ static int accept_connection(void           *cls,
                              size_t         *upload_data_size,
                              void          **con_cls)
 {
-    if (strcmp(method, "POST") == 0) {
-        ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
-        ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
-
-        if (cursor == nullptr) {
-            cursor = queryproc->create();
-            *con_cls = cursor;
-            logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
-            return MHD_YES;
-        }
-        if (*upload_data_size) {
-            cursor->append(upload_data, *upload_data_size);
-            *upload_data_size = 0;
-            return MHD_YES;
-        }
-
-        auto error_response = [&](const char* msg) {
-            char buffer[0x200];
-            int len = snprintf(buffer, 0x200, "-%s\r\n", msg);
-            auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
-            int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
-            MHD_destroy_response(response);
-            return ret;
-        };
-
-        // Should be called once
-        try {
-            logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " started";
-            cursor->start();
-        } catch (const std::exception& err) {
-            logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " start error: " << err.what();
-            return error_response(err.what());
-        }
-
-        // Check for error
-        auto err = cursor->get_error();
-        if (err != AKU_SUCCESS) {
-            const char* error_msg = aku_error_message(err);
-            logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " error: " << error_msg;
-            return error_response(error_msg);
-        }
-
-        auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
-        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    std::string path = url;
+    auto error_response = [&](const char* msg, unsigned int error_code) {
+        char buffer[0x200];
+        int len = snprintf(buffer, 0x200, "-%s\r\n", msg);
+        auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
+        int ret = MHD_queue_response(connection, error_code, response);
         MHD_destroy_response(response);
         return ret;
-    } else {
+    };
+    if (strcmp(method, "POST") == 0) {
+        if (path == "/api/query") {
+            ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
+            ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
+
+            if (cursor == nullptr) {
+                cursor = queryproc->create();
+                *con_cls = cursor;
+                logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
+                return MHD_YES;
+            }
+            if (*upload_data_size) {
+                cursor->append(upload_data, *upload_data_size);
+                *upload_data_size = 0;
+                return MHD_YES;
+            }
+
+            // Should be called once
+            try {
+                logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " started";
+                cursor->start();
+            } catch (const std::exception& err) {
+                logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " start error: " << err.what();
+                return error_response(err.what(), MHD_HTTP_BAD_REQUEST);
+            }
+
+            // Check for error
+            auto err = cursor->get_error();
+            if (err != AKU_SUCCESS) {
+                const char* error_msg = aku_error_message(err);
+                logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " error: " << error_msg;
+                return error_response(error_msg, MHD_HTTP_BAD_REQUEST);
+            }
+
+            auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
+            int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
+        } else {
+            std::string error_msg = "Invalid url " + path;
+            logger.error() << error_msg << " (POST)";
+            return error_response(error_msg.c_str(), MHD_HTTP_NOT_FOUND);
+        }
+    } else if (strcmp(method, "GET") == 0) {
         static const char* SIGIL = "";
         auto queryproc = static_cast<ReadOperationBuilder*>(cls);
         auto cursor = static_cast<const char*>(*con_cls);
@@ -106,8 +112,7 @@ static int accept_connection(void           *cls,
             *con_cls = const_cast<char*>(SIGIL);
             return MHD_YES;
         }
-        std::string path = url;
-        if (path == "/stats") {
+        if (path == "/api/stats") {
             std::string stats = queryproc->get_all_stats();
             auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
             int ret = MHD_add_response_header(response, "content-type", "application/json");
@@ -117,9 +122,15 @@ static int accept_connection(void           *cls,
             ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
             return ret;
+        } else {
+            std::string error_msg = "Invalid url " + path;
+            logger.error() << error_msg << " (GET)";
+            return error_response(error_msg.c_str(), MHD_HTTP_NOT_FOUND);
         }
     }
-    return MHD_NO;
+    logger.error() << "Invalid HTTP request, method: " << method << ", path: " << path;
+    std::string error_msg = "Invalid request";
+    return error_response(error_msg.c_str(), MHD_HTTP_NOT_FOUND);
 }
 }
 

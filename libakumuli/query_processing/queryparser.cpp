@@ -6,6 +6,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 #include <set>
+#include <regex>
 
 #include "datetime.h"
 #include "query_processing/limiter.h"
@@ -64,7 +65,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
         if (tags_.empty()) {
             // Case 2, only metric is set
             std::stringstream regex;
-            regex << first_metric << "(?:\\s\\w+=\\w+)*";
+            regex << first_metric << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
@@ -84,7 +85,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
                     } else {
                         regexp << "|";
                     }
-                    regexp << "(?:\\s\\w+=\\w+)*\\s" << key << "=" << val << "(?:\\s\\w+=\\w+)*";
+                    regexp << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*\\s" << key << "=" << val << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
                 }
                 regexp << ")";
             }
@@ -161,6 +162,9 @@ static std::tuple<aku_Status, std::vector<std::string>> parse_join_stmt(boost::p
                 return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
             }
         }
+    }
+    if (result.empty()) {
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
     }
     return std::make_tuple(AKU_SUCCESS, result);
 }
@@ -349,12 +353,20 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
         for(auto child: *range) {
             if (child.first == "from") {
                 auto iso_string = child.second.get_value<std::string>();
-                begin = DateTimeUtil::from_iso_string(iso_string.c_str());
-                begin_set = true;
+                try {
+                    begin = DateTimeUtil::from_iso_string(iso_string.c_str());
+                    begin_set = true;
+                } catch (std::exception const& e) {
+                    Logger::msg(AKU_LOG_ERROR, std::string("Can't parse begin timestmp, ") + e.what());
+                }
             } else if (child.first == "to") {
                 auto iso_string = child.second.get_value<std::string>();
-                end = DateTimeUtil::from_iso_string(iso_string.c_str());
-                end_set = true;
+                try {
+                    end = DateTimeUtil::from_iso_string(iso_string.c_str());
+                    end_set = true;
+                } catch (std::exception const& e) {
+                    Logger::msg(AKU_LOG_ERROR, std::string("Can't parse end timestmp, ") + e.what());
+                }
             }
         }
     }
@@ -433,7 +445,7 @@ std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(cons
     std::istream stream(&strbuf);
     try {
         boost::property_tree::json_parser::read_json(stream, ptree);
-    } catch (boost::property_tree::json_parser_error& e) {
+    } catch (boost::property_tree::json_parser_error const& e) {
         // Error, bad query
         Logger::msg(AKU_LOG_ERROR, e.what());
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree);
@@ -706,9 +718,9 @@ static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
             if (first) {
                 first = false;
             } else {
-                str << ':';
+                str << '|';
             }
-            str << metric_name << "." << Aggregation::to_string(func);
+            str << metric_name << ":" << Aggregation::to_string(func);
         }
         str << tags;
         matcher->_add(str.str(), id);
@@ -822,7 +834,7 @@ static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
             if (first) {
                 first = false;
             } else {
-                str << ':';
+                str << '|';
             }
             str << metric;
         }

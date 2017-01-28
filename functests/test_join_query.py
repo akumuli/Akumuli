@@ -29,7 +29,7 @@ def test_join_query_forward(columns, dtstart, delta, N):
         "output": { "format":  "csv" },
     }
     query = att.make_join_query(columns, begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -75,7 +75,7 @@ def test_join_query_backward(columns, dtstart, delta, N):
         "output": { "format":  "csv" },
     }
     query = att.make_join_query(columns, begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -118,7 +118,7 @@ def count_elements(metric, tag, val, begin, end):
             }
         }
     query = att.make_aggregate_query(metric, begin, end, "count", **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = list(urlopen(queryurl, json.dumps(query)))
     for line in response:
         arr = line.split(',')
@@ -136,7 +136,7 @@ def test_join_query_forward_by_series(columns, dtstart, delta, N):
         "order-by": "series"
     }
     query = att.make_join_query(columns, begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
@@ -205,7 +205,7 @@ def test_join_query_backward_by_series(columns, dtstart, delta, N):
         "order-by": "series"
     }
     query = att.make_join_query(columns, begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
