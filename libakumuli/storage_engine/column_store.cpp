@@ -918,10 +918,10 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
             return AKU_EBAD_ARG;
         } else {
             columns_[id] = std::move(tree);
+            columns_[id]->force_init();
+            return AKU_SUCCESS;
         }
     }
-    columns_[id]->force_init();
-    return AKU_SUCCESS;
 }
 
 

@@ -173,6 +173,11 @@ void TcpAcceptor::start() {
     // Run detached thread for accepts
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
+#ifdef __gnu_linux__
+        // Name the thread
+        auto thread = pthread_self();
+        pthread_setname_np(thread, "TCP-accept");
+#endif
         self->logger_.info() << "Starting acceptor worker thread";
         self->start_barrier_.wait();
         self->logger_.info() << "Acceptor worker thread have started";
@@ -282,6 +287,11 @@ void TcpServer::start(SignalHandler* sig, int id) {
 
     auto iorun = [self](IOServiceT& io, int cnt) {
         auto fn = [self, &io, cnt]() {
+#ifdef __gnu_linux__
+            // Name the thread
+            auto thread = pthread_self();
+            pthread_setname_np(thread, "TCP-worker");
+#endif
             Logger logger("tcp-server-worker", 10);
             try {
                 logger.info() << "Event loop " << cnt << " started";

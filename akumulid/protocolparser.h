@@ -47,8 +47,6 @@ struct DatabaseError : std::exception {
     virtual const char* what() const noexcept;
 };
 
-//! Stop iteration exception
-struct EStopIteration {};
 
 //! Fwd
 struct DbSession;
@@ -126,6 +124,7 @@ class ProtocolParser {
 
     bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
     bool parse_values(RESPStream& stream, double* values, int nvalues);
+    int parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
