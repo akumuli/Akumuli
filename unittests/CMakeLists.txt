@@ -184,6 +184,8 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/query_processing/queryparser.cpp
     # query processor
@@ -336,6 +338,8 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
@@ -361,6 +365,8 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp

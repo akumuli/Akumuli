@@ -47,7 +47,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     }
 
     // Read data back
-    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+    std::unique_ptr<RealValuedOperator> it = collection->search(begin, end);
 
     aku_Status status;
     size_t sz;
@@ -129,7 +129,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     }
 
     // Read data back
-    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+    std::unique_ptr<RealValuedOperator> it = collection->search(begin, end);
 
     aku_Status status;
     size_t sz;
@@ -242,7 +242,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
         check_tree_consistency(bstore, i, extent);
     }
 
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::unique_ptr<RealValuedOperator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);
     std::vector<double> xs(nitems, 0);
     aku_Status status = AKU_SUCCESS;
@@ -397,7 +397,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
     }
 
     // Scan entire tree
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::unique_ptr<RealValuedOperator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);
     std::vector<double> xs(nitems, 0);
     size_t sz = 0;

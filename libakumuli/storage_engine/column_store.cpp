@@ -52,16 +52,16 @@ struct RowIterator {
 
 
 class ChainIterator : public RowIterator {
-    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     size_t pos_;
 public:
-    ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it);
+    ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it);
     virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
 };
 
 
-ChainIterator::ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+ChainIterator::ChainIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
     : iters_(std::move(it))
     , ids_(std::move(ids))
     , pos_(0)
@@ -116,12 +116,12 @@ std::tuple<aku_Status, size_t> ChainIterator::read(u8 *dest, size_t dest_size) {
 
 
 class Aggregator : public RowIterator {
-    std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+    std::vector<std::unique_ptr<AggregateOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     size_t pos_;
     AggregationFunction func_;
 public:
-    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeAggregator>>&& it, AggregationFunction func)
+    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func)
         : iters_(std::move(it))
         , ids_(std::move(ids))
         , pos_(0)
@@ -251,7 +251,7 @@ struct SeriesOrder {
 
 template<template <int dir> class CmpPred>
 struct MergeIterator : RowIterator {
-    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     bool forward_;
 
@@ -295,12 +295,12 @@ struct MergeIterator : RowIterator {
 
     std::vector<Range> ranges_;
 
-    MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<NBTreeIterator>>&& it)
+    MergeIterator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
         : iters_(std::move(it))
         , ids_(std::move(ids))
     {
         if (!iters_.empty()) {
-            forward_ = iters_.front()->get_direction() == NBTreeIterator::Direction::FORWARD;
+            forward_ = iters_.front()->get_direction() == RealValuedOperator::Direction::FORWARD;
         }
         if (iters_.size() != ids_.size()) {
             AKU_PANIC("MergeIterator - broken invariant");
@@ -410,7 +410,7 @@ struct MergeIterator : RowIterator {
   */
 struct JoinIterator : RowIterator {
 
-    std::vector<std::unique_ptr<NBTreeIterator>> iters_;
+    std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     aku_ParamId id_;
     static const size_t BUFFER_SIZE = 4096;
     static const size_t MAX_TUPLE_SIZE = 64;
@@ -418,7 +418,7 @@ struct JoinIterator : RowIterator {
     u32 buffer_pos_;
     u32 buffer_size_;
 
-    JoinIterator(std::vector<std::unique_ptr<NBTreeIterator>>&& iters, aku_ParamId id)
+    JoinIterator(std::vector<std::unique_ptr<RealValuedOperator>>&& iters, aku_ParamId id)
         : iters_(std::move(iters))
         , id_(id)
         , buffer_pos_(0)
@@ -765,13 +765,13 @@ namespace GroupAggregate {
     };
 
     struct SeriesOrderIterator : TupleOutputUtils, RowIterator {
-        std::vector<std::unique_ptr<NBTreeAggregator>> iters_;
+        std::vector<std::unique_ptr<AggregateOperator>> iters_;
         std::vector<aku_ParamId> ids_;
         std::vector<AggregationFunction> tuple_;
         u32 pos_;
 
         SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
-                            std::vector<std::unique_ptr<NBTreeAggregator>>&& it,
+                            std::vector<std::unique_ptr<AggregateOperator>>&& it,
                             const std::vector<AggregationFunction>& components)
             : iters_(std::move(it))
             , ids_(std::move(ids))
@@ -838,16 +838,16 @@ namespace GroupAggregate {
         std::unique_ptr<MergeJoinIterator> join_iter_;
 
         TimeOrderIterator(const std::vector<aku_ParamId>& ids,
-                          std::vector<std::unique_ptr<NBTreeAggregator>> &it,
+                          std::vector<std::unique_ptr<AggregateOperator>> &it,
                           const std::vector<AggregationFunction>& components)
         {
             assert(it.size());
-            bool forward = it.front()->get_direction() == NBTreeAggregator::Direction::FORWARD;
+            bool forward = it.front()->get_direction() == AggregateOperator::Direction::FORWARD;
             std::vector<std::unique_ptr<RowIterator>> iters;
             for (size_t i = 0; i < ids.size(); i++) {
                 std::unique_ptr<RowIterator> iter;
                 auto agg = std::move(it.at(i));
-                std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+                std::vector<std::unique_ptr<AggregateOperator>> agglist;
                 agglist.push_back(std::move(agg));
                 auto ptr = new SeriesOrderIterator({ ids[i] }, std::move(agglist), components);
                 iter.reset(ptr);
@@ -953,12 +953,12 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
     std::unique_ptr<RowIterator> iter;
     auto ids = req.select.columns.at(0).ids;
     if (req.agg.enabled) {
-        std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+        std::vector<std::unique_ptr<AggregateOperator>> agglist;
         for (auto id: req.select.columns.at(0).ids) {
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
-                std::unique_ptr<NBTreeAggregator> agg = it->second->aggregate(req.select.begin, req.select.end);
+                std::unique_ptr<AggregateOperator> agg = it->second->aggregate(req.select.begin, req.select.end);
                 agglist.push_back(std::move(agg));
             } else {
                 qproc.set_error(AKU_ENOT_FOUND);
@@ -981,12 +981,12 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             }
         }
     } else {
-        std::vector<std::unique_ptr<NBTreeIterator>> iters;
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
         for (auto id: req.select.columns.at(0).ids) {
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
-                std::unique_ptr<NBTreeIterator> iter = it->second->search(req.select.begin, req.select.end);
+                std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
                 iters.push_back(std::move(iter));
             } else {
                 qproc.set_error(AKU_ENOT_FOUND);
@@ -1053,7 +1053,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
     }
     std::vector<std::unique_ptr<RowIterator>> iters;
     for (u32 ix = 0; ix < req.select.columns.front().ids.size(); ix++) {
-        std::vector<std::unique_ptr<NBTreeIterator>> row;
+        std::vector<std::unique_ptr<RealValuedOperator>> row;
         std::vector<aku_ParamId> ids;
         for (u32 col = 0; col < req.select.columns.size(); col++) {
             auto id = req.select.columns[col].ids[ix];
@@ -1061,7 +1061,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
-                std::unique_ptr<NBTreeIterator> iter = it->second->search(req.select.begin, req.select.end);
+                std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
                 row.push_back(std::move(iter));
             } else {
                 qproc.set_error(AKU_ENOT_FOUND);
@@ -1141,12 +1141,12 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         qproc.set_error(AKU_EBAD_ARG);
         return;
     }
-    std::vector<std::unique_ptr<NBTreeAggregator>> agglist;
+    std::vector<std::unique_ptr<AggregateOperator>> agglist;
     for (auto id: req.select.columns.at(0).ids) {
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
         auto it = columns_.find(id);
         if (it != columns_.end()) {
-            std::unique_ptr<NBTreeAggregator> agg = it->second->group_aggregate(req.select.begin, req.select.end, req.agg.step);
+            std::unique_ptr<AggregateOperator> agg = it->second->group_aggregate(req.select.begin, req.select.end, req.agg.step);
             agglist.push_back(std::move(agg));
         } else {
             qproc.set_error(AKU_ENOT_FOUND);

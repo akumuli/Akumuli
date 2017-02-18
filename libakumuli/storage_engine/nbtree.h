@@ -87,91 +87,12 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-//! Result of the aggregation operation that has several components.
-struct NBTreeAggregationResult {
-    double cnt;
-    double sum;
-    double min;
-    double max;
-    double first;
-    double last;
-    aku_Timestamp mints;
-    aku_Timestamp maxts;
-    aku_Timestamp _begin;
-    aku_Timestamp _end;
-
-    //! Copy all components from subtree reference.
-    void copy_from(SubtreeRef const&);
-    //! Calculate values from raw data.
-    void do_the_math(aku_Timestamp *tss, double const* xss, size_t size, bool inverted);
-    /**
-     * Add value to aggregate
-     * @param ts is a timestamp
-     * @param xs is a value
-     * @param forward is used to indicate external order of added elements
-     */
-    void add(aku_Timestamp ts, double xs, bool forward);
-    //! Combine this value with the other one (inplace update).
-    void combine(const NBTreeAggregationResult& other);
-};
-
-
-static const NBTreeAggregationResult INIT_AGGRES = {
-    .0,
-    .0,
-    std::numeric_limits<double>::max(),
-    std::numeric_limits<double>::lowest(),
-    .0,
-    .0,
-    std::numeric_limits<aku_Timestamp>::max(),
-    std::numeric_limits<aku_Timestamp>::lowest(),
-    std::numeric_limits<aku_Timestamp>::max(),
-    std::numeric_limits<aku_Timestamp>::lowest(),
-};
-
-
 /** Describes how storage engine should process candlesticks
   * in corresponding query.
   */
 struct NBTreeCandlestickHint {
     aku_Timestamp min_delta;
 };
-
-
-/** Database query operator.
-  * @note all ranges is semi-open. This means that if we're
-  *       reading data from A to B, operator should return
-  *       data in range [A, B), and B timestamp should be
-  *       greater (or less if we're reading data in backward
-  *       direction) then all timestamps that we've read before.
-  */
-template <class TValue>
-struct QueryOperator {
-
-    //! Iteration direction
-    enum class Direction {
-        FORWARD, BACKWARD,
-    };
-
-    //! D-tor
-    virtual ~QueryOperator() = default;
-
-    /** Read next portion of data.
-      * @param destts Timestamps destination buffer. On success timestamps will be written here.
-      * @param destval Values destination buffer.
-      * @param size Size of the  destts and destval buffers (should be the same).
-      * @return status and number of elements written to both buffers.
-      */
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp* destts, TValue* destval, size_t size) = 0;
-
-    virtual Direction get_direction() = 0;
-};
-
-//! Base class for all raw data iterators.
-using NBTreeIterator = QueryOperator<double>;
-
-//! Base class for all aggregating iterators. Return single value.
-using NBTreeAggregator = QueryOperator<NBTreeAggregationResult>;
 
 
 /** NBTree leaf node. Supports append operation.
@@ -252,18 +173,18 @@ public:
     aku_ParamId get_id() const;
 
     //! Return iterator that outputs all values in time range that is stored in this leaf.
-    std::unique_ptr<NBTreeIterator> range(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<RealValuedOperator> range(aku_Timestamp begin, aku_Timestamp end) const;
 
-    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
-    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
     //! Return iterator that returns candlesticks
-    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 
     //! Group-aggregate query results iterator
-    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
+    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
 };
 
 
@@ -321,18 +242,18 @@ public:
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
-    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
-    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin,
+    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
                                                 std::shared_ptr<BlockStore> bstore) const;
 
-    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
+    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
                                                    std::shared_ptr<BlockStore> bstore,
                                                    NBTreeCandlestickHint hint) const;
 
     //! Group-aggregate query results iterator
-    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin,
+    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin,
                                                       aku_Timestamp end,
                                                       u64 step, std::shared_ptr<BlockStore> bstore) const;
 };
@@ -361,18 +282,18 @@ struct NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> commit(bool final) = 0;
 
     //! Return iterator
-    virtual std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
+    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
 
     //! Return iterator that will return single aggregated value.
-    virtual std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
+    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
-    virtual std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const = 0;
+    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const = 0;
 
     //! Return group-aggregate query results iterator
-    virtual std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const = 0;
+    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const = 0;
 
     // Service functions //
 
@@ -438,7 +359,7 @@ public:
      * @param end is a next after the last element of the search interval
      * @return
      */
-    std::unique_ptr<NBTreeIterator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
     /**
      * @brief aggregate all values in search interval
@@ -446,9 +367,9 @@ public:
      * @param end is a next after the last element of the search interval
      * @return iterator that produces single value
      */
-    std::unique_ptr<NBTreeAggregator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
-    std::unique_ptr<NBTreeAggregator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 
     /**
      * @brief Group values into buckets and return aggregate from each one of them
@@ -457,7 +378,7 @@ public:
      * @param step bucket size
      * @return iterator
      */
-    std::unique_ptr<NBTreeAggregator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
+    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();
