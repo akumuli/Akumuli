@@ -729,7 +729,7 @@ static bool subtree_in_range(SubtreeRef const& ref, aku_Timestamp begin, aku_Tim
 }
 
 template<class TVal>
-struct NBTreeSBlockIteratorBase : NBTreeIteratorBase<TVal> {
+struct NBTreeSBlockIteratorBase : QueryOperator<TVal> {
     //! Starting timestamp
     aku_Timestamp              begin_;
     //! Final timestamp
@@ -741,12 +741,12 @@ struct NBTreeSBlockIteratorBase : NBTreeIteratorBase<TVal> {
 
     // FSM
     std::vector<SubtreeRef> refs_;
-    std::unique_ptr<NBTreeIteratorBase<TVal>> iter_;
+    std::unique_ptr<QueryOperator<TVal>> iter_;
     u32 fsm_pos_;
     i32 refs_pos_;
 
-    typedef std::unique_ptr<NBTreeIteratorBase<TVal>> TIter;
-    typedef typename NBTreeIteratorBase<TVal>::Direction Direction;
+    typedef std::unique_ptr<QueryOperator<TVal>> TIter;
+    typedef typename QueryOperator<TVal>::Direction Direction;
 
     NBTreeSBlockIteratorBase(std::shared_ptr<BlockStore> bstore, LogicAddr addr, aku_Timestamp begin, aku_Timestamp end)
         : begin_(begin)

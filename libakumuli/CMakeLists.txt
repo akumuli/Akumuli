@@ -15,6 +15,8 @@ add_library(akumuli SHARED
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
+    storage_engine/operators/operator.cpp
+    storage_engine/operators/scan.cpp
     # query_processing
     query_processing/queryparser.cpp
     queryprocessor.cpp
