@@ -28,6 +28,7 @@
 #include "status_util.h"
 #include "log_iface.h"
 #include "operators/scan.h"
+#include "operators/aggregate.h"
 
 
 namespace Akumuli {
@@ -179,7 +180,7 @@ static aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, Subtre
 }
 
 
-/** NBTreeIterator implementation for leaf node.
+/** QueryOperator implementation for leaf node.
   * This is very basic. All node's data is copied to
   * the internal buffer by c-tor.
   */
@@ -295,275 +296,6 @@ RealValuedOperator::Direction NBTreeLeafIterator::get_direction() {
     return Direction::BACKWARD;
 }
 
-
-// //////////////////////////// //
-//  NBTreeIterator aggregation  //
-// //////////////////////////// //
-
-/** Aggregating iterator.
-  * Accepts list of iterators in the c-tor. All iterators then
-  * can be seen as one iterator that returns single value.
-  */
-struct IteratorAggregate : AggregateOperator {
-    typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
-    IterVec             iter_;
-    Direction           dir_;
-    u32                 iter_index_;
-
-    //! C-tor. Create iterator from list of iterators.
-    template<class TVec>
-    IteratorAggregate(TVec&& iter)
-        : iter_(std::forward<TVec>(iter))
-        , iter_index_(0)
-    {
-        if (iter_.empty()) {
-            dir_ = Direction::FORWARD;
-        } else {
-            dir_ = iter_.front()->get_direction();
-        }
-    }
-
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size);
-    virtual Direction get_direction();
-};
-
-std::tuple<aku_Status, size_t> IteratorAggregate::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
-    if (size == 0) {
-        return std::make_tuple(AKU_EBAD_ARG, 0);
-    }
-    if (iter_index_ == iter_.size()) {
-        return std::make_tuple(AKU_ENO_DATA, 0);
-    }
-    const size_t SZBUF = 1024;
-    aku_Status status = AKU_ENO_DATA;
-    NBTreeAggregationResult xsresult = INIT_AGGRES;
-    aku_Timestamp tsresult = 0;
-    std::vector<NBTreeAggregationResult> outval(SZBUF, INIT_AGGRES);
-    std::vector<aku_Timestamp> outts(SZBUF, 0);
-    ssize_t ressz;
-    int nagg = 0;
-    while(iter_index_ < iter_.size()) {
-        std::tie(status, ressz) = iter_[iter_index_]->read(outts.data(), outval.data(), SZBUF);
-        if (ressz != 0) {
-            xsresult = std::accumulate(outval.begin(), outval.begin() + ressz, xsresult,
-                            [](NBTreeAggregationResult lhs, NBTreeAggregationResult rhs) {
-                                lhs.combine(rhs);
-                                return lhs;
-                            });
-            tsresult = outts[static_cast<size_t>(ressz)-1];
-            nagg++;
-        }
-        if (status == AKU_ENO_DATA) {
-            // This leaf node is empty, continue with next.
-            iter_index_++;
-            continue;
-        }
-        if (status != AKU_SUCCESS) {
-            // Failure, stop iteration.
-            return std::make_pair(status, 0);
-        }
-    }
-    size_t result_size = 0;
-    if (nagg != 0) {
-        result_size = 1;
-        destts[0] = tsresult;
-        destval[0] = xsresult;
-    }
-    return std::make_tuple(AKU_SUCCESS, result_size);
-}
-
-AggregateOperator::Direction IteratorAggregate::get_direction() {
-    return dir_;
-}
-
-// ////////////////////////// //
-// Group-Aggregation iterator //
-// ////////////////////////// //
-
-
-/** Aggregating iterator (group-by + aggregate).
-  */
-struct GroupAggregate : AggregateOperator {
-    typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
-    typedef std::vector<NBTreeAggregationResult> ReadBuffer;
-    const u64           step_;
-    IterVec             iter_;
-    Direction           dir_;
-    u32                 iter_index_;
-    ReadBuffer          rdbuf_;
-    u32                 rdpos_;
-
-    // NOTE: object of this class joins several iterators into one. Time intervals
-    // covered by this iterators shouldn't overlap. Each iterator should be group-
-    // aggregate iterator. This iterators output contains aggregated values. Each
-    // value covers time interval defined by `step_` variable. The first and the last
-    // values returned by each iterator can be incomplete (contain only part of the
-    // range). In this case `GroupAggregate` iterator should join the last value of
-    // the previous iterator with the first one of the next iterator.
-    //
-    //
-
-    enum {
-        RDBUF_SIZE = 0x100,
-    };
-
-    //! C-tor. Create iterator from list of iterators.
-    template<class TVec>
-    GroupAggregate(u64 step, TVec&& iter)
-        : step_(step)
-        , iter_(std::forward<TVec>(iter))
-        , iter_index_(0)
-        , rdpos_(0)
-    {
-        if (iter_.empty()) {
-            dir_ = Direction::FORWARD;
-        } else {
-            dir_ = iter_.front()->get_direction();
-        }
-    }
-
-    //! Return true if `rdbuf_` is not empty and have some data to read.
-    bool can_read() const {
-        return rdpos_ < rdbuf_.size();
-    }
-
-    //! Return number of elements in rdbuf_ available for reading
-    u32 elements_in_rdbuf() const {
-        return static_cast<u32>(rdbuf_.size()) - rdpos_;  // Safe to cast because rdbuf_.size() <= RDBUF_SIZE
-    }
-
-    /**
-     * @brief Copy as much elements as possible to the dest arrays.
-     * @param desttx timestamps array
-     * @param destxs values array
-     * @param size size of both arrays
-     * @return number of elements copied
-     */
-    std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
-        aku_Status status = AKU_SUCCESS;
-        size_t copied = 0;
-        while (status == AKU_SUCCESS && size > 0) {
-            size_t n = elements_in_rdbuf();
-            if (iter_index_ != iter_.size()) {
-                if (n < 2) {
-                    status = refill_read_buffer();
-                    continue;
-                }
-                // We can copy last element of the rdbuf_ to the output only if all
-                // iterators were consumed! Otherwise invariant will be broken.
-                n--;
-            } else {
-                if (n == 0) {
-                    break;
-                }
-            }
-
-            auto tocopy = std::min(n, size);
-
-            // Copy elements
-            for (size_t i = 0; i < tocopy; i++) {
-                auto const& bottom = rdbuf_.at(rdpos_);
-                rdpos_++;
-                *desttx++ = bottom._begin;
-                *destxs++ = bottom;
-                size--;
-            }
-            copied += tocopy;
-        }
-        return std::make_tuple(status, copied);
-    }
-
-    /**
-     * @brief Refils read buffer.
-     * @return AKU_SUCCESS on success, AKU_ENO_DATA if there is no more data to read, error code on error
-     */
-    aku_Status refill_read_buffer() {
-        aku_Status status = AKU_ENO_DATA;
-        if (iter_index_ == iter_.size()) {
-            return AKU_ENO_DATA;
-        }
-
-        u32 pos = 0;
-        if (!rdbuf_.empty()) {
-            auto tail = rdbuf_.back();  // the last element should be saved because it is possible that
-                                        // it's not full (part of the range contained in first iterator
-                                        // and another part in second iterator or even in more than one
-                                        // iterators).
-            rdbuf_.clear();
-            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
-            rdpos_ = 0;
-            rdbuf_.at(0) = tail;
-            pos = 1;
-        } else {
-            rdbuf_.clear();
-            rdbuf_.resize(RDBUF_SIZE, INIT_AGGRES);
-            rdpos_ = 0;
-        }
-
-        while(iter_index_ < iter_.size()) {
-            size_t size = rdbuf_.size() - pos;
-            if (size == 0) {
-                break;
-            }
-            // NOTE: We can't read data from iterator directly to the rdbuf_ because buckets
-            //       can be split between two iterators. In this case we should join such
-            //       values together.
-            // Invariant: rdbuf_ have enough room to fit outxs in the worst case (the worst
-            //       case: `read` returns `size` elements and ranges isn't overlapping and we
-            //       don't need to merge last element of `rdbuf_` with first elem of `outxs`).
-            std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
-            std::vector<aku_Timestamp>           outts(size, 0);
-            u32 outsz;
-            std::tie(status, outsz) = iter_[iter_index_]->read(outts.data(), outxs.data(), outxs.size());
-            if (outsz != 0) {
-                if (pos > 0) {
-                    // Check last and first values of rdbuf_ and outxs
-                    auto const& last  = rdbuf_.at(pos - 1);
-                    auto const& first = outxs.front();
-                    auto const  delta = dir_ == Direction::FORWARD ? first._begin - last._begin
-                                                                   : last._end - first._end;
-                    if (delta < step_) {
-                        pos--;
-                    }
-                }
-            }
-            for (size_t ix = 0; ix < outsz; ix++) {
-                rdbuf_.at(pos).combine(outxs.at(ix));
-                const auto newdelta = rdbuf_.at(pos)._end - rdbuf_.at(pos)._begin;
-                if (newdelta > step_) {
-                    assert(newdelta <= step_);
-                }
-                pos++;
-            }
-            if (status == AKU_ENO_DATA) {
-                // This leaf node is empty, continue with next.
-                iter_index_++;
-                continue;
-            }
-            if (status != AKU_SUCCESS) {
-                // Failure, stop iteration.
-                rdbuf_.resize(pos);
-                return status;
-            }
-        }
-        rdbuf_.resize(pos);
-        return AKU_SUCCESS;
-    }
-
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size);
-    virtual Direction get_direction();
-};
-
-std::tuple<aku_Status, size_t> GroupAggregate::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
-    if (size == 0) {
-        return std::make_tuple(AKU_EBAD_ARG, 0);
-    }
-    return copy_to(destts, destval, size);
-}
-
-GroupAggregate::Direction GroupAggregate::get_direction() {
-    return dir_;
-}
 
 
 // ///////////////////////// //
@@ -2833,7 +2565,7 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::aggregate(aku_Timestamp be
         return std::move(iterators.front());
     }
     std::unique_ptr<AggregateOperator> concat;
-    concat.reset(new IteratorAggregate(std::move(iterators)));
+    concat.reset(new CombineAggregateOperator(std::move(iterators)));
     return concat;
 
 }
@@ -2854,7 +2586,7 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timest
         }
     }
     std::unique_ptr<AggregateOperator> concat;
-    concat.reset(new GroupAggregate(step, std::move(iterators)));
+    concat.reset(new CombineGroupAggregateOperator(step, std::move(iterators)));
     return concat;
 }
 
@@ -2879,7 +2611,7 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp
     }
     std::unique_ptr<AggregateOperator> concat;
     // NOTE: there is no intersections between extents so we can join iterators
-    concat.reset(new IteratorAggregate(std::move(iterators)));
+    concat.reset(new CombineAggregateOperator(std::move(iterators)));
     return concat;
 }
 

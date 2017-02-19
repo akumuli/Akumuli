@@ -698,7 +698,7 @@ struct MergeJoinIterator : RowIterator {
 };
 
 
-namespace GroupAggregate {
+namespace CombineGroupAggregateOperator {
 
     struct TupleOutputUtils {
         /** Get pointer to buffer and return pointer to sample and tuple data */
@@ -1162,9 +1162,9 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         return;
     } else {
         if (req.order_by == OrderBy::SERIES) {
-            iter.reset(new GroupAggregate::SeriesOrderIterator(std::move(ids), std::move(agglist), req.agg.func));
+            iter.reset(new CombineGroupAggregateOperator::SeriesOrderIterator(std::move(ids), std::move(agglist), req.agg.func));
         } else {
-            iter.reset(new GroupAggregate::TimeOrderIterator(ids, agglist, req.agg.func));
+            iter.reset(new CombineGroupAggregateOperator::TimeOrderIterator(ids, agglist, req.agg.func));
         }
     }
     const size_t dest_size = 0x1000;
