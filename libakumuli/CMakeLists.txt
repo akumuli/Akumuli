@@ -18,6 +18,7 @@ add_library(akumuli SHARED
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp
+    storage_engine/operators/join.cpp
     # query_processing
     query_processing/queryparser.cpp
     queryprocessor.cpp
@@ -65,10 +66,10 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Evgeny Lazin")
 set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Time-series storage engine")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 
-set(CPACK_PACKAGE_VERSION "0.5.1")
+set(CPACK_PACKAGE_VERSION "0.7.0")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "5")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION_MINOR "7")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 
 include(CPack)
 

@@ -1,4 +1,5 @@
 #include "aggregate.h"
+#include "log_iface.h"
 
 #include <cassert>
 
@@ -6,7 +7,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-std::tuple<aku_Status, size_t> CombineAggregateOperator::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
+std::tuple<aku_Status, size_t> CombineAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
     if (size == 0) {
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
@@ -15,9 +16,9 @@ std::tuple<aku_Status, size_t> CombineAggregateOperator::read(aku_Timestamp *des
     }
     const size_t SZBUF = 1024;
     aku_Status status = AKU_ENO_DATA;
-    NBTreeAggregationResult xsresult = INIT_AGGRES;
+    AggregationResult xsresult = INIT_AGGRES;
     aku_Timestamp tsresult = 0;
-    std::vector<NBTreeAggregationResult> outval(SZBUF, INIT_AGGRES);
+    std::vector<AggregationResult> outval(SZBUF, INIT_AGGRES);
     std::vector<aku_Timestamp> outts(SZBUF, 0);
     ssize_t ressz;
     int nagg = 0;
@@ -25,7 +26,7 @@ std::tuple<aku_Status, size_t> CombineAggregateOperator::read(aku_Timestamp *des
         std::tie(status, ressz) = iter_[iter_index_]->read(outts.data(), outval.data(), SZBUF);
         if (ressz != 0) {
             xsresult = std::accumulate(outval.begin(), outval.begin() + ressz, xsresult,
-                            [](NBTreeAggregationResult lhs, NBTreeAggregationResult rhs) {
+                            [](AggregationResult lhs, AggregationResult rhs) {
                                 lhs.combine(rhs);
                                 return lhs;
                             });
@@ -69,7 +70,7 @@ u32 CombineGroupAggregateOperator::elements_in_rdbuf() const {
 }
 
 
-std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size) {
+std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::copy_to(aku_Timestamp* desttx, AggregationResult* destxs, size_t size) {
     aku_Status status = AKU_SUCCESS;
     size_t copied = 0;
     while (status == AKU_SUCCESS && size > 0) {
@@ -138,7 +139,7 @@ aku_Status CombineGroupAggregateOperator::refill_read_buffer() {
         // Invariant: rdbuf_ have enough room to fit outxs in the worst case (the worst
         //       case: `read` returns `size` elements and ranges isn't overlapping and we
         //       don't need to merge last element of `rdbuf_` with first elem of `outxs`).
-        std::vector<NBTreeAggregationResult> outxs(size, INIT_AGGRES);
+        std::vector<AggregationResult> outxs(size, INIT_AGGRES);
         std::vector<aku_Timestamp>           outts(size, 0);
         u32 outsz;
         std::tie(status, outsz) = iter_[iter_index_]->read(outts.data(), outxs.data(), outxs.size());
@@ -177,7 +178,7 @@ aku_Status CombineGroupAggregateOperator::refill_read_buffer() {
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size) {
+std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
     if (size == 0) {
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
@@ -186,6 +187,88 @@ std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::read(aku_Timestamp
 
 CombineGroupAggregateOperator::Direction CombineGroupAggregateOperator::get_direction() {
     return dir_;
+}
+
+
+Aggregator::Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func)
+    : iters_(std::move(it))
+    , ids_(std::move(ids))
+    , pos_(0)
+    , func_(func)
+{
+}
+
+std::tuple<aku_Status, size_t> Aggregator::read(u8* dest, size_t size) {
+    aku_Status status = AKU_ENO_DATA;
+    size_t nelements = 0;
+    while(pos_ < iters_.size()) {
+        aku_Timestamp destts = 0;
+        AggregationResult destval;
+        size_t outsz = 0;
+        std::tie(status, outsz) = iters_[pos_]->read(&destts, &destval, size);
+        if (outsz == 0 && status == AKU_ENO_DATA) {
+            // Move to next iterator
+            pos_++;
+            continue;
+        }
+        if (outsz != 1) {
+            Logger::msg(AKU_LOG_TRACE, "Unexpected aggregate size " + std::to_string(outsz));
+            continue;
+        }
+        // create sample
+        aku_Sample sample;
+        sample.paramid = ids_.at(pos_);
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.size = sizeof(aku_Sample);
+        switch (func_) {
+        case AggregationFunction::MIN:
+            sample.timestamp = destval.mints;
+            sample.payload.float64 = destval.min;
+        break;
+        case AggregationFunction::MIN_TIMESTAMP:
+            sample.timestamp = destval.mints;
+            sample.payload.float64 = destval.mints;
+        break;
+        case AggregationFunction::MAX:
+            sample.timestamp = destval.maxts;
+            sample.payload.float64 = destval.max;
+        break;
+        case AggregationFunction::MAX_TIMESTAMP:
+            sample.timestamp = destval.maxts;
+            sample.payload.float64 = destval.maxts;
+        break;
+        case AggregationFunction::SUM:
+            sample.timestamp = destval._end;
+            sample.payload.float64 = destval.sum;
+        break;
+        case AggregationFunction::CNT:
+            sample.timestamp = destval._end;
+            sample.payload.float64 = destval.cnt;
+        break;
+        case AggregationFunction::MEAN:
+            sample.timestamp = destval._end;
+            sample.payload.float64 = destval.sum/destval.cnt;
+        break;
+        }
+        memcpy(dest, &sample, sizeof(sample));
+        // move to next
+        nelements += 1;
+        size -= sizeof(sample);
+        dest += sizeof(sample);
+        pos_++;
+        if (size < sizeof(sample)) {
+            break;
+        }
+        if (status == AKU_ENO_DATA) {
+            // this iterator is done, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration on error!
+            break;
+        }
+    }
+    return std::make_tuple(status, nelements*sizeof(aku_Sample));
 }
 
 

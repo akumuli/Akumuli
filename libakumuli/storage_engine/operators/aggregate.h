@@ -29,7 +29,7 @@ struct CombineAggregateOperator : AggregateOperator {
         }
     }
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size);
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size);
     virtual Direction get_direction();
 };
 
@@ -38,7 +38,7 @@ struct CombineAggregateOperator : AggregateOperator {
   */
 struct CombineGroupAggregateOperator : AggregateOperator {
     typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
-    typedef std::vector<NBTreeAggregationResult> ReadBuffer;
+    typedef std::vector<AggregationResult> ReadBuffer;
     const u64           step_;
     IterVec             iter_;
     Direction           dir_;
@@ -88,7 +88,7 @@ struct CombineGroupAggregateOperator : AggregateOperator {
      * @param size size of both arrays
      * @return number of elements copied
      */
-    std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, NBTreeAggregationResult* destxs, size_t size);
+    std::tuple<aku_Status, size_t> copy_to(aku_Timestamp* desttx, AggregationResult* destxs, size_t size);
 
     /**
      * @brief Refils read buffer.
@@ -96,9 +96,29 @@ struct CombineGroupAggregateOperator : AggregateOperator {
      */
     aku_Status refill_read_buffer();
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, NBTreeAggregationResult *destval, size_t size);
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size);
     virtual Direction get_direction();
 };
 
+
+/**
+ * Performs materialization for aggregate queries
+ */
+class Aggregator : public TupleOperator {
+    std::vector<std::unique_ptr<AggregateOperator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+    AggregationFunction func_;
+public:
+    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func);
+
+    /**
+     * @brief read data from iterators collection
+     * @param dest is a destination for aggregate
+     * @param size size of both array
+     * @return status and number of elements in dest
+     */
+    std::tuple<aku_Status, size_t> read(u8* dest, size_t size);
+};
 }
 }

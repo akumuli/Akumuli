@@ -1,13 +1,34 @@
 #pragma once
 
+/**
+  * @file operator.h contains operator interfaces.
+  * Operator performs some processing on data. Operator can work on series level. In this case
+  * it doesn't know anything about other series (or columns). Good example of such operator is
+  * an aggregate operator that computes some aggregate function on data. Operator can work on
+  * tuple level. Tuples are produced from individual series through materialization procedure.
+  * Example of such operator is a join operator. This operator consumes several series operators
+  * and produces sequence of tuples.
+  */
+
 #include "akumuli_def.h"
 #include "../nbtree_def.h"
+
 
 namespace Akumuli {
 namespace StorageEngine {
 
+enum class AggregationFunction {
+    MIN,
+    MAX,
+    SUM,
+    CNT,
+    MIN_TIMESTAMP,
+    MAX_TIMESTAMP,
+    MEAN
+};
+
 //! Result of the aggregation operation that has several components.
-struct NBTreeAggregationResult {
+struct AggregationResult {
     double cnt;
     double sum;
     double min;
@@ -31,11 +52,11 @@ struct NBTreeAggregationResult {
      */
     void add(aku_Timestamp ts, double xs, bool forward);
     //! Combine this value with the other one (inplace update).
-    void combine(const NBTreeAggregationResult& other);
+    void combine(const AggregationResult& other);
 };
 
 
-static const NBTreeAggregationResult INIT_AGGRES = {
+static const AggregationResult INIT_AGGRES = {
     .0,
     .0,
     std::numeric_limits<double>::max(),
@@ -49,7 +70,7 @@ static const NBTreeAggregationResult INIT_AGGRES = {
 };
 
 
-/** Database query operator.
+/** Single series operator.
   * @note all ranges is semi-open. This means that if we're
   *       reading data from A to B, operator should return
   *       data in range [A, B), and B timestamp should be
@@ -57,7 +78,7 @@ static const NBTreeAggregationResult INIT_AGGRES = {
   *       direction) then all timestamps that we've read before.
   */
 template <class TValue>
-struct QueryOperator {
+struct SeriesOperator {
 
     //! Iteration direction
     enum class Direction {
@@ -65,7 +86,7 @@ struct QueryOperator {
     };
 
     //! D-tor
-    virtual ~QueryOperator() = default;
+    virtual ~SeriesOperator() = default;
 
     /** Read next portion of data.
       * @param destts Timestamps destination buffer. On success timestamps will be written here.
@@ -79,10 +100,27 @@ struct QueryOperator {
 };
 
 //! Base class for all raw data iterators.
-using RealValuedOperator = QueryOperator<double>;
+using RealValuedOperator = SeriesOperator<double>;
 
 //! Base class for all aggregating iterators. Return single value.
-using AggregateOperator = QueryOperator<NBTreeAggregationResult>;
+using AggregateOperator = SeriesOperator<AggregationResult>;
+
+
+/** This interface is used by column-store internally.
+  * It allows to iterate through a bunch of columns tuple by tuple.
+  */
+struct TupleOperator {
+
+    virtual ~TupleOperator() = default;
+
+    /** Read samples in batch.
+      * Samples can be of variable size.
+      * @param dest is a pointer to buffer that will receive series of aku_Sample values
+      * @param size is a size of the buffer in bytes
+      * @return status of the operation (success or error code) and number of written bytes
+      */
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) = 0;
+};
 
 }
 }

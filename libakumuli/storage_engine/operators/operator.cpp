@@ -5,7 +5,7 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-void NBTreeAggregationResult::copy_from(SubtreeRef const& r) {
+void AggregationResult::copy_from(SubtreeRef const& r) {
     cnt = r.count;
     sum = r.sum;
     min = r.min;
@@ -18,7 +18,7 @@ void NBTreeAggregationResult::copy_from(SubtreeRef const& r) {
     _end = r.end;
 }
 
-void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss, size_t size, bool inverted) {
+void AggregationResult::do_the_math(aku_Timestamp* tss, double const* xss, size_t size, bool inverted) {
     assert(size);
     cnt += size;
     for (size_t i = 0; i < size; i++) {
@@ -45,7 +45,7 @@ void NBTreeAggregationResult::do_the_math(aku_Timestamp* tss, double const* xss,
     }
 }
 
-void NBTreeAggregationResult::add(aku_Timestamp ts, double xs, bool forward) {
+void AggregationResult::add(aku_Timestamp ts, double xs, bool forward) {
     sum += xs;
     if (min > xs) {
         min = xs;
@@ -72,7 +72,7 @@ void NBTreeAggregationResult::add(aku_Timestamp ts, double xs, bool forward) {
     cnt += 1;
 }
 
-void NBTreeAggregationResult::combine(const NBTreeAggregationResult& other) {
+void AggregationResult::combine(const AggregationResult& other) {
     sum += other.sum;
     cnt += other.cnt;
     if (min > other.min) {
