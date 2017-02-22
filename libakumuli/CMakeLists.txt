@@ -19,6 +19,7 @@ add_library(akumuli SHARED
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp
     storage_engine/operators/join.cpp
+    storage_engine/operators/merge.cpp
     # query_processing
     query_processing/queryparser.cpp
     queryprocessor.cpp

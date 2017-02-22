@@ -5,6 +5,7 @@
 #include "operators/aggregate.h"
 #include "operators/scan.h"
 #include "operators/join.h"
+#include "operators/merge.h"
 
 #include <boost/property_tree/ptree.hpp>
 

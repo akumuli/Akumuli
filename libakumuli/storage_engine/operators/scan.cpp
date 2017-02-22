@@ -86,4 +86,5 @@ std::tuple<aku_Status, size_t> ChainOperator::read(u8 *dest, size_t dest_size) {
     }
     return std::make_tuple(status, accsz*sizeof(aku_Sample));
 }
+
 }}  // namespace
