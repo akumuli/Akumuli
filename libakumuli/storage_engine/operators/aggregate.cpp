@@ -272,4 +272,117 @@ std::tuple<aku_Status, size_t> Aggregator::read(u8* dest, size_t size) {
 }
 
 
+std::tuple<aku_Sample*, double*> TupleOutputUtils::cast(u8* dest) {
+    aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
+    double* tuple      = reinterpret_cast<double*>(sample->payload.data);
+    return std::make_tuple(sample, tuple);
+}
+
+double TupleOutputUtils::get_flags(std::vector<AggregationFunction> const& tup) {
+    // Shift will produce power of two (e.g. if tup.size() == 3 then
+    // (1 << tup.size) will give us 8, 8-1 is 7 (exactly three lower
+    // bits is set)).
+    union {
+        double d;
+        u64 u;
+    } bits;
+    bits.u = (1ull << tup.size()) - 1;
+    return bits.d;
+}
+
+double TupleOutputUtils::get(AggregationResult const& res, AggregationFunction afunc) {
+    double out = 0;
+    switch (afunc) {
+    case AggregationFunction::CNT:
+        out = res.cnt;
+        break;
+    case AggregationFunction::SUM:
+        out = res.sum;
+        break;
+    case AggregationFunction::MIN:
+        out = res.min;
+        break;
+    case AggregationFunction::MIN_TIMESTAMP:
+        out = static_cast<double>(res.mints);
+        break;
+    case AggregationFunction::MAX:
+        out = res.max;
+        break;
+    case AggregationFunction::MAX_TIMESTAMP:
+        out = res.maxts;
+        break;
+    case AggregationFunction::MEAN:
+        out = res.sum / res.cnt;
+        break;
+    }
+    return out;
+}
+
+void TupleOutputUtils::set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, AggregationResult const& res) {
+    for (size_t i = 0; i < comp.size(); i++) {
+        auto elem = comp[i];
+        *tuple = get(res, elem);
+        tuple++;
+    }
+}
+
+size_t TupleOutputUtils::get_tuple_size(const std::vector<AggregationFunction>& tup) {
+    size_t payload = 0;
+    assert(!tup.empty());
+    payload = sizeof(double)*tup.size();
+    return sizeof(aku_Sample) + payload;
+}
+
+
+std::tuple<aku_Status, size_t> SeriesOrderIterator::read(u8 *dest, size_t dest_size) {
+    aku_Status status = AKU_ENO_DATA;
+    size_t ressz = 0;  // current size
+    size_t accsz = 0;  // accumulated size
+    size_t sample_size = get_tuple_size(tuple_);
+    size_t size = dest_size / sample_size;
+    std::vector<aku_Timestamp> destts_vec(size, 0);
+    std::vector<AggregationResult> destval_vec(size, INIT_AGGRES);
+    std::vector<aku_ParamId> outids(size, 0);
+    aku_Timestamp* destts = destts_vec.data();
+    AggregationResult* destval = destval_vec.data();
+    while(pos_ < iters_.size()) {
+        aku_ParamId curr = ids_[pos_];
+        std::tie(status, ressz) = iters_[pos_]->read(destts, destval, size);
+        for (size_t i = accsz; i < accsz+ressz; i++) {
+            outids[i] = curr;
+        }
+        destts += ressz;
+        destval += ressz;
+        size -= ressz;
+        accsz += ressz;
+        if (size == 0) {
+            break;
+        }
+        pos_++;
+        if (status == AKU_ENO_DATA) {
+            // this iterator is done, continue with next
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            // Stop iteration on error!
+            break;
+        }
+    }
+    // Convert vectors to series of samples
+    for (size_t i = 0; i < accsz; i++) {
+        double* tup;
+        aku_Sample* sample;
+        std::tie(sample, tup)   = cast(dest);
+        dest                   += sample_size;
+        sample->payload.type    = AKU_PAYLOAD_TUPLE;
+        sample->payload.size    = static_cast<u16>(sample_size);
+        sample->paramid         = outids[i];
+        sample->timestamp       = destts_vec[i];
+        sample->payload.float64 = get_flags(tuple_);
+        set_tuple(tup, tuple_, destval_vec[i]);
+    }
+    return std::make_tuple(status, accsz*sample_size);
+
+}
+
 }}

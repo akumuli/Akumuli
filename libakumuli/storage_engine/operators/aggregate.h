@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cassert>
+
 #include "operator.h"
+#include "merge.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -120,5 +123,67 @@ public:
      */
     std::tuple<aku_Status, size_t> read(u8* dest, size_t size);
 };
-}
-}
+
+
+
+struct TupleOutputUtils {
+    /** Get pointer to buffer and return pointer to sample and tuple data */
+    static std::tuple<aku_Sample*, double*> cast(u8* dest);
+
+    static double get_flags(std::vector<AggregationFunction> const& tup);
+
+    static double get(AggregationResult const& res, AggregationFunction afunc);
+
+    static void set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, AggregationResult const& res);
+
+    static size_t get_tuple_size(const std::vector<AggregationFunction>& tup);
+};
+
+struct SeriesOrderIterator : TupleOutputUtils, TupleOperator {
+    std::vector<std::unique_ptr<AggregateOperator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> tuple_;
+    u32 pos_;
+
+    SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
+                        std::vector<std::unique_ptr<AggregateOperator>>&& it,
+                        const std::vector<AggregationFunction>& components)
+        : iters_(std::move(it))
+        , ids_(std::move(ids))
+        , tuple_(std::move(components))
+        , pos_(0)
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override;
+};
+
+
+struct TimeOrderIterator : TupleOutputUtils, TupleOperator {
+    std::unique_ptr<MergeJoinOperator> join_iter_;
+
+    TimeOrderIterator(const std::vector<aku_ParamId>& ids,
+                      std::vector<std::unique_ptr<AggregateOperator>> &it,
+                      const std::vector<AggregationFunction>& components)
+    {
+        assert(it.size());
+        bool forward = it.front()->get_direction() == AggregateOperator::Direction::FORWARD;
+        std::vector<std::unique_ptr<TupleOperator>> iters;
+        for (size_t i = 0; i < ids.size(); i++) {
+            std::unique_ptr<TupleOperator> iter;
+            auto agg = std::move(it.at(i));
+            std::vector<std::unique_ptr<AggregateOperator>> agglist;
+            agglist.push_back(std::move(agg));
+            auto ptr = new SeriesOrderIterator({ ids[i] }, std::move(agglist), components);
+            iter.reset(ptr);
+            iters.push_back(std::move(iter));
+        }
+        join_iter_.reset(new MergeJoinOperator(std::move(iters), forward));
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override {
+        return join_iter_->read(dest, size);
+    }
+};
+
+}}
