@@ -41,11 +41,23 @@ In case automatic script didn't work:
 
 * Boost:
 
-  `sudo apt-get install libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-coroutine-dev libboost-context-dev`
-  
+  `sudo apt-get install libboost-all-dev`
+
+* log4cxx:
+
+  `sudo apt-get install log4cxx`
+
+* jemalloc:
+
+  `sudo apt-get install libjemalloc-dev`
+
+* microhttpd:
+
+  `sudo apt-get install libmicrohttpd-dev`
+
 * APR:
 
-  `sudo apt-get install libapr1-dev libaprutil1-dev`
+  `sudo apt-get install libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3`
 
 * Cmake:
 
