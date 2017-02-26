@@ -57,7 +57,7 @@ In case automatic script didn't work:
 
 * APR:
 
-  `sudo apt-get install libapr1-dev libaprutil1-dev`
+  `sudo apt-get install libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3`
 
 * Cmake:
 
