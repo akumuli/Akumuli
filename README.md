@@ -46,7 +46,15 @@ In case automatic script didn't work:
 * log4cxx:
 
   `sudo apt-get install log4cxx`
-  
+
+* jemalloc:
+
+  `sudo apt-get install libjemalloc-dev`
+
+* microhttpd:
+
+  `sudo apt-get install libmicrohttpd-dev`
+
 * APR:
 
   `sudo apt-get install libapr1-dev libaprutil1-dev`
