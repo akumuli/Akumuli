@@ -131,13 +131,14 @@ private:
 
 
 struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
-    std::weak_ptr<DbConnection>        connection_;
-    std::shared_ptr<TcpAcceptor>       serv;
-    boost::asio::io_service            io;
-    std::vector<IOServiceT*>           iovec;
-    boost::barrier                     barrier;
-    std::atomic<int>                   stopped;
-    Logger                             logger_;
+    typedef std::unique_ptr<IOServiceT>  IOPtr;
+    std::weak_ptr<DbConnection>          connection_;
+    std::shared_ptr<TcpAcceptor>         serv;
+    std::vector<IOPtr>                   ios_;
+    std::vector<IOServiceT*>             iovec;
+    boost::barrier                       barrier;
+    std::atomic<int>                     stopped;
+    Logger                               logger_;
 
     TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port);
     ~TcpServer();

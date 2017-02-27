@@ -262,8 +262,10 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     , logger_("tcp-server", 32)
 {
     logger_.info() << "TCP server created, concurrency: " << concurrency;
-    for(;concurrency --> 0;) {
-        iovec.push_back(&io);
+    for(int i = 0; i < concurrency; i++) {
+        IOPtr ptr = IOPtr(new IOServiceT());
+        iovec.push_back(ptr.get());
+        ios_.push_back(std::move(ptr));
     }
     auto con = connection_.lock();
     if (con) {
@@ -322,8 +324,10 @@ void TcpServer::stop() {
         serv->stop();
         logger_.info() << "TcpServer stopped";
 
-        io.stop();
-        logger_.info() << "I/O service stopped";
+        for(auto& svc: ios_) {
+            svc->stop();
+            logger_.info() << "I/O service stopped";
+        }
 
         barrier.wait();
         logger_.info() << "I/O threads stopped";
