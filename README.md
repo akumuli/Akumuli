@@ -18,7 +18,7 @@ Features
 * Simple query language based on JSON over HTTP.
 * Fast data ingestion over the network:
   * 4.5M data points per second on 8-core Intel Xeon E5-2670 v2 (m3.2xlarge EC2 instance).
-  * 16.1M data points per second on Intel Xeon E5-2680 v2 (c3.8xlarge EC2 instance).
+  * 16.1M data points per second on 32-core Intel Xeon E5-2680 v2 (c3.8xlarge EC2 instance).
 * Query results returned using chunked transfer encoding at rate about 50MB/second (about 1M data points/second) per core.
 
 Documentation
