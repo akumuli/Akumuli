@@ -49,6 +49,12 @@ void UdpServer::stop() {
 
 
 void UdpServer::worker(std::shared_ptr<DbSession> spout) {
+#ifdef __gnu_linux__
+        // Name the thread
+        auto thread = pthread_self();
+        pthread_setname_np(thread, "UDP-worker");
+#endif
+
     start_barrier_.wait();
 
     int sockfd, retval;

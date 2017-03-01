@@ -18,8 +18,9 @@ std::string make_unique_session_name() {
     return str.str();
 }
 
-TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout)
-    : io_(io)
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
+    : parallel_(parallel)
+    , io_(io)
     , socket_(*io)
     , strand_(*io)
     , spout_(spout)
@@ -47,15 +48,25 @@ void TcpSession::start() {
     BufferT buf;
     size_t buf_size;
     std::tie(buf, buf_size) = get_next_buffer();
-    socket_.async_read_some(
+    if (parallel_) {
+        socket_.async_read_some(
                 boost::asio::buffer(buf, buf_size),
                 strand_.wrap(
                     boost::bind(&TcpSession::handle_read,
                                 shared_from_this(),
                                 buf,
                                 boost::asio::placeholders::error,
-                                boost::asio::placeholders::bytes_transferred)
-                ));
+                                boost::asio::placeholders::bytes_transferred)));
+    } else {
+        // Strand is not used here
+        socket_.async_read_some(
+                boost::asio::buffer(buf, buf_size),
+                boost::bind(&TcpSession::handle_read,
+                            shared_from_this(),
+                            buf,
+                            boost::asio::placeholders::error,
+                            boost::asio::placeholders::bytes_transferred));
+    }
 }
 
 ErrorCallback TcpSession::get_error_cb() {
@@ -145,8 +156,9 @@ void TcpSession::handle_write_error(boost::system::error_code error) {
 TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
                         // Storage & pipeline
-                        std::shared_ptr<DbConnection> connection )
-    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+                        std::shared_ptr<DbConnection> connection , bool parallel)
+    : parallel_(parallel)
+    , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
     , sessions_io_(io)
     , connection_(connection)
     , io_index_{0}
@@ -173,6 +185,11 @@ void TcpAcceptor::start() {
     // Run detached thread for accepts
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
+#ifdef __gnu_linux__
+        // Name the thread
+        auto thread = pthread_self();
+        pthread_setname_np(thread, "TCP-accept");
+#endif
         self->logger_.info() << "Starting acceptor worker thread";
         self->start_barrier_.wait();
         self->logger_.info() << "Acceptor worker thread have started";
@@ -205,7 +222,7 @@ void TcpAcceptor::_start() {
     auto con = connection_.lock();
     if (con) {
         auto spout = con->create_session();
-        session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout)));
+        session = std::make_shared<TcpSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
     } else {
         logger_.error() << "Database was already closed";
     }
@@ -250,19 +267,28 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port)
+TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, TcpServer::Mode mode)
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
     , logger_("tcp-server", 32)
 {
     logger_.info() << "TCP server created, concurrency: " << concurrency;
-    for(;concurrency --> 0;) {
-        iovec.push_back(&io);
+    if (mode == Mode::EVENT_LOOP_PER_THREAD) {
+        for(int i = 0; i < concurrency; i++) {
+            IOPtr ptr = IOPtr(new IOServiceT(1));
+            iovec.push_back(ptr.get());
+            ios_.push_back(std::move(ptr));
+        }
+    } else {
+        IOPtr ptr = IOPtr(new IOServiceT(static_cast<size_t>(concurrency)));
+        iovec.push_back(ptr.get());
+        ios_.push_back(std::move(ptr));
     }
+    bool parallel = mode == Mode::SHARED_EVENT_LOOP;
     auto con = connection_.lock();
     if (con) {
-        serv = std::make_shared<TcpAcceptor>(iovec, port, con);
+        serv = std::make_shared<TcpAcceptor>(iovec, port, con, parallel);
         serv->start();
     } else {
         logger_.error() << "Can't start TCP server, database closed";
@@ -282,6 +308,11 @@ void TcpServer::start(SignalHandler* sig, int id) {
 
     auto iorun = [self](IOServiceT& io, int cnt) {
         auto fn = [self, &io, cnt]() {
+#ifdef __gnu_linux__
+            // Name the thread
+            auto thread = pthread_self();
+            pthread_setname_np(thread, "TCP-worker");
+#endif
             Logger logger("tcp-server-worker", 10);
             try {
                 logger.info() << "Event loop " << cnt << " started";
@@ -312,8 +343,10 @@ void TcpServer::stop() {
         serv->stop();
         logger_.info() << "TcpServer stopped";
 
-        io.stop();
-        logger_.info() << "I/O service stopped";
+        for(auto& svc: ios_) {
+            svc->stop();
+            logger_.info() << "I/O service stopped";
+        }
 
         barrier.wait();
         logger_.info() << "I/O threads stopped";

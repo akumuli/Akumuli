@@ -48,6 +48,7 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     enum {
         BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
     };
+    const bool                      parallel_;
     IOServiceT*                     io_;
     SocketT                         socket_;
     StrandT                         strand_;
@@ -57,7 +58,8 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
 
 public:
     typedef Byte* BufferT;
-    TcpSession(IOServiceT* io, std::shared_ptr<DbSession> spout);
+
+    TcpSession(IOServiceT* io, std::shared_ptr<DbSession> spout, bool parallel=true);
 
     ~TcpSession();
 
@@ -84,6 +86,7 @@ private:
   * Accepts connections and creates new client sessions
   */
 class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
+    const bool                         parallel_;  //< Flag for TcpSession instances
     IOServiceT                           own_io_;  //< Acceptor's own io-service
     AcceptorT                          acceptor_;  //< Acceptor
     std::vector<IOServiceT*>        sessions_io_;  //< List of io-services for sessions
@@ -105,7 +108,8 @@ public:
     TcpAcceptor(  // Server parameters
         std::vector<IOServiceT*> io, int port,
         // Storage & pipeline
-        std::shared_ptr<DbConnection> connection);
+        std::shared_ptr<DbConnection> connection,
+        bool parallel=true);
 
     ~TcpAcceptor();
 
@@ -131,15 +135,20 @@ private:
 
 
 struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
-    std::weak_ptr<DbConnection>        connection_;
-    std::shared_ptr<TcpAcceptor>       serv;
-    boost::asio::io_service            io;
-    std::vector<IOServiceT*>           iovec;
-    boost::barrier                     barrier;
-    std::atomic<int>                   stopped;
-    Logger                             logger_;
+    enum class Mode {
+        EVENT_LOOP_PER_THREAD,
+        SHARED_EVENT_LOOP,
+    };
+    typedef std::unique_ptr<IOServiceT>  IOPtr;
+    std::weak_ptr<DbConnection>          connection_;
+    std::shared_ptr<TcpAcceptor>         serv;
+    std::vector<IOPtr>                   ios_;
+    std::vector<IOServiceT*>             iovec;
+    boost::barrier                       barrier;
+    std::atomic<int>                     stopped;
+    Logger                               logger_;
 
-    TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port);
+    TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, Mode mode=Mode::EVENT_LOOP_PER_THREAD);
     ~TcpServer();
 
     //! Run IO service

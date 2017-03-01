@@ -5,6 +5,7 @@
 #include "akumuli.h"
 #include "util.h"
 #include "seriesparser.h"
+#include "storage_engine/operators/operator.h"
 
 #include <boost/property_tree/ptree.hpp>
 
@@ -37,15 +38,7 @@ namespace QP {
  * It is possible to add processing steps via IQueryProcessor.
  */
 
-enum class AggregationFunction {
-    MIN,
-    MAX,
-    SUM,
-    CNT,
-    MIN_TIMESTAMP,
-    MAX_TIMESTAMP,
-    MEAN
-};
+using AggregationFunction = StorageEngine::AggregationFunction;
 
 struct Aggregation {
     bool enabled;

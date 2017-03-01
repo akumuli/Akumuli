@@ -47,7 +47,7 @@ void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
     }
 
     // Read data back
-    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+    std::unique_ptr<RealValuedOperator> it = collection->search(begin, end);
 
     aku_Status status;
     size_t sz;
@@ -129,7 +129,7 @@ void test_nbtree_chunked_read(u32 N, u32 begin, u32 end, u32 chunk_size) {
     }
 
     // Read data back
-    std::unique_ptr<NBTreeIterator> it = collection->search(begin, end);
+    std::unique_ptr<RealValuedOperator> it = collection->search(begin, end);
 
     aku_Status status;
     size_t sz;
@@ -242,7 +242,7 @@ void test_reopen_storage(i32 Npages, i32 Nitems) {
         check_tree_consistency(bstore, i, extent);
     }
 
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::unique_ptr<RealValuedOperator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);
     std::vector<double> xs(nitems, 0);
     aku_Status status = AKU_SUCCESS;
@@ -397,7 +397,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
     }
 
     // Scan entire tree
-    std::unique_ptr<NBTreeIterator> it = collection->search(0, nitems);
+    std::unique_ptr<RealValuedOperator> it = collection->search(0, nitems);
     std::vector<aku_Timestamp> ts(nitems, 0);
     std::vector<double> xs(nitems, 0);
     size_t sz = 0;
@@ -430,13 +430,13 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
 
     if (sz) {
         // Expected aggregates (calculated by hand)
-        NBTreeAggregationResult exp_agg = INIT_AGGRES;
+        AggregationResult exp_agg = INIT_AGGRES;
         exp_agg.do_the_math(ts.data(), xs.data(), sz, false);
 
         // Single leaf node will be lost and aggregates will be empty anyway
         auto agg_iter = collection->aggregate(0, nitems);
         aku_Timestamp new_agg_ts;
-        NBTreeAggregationResult new_agg_result = INIT_AGGRES;
+        AggregationResult new_agg_result = INIT_AGGRES;
         size_t agg_size;
         std::tie(status, agg_size) = agg_iter->read(&new_agg_ts, &new_agg_result, 1);
         if (status != AKU_SUCCESS) {
@@ -513,7 +513,7 @@ void test_storage_recovery_2(u32 N_blocks) {
         if (sz) {
             auto agg_iter = col->aggregate(0, N+1);
             aku_Timestamp agg_ts;
-            NBTreeAggregationResult act_agg = INIT_AGGRES;
+            AggregationResult act_agg = INIT_AGGRES;
             size_t agg_size;
             std::tie(status, agg_size) = agg_iter->read(&agg_ts, &act_agg, 1);
             if (status != AKU_SUCCESS) {
@@ -657,8 +657,8 @@ struct RandomWalk {
     }
 };
 
-NBTreeAggregationResult calculate_expected_value(std::vector<double> const& xss) {
-    NBTreeAggregationResult expected = INIT_AGGRES;
+AggregationResult calculate_expected_value(std::vector<double> const& xss) {
+    AggregationResult expected = INIT_AGGRES;
     expected.sum = std::accumulate(xss.begin(), xss.end(), 0.0, [](double a, double b) { return a + b; });
     expected.max = std::accumulate(xss.begin(), xss.end(), std::numeric_limits<double>::min(),
                         [](double a, double b) {
@@ -713,7 +713,7 @@ void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     aku_Status status;
     size_t size = 100;
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     size_t outsz;
     std::tie(status, outsz) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
@@ -860,7 +860,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     aku_Status status;
     size_t size = 100;
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(size, 1);
@@ -998,12 +998,12 @@ void test_nbtree_superblock_candlesticks(size_t commit_limit, aku_Timestamp delt
     aku_Status status;
     size_t size = 1000;
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     for(size_t i = 1; i < size; i++) {
-        NBTreeAggregationResult prev, curr;
+        AggregationResult prev, curr;
         prev = destxs[i - 1];
         curr = destxs[i];
         BOOST_REQUIRE_CLOSE(prev.last, curr.first, 10e-5);
@@ -1184,8 +1184,8 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
     extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
-    NBTreeAggregationResult acc = INIT_AGGRES;
-    std::vector<NBTreeAggregationResult> buckets;
+    AggregationResult acc = INIT_AGGRES;
+    std::vector<AggregationResult> buckets;
     auto query_begin = static_cast<u64>(static_cast<i64>(begin) + start_offset);
     auto bucket_ix = 0ull;
     while(ncommits < commit_limit) {
@@ -1212,7 +1212,7 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
     aku_Status status;
     size_t size = buckets.size();
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     size_t out_size;
     std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(out_size, buckets.size());
@@ -1308,8 +1308,8 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     // Calculate aggregates in backward direction
     std::reverse(xss.begin(), xss.end());
     std::reverse(tss.begin(), tss.end());
-    NBTreeAggregationResult acc = INIT_AGGRES;
-    std::vector<NBTreeAggregationResult> buckets;
+    AggregationResult acc = INIT_AGGRES;
+    std::vector<AggregationResult> buckets;
     auto bucket_ix = 0ull;
     auto query_begin = static_cast<u64>(static_cast<i64>(end) - start_offset);
     auto query_end = static_cast<u64>(static_cast<i64>(begin) + start_offset);
@@ -1333,7 +1333,7 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     aku_Status status;
     size_t size = buckets.size();
     std::vector<aku_Timestamp> destts(size, 0);
-    std::vector<NBTreeAggregationResult> destxs(size, INIT_AGGRES);
+    std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     size_t out_size;
     std::tie(status, out_size) = it->read(destts.data(), destxs.data(), size);
     BOOST_REQUIRE_EQUAL(out_size, buckets.size());

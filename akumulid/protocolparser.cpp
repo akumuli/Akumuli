@@ -202,6 +202,48 @@ bool ProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
     return true;
 }
 
+int ProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
+    bool success;
+    int bytes_read;
+    int rowwidth = -1;
+    const int buffer_len = RESPStream::STRING_LENGTH_MAX;
+    Byte buffer[buffer_len] = {};
+    // read id
+    auto next = stream.next_type();
+    switch(next) {
+    case RESPStream::_AGAIN:
+        rdbuf_.discard();
+        return -1;
+    case RESPStream::STRING:
+        std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
+        if (!success) {
+            rdbuf_.discard();
+            return -1;
+        }
+        rowwidth = consumer_->name_to_param_id_list(buffer, buffer + bytes_read, ids, nvalues);
+        if (rowwidth <= 0) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        break;
+    case RESPStream::INTEGER:
+    case RESPStream::ARRAY:
+    case RESPStream::BULK_STR:
+    case RESPStream::ERROR:
+    case RESPStream::_BAD:
+        // Bad frame
+        {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("unexpected parameter id format");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+    };
+    return rowwidth;
+}
+
 bool ProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
     const size_t buflen = 64;
     Byte buf[buflen];
@@ -332,80 +374,45 @@ void ProtocolParser::worker() {
     u64 paramids[AKU_LIMITS_MAX_ROW_WIDTH];
     double values[AKU_LIMITS_MAX_ROW_WIDTH];
     int rowwidth = 0;
-    const int buffer_len = RESPStream::STRING_LENGTH_MAX;
-    Byte buffer[buffer_len] = {};
-    int bytes_read = 0;
     // Data to read
     aku_Sample sample;
     aku_Status status = AKU_SUCCESS;
     //
-    try {
-        RESPStream stream(&rdbuf_);
-        while(true) {
-            bool success;
-            // read id
-            auto next = stream.next_type();
-            switch(next) {
-            case RESPStream::_AGAIN:
-                rdbuf_.discard();
-                return;
-            case RESPStream::STRING:
-                std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
-                if (!success) {
-                    rdbuf_.discard();
-                    return;
-                }
-                rowwidth = consumer_->name_to_param_id_list(buffer, buffer + bytes_read, paramids, AKU_LIMITS_MAX_ROW_WIDTH);
-                if (rowwidth <= 0) {
-                    std::string msg;
-                    size_t pos;
-                    std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
-                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-                }
-                break;
-            case RESPStream::INTEGER:
-            case RESPStream::ARRAY:
-            case RESPStream::BULK_STR:
-            case RESPStream::ERROR:
-            case RESPStream::_BAD:
-                // Bad frame
-                {
-                    std::string msg;
-                    size_t pos;
-                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected parameter id format");
-                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-                }
-            };
-            // read ts
-            success = parse_timestamp(stream, sample);
-            if (!success) {
-                rdbuf_.discard();
-                return;
-            }
-            success = parse_values(stream, values, rowwidth);
-            if (!success) {
-                rdbuf_.discard();
-                return;
-            }
+    RESPStream stream(&rdbuf_);
+    while(true) {
+        bool success;
+        // read id
+        rowwidth = parse_ids(stream, paramids, AKU_LIMITS_MAX_ROW_WIDTH);
+        if (rowwidth < 0) {
+            rdbuf_.discard();
+            return;
+        }
+        // read ts
+        success = parse_timestamp(stream, sample);
+        if (!success) {
+            rdbuf_.discard();
+            return;
+        }
+        success = parse_values(stream, values, rowwidth);
+        if (!success) {
+            rdbuf_.discard();
+            return;
+        }
 
-            rdbuf_.consume();
+        rdbuf_.consume();
 
-            sample.payload.type = AKU_PAYLOAD_FLOAT;
-            sample.payload.size = sizeof(aku_Sample);
-            // Timestamp is initialized once and for all
-            for (int i = 0; i < rowwidth; i++) {
-                sample.paramid = paramids[i];
-                sample.payload.float64 = values[i];
-                status = consumer_->write(sample);
-                // Message processed and frame can be removed (if possible)
-                if (status != AKU_SUCCESS) {
-                    BOOST_THROW_EXCEPTION(DatabaseError(status));
-                }
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.size = sizeof(aku_Sample);
+        // Timestamp is initialized once and for all
+        for (int i = 0; i < rowwidth; i++) {
+            sample.paramid = paramids[i];
+            sample.payload.float64 = values[i];
+            status = consumer_->write(sample);
+            // Message processed and frame can be removed (if possible)
+            if (status != AKU_SUCCESS) {
+                BOOST_THROW_EXCEPTION(DatabaseError(status));
             }
         }
-    } catch(EStopIteration const&) {
-        logger_.info() << "EStopIteration";
-        done_ = true;
     }
 }
 
