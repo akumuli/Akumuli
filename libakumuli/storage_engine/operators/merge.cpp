@@ -6,7 +6,7 @@ namespace StorageEngine {
 
 // Merge Join //
 
-MergeJoinOperator::MergeJoinOperator(std::vector<std::unique_ptr<TupleOperator>>&& it, bool forward)
+MergeJoinOperator::MergeJoinOperator(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward)
     : iters_(std::move(it))
     , forward_(forward)
 {

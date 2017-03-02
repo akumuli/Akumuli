@@ -126,7 +126,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
         }
     }
 
-    std::unique_ptr<TupleOperator> iter;
+    std::unique_ptr<ColumnMaterializer> iter;
     auto ids = req.select.columns.at(0).ids;
     if (req.agg.enabled) {
         std::vector<std::unique_ptr<AggregateOperator>> agglist;
@@ -148,7 +148,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             return;
         } else {
             if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new Aggregator(std::move(ids), std::move(agglist), req.agg.func.front()));
+                iter.reset(new AggregateMaterializer(std::move(ids), std::move(agglist), req.agg.func.front()));
             } else {
                 // Error: invalid query
                 Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
@@ -189,7 +189,7 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             }
         } else {
             if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new ChainOperator(std::move(ids), std::move(iters)));
+                iter.reset(new ChainMaterializer(std::move(ids), std::move(iters)));
             } else {
                 iter.reset(new MergeOperator<TimeOrder>(std::move(ids), std::move(iters)));
             }
@@ -227,7 +227,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
         qproc.set_error(AKU_EBAD_ARG);
         return;
     }
-    std::vector<std::unique_ptr<TupleOperator>> iters;
+    std::vector<std::unique_ptr<ColumnMaterializer>> iters;
     for (u32 ix = 0; ix < req.select.columns.front().ids.size(); ix++) {
         std::vector<std::unique_ptr<RealValuedOperator>> row;
         std::vector<aku_ParamId> ids;
@@ -244,8 +244,8 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
                 return;
             }
         }
-        auto it = new JoinOperator(std::move(row), ids.front());
-        iters.push_back(std::unique_ptr<JoinOperator>(it));
+        auto it = new JoinMaterializer(std::move(row), ids.front());
+        iters.push_back(std::unique_ptr<JoinMaterializer>(it));
     }
 
     if (req.order_by == OrderBy::SERIES) {
@@ -276,7 +276,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
             }
         }
     } else {
-        std::unique_ptr<TupleOperator> iter;
+        std::unique_ptr<ColumnMaterializer> iter;
         bool forward = req.select.begin < req.select.end;
         iter.reset(new MergeJoinOperator(std::move(iters), forward));
 
@@ -329,7 +329,7 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
             return;
         }
     }
-    std::unique_ptr<TupleOperator> iter;
+    std::unique_ptr<ColumnMaterializer> iter;
     auto ids = req.select.columns.at(0).ids;
     if (req.group_by.enabled) {
         // FIXME: Not yet supported
@@ -338,9 +338,9 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         return;
     } else {
         if (req.order_by == OrderBy::SERIES) {
-            iter.reset(new SeriesOrderIterator(std::move(ids), std::move(agglist), req.agg.func));
+            iter.reset(new SeriesOrderAggregateMaterializer(std::move(ids), std::move(agglist), req.agg.func));
         } else {
-            iter.reset(new TimeOrderIterator(ids, agglist, req.agg.func));
+            iter.reset(new TimeOrderAggregateMaterializer(ids, agglist, req.agg.func));
         }
     }
     const size_t dest_size = 0x1000;

@@ -190,7 +190,7 @@ CombineGroupAggregateOperator::Direction CombineGroupAggregateOperator::get_dire
 }
 
 
-Aggregator::Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func)
+AggregateMaterializer::AggregateMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func)
     : iters_(std::move(it))
     , ids_(std::move(ids))
     , pos_(0)
@@ -198,7 +198,7 @@ Aggregator::Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_p
 {
 }
 
-std::tuple<aku_Status, size_t> Aggregator::read(u8* dest, size_t size) {
+std::tuple<aku_Status, size_t> AggregateMaterializer::read(u8* dest, size_t size) {
     aku_Status status = AKU_ENO_DATA;
     size_t nelements = 0;
     while(pos_ < iters_.size()) {
@@ -334,7 +334,7 @@ size_t TupleOutputUtils::get_tuple_size(const std::vector<AggregationFunction>& 
 }
 
 
-std::tuple<aku_Status, size_t> SeriesOrderIterator::read(u8 *dest, size_t dest_size) {
+std::tuple<aku_Status, size_t> SeriesOrderAggregateMaterializer::read(u8 *dest, size_t dest_size) {
     aku_Status status = AKU_ENO_DATA;
     size_t ressz = 0;  // current size
     size_t accsz = 0;  // accumulated size

@@ -1372,7 +1372,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
         return std::move(results.front());
     }
     std::unique_ptr<RealValuedOperator> res_iter;
-    res_iter.reset(new ScanOperator(std::move(results)));
+    res_iter.reset(new ChainOperator(std::move(results)));
     return std::move(res_iter);
 }
 
@@ -2542,7 +2542,7 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begi
         return std::move(iterators.front());
     }
     std::unique_ptr<RealValuedOperator> concat;
-    concat.reset(new ScanOperator(std::move(iterators)));
+    concat.reset(new ChainOperator(std::move(iterators)));
     return concat;
 }
 

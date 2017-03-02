@@ -16,7 +16,7 @@ namespace StorageEngine {
   * can be seen as one iterator. Iterators should be in correct
   * order.
   */
-struct ScanOperator : RealValuedOperator {
+struct ChainOperator : RealValuedOperator {
     typedef std::vector<std::unique_ptr<RealValuedOperator>> IterVec;
     IterVec   iter_;
     Direction dir_;
@@ -24,7 +24,7 @@ struct ScanOperator : RealValuedOperator {
 
     //! C-tor. Create iterator from list of iterators.
     template<class TVec>
-    ScanOperator(TVec&& iter)
+    ChainOperator(TVec&& iter)
         : iter_(std::forward<TVec>(iter))
         , iter_index_(0)
     {
@@ -41,29 +41,15 @@ struct ScanOperator : RealValuedOperator {
 
 
 /**
- * Materializes list of series by chaining them
+ * Materializes list of columns by chaining them
  */
-class ChainOperator : public TupleOperator {
+class ChainMaterializer : public ColumnMaterializer {
     std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     size_t pos_;
 public:
-    ChainOperator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it);
+    ChainMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it);
     virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
 };
 
-template<int dir>  // 0 - forward, 1 - backward
-struct TimeOrder {
-    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
-    typedef std::tuple<KeyType, double, u32> HeapItem;
-    std::greater<KeyType> greater_;
-    std::less<KeyType> less_;
-
-    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
-        if (dir == 0) {
-            return greater_(std::get<0>(lhs), std::get<0>(rhs));
-        }
-        return less_(std::get<0>(lhs), std::get<0>(rhs));
-    }
-};
 }}  // namespace

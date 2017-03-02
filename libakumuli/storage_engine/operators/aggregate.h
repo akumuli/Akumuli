@@ -107,13 +107,13 @@ struct CombineGroupAggregateOperator : AggregateOperator {
 /**
  * Performs materialization for aggregate queries
  */
-class Aggregator : public TupleOperator {
+class AggregateMaterializer : public ColumnMaterializer {
     std::vector<std::unique_ptr<AggregateOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     size_t pos_;
     AggregationFunction func_;
 public:
-    Aggregator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func);
+    AggregateMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func);
 
     /**
      * @brief read data from iterators collection
@@ -139,13 +139,13 @@ struct TupleOutputUtils {
     static size_t get_tuple_size(const std::vector<AggregationFunction>& tup);
 };
 
-struct SeriesOrderIterator : TupleOutputUtils, TupleOperator {
+struct SeriesOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
     std::vector<std::unique_ptr<AggregateOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     std::vector<AggregationFunction> tuple_;
     u32 pos_;
 
-    SeriesOrderIterator(std::vector<aku_ParamId>&& ids,
+    SeriesOrderAggregateMaterializer(std::vector<aku_ParamId>&& ids,
                         std::vector<std::unique_ptr<AggregateOperator>>&& it,
                         const std::vector<AggregationFunction>& components)
         : iters_(std::move(it))
@@ -159,22 +159,22 @@ struct SeriesOrderIterator : TupleOutputUtils, TupleOperator {
 };
 
 
-struct TimeOrderIterator : TupleOutputUtils, TupleOperator {
+struct TimeOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
     std::unique_ptr<MergeJoinOperator> join_iter_;
 
-    TimeOrderIterator(const std::vector<aku_ParamId>& ids,
+    TimeOrderAggregateMaterializer(const std::vector<aku_ParamId>& ids,
                       std::vector<std::unique_ptr<AggregateOperator>> &it,
                       const std::vector<AggregationFunction>& components)
     {
         assert(it.size());
         bool forward = it.front()->get_direction() == AggregateOperator::Direction::FORWARD;
-        std::vector<std::unique_ptr<TupleOperator>> iters;
+        std::vector<std::unique_ptr<ColumnMaterializer>> iters;
         for (size_t i = 0; i < ids.size(); i++) {
-            std::unique_ptr<TupleOperator> iter;
+            std::unique_ptr<ColumnMaterializer> iter;
             auto agg = std::move(it.at(i));
             std::vector<std::unique_ptr<AggregateOperator>> agglist;
             agglist.push_back(std::move(agg));
-            auto ptr = new SeriesOrderIterator({ ids[i] }, std::move(agglist), components);
+            auto ptr = new SeriesOrderAggregateMaterializer({ ids[i] }, std::move(agglist), components);
             iter.reset(ptr);
             iters.push_back(std::move(iter));
         }

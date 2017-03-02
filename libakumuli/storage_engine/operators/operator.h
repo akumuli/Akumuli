@@ -107,11 +107,11 @@ using AggregateOperator = SeriesOperator<AggregationResult>;
 
 
 /** This interface is used by column-store internally.
-  * It allows to iterate through a bunch of columns tuple by tuple.
+  * It materializes tuples/values and produces a series of aku_Sample values.
   */
-struct TupleOperator {
+struct ColumnMaterializer {
 
-    virtual ~TupleOperator() = default;
+    virtual ~ColumnMaterializer() = default;
 
     /** Read samples in batch.
       * Samples can be of variable size.

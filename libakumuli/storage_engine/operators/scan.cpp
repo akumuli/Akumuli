@@ -3,7 +3,7 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-std::tuple<aku_Status, size_t> ScanOperator::read(aku_Timestamp *destts, double *destval, size_t size) {
+std::tuple<aku_Status, size_t> ChainOperator::read(aku_Timestamp *destts, double *destval, size_t size) {
     aku_Status status = AKU_ENO_DATA;
     size_t ressz = 0;  // current size
     size_t accsz = 0;  // accumulated size
@@ -29,19 +29,19 @@ std::tuple<aku_Status, size_t> ScanOperator::read(aku_Timestamp *destts, double 
     return std::tie(status, accsz);
 }
 
-RealValuedOperator::Direction ScanOperator::get_direction() {
+RealValuedOperator::Direction ChainOperator::get_direction() {
     return dir_;
 }
 
 
-ChainOperator::ChainOperator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
+ChainMaterializer::ChainMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
     : iters_(std::move(it))
     , ids_(std::move(ids))
     , pos_(0)
 {
 }
 
-std::tuple<aku_Status, size_t> ChainOperator::read(u8 *dest, size_t dest_size) {
+std::tuple<aku_Status, size_t> ChainMaterializer::read(u8 *dest, size_t dest_size) {
     aku_Status status = AKU_ENO_DATA;
     size_t ressz = 0;  // current size
     size_t accsz = 0;  // accumulated size
