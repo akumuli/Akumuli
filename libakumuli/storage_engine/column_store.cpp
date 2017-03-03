@@ -183,15 +183,15 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
                 }
             }
             if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new MergeOperator<SeriesOrder>(std::move(ids), std::move(iters)));
+                iter.reset(new MergeMaterializer<SeriesOrder>(std::move(ids), std::move(iters)));
             } else {
-                iter.reset(new MergeOperator<TimeOrder>(std::move(ids), std::move(iters)));
+                iter.reset(new MergeMaterializer<TimeOrder>(std::move(ids), std::move(iters)));
             }
         } else {
             if (req.order_by == OrderBy::SERIES) {
                 iter.reset(new ChainMaterializer(std::move(ids), std::move(iters)));
             } else {
-                iter.reset(new MergeOperator<TimeOrder>(std::move(ids), std::move(iters)));
+                iter.reset(new MergeMaterializer<TimeOrder>(std::move(ids), std::move(iters)));
             }
         }
     }
@@ -278,7 +278,7 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
     } else {
         std::unique_ptr<ColumnMaterializer> iter;
         bool forward = req.select.begin < req.select.end;
-        iter.reset(new MergeJoinOperator(std::move(iters), forward));
+        iter.reset(new MergeJoinMaterializer(std::move(iters), forward));
 
         const size_t dest_size = 0x1000;
         std::vector<u8> dest;

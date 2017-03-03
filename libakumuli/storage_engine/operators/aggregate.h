@@ -160,7 +160,7 @@ struct SeriesOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
 
 
 struct TimeOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
-    std::unique_ptr<MergeJoinOperator> join_iter_;
+    std::unique_ptr<MergeJoinMaterializer> join_iter_;
 
     TimeOrderAggregateMaterializer(const std::vector<aku_ParamId>& ids,
                       std::vector<std::unique_ptr<AggregateOperator>> &it,
@@ -178,7 +178,7 @@ struct TimeOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
             iter.reset(ptr);
             iters.push_back(std::move(iter));
         }
-        join_iter_.reset(new MergeJoinOperator(std::move(iters), forward));
+        join_iter_.reset(new MergeJoinMaterializer(std::move(iters), forward));
     }
 
     virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) override {

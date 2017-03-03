@@ -49,7 +49,7 @@ struct SeriesOrder {
 
 
 template<template <int dir> class CmpPred>
-struct MergeOperator : ColumnMaterializer {
+struct MergeMaterializer : ColumnMaterializer {
     std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     bool forward_;
@@ -98,7 +98,7 @@ struct MergeOperator : ColumnMaterializer {
 
     std::vector<Range> ranges_;
 
-    MergeOperator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
+    MergeMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
         : iters_(std::move(it))
         , ids_(std::move(ids))
     {
@@ -212,7 +212,7 @@ struct MergeOperator : ColumnMaterializer {
 /**
  * Merges several materialized tuple sequences into one
  */
-struct MergeJoinOperator : ColumnMaterializer {
+struct MergeJoinMaterializer : ColumnMaterializer {
 
     enum {
         RANGE_SIZE=1024
@@ -281,7 +281,7 @@ struct MergeJoinOperator : ColumnMaterializer {
     bool forward_;
     std::vector<Range> ranges_;
 
-    MergeJoinOperator(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward);
+    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward);
 
     virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) override;
 
