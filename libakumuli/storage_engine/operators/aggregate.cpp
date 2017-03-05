@@ -6,6 +6,9 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+void CombineAggregateOperator::add(std::unique_ptr<AggregateOperator>&& it) {
+    iter_.push_back(std::move(it));
+}
 
 std::tuple<aku_Status, size_t> CombineAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
     if (size == 0) {

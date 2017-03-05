@@ -32,6 +32,8 @@ struct CombineAggregateOperator : AggregateOperator {
         }
     }
 
+    void add(std::unique_ptr<AggregateOperator>&& it);
+
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size);
     virtual Direction get_direction();
 };
