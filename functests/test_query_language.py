@@ -371,11 +371,10 @@ def test_aggregate_all_group_by(dtstart, delta, N):
         "tag1=A",
     ]
     expected_values = [
-        50*N**2 - 50*N
+        0.5*(N**2 - N)
     ]
     iterations = 0
     for line in response:
-        print(line)
         try:
             columns = line.split(',')
             tagline = columns[0].strip()
@@ -876,7 +875,6 @@ def main(path):
 
 
         # Test normal operation
-        """
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
@@ -885,9 +883,7 @@ def main(path):
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
         test_aggregate_all(dt, delta, nmsgs)
-        """
         test_aggregate_all_group_by(dt, delta, nmsgs)
-        """
         test_aggregate_where(dt, delta, nmsgs)
         test_group_aggregate_all_forward (dt, delta, nmsgs, 10)
         test_group_aggregate_all_forward (dt, delta, nmsgs, 100)
@@ -907,7 +903,6 @@ def main(path):
         group_aggregate_nonexistent_time_range(dt, delta, nmsgs)
         join_nonexistent_time_range(dt, delta, nmsgs)
         check_bad_query_handling()
-        """
     finally:
         print("Stopping server...")
         akumulid.stop()
