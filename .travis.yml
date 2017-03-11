@@ -26,7 +26,7 @@ before_install:
 before_script:
 - mkdir build
 - cd build
-- cmake ..
+- cmake .. -DCMAKE_BUILD_TYPE=Release
 script:
 - make -j4
 - ctest -VV
@@ -44,6 +44,7 @@ script:
 - python functests/test_concurrency.py akumulid/
 - python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
+- cpack -DCMAKE_INSTALL_PREFIX=/usr
 deploy:
   provider: packagecloud
   repository: "Akumuli"
@@ -54,3 +55,4 @@ deploy:
   local-dir: build
   on:
       all_branches: true
+  skip_cleanup: true

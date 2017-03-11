@@ -31,7 +31,8 @@ install(
     TARGETS
         akumulid
     RUNTIME DESTINATION
-        ${CMAKE_INSTALL_PREFIX}/bin
+        #${CMAKE_INSTALL_PREFIX}/bin
+        /usr/bin
 )
 
 set(CPACK_GENERATOR "DEB")
