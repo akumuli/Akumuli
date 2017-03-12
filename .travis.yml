@@ -44,7 +44,7 @@ script:
 - python functests/test_concurrency.py akumulid/
 - python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
-- cpack -DCMAKE_INSTALL_PREFIX=/usr
+- cpack
 deploy:
   provider: packagecloud
   repository: "Akumuli"
@@ -52,7 +52,7 @@ deploy:
   dist: "ubuntu/trusty"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
-  local-dir: build
+  local-dir: .
   on:
       all_branches: true
   skip_cleanup: true
