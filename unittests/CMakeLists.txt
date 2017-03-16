@@ -298,19 +298,6 @@ target_link_libraries(
 
 add_test(SAX test_sax)
 
-# Inverted index test
-add_executable(
-    test_invertedindex
-    test_invertedindex.cpp
-    ../libakumuli/invertedindex.cpp
-)
-
-target_link_libraries(
-    test_invertedindex
-    ${Boost_LIBRARIES}
-)
-
-add_test(invertedindex test_invertedindex)
 
 # Blockstore test
 add_executable(

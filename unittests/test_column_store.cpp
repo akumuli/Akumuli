@@ -609,3 +609,68 @@ BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_1) {
 BOOST_AUTO_TEST_CASE(Test_column_store_group_aggregate_2) {
     test_group_aggregate(1000, 11000);
 }
+
+//! Tests aggregate query in conjunction with group-by clause
+void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<double> sums = { 0.0, 0.0 };
+    for (auto id: ids) {
+        double sum = fill_data_in(cstore, session, id, begin, end);
+        if (id % 2 == 0) {
+            sums[1] += sum;
+        } else {
+            sums[0] += sum;
+        }
+    }
+    QueryProcessorMock mock;
+    ReshapeRequest req = {};
+    req.agg.enabled = true;
+    req.agg.func = { AggregationFunction::SUM };
+    req.group_by.enabled = false;
+    req.order_by = OrderBy::SERIES;
+    req.select.begin = begin;
+    req.select.end = end;
+    req.select.columns.push_back({ids});
+    req.group_by.enabled = true;
+    req.group_by.matcher = std::make_shared<SeriesMatcher>(1);
+    req.group_by.matcher->_add("odd", 100);
+    req.group_by.matcher->_add("even", 200);
+    req.group_by.transient_map = {
+        { 11, 100 },
+        { 13, 100 },
+        { 15, 100 },
+        { 17, 100 },
+        { 19, 100 },
+        { 10, 200 },
+        { 12, 200 },
+        { 14, 200 },
+        { 16, 200 },
+        { 18, 200 },
+    };
+
+    cstore->query(req, mock);
+
+    std::vector<aku_ParamId> gids = { 100, 200 };
+
+    BOOST_REQUIRE_EQUAL(mock.samples.size(), gids.size());
+    for (auto i = 0u; i < mock.samples.size(); i++) {
+        BOOST_REQUIRE_EQUAL(mock.samples.at(i).paramid, gids.at(i));
+        BOOST_REQUIRE_CLOSE(mock.samples.at(i).payload.float64, sums.at(i), 10E-5);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_1) {
+    test_aggregate_and_group_by(10, 110);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_2) {
+    test_aggregate_and_group_by(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_3) {
+    test_aggregate_and_group_by(1000, 11000);
+}

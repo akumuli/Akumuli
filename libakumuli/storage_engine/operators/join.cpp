@@ -3,7 +3,7 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-JoinOperator::JoinOperator(std::vector<std::unique_ptr<RealValuedOperator>>&& iters, aku_ParamId id)
+JoinMaterializer::JoinMaterializer(std::vector<std::unique_ptr<RealValuedOperator>>&& iters, aku_ParamId id)
     : iters_(std::move(iters))
     , id_(id)
     , buffer_pos_(0)
@@ -19,7 +19,7 @@ JoinOperator::JoinOperator(std::vector<std::unique_ptr<RealValuedOperator>>&& it
     }
 }
 
-aku_Status JoinOperator::fill_buffers() {
+aku_Status JoinMaterializer::fill_buffers() {
     if (buffer_pos_ != buffer_size_) {
         // Logic error
         AKU_PANIC("Buffers are not consumed");
@@ -54,13 +54,13 @@ aku_Status JoinOperator::fill_buffers() {
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Sample*, double*> JoinOperator::cast(u8* dest) {
+std::tuple<aku_Sample*, double*> JoinMaterializer::cast(u8* dest) {
     aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
     double* tuple      = reinterpret_cast<double*>(sample->payload.data);
     return std::make_tuple(sample, tuple);
 }
 
-std::tuple<aku_Status, size_t> JoinOperator::read(u8 *dest, size_t size) {
+std::tuple<aku_Status, size_t> JoinMaterializer::read(u8 *dest, size_t size) {
     aku_Status status      = AKU_SUCCESS;
     size_t ncolumns        = iters_.size();
     size_t max_sample_size = sizeof(aku_Sample) + ncolumns;

@@ -12,6 +12,22 @@ namespace StorageEngine {
 
 
 template<int dir>  // 0 - forward, 1 - backward
+struct TimeOrder {
+    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    typedef std::tuple<KeyType, double, u32> HeapItem;
+    std::greater<KeyType> greater_;
+    std::less<KeyType> less_;
+
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        if (dir == 0) {
+            return greater_(std::get<0>(lhs), std::get<0>(rhs));
+        }
+        return less_(std::get<0>(lhs), std::get<0>(rhs));
+    }
+};
+
+
+template<int dir>  // 0 - forward, 1 - backward
 struct SeriesOrder {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
     typedef std::tuple<KeyType, double, u32> HeapItem;
@@ -33,7 +49,7 @@ struct SeriesOrder {
 
 
 template<template <int dir> class CmpPred>
-struct MergeOperator : TupleOperator {
+struct MergeMaterializer : ColumnMaterializer {
     std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     bool forward_;
@@ -82,7 +98,7 @@ struct MergeOperator : TupleOperator {
 
     std::vector<Range> ranges_;
 
-    MergeOperator(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
+    MergeMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
         : iters_(std::move(it))
         , ids_(std::move(ids))
     {
@@ -196,7 +212,7 @@ struct MergeOperator : TupleOperator {
 /**
  * Merges several materialized tuple sequences into one
  */
-struct MergeJoinOperator : TupleOperator {
+struct MergeJoinMaterializer : ColumnMaterializer {
 
     enum {
         RANGE_SIZE=1024
@@ -261,11 +277,11 @@ struct MergeJoinOperator : TupleOperator {
         }
     };
 
-    std::vector<std::unique_ptr<TupleOperator>> iters_;
+    std::vector<std::unique_ptr<ColumnMaterializer>> iters_;
     bool forward_;
     std::vector<Range> ranges_;
 
-    MergeJoinOperator(std::vector<std::unique_ptr<TupleOperator>>&& it, bool forward);
+    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward);
 
     virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) override;
 

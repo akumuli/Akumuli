@@ -9,7 +9,7 @@ namespace StorageEngine {
 
 /** Operator that can be used to align several trees together
   */
-struct JoinOperator : TupleOperator {
+struct JoinMaterializer : ColumnMaterializer {
 
     std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     aku_ParamId id_;
@@ -19,7 +19,7 @@ struct JoinOperator : TupleOperator {
     u32 buffer_pos_;
     u32 buffer_size_;
 
-    JoinOperator(std::vector<std::unique_ptr<RealValuedOperator>>&& iters, aku_ParamId id);
+    JoinMaterializer(std::vector<std::unique_ptr<RealValuedOperator>>&& iters, aku_ParamId id);
 
     aku_Status fill_buffers();
 
