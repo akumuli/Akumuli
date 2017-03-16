@@ -29,7 +29,7 @@ Documentation
 How to build
 ------------
 
-### Ubuntu
+### Ubuntu / Debian
 
 #### Prerequisites
 
@@ -61,6 +61,10 @@ In case automatic script didn't work:
 
   `sudo apt-get install libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3`
 
+* SQLite:
+
+  `sudo apt-get install libsqlite3-dev`
+
 * Cmake:
 
   `sudo apt-get install cmake`
@@ -70,25 +74,45 @@ In case automatic script didn't work:
 1. `cmake .`
 1. `make -j`
 
-### Centos 7 / RHEL7 / Fedora?
-#### Prerequisites
-##### Semiautomatic
-* RHEL has an old version of boost that didn't really support coroutines (It's 1.53, which should contain coroutines, but compiling fails). At the time of writing, Akumulid needs boost 1.54 PRECISELY, so uninstall the original and get version 1.54 from the boost website:
-```
-wget 'http://downloads.sourceforge.net/project/boost/boost/1.54.0/boost_1_54_0.tar.gz'
-tar -xzvf boost_1_54_0.tar.gz
-cd boost_1_54_0
-./bootstrap.sh --prefix=/usr --libdir=/usr/lib64
-./b2 -j4 
-#Go get some coffee (-j4: Use four cores)...
-./b2 install
-#Go get some more coffee...
-```
-* We're assuming x86_64, otherwise, adapt libdir accordingly
-* If there are errors `quadmath.h: No such file or directory`, do: `yum install libquadmath-devel`
-* If there are errors `bzlib.h: No such file or directory`, do: `yum install bzip2-devel`
-* If there are errors `pyconfig.h: No such file or directory`, do: `yum install python-devel`
-* Then run `prerequisites.sh` to install the remaining libraries
+
+### Centos 7 / RHEL7 / Fedora
+
+##### Automatic
+
+* Run `prerequisites.sh`. It will try to do the best thing.
+
+##### Manual
+
+In case automatic script didn't work:
+
+* Boost:
+
+  `sudo yum install boost boost-devel`
+
+* log4cxx:
+
+  `sudo yum install log4cxx log4cxx-devel`
+
+* jemalloc:
+
+  `sudo yum install jemalloc-devel`
+
+* microhttpd:
+
+  `sudo yum install libmicrohttpd-devel`
+
+* APR:
+
+  `sudo yum install apr-devel apr-util-devel apr-util-sqlite`
+
+* SQLite
+
+  `sudo yum install sqlite sqlite-devel`
+
+* Cmake:
+
+  `sudo yum install cmake`
+
 
 #### Building
 
@@ -97,7 +121,9 @@ cd boost_1_54_0
 1. `make`
 
 ### Centos 6 / RHEL6
+
 #### Prequisites
+
 * Same as for RHEL7, but we need to manually install log4cxx, as there isn't a package in the repos:
 ```
 wget http://www.pirbot.com/mirrors/apache/logging/log4cxx/0.10.0/apache-log4cxx-0.10.0.tar.gz
@@ -112,6 +138,8 @@ make -j4
 sudo make install
 ```
 * Go on as for RHEL7
+
 Questions?
 ----------
+
 [Google group](https://groups.google.com/forum/#!forum/akumuli)

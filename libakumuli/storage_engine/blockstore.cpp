@@ -178,6 +178,9 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
 }
 
 std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
+    if (volpaths.empty() || metapath.empty()) {
+        AKU_PANIC("Database file(s) doesn't exists!");
+    }
     auto bs = new FixedSizeFileStorage(metapath, volpaths);
     return std::shared_ptr<FixedSizeFileStorage>(bs);
 }

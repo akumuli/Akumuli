@@ -366,30 +366,38 @@ void create_db_files(const char* path,
   * If config file can't be found - report error.
   */
 void cmd_run_server() {
+
     auto config_path            = ConfigFile::default_config_path();
     auto config                 = ConfigFile::read_config_file(config_path);
     auto path                   = ConfigFile::get_path(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
     auto full_path              = boost::filesystem::path(path) / "db.akumuli";
-    auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
-    auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
 
-    SignalHandler sighandler;
-    int srvid = 0;
-    std::map<int, std::string> srvnames;
-    for(auto settings: ingestion_servers) {
-        auto srv = ServerFactory::instance().create(connection, qproc, settings);
-        assert(srv != nullptr);
-        srvnames[srvid] = settings.name;
-        srv->start(&sighandler, srvid);
-        logger.info() << "Starting " << settings.name << " index " << srvid;
-        std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
-        srvid++;
-    }
-    auto srvids = sighandler.wait();
+    if (!boost::filesystem::exists(full_path)) {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists at " << path;
+        std::cout << cli_format(fmt.str()) << std::endl;
+    } else {
+        auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
+        auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
 
-    for(int id: srvids) {
-        std::cout << cli_format("**OK** ") << srvnames[id] << " server stopped" << std::endl;
+        SignalHandler sighandler;
+        int srvid = 0;
+        std::map<int, std::string> srvnames;
+        for(auto settings: ingestion_servers) {
+            auto srv = ServerFactory::instance().create(connection, qproc, settings);
+            assert(srv != nullptr);
+            srvnames[srvid] = settings.name;
+            srv->start(&sighandler, srvid);
+            logger.info() << "Starting " << settings.name << " index " << srvid;
+            std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+            srvid++;
+        }
+        auto srvids = sighandler.wait();
+
+        for(int id: srvids) {
+            std::cout << cli_format("**OK** ") << srvnames[id] << " server stopped" << std::endl;
+        }
     }
 }
 
