@@ -3,13 +3,9 @@
 namespace Akumuli {
 namespace QP {
 
-typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesListT;
+typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesT;
 
-static StagesListT create_scan(ReshapeRequest const& req) {
-    StagesListT result;
-    if (req.agg.enabled || req.select.columns.size() != 1) {
-        AKU_PANIC("Invalid request");
-    }
+static StagesT create_scan(ReshapeRequest const& req) {
     // Hardwired query plan for scan query
     // Tier1
     // - List of range scan operators
@@ -22,12 +18,17 @@ static StagesListT create_scan(ReshapeRequest const& req) {
     //   - If oreder-by is series add chain materialization step.
     //   - Otherwise add merge materializer.
 
-    auto begin = req.select.begin;
-    auto end = req.select.end;
+    StagesT result;
+
+    if (req.agg.enabled || req.select.columns.size() != 1) {
+        AKU_PANIC("Invalid request");
+    }
 
     std::unique_ptr<QueryPlanStage> t1stage;
     t1stage.reset(new QueryPlanStage());
 
+    aku_Timestamp begin   = req.select.begin;
+    aku_Timestamp end     = req.select.end;
     const auto &tier1ids  = req.select.columns.at(0).ids;
     t1stage->op_.tier1    = Tier1Operator::RANGE_SCAN;
     t1stage->tier_        = 1;
@@ -55,16 +56,16 @@ static StagesListT create_scan(ReshapeRequest const& req) {
 
         result.push_back(std::move(t2stage));
     }
-    return std::move(result);
+    return result;
 }
 
-static StagesListT create_plan(ReshapeRequest const& req) {
+static StagesT create_plan(ReshapeRequest const& req) {
     return create_scan(req);
 }
 
 
 QueryPlan::QueryPlan(ReshapeRequest const& req)
-    : stages(create_plan(req))
+    : stages_(create_plan(req))
 {
 }
 

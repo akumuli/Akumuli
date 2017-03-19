@@ -120,6 +120,14 @@ public:
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> _get_columns() {
         return columns_;
     }
+
+    /**
+     * Build a query plan from request and execute the query.
+     * This method should be a sole entry point for all queries.
+     * @param req is a data reshape request
+     * @param qproc is a stream processor
+     */
+    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 };
 
 

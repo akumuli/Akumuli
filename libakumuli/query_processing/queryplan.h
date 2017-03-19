@@ -15,8 +15,8 @@ namespace QP {
  * - tier2 - materialization step;
  * - tier3 - operators that works on materialized data;
  * Each tier of the query plan can contain several stages. Each
- * stage should contain all necesarry information to build a
- * stream processor (IStreamProcessor instance);
+ * stage should contain all necesarry information to execute
+ * a query.
  *
  */
 
@@ -60,7 +60,7 @@ struct QueryPlanStage {
  * - Tier 2 operators on materialized data (joins).
  */
 struct QueryPlan {
-    std::vector<std::unique_ptr<QueryPlanStage>> stages;
+    std::vector<std::unique_ptr<QueryPlanStage>> stages_;
 
     QueryPlan(ReshapeRequest const& req);
 };

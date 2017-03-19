@@ -1,7 +1,8 @@
 #include "column_store.h"
 #include "log_iface.h"
 #include "status_util.h"
-#include "query_processing/queryparser.h"
+//#include "query_processing/queryparser.h"
+#include "query_processing/queryplan.h"
 #include "operators/aggregate.h"
 #include "operators/scan.h"
 #include "operators/join.h"
@@ -100,6 +101,154 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
     }
 }
 
+
+struct QueryExecutor {
+
+    void execute(std::unique_ptr<ColumnMaterializer>&& iter, QP::IStreamProcessor& qproc) {
+        const size_t dest_size = 0x1000;
+        std::vector<aku_Sample> dest;
+        dest.resize(dest_size);
+        aku_Status status = AKU_SUCCESS;
+        while(status == AKU_SUCCESS) {
+            size_t size;
+            // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
+            //
+            std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size*sizeof(aku_Sample));
+            if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+                Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+                qproc.set_error(status);
+                return;
+            }
+            size_t ixsize = size / sizeof(aku_Sample);
+            for (size_t ix = 0; ix < ixsize; ix++) {
+                if (!qproc.put(dest[ix])) {
+                    Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
+                    return;
+                }
+            }
+        }
+    }
+};
+
+void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    QP::QueryPlan plan(req);
+
+    struct Tier1Context {
+        std::vector<std::unique_ptr<RealValuedOperator>>     scanlist;
+        std::vector<std::unique_ptr<AggregateOperator>>      agglist;
+    };
+
+    Tier1Context t1ctx;
+
+    auto build_scan_operator = [this, &t1ctx](const QP::QueryPlanStage& stage) {
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        for (auto id: stage.opt_ids_) {
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                auto begin = stage.time_range_.first;
+                auto end = stage.time_range_.second;
+                std::unique_ptr<RealValuedOperator> iter = it->second->search(begin, end);
+                iters.push_back(std::move(iter));
+            } else {
+                return AKU_ENOT_FOUND;
+            }
+        }
+        t1ctx.scanlist = std::move(iters);
+        return AKU_SUCCESS;
+    };
+
+    struct Tier2Context {
+        std::unique_ptr<ColumnMaterializer> iter;
+    };
+
+    Tier2Context t2ctx;
+
+    auto build_merge_by_series_materializer = [&](QP::QueryPlanStage& stage) {
+        auto iters = std::move(t1ctx.scanlist);
+        t2ctx.iter.reset(new MergeMaterializer<SeriesOrder>(std::move(stage.opt_ids_), std::move(iters)));
+        return AKU_SUCCESS;
+    };
+
+    auto build_merge_by_time_materializer = [&](QP::QueryPlanStage& stage) {
+        auto iters = std::move(t1ctx.scanlist);
+        t2ctx.iter.reset(new MergeMaterializer<TimeOrder>(std::move(stage.opt_ids_), std::move(iters)));
+        return AKU_SUCCESS;
+    };
+
+    auto build_chain_materializer = [&](QP::QueryPlanStage& stage) {
+        auto iters = std::move(t1ctx.scanlist);
+        t2ctx.iter.reset(new ChainMaterializer(std::move(stage.opt_ids_), std::move(iters)));
+        return AKU_SUCCESS;
+    };
+
+
+    struct Tier3Context {
+    };
+
+
+    Tier3Context t3ctx;
+
+    aku_Status status;
+    int top_tier = 0;
+    // Loop can modify `plan` in place
+    for (auto& stage: plan.stages_) {
+        switch(stage->tier_) {
+        case 1:
+            switch (stage->op_.tier1) {
+            case Tier1Operator::RANGE_SCAN:
+                status = build_scan_operator(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            };
+            top_tier = 1;
+            break;
+        case 2:
+            switch (stage->op_.tier2) {
+            case Tier2Operator::MERGE_SERIES_ORDER:
+                status = build_merge_by_series_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::MERGE_TIME_ORDER:
+                status = build_merge_by_series_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::CHAIN_SERIES:
+                status = build_chain_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            };
+            top_tier = 2;
+            break;
+        case 3:
+            top_tier = 3;
+            break;
+        default:
+            AKU_PANIC("Invalid query plan");
+        }
+    }
+
+    QueryExecutor exec;
+    if (t2ctx.iter) {
+        Logger::msg(AKU_LOG_INFO, "Executiong tier-2 query");
+        exec.execute(std::move(t2ctx.iter), qproc);
+        return;
+    }
+    Logger::msg(AKU_LOG_ERROR, "Empty query plan!");
+    qproc.set_error(AKU_EBAD_ARG);
+}
 
 void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
     Logger::msg(AKU_LOG_TRACE, "ColumnStore `select` query: " + to_string(req));
