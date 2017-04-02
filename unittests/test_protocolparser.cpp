@@ -288,3 +288,64 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
         find_framing_issues(message, msglen, pivot1, pivot2, pred);
     }
 }
+
+
+
+struct NameCheckingConsumer : DbSession {
+    enum { ID = 101 };
+    std::string expected_;
+    bool called_;
+
+    NameCheckingConsumer(std::string expected)
+        : expected_(expected)
+        , called_(false)
+    {}
+
+    virtual ~NameCheckingConsumer() {
+        if (called_ == false) {
+            BOOST_FAIL("Test wasn't called");
+        }
+    }
+
+    virtual aku_Status write(const aku_Sample &sample) override {
+        return AKU_SUCCESS;
+    }
+
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        if (id == ID) {
+            size_t bytes_copied = std::min(sz, expected_.size());
+            memcpy(buf, expected_.data(), bytes_copied);
+            return static_cast<int>(bytes_copied);
+        }
+        return 0;
+    }
+
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string name(begin, begin + sz);
+        if (name == expected_) {
+            sample->paramid = ID;
+            return AKU_SUCCESS;
+        }
+        BOOST_FAIL("Invalid series name");
+    }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        BOOST_FAIL("Not implemented");
+    }
+};
+
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return) {
+    const char *messages = "+test series=name\n:2000\n+34.5\n+test series=name\n:3000\n+8.9\n";
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer("test series=name"));
+    ProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    size_t buflen = strlen(messages);
+    memcpy(buf, messages, buflen);
+    parser.parse_next(buf, buflen);
+}
