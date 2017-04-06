@@ -53,7 +53,7 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
         aku_ParamId id = it.first;
         std::vector<LogicAddr> const& rescue_points = it.second;
         if (rescue_points.empty()) {
-            AKU_PANIC("Invalid rescue points state");
+            Logger::msg(AKU_LOG_ERROR, "Empty rescue points list found, leaf-node data was lost");
         }
         auto status = NBTreeExtentsList::repair_status(rescue_points);
         if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
