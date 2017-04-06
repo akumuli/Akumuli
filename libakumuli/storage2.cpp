@@ -842,9 +842,12 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             }
             GroupByTime groupbytime;
             std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-
-            // Matcher can be substituted by previous call
-            session->clear_series_matcher();
+            if (req.group_by.enabled) {
+                session->set_series_matcher(req.group_by.matcher);
+            } else {
+                // Matcher can be substituted by previous call
+                session->clear_series_matcher();
+            }
 
             // Return error if no series was found
             if (req.select.columns.empty()) {
@@ -913,6 +916,8 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
             if (req.group_by.enabled) {
                 session->set_series_matcher(req.group_by.matcher);
+            } else {
+                session->clear_series_matcher();
             }
             // Return error if no series was found
             if (req.select.columns.empty()) {

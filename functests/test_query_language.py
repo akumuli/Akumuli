@@ -354,6 +354,46 @@ def test_aggregate_all(dtstart, delta, N):
     if iterations != len(expected_tags)*2:
         raise ValueError("Results incomplete")
 
+@api_test("aggregate all data with group-by")
+def test_aggregate_all_group_by(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    query_params = {
+        "output": { "format":  "csv" },
+        "group-by": [ "tag1" ],
+    }
+    query = att.make_aggregate_query("test", begin, end, "sum", **query_params)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    # All values will be collapsed into one!
+    expected_tags = [
+        "tag1=A",
+    ]
+    expected_values = [
+        0.5*(N**2 - N)
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            if abs(value - expected_values[0]) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(expected_values[0], value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(expected_tags[0]) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, expected_tags[0])
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != 1:
+        raise ValueError("Bad number of results")
+
 
 @api_test("aggregate + where")
 def test_aggregate_where(dtstart, delta, N):
@@ -843,6 +883,7 @@ def main(path):
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
         test_aggregate_all(dt, delta, nmsgs)
+        test_aggregate_all_group_by(dt, delta, nmsgs)
         test_aggregate_where(dt, delta, nmsgs)
         test_group_aggregate_all_forward (dt, delta, nmsgs, 10)
         test_group_aggregate_all_forward (dt, delta, nmsgs, 100)

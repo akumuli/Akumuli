@@ -2,53 +2,57 @@ sudo: required
 dist: trusty
 language: python
 compiler: gcc
-
 env:
   global:
-   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
-   #   via the "travis encrypt" command using the project repo's public key
-   - secure: "DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8="
-
+  - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
 addons:
   coverity_scan:
     project:
-      name: "akumuli/Akumuli"
-      description: "Time-series database"
+      name: akumuli/Akumuli
+      description: Time-series database
     notification_email: 4lazin@gmail.com
-    build_command_prepend: ""  # we are curently inside initialized ./build dir, all that we need is to start a build process.
-    build_command:   "make -j2"
+    build_command_prepend: ''
+    build_command: make -j2
     branch_pattern: coverity_scan
-
 before_install:
-  - sudo apt-get update
-  - sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-program-options-dev libboost-regex-dev
-  - sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
-  - sudo apt-get install -y liblog4cxx10-dev liblog4cxx10
-  - sudo apt-get install -y libjemalloc-dev
-  - sudo apt-get install -y libsqlite3-dev
-  - sudo apt-get install -y libmicrohttpd-dev
-  - sudo apt-get install -y cmake
-
-
+- sudo apt-get update
+- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-program-options-dev libboost-regex-dev
+- sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
+- sudo apt-get install -y liblog4cxx10-dev liblog4cxx10
+- sudo apt-get install -y libjemalloc-dev
+- sudo apt-get install -y libsqlite3-dev
+- sudo apt-get install -y libmicrohttpd-dev
+- sudo apt-get install -y cmake
 before_script:
-  - mkdir build
-  - cd build
-  - cmake ..
-
-script: 
-  - make -j4
-  - ctest -VV
-  - functests/storage_test /tmp
-  - akumulid/akumulid --init
-  - python functests/test_data_ingestion.py akumulid/ TCP
-  - python functests/test_data_ingestion.py akumulid/ UDP
-  - python functests/test_data_ingestion_bulk.py akumulid/ TCP
-  - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-  - python functests/test_query_language.py akumulid/
-  - python functests/test_volume_overflow.py akumulid/
-  - python functests/test_database_overflow.py akumulid/
-  - python functests/test_restart.py akumulid/
-  - python functests/test_kill.py akumulid/
-  - python functests/test_concurrency.py akumulid/
-  - python functests/test_ingestion_errors.py akumulid/
-  - python functests/test_join_query.py akumulid/
+- mkdir build
+- cd build
+- cmake .. -DCMAKE_BUILD_TYPE=Release
+script:
+- make -j4
+- ctest -VV
+- functests/storage_test /tmp
+- akumulid/akumulid --init
+- python functests/test_data_ingestion.py akumulid/ TCP
+- python functests/test_data_ingestion.py akumulid/ UDP
+- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+- python functests/test_query_language.py akumulid/
+- python functests/test_volume_overflow.py akumulid/
+- python functests/test_database_overflow.py akumulid/
+- python functests/test_restart.py akumulid/
+- python functests/test_kill.py akumulid/
+- python functests/test_concurrency.py akumulid/
+- python functests/test_ingestion_errors.py akumulid/
+- python functests/test_join_query.py akumulid/
+- cpack
+deploy:
+  provider: packagecloud
+  repository: "Akumuli"
+  username: "Lazin"
+  dist: "ubuntu/trusty"
+  package_glob: "./*.deb"
+  token:
+    secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
+  on:
+      branch: master
+  skip_cleanup: true

@@ -6,13 +6,13 @@ namespace StorageEngine {
 
 // Merge Join //
 
-MergeJoinOperator::MergeJoinOperator(std::vector<std::unique_ptr<TupleOperator>>&& it, bool forward)
+MergeJoinMaterializer::MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward)
     : iters_(std::move(it))
     , forward_(forward)
 {
 }
 
-std::tuple<aku_Status, size_t> MergeJoinOperator::read(u8* dest, size_t size) {
+std::tuple<aku_Status, size_t> MergeJoinMaterializer::read(u8* dest, size_t size) {
     if (forward_) {
         return kway_merge<0>(dest, size);
     }
