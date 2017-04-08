@@ -153,6 +153,15 @@ public:
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
     void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
+
+    /**
+     * New style query execution.
+     * Build a query plan from request and execute the query.
+     * This method should be a sole entry point for all queries.
+     * @param req is a data reshape request
+     * @param qproc is a stream processor
+     */
+    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 };
 
 }}  // namespace

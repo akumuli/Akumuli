@@ -127,6 +127,31 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
 }
 
+BOOST_AUTO_TEST_CASE(Test_column_store_query_1_new) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    QueryProcessorMock qproc;
+    aku_Sample sample;
+    sample.timestamp = 42;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    sample.paramid = 42;
+    cstore->create_new_column(42);
+    std::vector<u64> rpoints;
+    session->write(sample, &rpoints);
+    ReshapeRequest req = {};
+    req.group_by.enabled = false;
+    req.select.begin = 0;
+    req.select.end = 100;
+    req.select.columns.emplace_back();
+    req.select.columns[0].ids.push_back(sample.paramid);
+    req.order_by = OrderBy::SERIES;
+    session->execute_query(req, qproc);
+    BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+    BOOST_REQUIRE(qproc.samples.size() == 1);
+    BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
+    BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
+}
+
 static double fill_data_in(std::shared_ptr<ColumnStore> cstore, std::unique_ptr<CStoreSession>& session, aku_ParamId id, aku_Timestamp begin, aku_Timestamp end) {
     assert(begin < end);
     cstore->create_new_column(id);

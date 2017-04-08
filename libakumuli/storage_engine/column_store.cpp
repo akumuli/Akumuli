@@ -619,4 +619,8 @@ void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc)
     cstore_->query(req, proc);
 }
 
+void CStoreSession::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
+    cstore_->execute_query(req, qproc);
+}
+
 }}  // namespace
