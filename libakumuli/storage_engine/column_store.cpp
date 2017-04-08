@@ -175,6 +175,7 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         t2ctx.iter.reset(new MergeMaterializer<TimeOrder>(std::move(stage.opt_ids_), std::move(iters)));
         return AKU_SUCCESS;
     };
+    AKU_UNUSED(build_merge_by_time_materializer);
 
     auto build_chain_materializer = [&](QP::QueryPlanStage& stage) {
         auto iters = std::move(t1ctx.scanlist);
@@ -188,6 +189,8 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
 
 
     Tier3Context t3ctx;
+
+    AKU_UNUSED(t3ctx);
 
     aku_Status status;
     int top_tier = 0;
@@ -241,7 +244,7 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
     }
 
     QueryExecutor exec;
-    if (t2ctx.iter) {
+    if (top_tier == 2) {
         Logger::msg(AKU_LOG_INFO, "Executiong tier-2 query");
         exec.execute(std::move(t2ctx.iter), qproc);
         return;

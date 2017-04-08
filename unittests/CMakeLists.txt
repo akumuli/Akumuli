@@ -191,6 +191,7 @@ add_executable(
     ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/query_processing/queryparser.cpp
+    ../libakumuli/query_processing/queryplan.cpp
     # query processor
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/queryprocessor_framework.cpp
@@ -364,6 +365,7 @@ add_executable(
     ../libakumuli/storage_engine/operators/join.cpp
     ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/query_processing/queryplan.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
