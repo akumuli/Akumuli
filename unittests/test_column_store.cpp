@@ -102,32 +102,8 @@ struct QueryProcessorMock : QP::IStreamProcessor {
     }
 };
 
-BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
-    auto cstore = create_cstore();
-    auto session = create_session(cstore);
-    QueryProcessorMock qproc;
-    aku_Sample sample;
-    sample.timestamp = 42;
-    sample.payload.type = AKU_PAYLOAD_FLOAT;
-    sample.paramid = 42;
-    cstore->create_new_column(42);
-    std::vector<u64> rpoints;
-    session->write(sample, &rpoints);
-    ReshapeRequest req = {};
-    req.group_by.enabled = false;
-    req.select.begin = 0;
-    req.select.end = 100;
-    req.select.columns.emplace_back();
-    req.select.columns[0].ids.push_back(sample.paramid);
-    req.order_by = OrderBy::SERIES;
-    session->query(req, qproc);
-    BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
-    BOOST_REQUIRE(qproc.samples.size() == 1);
-    BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
-    BOOST_REQUIRE(qproc.samples.at(0).timestamp == sample.timestamp);
-}
 
-BOOST_AUTO_TEST_CASE(Test_column_store_query_1_new) {
+BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     auto cstore = create_cstore();
     auto session = create_session(cstore);
     QueryProcessorMock qproc;
@@ -198,7 +174,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->query(req, qproc);
+        session->execute_query(req, qproc);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == ids.size()/inc*timestamps.size());
         size_t niter = 0;
@@ -223,7 +199,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->query(req, qproc);
+        session->execute_query(req, qproc);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == invids.size()/inc*invtimestamps.size());
         size_t niter = 0;
@@ -248,14 +224,18 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->query(req, qproc);
+        session->execute_query(req, qproc);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), ids.size()/inc*timestamps.size());
         size_t niter = 0;
         for (size_t ts = begin; ts < end; ts++) {
             for (size_t i = base_ix; i < ids.size(); i += inc) {
-                BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).paramid, ids[i]);
-                BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).timestamp, ts);
+                if (qproc.samples.at(niter).paramid != ids[i]) {
+                    BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).paramid, ids[i]);
+                }
+                if (qproc.samples.at(niter).timestamp != ts) {
+                    BOOST_REQUIRE_EQUAL(qproc.samples.at(niter).timestamp, ts);
+                }
                 niter++;
             }
         }
@@ -273,7 +253,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->query(req, qproc);
+        session->execute_query(req, qproc);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), invids.size()/inc*invtimestamps.size());
         size_t niter = 0;

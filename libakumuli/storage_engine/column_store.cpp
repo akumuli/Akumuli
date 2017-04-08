@@ -175,7 +175,6 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         t2ctx.iter.reset(new MergeMaterializer<TimeOrder>(std::move(stage.opt_ids_), std::move(iters)));
         return AKU_SUCCESS;
     };
-    AKU_UNUSED(build_merge_by_time_materializer);
 
     auto build_chain_materializer = [&](QP::QueryPlanStage& stage) {
         auto iters = std::move(t1ctx.scanlist);
@@ -219,7 +218,7 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
                 }
                 break;
             case Tier2Operator::MERGE_TIME_ORDER:
-                status = build_merge_by_series_materializer(*stage);
+                status = build_merge_by_time_materializer(*stage);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;
