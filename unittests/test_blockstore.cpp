@@ -11,7 +11,7 @@
 #include "log_iface.h"
 
 void test_logger(aku_LogLevel tag, const char* msg) {
-    BOOST_MESSAGE(msg);
+    BOOST_TEST_MESSAGE(msg);
 }
 
 struct AkumuliInitializer {
