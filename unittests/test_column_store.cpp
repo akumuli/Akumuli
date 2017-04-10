@@ -293,6 +293,72 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_2) {
     test_column_store_query(1000, 100000);
 }
 
+void test_groupby_query() {
+    const aku_Timestamp begin = 100;
+    const aku_Timestamp end  = 1100;
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps, invtimestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::copy(timestamps.rbegin(), timestamps.rend(), std::back_inserter(invtimestamps));
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19,
+        20,21,22,23,24,25,26,27,28,29,
+    };
+    std::unordered_map<aku_ParamId, aku_ParamId> translation_table;
+    for (auto id: ids) {
+        if (id < 20) {
+            translation_table[id] = 1;
+        } else {
+            translation_table[id] = 2;
+        }
+    }
+    std::shared_ptr<SeriesMatcher> matcher = std::make_shared<SeriesMatcher>();
+    matcher->_add("_ten_", 1);
+    matcher->_add("_twenty_", 2);
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+    for (auto id: ids) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    // Read in series order in forward direction
+    auto read_ordered_by_series = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = true;
+        req.group_by.transient_map = translation_table;
+        req.group_by.matcher = matcher;
+        req.select.begin = begin;
+        req.select.end = 1 + end;
+        req.select.columns.emplace_back();
+        req.select.columns.at(0).ids = ids;
+        req.order_by = OrderBy::SERIES;
+        // TODO: replace with execute_query(req, qproc)
+        session->query(req, qproc);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == timestamps.size()*ids.size());
+        size_t niter = 0;
+        for(size_t id = 1; id < 3; id++) {
+            for (auto tx: timestamps) {
+                for (size_t k = 0; k < 10; k++) {
+                    BOOST_REQUIRE(qproc.samples.at(niter).paramid == id);
+                    BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                    niter++;
+                }
+            }
+        }
+    };
+
+    read_ordered_by_series();
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_group_by_1) {
+    test_groupby_query();
+}
+
 void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::shared_ptr<ColumnStore> cstore;
@@ -330,7 +396,7 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
         req.select.columns[0].ids.push_back(ids[i]);
     }
     req.order_by = OrderBy::SERIES;
-    session->query(req, qproc);
+    session->execute_query(req, qproc);
 
     // Check everything
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -377,6 +443,7 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     req.select.begin = begin;
     req.select.end = end;
     req.select.columns.push_back({ids});
+    // TODO: replace with execute_query(req, mock)
     cstore->query(req, mock);
 
     BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
@@ -472,6 +539,7 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
+        // TODO: replace with execute_query(req, mock)
         cstore->join_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
@@ -500,6 +568,7 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
+        // TODO: replace with execute_query(req, mock)
         cstore->join_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
@@ -553,6 +622,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.begin = begin;
         req.select.end = end;
         req.select.columns.push_back({col});
+        // TODO: replace with execute_query(req, mock)
         cstore->group_aggregate_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
@@ -585,6 +655,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.begin = begin;
         req.select.end = end;
         req.select.columns.push_back({col});
+        // TODO: replace with execute_query(req, mock)
         cstore->group_aggregate_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
