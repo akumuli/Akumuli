@@ -15,7 +15,7 @@
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
-    BOOST_MESSAGE(msg);
+    BOOST_TEST_MESSAGE(msg);
 }
 
 struct AkumuliInitializer {

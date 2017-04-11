@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <set>
+#include <cmath>
 
 #include <sys/stat.h>
 #include <unistd.h>

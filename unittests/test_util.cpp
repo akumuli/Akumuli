@@ -13,7 +13,7 @@
 using namespace Akumuli;
 
 void test_logger(aku_LogLevel tag, const char* msg) {
-    BOOST_MESSAGE(msg);
+    BOOST_TEST_MESSAGE(msg);
 }
 
 struct AkumuliInitializer {
@@ -140,7 +140,7 @@ BOOST_AUTO_TEST_CASE(test_crc32c_0) {
     auto crc32hw = chose_crc32c_implementation(CRC32C_hint::DETECT);
     auto crc32sw = chose_crc32c_implementation(CRC32C_hint::FORCE_SW);
     if (crc32hw == crc32sw) {
-        BOOST_MESSAGE("Can't compare crc32c implementation, hardware version is not available.");
+        BOOST_TEST_MESSAGE("Can't compare crc32c implementation, hardware version is not available.");
         return;
     }
     auto gen = []() {
