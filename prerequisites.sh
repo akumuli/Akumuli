@@ -8,6 +8,7 @@ fi
 
 case $distri in
 	"rhel") pkgman='yum';;
+    "centos") pkgman='yum';;
 	"debian") pkgman='apt';;
     "ubuntu") pkgman='apt';;
 	"santiago") pkgman='yum';; #RHEL6
