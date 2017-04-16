@@ -17,7 +17,7 @@ using namespace Akumuli::QP;
 
 void logger_stub(aku_LogLevel level, const char* msg) {
     if (level == AKU_LOG_ERROR) {
-        BOOST_MESSAGE(msg);
+        BOOST_TEST_MESSAGE(msg);
     }
 }
 
