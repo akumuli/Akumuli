@@ -22,6 +22,7 @@ add_library(akumuli SHARED
     storage_engine/operators/merge.cpp
     # query_processing
     query_processing/queryparser.cpp
+    query_processing/queryplan.cpp
     queryprocessor.cpp
     queryprocessor_framework.cpp
     hashfnfamily.cpp

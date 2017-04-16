@@ -26,6 +26,34 @@ Documentation
 * [Wiki](https://github.com/akumuli/Akumuli/wiki)
 * [Getting started](https://github.com/akumuli/Akumuli/wiki/Getting-started)
 
+Installation
+------------
+
+You can install Akumuli on Ubuntu 14.04 using this deb repostory: https://packagecloud.io/Lazin/Akumuli or build it yourself.
+To create configuration file run
+
+    akumulid --init
+
+The configuration file `~/.akumulid` will be created in your home directory. It will contain some default values that you can change. Most probably, you will need to change `nvolumes` configuration parameter that contains the number of volumes that Akumuli should use to store data. Also, you may want to change `path` parameter that contains path to database volumes.
+
+After this you should run
+
+    akumulid --create
+    
+This step will create database files on disk. After this step you can run the database
+
+    akumuli
+    
+You should see this lines on the terminal:
+
+```
+OK HTTP server started, port: 8181
+OK TCP server started, port: 8282
+OK UDP server started, port: 8383
+```
+
+This means that database daemon have been started successfully. 
+
 How to build
 ------------
 

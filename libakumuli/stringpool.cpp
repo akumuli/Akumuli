@@ -99,7 +99,15 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, Stri
                     const char* b = match[0].first;
                     const char* e = match[0].second;
                     size_t sz = e - b;
-                    results.push_back(std::make_pair(b, sz));
+                    // This value can be a false positive, e.g the series name can look like this:
+                    //  "cpu.sys host=host_123 OS=Ubuntu_14.04"
+                    // and regex can search for `host=host_123` pattern followed by arbitrary number of
+                    // other tags. Ill formed regex can match first part of the name like this:
+                    // "cpu.sys host=host_1234 OS=Ubuntu_14.04" -> "cpu.sys host=host_123".
+                    // That's why we need to check that every match is followed by the \0 character.
+                    if (*e == 0) {
+                        results.push_back(std::make_pair(b, sz));
+                    }
                 }
             }
         } else {

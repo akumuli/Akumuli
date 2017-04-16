@@ -288,3 +288,87 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
         find_framing_issues(message, msglen, pivot1, pivot2, pred);
     }
 }
+
+
+
+struct NameCheckingConsumer : DbSession {
+    enum { ID = 101 };
+    std::string expected_;
+    int called_;
+    int num_calls_expected_;
+
+    NameCheckingConsumer(std::string expected, int ncalls_expected)
+        : expected_(expected)
+        , called_(0)
+        , num_calls_expected_(ncalls_expected)
+    {}
+
+    virtual ~NameCheckingConsumer() {
+        if (called_ != num_calls_expected_) {
+            BOOST_FAIL("Test wasn't called");
+        }
+    }
+
+    virtual aku_Status write(const aku_Sample &sample) override {
+        called_++;
+        return AKU_SUCCESS;
+    }
+
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        if (id == ID) {
+            size_t bytes_copied = std::min(sz, expected_.size());
+            memcpy(buf, expected_.data(), bytes_copied);
+            return static_cast<int>(bytes_copied);
+        }
+        return 0;
+    }
+
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string name(begin, begin + sz);
+        if (name == expected_) {
+            sample->paramid = ID;
+            return AKU_SUCCESS;
+        }
+        BOOST_FAIL("Invalid series name");
+        return AKU_SUCCESS;
+    }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        std::string name(begin, end);
+        if (name == expected_) {
+            assert(cap);
+            ids[0] = ID;
+            return 1;
+        }
+        return 0;
+    }
+};
+
+void test_series_name_parsing(const char* messages, const char* expected_tags, int n) {
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tags, n));
+    ProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    size_t buflen = strlen(messages);
+    memcpy(buf, messages, buflen);
+    parser.parse_next(buf, buflen);
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_with_carriage_return) {
+    const char *messages = "+test tag1=value1 tag2=value2\r\n:2000\n+34.5\r\n+test tag1=value1 tag2=value2\r\n:3000\r\n+8.9\r\n";
+    test_series_name_parsing(messages, "test tag1=value1 tag2=value2", 2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return) {
+    const char *messages = "+test tag1=value1 tag2=value2\n:2000\n+34.5\n+test tag1=value1 tag2=value2\n:3000\n+8.9\n";
+    test_series_name_parsing(messages, "test tag1=value1 tag2=value2", 2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2) {
+    const char *messages = "+trialrank2 tag1=hello tag2=check\n:1418224205000000000\n:31\n";
+    test_series_name_parsing(messages, "trialrank2 tag1=hello tag2=check", 1);
+}
