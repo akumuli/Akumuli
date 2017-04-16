@@ -69,7 +69,6 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
         } else {
             columns_[id] = std::move(tree);
         }
-        columns_[id]->force_init();
     }
     return AKU_SUCCESS;
 }
@@ -79,8 +78,10 @@ std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnSto
     std::lock_guard<std::mutex> tl(table_lock_);
     Logger::msg(AKU_LOG_INFO, "Column-store commit called");
     for (auto it: columns_) {
-        auto addrlist = it.second->close();
-        result[it.first] = addrlist;
+        if (it.second->is_initialized()) {
+            auto addrlist = it.second->close();
+            result[it.first] = addrlist;
+        }
     }
     Logger::msg(AKU_LOG_INFO, "Column-store commit completed");
     return result;
@@ -148,6 +149,9 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
             if (it != columns_.end()) {
                 auto begin = stage.time_range_.first;
                 auto end = stage.time_range_.second;
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
                 std::unique_ptr<RealValuedOperator> iter = it->second->search(begin, end);
                 iters.push_back(std::move(iter));
             } else {
@@ -285,6 +289,9 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
                 std::unique_ptr<AggregateOperator> agg = it->second->aggregate(req.select.begin, req.select.end);
                 agglist.push_back(std::move(agg));
             } else {
@@ -351,6 +358,9 @@ void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) 
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
                 std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
                 iters.push_back(std::move(iter));
             } else {
@@ -426,6 +436,9 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
             std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
             auto it = columns_.find(id);
             if (it != columns_.end()) {
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
                 std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
                 row.push_back(std::move(iter));
             } else {
@@ -511,6 +524,9 @@ void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStre
         std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
         auto it = columns_.find(id);
         if (it != columns_.end()) {
+            if (!it->second->is_initialized()) {
+                it->second->force_init();
+            }
             std::unique_ptr<AggregateOperator> agg = it->second->group_aggregate(req.select.begin, req.select.end, req.agg.step);
             agglist.push_back(std::move(agg));
         } else {
@@ -560,7 +576,9 @@ size_t ColumnStore::_get_uncommitted_memory() const {
     std::lock_guard<std::mutex> guard(table_lock_);
     size_t total_size = 0;
     for (auto const& p: columns_) {
-        total_size += p.second->_get_uncommitted_size();
+        if (p.second->is_initialized()) {
+            total_size += p.second->_get_uncommitted_size();
+        }
     }
     return total_size;
 }
@@ -572,6 +590,9 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     aku_ParamId id = sample.paramid;
     auto it = columns_.find(id);
     if (it != columns_.end()) {
+        if (!it->second->is_initialized()) {
+            it->second->force_init();
+        }
         auto tree = it->second;
         auto res = tree->append(sample.timestamp, sample.payload.float64);
         if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
@@ -579,6 +600,8 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
             rescue_points->swap(tmp);
         }
         if (cache_or_null != nullptr) {
+            // Tree is guaranteed to be initialized here, so all values in the cache
+            // don't need to be checked.
             cache_or_null->insert(std::make_pair(id, tree));
         }
         return res;
@@ -620,6 +643,11 @@ void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc)
 
 void CStoreSession::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
     cstore_->execute_query(req, qproc);
+}
+
+void CStoreSession::close() {
+    // This method can't be implemented yet, because it will waste space.
+    // Leaf node recovery should be implemented first.
 }
 
 }}  // namespace

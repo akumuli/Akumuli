@@ -162,6 +162,11 @@ public:
      * @param qproc is a stream processor
      */
     void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    /**
+     * Closes the session. This method should unload all cached trees
+     */
+    void close();
 };
 
 }}  // namespace
