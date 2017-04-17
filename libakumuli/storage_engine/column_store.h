@@ -75,7 +75,7 @@ public:
     ColumnStore& operator = (ColumnStore const&) = delete;
 
     //! Open storage or restore if needed
-    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping);
+    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping, bool force_init=false);
 
     std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
 

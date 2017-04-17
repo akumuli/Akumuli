@@ -49,28 +49,57 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
-aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping) {
-    for (auto it: mapping) {
-        aku_ParamId id = it.first;
-        std::vector<LogicAddr> const& rescue_points = it.second;
-        if (rescue_points.empty()) {
-            Logger::msg(AKU_LOG_ERROR, "Empty rescue points list found, leaf-node data was lost");
-        }
-        auto status = NBTreeExtentsList::repair_status(rescue_points);
-        if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
-            Logger::msg(AKU_LOG_ERROR, "Repair needed, id=" + std::to_string(id));
-        }
-        auto tree = std::make_shared<NBTreeExtentsList>(id, rescue_points, blockstore_);
+aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping, bool force_init) {
+    typedef std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> TreeMap;
+    auto worker = [this, mapping, force_init](size_t begin, size_t end) {
+        TreeMap table;
+        for (auto it: mapping) {
+            aku_ParamId id = it.first;
+            std::vector<LogicAddr> const& rescue_points = it.second;
+            if (rescue_points.empty()) {
+                Logger::msg(AKU_LOG_ERROR, "Empty rescue points list found, leaf-node data was lost");
+            }
+            auto status = NBTreeExtentsList::repair_status(rescue_points);
+            if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
+                Logger::msg(AKU_LOG_ERROR, "Repair needed, id=" + std::to_string(id));
+            }
+            auto tree = std::make_shared<NBTreeExtentsList>(id, rescue_points, blockstore_);
 
-        std::lock_guard<std::mutex> tl(table_lock_);
-        if (columns_.count(id)) {
-            Logger::msg(AKU_LOG_ERROR, "Can't open/repair " + std::to_string(id) + " (already exists)");
-            return AKU_EBAD_ARG;
-        } else {
-            columns_[id] = std::move(tree);
+            if (table.count(id)) {
+                Logger::msg(AKU_LOG_ERROR, "Can't open/repair " + std::to_string(id) + " (already exists)");
+                return std::make_tuple(AKU_EBAD_ARG, std::move(table));
+            } else {
+                table[id] = std::move(tree);
+            }
+            if (force_init) {
+                table[id]->force_init();
+            }
+        }
+        return std::make_tuple(AKU_SUCCESS, std::move(table));
+    };
+    const auto ncpu = std::thread::hardware_concurrency();
+    std::vector<std::future<std::tuple<aku_Status, TreeMap>>> workers;
+    for (size_t cpu = 0; cpu < ncpu; cpu++) {
+        auto step = mapping.size() / ncpu;
+        auto from = cpu * step;
+        auto to   = cpu < (ncpu - 1) ? (cpu + 1) * step : mapping.size();
+        workers.push_back(std::async(worker, from, to));
+    }
+    aku_Status worst = AKU_SUCCESS;
+    for (auto& f: workers) {
+    
+        auto res = f.get();
+        if (worst == AKU_SUCCESS) {
+            worst = std::get<0>(res);
+        }
+        if (worst == AKU_SUCCESS) {
+            std::lock_guard<std::mutex> m(table_lock_);
+            for (auto& kv: std::get<1>(res)) {
+                columns_[kv.first] = std::move(kv.second);
+            }
         }
     }
-    return AKU_SUCCESS;
+    return worst;
 }
 
 std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {

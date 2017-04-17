@@ -302,7 +302,7 @@ Storage::Storage(const char* path)
         Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
         AKU_PANIC("Can't read rescue points");
     }
-    cstore_->open_or_restore(mapping);
+    cstore_->open_or_restore(mapping, true);
     start_sync_worker();
 }
 
