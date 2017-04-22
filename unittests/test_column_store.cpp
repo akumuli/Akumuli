@@ -351,7 +351,35 @@ void test_groupby_query() {
         }
     };
 
+    // Read in series order in forward direction
+    auto read_ordered_by_time = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = true;
+        req.group_by.transient_map = translation_table;
+        req.group_by.matcher = matcher;
+        req.select.begin = begin;
+        req.select.end = 1 + end;
+        req.select.columns.emplace_back();
+        req.select.columns.at(0).ids = ids;
+        req.order_by = OrderBy::TIME;
+        session->execute_query(req, qproc);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == timestamps.size()*ids.size());
+        size_t niter = 0;
+        for (auto tx: timestamps) {
+            for(size_t id = 1; id < 3; id++) {
+                for (size_t k = 0; k < 10; k++) {
+                    BOOST_REQUIRE(qproc.samples.at(niter).paramid == id);
+                    BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                    niter++;
+                }
+            }
+        }
+    };
+
     read_ordered_by_series();
+    read_ordered_by_time();
 }
 
 BOOST_AUTO_TEST_CASE(Test_column_store_group_by_1) {
