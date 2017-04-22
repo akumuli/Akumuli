@@ -39,7 +39,25 @@ static StagesT create_scan(ReshapeRequest const& req) {
     result.push_back(std::move(t1stage));
 
     if (req.group_by.enabled) {
-        //
+        std::vector<aku_ParamId> ids;
+        for(auto id: req.select.columns.at(0).ids) {
+            auto it = req.group_by.transient_map.find(id);
+            if (it != req.group_by.transient_map.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        std::unique_ptr<QueryPlanStage> t2stage;
+        t2stage.reset(new QueryPlanStage());
+        Tier2Operator op      = req.order_by == OrderBy::SERIES
+                              ? Tier2Operator::MERGE_SERIES_ORDER
+                              : Tier2Operator::MERGE_TIME_ORDER;
+        t2stage->op_.tier2    = op;
+        t2stage->tier_        = 2;
+        t2stage->opt_matcher_ = req.group_by.matcher;
+        t2stage->opt_ids_     = ids;
+        t2stage->time_range_  = std::make_pair(begin, end);
+
+        result.push_back(std::move(t2stage));
     } else {
 
         std::unique_ptr<QueryPlanStage> t2stage;

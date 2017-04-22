@@ -336,8 +336,7 @@ void test_groupby_query() {
         req.select.columns.emplace_back();
         req.select.columns.at(0).ids = ids;
         req.order_by = OrderBy::SERIES;
-        // TODO: replace with execute_query(req, qproc)
-        session->query(req, qproc);
+        session->execute_query(req, qproc);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == timestamps.size()*ids.size());
         size_t niter = 0;
