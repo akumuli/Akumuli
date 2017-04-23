@@ -209,18 +209,11 @@ struct MergeMaterializer : ColumnMaterializer {
 
 };
 
-/**
- * Merges several materialized tuple sequences into one
- */
-struct MergeJoinMaterializer : ColumnMaterializer {
+namespace MergeJoinUtil {
 
-    enum {
-        RANGE_SIZE=1024
-    };
-
-    template<int dir>
-    struct OrderByTimestamp {
-        typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    template<int dir, class TKey>
+    struct OrderBy {
+        typedef TKey KeyType;
         struct HeapItem {
             KeyType key;
             aku_Sample const* sample;
@@ -235,6 +228,23 @@ struct MergeJoinMaterializer : ColumnMaterializer {
             }
             return less_(lhs.key, rhs.key);
         }
+    };
+
+    template<int dir>
+    using OrderByTimestamp = OrderBy<dir, std::tuple<aku_Timestamp, aku_ParamId>>;
+
+    template<int dir>
+    using OrderBySeries = OrderBy<dir, std::tuple<aku_ParamId, aku_Timestamp>>;
+};
+
+/**
+ * Merges several materialized tuple sequences into one
+ */
+template<template <int dir> class CmpPred>
+struct MergeJoinMaterializer : ColumnMaterializer {
+
+    enum {
+        RANGE_SIZE=1024
     };
 
     struct Range {
@@ -281,9 +291,18 @@ struct MergeJoinMaterializer : ColumnMaterializer {
     bool forward_;
     std::vector<Range> ranges_;
 
-    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward);
+    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward)
+        : iters_(std::move(it))
+        , forward_(forward)
+    {
+    }
 
-    virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) override;
+    virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) {
+        if (forward_) {
+            return kway_merge<0>(dest, size);
+        }
+        return kway_merge<1>(dest, size);
+    }
 
     template<int dir>
     std::tuple<aku_Status, size_t> kway_merge(u8* dest, size_t size) {
@@ -309,7 +328,7 @@ struct MergeJoinMaterializer : ColumnMaterializer {
             }
         }
 
-        typedef OrderByTimestamp<dir> Comp;
+        typedef CmpPred<dir> Comp;
         typedef typename Comp::HeapItem HeapItem;
         typedef typename Comp::KeyType KeyType;
         typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;

@@ -32,6 +32,8 @@ enum class Tier2Operator {
     MERGE_SERIES_ORDER,
     AGGREGATE,
     AGGREGATE_COMBINE,
+    MERGE_JOIN_SERIES_ORDER,
+    MERGE_JOIN_TIME_ORDER
 };
 
 enum class Tier3Operator {
@@ -57,6 +59,8 @@ struct QueryPlanStage {
     std::pair<aku_Timestamp, aku_Timestamp> time_range_;
     //! List of functions to calculate
     std::vector<QP::AggregationFunction> opt_func_;
+    //! Optional JOIN cardinality
+    int opt_join_cardinality_;
 };
 
 /**

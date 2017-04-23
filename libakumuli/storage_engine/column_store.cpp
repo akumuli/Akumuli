@@ -1,7 +1,6 @@
 #include "column_store.h"
 #include "log_iface.h"
 #include "status_util.h"
-//#include "query_processing/queryparser.h"
 #include "query_processing/queryplan.h"
 #include "operators/aggregate.h"
 #include "operators/scan.h"
@@ -168,7 +167,6 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         t1ctx.scanlist = std::move(iters);
         return AKU_SUCCESS;
     };
-
     auto build_aggregate_operator = [this, &t1ctx](const QP::QueryPlanStage& stage) {
         std::vector<std::unique_ptr<AggregateOperator>> iters;
         for (auto id: stage.opt_ids_) {
@@ -247,6 +245,36 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         return AKU_SUCCESS;
     };
 
+    // Join
+    auto build_join_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage, OrderBy order) {
+        int inc = stage.opt_join_cardinality_;
+        std::vector<std::unique_ptr<ColumnMaterializer>> iters;
+        for (size_t i = 0; i < stage.opt_ids_.size(); i++) {
+            // stage.opt_ids_ contain ids of the joined series that corresponds
+            // to the names stored in stage.opt_matcher_
+            std::vector<std::unique_ptr<RealValuedOperator>> joined;
+            for (int j = 0; j < inc; j++) {
+                // `inc` number of storage level operators correspond to one
+                // materializer
+                joined.push_back(std::move(t1ctx.scanlist.at(i*inc + j)));
+            }
+            std::unique_ptr<ColumnMaterializer> it;
+            it.reset(new JoinMaterializer(std::move(joined), stage.opt_ids_.at(i)));
+            iters.push_back(std::move(it));
+        }
+        if (order == OrderBy::SERIES) {
+            bool forward = std::get<0>(stage.time_range_) < std::get<1>(stage.time_range_);
+            typedef MergeJoinMaterializer<MergeJoinUtil::OrderBySeries> Materializer;
+            t2ctx.iter.reset(new Materializer(std::move(iters), forward));
+        } else {
+            bool forward = std::get<0>(stage.time_range_) < std::get<1>(stage.time_range_);
+            typedef MergeJoinMaterializer<MergeJoinUtil::OrderByTimestamp> Materializer;
+            t2ctx.iter.reset(new Materializer(std::move(iters), forward));
+        }
+        return AKU_SUCCESS;
+    };
+
+
     //--------------
     // Tier3 context
     //--------------
@@ -315,6 +343,20 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
                 break;
             case Tier2Operator::AGGREGATE_COMBINE:
                 status = build_aggregate_combiner(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::MERGE_JOIN_SERIES_ORDER:
+                status = build_join_materializer(*stage, OrderBy::SERIES);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::MERGE_JOIN_TIME_ORDER:
+                status = build_join_materializer(*stage, OrderBy::TIME);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;
@@ -563,9 +605,10 @@ void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor
             }
         }
     } else {
+        typedef MergeJoinMaterializer<MergeJoinUtil::OrderByTimestamp> Materializer;
         std::unique_ptr<ColumnMaterializer> iter;
         bool forward = req.select.begin < req.select.end;
-        iter.reset(new MergeJoinMaterializer(std::move(iters), forward));
+        iter.reset(new Materializer(std::move(iters), forward));
 
         const size_t dest_size = 0x1000;
         std::vector<u8> dest;

@@ -625,8 +625,8 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
-        // TODO: replace with execute_query(req, mock)
-        cstore->join_query(req, mock);
+
+        cstore->execute_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -654,8 +654,8 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
-        // TODO: replace with execute_query(req, mock)
-        cstore->join_query(req, mock);
+
+        cstore->execute_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
