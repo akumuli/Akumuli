@@ -137,6 +137,10 @@ struct QueryExecutor {
 void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
     QP::QueryPlan plan(req);
 
+    //--------------
+    // Tier2 context
+    //--------------
+
     struct Tier1Context {
         std::vector<std::unique_ptr<RealValuedOperator>>     scanlist;
         std::vector<std::unique_ptr<AggregateOperator>>      agglist;
@@ -165,30 +169,87 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         return AKU_SUCCESS;
     };
 
+    auto build_aggregate_operator = [this, &t1ctx](const QP::QueryPlanStage& stage) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        for (auto id: stage.opt_ids_) {
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                auto begin = stage.time_range_.first;
+                auto end = stage.time_range_.second;
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
+                std::unique_ptr<AggregateOperator> iter = it->second->aggregate(begin, end);
+                iters.push_back(std::move(iter));
+            } else {
+                return AKU_ENOT_FOUND;
+            }
+        }
+        t1ctx.agglist = std::move(iters);
+        return AKU_SUCCESS;
+    };
+
+    //--------------
+    // Tier2 context
+    //--------------
+
     struct Tier2Context {
         std::unique_ptr<ColumnMaterializer> iter;
     };
 
     Tier2Context t2ctx;
 
-    auto build_merge_by_series_materializer = [&](QP::QueryPlanStage& stage) {
+    // Scan
+    auto build_merge_by_series_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
         auto iters = std::move(t1ctx.scanlist);
         t2ctx.iter.reset(new MergeMaterializer<SeriesOrder>(std::move(stage.opt_ids_), std::move(iters)));
         return AKU_SUCCESS;
     };
-
-    auto build_merge_by_time_materializer = [&](QP::QueryPlanStage& stage) {
+    auto build_merge_by_time_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
         auto iters = std::move(t1ctx.scanlist);
         t2ctx.iter.reset(new MergeMaterializer<TimeOrder>(std::move(stage.opt_ids_), std::move(iters)));
         return AKU_SUCCESS;
     };
-
-    auto build_chain_materializer = [&](QP::QueryPlanStage& stage) {
+    auto build_chain_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
         auto iters = std::move(t1ctx.scanlist);
         t2ctx.iter.reset(new ChainMaterializer(std::move(stage.opt_ids_), std::move(iters)));
         return AKU_SUCCESS;
     };
 
+    // Aggregate
+    auto build_aggregate_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
+        auto iters = std::move(t1ctx.agglist);
+        t2ctx.iter.reset(new AggregateMaterializer(std::move(stage.opt_ids_),
+                                                   std::move(iters),
+                                                   stage.opt_func_.at(0)
+                                                   ));
+        return AKU_SUCCESS;
+    };
+    auto build_aggregate_combiner = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
+        std::vector<std::unique_ptr<AggregateOperator>> agglist;
+        std::map<aku_ParamId, std::vector<std::unique_ptr<AggregateOperator>>> groupings;
+        for (size_t i = 0; i < stage.opt_ids_.size(); i++) {
+            auto id = stage.opt_ids_.at(i);
+            auto it = std::move(t1ctx.agglist.at(i));
+            groupings[id].push_back(std::move(it));
+        }
+        std::vector<aku_ParamId> ids;
+        for (auto& kv: groupings) {
+            auto& vec = kv.second;
+            ids.push_back(kv.first);
+            std::unique_ptr<CombineAggregateOperator> it(new CombineAggregateOperator(std::move(vec)));
+            agglist.push_back(std::move(it));
+        }
+        t2ctx.iter.reset(new AggregateMaterializer(std::move(ids),
+                                                   std::move(agglist),
+                                                   stage.opt_func_.at(0)));
+        return AKU_SUCCESS;
+    };
+
+    //--------------
+    // Tier3 context
+    //--------------
 
     struct Tier3Context {
     };
@@ -205,8 +266,15 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         switch(stage->tier_) {
         case 1:
             switch (stage->op_.tier1) {
-            case Tier1Operator::RANGE_SCAN:
+            case Tier1Operator::SCAN_RANGE:
                 status = build_scan_operator(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier1Operator::AGGREGATE_RANGE:
+                status = build_aggregate_operator(*stage);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;
@@ -233,6 +301,20 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
                 break;
             case Tier2Operator::CHAIN_SERIES:
                 status = build_chain_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::AGGREGATE:
+                status = build_aggregate_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::AGGREGATE_COMBINE:
+                status = build_aggregate_combiner(*stage);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;

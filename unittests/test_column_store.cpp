@@ -470,8 +470,8 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     req.select.begin = begin;
     req.select.end = end;
     req.select.columns.push_back({ids});
-    // TODO: replace with execute_query(req, mock)
-    cstore->query(req, mock);
+
+    cstore->execute_query(req, mock);
 
     BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
     for (auto i = 0u; i < mock.samples.size(); i++) {
@@ -490,6 +490,65 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_2) {
 
 BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_3) {
     test_aggregation(10000, 110000);
+}
+
+void test_aggregation_group_by(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19,
+        20,21,22,23,24,25,26,27,28,29
+    };
+    std::unordered_map<aku_ParamId, aku_ParamId> translation_table;
+    for (auto id: ids) {
+        if (id < 20) {
+            translation_table[id] = 1;
+        } else {
+            translation_table[id] = 2;
+        }
+    }
+    std::shared_ptr<SeriesMatcher> matcher = std::make_shared<SeriesMatcher>();
+    matcher->_add("_ten_", 1);
+    matcher->_add("_twenty_", 2);
+    double sum1 = 0, sum2 = 0;
+    for (auto id: ids) {
+        double sum = fill_data_in(cstore, session, id, begin, end);
+        if (id < 20) {
+            sum1 += sum;
+        } else {
+            sum2 += sum;
+        }
+    }
+    QueryProcessorMock mock;
+    ReshapeRequest req = {};
+    req.agg.enabled = true;
+    req.agg.func = { AggregationFunction::SUM };
+    req.group_by.enabled = true;
+    req.group_by.matcher = matcher;
+    req.group_by.transient_map = translation_table;
+    req.order_by = OrderBy::SERIES;
+    req.select.begin = begin;
+    req.select.end = end;
+    req.select.columns.push_back({ids});
+
+    cstore->execute_query(req, mock);
+
+    std::vector<double> sums = {sum1, sum2};
+    ids = {1, 2};
+
+    BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
+    for (auto i = 0u; i < mock.samples.size(); i++) {
+        BOOST_REQUIRE_EQUAL(mock.samples.at(i).paramid, ids.at(i));
+        BOOST_REQUIRE_CLOSE(mock.samples.at(i).payload.float64, sums.at(i), 10E-5);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_group_by_1) {
+    test_aggregation_group_by(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_aggregation_group_by_2) {
+    test_aggregation_group_by(1000, 11000);
 }
 
 struct TupleQueryProcessorMock : QP::IStreamProcessor {

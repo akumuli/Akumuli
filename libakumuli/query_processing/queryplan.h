@@ -22,15 +22,20 @@ namespace QP {
 
 
 enum class Tier1Operator {
-    RANGE_SCAN,
+    SCAN_RANGE,
+    AGGREGATE_RANGE,
 };
 
 enum class Tier2Operator {
     CHAIN_SERIES,
     MERGE_TIME_ORDER,
     MERGE_SERIES_ORDER,
+    AGGREGATE,
+    AGGREGATE_COMBINE,
 };
 
+enum class Tier3Operator {
+};
 
 /**
  * @brief Stage of the query plan
@@ -42,6 +47,7 @@ struct QueryPlanStage {
     union {
         Tier1Operator tier1;
         Tier2Operator tier2;
+        Tier3Operator tier3;
     } op_;
     //! List of ids retreived by the query (optional)
     IdListT opt_ids_;
@@ -49,6 +55,8 @@ struct QueryPlanStage {
     std::shared_ptr<SeriesMatcher> opt_matcher_;
     //! Time-range covered by the query
     std::pair<aku_Timestamp, aku_Timestamp> time_range_;
+    //! List of functions to calculate
+    std::vector<QP::AggregationFunction> opt_func_;
 };
 
 /**
