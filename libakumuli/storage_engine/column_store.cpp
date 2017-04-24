@@ -109,25 +109,28 @@ struct QueryExecutor {
 
     void execute(std::unique_ptr<ColumnMaterializer>&& iter, QP::IStreamProcessor& qproc) {
         const size_t dest_size = 0x1000;
-        std::vector<aku_Sample> dest;
+        std::vector<u8> dest;
         dest.resize(dest_size);
         aku_Status status = AKU_SUCCESS;
         while(status == AKU_SUCCESS) {
             size_t size;
             // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
             //
-            std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size*sizeof(aku_Sample));
+            std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size);
             if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
                 Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
                 qproc.set_error(status);
                 return;
             }
-            size_t ixsize = size / sizeof(aku_Sample);
-            for (size_t ix = 0; ix < ixsize; ix++) {
-                if (!qproc.put(dest[ix])) {
+
+            size_t pos = 0;
+            while(pos < size) {
+                aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
+                if (!qproc.put(*sample)) {
                     Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
                     return;
                 }
+                pos += sample->payload.size;
             }
         }
     }

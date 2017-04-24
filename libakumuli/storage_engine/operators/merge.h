@@ -210,8 +210,17 @@ struct MergeMaterializer : ColumnMaterializer {
 };
 
 namespace MergeJoinUtil {
+namespace {
+    std::tuple<aku_Timestamp, aku_ParamId> make_tord(aku_Sample const* s) {
+        return std::make_tuple(s->timestamp, s->paramid);
+    }
 
-    template<int dir, class TKey>
+    std::tuple<aku_ParamId, aku_Timestamp> make_sord(aku_Sample const* s) {
+        return std::make_tuple(s->paramid, s->timestamp);
+    }
+}
+
+    template<int dir, class TKey, TKey (*fnmake)(const aku_Sample*)>  // TKey expected to be tuple
     struct OrderBy {
         typedef TKey KeyType;
         struct HeapItem {
@@ -228,13 +237,17 @@ namespace MergeJoinUtil {
             }
             return less_(lhs.key, rhs.key);
         }
+
+        static KeyType make_key(aku_Sample const* sample) {
+            return fnmake(sample);
+        }
     };
 
     template<int dir>
-    using OrderByTimestamp = OrderBy<dir, std::tuple<aku_Timestamp, aku_ParamId>>;
+    using OrderByTimestamp = OrderBy<dir, std::tuple<aku_Timestamp, aku_ParamId>, &make_tord>;
 
     template<int dir>
-    using OrderBySeries = OrderBy<dir, std::tuple<aku_ParamId, aku_Timestamp>>;
+    using OrderBySeries = OrderBy<dir, std::tuple<aku_ParamId, aku_Timestamp>, &make_sord>;
 };
 
 /**
@@ -278,7 +291,7 @@ struct MergeJoinMaterializer : ColumnMaterializer {
         std::tuple<aku_Timestamp, aku_ParamId> top_key() const {
             u8 const* top = buffer.data() + pos;
             aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(top);
-            return std::make_tuple(sample->timestamp, sample->paramid);
+            return CmpPred<0>::make_key(sample);  // Direction doesn't matter here
         }
 
         aku_Sample const* top() const {
