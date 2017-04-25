@@ -4,7 +4,7 @@
 
 namespace Akumuli {
 
-RESPError::RESPError(std::string msg, int pos)
+RESPError::RESPError(std::string msg, size_t pos)
     : StreamError(msg, pos)
 {
 }
@@ -14,8 +14,11 @@ RESPStream::RESPStream(ByteStreamReader *stream) {
 }
 
 RESPStream::Type RESPStream::next_type() const {
+    if (stream_->is_eof()) {
+        return _AGAIN;
+    }
     auto ch = stream_->pick();
-    Type result = BAD;
+    Type result = _BAD;
     switch(ch) {
     case '+':
         result = STRING;
@@ -33,75 +36,88 @@ RESPStream::Type RESPStream::next_type() const {
         result = ERROR;
         break;
     default:
-        result = BAD;
+        result = _BAD;
         break;
     };
     return result;
 }
 
-u64 RESPStream::_read_int_body() {
+std::tuple<bool, u64> RESPStream::_read_int_body() {
+    const int MAX_DIGITS = 84 + 2;  // Maximum number of decimal digits in u64 + \r\n
+    Byte buf[MAX_DIGITS];
     u64 result = 0;
-    const int MAX_DIGITS = 84;  // Maximum number of decimal digits in u64
-    int quota = MAX_DIGITS;
-    while(quota) {
-        Byte c = stream_->get();
-        if (c == '\n') {
-            // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
-            return result;
-        } else if (c == '\r') {
-            c = stream_->get();
-            if (c == '\n') {
-                return result;
-            }
-            // Bad stream
-            auto ctx = stream_->get_error_context("invalid symbol inside stream - '\\r'");
+    int res = stream_->read_line(buf, MAX_DIGITS);
+    if (res <= 0) {
+        if (res == -1*MAX_DIGITS) {
+            // Invalid input, too many digits in the number
+            auto ctx = stream_->get_error_context("integer is too long");
             BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
         }
+        return std::make_tuple(false, 0ull);
+    }
+    for (int i = 0; i < res; i++) {
+        Byte c = buf[i];
         // c must be in [0x30:0x39] range
-        if (c > 0x39 || c < 0x30) {
+        if (c <= 0x39 && c >= 0x30) {
+            result = result*10 + static_cast<u32>(c & 0x0F);
+        } else if (c == '\n') {
+            // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
+            return std::make_tuple(true, result);
+        } else if (c == '\r') {
+            // The next one should be \n
+            i++;
+            if (i < res && buf[i] == '\n') {
+                return std::make_tuple(true, result);
+            }
+            auto ctx = stream_->get_error_context("invalid symbol inside stream - '\\r'");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        } else {
             auto ctx = stream_->get_error_context("can't parse integer (character value out of range)");
             BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
         }
-        result = result*10 + static_cast<int>(c & 0x0F);
-        quota--;
     }
-    auto ctx = stream_->get_error_context("integer is too long");
+    // Bad stream
+    auto ctx = stream_->get_error_context("error in stream decoding routine");
     BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
-u64 RESPStream::read_int() {
+std::tuple<bool, u64> RESPStream::read_int() {
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0ull);
+    }
     Byte c = stream_->get();
     if (c != ':') {
-        auto ctx = stream_->get_error_context("bad call");
+        auto ctx = stream_->get_error_context("integer expected");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     return _read_int_body();
 }
 
-int RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
-    auto p = buffer;
-    int quota = std::min(byte_buffer_size, (size_t)RESPStream::STRING_LENGTH_MAX);
-    while(quota) {
-        Byte c = stream_->get();
-        if (c == '\n') {
-            return p - buffer;
-        } else if (c == '\r') {
-            c = stream_->get();
-            if (c == '\n') {
-                return p - buffer;
-            } else {
-                auto ctx = stream_->get_error_context("bad end of sequence");
-                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+std::tuple<bool, int> RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
+    auto quota = std::min(byte_buffer_size, static_cast<size_t>(RESPStream::STRING_LENGTH_MAX));
+    auto res = stream_->read_line(buffer, quota);
+    if (res > 0) {
+        // Success
+        if (buffer[res - 1] == '\n') {
+            res--;
+            if (buffer[res - 1] == '\r') {
+                res--;
             }
         }
-        *p++ = c;
-        quota--;
+        return std::make_tuple(true, res);
     }
-    auto ctx = stream_->get_error_context("out of quota");
-    BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+    if (res == -1*static_cast<int>(quota)) {
+        // Max string length reached, invalid input.
+        auto ctx = stream_->get_error_context("out of quota");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+    }
+    return std::make_tuple(false, 0ull);
 }
 
-int RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
+std::tuple<bool, int> RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0ull);
+    }
     Byte c = stream_->get();
     if (c != '+') {
         auto ctx = stream_->get_error_context("bad call");
@@ -110,29 +126,39 @@ int RESPStream::read_string(Byte *buffer, size_t byte_buffer_size) {
     return _read_string_body(buffer, byte_buffer_size);
 }
 
-int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
+std::tuple<bool, int> RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0);
+    }
     Byte c = stream_->get();
     if (c != '$') {
         auto ctx = stream_->get_error_context("bad call");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     // parse "{value}\r\n"
-    u64 n = _read_int_body();
+    bool success;
+    u64 n;
+    std::tie(success, n) = _read_int_body();
+    if (!success) {
+        return std::make_tuple(false, 0);
+    }
     if (n > RESPStream::BULK_LENGTH_MAX) {
         auto ctx = stream_->get_error_context("declared object size is too large");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
     if (n > buffer_size) {
         // buffer is too small
-        auto ctx = stream_->get_error_context("declared object size is too large");
-        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        return std::make_tuple(false, -1*static_cast<int>(n));
     }
     int nread = stream_->read(buffer, n);
-    if (nread < 0) {
+    if (nread < static_cast<int>(n)) {  // Safe to cast this way because n <= BULK_LENGTH_MAX
         // stream error
-        return nread;
+        return std::make_tuple(false, nread);
     }
     bool bad_eos = false;
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0);
+    }
     Byte cr = stream_->get();
     if (cr == '\r') {
         Byte lf = stream_->get();
@@ -146,10 +172,13 @@ int RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size) {
         auto ctx = stream_->get_error_context("bad end of stream");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
-    return nread;
+    return std::make_tuple(true, nread);
 }
 
-u64 RESPStream::read_array_size() {
+std::tuple<bool, u64> RESPStream::read_array_size() {
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0);
+    }
     Byte c = stream_->get();
     if (c != '*') {
         auto ctx = stream_->get_error_context("bad call");

@@ -134,6 +134,7 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
     , current_volume_(0)
     , current_gen_(0)
     , total_size_(0)
+    , volume_names_(volpaths)
 {
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
@@ -177,6 +178,9 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
 }
 
 std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
+    if (volpaths.empty() || metapath.empty()) {
+        AKU_PANIC("Database file(s) doesn't exists!");
+    }
     auto bs = new FixedSizeFileStorage(metapath, volpaths);
     return std::shared_ptr<FixedSizeFileStorage>(bs);
 }
@@ -243,7 +247,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
     if (actual_gen != gen || vol >= nblocks) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
     }
     std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[volix]->read_block(vol, dest.data());
@@ -312,11 +316,16 @@ std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(std::shared
 
 void FixedSizeFileStorage::flush() {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    /*
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
         if (dirty_[ix]) {
             dirty_[ix] = 0;
             volumes_[ix]->flush();
         }
+    }
+    */
+    for (size_t ix = 0; ix < volumes_.size(); ix++) {
+        volumes_[ix]->flush();
     }
     meta_->flush();
 }
@@ -338,6 +347,29 @@ BlockStoreStats FixedSizeFileStorage::get_stats() const {
         }
     }
     return stats;
+}
+
+PerVolumeStats FixedSizeFileStorage::get_volume_stats() const {
+    PerVolumeStats result;
+    size_t nvol = meta_->get_nvolumes();
+    for (u32 ix = 0; ix < nvol; ix++) {
+        BlockStoreStats stats = {};
+        stats.block_size = 4096;
+        aku_Status stat;
+        u32 res;
+        std::tie(stat, res) = meta_->get_capacity(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.capacity += res;
+        }
+        std::tie(stat, res) = meta_->get_nblocks(ix);
+        if (stat == AKU_SUCCESS) {
+            stats.nblocks += res;
+        }
+        auto name = volume_names_.at(ix);
+        result[name] = stats;
+    }
+    return result;
+
 }
 
 static u32 crc32c(const u8* data, size_t size) {
@@ -417,6 +449,16 @@ BlockStoreStats MemStore::get_stats() const {
     s.capacity = 1024*4096;
     s.nblocks = write_pos_;
     return s;
+}
+
+PerVolumeStats MemStore::get_volume_stats() const {
+    PerVolumeStats result;
+    BlockStoreStats s;
+    s.block_size = 4096;
+    s.capacity = 1024*4096;
+    s.nblocks = write_pos_;
+    result["mem"] = s;
+    return result;
 }
 
 bool MemStore::exists(LogicAddr addr) const {

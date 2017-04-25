@@ -116,8 +116,6 @@ private:
 //! Fast integer logarithm
 i64 log2(i64 value);
 
-std::tuple<bool, aku_Status> page_in_core(const void* addr);
-
 size_t get_page_size();
 
 const void* align_to_page(const void* ptr, size_t get_page_size);
@@ -125,38 +123,7 @@ const void* align_to_page(const void* ptr, size_t get_page_size);
 void* align_to_page(void* ptr, size_t get_page_size);
 
 void prefetch_mem(const void* ptr, size_t mem_size);
-
-/** Wrapper for mincore syscall.
-     * If everything is OK works as simple wrapper
-     * (memory needed for mincore syscall managed by wrapper itself).
-     * If non-fatal error occured - acts as in case when all memory is
-     * in core (optimistically).
-     */
-class PageInfo {
-    std::vector<unsigned char> data_;
-    size_t                     page_size_;
-    const void*                base_addr_;
-    size_t                     len_bytes_;
-
-    void fill_mem();
-
-public:
-    /** C-tor.
-         * @param start_addr start address of the monitored memory region
-         * @param len_bytes length (in bytes) of the monitored region
-         */
-    PageInfo(const void* addr, size_t len_bytes);
-
-    //! Query data from OS
-    aku_Status refresh(const void* addr);
-
-    //! Check if memory address is in core
-    bool in_core(const void* addr);
-
-    //! Check if underlying memory is swapped to disk
-    bool swapped();
-};
-
+    
 class Rand {
     std::ranlux48_base rand_;
 

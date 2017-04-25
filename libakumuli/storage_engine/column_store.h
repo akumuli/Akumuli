@@ -17,8 +17,8 @@
 
 #pragma once
 
-/* In general this is a tree-roots collection combined with series name parser
- * and series registery (backed by sqlite). One TreeRegistery should be created
+/* In general this is a tree-roots collection combined with various algorithms (
+ * (aggregate, join, group-aggregate). One TreeRegistery should be created
  * per database. This registery can be used to create sessions. Session instances
  * should be created per-connection for each connection to operate locally (without
  * synchronization). This code assumes that each connection works with its own
@@ -39,115 +39,95 @@
 #include "metadatastorage.h"
 #include "seriesparser.h"
 #include "storage_engine/nbtree.h"
-#include <queryprocessor_framework.h>
+#include "queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace StorageEngine {
 
-/* ColumnStore + reshape functionality
- * selct cpu where host=XXXX group by tag order by time from 0 to 100;
- * TS  Series name Value
- *  0  cpu tag=Foo    10
- *  0  cpu tag=Bar    20
- *  1  cpu tag=Foo    10
- *  2  cpu tag=Foo    12
- *  2  cpu tag=Bar    30
- *  ...
- *
- * selct cpu where host=XXXX group by tag order by series from 0 to 100;
- * TS  Series name Value
- *  0  cpu tag=Foo    21
- *  1  cpu tag=Foo    20
- * ...
- * 99  cpu tag=Foo    19
- *  0  cpu tag=Bar    20
- *  1  cpu tag=Bar    11
- * ...
- * 99  cpu tag=Bar    14
- *  ...
- *
- * It is possible to add processing steps via IQueryProcessor.
- */
-
-//! Set of ids returned by the query (defined by select and where clauses)
-struct Selection {
-    std::vector<aku_ParamId> ids;
-    aku_Timestamp begin;
-    aku_Timestamp end;
-};
-
-//! Mapping from persistent series names to transient series names
-struct GroupBy {
-    bool enabled;
-    std::unordered_map<aku_ParamId, aku_ParamId> transient_map;
-};
-
-//! Output order
-enum class OrderBy {
-    SERIES,
-    TIME,
-};
-
-//! Reshape request defines what should be sent to query processor
-struct ReshapeRequest {
-    Selection select;
-    GroupBy group_by;
-    OrderBy order_by;
-};
 
 /** Columns store.
   * Serve as a central data repository for series metadata and all individual columns.
   * Each column is addressed by the series name. Data can be written in through WriteSession
-  * and read back via IQueryProcessor interface. ColumnStore can reshape data (group, merge or join
+  * and read back via IStreamProcessor interface. ColumnStore can reshape data (group, merge or join
   * different columns together).
   * Columns are built from NB+tree instances.
   * Instances of this class is thread-safe.
   */
 class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     std::shared_ptr<StorageEngine::BlockStore> blockstore_;
-    std::unique_ptr<MetadataStorage> metadata_;
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> columns_;
     SeriesMatcher global_matcher_;
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
     //! Mutex for metadata storage and rescue points list
-    std::mutex metadata_lock_;
+    mutable std::mutex metadata_lock_;
     //! Mutex for table_ hashmap (shrink and resize)
-    std::mutex table_lock_;
+    mutable std::mutex table_lock_;
     //! Syncronization for watcher thread
     std::condition_variable cvar_;
 
 public:
-    ColumnStore(std::shared_ptr<StorageEngine::BlockStore> bstore, std::unique_ptr<MetadataStorage>&& meta);
+    ColumnStore(std::shared_ptr<StorageEngine::BlockStore> bstore);
 
     // No value semantics allowed.
     ColumnStore(ColumnStore const&) = delete;
     ColumnStore(ColumnStore &&) = delete;
     ColumnStore& operator = (ColumnStore const&) = delete;
 
-    //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
+    //! Open storage or restore if needed
+    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping, bool force_init=false);
 
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
+    std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
 
-    //! Update rescue points list for `id`.
-    void update_rescue_points(aku_ParamId id, std::vector<StorageEngine::LogicAddr>&& addrlist);
-
-    //! Write rescue points to persistent storage synchronously.
-    void sync_with_metadata_storage();
-
-    //! Waint until some data will be available.
-    aku_Status wait_for_sync_request(int timeout_us);
+    /** Create new column.
+      * @return completion status
+      */
+    aku_Status create_new_column(aku_ParamId id);
 
     /** Write sample to data-store.
       * @param sample to write
       * @param cache_or_null is a pointer to external cache, tree ref will be added there on success
       */
-    aku_Status write(aku_Sample const& sample,
+    NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
-    //! Slice and dice data according to request and feed it to query processor
-    void query(ReshapeRequest const& req, QP::IQueryProcessor& qproc);
+    /**
+     * Slice and dice data according to request and feed it to query processor.
+     * This method should be used for select and aggregate queries.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    /**
+     * Joins several columns together by timestamps. Can be used to create a table from
+     * several time-series that came from the same source. This query returns list of tuples.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    /**
+     * Group values by time and aggregate values in each bucket.
+     * @param req is a request that describes how data should be queried
+     * @param qproc is the output processor
+     */
+    void group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    size_t _get_uncommitted_memory() const;
+
+    //! For debug reports
+    std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> _get_columns() {
+        return columns_;
+    }
+
+    /**
+     * Build a query plan from request and execute the query.
+     * This method should be a sole entry point for all queries.
+     * @param req is a data reshape request
+     * @param qproc is a stream processor
+     */
+    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 };
 
 
@@ -155,33 +135,38 @@ public:
   * Should be created per writer thread. Stores series matcher cache and tree
   * cache. ColumnStore can work without WriteSession.
   */
-class WriteSession : public std::enable_shared_from_this<WriteSession>
+class CStoreSession : public std::enable_shared_from_this<CStoreSession>
 {
-    //! Link to global registry.
-    std::shared_ptr<ColumnStore> registry_;
-    //! Local series matcher (with cached global data).
-    SeriesMatcher local_matcher_;
+    //! Link to global column store.
+    std::shared_ptr<ColumnStore> cstore_;
     //! Tree cache
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> cache_;
 public:
     //! C-tor. Shouldn't be called directly.
-    WriteSession(std::shared_ptr<ColumnStore> registry);
+    CStoreSession(std::shared_ptr<ColumnStore> registry);
 
-    WriteSession(WriteSession const&) = delete;
-    WriteSession(WriteSession &&) = delete;
-    WriteSession& operator = (WriteSession const&) = delete;
-
-    /** Match series name. If series with such name doesn't exists - create it.
-      * This method should be called for each sample to init its `paramid` field.
-      */
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample);
-
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size);
+    CStoreSession(CStoreSession const&) = delete;
+    CStoreSession(CStoreSession &&) = delete;
+    CStoreSession& operator = (CStoreSession const&) = delete;
 
     //! Write sample
-    aku_Status write(const aku_Sample &sample);
+    NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void query(const ReshapeRequest &req, QP::IQueryProcessor& qproc);
+    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
+
+    /**
+     * New style query execution.
+     * Build a query plan from request and execute the query.
+     * This method should be a sole entry point for all queries.
+     * @param req is a data reshape request
+     * @param qproc is a stream processor
+     */
+    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    /**
+     * Closes the session. This method should unload all cached trees
+     */
+    void close();
 };
 
 }}  // namespace

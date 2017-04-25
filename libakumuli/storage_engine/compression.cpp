@@ -4,8 +4,19 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <iostream>
 
 namespace Akumuli {
+
+SimplePredictor::SimplePredictor(size_t) : last_value(0) {}
+
+u64 SimplePredictor::predict_next() const {
+    return last_value;
+}
+
+void SimplePredictor::update(u64 value) {
+    last_value = value;
+}
 
 FcmPredictor::FcmPredictor(size_t table_size)
     : last_hash(0ull)
@@ -21,17 +32,17 @@ u64 FcmPredictor::predict_next() const {
 
 void FcmPredictor::update(u64 value) {
     table[last_hash] = value;
-    last_hash = ((last_hash << 6) ^ (value >> 48)) & MASK_;
+    last_hash = ((last_hash << 5) ^ (value >> 50)) & MASK_;
 }
 
 //! C-tor. `table_size` should be a power of two.
 DfcmPredictor::DfcmPredictor(int table_size)
     : last_hash (0ul)
     , last_value(0ul)
-    , MASK_(table_size - 1)
+    , MASK_(static_cast<u64>(table_size - 1))
 {
    assert((table_size & MASK_) == 0);
-   table.resize(table_size);
+   table.resize(static_cast<u64>(table_size));
 }
 
 u64 DfcmPredictor::predict_next() const {
@@ -40,13 +51,14 @@ u64 DfcmPredictor::predict_next() const {
 
 void DfcmPredictor::update(u64 value) {
     table[last_hash] = value - last_value;
-    last_hash = ((last_hash << 2) ^ ((value - last_value) >> 40)) & MASK_;
+    last_hash = ((last_hash << 5) ^ ((value - last_value) >> 50)) & MASK_;
     last_value = value;
 }
 
-static const int PREDICTOR_N = 1 << 10;
+static const int PREDICTOR_N = 1 << 7;
 
-static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned char flag) {
+template<class StreamT>
+static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
     int nbytes = (flag & 7) + 1;
     int nshift = (64 - nbytes*8)*(flag >> 3);
     diff >>= nshift;
@@ -95,11 +107,12 @@ static inline bool encode_value(Base128StreamWriter& wstream, u64 diff, unsigned
     return true;
 }
 
-static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag) {
+template<class StreamT>
+static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
     u64 diff = 0ul;
     int nbytes = (flag & 7) + 1;
     for (int i = 0; i < nbytes; i++) {
-        u64 delta = rstream.read_raw<unsigned char>();
+        u64 delta = rstream.template read_raw<unsigned char>();
         diff |= delta << (i*8);
     }
     int shift_width = (64 - nbytes*8)*(flag >> 3);
@@ -108,7 +121,11 @@ static inline u64 decode_value(Base128StreamReader& rstream, unsigned char flag)
 }
 
 
-FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
+        // ///////////////////////////////// //
+        // FcmStreamWriter & FcmStreamReader //
+        // ///////////////////////////////// //
+
+FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , prev_diff_(0)
@@ -117,22 +134,47 @@ FcmStreamWriter::FcmStreamWriter(Base128StreamWriter& stream)
 {
 }
 
+
 bool FcmStreamWriter::tput(double const* values, size_t n) {
-    assert(n % 2 == 0);
-    for (size_t i = 0; i < n; i+=2) {
-        u64 prev_diff, curr_diff;
-        unsigned char prev_flag, curr_flag;
-        std::tie(prev_diff, prev_flag) = encode(values[i]);
-        std::tie(curr_diff, curr_flag) = encode(values[i + 1]);
-        unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
-        if (!stream_.put_raw(flags)) {
+    assert(n == 16);
+    u8  flags[16];
+    u64 diffs[16];
+    for (u32 i = 0; i < n; i++) {
+        std::tie(diffs[i], flags[i]) = encode(values[i]);
+    }
+    u64 sum_diff = 0;
+    for (u32 i = 0; i < n; i++) {
+        sum_diff |= diffs[i];
+    }
+    if (sum_diff == 0) {
+        // Shortcut
+        if (!stream_.put_raw((u8)0xFF)) {
             return false;
         }
-        if (!encode_value(stream_, prev_diff, prev_flag)) {
-            return false;
-        }
-        if (!encode_value(stream_, curr_diff, curr_flag)) {
-            return false;
+    } else {
+        for (size_t i = 0; i < n; i+=2) {
+            u64 prev_diff, curr_diff;
+            unsigned char prev_flag, curr_flag;
+            prev_diff = diffs[i];
+            curr_diff = diffs[i+1];
+            prev_flag = flags[i];
+            curr_flag = flags[i+1];
+            if (curr_flag == 0xF) {
+                curr_flag = 0;
+            }
+            if (prev_flag == 0xF) {
+                prev_flag = 0;
+            }
+            unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
+            if (!stream_.put_raw(flags)) {
+                return false;
+            }
+            if (!encode_value(stream_, prev_diff, prev_flag)) {
+                return false;
+            }
+            if (!encode_value(stream_, curr_diff, curr_flag)) {
+                return false;
+            }
         }
     }
     return commit();
@@ -148,29 +190,35 @@ std::tuple<u64, unsigned char> FcmStreamWriter::encode(double value) {
     predictor_.update(curr.bits);
     u64 diff = curr.bits ^ predicted;
 
-    int leading_zeros = 64;
-    int trailing_zeros = 64;
+    // Number of trailing and leading zero-bytes
+    int leading_bytes = 8;
+    int trailing_bytes = 8;
 
     if (diff != 0) {
-        trailing_zeros = __builtin_ctzl(diff);
-    }
-    if (diff != 0) {
-        leading_zeros = __builtin_clzl(diff);
+        trailing_bytes = __builtin_ctzl(diff) / 8;
+        leading_bytes = __builtin_clzl(diff) / 8;
+    } else {
+        // Fast path for 0-diff values.
+        // Flags 7 and 15 are interchangeable.
+        // If there is 0 trailing zero bytes and 0 leading bytes
+        // code will always generate flag 7 so we can use flag 17
+        // for something different (like 0 indication)
+        return std::make_tuple(0, 0xF);
     }
 
     int nbytes;
     unsigned char flag;
 
-    if (trailing_zeros > leading_zeros) {
+    if (trailing_bytes > leading_bytes) {
         // this would be the case with low precision values
-        nbytes = 8 - trailing_zeros / 8;
+        nbytes = 8 - trailing_bytes;
         if (nbytes > 0) {
             nbytes--;
         }
         // 4th bit indicates that only leading bytes are stored
         flag = 8 | (nbytes&7);
     } else {
-        nbytes = 8 - leading_zeros / 8;
+        nbytes = 8 - leading_bytes;
         if (nbytes > 0) {
             nbytes--;
         }
@@ -184,6 +232,9 @@ bool FcmStreamWriter::put(double value) {
     u64 diff;
     unsigned char flag;
     std::tie(diff, flag) = encode(value);
+    if (flag == 0xF) {
+        flag = 0;  // Just store one byte, space opt. is disabled
+    }
     if (nelements_ % 2 == 0) {
         prev_diff_ = diff;
         prev_flag_ = flag;
@@ -225,7 +276,7 @@ bool FcmStreamWriter::commit() {
 }
 
 size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
-                                         Base128StreamWriter&       wstream)
+                                         Base128StreamWriter &wstream)
 {
     PredictorT predictor(PREDICTOR_N);
     u64 prev_diff = 0;
@@ -300,23 +351,34 @@ size_t CompressionUtil::compress_doubles(std::vector<double> const& input,
     return input.size();
 }
 
-FcmStreamReader::FcmStreamReader(Base128StreamReader& stream)
+FcmStreamReader::FcmStreamReader(VByteStreamReader& stream)
     : stream_(stream)
     , predictor_(PREDICTOR_N)
     , flags_(0)
     , iter_(0)
+    , nzeroes_(0)
 {
 }
 
 double FcmStreamReader::next() {
     unsigned char flag = 0;
-    if (iter_++ % 2 == 0) {
+    if (iter_++ % 2 == 0 && nzeroes_ == 0) {
         flags_ = static_cast<u32>(stream_.read_raw<u8>());
+        if (flags_ == 0xFF) {
+            // Shortcut
+            nzeroes_ = 16;
+        }
         flag = static_cast<unsigned char>(flags_ >> 4);
     } else {
         flag = static_cast<unsigned char>(flags_ & 0xF);
     }
-    u64 diff = decode_value(stream_, flag);
+    u64 diff;
+    if (nzeroes_ == 0) {
+        diff = decode_value(stream_, flag);
+    } else {
+        diff = 0ull;
+        nzeroes_--;
+    }
     union {
         u64 bits;
         double real;
@@ -329,7 +391,7 @@ double FcmStreamReader::next() {
 
 const u8 *FcmStreamReader::pos() const { return stream_.pos(); }
 
-void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
+void CompressionUtil::decompress_doubles(Base128StreamReader &rstream,
                                          size_t                   numvalues,
                                          std::vector<double>     *output)
 {
@@ -362,6 +424,7 @@ void CompressionUtil::decompress_doubles(Base128StreamReader&     rstream,
         }
     }
 }
+
 
 /** NOTE:
   * Data should be ordered by paramid and timestamp.
@@ -670,7 +733,7 @@ DataBlockReader::DataBlockReader(u8 const* buf, size_t bufsize)
     , read_buffer_{}
     , read_index_(0)
 {
-    assert(bufsize > 14);
+    assert(bufsize > 13);
 }
 
 static u16 get_block_version(const u8* pdata) {

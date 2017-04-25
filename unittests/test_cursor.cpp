@@ -6,31 +6,31 @@
 #include <vector>
 
 #include "cursor.h"
-#include "page.h"
+#include "akumuli_def.h"
 
 
 using namespace Akumuli;
 
 
 void test_cursor(int n_iter, int buf_size) {
-    CoroCursor cursor;
+    ConcurrentCursor cursor;
     std::vector<aku_Sample> expected;
-    auto generator = [n_iter, &expected, &cursor](Caller& caller) {
+    auto generator = [n_iter, &expected, &cursor]() {
         for (u32 i = 0u; i < (u32)n_iter; i++) {
             aku_Sample r = {};
             r.payload.float64 = i;
             r.payload.type = AKU_PAYLOAD_FLOAT;
             r.payload.size = sizeof(aku_Sample);
-            cursor.put(caller, r);
+            cursor.put(r);
             expected.push_back(r);
         }
-        cursor.complete(caller);
+        cursor.complete();
     };
     std::vector<aku_Sample> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
         char results[buf_size*sizeof(aku_Sample)];
-        int n_read = cursor.read_ex(results, buf_size*sizeof(aku_Sample));
+        int n_read = cursor.read(results, buf_size*sizeof(aku_Sample));
         // copy with clipping
         int offset = 0;
         while(offset < n_read) {
@@ -49,24 +49,24 @@ void test_cursor(int n_iter, int buf_size) {
 }
 
 void test_cursor_error(int n_iter, int buf_size) {
-    CoroCursor cursor;
+    ConcurrentCursor cursor;
     std::vector<aku_Sample> expected;
-    auto generator = [n_iter, &expected, &cursor](Caller& caller) {
+    auto generator = [n_iter, &expected, &cursor]() {
         for (u32 i = 0u; i < (u32)n_iter; i++) {
             aku_Sample r = {};
             r.payload.float64 = i;
             r.payload.type = AKU_PAYLOAD_FLOAT;
             r.payload.size = sizeof(aku_Sample);
-            cursor.put(caller, r);
+            cursor.put(r);
             expected.push_back(r);
         }
-        cursor.set_error(caller, (aku_Status)-1);
+        cursor.set_error((aku_Status)-1);
     };
     std::vector<aku_Sample> actual;
     cursor.start(generator);
     while(!cursor.is_done()) {
         char results[buf_size*sizeof(aku_Sample)];
-        int n_read = cursor.read_ex(results, buf_size*sizeof(aku_Sample));
+        int n_read = cursor.read(results, buf_size*sizeof(aku_Sample));
         // copy with clipping
         int offset = 0;
         while(offset < n_read) {

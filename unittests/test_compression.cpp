@@ -15,7 +15,8 @@ static const u64
     0ul, 1ul, 10ul,
     67ul, 127ul, 128ul,
     1024ul, 10000ul,
-    100000ul, 420000000ul
+    100000ul, 420000000ul,
+    420000001ul
 };
 
 static const size_t
@@ -38,17 +39,28 @@ void test_stream_write(TStreamWriter& writer) {
 }
 
 template<class TVal, class TStreamWriter, class TStreamReader>
-void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t nsteps, bool sort_input=false) {
-    std::vector<TVal> input = {0};
+void test_stream_chunked_op(TStreamWriter& writer, TStreamReader& reader, size_t nsteps, bool sort_input=false, bool fixed_step=false) {
+    std::vector<TVal> input;
     const size_t step_size = 16;
     const size_t input_size = step_size*nsteps;
     TVal value = 100000;
 
     // Generate
-    for (int i = 0; i < (input_size-1); i++) {
-        int delta = TVal(rand() % 1000 - 500);
-        value += delta;
-        input.push_back(value);
+    if (!fixed_step) {
+        input.push_back(0);
+        for (u32 i = 0; i < (input_size-1); i++) {
+            int delta = rand() % 1000 - 500;
+            value += TVal(delta);
+            input.push_back(value);
+        }
+    } else {
+        for (u32 i = 0; i < nsteps; i++) {
+            int delta = rand() % 1000;  // all positive
+            for (u32 j = 0; j < step_size; j++) {
+                value += TVal(delta);
+                input.push_back(value);
+            }
+        }
     }
 
     if (sort_input) {
@@ -85,18 +97,30 @@ void test_stream_read(TStreamReader& reader) {
             actual, actual + EXPECTED_SIZE);
 }
 
+//! Base128StreamReader::next is a template, so we need to specialize this function.
 template<>
 void test_stream_read(Base128StreamReader& reader) {
     // Read it back
     u64 actual[EXPECTED_SIZE];
     for (auto i = 0u; i < EXPECTED_SIZE; i++) {
-        actual[i] = reader.next<u64>();
+        actual[i] = reader.template next<u64>();
     }
     BOOST_REQUIRE_EQUAL_COLLECTIONS(EXPECTED, EXPECTED + EXPECTED_SIZE,
             actual, actual + EXPECTED_SIZE);
 }
 
-    
+//! VByteStreamReader::next is a template, so we need to specialize this function.
+template<>
+void test_stream_read(VByteStreamReader& reader) {
+    // Read it back
+    u64 actual[EXPECTED_SIZE];
+    for (auto i = 0u; i < EXPECTED_SIZE; i++) {
+        actual[i] = reader.template next<u64>();
+    }
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(EXPECTED, EXPECTED + EXPECTED_SIZE,
+            actual, actual + EXPECTED_SIZE);
+}
+
 BOOST_AUTO_TEST_CASE(Test_base128) {
 
     std::vector<unsigned char> data;
@@ -109,6 +133,17 @@ BOOST_AUTO_TEST_CASE(Test_base128) {
     test_stream_read(reader);
 }
 
+BOOST_AUTO_TEST_CASE(Test_vbyte) {
+
+    std::vector<unsigned char> data;
+    data.resize(1000);
+
+    VByteStreamWriter writer(data.data(), data.data() + data.size());
+    test_stream_write(writer);
+
+    VByteStreamReader reader(data.data(), data.data() + data.size());
+    test_stream_read(reader);
+}
 
 BOOST_AUTO_TEST_CASE(Test_delta_rle) {
 
@@ -142,6 +177,7 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
 
     Base128StreamWriter wstream(data.data(), data.data() + data.size());
     DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
+
     Base128StreamReader rstream(data.data(), data.data() + data.size());
     DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
 
@@ -176,26 +212,45 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
     std::vector<unsigned char> data;
     data.resize(4*1024);  // 4KB of storage
 
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
+    {   // variable step
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true);
+        test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true, false);
+    }
+    {   // fixed step
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
+
+        test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true, true);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
     std::vector<unsigned char> data;
     data.resize(1*1024*1024);  // 1MB of storage
 
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
+    {
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
 
-    test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true);
+        test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, false);
+    }
+    {
+        VByteStreamWriter wstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
+        VByteStreamReader rstream(data.data(), data.data() + data.size());
+        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
+
+        test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, true);
+    }
 }
-
 
 BOOST_AUTO_TEST_CASE(Test_rle) {
     std::vector<unsigned char> data;
@@ -288,6 +343,13 @@ BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
     test_doubles_compression(input);
 }
 
+BOOST_AUTO_TEST_CASE(Test_doubles_compression_3_series) {
+    std::vector<double> input(32, 0);
+    input.push_back(111.222);
+    input.push_back(333.444);
+    test_doubles_compression(input);
+}
+
 //! Generate time-series from random walk
 struct RandomWalk {
     std::random_device                  randdev;
@@ -309,7 +371,7 @@ struct RandomWalk {
 };
 
 
-void test_float_compression(double start) {
+void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
     RandomWalk rwalk(start, 1., .11);
     int N = 10000;
     std::vector<double> samples;
@@ -317,19 +379,25 @@ void test_float_compression(double start) {
     block.resize(N*9, 0);
 
     // Compress
-    Base128StreamWriter wstream(block.data(), block.data() + block.size());
+    VByteStreamWriter wstream(block.data(), block.data() + block.size());
     FcmStreamWriter writer(wstream);
-    for (int ix = 0; ix < N; ix++) {
+    if (psrc == nullptr) {
         double val = rwalk.generate();
-        writer.put(val);
         samples.push_back(val);
+    } else {
+        samples = *psrc;
+    }
+
+    for (size_t ix = 0; ix < samples.size(); ix++) {
+        auto val = samples.at(ix);
+        writer.put(val);
     }
     writer.commit();
 
     // Decompress
-    Base128StreamReader rstream(block.data(), block.data() + block.size());
+    VByteStreamReader rstream(block.data(), block.data() + block.size());
     FcmStreamReader reader(rstream);
-    for (int ix = 0; ix < N; ix++) {
+    for (size_t ix = 0; ix < samples.size(); ix++) {
         double val = reader.next();
         if (val != samples.at(ix)) {
             BOOST_REQUIRE(val == samples.at(ix));
@@ -357,19 +425,36 @@ BOOST_AUTO_TEST_CASE(Test_float_compression_4) {
     test_float_compression(-1E100);
 }
 
-void test_block_compression(double start, unsigned N=10000) {
+BOOST_AUTO_TEST_CASE(Test_float_compression_5) {
+    std::vector<double> samples(998, 3.14159);
+    samples.push_back(111.222);
+    samples.push_back(222.333);
+    test_float_compression(0, &samples);
+}
+
+void test_block_compression(double start, unsigned N=10000, bool regullar=false) {
     RandomWalk rwalk(start, 1., .11);
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
     std::vector<u8> block;
     block.resize(4096);
 
-    aku_Timestamp its = rand();
-    for (unsigned i = 0; i < N; i++) {
-        values.push_back(rwalk.generate());
-        int skew = rand() % 100;
-        its += skew;
-        timestamps.push_back(its);
+    if (regullar) {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        aku_Timestamp stp = static_cast<aku_Timestamp>(rand() % 1000);
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            its += stp;
+            timestamps.push_back(its);
+        }
+    } else {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            u32 skew = rand() % 100;
+            its += skew;
+            timestamps.push_back(its);
+        }
     }
 
     // compress
@@ -434,44 +519,84 @@ void test_block_compression(double start, unsigned N=10000) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_0) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_00) {
     test_block_compression(0);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_1) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_01) {
     test_block_compression(1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_2) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_02) {
     test_block_compression(1E100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_3) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_03) {
     test_block_compression(-1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_4) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_04) {
     test_block_compression(-1E100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_5) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_05) {
     test_block_compression(0, 1);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_6) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_06) {
     test_block_compression(0, 16);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_7) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_07) {
     test_block_compression(0, 100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_8) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_08) {
     test_block_compression(0, 0x100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_block_compression_9) {
+BOOST_AUTO_TEST_CASE(Test_block_compression_09) {
     test_block_compression(0, 0x111);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_10) {
+    test_block_compression(0, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_11) {
+    test_block_compression(1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_12) {
+    test_block_compression(1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_13) {
+    test_block_compression(-1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_14) {
+    test_block_compression(-1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_15) {
+    test_block_compression(0, 1, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_16) {
+    test_block_compression(0, 16, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_17) {
+    test_block_compression(0, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_18) {
+    test_block_compression(0, 0x100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_block_compression_19) {
+    test_block_compression(0, 0x111, true);
 }
 
 void test_chunk_header_compression(double start) {

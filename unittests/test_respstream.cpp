@@ -14,8 +14,23 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer) {
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
-    u64 result = resp.read_int();
+    bool success;
+    u64 result;
+    std::tie(success, result) = resp.read_int();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(result, 1234567890);
+}
+
+BOOST_AUTO_TEST_CASE(Test_respstream_read_incomplete_integer) {
+
+    const char* buffer = ":123456";
+    MemStreamReader stream(buffer, 7);
+    RESPStream resp(&stream);
+    BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
+    bool success;
+    u64 result;
+    std::tie(success, result) = resp.read_int();
+    BOOST_REQUIRE(!success);
 }
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_wrong_type) {
@@ -37,8 +52,8 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_value) {
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_end_seq) {
 
-    const char* buffer = ":1234567890\r00";
-    MemStreamReader stream(buffer, 14);
+    const char* buffer = ":1234567890\r00\r\n";
+    MemStreamReader stream(buffer, 16);
     RESPStream resp(&stream);
     BOOST_CHECK_THROW(resp.read_int(), RESPError);
 }
@@ -68,7 +83,10 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_string) {
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::STRING);
     const size_t buffer_size = RESPStream::STRING_LENGTH_MAX;
     Byte buffer[buffer_size];
-    int bytes = resp.read_string(buffer, buffer_size);
+    bool success;
+    int bytes;
+    std::tie(success, bytes) = resp.read_string(buffer, buffer_size);
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE(bytes > 0);
     BOOST_REQUIRE_EQUAL(bytes, 6);
     BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + bytes), "foobar");
@@ -119,7 +137,10 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_bulkstring) {
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::BULK_STR);
     std::vector<Byte> buffer;
     buffer.resize(RESPStream::BULK_LENGTH_MAX);
-    int bytes = resp.read_bulkstr(buffer.data(), buffer.size());
+    bool success;
+    int bytes;
+    std::tie(success, bytes) = resp.read_bulkstr(buffer.data(), buffer.size());
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE(bytes > 0);
     BOOST_REQUIRE_EQUAL(bytes, 6);
     BOOST_REQUIRE_EQUAL(std::string(buffer.begin(), buffer.begin() + bytes), "foobar");
@@ -218,16 +239,27 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_array) {
     const char* orig = "*3\r\n:1\r\n:2\r\n:3\r\n:8\r\n";
     MemStreamReader stream(orig, 21);
     RESPStream resp(&stream);
-    auto size = resp.read_array_size();
+    bool success;
+    u64 size;
+    std::tie(success, size) = resp.read_array_size();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(size, 3);
-    auto first = resp.read_int();
+    u64 first;
+    std::tie(success, first) = resp.read_int();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(first, 1);
-    auto second = resp.read_int();
+    u64 second;
+    std::tie(success, second) = resp.read_int();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(second, 2);
-    auto third = resp.read_int();
+    u64 third;
+    std::tie(success, third) = resp.read_int();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(third, 3);
     // Read value after array end
-    auto eight = resp.read_int();
+    u64 eight;
+    std::tie(success, eight) = resp.read_int();
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(eight, 8);
 }
 

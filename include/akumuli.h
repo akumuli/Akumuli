@@ -26,7 +26,7 @@
 #include <apr_errno.h>
 #include <stdint.h>
 
-#ifdef __unix__
+#if !defined _WIN32
 #ifdef __cplusplus
 #define AKU_EXPORT extern "C" __attribute__((visibility("default")))
 #else
@@ -43,18 +43,18 @@
 
 
 //! Database instance.
-typedef struct { int padding; } aku_Database;
+typedef struct { size_t padding; } aku_Database;
 
 
 /**
  * @brief The aku_Cursor struct
  */
-typedef void* aku_Cursor;
+typedef struct { size_t padding; } aku_Cursor;
 
 /**
  * @brief The Ingestion Session struct
  */
-typedef struct { int padding; } aku_Session;
+typedef struct { size_t padding; } aku_Session;
 
 
 //! Search stats
@@ -190,6 +190,18 @@ AKU_EXPORT aku_Status aku_parse_timestamp(const char* iso_str, aku_Sample* sampl
 AKU_EXPORT aku_Status aku_series_to_param_id(aku_Session* ist, const char* begin, const char* end,
                                              aku_Sample* sample);
 
+/**
+  * Convert series name to id or list of ids (if metric name is composed from several metric names e.g. foo|bar)
+  * @param ist is an opened ingestion stream
+  * @param begin should point to the begining of the string
+  * @param end should point to the next after end character of the string
+  * @param out_ids is a destination array
+  * @param out_ids_cap is a size of the dest array
+  * @return number of elemnts stored in the out_ids array (can be less then out_ids_cap) or -1*number_of_series
+  *         if dest is too small.
+  */
+AKU_EXPORT int aku_name_to_param_id_list(aku_Session* ist, const char* begin, const char* end,
+                                         aku_ParamId* out_ids, u32 out_ids_cap);
 /** Try to parse duration.
   * @param str should point to the begining of the string
   * @param value is an output parameter
@@ -229,7 +241,7 @@ AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
   * @param query should contain valid query
   * @return cursor instance
   */
-AKU_EXPORT aku_Cursor* aku_query(aku_Database* db, const char* query);
+AKU_EXPORT aku_Cursor* aku_query(aku_Session* session, const char* query);
 
 /**
  * @brief Close cursor
@@ -257,13 +269,13 @@ AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_co
 AKU_EXPORT int aku_timestamp_to_string(aku_Timestamp, char* buffer, size_t buffer_size);
 
 /** Convert param-id to series name
-  * @param db opened database
+  * @param session
   * @param id valid param id
   * @param buffer is a destination buffer
   * @param buffer_size is a destination buffer size
   * @return 0 if no such id, -LEN if buffer is too small, LEN on success
   */
-AKU_EXPORT int aku_param_id_to_series(aku_Database* db, aku_ParamId id, char* buffer,
+AKU_EXPORT int aku_param_id_to_series(aku_Session* session, aku_ParamId id, char* buffer,
                                       size_t buffer_size);
 
 //--------------------
@@ -287,3 +299,7 @@ AKU_EXPORT void aku_global_storage_stats(aku_Database* db, aku_StorageStats* rcv
 AKU_EXPORT void aku_debug_print(aku_Database* db);
 
 AKU_EXPORT int aku_json_stats(aku_Database* db, char* buffer, size_t size);
+
+AKU_EXPORT aku_Status aku_debug_report_dump(const char* path2db, const char* outfile);
+
+AKU_EXPORT aku_Status aku_debug_recovery_report_dump(const char* path2db, const char* outfile);

@@ -1,12 +1,13 @@
 import os
+import sys
 import subprocess
 import socket
 import datetime
+import random
 try:
     import ConfigParser as ini
 except ImportError:
     import configparser as ini
-import os
 import StringIO
 
 
@@ -56,6 +57,25 @@ def msg(timestamp, value, metric, **tags):
     strval  = '+{0}'.format(value)
     return '\r\n'.join([sseries, timestr, strval]) + '\r\n'
 
+def bulk_msg(ts, measurements, **tags):
+    ncol = len(measurements)
+    metric = "|".join(measurements.keys())
+    sname = "+" + metric + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in tags.iteritems()])
+    timestr = ts.strftime('+%Y%m%dT%H%M%S.%f')
+    header = "*{0}".format(ncol)
+    lines = [sname, timestr, header]
+    for metric, val in measurements.iteritems():
+        lines.append("+{0}".format(val))
+    return '\r\n'.join(lines) + '\r\n'
+
+def generate_bulk_messages(dt, delta, N, metric_names, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        values = [(name, i + i*(ix*10)) for ix, name in enumerate(metric_names)]
+        m = bulk_msg(dt, dict(values), **tags)
+        dt = dt + delta
+        yield m
 
 def generate_messages(dt, delta, N, metric_name, **kwargs):
     for i in xrange(0, N):
@@ -74,10 +94,16 @@ def generate_messages2(dt, delta, N, metric_name, value_gen, **kwargs):
         dt = dt + delta
         yield m
 
+def generate_messages3(dt, delta, N, metric_name, tagslist):
+    """Each series will get the same set of timestamps"""
+    for i in xrange(0, N):
+        for tags in tagslist:
+            m = msg(dt, i, metric_name, **tags)
+            yield m
+        dt = dt + delta
 
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
-    dt = datetime.datetime.utcnow()
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
     sseries = metric_name + ' ' + ' '.join(['{0}={1}'.format(key, val) for key, val in kwargs.iteritems()])
     while True:
@@ -86,9 +112,50 @@ def infinite_msg_stream(batch_size, metric_name, **kwargs):
         yield m
         i += 1
 
-def makequery(metric, begin, end, **kwargs):
+def make_select_query(metric, begin, end, **kwargs):
     query = {
-            "metric": metric,
+            "select": metric,
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
+
+makequery = make_select_query
+
+def make_aggregate_query(metric, begin, end, func, **kwargs):
+    query = {
+            "aggregate": { metric: func },
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
+
+def make_group_aggregate_query(metric, begin, end, func, step, **kwargs):
+    if type(func) is not list:
+        raise ValueError("`func` should be a list")
+    query = {
+            "group-aggregate": { 
+                "metric":metric,
+                "func": func,
+                "step": step
+            },
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+                }
+            }
+    query.update(**kwargs)
+    return query
+
+def make_join_query(metrics, begin, end, **kwargs):
+    query = {
+            "join": metrics,
             "range": {
                 "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
                 "to": end.strftime('%Y%m%dT%H%M%S.%f'),
@@ -105,18 +172,6 @@ def get_config_file():
     config.readfp(config_fp)
     return config
 
-def get_window_width():
-    config = get_config_file()
-    def parse(val):
-        if val.endswith('s'):
-            return datetime.timedelta(seconds=int(val[:-1]))
-        elif val.endswith('sec'):
-            return datetime.timedelta(seconds=int(val[:-3]))
-        elif val.enswith('ms'):
-            return datetime.timedelta(milliseconds=int(val[:-2]))
-        else:
-            raise ValueError("Can't read `window` value from config")
-    return parse(config.get("root", "window"))
 
 class Akumulid:
     """akumulid daemon instance"""
@@ -148,3 +203,33 @@ class Akumulid:
     def terminate(self):
         self.__process.terminate()
 
+class FakeAkumulid:
+    """akumulid daemon instance"""
+    def __init__(self):
+        pass
+
+    def create_database(self):
+        pass
+
+    def create_test_database(self):
+        pass
+
+    def delete_database(self):
+        pass
+
+    def serve(self):
+        pass
+
+    def stop(self):
+        pass
+        
+    def terminate(self):
+        pass
+
+def create_akumulid(path):
+    if path == "DEBUG":
+        return FakeAkumulid()
+    if not os.path.exists(path):
+        print("Path {0} doesn't exists".format(path))
+        sys.exit(1)
+    return Akumulid(path)

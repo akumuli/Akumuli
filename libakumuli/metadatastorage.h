@@ -18,6 +18,9 @@
 #include <cstddef>
 #include <memory>
 #include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <boost/optional.hpp>
 
 #include <apr.h>
 #include <apr_dbd.h>
@@ -51,6 +54,7 @@ struct MetadataStorage {
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
     typedef std::pair<int, std::string>                  VolumeDesc;
     typedef apr_dbd_prepared_t* PreparedT;
+    typedef SeriesMatcher::SeriesNameT SeriesT;
 
     // Members
     PoolT           pool_;
@@ -58,10 +62,16 @@ struct MetadataStorage {
     HandleT         handle_;
     PreparedT       insert_;
 
+    // Synchronization
+    std::mutex sync_lock_;
+    std::condition_variable sync_cvar_;
+    std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
+
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
       */
     MetadataStorage(const char* db);
+
 
     // Creation //
 
@@ -87,27 +97,39 @@ struct MetadataStorage {
     void get_configs(std::string* creation_datetime);
 
     /** Read larges series id */
-    u64 get_prev_largest_id();
+    boost::optional<u64> get_prev_largest_id();
 
     aku_Status load_matcher_data(SeriesMatcher& matcher);
 
-    // Writing //
+    aku_Status load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping);
 
-    typedef std::tuple<const char*, int, u64> SeriesT;
+    // Synchronization
 
-    /** Add new series to the metadata storage.
-      */
-    void insert_new_names(std::vector<SeriesT> items);
+    void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);
 
-    /** Insert or update rescue provided points.
-      */
-    void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+    aku_Status wait_for_sync_request(int timeout_us);
+
+    void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
+
+    //! Forces `wait_for_sync_request` to return immediately
+    void force_sync();
+
+    // should be private:
 
     void begin_transaction();
 
     void end_transaction();
 
+    /** Add new series to the metadata storage (generate sql query and execute it).
+      */
+    void insert_new_names(std::vector<SeriesT>&& items);
+
+    /** Insert or update rescue provided points (generate sql query and execute it).
+      */
+    void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+
 private:
+
     /** Execute query that doesn't return anything.
       * @throw std::runtime_error in a case of error
       * @return number of rows changed

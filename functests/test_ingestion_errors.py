@@ -16,15 +16,15 @@ import traceback
 EP = ("127.0.0.1", 8282)
 
 MSG = [
-    '\n',			# issue #94
-    '+metric\r\n:123\r\n+5.0',  # invalid series name - no tags specified, issue #96
+    ('\n', '-PARSER'),			     # issue #94
+    ('+metric\r\n:123\r\n+5.0', '-PARSER'),  # invalid series name - no tags specified, issue #96
 ]
 
-def send_malicious_message(ix):
+def send_malicious_message(msg):
     s = socket(AF_INET, SOCK_STREAM)
     s.settimeout(1.0)
     s.connect(EP)
-    s.send(MSG[ix])
+    s.send(msg)
     res = s.recv(1024)  # this will hang on success but will
                         # return error message in our case
                         # because we're sending bad data
@@ -33,11 +33,7 @@ def send_malicious_message(ix):
 
 def main(path):
 
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    akumulid = att.Akumulid(path)
+    akumulid = att.create_akumulid(path)
     # delete database
     akumulid.delete_database()
     # create empty database
@@ -48,8 +44,9 @@ def main(path):
     time.sleep(5)
     try:
         for ix in range(0, len(MSG)):
-            result = send_malicious_message(ix)
-            if not result.startswith('-ERR'):
+            msg, expected_prefix = MSG[ix]
+            result = send_malicious_message(msg)
+            if not result.startswith(expected_prefix):
                 print("Error at {0}".format(ix))
                 print("Message:\n{0}".format(MSG[ix]))
                 print("Response:\n{0}".format(result))

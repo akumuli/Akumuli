@@ -17,7 +17,7 @@ using namespace Akumuli::QP;
 
 void logger_stub(aku_LogLevel level, const char* msg) {
     if (level == AKU_LOG_ERROR) {
-        BOOST_MESSAGE(msg);
+        BOOST_TEST_MESSAGE(msg);
     }
 }
 
@@ -192,62 +192,4 @@ BOOST_AUTO_TEST_CASE(Test_moving_average_bwd) {
     aku_Timestamp ts_sum = std::accumulate(mock->timestamps.begin(), mock->timestamps.end(), 0,
                                            [](aku_Timestamp a, aku_Timestamp b) { return a + b; });
     BOOST_REQUIRE_EQUAL(ts_sum, 99000);
-}
-
-BOOST_AUTO_TEST_CASE(Test_queryprocessor_building_1) {
-
-    SeriesMatcher matcher(1ul);
-    const char* series1[] = {
-        "cpu key1=1 key3=1",
-        "cpu key2=2 key3=2",
-        "cpu key3=3",
-        "cpu key3=4",
-    };
-    for(int i = 0; i < 4; i++) {
-        const char* sname = series1[i];
-        int slen = strlen(sname);
-        matcher.add(sname, sname+slen);
-    }
-    const char* json = R"(
-            {
-                "metric": "cpu",
-                "range" : {
-                    "from": "20150101T000000",
-                    "to"  : "20150102T000000"
-                },
-                "where": {
-                    "key3": [1, 2, 3]
-                }
-            }
-    )";
-    auto terminal = std::make_shared<NodeMock>();
-    auto iproc = QP::Builder::build_query_processor(json, terminal, matcher, &logger_stub);
-    auto qproc = std::dynamic_pointer_cast<QP::ScanQueryProcessor>(iproc);
-    BOOST_REQUIRE(qproc->metric_ == "cpu");
-    auto first_ts  = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 01));
-    auto second_ts = boost::posix_time::ptime(boost::gregorian::date(2015, 01, 02));
-    BOOST_REQUIRE(qproc->range().lowerbound == DateTimeUtil::from_boost_ptime(first_ts));
-    BOOST_REQUIRE(qproc->range().upperbound == DateTimeUtil::from_boost_ptime(second_ts));
-
-    qproc->start();
-    if (qproc->filter().apply(1)) {
-        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 1, 0.123));  // should match
-    } else {
-        BOOST_FAIL("bad filter");
-    }
-    if (qproc->filter().apply(2)) {
-        qproc->put(make(DateTimeUtil::from_boost_ptime(first_ts), 2, 0.234));  // should match
-    } else {
-        BOOST_FAIL("bad filter");
-    }
-    if (qproc->filter().apply(4)) {
-        BOOST_FAIL("bad filter");
-    }
-    qproc->stop();
-
-    BOOST_REQUIRE_EQUAL(terminal->ids.size(), 2);
-    BOOST_REQUIRE_EQUAL(terminal->ids.at(0), 1);
-    BOOST_REQUIRE_EQUAL(terminal->values.at(0), 0.123);
-    BOOST_REQUIRE_EQUAL(terminal->ids.at(1), 2);
-    BOOST_REQUIRE_EQUAL(terminal->values.at(1), 0.234);
 }

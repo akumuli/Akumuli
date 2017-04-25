@@ -93,6 +93,29 @@ MetadataStorage::MetadataStorage(const char* db)
     }
 }
 
+void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names) {
+    // Make temporary copies under the lock
+    std::vector<SeriesMatcher::SeriesNameT> newnames;
+    std::unordered_map<aku_ParamId, std::vector<u64>> rescue_points;
+    {
+        std::lock_guard<std::mutex> guard(sync_lock_);
+        std::swap(rescue_points, pending_rescue_points_);
+    }
+    pull_new_names(&newnames);
+
+    // Save new names
+    begin_transaction();
+    insert_new_names(std::move(newnames));
+
+    // Save rescue points
+    upsert_rescue_points(std::move(rescue_points));
+    end_transaction();
+}
+
+void MetadataStorage::force_sync() {
+    sync_cvar_.notify_one();
+}
+
 int MetadataStorage::execute_query(std::string query) {
     int nrows = -1;
     int status = apr_dbd_query(driver_, handle_.get(), &nrows, query.c_str());
@@ -280,6 +303,21 @@ static bool split_series(const char* str, int n, LightweightString* outname, Lig
     return true;
 }
 
+aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
+    std::unique_lock<std::mutex> lock(sync_lock_);
+    auto res = sync_cvar_.wait_for(lock, std::chrono::microseconds(timeout_us));
+    if (res == std::cv_status::timeout) {
+        return AKU_ETIMEOUT;
+    }
+    return pending_rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
+}
+
+void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
+    std::lock_guard<std::mutex> guard(sync_lock_);
+    pending_rescue_points_[id] = val;
+    sync_cvar_.notify_one();
+}
+
 void MetadataStorage::begin_transaction() {
     execute_query("BEGIN TRANSACTION;");
 }
@@ -306,7 +344,12 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
         for (auto const& kv: batch) {
             query << "( " << kv.first;
             for (auto id: kv.second) {
-                query << ", " << id;
+                if (id == ~0ull) {
+                    // Values that big can't be represented in SQLite, -1 value should be interpreted as EMPTY_ADDR,
+                    query << ", -1";
+                } else {
+                    query << ", " << id;
+                }
             }
             for(auto i = kv.second.size(); i < 8; i++) {
                 query << ", null";
@@ -323,7 +366,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
     execute_query(query.str());
 }
 
-void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> items) {
+void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {
     if (items.size() == 0) {
         return;
     }
@@ -361,7 +404,7 @@ void MetadataStorage::insert_new_names(std::vector<MetadataStorage::SeriesT> ite
     execute_query(full_query);
 }
 
-u64 MetadataStorage::get_prev_largest_id() {
+boost::optional<u64> MetadataStorage::get_prev_largest_id() {
     auto query = "SELECT max(storage_id) FROM akumuli_series;";
     try {
         auto results = select_query(query);
@@ -372,7 +415,7 @@ u64 MetadataStorage::get_prev_largest_id() {
         auto id = row.at(0);
         if (id == "") {
             // Table is empty
-            return 1ul;
+            return boost::optional<u64>();
         }
         return boost::lexical_cast<u64>(id);
     } catch(...) {
@@ -380,7 +423,6 @@ u64 MetadataStorage::get_prev_largest_id() {
         AKU_PANIC("Can't get max storage id");
     }
 }
-
 
 aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
     auto query = "SELECT series_id || ' ' || keyslist, storage_id FROM akumuli_series;";
@@ -393,6 +435,47 @@ aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
             auto series = row.at(0);
             auto id = boost::lexical_cast<u64>(row.at(1));
             matcher._add(series, id);
+        }
+    } catch(...) {
+        Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
+        return AKU_EGENERAL;
+    }
+    return AKU_SUCCESS;
+}
+
+aku_Status MetadataStorage::load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping) {
+    auto query =
+        "SELECT storage_id, addr0, addr1, addr2, addr3,"
+                          " addr4, addr5, addr6, addr7 "
+        "FROM akumuli_rescue_points;";
+    try {
+        auto results = select_query(query);
+        for(auto row: results) {
+            if (row.size() != 9) {
+                continue;
+            }
+            auto series_id = boost::lexical_cast<u64>(row.at(0));
+            if (errno == ERANGE) {
+                Logger::msg(AKU_LOG_ERROR, "Can't parse series id, database corrupted");
+                return AKU_EBAD_DATA;
+            }
+            std::vector<u64> addrlist;
+            for (size_t i = 0; i < 8; i++) {
+                auto addr = row.at(1 + i);
+                if (addr.empty()) {
+                    break;
+                } else {
+                    u64 uaddr;
+                    i64 iaddr = boost::lexical_cast<i64>(addr);
+                    if (iaddr < 0) {
+                        uaddr = ~0ull;
+                    } else {
+                        uaddr = static_cast<u64>(iaddr);
+                    }
+                    addrlist.push_back(uaddr);
+                }
+            }
+            mapping[series_id] = std::move(addrlist);
         }
     } catch(...) {
         Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());

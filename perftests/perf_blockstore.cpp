@@ -41,21 +41,20 @@ int main() {
     MetaVolume::create_new(metapath.c_str(), 2, caps);
 
     const size_t NITERS = 4096*1024;
-    std::vector<u8> buffer;
-    buffer.resize(4096);
+    std::shared_ptr<Block> buffer = std::make_shared<Block>();
     for (int i = 0; i < 4096; i++) {
-        buffer[i] = rand();
+        buffer->get_data()[i] = static_cast<u8>(rand());
     }
 
     // Open blockstore
-    auto blockstore = BlockStore::open(metapath.c_str(), paths);
+    auto blockstore = FixedSizeFileStorage::open(metapath.c_str(), paths);
 
     Timer tm;
     double prev_time = tm.elapsed();
     for (size_t ix = 0; ix < NITERS; ix++) {
         aku_Status status;
         LogicAddr addr;
-        std::tie(status, addr) = blockstore->append_block(buffer.data());
+        std::tie(status, addr) = blockstore->append_block(buffer);
         if (status != AKU_SUCCESS) {
             std::cout << "Error at " << ix << std::endl;
             return -1;

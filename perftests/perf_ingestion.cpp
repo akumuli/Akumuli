@@ -19,8 +19,8 @@
 using namespace std;
 
 static int DB_SIZE = 8;
-static u64 NUM_ITERATIONS = 100*1000*1000ul;
-//static int CHUNK_SIZE = 5000;
+static u64 NUM_ITERATIONS = 10*1000*1000ul;
+static int CHUNK_SIZE = 50000;
 
 //static const char* DB_NAME = "db";
 //static const char* DB_PATH = "";
@@ -55,7 +55,7 @@ std::string ts2str(u64 ts) {
 
 std::string build_query(u64 begin, u64 end) {
     std::stringstream str;
-    str << R"({ "sample": "all", )";
+    str << R"({ "select": "cpu", )";
     str << R"("range": { "from": ")" << ts2str(begin)
         << R"(", "to": ")" << ts2str(end)
         << R"("}})";
@@ -67,12 +67,13 @@ void delete_storage() {
 }
 
 bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp end, u64& counter, Timer& timer, u64 mod) {
-    const aku_Timestamp EPOCH = 1420167840000000000;
     const unsigned int NUM_ELEMENTS = 1000;
     std::string query = build_query(begin, end);
-    aku_Cursor* cursor = aku_query(db, query.c_str());
-    aku_Timestamp current_time = EPOCH + begin;
+    aku_Session* session = aku_create_session(db);
+    aku_Cursor* cursor = aku_query(session, query.c_str());
+    aku_Timestamp current_time = begin;
     size_t cursor_ix = 0;
+    int nerrors = 0;
     while(!aku_cursor_is_done(cursor)) {
         aku_Status err = AKU_SUCCESS;
         if (aku_cursor_is_error(cursor, &err)) {
@@ -86,12 +87,17 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
             if (samples[i].timestamp != current_time) {
                 std::cout << "Error at " << cursor_ix << " expected ts " << current_time << " acutal ts " << samples[i].timestamp  << std::endl;
                 current_time = samples[i].timestamp;
+                if (nerrors++ == 10) {
+                    return false;
+                }
             } else {
                 double dvalue = samples[i].payload.float64;
-                double dexpected = (current_time - EPOCH) + 1;
-                if (dvalue - dexpected > 0.000001) {
+                double dexpected = (current_time) + 1;
+                if (std::abs(dvalue - dexpected) > 0.000001) {
                     std::cout << "Error at " << cursor_ix << " expected value " << dexpected << " acutal value " << dvalue  << std::endl;
-                    return false;
+                    if (nerrors++ == 10) {
+                        return false;
+                    }
                 }
             }
             current_time++;
@@ -104,7 +110,8 @@ bool query_database_forward(aku_Database* db, aku_Timestamp begin, aku_Timestamp
         }
     }
     aku_cursor_close(cursor);
-    auto last_ts = EPOCH + end + 1;
+    aku_destroy_session(session);
+    auto last_ts =  end - 1;
     if (current_time != last_ts) {
         std::cout << "some values lost (1), actual timestamp: " << current_time << ", expected timestamp: " << last_ts << std::endl;
         throw std::runtime_error("values lost");
@@ -303,21 +310,16 @@ int main(int, const char**) {
     //th2.join();
     //th3.join();
 
-    aku_close_database(db);
-    /*
-
-    aku_debug_print(db);
-
-    aku_StorageStats storage_stats = {};
-    aku_global_storage_stats(db, &storage_stats);
-    print_storage_stats(storage_stats);
+    //aku_SearchStats search_stats = {};
+    //aku_StorageStats storage_stats = {};
+    //aku_global_storage_stats(db, &storage_stats);
+    //print_storage_stats(storage_stats);
 
     // Search
     std::cout << "Sequential access" << std::endl;
-    aku_SearchStats search_stats = {};
     u64 counter = 0;
 
-    timer.restart();
+    Timer timer;
 
     if (!query_database_forward(db, std::numeric_limits<aku_Timestamp>::min(),
                                 NUM_ITERATIONS-1,
@@ -328,8 +330,8 @@ int main(int, const char**) {
         return 2;
     }
 
-    aku_global_search_stats(&search_stats, true);
-    print_search_stats(search_stats);
+    //aku_global_search_stats(&search_stats, true);
+    //print_search_stats(search_stats);
 
     // Random access
     std::cout << "Prepare test data" << std::endl;
@@ -354,10 +356,10 @@ int main(int, const char**) {
             return 3;
         }
     }
-    aku_global_search_stats(&search_stats, true);
-    print_search_stats(search_stats);
-    */
+    //aku_global_search_stats(&search_stats, true);
+    //print_search_stats(search_stats);
 
+    aku_close_database(db);
     return 0;
 }
 

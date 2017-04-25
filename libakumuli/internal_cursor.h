@@ -19,30 +19,21 @@
 
 #pragma once
 
-#define BOOST_COROUTINES_BIDIRECT
-#include <boost/coroutine/all.hpp>
+#include <boost/version.hpp>
 
 #include "akumuli.h"
 
 namespace Akumuli {
 
 
-struct InternalCursor;
-
-
-// NOTE: obsolete
-typedef boost::coroutines::coroutine<void(InternalCursor*)> Coroutine;
-// NOTE: obsolete
-typedef typename Coroutine::caller_type Caller;
-
 /** Interface used by different search procedures
  *  in akumuli. Must be used only inside library.
  */
 struct InternalCursor {
     //! Send offset to caller
-    virtual bool put(Caller&, aku_Sample const& offset) = 0;
-    virtual void complete(Caller&) = 0;
+    virtual bool put(aku_Sample const& offset) = 0;
+    virtual void complete() = 0;
     //! Set error and stop execution
-    virtual void set_error(Caller&, aku_Status error_code) = 0;
+    virtual void set_error(aku_Status error_code) = 0;
 };
 }

@@ -5,6 +5,7 @@
 #include "utility.h"
 #include "query_results_pooler.h"
 #include "signal_handler.h"
+#include "logger.h"
 
 #include <iostream>
 #include <fstream>
@@ -14,6 +15,8 @@
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #include <apr_errno.h>
 
@@ -23,7 +26,12 @@
 namespace po=boost::program_options;
 using namespace Akumuli;
 
-const i64 AKU_TEST_PAGE_SIZE  = 0x1000000;
+enum {
+    // This is a database size on CI
+    AKU_TEST_DB_SIZE = 2*1024*1024,  // 2MB
+};
+
+static Logger logger("main", 10);
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -32,46 +40,14 @@ const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automat
 path=~/.akumuli
 
 # Number of volumes used  to store data.  Each volume  is
-# 4Gb in size and  allocated beforehand. To change number
+# 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
 nvolumes=4
 
-# Sliding window  width. Can  be specified in nanoseconds
-# (unit  of  measure  is  not  specified),  seconds  (s),
-# milliseconds (ms),  microseconds (us) or minutes (min).
-#
-# Examples:
-#
-# window=10s
-# window=500us
-# window=1000   (in this case sliding window will be 1000
-#                nanoseconds long)
-window=10s
-
-# Number of data  points stored in one  compressed chunk.
-# Akumuli stores data  in chunks.  If chunks is too large
-# decompression can be slow; in opposite case compression
-# can  be less  effective.  Good compression_threshold is
-# about 1000. In this case chunk size will be around 4Kb.
-compression_threshold=1000
-
-# Durability level can  be set  to  max  or  min.  In the
-# first case  durability will  be maximal but speed won't
-# be  optimal.  If durability is  set  to min write speed
-# will be better.
-durability=max
-
-# This parameter  can  be used to  emable huge  pages for
-# data volumes.  This can speed up searching  and writing
-# process a bit. Setting  this  option can't  do any harm
-# except performance loss in some circumstances.
-huge_tlb = 0
-
-# Max cache capacity in bytes.  Akumuli  caches  recently
-# used chunks  in memory. This  parameter can  be used to
-# define size of this cache (default value: 512Mb).
-max_cache_size=536870912
+# Size of the individual volume. You can use MB or GB suffix.
+# Default value is 4GB (if value is not set).
+volume_size=4GB
 
 
 # HTTP server config
@@ -104,7 +80,7 @@ pool_size=1
 log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
+log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %m%n
 log4j.appender.file.filename=/tmp/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
@@ -168,43 +144,46 @@ struct ConfigFile {
         return result;
     }
 
-    static u64 get_cache_size(PTree conf) {
-        return conf.get<u64>("max_cache_size");
+    static i32 get_nvolumes(PTree conf) {
+        return conf.get<i32>("nvolumes");
     }
 
-    static int get_window(PTree conf) {
-        std::string window = conf.get<std::string>("window");
-        int r = 0;
-        auto status = aku_parse_duration(window.c_str(), &r);
-        if (status != AKU_SUCCESS) {
-            throw std::runtime_error("can't parse `window` parameter");
+    static u64 get_volume_size(PTree conf) {
+        u64 result = 0;
+        auto strsize = conf.get<std::string>("volume_size", "4GB");
+        try {
+            result = boost::lexical_cast<u64>(strsize);
+        } catch (boost::bad_lexical_cast const&) {
+            // Try to read suffix (GB or MB)
+            auto throw_decode_error = [strsize]() {
+                std::stringstream fmt;
+                fmt << "can't decode volume size: `" << strsize << "`";
+                std::runtime_error err(fmt.str());
+                BOOST_THROW_EXCEPTION(err);
+            };
+            auto tmp = strsize;
+            u64 mul = 1;
+            if (tmp.back() != 'B' && tmp.back() != 'b') {
+                throw_decode_error();
+            }
+            tmp.pop_back();
+            char symbol = tmp.back();
+            tmp.pop_back();
+            if (symbol == 'G' || symbol == 'g') {
+                mul = 1024*1024*1024;
+            } else if (symbol == 'M' || symbol == 'm') {
+                mul = 1024*1024;
+            } else {
+                throw_decode_error();
+            }
+            try {
+                result = boost::lexical_cast<u64>(tmp);
+            } catch (boost::bad_lexical_cast const&) {
+                throw_decode_error();
+            }
+            result *= mul;
         }
-        return r;
-    }
-
-    static bool get_huge_tlb(PTree conf) {
-        return conf.get<bool>("huge_tlb");
-    }
-
-    static int get_nvolumes(PTree conf) {
-        return conf.get<int>("nvolumes");
-    }
-
-    static int get_compression_threshold(PTree conf) {
-        return conf.get<int>("compression_threshold");
-    }
-
-    static AkumuliConnection::Durability get_durability(PTree conf) {
-        std::string m = conf.get<std::string>("durability");
-        AkumuliConnection::Durability res;
-        if (m == "max") {
-            res = AkumuliConnection::MaxDurability;
-        } else if (m == "min") {
-            res = AkumuliConnection::MaxThroughput;
-        } else {
-            throw std::runtime_error("unknown durability level");
-        }
-        return res;
+        return result;
     }
 
     static ServerSettings get_http_server(PTree conf) {
@@ -232,12 +211,17 @@ struct ConfigFile {
     }
 
     static std::vector<ServerSettings> get_server_settings(PTree conf) {
-        //TODO: this should be generic
-        std::vector<ServerSettings> result = {
-            get_tcp_server(conf),
-            get_udp_server(conf),
-            get_http_server(conf),
+        std::map<std::string, std::function<ServerSettings(PTree)>> mapping = {
+            { "TCP", &get_tcp_server },
+            { "UDP", &get_udp_server },
+            { "HTTP", &get_http_server },
         };
+        std::vector<ServerSettings> result;
+        for (auto kv: mapping) {
+            if (conf.count(kv.first)) {
+                result.push_back(kv.second(conf));
+            }
+        }
         return result;
     }
 };
@@ -353,12 +337,12 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
   */
 void create_db_files(const char* path,
                      i32 nvolumes,
-                     u64 page_size=0)
+                     u64 volume_size)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        status = aku_create_database_ex("db", path, path, nvolumes, page_size);
+        status = aku_create_database_ex("db", path, path, nvolumes, volume_size);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -382,44 +366,38 @@ void create_db_files(const char* path,
   * If config file can't be found - report error.
   */
 void cmd_run_server() {
-    auto config_path = ConfigFile::default_config_path();
 
+    auto config_path            = ConfigFile::default_config_path();
     auto config                 = ConfigFile::read_config_file(config_path);
-    auto window                 = ConfigFile::get_window(config);
-    auto durability             = ConfigFile::get_durability(config);
     auto path                   = ConfigFile::get_path(config);
-    auto compression_threshold  = ConfigFile::get_compression_threshold(config);
-    auto huge_tlb               = ConfigFile::get_huge_tlb(config);
-    auto cache_size             = ConfigFile::get_cache_size(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
+    auto full_path              = boost::filesystem::path(path) / "db.akumuli";
 
-    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (!boost::filesystem::exists(full_path)) {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists at " << path;
+        std::cout << cli_format(fmt.str()) << std::endl;
+    } else {
+        auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
+        auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
 
-    auto connection = std::make_shared<AkumuliConnection>(full_path.c_str(),
-                                                          huge_tlb,
-                                                          durability,
-                                                          compression_threshold,
-                                                          window,
-                                                          cache_size);
+        SignalHandler sighandler;
+        int srvid = 0;
+        std::map<int, std::string> srvnames;
+        for(auto settings: ingestion_servers) {
+            auto srv = ServerFactory::instance().create(connection, qproc, settings);
+            assert(srv != nullptr);
+            srvnames[srvid] = settings.name;
+            srv->start(&sighandler, srvid);
+            logger.info() << "Starting " << settings.name << " index " << srvid;
+            std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+            srvid++;
+        }
+        auto srvids = sighandler.wait();
 
-    auto pipeline = std::make_shared<IngestionPipeline>(connection, AKU_LINEAR_BACKOFF);
-    auto qproc = std::make_shared<QueryProcessor>(connection, 1000);
-
-    SignalHandler sighandler;
-    int srvid = 0;
-    std::map<int, std::string> srvnames;
-    for(auto settings: ingestion_servers) {
-        auto srv = ServerFactory::instance().create(pipeline, qproc, settings);
-	assert(srv != nullptr);
-        srvnames[srvid] = settings.name;
-        srv->start(&sighandler, srvid++);
-        std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
-    }
-
-    auto srvids = sighandler.wait();
-
-    for(int id: srvids) {
-        std::cout << cli_format("**OK** ") << srvnames[id] << " server stopped" << std::endl;
+        for(int id: srvids) {
+            std::cout << cli_format("**OK** ") << srvnames[id] << " server stopped" << std::endl;
+        }
     }
 }
 
@@ -428,11 +406,16 @@ void cmd_run_server() {
 void cmd_create_database(bool test_db=false) {
     auto config_path = ConfigFile::default_config_path();
 
-    auto config     = ConfigFile::read_config_file(config_path);
-    auto path       = ConfigFile::get_path(config);
-    auto volumes    = ConfigFile::get_nvolumes(config);
+    auto config      = ConfigFile::read_config_file(config_path);
+    auto path        = ConfigFile::get_path(config);
+    auto volumes     = ConfigFile::get_nvolumes(config);
+    auto volsize     = ConfigFile::get_volume_size(config);
 
-    create_db_files(path.c_str(), volumes, test_db ? AKU_TEST_PAGE_SIZE : 0);
+    if (test_db) {
+        volsize = AKU_TEST_DB_SIZE;
+    }
+
+    create_db_files(path.c_str(), volumes, volsize);
 }
 
 void cmd_delete_database() {
@@ -443,7 +426,9 @@ void cmd_delete_database() {
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
-        auto status = aku_remove_database(full_path.c_str(), &static_logger);
+        // TODO: don't delete database if it's not empty
+        // FIXME: add command line argument --force to delete nonempty database
+        auto status = aku_remove_database(full_path.c_str(), true);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -455,6 +440,70 @@ void cmd_delete_database() {
             std::stringstream fmt;
             fmt << "**OK** database at `" << path << "` deleted";
             std::cout << cli_format(fmt.str()) << std::endl;
+        }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists";
+        std::cout << cli_format(fmt.str()) << std::endl;
+    }
+}
+
+void cmd_dump_debug_information(const char* outfname) {
+    auto config_path = ConfigFile::default_config_path();
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (boost::filesystem::exists(full_path)) {
+        auto status = aku_debug_report_dump(full_path.c_str(), outfname);
+        if (status != APR_SUCCESS) {
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::stringstream fmt;
+            fmt << "can't dump debug info: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        } else {
+            if (outfname) {
+                // Don't generate this message if output was written to stdout. User
+                // should be able to use this command this way:
+                // ./akumulid --debug-dump=stdout >> outfile.xml
+                std::stringstream fmt;
+                fmt << "**OK** `" << outfname << "` successfully generated for `" << path << "`";
+                std::cout << cli_format(fmt.str()) << std::endl;
+            }
+        }
+    } else {
+        std::stringstream fmt;
+        fmt << "**ERROR** database file doesn't exists";
+        std::cout << cli_format(fmt.str()) << std::endl;
+    }
+}
+
+void cmd_dump_recovery_debug_information(const char* outfname) {
+    auto config_path = ConfigFile::default_config_path();
+    auto config     = ConfigFile::read_config_file(config_path);
+    auto path       = ConfigFile::get_path(config);
+
+    auto full_path = boost::filesystem::path(path) / "db.akumuli";
+    if (boost::filesystem::exists(full_path)) {
+        auto status = aku_debug_recovery_report_dump(full_path.c_str(), outfname);
+        if (status != APR_SUCCESS) {
+            char buffer[1024];
+            apr_strerror(status, buffer, 1024);
+            std::stringstream fmt;
+            fmt << "can't dump debug info: " << buffer;
+            std::runtime_error err(fmt.str());
+            BOOST_THROW_EXCEPTION(err);
+        } else {
+            if (outfname) {
+                // Don't generate this message if output was written to stdout. User
+                // should be able to use this command this way:
+                // ./akumulid --debug-recovery-dump=stdout >> outfile.xml
+                std::stringstream fmt;
+                fmt << "**OK** `" << outfname << "` successfully generated for `" << path << "`";
+                std::cout << cli_format(fmt.str()) << std::endl;
+            }
         }
     } else {
         std::stringstream fmt;
@@ -494,11 +543,23 @@ int main(int argc, char** argv) {
                 ("create", "Create database")
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
-                ("init", "Create default configuration");
+                ("init", "Create default configuration")
+                ("debug-dump", po::value<std::string>(), "Create debug dump")
+                ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
+                ;
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
         po::notify(vm);
+
+        std::stringstream header;
+        header << "\n\nStarted\n\n";
+        header << "Command line: ";
+        for (int i = 0; i < argc; i++) {
+            header << argv[i] << ' ';
+        }
+        header << "\n\n";
+        logger.info() << header.str();
 
         if (vm.count("help")) {
             rich_print(CLI_HELP_MESSAGE);
@@ -529,7 +590,29 @@ int main(int argc, char** argv) {
             exit(EXIT_SUCCESS);
         }
 
+        if (vm.count("debug-dump")) {
+            auto path = vm["debug-dump"].as<std::string>();
+            if (path == "stdout") {
+                cmd_dump_debug_information(nullptr);
+            } else {
+                cmd_dump_debug_information(path.c_str());
+            }
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("debug-recovery-dump")) {
+            auto path = vm["debug-recovery-dump"].as<std::string>();
+            if (path == "stdout") {
+                cmd_dump_recovery_debug_information(nullptr);
+            } else {
+                cmd_dump_recovery_debug_information(path.c_str());
+            }
+            exit(EXIT_SUCCESS);
+        }
+
         cmd_run_server();
+
+        logger.info() << "\n\nClean exit\n\n";
 
     } catch(const std::exception& e) {
         std::stringstream fmt;

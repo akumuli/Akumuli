@@ -1,7 +1,9 @@
 #include "tcp_server.h"
 #include "utility.h"
 #include <thread>
+#include <atomic>
 #include <boost/function.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
 
@@ -9,55 +11,69 @@ namespace Akumuli {
 //     Tcp Session     //
 //                     //
 
-TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<PipelineSpout> spout)
-    : io_(io)
+std::string make_unique_session_name() {
+    static std::atomic<int> counter = {0};
+    std::stringstream str;
+    str << "tcp-session-" << counter.fetch_add(1);
+    return str.str();
+}
+
+TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
+    : parallel_(parallel)
+    , io_(io)
     , socket_(*io)
     , strand_(*io)
     , spout_(spout)
     , parser_(spout)
-    , logger_("tcp-session", 10)
+    , logger_(make_unique_session_name(), 10)
 {
     logger_.info() << "Session created";
     parser_.start();
+}
+
+TcpSession::~TcpSession() {
+    logger_.info() << "Session destroyed";
 }
 
 SocketT& TcpSession::socket() {
     return socket_;
 }
 
-std::tuple<TcpSession::BufferT, size_t, size_t> TcpSession::get_next_buffer(BufferT prev_buf,
-                                                                            size_t size,
-                                                                            size_t pos,
-                                                                            size_t bytes_read)
-{
-    Byte *buffer = (Byte*)malloc(BUFFER_SIZE);
-    auto deleter = [](Byte* p) {
-        free((void*)p);
-    };
-    std::shared_ptr<Byte> bufptr(buffer, deleter);
-    return std::make_tuple(bufptr, BUFFER_SIZE, 0u);
+std::tuple<TcpSession::BufferT, size_t> TcpSession::get_next_buffer() {
+    Byte *buffer = parser_.get_next_buffer();
+    return std::make_tuple(buffer, BUFFER_SIZE);
 }
 
-void TcpSession::start(BufferT buf, size_t buf_size, size_t pos, size_t bytes_read) {
-    std::tie(buf, buf_size, pos) = get_next_buffer(buf, buf_size, pos, bytes_read);
-    socket_.async_read_some(
-                boost::asio::buffer(buf.get() + pos, buf_size - pos),
+void TcpSession::start() {
+    BufferT buf;
+    size_t buf_size;
+    std::tie(buf, buf_size) = get_next_buffer();
+    if (parallel_) {
+        socket_.async_read_some(
+                boost::asio::buffer(buf, buf_size),
                 strand_.wrap(
                     boost::bind(&TcpSession::handle_read,
                                 shared_from_this(),
                                 buf,
-                                pos,
-                                buf_size,
                                 boost::asio::placeholders::error,
-                                boost::asio::placeholders::bytes_transferred)
-                ));
+                                boost::asio::placeholders::bytes_transferred)));
+    } else {
+        // Strand is not used here
+        socket_.async_read_some(
+                boost::asio::buffer(buf, buf_size),
+                boost::bind(&TcpSession::handle_read,
+                            shared_from_this(),
+                            buf,
+                            boost::asio::placeholders::error,
+                            boost::asio::placeholders::bytes_transferred));
+    }
 }
 
-PipelineErrorCb TcpSession::get_error_cb() {
+ErrorCallback TcpSession::get_error_cb() {
     logger_.info() << "Creating error handler for session";
     auto self = shared_from_this();
     auto weak = std::weak_ptr<TcpSession>(self);
-    auto fn = [weak](aku_Status status, u64 counter) {
+    auto fn = [weak](aku_Status status, u64) {
         auto session = weak.lock();
         if (session) {
             const char* msg = aku_error_message(status);
@@ -72,37 +88,36 @@ PipelineErrorCb TcpSession::get_error_cb() {
                                                  boost::asio::placeholders::error));
         }
     };
-    return PipelineErrorCb(fn);
+    return ErrorCallback(fn);
 }
 
-std::shared_ptr<Byte> TcpSession::NO_BUFFER = std::shared_ptr<Byte>();
-
 void TcpSession::handle_read(BufferT buffer,
-                             size_t pos,
-                             size_t buf_size,
                              boost::system::error_code error,
                              size_t nbytes) {
     if (error) {
         logger_.error() << error.message();
         parser_.close();
-        drain_pipeline_spout();
     } else {
         try {
-            PDU pdu = {
-                buffer,
-                nbytes,
-                pos
-            };
-            parser_.parse_next(pdu);
-            start(buffer, buf_size, pos, nbytes);
-        } catch (RESPError const& resp_err) {
+            parser_.parse_next(buffer, static_cast<u32>(nbytes));
+            start();
+        } catch (StreamError const& resp_err) {
             // This error is related to client so we need to send it back
             logger_.error() << resp_err.what();
-            logger_.error() << resp_err.get_bottom_line();
             boost::asio::streambuf stream;
             std::ostream os(&stream);
             os << "-PARSER " << resp_err.what() << "\r\n";
-            os << "-PARSER " << resp_err.get_bottom_line() << "\r\n";
+            boost::asio::async_write(socket_, stream,
+                                     boost::bind(&TcpSession::handle_write_error,
+                                                 shared_from_this(),
+                                                 boost::asio::placeholders::error)
+                                     );
+        } catch (DatabaseError const& dberr) {
+            // Database error
+            logger_.error() << boost::current_exception_diagnostic_information();
+            boost::asio::streambuf stream;
+            std::ostream os(&stream);
+            os << "-DB " << dberr.what() << "\r\n";
             boost::asio::async_write(socket_, stream,
                                      boost::bind(&TcpSession::handle_write_error,
                                                  shared_from_this(),
@@ -123,14 +138,9 @@ void TcpSession::handle_read(BufferT buffer,
     }
 }
 
-void TcpSession::drain_pipeline_spout() {
-    if (!spout_->is_empty()) {
-        io_->post(boost::bind(&TcpSession::drain_pipeline_spout, shared_from_this()));
-    }
-}
-
 void TcpSession::handle_write_error(boost::system::error_code error) {
     if (!error) {
+        logger_.info() << "Clean shutdown";
         socket_.shutdown(SocketT::shutdown_both);
     } else {
         logger_.error() << "Error sending error message to client";
@@ -146,10 +156,11 @@ void TcpSession::handle_write_error(boost::system::error_code error) {
 TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
                         // Storage & pipeline
-                        std::shared_ptr<IngestionPipeline> pipeline )
-    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), port))
+                        std::shared_ptr<DbConnection> connection , bool parallel)
+    : parallel_(parallel)
+    , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
     , sessions_io_(io)
-    , pipeline_(pipeline)
+    , connection_(connection)
     , io_index_{0}
     , start_barrier_(2)
     , stop_barrier_(2)
@@ -164,13 +175,21 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     }
 }
 
+TcpAcceptor::~TcpAcceptor() {
+    logger_.info() << "TCP acceptor destroyed";
+}
+
 void TcpAcceptor::start() {
     WorkT work(own_io_);
 
     // Run detached thread for accepts
     auto self = shared_from_this();
     std::thread accept_thread([self]() {
-
+#ifdef __gnu_linux__
+        // Name the thread
+        auto thread = pthread_self();
+        pthread_setname_np(thread, "TCP-accept");
+#endif
         self->logger_.info() << "Starting acceptor worker thread";
         self->start_barrier_.wait();
         self->logger_.info() << "Acceptor worker thread have started";
@@ -200,10 +219,14 @@ void TcpAcceptor::_run_one() {
 
 void TcpAcceptor::_start() {
     std::shared_ptr<TcpSession> session;
-    auto spout = pipeline_->make_spout();
-    session.reset(new TcpSession(sessions_io_.at(io_index_++ % sessions_io_.size()), spout));
+    auto con = connection_.lock();
+    if (con) {
+        auto spout = con->create_session();
+        session = std::make_shared<TcpSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
+    } else {
+        logger_.error() << "Database was already closed";
+    }
     // attach session to spout
-    spout->set_error_cb(session->get_error_cb());
     // run session
     acceptor_.async_accept(
                 session->socket(),
@@ -215,8 +238,8 @@ void TcpAcceptor::_start() {
 }
 
 void TcpAcceptor::stop() {
-    logger_.error() << "Stopping acceptor";
-    acceptor_.close();
+    logger_.info() << "Stopping acceptor";
+    acceptor_.cancel();
     own_io_.stop();
     sessions_work_.clear();
     logger_.info() << "Trying to stop acceptor";
@@ -225,7 +248,7 @@ void TcpAcceptor::stop() {
 }
 
 void TcpAcceptor::_stop() {
-    logger_.error() << "Stopping acceptor";
+    logger_.info() << "Stopping acceptor (test runner)";
     acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
@@ -233,7 +256,7 @@ void TcpAcceptor::_stop() {
 
 void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
-        session->start(TcpSession::NO_BUFFER, 0u, 0u, 0u);
+        session->start();
         _start();
     } else {
         logger_.error() << "Acceptor error " << err.message();
@@ -244,42 +267,73 @@ void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::syst
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<IngestionPipeline> pipeline, int concurrency, int port)
-    : pline(pipeline)
-    , barrier(concurrency)
+TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, TcpServer::Mode mode)
+    : connection_(connection)
+    , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
     , logger_("tcp-server", 32)
 {
-    for(;concurrency --> 0;) {
-        iovec.push_back(&io);
+    logger_.info() << "TCP server created, concurrency: " << concurrency;
+    if (mode == Mode::EVENT_LOOP_PER_THREAD) {
+        for(int i = 0; i < concurrency; i++) {
+            IOPtr ptr = IOPtr(new IOServiceT(1));
+            iovec.push_back(ptr.get());
+            ios_.push_back(std::move(ptr));
+        }
+    } else {
+        IOPtr ptr = IOPtr(new IOServiceT(static_cast<size_t>(concurrency)));
+        iovec.push_back(ptr.get());
+        ios_.push_back(std::move(ptr));
     }
-    serv = std::make_shared<TcpAcceptor>(iovec, port, pline);
-    pline->start();
-    serv->start();
+    bool parallel = mode == Mode::SHARED_EVENT_LOOP;
+    auto con = connection_.lock();
+    if (con) {
+        serv = std::make_shared<TcpAcceptor>(iovec, port, con, parallel);
+        serv->start();
+    } else {
+        logger_.error() << "Can't start TCP server, database closed";
+        std::runtime_error err("DB connection closed");
+        BOOST_THROW_EXCEPTION(err);
+    }
+}
+
+TcpServer::~TcpServer() {
+    logger_.info() << "TCP server destroyed";
 }
 
 void TcpServer::start(SignalHandler* sig, int id) {
 
     auto self = shared_from_this();
-    sig->add_handler(boost::bind(&TcpServer::stop, std::move(self)), id);
+    sig->add_handler(boost::bind(&TcpServer::stop, self), id);
 
-    auto logger = &logger_;
-    auto iorun = [logger](IOServiceT& io, boost::barrier& bar) {
-        auto fn = [&]() {
+    auto iorun = [self](IOServiceT& io, int cnt) {
+        auto fn = [self, &io, cnt]() {
+#ifdef __gnu_linux__
+            // Name the thread
+            auto thread = pthread_self();
+            pthread_setname_np(thread, "TCP-worker");
+#endif
+            Logger logger("tcp-server-worker", 10);
             try {
+                logger.info() << "Event loop " << cnt << " started";
                 io.run();
-                bar.wait();
+                logger.info() << "Event loop " << cnt << " stopped";
+                self->barrier.wait();
             } catch (RESPError const& e) {
-                logger->error() << e.what();
-                logger->error() << e.get_bottom_line();
+                logger.error() << e.what();
+                throw;
+            } catch (...) {
+                logger.error() << "Error in event loop " << cnt << ": " << boost::current_exception_diagnostic_information();
                 throw;
             }
+            logger.info() << "Worker thread " << cnt << " stopped";
         };
         return fn;
     };
 
+    int cnt = 0;
     for (auto io: iovec) {
-        std::thread iothread(iorun(*io, barrier));
+        std::thread iothread(iorun(*io, cnt++));
         iothread.detach();
     }
 }
@@ -289,17 +343,13 @@ void TcpServer::stop() {
         serv->stop();
         logger_.info() << "TcpServer stopped";
 
-        // No need to joint I/O threads, just wait until they completes.
+        for(auto& svc: ios_) {
+            svc->stop();
+            logger_.info() << "I/O service stopped";
+        }
+
         barrier.wait();
         logger_.info() << "I/O threads stopped";
-
-        pline->stop();
-        logger_.info() << "Pipeline stopped";
-
-        for (auto io: iovec) {
-            io->stop();
-        }
-        logger_.info() << "I/O service stopped";
     }
 }
 
@@ -309,10 +359,10 @@ struct TcpServerBuilder {
         ServerFactory::instance().register_type("TCP", *this);
     }
 
-    std::shared_ptr<Server> operator () (std::shared_ptr<IngestionPipeline> pipeline,
+    std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        return std::make_shared<TcpServer>(pipeline, settings.nworkers, settings.port);
+        return std::make_shared<TcpServer>(con, settings.nworkers, settings.port);
     }
 };
 

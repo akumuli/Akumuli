@@ -1,4 +1,5 @@
 #include "query_results_pooler.h"
+#include "logger.h"
 #include <cstdio>
 #include <thread>
 #include <boost/property_tree/ptree.hpp>
@@ -6,6 +7,15 @@
 #include <boost/exception/all.hpp>
 
 namespace Akumuli {
+
+static Logger logger("query_results_pooler", 10);
+
+static int popcount(u64 value) {
+    u32 hi = static_cast<u32>(value);
+    u32 lo = static_cast<u32>(value >> 32);
+    int res = __builtin_popcount(hi) + __builtin_popcount(lo);
+    return res;
+}
 
 static boost::property_tree::ptree from_json(std::string json) {
     //! C-string to streambuf adapter
@@ -25,13 +35,13 @@ static boost::property_tree::ptree from_json(std::string json) {
 
 struct CSVOutputFormatter : OutputFormatter {
 
-    std::shared_ptr<DbConnection> connection_;
+    std::shared_ptr<DbSession> session_;
     const bool iso_timestamps_;
 
     // TODO: parametrize column separator
 
-    CSVOutputFormatter(std::shared_ptr<DbConnection> con, bool iso_timestamps)
-        : connection_(con)
+    CSVOutputFormatter(std::shared_ptr<DbSession> con, bool iso_timestamps)
+        : session_(con)
         , iso_timestamps_(iso_timestamps)
     {
     }
@@ -48,7 +58,7 @@ struct CSVOutputFormatter : OutputFormatter {
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
-            len = connection_->param_id_to_series(sample.paramid, begin, size);
+            len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
                 len = snprintf(begin, size, "id=%lu", sample.paramid);
@@ -61,7 +71,6 @@ struct CSVOutputFormatter : OutputFormatter {
                 // Not enough space
                 return nullptr;
             }
-            len--;  // terminating '\0' character should be rewritten
             begin += len;
             size  -= len;
             newline_required = true;
@@ -127,6 +136,42 @@ struct CSVOutputFormatter : OutputFormatter {
             newline_required = true;
         }
 
+        if (sample.payload.type & aku_PData::TUPLE_BIT) {
+            if (newline_required) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
+            union {
+                u64 u;
+                double d;
+            } bits;
+            bits.d = sample.payload.float64;
+            int nelements = popcount(bits.u);
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements; ix++) {
+                if (bits.u & (1 << ix)) {
+                    if (ix == 0) {
+                        len = snprintf(begin, size, "%.17g", tuple[ix]);
+                    } else {
+                        len = snprintf(begin, size, ",%.17g", tuple[ix]);
+                    }
+                } else {
+                    len = snprintf(begin, size, ",");
+                }
+                if (len == size || len < 0) {
+                    return nullptr;
+                }
+                begin += len;
+                size  -= len;
+                newline_required = true;
+            }
+        }
+
         if (sample.payload.type & aku_PData::SAX_WORD) {
             if (newline_required) {
                 // Add trailing ',' to the end
@@ -162,14 +207,15 @@ struct CSVOutputFormatter : OutputFormatter {
         return begin;
     }
 };
+
 //! RESP output implementation
 struct RESPOutputFormatter : OutputFormatter {
 
-    std::shared_ptr<DbConnection> connection_;
+    std::shared_ptr<DbSession> session_;
     const bool iso_timestamps_;
 
-    RESPOutputFormatter(std::shared_ptr<DbConnection> con, bool iso_timestamps)
-        : connection_(con)
+    RESPOutputFormatter(std::shared_ptr<DbSession> con, bool iso_timestamps)
+        : session_(con)
         , iso_timestamps_(iso_timestamps)
     {
     }
@@ -192,7 +238,7 @@ struct RESPOutputFormatter : OutputFormatter {
 
         if (sample.payload.type & aku_PData::PARAMID_BIT) {
             // Series name
-            len = connection_->param_id_to_series(sample.paramid, begin, size);
+            len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
                 len = snprintf(begin, size, "id=%lu", sample.paramid);
@@ -268,6 +314,40 @@ struct RESPOutputFormatter : OutputFormatter {
             size  -= len;
         }
 
+        if (sample.payload.type & aku_PData::TUPLE_BIT) {
+            union {
+                u64 u;
+                double d;
+            } bits;
+            bits.d = sample.payload.float64;
+            int nelements_set = popcount(bits.u);
+
+            // Output RESP array, start with number of elements
+            len = snprintf(begin, size, "*%d\r\n", nelements_set);
+            if (len == size || len < 0) {
+                return nullptr;
+            }
+            begin += len;
+            size  -= len;
+
+            // Output array elements
+            double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            for (int ix = 0; ix < nelements_set; ix++) {
+                if (bits.d && (1 << ix)) {
+                    len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
+                } else {
+                    // Empty tuple value encountered. RESP uses bulk string with length equal to -1
+                    // to represent Null values.
+                    len = snprintf(begin, size, "$-1\r\n");
+                }
+                if (len == size || len < 0) {
+                    return nullptr;
+                }
+                begin += len;
+                size  -= len;
+            }
+        }
+
         if (sample.payload.type & aku_PData::SAX_WORD) {
             size_t sample_size = std::max(sizeof(aku_Sample), (size_t)sample.payload.size);
             int sax_word_sz = static_cast<int>(sample_size - sizeof(aku_Sample));
@@ -288,8 +368,8 @@ struct RESPOutputFormatter : OutputFormatter {
     }
 };
 
-QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbConnection> con, int readbufsize)
-    : connection_(con)
+QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize)
+    : session_(session)
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
 {
@@ -318,7 +398,15 @@ void QueryResultsPooler::start() {
     enum Format { RESP, CSV };  // TODO: add protobuf support
     bool use_iso_timestamps = true;
     Format output_format = RESP;
-    boost::property_tree::ptree tree = from_json(query_text_);
+    boost::property_tree::ptree tree;
+    try {
+        tree = from_json(query_text_);
+    } catch (boost::property_tree::json_parser_error const& e) {
+        logger.error() << "Bad JSON document received, error: " << e.what();
+        // We need to pass invalid document further to generate proper error response
+        cursor_ = session_->search(query_text_);
+        return;
+    }
     auto output = tree.get_child_optional("output");
     if (output) {
         for (auto kv: *output) {
@@ -347,14 +435,14 @@ void QueryResultsPooler::start() {
     }
     switch(output_format) {
     case RESP:
-        formatter_.reset(new RESPOutputFormatter(connection_, use_iso_timestamps));
+        formatter_.reset(new RESPOutputFormatter(session_, use_iso_timestamps));
         break;
     case CSV:
-        formatter_.reset(new CSVOutputFormatter(connection_, use_iso_timestamps));
+        formatter_.reset(new CSVOutputFormatter(session_, use_iso_timestamps));
         break;
     };
 
-    cursor_ = connection_->search(query_text_);
+    cursor_ = session_->search(query_text_);
 }
 
 void QueryResultsPooler::append(const char *data, size_t data_size) {
@@ -384,9 +472,9 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
             // Some error occured, put error message to the outgoing buffer and return
             int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
             if (len > 0) {
-                return std::make_tuple((size_t)len, true);
+                return std::make_tuple((size_t)len, false);
             }
-            return std::make_tuple(0u, true);
+            return std::make_tuple(0u, false);
         }
     }
 
@@ -414,18 +502,33 @@ void QueryResultsPooler::close() {
     cursor_->close();
 }
 
-QueryProcessor::QueryProcessor(std::shared_ptr<DbConnection> con, int rdbuf)
+QueryProcessor::QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf)
     : con_(con)
     , rdbufsize_(rdbuf)
 {
+    logger.info() << "QueryProcessor created";
+}
+
+QueryProcessor::~QueryProcessor() {
+    logger.info() << "QueryProcessor destructed";
 }
 
 ReadOperation *QueryProcessor::create() {
-    return new QueryResultsPooler(con_, rdbufsize_);
+    auto con = con_.lock();
+    if (con) {
+        return new QueryResultsPooler(con->create_session(), rdbufsize_);
+    }
+    std::runtime_error err("Database connection was closed");
+    BOOST_THROW_EXCEPTION(err);
 }
 
 std::string QueryProcessor::get_all_stats() {
-    return con_->get_all_stats();
+    auto con = con_.lock();
+    if (con) {
+        return con->get_all_stats();
+    }
+    std::runtime_error err("Database connection was closed");
+    BOOST_THROW_EXCEPTION(err);
 }
 
 }  // namespace

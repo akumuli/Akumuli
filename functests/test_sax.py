@@ -30,7 +30,7 @@ def test_sax_in_backward_direction(dtstart, delta, N):
     }
     query = att.makequery("test", begin, end, **query_params)
     print(query)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     iterations = 0
     print("Test")

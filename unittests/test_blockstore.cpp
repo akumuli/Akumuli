@@ -11,7 +11,7 @@
 #include "log_iface.h"
 
 void test_logger(aku_LogLevel tag, const char* msg) {
-    BOOST_MESSAGE(msg);
+    BOOST_TEST_MESSAGE(msg);
 }
 
 struct AkumuliInitializer {
@@ -111,7 +111,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 
     // Should be unreadable now
     std::tie(status, block) = bstore->read_block(0);
-    BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
+    BOOST_REQUIRE_EQUAL(status, AKU_EUNAVAILABLE);
 
     // Reada this block
     std::tie(status, block) = bstore->read_block(2ull << 32);

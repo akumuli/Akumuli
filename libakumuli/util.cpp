@@ -126,7 +126,9 @@ apr_status_t MemoryMappedFile::map_file() {
                     success_count++;
                     apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
                     if (enable_huge_tlb_) {
-                        flags |= MAP_HUGETLB;
+#if defined MAP_HUGETLB
+						flags |= MAP_HUGETLB;
+#endif
                     }
                     status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
                     if (status_ == APR_SUCCESS)
@@ -352,87 +354,6 @@ size_t get_page_size() {
     return static_cast<size_t>(page_size);
 }
 
-static const unsigned char MINCORE_MASK = 1;
-
-PageInfo::PageInfo(const void* start_addr, size_t len_bytes)
-    : page_size_(get_page_size())
-    , base_addr_(align_to_page(start_addr, page_size_))
-    , len_bytes_(len_bytes)
-{
-    assert(len_bytes <= 4UL*1024UL*1024UL*1024UL);
-    auto len = (len_bytes_ + page_size_ - 1) / page_size_;
-    data_.resize(len);
-}
-
-bool PageInfo::swapped() {
-    fill_mem();
-    refresh(base_addr_);
-    auto res = std::accumulate(data_.begin(), data_.end(), MINCORE_MASK,
-                               [](unsigned char a, unsigned char b) { return a & b;});
-    return !static_cast<bool>(res & MINCORE_MASK);
-}
-
-aku_Status PageInfo::refresh(const void *addr) {
-    base_addr_ = align_to_page(addr, page_size_);
-    int error = mincore(const_cast<void*>(base_addr_), len_bytes_, data_.data());
-    aku_Status status = AKU_SUCCESS;
-    switch(error) {
-    case EFAULT:
-        AKU_PANIC("mincore returns EFAULT - vec points to an invalid address");
-    case EAGAIN:
-        status = AKU_EBUSY;
-        break;
-    case EINVAL:
-    case ENOMEM:
-        status = AKU_EBAD_ARG;
-        break;
-    }
-    if (status != AKU_SUCCESS) {
-        fill_mem();
-    }
-    return status;
-}
-
-bool PageInfo::in_core(const void* addr) {
-    auto req = reinterpret_cast<const unsigned char*>(addr);
-    auto base = reinterpret_cast<const unsigned char*>(base_addr_);
-    if (req < base) {
-        return false;
-    }
-    auto len = req - base;
-    size_t ix = len / page_size_;
-    if (ix < data_.size()) {
-        return data_[ix] & MINCORE_MASK;
-    }
-    return false;
-}
-
-void PageInfo::fill_mem() {
-    std::fill(data_.begin(), data_.end(), MINCORE_MASK);
-}
-
-std::tuple<bool, aku_Status> page_in_core(const void* addr) {
-    auto page_size = get_page_size();
-    auto base_addr = align_to_page(addr, page_size);
-    unsigned char val;
-    int error = mincore(const_cast<void*>(base_addr), 1, &val);
-    aku_Status status = AKU_SUCCESS;
-    switch(error) {
-    case EFAULT:
-        AKU_PANIC("mincore returns EFAULT - vec points to an invalid address");
-    case EAGAIN:
-        status = AKU_EBUSY;
-        val = MINCORE_MASK;
-        break;
-    case EINVAL:
-    case ENOMEM:
-        status = AKU_EBAD_ARG;
-        val = MINCORE_MASK;
-        break;
-    }
-    return std::make_tuple(val&MINCORE_MASK, status);
-}
-
 Rand::Rand()
     : rand_()
 {
@@ -444,7 +365,6 @@ Rand::Rand()
 u32 Rand::operator () () {
     return (u32)rand_();
 }
-
 
 RWLock::RWLock()
     : rwlock_ PTHREAD_RWLOCK_INITIALIZER

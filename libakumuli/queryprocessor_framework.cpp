@@ -27,18 +27,72 @@ std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree c
     return it->second->create(ptree, next);
 }
 
-std::ostream& operator << (std::ostream& str, QueryRange const& range) {
-    auto qtype2text = [](QueryRange::QueryRangeType t) {
-        if (t == QueryRange::QueryRangeType::CONTINUOUS) {
-            return "CONTINUOUS";
-        }
-        return "INSTANT";
-    };
-    str << "[QueryRange| " << range.lowerbound << ", " << range.upperbound << ", "
-        << (range.direction == AKU_CURSOR_DIR_FORWARD ? "forward" : "backward")
-        << ", " << qtype2text(range.type) << "]";
-    return str;
+GroupByTime::GroupByTime()
+    : step_(0)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
 }
 
+GroupByTime::GroupByTime(aku_Timestamp step)
+    : step_(step)
+    , first_hit_(true)
+    , lowerbound_(AKU_MIN_TIMESTAMP)
+    , upperbound_(AKU_MIN_TIMESTAMP)
+{
+}
+
+GroupByTime::GroupByTime(const GroupByTime& other)
+    : step_(other.step_)
+    , first_hit_(other.first_hit_)
+    , lowerbound_(other.lowerbound_)
+    , upperbound_(other.upperbound_)
+{
+}
+
+GroupByTime& GroupByTime::operator = (const GroupByTime& other) {
+    step_ = other.step_;
+    first_hit_ = other.first_hit_;
+    lowerbound_ = other.lowerbound_;
+    upperbound_ = other.upperbound_;
+    return *this;
+}
+
+bool GroupByTime::put(aku_Sample const& sample, Node& next) {
+    if (step_ && sample.payload.type != aku_PData::EMPTY) {
+        aku_Timestamp ts = sample.timestamp;
+        if (AKU_UNLIKELY(first_hit_ == true)) {
+            first_hit_ = false;
+            aku_Timestamp aligned = ts / step_ * step_;
+            lowerbound_ = aligned;
+            upperbound_ = aligned + step_;
+        }
+        if (ts >= upperbound_) {
+            // Forward direction
+            aku_Sample empty = SAMPLING_HI_MARGIN;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ += step_;
+            upperbound_ += step_;
+        } else if (ts < lowerbound_) {
+            // Backward direction
+            aku_Sample empty = SAMPLING_LO_MARGIN;
+            empty.timestamp = upperbound_;
+            if (!next.put(empty)) {
+                return false;
+            }
+            lowerbound_ -= step_;
+            upperbound_ -= step_;
+        }
+    }
+    return next.put(sample);
+}
+
+bool GroupByTime::empty() const {
+    return step_ == 0;
+}
 
 }}  // namespace

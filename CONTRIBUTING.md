@@ -1,18 +1,28 @@
 Contributing to Akumuli
 =======================
 
+### Bug reports
+
+Before submitting a bug report please search existing issues. Use existing issue if possible.
+If this is not the case, feel free to create the new one. Plese include the following information (if possible):
+
+- Version information (or, commit hash if you built Akumuli from source)
+- OS version and distribution name
+- Core dump or some test case that can be used to recreate the issue
+- If you want to ask some question about Akumuli, please consider using this [Google Group](https://groups.google.com/forum/#!forum/akumuli)
+
+### Feature requests
+
+Feature requests are welcome. Please describe the functionality that you need in detail.
+
+### Pull requests
+
 Akumuli is free and open source project. Pull requests are always welcome.
 
 Please consider taking the following steps:
 
-1. Create issue with description of your enchacement or bug report 
-(if your pull-request is a bug-fix). Mention this
-issue in your commit message if possible.
-2. __(important)__ Make changes to **dev** branch, not **master**.
+1. Create issue with description of your enhancement.
+2. Fork repository and make your changes in feature branch.
+3. Create pull request from your feature branch against `master` branch of the main Akumuli repository.
 
-Things to start with:
-
-1. Query processing: you can create new query processors relatively easily. 
-There are a lot of examples in `Akumuli/libakumuli/query_processing`. 
-TBD: link to tutorial.
-2. New protocols. TBD: link to tutorial.
+You can find issues that is easy to implement using [this tag](https://github.com/akumuli/Akumuli/labels/low-difficulty).

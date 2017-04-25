@@ -17,6 +17,7 @@ target_link_libraries(test_streams
 )
 add_test(streams test_streams)
 
+
 # RESP
 add_executable(
     test_respstream
@@ -30,6 +31,7 @@ target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
 )
 add_test(respstream test_respstream)
+
 
 # Protocol parser
 add_executable(
@@ -50,31 +52,9 @@ target_link_libraries(
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(protocol-parser test_protocolparser)
 
-# Pipeline test
-add_executable(
-    test_pipeline
-    test_pipeline.cpp
-    ../akumulid/ingestion_pipeline.cpp
-    ../akumulid/logger.cpp
-)
-target_link_libraries(
-    test_pipeline
-    jemalloc
-    akumuli
-    sqlite3
-    "${LOG4CXX_LIBRARIES}"
-    "${APR_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-)
-add_test(pipeline test_pipeline)
 
 # TCPServer test
 add_executable(
@@ -96,8 +76,6 @@ target_link_libraries(test_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(tcp-server test_tcp_server)
 
@@ -120,8 +98,6 @@ target_link_libraries(
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 add_test(querycursor test_querycursor)
 
@@ -132,65 +108,11 @@ add_test(querycursor test_querycursor)
 #                                        #
 ##########################################
 
-# Page test
-add_executable(
-    test_page
-    test_page.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/storage_engine/compression.cpp
-)
-
-target_link_libraries(
-    test_page
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-    pthread
-)
-
-add_test(page test_page)
-
-# Sequencer tests
-add_executable(
-    test_sequencer
-    test_sequencer.cpp
-    ../libakumuli/sequencer.cpp
-    ../libakumuli/queryprocessor_framework.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/storage_engine/compression.cpp
-)
-
-target_link_libraries(
-    test_sequencer
-    pthread
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-)
-
-add_test(sequencer test_sequencer)
-
 # Cursor tests
 add_executable(
     test_cursor
     test_cursor.cpp
     ../libakumuli/cursor.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/compression.cpp
@@ -202,8 +124,6 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
     pthread
 )
 
@@ -251,8 +171,10 @@ add_test(compression test_compression)
 add_executable(
     test_storage
     test_storage.cpp
+    ../libakumuli/storage2.cpp
     ../libakumuli/metadatastorage.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/datetime.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/seriesparser.cpp
     ../libakumuli/stringpool.cpp
@@ -262,14 +184,32 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/query_processing/queryparser.cpp
+    ../libakumuli/query_processing/queryplan.cpp
+    # query processor
+    ../libakumuli/queryprocessor.cpp
+    ../libakumuli/queryprocessor_framework.cpp
+    ../libakumuli/saxencoder.cpp
+    ../libakumuli/anomalydetector.cpp
+    ../libakumuli/hashfnfamily.cpp
+    ../libakumuli/query_processing/anomaly.cpp
+    ../libakumuli/query_processing/sax.cpp
+    ../libakumuli/query_processing/paa.cpp
+    ../libakumuli/query_processing/filterbyid.cpp
+    ../libakumuli/query_processing/randomsamplingnode.cpp
+    ../libakumuli/query_processing/limiter.cpp
+
 )
 
 target_link_libraries(
     test_storage
     pthread
-    akumuli
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -359,19 +299,6 @@ target_link_libraries(
 
 add_test(SAX test_sax)
 
-# Inverted index test
-add_executable(
-    test_invertedindex
-    test_invertedindex.cpp
-    ../libakumuli/invertedindex.cpp
-)
-
-target_link_libraries(
-    test_invertedindex
-    ${Boost_LIBRARIES}
-)
-
-add_test(invertedindex test_invertedindex)
 
 # Blockstore test
 add_executable(
@@ -402,6 +329,11 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
@@ -427,7 +359,13 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/query_processing/queryplan.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
@@ -445,6 +383,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(column_store test_column_store)

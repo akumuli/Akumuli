@@ -30,12 +30,7 @@ class TCPChan:
         self.__sock.send(data)
 
 def main(path, protocol):
-
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    akumulid = att.Akumulid(path)
+    akumulid = att.create_akumulid(path)
     # delete database
     akumulid.delete_database()
     # create empty database
@@ -64,7 +59,7 @@ def main(path, protocol):
 
         # check stats
         httpport = 8181
-        statsurl = "http://{0}:{1}/stats".format(host, httpport)
+        statsurl = "http://{0}:{1}/api/stats".format(host, httpport)
         rawstats = urllib.urlopen(statsurl).read()
         stats = json.loads(rawstats)
 

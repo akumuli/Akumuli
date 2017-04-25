@@ -60,8 +60,8 @@ struct CursorMock : DbCursor {
     void close() {}
 };
 
-struct ConnectionMock : DbConnection
-{
+struct SessionMock : DbSession {
+
     aku_Status write(const aku_Sample &sample) {
         return AKU_SUCCESS;
     }
@@ -73,22 +73,34 @@ struct ConnectionMock : DbConnection
         return std::make_shared<CursorMock>();
     }
 
-    std::string get_all_stats() {
-        return "{}";
-    }
 
     int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {
             memcpy(buffer, strid.data(), strid.size());
             buffer[strid.size()] = 0;
-            return strid.size() + 1;
+            return static_cast<int>(strid.size()) + 1;
         }
-        return -1*strid.size();
+        return -1*static_cast<int>(strid.size());
+    }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        throw "not implemented";
     }
 
     aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
         throw "not implemented";
+    }
+};
+
+struct ConnectionMock : DbConnection
+{
+    virtual std::string get_all_stats() override {
+        return "{}";
+    }
+
+    virtual std::shared_ptr<DbSession> create_session() override {
+        return std::make_shared<SessionMock>();
     }
 };
 
@@ -97,10 +109,10 @@ using namespace Akumuli;
 BOOST_AUTO_TEST_CASE(Test_query_cursor) {
 
     std::string expected = "+33\r\n+20141210T074243.111999000\r\n+3.1415000000000002\r\n+44\r\n+20141210T122434.999111000\r\n+3.1415000000000002\r\n";
-    std::shared_ptr<DbConnection> con;
-    con.reset(new ConnectionMock());
+    std::shared_ptr<DbSession> session;
+    session.reset(new SessionMock());
     char buffer[0x1000];
-    QueryResultsPooler cursor(con, 1000);
+    QueryResultsPooler cursor(session, 1000);
     cursor.append("{}", 2);
     cursor.start();
     size_t len;

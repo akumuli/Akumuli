@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include "tcp_server.h"
 #include "logger.h"
@@ -14,53 +15,116 @@ using namespace Akumuli;
 
 
 static Logger logger_ = Logger("tcp-server-test", 10);
+typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
 
 
-struct DbMock : DbConnection {
-    typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
-    std::vector<ValueT> results;
+struct SessionMock : DbSession {
+    std::vector<ValueT>& results;
 
-    void close() {
-    }
+    SessionMock(std::vector<ValueT>& results)
+        : results(results) {}
 
-    aku_Status write(const aku_Sample &sample) {
+    virtual aku_Status write(const aku_Sample &sample) override {
         logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
         results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64));
         return AKU_SUCCESS;
     }
-    std::shared_ptr<DbCursor> search(std::string query) {
+
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
-    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
-        throw "not implemented";
+
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        auto str = std::to_string(id);
+        assert(str.size() <= sz);
+        memcpy(buf, str.data(), str.size());
+        return static_cast<int>(str.size());
     }
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
-        throw "not implemented";
+
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string num(begin, begin + sz);
+        sample->paramid = boost::lexical_cast<u64>(num);
+        return AKU_SUCCESS;
     }
-    std::string get_all_stats() { throw "not impelemnted"; }
+
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        auto nelem = std::count(begin, end, ':') + 1;
+        if (nelem > cap) {
+            return -1*static_cast<int>(nelem);
+        }
+        const char* it_begin = begin;
+        const char* it_end = begin;
+        for (int i = 0; i < nelem; i++) {
+            //move it_end
+            while(*it_end != ':' && it_end != end) {
+                it_end++;
+            }
+            std::string val(it_begin, it_end);
+            ids[i] = boost::lexical_cast<u64>(val);
+        }
+        return static_cast<int>(nelem);
+    }
+};
+
+
+struct ConnectionMock : DbConnection {
+    std::vector<ValueT> results;
+
+    virtual std::string get_all_stats() override { throw "not impelemnted"; }
+
+    virtual std::shared_ptr<DbSession> create_session() override {
+        return std::make_shared<SessionMock>(results);
+    }
 };
 
 
 template<aku_Status ERR>
-struct DbErrMock : DbConnection {
+struct DbSessionErrorMock : DbSession {
     aku_Status err = ERR;
 
-    void close() {
-    }
-
-    aku_Status write(const aku_Sample &sample) {
+    virtual aku_Status write(const aku_Sample&) override {
         return err;
     }
-    std::shared_ptr<DbCursor> search(std::string query) {
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
-    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
-        throw "not implemented";
+    virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
+        auto str = std::to_string(id);
+        assert(str.size() <= sz);
+        memcpy(buf, str.data(), str.size());
+        return static_cast<int>(str.size());
     }
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
-        throw "not implemented";
+    virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        std::string num(begin, begin + sz);
+        sample->paramid = boost::lexical_cast<u64>(num);
+        return AKU_SUCCESS;
     }
-    std::string get_all_stats() { throw "not impelemented"; }
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+        auto nelem = std::count(begin, end, '|') + 1;
+        if (nelem > cap) {
+            return -1*static_cast<int>(nelem);
+        }
+        const char* it_begin = begin;
+        const char* it_end = begin;
+        for (int i = 0; i < nelem; i++) {
+            //move it_end
+            while(*it_end != '|' && it_end != end) {
+                it_end++;
+            }
+            std::string val(it_begin, it_end);
+            ids[i] = boost::lexical_cast<u64>(val);
+        }
+        return static_cast<int>(nelem);
+    }
+};
+
+template<aku_Status ERR>
+struct DbConnectionErrorMock : DbConnection {
+    virtual std::string get_all_stats() override { throw "not impelemented"; }
+
+    virtual std::shared_ptr<DbSession> create_session() override {
+        return std::make_shared<DbSessionErrorMock<ERR>>();
+    }
 };
 
 const int PORT = 14096;
@@ -68,19 +132,16 @@ const int PORT = 14096;
 template<class Mock>
 struct TCPServerTestSuite {
     std::shared_ptr<Mock>               dbcon;
-    std::shared_ptr<IngestionPipeline>  pline;
     IOServiceT                          io;
     std::shared_ptr<TcpAcceptor>        serv;
 
     TCPServerTestSuite() {
         // Create mock pipeline
         dbcon = std::make_shared<Mock>();
-        pline = std::make_shared<IngestionPipeline>(dbcon, AKU_LINEAR_BACKOFF);
-        pline->start();
 
         // Run server
         std::vector<IOServiceT*> iovec = { &io };
-        serv = std::make_shared<TcpAcceptor>(iovec, PORT, pline);
+        serv = std::make_shared<TcpAcceptor>(iovec, PORT, dbcon);
 
         // Start reading but don't start iorun thread
         serv->_start();
@@ -110,18 +171,17 @@ struct TCPServerTestSuite {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
+        os << "+1\r\n" << ":2\r\n" << "+3.14\r\n";
 
         boost::asio::write(socket, stream);
 
         // TCPSession.handle_read
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         if (suite.dbcon->results.size() != 1) {
@@ -141,12 +201,12 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n" << ":2\r\n";
+        os << "+1\r\n" << ":2\r\n";
         size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
@@ -157,7 +217,6 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
         n = boost::asio::write(socket, stream);
         // Process last
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
@@ -174,14 +233,14 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
 
         // Fist message
-        os << ":1\r\n" << ":2\r\n" << "+3.14\r\n";
+        os << "+1\r\n" << ":2\r\n" << "+3.14\r\n";
         size_t n = boost::asio::write(socket, stream);
         stream.consume(n);
 
@@ -189,12 +248,11 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         suite.io.run_one();
 
         // Second message
-        os << ":3\r\n" << ":4\r\n" << "+1.61\r\n";
+        os << "+3\r\n" << ":4\r\n" << "+1.61\r\n";
         n = boost::asio::write(socket, stream);
 
         // Process last
         suite.io.run_one();
-        suite.pline->stop();
 
         // Check
         BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 2);
@@ -219,12 +277,12 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
 
-    TCPServerTestSuite<DbMock> suite;
+    TCPServerTestSuite<ConnectionMock> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n:E\r\n+3.14\r\n";
+        os << "+1\r\n:E\r\n+3.14\r\n";
         //      error ^
 
         boost::asio::streambuf instream;
@@ -250,20 +308,18 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_parser_error_handling) {
         char buffer[0x1000];
         is.getline(buffer, 0x1000);
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
-        is.getline(buffer, 0x1000);
-        BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 7), "-PARSER");
     });
 }
 
 
 BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
 
-    TCPServerTestSuite<DbErrMock<AKU_EBAD_DATA>> suite;
+    TCPServerTestSuite<DbConnectionErrorMock<AKU_EBAD_DATA>> suite;
 
     suite.run([&](SocketT& socket) {
         boost::asio::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\r\n:2\r\n+3.14\r\n";
+        os << "+1\r\n:2\r\n+3.14\r\n";
 
         boost::asio::streambuf instream;
         std::istream is(&instream);
@@ -289,3 +345,4 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
         BOOST_REQUIRE_EQUAL(std::string(buffer, buffer + 3), "-DB");
     });
 }
+

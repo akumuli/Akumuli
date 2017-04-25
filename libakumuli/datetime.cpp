@@ -25,10 +25,6 @@ typedef std::chrono::nanoseconds DurationT;
 
 static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
 
-struct BadDateTimeFormat : std::runtime_error {
-    BadDateTimeFormat(const char* str) : std::runtime_error(str) {}
-};
-
 aku_Timestamp DateTimeUtil::from_std_chrono(std::chrono::system_clock::time_point timestamp) {
     auto duration = timestamp.time_since_epoch();
     DurationT result = std::chrono::duration_cast<DurationT>(duration);
@@ -62,14 +58,27 @@ static int parse_n_digits(const char* p, int n, const char* error_message = "can
 }
 
 aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
-    size_t len = std::strlen(iso_str);
+    u32 len = static_cast<u32>(std::strlen(iso_str));
+    // Trim left
+    while(!isdigit(*iso_str)) {
+        iso_str++;
+        len--;
+        if (len == 0) {
+            break;
+        }
+    }
     if (len < 15 || iso_str[8] != 'T') {
         // Raw timestamp
         aku_Timestamp ts;
         char* end;
         ts = strtoull(iso_str, &end, 10);
-        if (errno) {
-            BadDateTimeFormat error("bad timestamp format (less then 15 digits)");
+        if (errno == ERANGE) {
+            BadDateTimeFormat error("can't parse unix-timestamp from string");
+            BOOST_THROW_EXCEPTION(error);
+        }
+        long parsed_len = end - iso_str;
+        if (parsed_len < len) {
+            BadDateTimeFormat error("unknown timestamp format");
             BOOST_THROW_EXCEPTION(error);
         }
         return ts;

@@ -25,15 +25,12 @@
 
 #include "akumuli.h"
 
-//#ifdef libakumuli2
 #include "storage2.h"
-//#else
-//#include "storage.h"
-//#endif
 
 #include "datetime.h"
 #include "log_iface.h"
 #include "status_util.h"
+#include "cursor.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -78,60 +75,83 @@ void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t 
     }
 }
 
+aku_Status aku_debug_report_dump(const char* path2db, const char* outfile) {
+    return Storage::generate_report(path2db, outfile);
+}
+
+aku_Status aku_debug_recovery_report_dump(const char* path2db, const char* outfile) {
+    return Storage::generate_recovery_report(path2db, outfile);
+}
+
 const char* aku_error_message(int error_code) {
     return StatusUtil::c_str((aku_Status)error_code);
 }
 
 
-struct CursorImpl {
+struct CursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
     aku_Status status_;
     std::string query_;
 
-    CursorImpl(Storage& storage, const char* query)
+    CursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_ENOT_IMPLEMENTED;
+        status_ = AKU_SUCCESS;
+        cursor_ = ConcurrentCursor::make(&StorageSession::query, storage, query_.data());
     }
 
     ~CursorImpl() {
+        cursor_->close();
     }
 
     bool is_done() const {
-        return true;
+        return cursor_->is_done();
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        *out_error_code_or_null = AKU_ENOT_IMPLEMENTED;
-        return true;
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
     }
 
-    size_t read_values( void  *values
-                      , size_t values_size )
+    u32 read_values( void  *values
+                   , u32    values_size )
     {
-        return 0;
+        return cursor_->read(values, values_size);
     }
 };
 
 
 class Session : public aku_Session {
-    std::shared_ptr<StorageEngine::WriteSession> disp_;
+    std::shared_ptr<StorageSession> session_;
 public:
 
-    Session(std::shared_ptr<StorageEngine::WriteSession> disp)
-        : disp_(disp)
+    Session(std::shared_ptr<StorageSession> session)
+        : session_(session)
     {
     }
 
     aku_Status series_to_param_id(const char* begin, const char* end, aku_Sample *out_sample) {
-        return disp_->init_series_id(begin, end, out_sample);
+        return session_->init_series_id(begin, end, out_sample);
+    }
+
+    int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* out_ids, u32 out_ids_cap) {
+        return session_->get_series_ids(begin, end, out_ids, out_ids_cap);
     }
 
     int param_id_to_series(aku_ParamId id, char* buffer, size_t size) const {
-        return disp_->get_series_name(id, buffer, size);
+        return session_->get_series_name(id, buffer, size);
     }
 
     aku_Status add_sample(aku_Sample const& sample) {
-        return disp_->write(sample);
+        return session_->write(sample);
+    }
+
+    CursorImpl* query(const char* q) {
+        auto res = new CursorImpl(session_, q);
+        return res;
     }
 };
 
@@ -141,16 +161,20 @@ public:
  */
 class DatabaseImpl : public aku_Database
 {
-    Storage storage_;
+    std::shared_ptr<Storage> storage_;
 public:
     // private fields
     DatabaseImpl(const char* path)
-        : storage_(path)
     {
+        if (path == std::string(":memory:")) {
+            storage_ = std::make_shared<Storage>();
+        } else {
+            storage_ = std::make_shared<Storage>(path);
+        }
     }
 
     void close() {
-        storage_.close();
+        storage_->close();
     }
 
     static aku_Database* create(const char* path) {
@@ -170,22 +194,17 @@ public:
     }
 
     void debug_print() const {
-        storage_.debug_print();
+        storage_->debug_print();
     }
 
     aku_Session* create_session() {
-        auto disp = storage_.create_write_session();
+        auto disp = storage_->create_write_session();
         Session* ptr = new Session(disp);
         return static_cast<aku_Session*>(ptr);
     }
 
-    CursorImpl* query(const char*) {
-        AKU_PANIC("Not implemented");
-    }
-
-    // Stats
-    void get_storage_stats(aku_StorageStats*) {
-        AKU_PANIC("Not implemented");
+    boost::property_tree::ptree get_stats() {
+        return storage_->get_stats();
     }
 };
 
@@ -261,6 +280,11 @@ aku_Status aku_series_to_param_id(aku_Session* session, const char* begin, const
     return ises->series_to_param_id(begin, end, sample);
 }
 
+int aku_name_to_param_id_list(aku_Session* ist, const char* begin, const char* end, aku_ParamId* out_ids, u32 out_ids_cap) {
+    auto ises = reinterpret_cast<Session*>(ist);
+    return ises->name_to_param_id_list(begin, end, out_ids, out_ids_cap);
+}
+
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters) {
     AKU_UNUSED(parameters);
     return DatabaseImpl::create(path);
@@ -270,27 +294,33 @@ void aku_close_database(aku_Database* db) {
     DatabaseImpl::free(db);
 }
 
-aku_Cursor* aku_query(aku_Database* db, const char* query) {
-    AKU_PANIC("Not implemented");
+aku_Cursor* aku_query(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->query(query);
+    return static_cast<aku_Cursor*>(cursor);
 }
 
 void aku_cursor_close(aku_Cursor* pcursor) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    delete impl;  // destructor calls `close` method
 }
 
 size_t aku_cursor_read( aku_Cursor       *cursor
                       , void             *dest
                       , size_t            dest_size)
 {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(cursor);
+    return impl->read_values(dest, static_cast<u32>(dest_size));
 }
 
 int aku_cursor_is_done(aku_Cursor* pcursor) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    return impl->is_done();
 }
 
 int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
-    AKU_PANIC("Not implemented");
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    return impl->is_error(out_error_code_or_null);
 }
 
 int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
@@ -315,7 +345,24 @@ void aku_global_storage_stats(aku_Database *db, aku_StorageStats* rcv_stats) {
 }
 
 int aku_json_stats(aku_Database *db, char* buffer, size_t size) {
-    AKU_PANIC("Not implemented");
+    auto dbi = reinterpret_cast<DatabaseImpl*>(db);
+    try {
+        auto ptree = dbi->get_stats();
+        // encode json
+        std::stringstream out;
+        boost::property_tree::json_parser::write_json(out, ptree, true);
+        auto str = out.str();
+        if (str.size() > size) {
+            return -1*static_cast<int>(str.size());
+        }
+        strcpy(buffer, str.c_str());
+        return static_cast<int>(str.size());
+    } catch (std::exception const& e) {
+        Logger::msg(AKU_LOG_ERROR, e.what());
+    } catch (...) {
+        AKU_PANIC("unexpected error in `aku_json_stats`");
+    }
+    return -1;
 }
 
 void aku_debug_print(aku_Database *db) {

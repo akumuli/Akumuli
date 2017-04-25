@@ -22,7 +22,7 @@
 namespace Akumuli {
 
 struct RESPError : StreamError {
-    RESPError(std::string msg, int pos);
+    RESPError(std::string msg, size_t pos);
 };
 
 /**
@@ -32,6 +32,7 @@ struct RESPStream {
     enum {
         KB                = 1024,
         MB                = 1024 * KB,
+        METRIC_LENGTH_MAX = 256,
         STRING_LENGTH_MAX = 1 * KB,  //< Longest possible string
         BULK_LENGTH_MAX   = 1 * MB,  //< Longest possible bulk string
     };
@@ -42,7 +43,9 @@ struct RESPStream {
         ARRAY,
         BULK_STR,
         ERROR,
-        BAD,
+        // Control words
+        _BAD,    //< Invalid element type
+        _AGAIN,  //< Element is not received completley
     };
 
     ByteStreamReader* stream_;  //< Stream
@@ -58,13 +61,13 @@ struct RESPStream {
       * @return value
       * @throw on error
       */
-    u64 read_int();
+    std::tuple<bool, u64> read_int();
 
     /** Read integer implementation
       * @throw on error
       * @return parsed integer
       */
-    u64 _read_int_body();
+    std::tuple<bool, u64> _read_int_body();
 
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.
@@ -72,10 +75,10 @@ struct RESPStream {
       * @param buffer_size size of the buffer
       * @return number of bytes copied or negative value on error
       */
-    int read_string(Byte* buffer, size_t buffer_size);
+    std::tuple<bool, int> read_string(Byte* buffer, size_t buffer_size);
 
     /** Read string implementation */
-    int _read_string_body(Byte* buffer, size_t buffer_size);
+    std::tuple<bool, int> _read_string_body(Byte* buffer, size_t buffer_size);
 
     /** Read bulk string element.
       * Result is undefined unless next element in a stream is a bulk string.
@@ -83,13 +86,13 @@ struct RESPStream {
       * @param buffer_size size of the buffer
       * @return number of bytes copied or negative value on error
       */
-    int read_bulkstr(Byte* buffer, size_t buffer_size);
+    std::tuple<bool, int> read_bulkstr(Byte* buffer, size_t buffer_size);
 
     /** Read size of the array element.
       * Exception is thrown unless next element in a stream is an array.
       * Funtion reads size of the array and puts stream cursor to the
       * first array element.
       */
-    u64 read_array_size();
+    std::tuple<bool, u64> read_array_size();
 };
 }

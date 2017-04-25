@@ -93,7 +93,7 @@ def reader(dtstart, delta, N):
 
     try:
         print("Test #1")
-        end = dtstart + delta*(N-1)
+        end = dtstart + delta*N
         begin = dtstart
         timedelta = end - begin
         query_params = {"output": { "format":  "csv" }}
@@ -101,8 +101,8 @@ def reader(dtstart, delta, N):
         while True:
             try:
                 query = att.makequery("test", begin, end, **query_params)
-                #print("Query: {0}".format(query))
-                queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+                print("Query: {0}".format(query))
+                queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
                 response = urlopen(queryurl, json.dumps(query))
                 def count_lines(seq):
                     global processed
@@ -111,14 +111,14 @@ def reader(dtstart, delta, N):
                         processed += 1
                 tuples = line2tup(count_lines(response))
                 first, last = require_continuous(tuples, cmp_tuples)
-                #print("First: {0}".format(first and first[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
-                #print("Last : {0}".format( last and  last[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
+                print("First: {0}".format(first and first[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
+                print("Last : {0}".format( last and  last[1].strftime("%Y%m%dT%H%M%S.%f") or "None"))
                 if last is not None:
                     begin = last[1]
-                if first[1] == end:
+                if first[1] == (end - delta):
                     break
             except HTTPError as err:
-                #print("HTTP error: {0}".format(err))
+                print("HTTP error: {0}".format(err))
                 http_err_cnt += 1
                 if http_err_cnt == 10:
                     raise

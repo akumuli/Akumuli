@@ -7,9 +7,9 @@ import time
 import akumulid_test_tools as att
 import json
 try:
-    from urllib2 import urlopen
+    from urllib2 import urlopen, HTTPError
 except ImportError:
-    from urllib import urlopen
+    from urllib import urlopen, HTTPError
 import traceback
 import itertools
 import math
@@ -18,13 +18,42 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
+g_test_run = 1
+g_num_fail = 0
+
+
+def api_test(test_name):
+    def decorator(func):
+        def wrapper(*pos, **kv):
+            global g_test_run
+            global g_num_fail
+            n = g_test_run
+            g_test_run += 1
+            print("Test #{0} - {1}".format(n, test_name))
+            try:
+                func(*pos, **kv)
+                print("Test #{0} passed".format(n))
+            except ValueError as e:
+                print("Test #{0} failed: {1}".format(n, e))
+                g_num_fail += 1
+                traceback.print_exc()
+        return wrapper
+    return decorator
+
+def on_exit():
+    global g_num_fail
+    if g_num_fail != 0:
+        print("{0} tests failed".format(g_num_fail))
+        sys.exit(1)
+
+@api_test("read all data in backward direction")
 def test_read_all_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query = att.makequery("test", begin, end, output=dict(format='csv'))
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     expected_tags = [
@@ -37,7 +66,6 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #1 - read all data in backward direction")
     for line in response:
         try:
             columns = line.split(',')
@@ -58,26 +86,25 @@ def test_read_all_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #1 passed")
 
 
+@api_test("group by tag in backward direction")
 def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     """Read all data in backward direction.
     All data should be received as expected."""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
-        "group-by": {  "tag": "tag3" },
+        "group-by": [ "tag3" ],
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #2 - group by tag in backward direction")
     expected_tags = [
         "test tag3=D",
         "test tag3=E",
@@ -105,12 +132,13 @@ def test_group_by_tag_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #2 passed")
 
+
+@api_test("filter by tag")
 def test_where_clause_in_backward_direction(dtstart, delta, N):
     """Filter data by tag"""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
         "where": {
@@ -118,13 +146,12 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
         }
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #3 - filter by tag")
     expected_tags = [
         "tag3=D",
         "tag3=E",
@@ -152,28 +179,27 @@ def test_where_clause_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #3 passed")
 
 
+@api_test("where + group-by")
 def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     """Filter data by tag and group by another tag"""
     begin = dtstart + delta*(N-1)
-    end = dtstart
+    end = dtstart - delta
     query_params = {
         "output": { "format":  "csv" },
-        "group-by": { "tag": "tag3" },
+        "group-by": [ "tag3" ],
         "where": {
             "tag2": ["C"], # read only odd
         }
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
     exp_value = N-1
     iterations = 0
-    print("Test #4 - where + group-by")
     expected_tags = [
         "test tag3=D",
         "test tag3=E",
@@ -201,10 +227,9 @@ def test_where_clause_with_groupby_in_backward_direction(dtstart, delta, N):
     # Check that we received all values
     if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
-    print("Test #4 passed")
 
+@api_test("metadata query")
 def test_metadata_query(tags):
-    print("Test #5 - metadata query")
     # generate all possible series
     taglist = sorted(itertools.product(*tags.values()))
     expected_series = []
@@ -217,10 +242,10 @@ def test_metadata_query(tags):
     # read metadata from server
     actual_series = []
     query = {
-        "select": "names",
+        "select": "meta:names",
         "output": { "format":  "csv" },
     }
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     for line in response:
         actual_series.append(line.strip())
@@ -229,29 +254,25 @@ def test_metadata_query(tags):
         print("Expected series: {0}".format(expected_series))
         print("Actual series: {0}".format(actual_series))
         raise ValueError("Output didn't match")
-    print("Test #5 passed")
 
 
+@api_test("filter by tag")
 def test_read_in_forward_direction(dtstart, delta, N):
     """Read data in forward direction"""
-    window = att.get_window_width()
-    end = dtstart + delta*(N-1) - window
     begin = dtstart
+    end = dtstart + delta*(N + 1)
     timedelta = end - begin
-    points_required = int(math.ceil((timedelta.seconds*1000000.0 + timedelta.microseconds) / (delta.seconds*1000000.0 + delta.microseconds))) + 1
-    # We need to add 1 because query will include both begin and end timestamps.
 
     query_params = {
         "output": { "format":  "csv" },
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
 
     exp_ts = begin
     exp_value = 0
     iterations = 0
-    print("Test #6 - filter by tag")
     expected_tags = [
         "tag3=D",
         "tag3=E",
@@ -277,12 +298,291 @@ def test_read_in_forward_direction(dtstart, delta, N):
             raise
 
     # Check that we received all values
-    if iterations != points_required:
+    if iterations != N:
         raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
-    print("Test #6 passed")
 
 
-def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
+@api_test("aggregate all data")
+def test_aggregate_all(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    query = att.make_aggregate_query("test", begin, end, "sum", output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    M = N/10
+    expected_values = [
+        5*M**2 - 5*M,
+        5*M**2 - 4*M,
+        5*M**2 - 3*M,
+        5*M**2 - 2*M,
+        5*M**2 - M,
+        5*M**2,
+        5*M**2 + M,
+        5*M**2 + 2*M,
+        5*M**2 + 3*M,
+        5*M**2 + 4*M,
+        5*M**2 + 5*M,
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+            exp_val = expected_values[iterations % len(expected_values)]
+            if abs(value - exp_val) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(exp_val, value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(expected_tags)*2:
+        raise ValueError("Results incomplete")
+
+@api_test("aggregate all data with group-by")
+def test_aggregate_all_group_by(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    query_params = {
+        "output": { "format":  "csv" },
+        "group-by": [ "tag1" ],
+    }
+    query = att.make_aggregate_query("test", begin, end, "sum", **query_params)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    # All values will be collapsed into one!
+    expected_tags = [
+        "tag1=A",
+    ]
+    expected_values = [
+        0.5*(N**2 - N)
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            if abs(value - expected_values[0]) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(expected_values[0], value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(expected_tags[0]) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, expected_tags[0])
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != 1:
+        raise ValueError("Bad number of results")
+
+
+@api_test("aggregate + where")
+def test_aggregate_where(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    query_params = {
+        "output": { "format": "csv" },
+        "where": {
+            "tag3": ["D", "F", "H"],
+        }
+    }
+    query = att.make_aggregate_query("test", begin, end, "sum", **query_params)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=F",
+        "tag3=H",
+    ]
+    M = N/10
+    expected_values = [
+        5*M**2 - 5*M,
+        5*M**2 - 3*M,
+        5*M**2 - M,  
+        5*M**2,      
+        5*M**2 + 2*M,
+        5*M**2 + 4*M,
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+            exp_val = expected_values[iterations % len(expected_values)]
+            if abs(value - exp_val) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(exp_val, value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(expected_tags)*2:
+        raise ValueError("Results incomplete")
+
+
+@api_test("group aggregate all data")
+def test_group_aggregate_all_forward(dtstart, delta, N, nsteps):
+    """Aggregate all data and check result"""
+    nseries = 10
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    step = int((delta * N * 1000).total_seconds() / nsteps)
+    agg_funcs = ["min", "max", "count", "sum"]
+    query = att.make_group_aggregate_query("test", begin, end, 
+                                           agg_funcs, 
+                                           "{0}ms".format(step), 
+                                           output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    registerd_values = {}
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            min_value = float(columns[2].strip())
+            max_value = float(columns[3].strip())
+            cnt_value = float(columns[4].strip())
+            sum_value = float(columns[4].strip())
+            max_index = len(expected_tags) - 1
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+
+            cnt_expected = N/nsteps/nseries
+            if cnt_expected == 0:
+                # expected count is less then 1 but not 0
+                # there is more than 1 step per value in raw series
+                cnt_expected = 1
+
+            if cnt_value != cnt_expected:
+                msg = "Invalid cnt value, expected: {0}, actual: {1}".format(cnt_expected, cnt_value)
+                raise ValueError(msg)
+
+
+            prev_val = registerd_values.get(tagline)
+            if prev_val is not None:
+                if abs(prev_val['max'] - min_value) - nseries > 10E-5:
+                    msg = "Invalid value, expected: {0}, actual: {1}".format(prev_val['max'], min_value)
+                    raise ValueError(msg)
+
+            new_val = dict(max=max_value, min=min_value, cnt=cnt_value, sum=sum_value)
+            registerd_values[tagline] = new_val
+
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations == 0:
+        raise ValueError("Results incomplete")
+
+
+@api_test("group aggregate all data")
+def test_group_aggregate_all_backward(dtstart, delta, N, nsteps):
+    """Aggregate all data and check result"""
+    nseries = 10
+    begin = dtstart + delta*(N-1)
+    end = dtstart - delta
+    step = int((delta * N * 1000).total_seconds() / nsteps)
+    agg_funcs = ["min", "max", "count", "sum"]
+    query = att.make_group_aggregate_query("test", begin, end, 
+                                           agg_funcs, 
+                                           "{0}ms".format(step), 
+                                           output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    registerd_values = {}
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            min_value = float(columns[2].strip())
+            max_value = float(columns[3].strip())
+            cnt_value = float(columns[4].strip())
+            sum_value = float(columns[4].strip())
+            max_index = len(expected_tags) - 1
+            exp_tag = expected_tags[max_index - (iterations % len(expected_tags))]
+
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+
+            cnt_expected = N/nsteps/nseries
+            if cnt_expected == 0:
+                # expected count is less then 1 but not 0
+                # there is more than 1 step per value in raw series
+                cnt_expected = 1
+
+            if cnt_value != cnt_expected:
+                msg = "Invalid cnt value, expected: {0}, actual: {1}".format(cnt_expected, cnt_value)
+                raise ValueError(msg)
+
+
+            prev_val = registerd_values.get(tagline)
+            if prev_val is not None:
+                if abs(prev_val['min'] - max_value) - nseries > 10E-5:
+                    msg = "Invalid value, expected: {0}, actual: {1}".format(prev_val['min'], max_value)
+                    raise ValueError(msg)
+
+            new_val = dict(max=max_value, min=min_value, cnt=cnt_value, sum=sum_value)
+            registerd_values[tagline] = new_val
+
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations == 0:
+        raise ValueError("Results incomplete")
+
+
+@api_test("PAA in backward direction")
+def test_paa_in_backward_direction(dtstart, delta, N, fn, query):
     expected_values = [
         reversed(range(9, 100000, 10)),
         reversed(range(8, 100000, 10)),
@@ -319,11 +619,10 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
         "group-by":{   "time": "1s"  },
     }
     query = att.makequery("test", begin, end, **query_params)
-    queryurl = "http://{0}:{1}".format(HOST, HTTPPORT)
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     exp_ts = begin
     iterations = 0
-    print(testname)
     expected_tags = [
         "tag3=H",
         "tag3=G",
@@ -359,44 +658,203 @@ def test_paa_in_backward_direction(testname, dtstart, delta, N, fn, query):
     # Check that we received all values
     if iterations != 990:
         raise ValueError("Expect {0} data points, get {1} data points".format(990, iterations))
-    print("{0} passed".format(testname[:testname.index(" - ")]))
 
 
+@api_test("late write")
 def test_late_write(dtstart, delta, N, chan):
     """Read data in forward direction"""
-    print("Test #7 - late write")
-    window = att.get_window_width()
-    ts = dtstart + delta*(N-1) - 2*window
-    message = att.msg(ts, 1.0, 'test', key='value')
+    ts = dtstart
+    message = att.msg(ts, 1.0, 'test', tag1='A', tag2='B', tag3='D')
     chan.send(message)
     resp = chan.recv().strip()
     if resp != '-DB late write':
         print(resp)
         raise ValueError("Late write not detected")
-    print("Test #7 passed")
 
+
+def check_error_message(dtstart, delta, N, query, errmsg):
+    """Try to issue a broken query that doesn't match any existing time-series
+    name in the storage."""
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    if type(query) is dict:
+        query = json.dumps(query)
+    response = urlopen(queryurl, query)
+    lines = []
+    for line in response:
+        lines.append(line)
+    if len(lines) != 1:
+        raise ValueError("Error message expected")
+    if not lines[0].startswith(errmsg):
+        raise ValueError("Invalid error message")
+
+
+@api_test("select query error message")
+def select_from_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_select_query("err", begin, end)
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("aggregate query error message")
+def aggregate_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_aggregate_query("err", begin, end, "sum")
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("group aggregate query error message")
+def group_aggregate_nonexistent_metric(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_group_aggregate_query("err", begin, end, ["sum"], "10ms")
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+@api_test("join query error message")
+def join_nonexistent_metrics(dtstart, delta, N):
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    query = att.make_join_query(["foo", "bar"], begin, end)
+    msg = "-not found"
+    check_error_message(dtstart, delta, N, query, msg)
+
+def require_empty_response(query):
+    """Make request and check that response is empty"""
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    lines = []
+    for line in response:
+        lines.append(line)
+    if len(lines) != 0:
+        print("Error: empty response expected, some data recieved. First 10 lines:")
+        print("------------------------------")
+        for line in lines[:10]:
+            print(line.replace("\r", "\\r").replace("\n", "\\n"))
+        print("------------------------------")
+        raise ValueError("Empty response expected")
+
+@api_test("select nonexistent time range")
+def select_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_select_query("test", begin, end)
+    require_empty_response(query)
+
+@api_test("aggregate nonexistent time range")
+def aggregate_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_aggregate_query("test", begin, end, "sum")
+    require_empty_response(query)
+
+@api_test("group-aggregate nonexistent time range")
+def group_aggregate_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_group_aggregate_query("test", begin, end, ["sum"], "10ms")
+    require_empty_response(query)
+
+@api_test("join nonexistent time range")
+def join_nonexistent_time_range(dtstart, delta, N):
+    begin = dtstart + delta*(N*2)
+    end = dtstart + delta*(N*3)
+    query = att.make_join_query(["test", "test"], begin, end)
+    require_empty_response(query)
+
+def check_bad_query_handling():
+    """Send hideous queries to akumuli. Check proper error handling"""
+    queries = {
+        "totally empty query": "",
+
+        "empty json doc": """
+            {}
+        """,
+        "invalid keyword": """
+            {
+                "foo": "bar"
+            }
+        """,
+        "invalid json": """
+            {
+                "select": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+        """,
+        "invalid timestamp": """
+            {
+                "select": "test",
+                "range": { "from": "2017-01-07 12:03:00", "to": "20170107T120300" }
+            }
+        """,
+        "timestamp out of range": """
+            {
+                "select": "test",
+                "range": { "from": "20172107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregation function": """
+            {
+                "group-aggregate": { "metric": "test", "func": "bad_func_name", "step": "1s" },
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregation step": """
+            {
+                "group-aggregate": { "metric": "test", "sum": "bad_func_name", "step": "1 sec." },
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad join": """
+            {
+                "join": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """,
+        "bad aggregate": """
+            {
+                "aggregate": "test",
+                "range": { "from": "20170107T120300", "to": "20170107T120300" }
+            }
+        """
+    }
+    for title, query in queries.iteritems():
+        @api_test(title)
+        def test():
+            queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+            try:
+                response = urlopen(queryurl, query)
+                lines = []
+                for line in response:
+                    lines.append(line)
+                if len(lines) != 1:
+                    print("Error: empty response expected, some data recieved. First 10 lines:")
+                    print("------------------------------")
+                    for line in lines[:10]:
+                        print(line.replace("\r", "\\r").replace("\n", "\\n"))
+                    print("------------------------------")
+                else:
+                    if not lines[0].startswith("-query parsing error"):
+                        raise ValueError("Invalid response")
+            except HTTPError as e:
+                raise ValueError("Invalid response: " + str(e))
+        test()
 
 def med(buf):
     buf = sorted(buf)
     return buf[len(buf)/2]
 
 
-def main(path, debug=False):
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
+def main(path):
+    akumulid = att.create_akumulid(path)
 
-    akumulid = att.Akumulid(path)
-    if not debug:
-        # Reset database
-        akumulid.delete_database()
-        akumulid.create_database()
-        # start ./akumulid server
-        print("Starting server...")
-        akumulid.serve()
-        time.sleep(5)
-    else:
-        print("Akumulid should be started first")
+    # Reset database
+    akumulid.delete_database()
+    akumulid.create_database()
+    # start ./akumulid server
+    print("Starting server...")
+    akumulid.serve()
+    time.sleep(5)
     try:
 
         chan = att.TCPChan(HOST, TCPPORT)
@@ -415,6 +873,8 @@ def main(path, debug=False):
             chan.send(it)
         time.sleep(5)  # wait untill all messagess will be processed
 
+
+        # Test normal operation
         test_read_all_in_backward_direction(dt, delta, nmsgs)
         test_group_by_tag_in_backward_direction(dt, delta, nmsgs)
         test_where_clause_in_backward_direction(dt, delta, nmsgs)
@@ -422,25 +882,37 @@ def main(path, debug=False):
         test_metadata_query(tags)
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
-        test_paa_in_backward_direction("Test #8 - PAA", dt, delta, nmsgs, lambda buf: float(sum(buf))/len(buf), "paa")
-        test_paa_in_backward_direction("Test #9 - median PAA", dt, delta, nmsgs, med, "median-paa")
-        test_paa_in_backward_direction("Test #10 - max PAA", dt, delta, nmsgs, max, "max-paa")
-        test_paa_in_backward_direction("Test #11 - min PAA", dt, delta, nmsgs, min, "min-paa")
-        test_paa_in_backward_direction("Test #12 - first wins PAA", dt, delta, nmsgs, lambda buf: buf[0], "first-paa")
-        test_paa_in_backward_direction("Test #13 - last wins PAA", dt, delta, nmsgs, lambda buf: buf[-1], "last-paa")
-    except:
-        traceback.print_exc()
-        sys.exit(1)
+        test_aggregate_all(dt, delta, nmsgs)
+        test_aggregate_all_group_by(dt, delta, nmsgs)
+        test_aggregate_where(dt, delta, nmsgs)
+        test_group_aggregate_all_forward (dt, delta, nmsgs, 10)
+        test_group_aggregate_all_forward (dt, delta, nmsgs, 100)
+        test_group_aggregate_all_forward (dt, delta, nmsgs, 1000)
+        test_group_aggregate_all_forward (dt, delta, nmsgs, 100000)
+        test_group_aggregate_all_backward(dt, delta, nmsgs, 10)
+        test_group_aggregate_all_backward(dt, delta, nmsgs, 100)
+        test_group_aggregate_all_backward(dt, delta, nmsgs, 1000)
+        test_group_aggregate_all_backward(dt, delta, nmsgs, 100000)
+        # Test error handling
+        select_from_nonexistent_metric(dt, delta, nmsgs)
+        aggregate_nonexistent_metric(dt, delta, nmsgs)
+        group_aggregate_nonexistent_metric(dt, delta, nmsgs)
+        join_nonexistent_metrics(dt, delta, nmsgs)
+        select_nonexistent_time_range(dt, delta, nmsgs)
+        aggregate_nonexistent_time_range(dt, delta, nmsgs)
+        group_aggregate_nonexistent_time_range(dt, delta, nmsgs)
+        join_nonexistent_time_range(dt, delta, nmsgs)
+        check_bad_query_handling()
     finally:
-        if not debug:
-            print("Stopping server...")
-            akumulid.stop()
-            time.sleep(5)
+        print("Stopping server...")
+        akumulid.stop()
+        time.sleep(5)
+    on_exit()
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Not enough arguments")
         sys.exit(1)
-    main(sys.argv[1], sys.argv[2] == 'debug' if len(sys.argv) == 3 else False)
+    main(sys.argv[1])
 else:
     raise ImportError("This module shouldn't be imported")

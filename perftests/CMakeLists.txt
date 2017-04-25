@@ -37,8 +37,6 @@ target_link_libraries(perf_pipeline
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_pipeline PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -61,8 +59,6 @@ target_link_libraries(perf_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -116,8 +112,17 @@ add_executable(
     perf_compression.cpp
     perftest_tools.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/datetime.cpp
+    ../libakumuli/seriesparser.cpp
+    ../libakumuli/stringpool.cpp
 )
 
 target_link_libraries(
@@ -129,18 +134,36 @@ target_link_libraries(
 )
 set_target_properties(perf_compression PROPERTIES EXCLUDE_FROM_ALL 1)
 
+# Compression throughput perftest
+add_executable(
+    perf_compression_throughput
+    perf_compression_throughput.cpp
+    perftest_tools.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    perf_compression_throughput
+    z
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_compression_throughput PROPERTIES EXCLUDE_FROM_ALL 1)
+
 # Ingestion perftest
 add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
     jemalloc
-    akumuli2
+    akumuli
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 
@@ -153,41 +176,9 @@ target_link_libraries(perf_parallel_ingestion
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
 )
 set_target_properties(perf_parallel_ingestion PROPERTIES EXCLUDE_FROM_ALL 1)
 
-# Sequencer test
-add_executable(
-    perf_sequencer
-    perf_sequencer.cpp
-    ../libakumuli/storage.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/page.cpp
-    ../libakumuli/buffer_cache.cpp
-    ../libakumuli/akumuli.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/sequencer.cpp
-    ../libakumuli/cursor.cpp
-    ../libakumuli/storage_engine/compression.cpp
-    ../libakumuli/metadatastorage.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/datetime.cpp
-)
-target_link_libraries(perf_sequencer
-    "${SQLITE3_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    "${APR_LIBRARY}"
-    ${Boost_LIBRARIES}
-    libboost_coroutine.a
-    libboost_context.a
-)
-set_target_properties(perf_sequencer PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # Inverted index perftest
 add_executable(
@@ -213,6 +204,7 @@ add_executable(
     ../libakumuli/log_iface.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/crc32c.cpp
     ../libakumuli/status_util.cpp
 )
 

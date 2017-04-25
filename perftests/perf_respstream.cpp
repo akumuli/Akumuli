@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
                 }
                 break;
             case RESPStream::ARRAY:
-            case RESPStream::BAD:
+            case RESPStream::_BAD:
             case RESPStream::BULK_STR:
             case RESPStream::ERROR:
             default:

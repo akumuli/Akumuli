@@ -34,7 +34,10 @@ using aku_Duration = aku_Timestamp;
   */
 
 //! Timestamp parsing error
-struct BadDateTimeFormat;
+struct BadDateTimeFormat : std::runtime_error {
+    BadDateTimeFormat(const char* str) : std::runtime_error(str) {}
+};
+
 
 //! Static utility class for date-time utility functions
 struct DateTimeUtil {

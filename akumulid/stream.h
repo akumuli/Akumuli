@@ -15,6 +15,7 @@
  */
 
 #pragma once
+#include "akumuli_def.h"
 #include <cstddef>
 #include <memory>
 #include <queue>
@@ -28,15 +29,15 @@ typedef char Byte;
 
 class StreamError : public std::exception {
     std::string line_;
-    int         pos_;
+    size_t      pos_;
 
 public:
     enum {
         MAX_LENGTH = 64,
     };
-    StreamError(std::string line, int pos);
+    StreamError(std::string line, size_t pos);
 
-    virtual const char* what() const throw();
+    virtual const char* what() const noexcept;
     std::string         get_bottom_line() const;
 };
 
@@ -73,6 +74,11 @@ struct ByteStreamReader {
       */
     virtual int read(Byte* buffer, size_t buffer_len) = 0;
 
+    /** Read line from the stream. Returns number of bytes read.
+      * Line terminator is an \r\n or \n series of symbols.
+      */
+    virtual int read_line(Byte* buffer, size_t quota) = 0;
+
     /** Close stream.
      **/
     virtual void close() = 0;
@@ -82,11 +88,23 @@ struct ByteStreamReader {
      *                       ^
      */
     virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const = 0;
+
+    /** This method should be called when full message have benn successfuly readen from
+      * the stream.
+      */
+    void consume();
+
+    /** This method should be called if message can be extracted from stream only partially
+      * and receiver should wait for more data.
+      */
+    void discard();
 };
+
 
 class MemStreamReader : public ByteStreamReader {
     const Byte*  buf_;   //< Source bytes
     const size_t size_;  //< Source size
+    size_t       cons_;  //< Size of the consumed part of the stream
     size_t       pos_;   //< Position in the stream
 public:
     MemStreamReader(const Byte* buffer, size_t buffer_len);
@@ -99,6 +117,9 @@ public:
     virtual int read(Byte* buffer, size_t buffer_len);
     virtual void close();
     virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const;
+    virtual void consume();
+    virtual void discard();
+    virtual int read_line(Byte* buffer, size_t quota) override;
 };
 
 }  // namespace

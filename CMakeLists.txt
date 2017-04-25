@@ -1,25 +1,38 @@
 project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
-#set(CMAKE_BUILD_TYPE Debug)
+
+set(PACKAGE_VERSION "1ubuntu1.0")
+set(APP_VERSION_MAJOR "0")
+set(APP_VERSION_MINOR "7")
+set(APP_VERSION_PATCH "3")
+set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+
+set(CMAKE_MACOSX_RPATH 1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -fsanitize=address -static-libasan -ggdb")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -fsanitize=address -ggdb")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb")
+if (!APPLE)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -static-libasan")
+else(!APPLE)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-pessimizing-move")
+add_compile_options(-Wno-delete-non-virtual-dtor)
+endif(!APPLE)
+
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=native -O3")
 
-set(Boost_USE_STATIC_LIBS OFF) 
+set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)  
 set(Boost_USE_STATIC_RUNTIME OFF) 
-find_package(Boost 1.53.0
+find_package(Boost 1.54.0
     COMPONENTS
     unit_test_framework
     program_options
     system
     thread
     filesystem
-    coroutine
-    context
     regex
     date_time
     REQUIRED
@@ -40,12 +53,18 @@ include_directories("${SQLITE3_INCLUDE_DIR}")
 add_definitions(-std=c++1y -fvisibility=hidden)
 #endif()
 
+# json parser from boost::property_tree needs this badly
+add_definitions(-DBOOST_SPIRIT_THREADSAFE)
+add_definitions(-DBOOST_PHOENIX_THREADSAFE)
+
 include_directories(./include)
 
 add_subdirectory(libakumuli)
 add_subdirectory(akumulid)
 add_subdirectory(perftests)
 add_subdirectory(functests)
+add_subdirectory(fuzzers)
 
 enable_testing()
 add_subdirectory(unittests)
+
