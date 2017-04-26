@@ -32,10 +32,10 @@ def main(path):
 
         chan = att.TCPChan(HOST, TCPPORT)
 
-        # fill data in
+        # Case 1
         invalid_sample = "+cpuload host=machine1\r\n:1418224205000000000\r\r+25.0\r\n"  # reportd in issue#173
         chan.send(invalid_sample)
-        time.sleep(5)  # wait untill all messagess will be processed
+        #time.sleep(1)  # wait untill all messagess will be processed
         query = {"select":"cpuload","range": {"from":1418224205000000000, "to":1418224505000000000}}
         queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
         response = urlopen(queryurl, json.dumps(query))
@@ -43,6 +43,23 @@ def main(path):
         for line in response:
             print("Unexpected response: {0}".format(line))
             raise ValueError("Unexpected response")
+        err = chan.recv()
+        if not err.startswith("-PARSER"):
+            raise ValueError("Error message expected")
+        chan.close()
+
+        # Case 2
+        chan = att.TCPChan(HOST, TCPPORT)
+        invalid_sample = "+cpuload host=machine2\r\n:1418224205000000000\r\n+25.0"
+        chan.send(invalid_sample)
+        time.sleep(1)
+        response = urlopen(queryurl, json.dumps(query))
+        # response should be empty
+        for line in response:
+            print("Unexpected response: {0}".format(line))
+            raise ValueError("Unexpected response")
+        # No error message expected because the write is incomplete
+        chan.close()
     except:
         traceback.print_exc()
         sys.exit(1)
