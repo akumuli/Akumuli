@@ -63,22 +63,6 @@ BOOST_AUTO_TEST_CASE(TestMmap1)
     delete_tmp_file(tmp_file);
 }
 
-BOOST_AUTO_TEST_CASE(TestMmap2)
-{
-    const char* tmp_file = "file_that_doesnt_exist";
-    delete_tmp_file(tmp_file);
-    MemoryMappedFile mmap(tmp_file, false);
-    BOOST_REQUIRE(mmap.is_bad() == true);
-    bool throw_works = false;
-    try {
-        mmap.panic_if_bad();
-    }
-    catch(AprException const&) {
-        throw_works = true;
-    }
-    BOOST_REQUIRE(throw_works);
-}
-
 BOOST_AUTO_TEST_CASE(TestMmap3)
 {
     const char* tmp_file = "testfile";

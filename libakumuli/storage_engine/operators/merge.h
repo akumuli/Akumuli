@@ -101,6 +101,7 @@ struct MergeMaterializer : ColumnMaterializer {
     MergeMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
         : iters_(std::move(it))
         , ids_(std::move(ids))
+        , forward_(true)
     {
         if (!iters_.empty()) {
             forward_ = iters_.front()->get_direction() == RealValuedOperator::Direction::FORWARD;

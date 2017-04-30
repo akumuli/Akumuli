@@ -2228,6 +2228,10 @@ size_t NBTreeExtentsList::_get_uncommitted_size() const {
     SharedLock lock(lock_);
     if (!extents_.empty()) {
         auto leaf = dynamic_cast<NBTreeLeafExtent const*>(extents_.front().get());
+        if (leaf == nullptr) {
+            // Small check to make coverity scan happy
+            AKU_PANIC("Bad extent at level 0, leaf node expected");
+        }
         return leaf->leaf_->_get_uncommitted_size();
     }
     return 0;
