@@ -49,35 +49,15 @@ void set_panic_handler(aku_panic_handler_t new_panic_handler) {
 }
 
 // coverity[+kill]
-AprException::AprException(apr_status_t status, const char* message)
-    : std::runtime_error(message)
-    , status(status)
-{
+void invoke_panic_handler(const char* message) {
     (*g_panic_handler)(message);
-}
-
-std::ostream& operator << (std::ostream& str, AprException const& e) {
-    str << "Error: " << e.what() << ", status: " << e.status << ".";
-    return str;
+    Logger::msg(AKU_LOG_ERROR, message);
+    std::terminate();
 }
 
 // coverity[+kill]
-Exception::Exception(const char* message)
-    : std::runtime_error(message)
-{
-    (*g_panic_handler)(message);
-}
-
-// coverity[+kill]
-Exception::Exception(std::string message)
-    : std::runtime_error(message)
-{
-    (*g_panic_handler)(message.c_str());
-}
-
-std::ostream& operator << (std::ostream& str, Exception const& e) {
-    str << e.what();
-    return str;
+void invoke_panic_handler(std::string const& message) {
+    invoke_panic_handler(message.c_str());
 }
 
 MemoryMappedFile::MemoryMappedFile(const char* file_name, bool enable_huge_tlb)
@@ -208,7 +188,7 @@ void MemoryMappedFile::panic_if_bad() {
     if (status_ != APR_SUCCESS) {
         char error_message[0x100];
         apr_strerror(status_, error_message, 0x100);
-        AKU_APR_PANIC(status_, error_message);
+        AKU_PANIC(error_message);
     }
 }
 

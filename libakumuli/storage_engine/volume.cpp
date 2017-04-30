@@ -33,7 +33,7 @@ static void panic_on_error(apr_status_t status, const char* msg) {
         char error_message[0x100];
         apr_strerror(status, error_message, 0x100);
         Logger::msg(AKU_LOG_ERROR, std::string(msg) + " " + error_message);
-        AKU_APR_PANIC(status, msg);
+        AKU_PANIC(msg);
     }
 }
 

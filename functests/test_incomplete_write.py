@@ -33,7 +33,7 @@ def main(path):
         chan = att.TCPChan(HOST, TCPPORT)
 
         # Case 1
-        invalid_sample = "+cpuload host=machine1\r\n:1418224205000000000\r\r+25.0\r\n"  # reportd in issue#173
+        invalid_sample = "+cpuload host=machine1\\r\\n:1418224205000000000\\r\\r+25.0\\r\\n\n"  # reportd in issue#173
         chan.send(invalid_sample)
         #time.sleep(1)  # wait untill all messagess will be processed
         query = {"select":"cpuload","range": {"from":1418224205000000000, "to":1418224505000000000}}
@@ -44,6 +44,7 @@ def main(path):
             print("Unexpected response: {0}".format(line))
             raise ValueError("Unexpected response")
         err = chan.recv()
+        print(err)
         if not err.startswith("-PARSER"):
             raise ValueError("Error message expected")
         chan.close()
