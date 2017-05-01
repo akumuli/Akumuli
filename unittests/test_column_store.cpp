@@ -814,7 +814,7 @@ void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
         { 18, 200 },
     };
 
-    cstore->query(req, mock);
+    cstore->execute_query(req, mock);
 
     std::vector<aku_ParamId> gids = { 100, 200 };
 
