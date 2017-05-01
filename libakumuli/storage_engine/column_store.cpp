@@ -190,6 +190,26 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         t1ctx.agglist = std::move(iters);
         return AKU_SUCCESS;
     };
+    auto build_group_aggregate_operator = [this, &t1ctx](const QP::QueryPlanStage& stage) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        for (auto id: stage.opt_ids_) {
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                auto begin = stage.time_range_.first;
+                auto end = stage.time_range_.second;
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
+                std::unique_ptr<AggregateOperator> iter = it->second->group_aggregate(begin, end, stage.opt_step_);
+                iters.push_back(std::move(iter));
+            } else {
+                return AKU_ENOT_FOUND;
+            }
+        }
+        t1ctx.agglist = std::move(iters);
+        return AKU_SUCCESS;
+    };
 
     //--------------
     // Tier2 context
@@ -277,6 +297,16 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
         return AKU_SUCCESS;
     };
 
+    // Group aggregate
+    auto build_series_order_agg_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
+        t2ctx.iter.reset(new SeriesOrderAggregateMaterializer(std::move(stage.opt_ids_), std::move(t1ctx.agglist), stage.opt_func_));
+        return AKU_SUCCESS;
+    };
+    auto build_time_order_agg_materializer = [&t1ctx, &t2ctx](QP::QueryPlanStage& stage) {
+        t2ctx.iter.reset(new TimeOrderAggregateMaterializer(stage.opt_ids_, t1ctx.agglist, stage.opt_func_));
+        return AKU_SUCCESS;
+    };
+
 
     //--------------
     // Tier3 context
@@ -306,6 +336,13 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
                 break;
             case Tier1Operator::AGGREGATE_RANGE:
                 status = build_aggregate_operator(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier1Operator::GROUP_AGGREGATE_RANGE:
+                status = build_group_aggregate_operator(*stage);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;
@@ -360,6 +397,20 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
                 break;
             case Tier2Operator::MERGE_JOIN_TIME_ORDER:
                 status = build_join_materializer(*stage, OrderBy::TIME);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::SERIES_ORDER_AGGREGATE_MATERIALIZER:
+                status = build_series_order_agg_materializer(*stage);
+                if (status != AKU_SUCCESS) {
+                    qproc.set_error(status);
+                    return;
+                }
+                break;
+            case Tier2Operator::TIME_ORDER_AGGREGATE_MATERIALIZER:
+                status = build_time_order_agg_materializer(*stage);
                 if (status != AKU_SUCCESS) {
                     qproc.set_error(status);
                     return;

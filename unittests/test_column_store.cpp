@@ -708,8 +708,8 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.begin = begin;
         req.select.end = end;
         req.select.columns.push_back({col});
-        // TODO: replace with execute_query(req, mock)
-        cstore->group_aggregate_query(req, mock);
+
+        cstore->execute_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -741,8 +741,8 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.begin = begin;
         req.select.end = end;
         req.select.columns.push_back({col});
-        // TODO: replace with execute_query(req, mock)
-        cstore->group_aggregate_query(req, mock);
+
+        cstore->execute_query(req, mock);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;

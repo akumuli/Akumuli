@@ -24,6 +24,7 @@ namespace QP {
 enum class Tier1Operator {
     SCAN_RANGE,
     AGGREGATE_RANGE,
+    GROUP_AGGREGATE_RANGE,
 };
 
 enum class Tier2Operator {
@@ -33,7 +34,9 @@ enum class Tier2Operator {
     AGGREGATE,
     AGGREGATE_COMBINE,
     MERGE_JOIN_SERIES_ORDER,
-    MERGE_JOIN_TIME_ORDER
+    MERGE_JOIN_TIME_ORDER,
+    SERIES_ORDER_AGGREGATE_MATERIALIZER,
+    TIME_ORDER_AGGREGATE_MATERIALIZER,
 };
 
 enum class Tier3Operator {
@@ -61,6 +64,8 @@ struct QueryPlanStage {
     std::vector<QP::AggregationFunction> opt_func_;
     //! Optional JOIN cardinality
     int opt_join_cardinality_;
+    //! Step for group-aggregate query
+    aku_Timestamp opt_step_;
 };
 
 /**
