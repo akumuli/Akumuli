@@ -807,6 +807,9 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
         cur->set_error(status);
         return;
     }
+    std::shared_ptr<IStreamProcessor> proc;
+    ReshapeRequest req;
+
     switch (kind) {
     case QueryKind::SELECT_META: {
             std::vector<aku_ParamId> ids;
@@ -821,14 +824,14 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 cur->set_error(status);
                 return;
             }
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+            proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
             if (proc->start()) {
                 proc->stop();
             }
+            return;
         }
         break;
     case QueryKind::AGGREGATE: {
-            ReshapeRequest req;
             std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
             if (status != AKU_SUCCESS) {
                 cur->set_error(status);
@@ -841,7 +844,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 return;
             }
             GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
             if (req.group_by.enabled) {
                 session->set_series_matcher(req.group_by.matcher);
             } else {
@@ -858,14 +861,9 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 cur->set_error(AKU_ENOT_FOUND);
                 return;
             }
-            if (proc->start()) {
-                cstore_->query(req, *proc);
-                proc->stop();
-            }
         }
         break;
     case QueryKind::GROUP_AGGREGATE: {
-            ReshapeRequest req;
             std::tie(status, req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
             if (status != AKU_SUCCESS) {
                 cur->set_error(status);
@@ -882,7 +880,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
 
             // Start scanning
             GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
 
             // Return error if no series was found
             if (req.select.columns.empty()) {
@@ -893,14 +891,9 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 cur->set_error(AKU_ENOT_FOUND);
                 return;
             }
-            if (proc->start()) {
-                cstore_->group_aggregate_query(req, *proc);
-                proc->stop();
-            }
         }
         break;
     case QueryKind::SELECT: {
-            ReshapeRequest req;
             std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
             if (status != AKU_SUCCESS) {
                 cur->set_error(status);
@@ -913,7 +906,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 return;
             }
             GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
             if (req.group_by.enabled) {
                 session->set_series_matcher(req.group_by.matcher);
             } else {
@@ -928,15 +921,9 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 cur->set_error(AKU_ENOT_FOUND);
                 return;
             }
-            // Scan column store
-            if (proc->start()) {
-                cstore_->query(req, *proc);
-                proc->stop();
-            }
         }
         break;
     case QueryKind::JOIN: {
-            ReshapeRequest req;
             std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
             if (status != AKU_SUCCESS) {
                 cur->set_error(status);
@@ -953,7 +940,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
 
             // Start scanning
             GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
 
             // Return error if no series was found
             if (req.select.columns.empty()) {
@@ -964,13 +951,13 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
                 cur->set_error(AKU_ENOT_FOUND);
                 return;
             }
-            if (proc->start()) {
-                cstore_->join_query(req, *proc);
-                proc->stop();
-            }
         }
         break;
     };
+    if (proc->start()) {
+        cstore_->execute_query(req, *proc);
+        proc->stop();
+    }
 }
 
 void Storage::debug_print() const {
