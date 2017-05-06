@@ -286,9 +286,7 @@ void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProces
             iters.push_back(std::move(it));
         }
         if (order == OrderBy::SERIES) {
-            bool forward = std::get<0>(stage.time_range_) < std::get<1>(stage.time_range_);
-            typedef MergeJoinMaterializer<MergeJoinUtil::OrderBySeries> Materializer;
-            t2ctx.iter.reset(new Materializer(std::move(iters), forward));
+            t2ctx.iter.reset(new JoinConcatMaterializer(std::move(iters)));
         } else {
             bool forward = std::get<0>(stage.time_range_) < std::get<1>(stage.time_range_);
             typedef MergeJoinMaterializer<MergeJoinUtil::OrderByTimestamp> Materializer;
