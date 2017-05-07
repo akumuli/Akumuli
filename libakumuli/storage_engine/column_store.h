@@ -128,6 +128,51 @@ public:
      * @param qproc is a stream processor
      */
     void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+
+    // -------------
+    // New-style API
+    // -------------
+
+    template<class IterType, class Fn>
+    aku_Status iterate(const std::vector<aku_ParamId>& ids,
+                      std::vector<std::unique_ptr<IterType>>* dest,
+                      const Fn& fn) const
+    {
+        for (auto id: ids) {
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
+                std::unique_ptr<IterType> iter = fn(*it->second);
+                dest->push_back(std::move(iter));
+            } else {
+                return AKU_ENOT_FOUND;
+            }
+        }
+        return AKU_SUCCESS;
+    }
+
+    aku_Status scan(std::vector<aku_ParamId> const& ids,
+                    aku_Timestamp begin,
+                    aku_Timestamp end,
+                    std::vector<std::unique_ptr<RealValuedOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
+            return elist.search(begin, end);
+        });
+    }
+
+    aku_Status aggregate(std::vector<aku_ParamId> const& ids,
+                         aku_Timestamp begin,
+                         aku_Timestamp end,
+                         std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
+            return elist.aggregate(begin, end);
+        });
+    }
 };
 
 
