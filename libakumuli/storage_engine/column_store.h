@@ -173,6 +173,17 @@ public:
             return elist.aggregate(begin, end);
         });
     }
+
+    aku_Status group_aggregate(std::vector<aku_ParamId> const& ids,
+                               aku_Timestamp begin,
+                               aku_Timestamp end,
+                               aku_Timestamp step,
+                               std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, step](const NBTreeExtentsList& elist) {
+            return elist.group_aggregate(begin, end, step);
+        });
+    }
 };
 
 

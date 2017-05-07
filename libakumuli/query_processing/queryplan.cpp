@@ -5,78 +5,112 @@
 namespace Akumuli {
 namespace QP {
 
-    using namespace StorageEngine;
+using namespace StorageEngine;
 
-    struct ProcessingStep {
-        //! Compute processing step result (list of low level operators)
-        virtual aku_Status apply(const ColumnStore& cstore) = 0;
-        //! Get result of the processing step
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) = 0;
-        //! Get result of the processing step
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) = 0;
-    };
+struct ProcessingStep {
+    //! Compute processing step result (list of low level operators)
+    virtual aku_Status apply(const ColumnStore& cstore) = 0;
+    //! Get result of the processing step
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) = 0;
+    //! Get result of the processing step
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) = 0;
+};
 
-    struct ScanProcessingStep : ProcessingStep {
-        std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
-        aku_Timestamp begin_;
-        aku_Timestamp end_;
-        std::vector<aku_ParamId> ids_;
+struct ScanProcessingStep : ProcessingStep {
+    std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::vector<aku_ParamId> ids_;
 
-        template<class T>
-        ScanProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
-            : begin_(begin)
-            , end_(end)
-            , ids_(std::forward(t))
-        {
-        }
+    template<class T>
+    ScanProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward(t))
+    {
+    }
 
-        virtual aku_Status apply(const ColumnStore& cstore) {
-            return cstore.scan(ids_, begin_, end_, &scanlist_);
-        }
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.scan(ids_, begin_, end_, &scanlist_);
+    }
 
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
-            if (scanlist_.empty()) {
-                return AKU_ENO_DATA;
-            }
-            *dest = std::move(scanlist_);
-            return AKU_SUCCESS;
-        }
-
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        if (scanlist_.empty()) {
             return AKU_ENO_DATA;
         }
-    };
+        *dest = std::move(scanlist_);
+        return AKU_SUCCESS;
+    }
 
-    struct AggregateProcessingStep : ProcessingStep {
-        std::vector<std::unique_ptr<AggregateOperator>> agglist_;
-        aku_Timestamp begin_;
-        aku_Timestamp end_;
-        std::vector<aku_ParamId> ids_;
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+};
 
-        template<class T>
-        AggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
-            : begin_(begin)
-            , end_(end)
-            , ids_(std::forward(t))
-        {
-        }
+struct AggregateProcessingStep : ProcessingStep {
+    std::vector<std::unique_ptr<AggregateOperator>> agglist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::vector<aku_ParamId> ids_;
 
-        virtual aku_Status apply(const ColumnStore& cstore) {
-            return cstore.aggregate(ids_, begin_, end_, &agglist_);
-        }
+    template<class T>
+    AggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward(t))
+    {
+    }
 
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.aggregate(ids_, begin_, end_, &agglist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        if (agglist_.empty()) {
             return AKU_ENO_DATA;
         }
+        *dest = std::move(agglist_);
+        return AKU_SUCCESS;
+    }
+};
 
-        virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
-            if (agglist_.empty()) {
-                return AKU_ENO_DATA;
-            }
-            *dest = std::move(agglist_);
-            return AKU_SUCCESS;
+
+struct GroupAggregateProcessingStep : ProcessingStep {
+    std::vector<std::unique_ptr<AggregateOperator>> agglist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    aku_Timestamp step_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    GroupAggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , step_(step)
+        , ids_(std::forward(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.group_aggregate(ids_, begin_, end_, step_, &agglist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        if (agglist_.empty()) {
+            return AKU_ENO_DATA;
         }
-    };
+        *dest = std::move(agglist_);
+        return AKU_SUCCESS;
+    }
+};
 
 typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesT;
 
