@@ -51,14 +51,15 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    MemoryMappedFile        mmap_;
+    std::unique_ptr<MemoryMappedFile> mmap_;
     size_t                  file_size_;
     u8*                     mmap_ptr_;
     mutable std::vector<u8> double_write_buffer_;
     const char*             path_;
-    
-    MetaVolume(const char* path);
 
+    MetaVolume(const char* path);
+    void init_mmap();
+    
 public:
     /** Create new meta-volume.
       * @param path Path to created file.
