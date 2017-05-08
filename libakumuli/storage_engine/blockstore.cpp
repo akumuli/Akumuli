@@ -421,12 +421,17 @@ bool ExpandableFileStorage::exists(LogicAddr addr) const {
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
     aku_Status status;
+    u32 actual_gen;
+    std::tie(status, actual_gen) = meta_->get_generation(gen);
+    if (status != AKU_SUCCESS) {
+      return false;
+    }
     u32 nblocks;
     std::tie(status, nblocks) = meta_->get_nblocks(gen);
     if (status != AKU_SUCCESS) {
       return false;
     }
-    return vol < nblocks;
+    return actual_gen == gen && vol < nblocks;
 }
 
 std::tuple<aku_Status, std::shared_ptr<Block>> ExpandableFileStorage::read_block(LogicAddr addr) {
@@ -434,13 +439,18 @@ std::tuple<aku_Status, std::shared_ptr<Block>> ExpandableFileStorage::read_block
     aku_Status status;
     auto gen = extract_gen(addr);
     auto vol = extract_vol(addr);
+    u32 actual_gen;
     u32 nblocks;
+    std::tie(status, actual_gen) = meta_->get_generation(gen);
+    if (status != AKU_SUCCESS) {
+      return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
     std::tie(status, nblocks) = meta_->get_nblocks(gen);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
     }
-    if (vol >= nblocks) {
-        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
+    if (actual_gen != gen || vol >= nblocks) {
+      return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
     }
     std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
     status = volumes_[gen]->read_block(vol, dest.data());
