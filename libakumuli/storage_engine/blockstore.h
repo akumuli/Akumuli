@@ -119,8 +119,8 @@ protected:
     //! Secret c-tor.
     FileStorage(std::string metapath, std::vector<std::string> volpaths);
 
-    virtual void update_current_volume() = 0;
-    void advance_volume();
+    virtual void adjust_current_volume() = 0;
+    void handle_volume_transition();
 
 public:
     static void create(std::string metapath, std::vector<std::tuple<u32, std::string>> vols);
@@ -146,7 +146,7 @@ class FixedSizeFileStorage : public FileStorage,
     FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
 
 protected:
-    virtual void update_current_volume();
+    virtual void adjust_current_volume();
 
 public:
     /** Create BlockStore instance (can be created only on heap).
@@ -169,7 +169,7 @@ class ExpandableFileStorage : public FileStorage,
 
      std::unique_ptr<Volume> create_new_volume(u32 id);
 protected:
-     virtual void update_current_volume();
+     virtual void adjust_current_volume();
 
 public:
      /** Create BlockStore instance (can be created only on heap).
