@@ -1041,11 +1041,7 @@ aku_Status Storage::new_database( const char     *base_file_name
         return AKU_EBAD_ARG;
     }
 
-    i32 actual_nvols;
-    if (num_volumes == 0)
-      actual_nvols = 1;
-    else
-      actual_nvols = num_volumes;
+    i32 actual_nvols = (num_volumes == 0) ? 1 : num_volumes;
     std::vector<std::tuple<u32, std::string>> paths;
     for (i32 i = 0; i < actual_nvols; i++) {
         std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";

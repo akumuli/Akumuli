@@ -193,9 +193,9 @@ void FileStorage::create(std::string metapath,
   MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
-void FileStorage::advance_volume() {
+void FileStorage::handle_volume_transition() {
     Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
-    update_current_volume();
+    adjust_current_volume();
     aku_Status status;
     std::tie(status, current_gen_) = meta_->get_generation(current_volume_);
     if (status != AKU_SUCCESS) {
@@ -245,8 +245,8 @@ std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<Bloc
     aku_Status status;
     std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data->get_data());
     if (status == AKU_EOVERFLOW) {
-      // Move to next generation
-      advance_volume();
+      // transition to new/next volume
+      handle_volume_transition();
       std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
       if (status != AKU_SUCCESS) {
         return std::make_tuple(status, 0ull);
@@ -391,7 +391,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     return std::make_tuple(status, std::move(block));
 }
 
-void FixedSizeFileStorage::update_current_volume() {
+void FixedSizeFileStorage::adjust_current_volume() {
     current_volume_ = (current_volume_ + 1) % volumes_.size();
 }
 
@@ -471,7 +471,7 @@ std::unique_ptr<Volume> ExpandableFileStorage::create_new_volume(u32 id) {
     return Volume::open_existing(new_path.c_str(), 0);
 }
 
-void ExpandableFileStorage::update_current_volume() {
+void ExpandableFileStorage::adjust_current_volume() {
     current_volume_ = current_volume_ + 1;
     if (current_volume_ >= volumes_.size()) {
       // add new volume
