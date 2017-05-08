@@ -1,13 +1,21 @@
 #include "queryplan.h"
 #include "storage_engine/nbtree.h"
 #include "storage_engine/column_store.h"
+#include "storage_engine/operators/operator.h"
+#include "storage_engine/operators/scan.h"
+#include "storage_engine/operators/merge.h"
+#include "storage_engine/operators/aggregate.h"
 
 namespace Akumuli {
 namespace QP {
 
 using namespace StorageEngine;
 
-struct ProcessingStep {
+/**
+ * Tier-1 operator
+ */
+struct ProcessingPrelude {
+    virtual ~ProcessingPrelude() = default;
     //! Compute processing step result (list of low level operators)
     virtual aku_Status apply(const ColumnStore& cstore) = 0;
     //! Get result of the processing step
@@ -16,7 +24,28 @@ struct ProcessingStep {
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) = 0;
 };
 
-struct ScanProcessingStep : ProcessingStep {
+/**
+ * Tier-N operator (materializer)
+ */
+struct MaterializationStep {
+
+    virtual ~MaterializationStep() = default;
+
+    //! Compute processing step result (list of low level operators)
+    virtual aku_Status apply(ProcessingPrelude* prelude) = 0;
+
+    /**
+     * Get result of the processing step, this method should add cardinality() elements
+     * to the `dest` array.
+     */
+    virtual aku_Status extract_result(std::unique_ptr<ColumnMaterializer>* dest) = 0;
+};
+
+// -------------------------------- //
+//              Tier-1              //
+// -------------------------------- //
+
+struct ScanProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
     aku_Timestamp begin_;
     aku_Timestamp end_;
@@ -47,7 +76,7 @@ struct ScanProcessingStep : ProcessingStep {
     }
 };
 
-struct AggregateProcessingStep : ProcessingStep {
+struct AggregateProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<AggregateOperator>> agglist_;
     aku_Timestamp begin_;
     aku_Timestamp end_;
@@ -79,7 +108,7 @@ struct AggregateProcessingStep : ProcessingStep {
 };
 
 
-struct GroupAggregateProcessingStep : ProcessingStep {
+struct GroupAggregateProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<AggregateOperator>> agglist_;
     aku_Timestamp begin_;
     aku_Timestamp end_;
@@ -111,6 +140,171 @@ struct GroupAggregateProcessingStep : ProcessingStep {
         return AKU_SUCCESS;
     }
 };
+
+
+// -------------------------------- //
+//              Tier-2              //
+// -------------------------------- //
+
+/**
+ * Merge several series (order by series).
+ * Used in scan query.
+ */
+template<OrderBy order>
+struct MergeBy : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    MergeBy(IdVec&& ids)
+        : ids_(std::forward(ids))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude* prelude) {
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        if (order == OrderBy::SERIES) {
+            mat_.reset(new MergeMaterializer<SeriesOrder>(std::move(ids_), std::move(iters)));
+        } else {
+            mat_.reset(new MergeMaterializer<TimeOrder>(std::move(ids_), std::move(iters)));
+        }
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct Chain : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Chain(IdVec&& vec)
+        : ids_(std::forward(vec))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new ChainMaterializer(std::move(ids_), std::move(iters)));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Aggregate materializer.
+ * Accepts the list of ids and the list of aggregate operators.
+ * Maps each id to the corresponding operators 1-1.
+ * All ids should be different.
+ */
+struct Aggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    AggregationFunction fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Aggregate(IdVec&& vec, AggregationFunction fn)
+        : ids_(std::forward(vec))
+        , fn_(fn)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new AggregateMaterializer(std::move(ids_), std::move(iters), fn_));
+        return AKU_SUCCESS;
+
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Combines the aggregate operators.
+ * Accepts list of ids (shouldn't be different) and list of aggregate
+ * operators. Maps each id to operator and then combines operators
+ * with the same id (used to implement aggregate + group-by).
+ */
+struct AggregateCombiner : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    AggregationFunction fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    AggregateCombiner(IdVec&& vec, AggregationFunction fn)
+        : ids_(std::forward(vec))
+        , fn_(fn)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        std::vector<std::unique_ptr<AggregateOperator>> agglist;
+        std::map<aku_ParamId, std::vector<std::unique_ptr<AggregateOperator>>> groupings;
+        for (size_t i = 0; i < ids_.size(); i++) {
+            auto id = ids_.at(i);
+            auto it = std::move(iters.at(i));
+            groupings[id].push_back(std::move(it));
+        }
+        std::vector<aku_ParamId> ids;
+        for (auto& kv: groupings) {
+            auto& vec = kv.second;
+            ids.push_back(kv.first);
+            std::unique_ptr<CombineAggregateOperator> it(new CombineAggregateOperator(std::move(vec)));
+            agglist.push_back(std::move(it));
+        }
+        mat_.reset(new AggregateMaterializer(std::move(ids),
+                                             std::move(agglist),
+                                             fn_));
+        return AKU_SUCCESS;
+
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
 
 typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesT;
 
