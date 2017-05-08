@@ -331,17 +331,17 @@ u32 FileStorage::checksum(u8 const* data, size_t size) const {
 // FixedSizeFileStorage
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
-  : FileStorage::FileStorage(metapath, volpaths)
+    : FileStorage::FileStorage(metapath, volpaths)
 {
-  // nothing specific needed except calling the parent constructor
+    // nothing specific needed except calling the parent constructor
 }
 
 std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
-  if (volpaths.empty() || metapath.empty()) {
-    AKU_PANIC("Database file(s) doesn't exists!");
-  }
-  auto bs = new FixedSizeFileStorage(metapath, volpaths);
-  return std::shared_ptr<FixedSizeFileStorage>(bs);
+    if (volpaths.empty() || metapath.empty()) {
+      AKU_PANIC("Database file(s) doesn't exists!");
+    }
+    auto bs = new FixedSizeFileStorage(metapath, volpaths);
+    return std::shared_ptr<FixedSizeFileStorage>(bs);
 }
 
 bool FixedSizeFileStorage::exists(LogicAddr addr) const {
@@ -392,7 +392,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
 }
 
 void FixedSizeFileStorage::update_current_volume() {
-  current_volume_ = (current_volume_ + 1) % volumes_.size();
+    current_volume_ = (current_volume_ + 1) % volumes_.size();
 }
 
 // ExpandableFileStorage
@@ -400,10 +400,10 @@ void FixedSizeFileStorage::update_current_volume() {
 ExpandableFileStorage::ExpandableFileStorage(std::string db_name,
                                              std::string metapath,
                                              std::vector<std::string> volpaths)
-  : FileStorage::FileStorage(metapath, volpaths)
-  , db_name_(db_name)
+    : FileStorage::FileStorage(metapath, volpaths)
+    , db_name_(db_name)
 {
-  // nothing specific needed except calling the parent constructor
+    // nothing specific needed except calling the parent constructor
 }
 
 std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::string db_name,
