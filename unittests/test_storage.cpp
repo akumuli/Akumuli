@@ -87,10 +87,18 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
 
     MetadataStorage db(":memory:");
     const char* creation_datetime = "2015-02-03 00:00:00";  // Formatting not required
-    db.init_config(creation_datetime);
+    const char* bstore_type = "FixedSizeFileStorage";
+    const char* db_name = "db_test";
+    db.init_config(db_name, creation_datetime, bstore_type);
     std::string actual_dt;
-    db.get_configs(&actual_dt);
+    db.get_configs("creation_datetime", &actual_dt);
     BOOST_REQUIRE_EQUAL(creation_datetime, actual_dt);
+    std::string actual_bstore_type;
+    db.get_configs("blockstore_type", &actual_bstore_type);
+    BOOST_REQUIRE_EQUAL(bstore_type, actual_bstore_type);
+    std::string actual_db_name;
+    db.get_configs("db_name", &actual_db_name);
+    BOOST_REQUIRE_EQUAL(db_name, actual_db_name);
 }
 
 BOOST_AUTO_TEST_CASE(Test_storage_add_series_1) {

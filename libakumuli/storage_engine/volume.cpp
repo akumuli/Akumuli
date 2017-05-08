@@ -92,6 +92,7 @@ MetaVolume::MetaVolume(const char *path)
     , file_size_(mmap_.get_size())
     , mmap_ptr_(static_cast<u8*>(mmap_.get_pointer()))
     , double_write_buffer_(mmap_.get_size(), 0)
+    , path_(path)
 {
     memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_.get_size());
 }
@@ -162,6 +163,16 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
+aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
+    // TODO: do we need to lock something here?
+    mmap_.flush();
+    // TODO: implement this part
+    // write new data to end of file (in an even block)
+    // reset the mmap_ to the updated file
+    // update file_size_
+    return AKU_SUCCESS;
+}
+
 aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
@@ -225,6 +236,7 @@ Volume::Volume(const char* path, size_t write_pos)
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
     , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
+    , path_(path)
 {
 }
 
@@ -279,6 +291,10 @@ void Volume::flush() {
 
 u32 Volume::get_size() const {
     return file_size_;
+}
+
+std::string Volume::get_path() const {
+  return path_;
 }
 
 }}  // namespace

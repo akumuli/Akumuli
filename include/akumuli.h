@@ -121,22 +121,22 @@ AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
 
 /**
  * @brief Creates storage for new database on the hard drive
- * @param file_name database file name
+ * @param base_file_name database file name (excl suffix)
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
  */
-AKU_EXPORT aku_Status aku_create_database(const char* file_name, const char* metadata_path,
+AKU_EXPORT aku_Status aku_create_database(const char* base_file_name, const char* metadata_path,
                                           const char* volumes_path, i32 num_volumes);
 
 /**
  * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
- * @param file_name database file name
+ * @param base_file_name database file name (excl suffix)
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
  */
-AKU_EXPORT aku_Status aku_create_database_ex(const char* file_name, const char* metadata_path,
+AKU_EXPORT aku_Status aku_create_database_ex(const char* base_file_name, const char* metadata_path,
                                              const char* volumes_path, i32 num_volumes,
                                              u64 page_size);
 

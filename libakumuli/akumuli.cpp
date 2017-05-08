@@ -208,22 +208,22 @@ public:
     }
 };
 
-aku_Status aku_create_database_ex( const char     *file_name
+aku_Status aku_create_database_ex( const char     *base_file_name
                                  , const char     *metadata_path
                                  , const char     *volumes_path
                                  , i32             num_volumes
                                  , u64             page_size)
 {
-    return Storage::new_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
+    return Storage::new_database(base_file_name, metadata_path, volumes_path, num_volumes, page_size);
 }
 
-aku_Status aku_create_database( const char     *file_name
+aku_Status aku_create_database( const char     *base_file_name
                               , const char     *metadata_path
                               , const char     *volumes_path
                               , i32             num_volumes)
 {
     static const u64 vol_size = 4096ul*1024*1024; // pages (4GB total)
-    return aku_create_database_ex(file_name, metadata_path, volumes_path, num_volumes, vol_size);
+    return aku_create_database_ex(base_file_name, metadata_path, volumes_path, num_volumes, vol_size);
 }
 
 

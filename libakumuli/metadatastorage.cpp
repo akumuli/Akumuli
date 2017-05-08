@@ -171,32 +171,37 @@ void MetadataStorage::create_tables() {
     execute_query(query);
 }
 
-void MetadataStorage::init_config(const char* creation_datetime)
+void MetadataStorage::init_config(const char* db_name,
+                                  const char* creation_datetime,
+                                  const char* bstore_type)
 {
     // Create table and insert data into it
 
     std::stringstream insert;
     insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'creation_time' as name, '" << creation_datetime << "' as value, "
-           << "'Compression threshold value' as comment" << std::endl;
+    insert << "\tVALUES ('creation_datetime', '" << creation_datetime << "', " << "'DB creation time.'), "
+           << "('blockstore_type', '" << bstore_type << "', " << "'Type of block storage used.'),"
+           << "('db_name', '" << db_name << "', " << "'Name of DB instance.');"
+           << std::endl;
     std::string insert_query = insert.str();
     execute_query(insert_query);
 }
 
-void MetadataStorage::get_configs(std::string *creation_datetime)
+void MetadataStorage::get_configs(const std::string name, std::string* result)
 {
-    {   // Read creation time
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='creation_time'";
-        auto results = select_query(query.c_str());
+    {   // Read requested config
+        std::stringstream query;
+        query << "SELECT value FROM akumuli_configuration WHERE name='" << name << "'";
+        auto results = select_query(query.str().c_str());
         if (results.size() != 1) {
-            AKU_PANIC("Invalid configuration (creation_time)");
+            AKU_PANIC("Invalid configuration (" + name + ")");
         }
         auto tuple = results.at(0);
         if (tuple.size() != 1) {
-            AKU_PANIC("Invalid configuration query (creation_time)");
+            AKU_PANIC("Invalid configuration query (" + name + ")");
         }
         // This value can be encoded as dobule by the sqlite engine
-        *creation_datetime = tuple.at(0);
+        *result = tuple.at(0);
     }
 }
 
