@@ -1047,10 +1047,13 @@ aku_Status Storage::new_database( const char     *base_file_name
     for (auto p: paths) {
         mpaths.push_back(std::get<1>(p));
     }
-    if (num_volumes == 0)
-      create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "ExpandableFileStorage");
-    else
-      create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "FixedSizeFileStorage");
+    if (num_volumes == 0) {
+        Logger::msg(AKU_LOG_INFO, "Creating expandable file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "ExpandableFileStorage");
+    } else {
+        Logger::msg(AKU_LOG_INFO, "Creating fixed file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "FixedSizeFileStorage");
+    }
     return AKU_SUCCESS;
 }
 
