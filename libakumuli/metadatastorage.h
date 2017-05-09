@@ -96,7 +96,13 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
-    void get_configs(const std::string name, std::string* result);
+    /**
+     * @brief Get value of the configuration parameter
+     * @param param_name is a name of the configuration parameter
+     * @param value is a pointer that should receive configuration value
+     * @return true on succes, false otherwise
+     */
+    bool get_config_param(const std::string param_name, std::string* value);
 
     /** Read larges series id */
     boost::optional<u64> get_prev_largest_id();

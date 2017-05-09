@@ -181,28 +181,32 @@ void MetadataStorage::init_config(const char* db_name,
     insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
     insert << "\tVALUES ('creation_datetime', '" << creation_datetime << "', " << "'DB creation time.'), "
            << "('blockstore_type', '" << bstore_type << "', " << "'Type of block storage used.'),"
+          #ifdef AKU_VERSION
+           << "('storage_version', '" << AKU_VERSION << "', " << "'Akumuli version used to create the database.'),"
+          #endif
            << "('db_name', '" << db_name << "', " << "'Name of DB instance.');"
            << std::endl;
     std::string insert_query = insert.str();
     execute_query(insert_query);
 }
 
-void MetadataStorage::get_configs(const std::string name, std::string* result)
+bool MetadataStorage::get_config_param(const std::string name, std::string* result)
 {
-    {   // Read requested config
-        std::stringstream query;
-        query << "SELECT value FROM akumuli_configuration WHERE name='" << name << "'";
-        auto results = select_query(query.str().c_str());
-        if (results.size() != 1) {
-            AKU_PANIC("Invalid configuration (" + name + ")");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            AKU_PANIC("Invalid configuration query (" + name + ")");
-        }
-        // This value can be encoded as dobule by the sqlite engine
-        *result = tuple.at(0);
+    // Read requested config
+    std::stringstream query;
+    query << "SELECT value FROM akumuli_configuration WHERE name='" << name << "'";
+    auto results = select_query(query.str().c_str());
+    if (results.size() != 1) {
+        Logger::msg(AKU_LOG_TRACE, "Can't find configuration parameter `" + name + "`");
+        return false;
     }
+    auto tuple = results.at(0);
+    if (tuple.size() != 1) {
+        AKU_PANIC("Invalid configuration query (" + name + ")");
+    }
+    // This value can be encoded as dobule by the sqlite engine
+    *result = tuple.at(0);
+    return true;
 }
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
