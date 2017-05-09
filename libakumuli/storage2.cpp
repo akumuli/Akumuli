@@ -284,10 +284,10 @@ Storage::Storage(const char* path)
             volpaths.push_back(path);
         }
     }
-    std::string bstore_type;
-    std::string db_name;
-    metadata_->get_configs("blockstore_type", &bstore_type);
-    metadata_->get_configs("db_name", &db_name);
+    std::string bstore_type = "FixedSizeFileStorage";
+    std::string db_name = "db";
+    metadata_->get_config_param("blockstore_type", &bstore_type);
+    metadata_->get_config_param("db_name", &db_name);
     if (bstore_type == "FixedSizeFileStorage")
       bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
     else if (bstore_type == "ExpandableFileStorage")
