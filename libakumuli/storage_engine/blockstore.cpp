@@ -474,16 +474,21 @@ std::unique_ptr<Volume> ExpandableFileStorage::create_new_volume(u32 id) {
 void ExpandableFileStorage::adjust_current_volume() {
     current_volume_ = current_volume_ + 1;
     if (current_volume_ >= volumes_.size()) {
-      // add new volume
-      // TODO: add error checking
-      auto vol = create_new_volume(current_volume_);
-      // update internal state of this class to be consistent
-      dirty_.push_back(0);
-      volume_names_.push_back(vol->get_path());
-      total_size_ += vol->get_size();
-      // TODO: add error checking!
-      meta_->add_volume(current_volume_, vol->get_size());
-      volumes_.push_back(std::move(vol));
+        // add new volume
+        auto vol = create_new_volume(current_volume_);
+        // update internal state of this class to be consistent
+        dirty_.push_back(0);
+        volume_names_.push_back(vol->get_path());
+        total_size_ += vol->get_size();
+        // update meta-volume
+        auto status = meta_->add_volume(current_volume_, vol->get_size());
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Could not add new volume to MetaVolume! error: "
+                        + StatusUtil::str(status));
+            AKU_PANIC("Meta-volume not updated, " + StatusUtil::str(status));
+        }
+        // finally add new volume to our internal list of volumes
+        volumes_.push_back(std::move(vol));
     }
 }
 
