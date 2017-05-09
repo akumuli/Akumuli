@@ -478,12 +478,12 @@ void ExpandableFileStorage::adjust_current_volume() {
       // TODO: add error checking
       auto vol = create_new_volume(current_volume_);
       // update internal state of this class to be consistent
-      volumes_.push_back(std::move(vol));
       dirty_.push_back(0);
       volume_names_.push_back(vol->get_path());
       total_size_ += vol->get_size();
       // TODO: add error checking!
       meta_->add_volume(current_volume_, vol->get_size());
+      volumes_.push_back(std::move(vol));
     }
 }
 

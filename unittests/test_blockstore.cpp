@@ -180,11 +180,12 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_3) {
 
 BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     delete_expandable_storage();
+    const char* expected_path = "test_1.vol";
+    boost::filesystem::remove(expected_path);
     create_expandable_storage();
     auto bstore = open_expandable_storage();
     std::shared_ptr<Block> block;
     aku_Status status;
-    const char* expected_path = "test_1.vol";
     bool exist = boost::filesystem::exists(expected_path);
     BOOST_REQUIRE(!exist);
 
