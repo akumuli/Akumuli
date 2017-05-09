@@ -57,6 +57,16 @@ static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
     return std::move(file);
 }
 
+static void _file_seek(apr_file_t* f, apr_seek_where_t where, apr_off_t* offset) {
+    auto status = apr_file_seek(f, where, offset);
+    panic_on_error(status, "Can't seek in file");
+}
+
+static void _file_write(apr_file_t* f, const void* buf, apr_size_t* nbytes) {
+    auto status =  apr_file_write(f, buf, nbytes);
+    panic_on_error(status, "Can't write to file");
+}
+
 static size_t _get_file_size(apr_file_t* file) {
     apr_finfo_t info;
     auto status = apr_file_info_get(&info, APR_FINFO_SIZE, file);
@@ -168,7 +178,8 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
 }
 
 aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
-    mmap_->flush();
+    auto status = mmap_->flush();
+    panic_on_error(status, "Flush error!");
     mmap_.reset(nullptr);
 
     std::vector<u8> block(AKU_BLOCK_SIZE, 0);
@@ -179,13 +190,12 @@ aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
     pvolume->nblocks = 0;
     pvolume->version = AKUMULI_VERSION;
 
-    // TODO: error handling for all these file operations
     AprPoolPtr pool = _make_apr_pool();
     AprFilePtr f = _open_file(path_.c_str(), pool.get());
     apr_off_t offset = 0;
-    apr_file_seek(f.get(), APR_END, &offset);
+    _file_seek(f.get(), APR_END, &offset);
     u64 block_size = AKU_BLOCK_SIZE;
-    apr_file_write(f.get(), block.data(), &block_size);
+    _file_write(f.get(), block.data(), &block_size);
     _close_apr_file(f.get());
 
     init_mmap();
