@@ -91,13 +91,16 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
     const char* db_name = "db_test";
     db.init_config(db_name, creation_datetime, bstore_type);
     std::string actual_dt;
-    db.get_configs("creation_datetime", &actual_dt);
+    bool success = db.get_config_param("creation_datetime", &actual_dt);
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(creation_datetime, actual_dt);
     std::string actual_bstore_type;
-    db.get_configs("blockstore_type", &actual_bstore_type);
+    success = db.get_config_param("blockstore_type", &actual_bstore_type);
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(bstore_type, actual_bstore_type);
     std::string actual_db_name;
-    db.get_configs("db_name", &actual_db_name);
+    success = db.get_config_param("db_name", &actual_db_name);
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(db_name, actual_db_name);
 }
 
