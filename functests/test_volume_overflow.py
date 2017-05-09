@@ -114,7 +114,10 @@ def main(path):
             rawstats = urllib.urlopen(statsurl).read()
             stats = json.loads(rawstats)
             volume0space = stats["volume_0"]["free_space"]
-            volume1space = stats["volume_1"]["free_space"]
+            if "volume_1" in stats:
+                volume1space = stats["volume_1"]["free_space"]
+            else:
+                volume1space = 0
             return int(volume0space), int(volume1space)
 
         print("Sending messages...")

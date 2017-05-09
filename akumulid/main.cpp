@@ -17,6 +17,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/format.hpp>
 
 #include <apr_errno.h>
 
@@ -43,7 +44,7 @@ path=~/.akumuli
 # 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
-nvolumes=4
+nvolumes=%1%
 
 # Size of the individual volume. You can use MB or GB suffix.
 # Default value is 4GB (if value is not set).
@@ -104,7 +105,17 @@ struct ConfigFile {
             BOOST_THROW_EXCEPTION(err);
         }
         std::ofstream stream(path.c_str());
-        stream << DEFAULT_CONFIG << std::endl;
+        stream << boost::format(DEFAULT_CONFIG) % 4 << std::endl;
+        stream.close();
+    }
+
+    static void init_exp_config(boost::filesystem::path path) {
+        if (boost::filesystem::exists(path)) {
+            std::runtime_error err("configuration file already exists");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        std::ofstream stream(path.c_str());
+        stream << boost::format(DEFAULT_CONFIG) % 0 << std::endl;
         stream.close();
     }
 
@@ -544,6 +555,7 @@ int main(int argc, char** argv) {
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
+                ("init-expandable", "Create configuration for expandable storage")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
                 ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
                 ;
@@ -553,7 +565,11 @@ int main(int argc, char** argv) {
         po::notify(vm);
 
         std::stringstream header;
+#ifndef AKU_VERSION
         header << "\n\nStarted\n\n";
+#else
+        header << "\n\nStarted v" << AKU_VERSION << "\n\n";
+#endif
         header << "Command line: ";
         for (int i = 0; i < argc; i++) {
             header << argv[i] << ' ';
@@ -568,6 +584,15 @@ int main(int argc, char** argv) {
 
         if (vm.count("init")) {
             ConfigFile::init_config(path);
+
+            std::stringstream fmt;
+            fmt << "**OK** configuration file created at: `" << path << "`";
+            std::cout << cli_format(fmt.str()) << std::endl;
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("init-expandable")) {
+            ConfigFile::init_exp_config(path);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
