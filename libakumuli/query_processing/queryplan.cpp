@@ -5,6 +5,7 @@
 #include "storage_engine/operators/scan.h"
 #include "storage_engine/operators/merge.h"
 #include "storage_engine/operators/aggregate.h"
+#include "storage_engine/operators/join.h"
 
 namespace Akumuli {
 namespace QP {
@@ -294,6 +295,71 @@ struct AggregateCombiner : MaterializationStep {
                                              fn_));
         return AKU_SUCCESS;
 
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Joins several operators into one.
+ * Number of joined operators is defined by the cardinality.
+ * Number of ids should be `cardinality` times smaller than number
+ * of operators because every `cardinality` operators are joined into
+ * one.
+ */
+struct Join : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    int cardinality_;
+    OrderBy order_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Join(IdVec&& vec, int cardinality, OrderBy order, aku_Timestamp begin, aku_Timestamp end)
+        : ids_(std::forward(vec))
+        , cardinality_(cardinality)
+        , order_(order)
+        , begin_(begin)
+        , end_(end)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        int inc = cardinality_;
+        std::vector<std::unique_ptr<RealValuedOperator>> scanlist;
+        auto status = prelude->extract_result(&scanlist);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        std::vector<std::unique_ptr<ColumnMaterializer>> iters;
+        for (size_t i = 0; i < ids_.size(); i++) {
+            // ids_ contain ids of the joined series that corresponds
+            // to the names in the series matcher
+            std::vector<std::unique_ptr<RealValuedOperator>> joined;
+            for (int j = 0; j < inc; j++) {
+                // `inc` number of storage level operators correspond to one
+                // materializer
+                joined.push_back(std::move(scanlist.at(i*inc + j)));
+            }
+            std::unique_ptr<ColumnMaterializer> it;
+            it.reset(new JoinMaterializer(std::move(joined), ids_.at(i)));
+            iters.push_back(std::move(it));
+        }
+        if (order_ == OrderBy::SERIES) {
+            mat_.reset(new JoinConcatMaterializer(std::move(iters)));
+        } else {
+            bool forward = begin_ < end_;
+            typedef MergeJoinMaterializer<MergeJoinUtil::OrderByTimestamp> Materializer;
+            mat_.reset(new Materializer(std::move(iters), forward));
+        }
+        return AKU_SUCCESS;
     }
 
     aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
