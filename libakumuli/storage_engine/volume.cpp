@@ -88,14 +88,14 @@ struct VolumeRef {
 };
 
 void MetaVolume::init_mmap() {
-    mmap_.reset(new MemoryMappedFile(path_, false));
+    mmap_.reset(new MemoryMappedFile(path_.c_str(), false));
     file_size_ = mmap_->get_size();
     mmap_ptr_ = static_cast<u8*>(mmap_->get_pointer());
     double_write_buffer_ = std::vector<u8>(mmap_->get_size(), 0);
     memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_->get_size());
 }
 
-MetaVolume::MetaVolume(const char *path)
+MetaVolume::MetaVolume(const std::string path)
     : path_(path)
 {
   init_mmap();
@@ -168,7 +168,6 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
 }
 
 aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
-    // TODO: do we need to lock something here?
     mmap_->flush();
     mmap_.reset(nullptr);
 
@@ -182,8 +181,9 @@ aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
 
     // TODO: error handling for all these file operations
     AprPoolPtr pool = _make_apr_pool();
-    AprFilePtr f = _open_file(path_, pool.get());
-    apr_file_seek(f.get(), APR_END, 0);
+    AprFilePtr f = _open_file(path_.c_str(), pool.get());
+    apr_off_t offset = 0;
+    apr_file_seek(f.get(), APR_END, &offset);
     u64 block_size = AKU_BLOCK_SIZE;
     apr_file_write(f.get(), block.data(), &block_size);
     _close_apr_file(f.get());

@@ -55,11 +55,11 @@ class MetaVolume {
     size_t                  file_size_;
     u8*                     mmap_ptr_;
     mutable std::vector<u8> double_write_buffer_;
-    const char*             path_;
+    const std::string       path_;
 
-    MetaVolume(const char* path);
+    MetaVolume(const std::string path);
     void init_mmap();
-    
+
 public:
     /** Create new meta-volume.
       * @param path Path to created file.
