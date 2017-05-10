@@ -81,7 +81,7 @@ pool_size=1
 log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %m%n
+log4j.appender.file.layout.ConversionPattern=%%d{yyyy-MM-dd HH:mm:ss,SSS} %%c [%%p] %%m%%n
 log4j.appender.file.filename=/tmp/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
@@ -105,7 +105,9 @@ struct ConfigFile {
             BOOST_THROW_EXCEPTION(err);
         }
         std::ofstream stream(path.c_str());
-        stream << boost::format(DEFAULT_CONFIG) % 4 << std::endl;
+        int nvolumes = 4;
+        std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
+        stream << config << std::endl;
         stream.close();
     }
 
@@ -115,7 +117,9 @@ struct ConfigFile {
             BOOST_THROW_EXCEPTION(err);
         }
         std::ofstream stream(path.c_str());
-        stream << boost::format(DEFAULT_CONFIG) % 0 << std::endl;
+        int nvolumes = 0;
+        std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
+        stream << config << std::endl;
         stream.close();
     }
 
