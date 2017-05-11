@@ -47,8 +47,10 @@ namespace Akumuli {
   * all the page file names and they order.
   * @return APR_EINIT on DB error.
   */
-static apr_status_t create_metadata_page( const char* file_name
-                                        , std::vector<std::string> const& page_file_names)
+ static apr_status_t create_metadata_page(const char* db_name
+                                        , const char* file_name
+                                        , std::vector<std::string> const& page_file_names
+                                        , const char* bstore_type )
 {
     using namespace std;
     try {
@@ -58,7 +60,7 @@ static apr_status_t create_metadata_page( const char* file_name
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
 
-        storage->init_config(date_time);
+        storage->init_config(db_name, date_time, bstore_type);
 
         std::vector<MetadataStorage::VolumeDesc> desc;
         int ix = 0;
@@ -282,8 +284,30 @@ Storage::Storage(const char* path)
             volpaths.push_back(path);
         }
     }
-
-    bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    std::string bstore_type = "FixedSizeFileStorage";
+    std::string db_name = "db";
+    metadata_->get_config_param("blockstore_type", &bstore_type);
+    metadata_->get_config_param("db_name", &db_name);
+    if (bstore_type == "FixedSizeFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as fxied size storage");
+        bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    } else if (bstore_type == "ExpandableFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as expandable storage");
+        std::weak_ptr<MetadataStorage> weak_meta = metadata_;
+        std::function<void(int, std::string)> on_volume_advance = [weak_meta](int id, std::string path) {
+            auto ptr = weak_meta.lock();
+            if (ptr) {
+                Logger::msg(AKU_LOG_TRACE, "Add new volume to the metadata store: " + path);
+                ptr->add_volume(std::make_pair(id, path));
+            } else {
+                Logger::msg(AKU_LOG_ERROR, "Can't save new volumes path, metadata storage already closed.");
+            }
+        };
+        bstore_ = StorageEngine::ExpandableFileStorage::open(db_name, metapath, volpaths, on_volume_advance);
+    } else {
+        Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
+        AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
+    }
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
     // Update series matcher
     boost::optional<u64> baseline = metadata_->get_prev_largest_id();
@@ -978,7 +1002,7 @@ void Storage::debug_print() const {
     std::cout << "...not implemented" << std::endl;
 }
 
-aku_Status Storage::new_database( const char     *file_name
+aku_Status Storage::new_database( const char     *base_file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , i32             num_volumes
@@ -1001,7 +1025,7 @@ aku_Status Storage::new_database( const char     *file_name
     boost::filesystem::path metpath(metadata_path);
     volpath = boost::filesystem::absolute(volpath);
     metpath = boost::filesystem::absolute(metpath);
-    std::string sqlitebname = std::string(file_name) + ".akumuli";
+    std::string sqlitebname = std::string(base_file_name) + ".akumuli";
     boost::filesystem::path sqlitepath = metpath / sqlitebname;
 
     if (!boost::filesystem::exists(volpath)) {
@@ -1029,17 +1053,18 @@ aku_Status Storage::new_database( const char     *file_name
         return AKU_EBAD_ARG;
     }
 
+    i32 actual_nvols = (num_volumes == 0) ? 1 : num_volumes;
     std::vector<std::tuple<u32, std::string>> paths;
-    for (i32 i = 0; i < num_volumes; i++) {
-        std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
+    for (i32 i = 0; i < actual_nvols; i++) {
+        std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
         boost::filesystem::path p = volpath / basename;
         paths.push_back(std::make_tuple(volsize, p.string()));
     }
     // Volumes meta-page
-    std::string basename = std::string(file_name) + ".metavol";
+    std::string basename = std::string(base_file_name) + ".metavol";
     boost::filesystem::path volmpage = volpath / basename;
 
-    StorageEngine::FixedSizeFileStorage::create(volmpage.string(), paths);
+    StorageEngine::FileStorage::create(volmpage.string(), paths);
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
@@ -1047,7 +1072,13 @@ aku_Status Storage::new_database( const char     *file_name
     for (auto p: paths) {
         mpaths.push_back(std::get<1>(p));
     }
-    create_metadata_page(sqlitepath.c_str(), mpaths);
+    if (num_volumes == 0) {
+        Logger::msg(AKU_LOG_INFO, "Creating expandable file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "ExpandableFileStorage");
+    } else {
+        Logger::msg(AKU_LOG_INFO, "Creating fixed file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "FixedSizeFileStorage");
+    }
     return AKU_SUCCESS;
 }
 

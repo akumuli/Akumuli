@@ -85,7 +85,9 @@ struct MetadataStorage {
       */
     void init_volumes(std::vector<VolumeDesc> volumes);
 
-    void init_config(const char* creation_datetime);
+    void init_config(const char* db_name,
+                     const char* creation_datetime,
+                     const char* bstore_type);
 
     // Retreival //
 
@@ -94,7 +96,15 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
-    void get_configs(std::string* creation_datetime);
+    void add_volume(VolumeDesc vol);
+
+    /**
+     * @brief Get value of the configuration parameter
+     * @param param_name is a name of the configuration parameter
+     * @param value is a pointer that should receive configuration value
+     * @return true on succes, false otherwise
+     */
+    bool get_config_param(const std::string param_name, std::string* value);
 
     /** Read larges series id */
     boost::optional<u64> get_prev_largest_id();

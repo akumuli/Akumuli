@@ -51,12 +51,14 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    MemoryMappedFile        mmap_;
+    std::unique_ptr<MemoryMappedFile> mmap_;
     size_t                  file_size_;
     u8*                     mmap_ptr_;
     mutable std::vector<u8> double_write_buffer_;
+    const std::string       path_;
 
-    MetaVolume(const char* path);
+    MetaVolume(const std::string path);
+    void init_mmap();
 
 public:
     /** Create new meta-volume.
@@ -89,6 +91,8 @@ public:
 
     // Mutators
 
+    aku_Status add_volume(u32 id, u32 vol_capacity);
+
     aku_Status update(u32 id, u32 nblocks, u32 capacity, u32 gen);
 
     //! Set number of used blocks for the volume.
@@ -109,13 +113,14 @@ public:
 
 
 class Volume {
-    AprPoolPtr apr_pool_;
-    AprFilePtr apr_file_handle_;
-    u32        file_size_;
-    u32        write_pos_;
+    AprPoolPtr  apr_pool_;
+    AprFilePtr  apr_file_handle_;
+    u32         file_size_;
+    u32         write_pos_;
+    std::string path_;
 
     Volume(const char* path, size_t write_pos);
-
+    
 public:
     /** Create new volume.
       * @param path Path to volume.
@@ -149,6 +154,9 @@ public:
 
     //! Return size in blocks
     u32 get_size() const;
+
+    //! Return path of volume
+    std::string get_path() const;
 };
 
 }  // namespace V2

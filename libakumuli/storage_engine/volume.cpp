@@ -57,6 +57,16 @@ static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
     return std::move(file);
 }
 
+static void _file_seek(apr_file_t* f, apr_seek_where_t where, apr_off_t* offset) {
+    auto status = apr_file_seek(f, where, offset);
+    panic_on_error(status, "Can't seek in file");
+}
+
+static void _file_write(apr_file_t* f, const void* buf, apr_size_t* nbytes) {
+    auto status =  apr_file_write(f, buf, nbytes);
+    panic_on_error(status, "Can't write to file");
+}
+
 static size_t _get_file_size(apr_file_t* file) {
     apr_finfo_t info;
     auto status = apr_file_info_get(&info, APR_FINFO_SIZE, file);
@@ -87,13 +97,18 @@ struct VolumeRef {
     u32 generation;
 };
 
-MetaVolume::MetaVolume(const char *path)
-    : mmap_(path, false)
-    , file_size_(mmap_.get_size())
-    , mmap_ptr_(static_cast<u8*>(mmap_.get_pointer()))
-    , double_write_buffer_(mmap_.get_size(), 0)
+void MetaVolume::init_mmap() {
+    mmap_.reset(new MemoryMappedFile(path_.c_str(), false));
+    file_size_ = mmap_->get_size();
+    mmap_ptr_ = static_cast<u8*>(mmap_->get_pointer());
+    double_write_buffer_ = std::vector<u8>(mmap_->get_size(), 0);
+    memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_->get_size());
+}
+
+MetaVolume::MetaVolume(const std::string path)
+    : path_(path)
 {
-    memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_.get_size());
+  init_mmap();
 }
 
 size_t MetaVolume::get_nvolumes() const {
@@ -162,6 +177,31 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
+aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
+    auto status = mmap_->flush();
+    panic_on_error(status, "Flush error!");
+    mmap_.reset(nullptr);
+
+    std::vector<u8> block(AKU_BLOCK_SIZE, 0);
+    VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(block.data());
+    pvolume->capacity = capacity;
+    pvolume->generation = id;
+    pvolume->id = id;
+    pvolume->nblocks = 0;
+    pvolume->version = AKUMULI_VERSION;
+
+    AprPoolPtr pool = _make_apr_pool();
+    AprFilePtr f = _open_file(path_.c_str(), pool.get());
+    apr_off_t offset = 0;
+    _file_seek(f.get(), APR_END, &offset);
+    u64 block_size = AKU_BLOCK_SIZE;
+    _file_write(f.get(), block.data(), &block_size);
+    _close_apr_file(f.get());
+
+    init_mmap();
+    return AKU_SUCCESS;
+}
+
 aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
@@ -201,17 +241,17 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
 }
 
 void MetaVolume::flush() {
-    memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_.get_size());
-    auto status = mmap_.flush();
+    memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
+    auto status = mmap_->flush();
     panic_on_error(status, "Flush error");
 }
 
 aku_Status MetaVolume::flush(u32 id) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_.get_size());
+        memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
         size_t from = id * AKU_BLOCK_SIZE;
         size_t to = from + AKU_BLOCK_SIZE;
-        auto status = mmap_.flush(from, to);
+        auto status = mmap_->flush(from, to);
         panic_on_error(status, "Flush (range) error");
         return AKU_SUCCESS;
     }
@@ -225,6 +265,7 @@ Volume::Volume(const char* path, size_t write_pos)
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
     , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
+    , path_(path)
 {
 }
 
@@ -279,6 +320,10 @@ void Volume::flush() {
 
 u32 Volume::get_size() const {
     return file_size_;
+}
+
+std::string Volume::get_path() const {
+  return path_;
 }
 
 }}  // namespace
