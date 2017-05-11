@@ -164,19 +164,28 @@ public:
 class ExpandableFileStorage : public FileStorage,
                               public std::enable_shared_from_this<ExpandableFileStorage> {
      std::string db_name_;
+     std::function<void(int, std::string)> on_volume_advance_;
      //! Secret c-tor.
-     ExpandableFileStorage(std::string db_name, std::string metapath, std::vector<std::string> volpaths);
+     ExpandableFileStorage(std::string db_name, std::string metapath,
+                           std::vector<std::string> volpaths,
+                           std::function<void(int, std::string)> const& on_volume_advance);
 
      std::unique_ptr<Volume> create_new_volume(u32 id);
 protected:
      virtual void adjust_current_volume();
 
 public:
-     /** Create BlockStore instance (can be created only on heap).
+     /**
+      * Create BlockStore instance (can be created only on heap).
+      * @param db_name is a logical database name
+      * @param metapath is a place where the meta-page is located
+      * @param volpaths is a list of volume paths
+      * @param on_volume_advance is function object that gets called when new volume is created
       */
      static std::shared_ptr<ExpandableFileStorage> open(std::string              db_name,
                                                         std::string              metapath,
-                                                        std::vector<std::string> volpaths);
+                                                        std::vector<std::string> volpaths,
+                                                        std::function<void(int, std::string)> const& on_volume_advance);
 
      virtual bool exists(LogicAddr addr) const;
 

@@ -288,13 +288,25 @@ Storage::Storage(const char* path)
     std::string db_name = "db";
     metadata_->get_config_param("blockstore_type", &bstore_type);
     metadata_->get_config_param("db_name", &db_name);
-    if (bstore_type == "FixedSizeFileStorage")
-      bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
-    else if (bstore_type == "ExpandableFileStorage")
-      bstore_ = StorageEngine::ExpandableFileStorage::open(db_name, metapath, volpaths);
-    else {
-      Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
-      AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
+    if (bstore_type == "FixedSizeFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as fxied size storage");
+        bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    } else if (bstore_type == "ExpandableFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as expandable storage");
+        std::weak_ptr<MetadataStorage> weak_meta = metadata_;
+        std::function<void(int, std::string)> on_volume_advance = [weak_meta](int id, std::string path) {
+            auto ptr = weak_meta.lock();
+            if (ptr) {
+                Logger::msg(AKU_LOG_TRACE, "Add new volume to the metadata store: " + path);
+                ptr->add_volume(std::make_pair(id, path));
+            } else {
+                Logger::msg(AKU_LOG_ERROR, "Can't save new volumes path, metadata storage already closed.");
+            }
+        };
+        bstore_ = StorageEngine::ExpandableFileStorage::open(db_name, metapath, volpaths, on_volume_advance);
+    } else {
+        Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
+        AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
     }
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
     // Update series matcher
