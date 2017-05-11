@@ -96,6 +96,8 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
+    void add_volume(VolumeDesc vol);
+
     /**
      * @brief Get value of the configuration parameter
      * @param param_name is a name of the configuration parameter

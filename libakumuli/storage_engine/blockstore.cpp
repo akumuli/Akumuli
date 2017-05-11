@@ -399,20 +399,24 @@ void FixedSizeFileStorage::adjust_current_volume() {
 
 ExpandableFileStorage::ExpandableFileStorage(std::string db_name,
                                              std::string metapath,
-                                             std::vector<std::string> volpaths)
+                                             std::vector<std::string> volpaths,
+                                             const std::function<void (int, std::string)> &on_advance_volume)
     : FileStorage::FileStorage(metapath, volpaths)
     , db_name_(db_name)
+    , on_volume_advance_(on_advance_volume)
 {
     // nothing specific needed except calling the parent constructor
 }
 
 std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::string db_name,
                                                                    std::string metapath,
-                                                                   std::vector<std::string> volpaths) {
+                                                                   std::vector<std::string> volpaths,
+                                                                   const std::function<void (int, std::string)> &on_volume_advance)
+{
     if (volpaths.empty() || metapath.empty()) {
       AKU_PANIC("Database file(s) doesn't exists!");
     }
-    auto bs = new ExpandableFileStorage(db_name, metapath, volpaths);
+    auto bs = new ExpandableFileStorage(db_name, metapath, volpaths, on_volume_advance);
     return std::shared_ptr<ExpandableFileStorage>(bs);
 }
 
@@ -487,6 +491,7 @@ void ExpandableFileStorage::adjust_current_volume() {
                         + StatusUtil::str(status));
             AKU_PANIC("Meta-volume not updated, " + StatusUtil::str(status));
         }
+        on_volume_advance_(static_cast<int>(current_volume_) + 1, vol->get_path());
         // finally add new volume to our internal list of volumes
         volumes_.push_back(std::move(vol));
     }

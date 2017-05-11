@@ -276,6 +276,17 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     return tuples;
 }
 
+void MetadataStorage::add_volume(MetadataStorage::VolumeDesc vol) {
+    std::string query =
+             "INSERT INTO akumuli_volumes (id, path) VALUES ";
+    query += "(" + std::to_string(vol.first) + ", \"" + vol.second + "\");";
+    Logger::msg(AKU_LOG_TRACE, "Execute query: " + query);
+    int rows = execute_query(query);
+    if (rows == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Insert query failed: " + query + " - can't save the volume.");
+    }
+}
+
 struct LightweightString {
     const char* str;
     int len;

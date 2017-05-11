@@ -50,8 +50,8 @@ static std::shared_ptr<FixedSizeFileStorage> open_blockstore() {
     return bstore;
 }
 
-static std::shared_ptr<ExpandableFileStorage> open_expandable_storage() {
-    auto bstore = ExpandableFileStorage::open("test", METAPATH, EXP_VOLPATH);
+static std::shared_ptr<ExpandableFileStorage> open_expandable_storage(std::function<void(int, std::string)> cb) {
+    auto bstore = ExpandableFileStorage::open("test", METAPATH, EXP_VOLPATH, cb);
     return bstore;
 }
 
@@ -149,7 +149,8 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 BOOST_AUTO_TEST_CASE(Test_blockstore_3) {
     delete_expandable_storage();
     create_expandable_storage();
-    auto bstore = open_expandable_storage();
+    auto dummy_cb = [](int, std::string s) {};
+    auto bstore = open_expandable_storage(dummy_cb);
     std::shared_ptr<Block> block;
     aku_Status status;
 
@@ -183,7 +184,13 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     const char* expected_path = "test_1.vol";
     boost::filesystem::remove(expected_path);
     create_expandable_storage();
-    auto bstore = open_expandable_storage();
+    std::string new_vol_path;
+    int new_vol_id;
+    auto cb = [&new_vol_path, &new_vol_id] (int id, std::string s) {
+        new_vol_path = s;
+        new_vol_id  = id;
+    };
+    auto bstore = open_expandable_storage(cb);
     std::shared_ptr<Block> block;
     aku_Status status;
     bool exist = boost::filesystem::exists(expected_path);
@@ -207,6 +214,8 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
 
     exist = boost::filesystem::exists(expected_path);
     BOOST_REQUIRE(exist);
+    BOOST_REQUIRE_EQUAL(new_vol_id, 2);
+    BOOST_REQUIRE_EQUAL(new_vol_path, std::string(expected_path));
 
     // Should be readable now
     std::tie(status, block) = bstore->read_block(addr);
