@@ -56,7 +56,7 @@ struct ScanProcessingStep : ProcessingPrelude {
     ScanProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
         : begin_(begin)
         , end_(end)
-        , ids_(std::forward(t))
+        , ids_(std::forward<T>(t))
     {
     }
 
@@ -87,7 +87,7 @@ struct AggregateProcessingStep : ProcessingPrelude {
     AggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
         : begin_(begin)
         , end_(end)
-        , ids_(std::forward(t))
+        , ids_(std::forward<T>(t))
     {
     }
 
@@ -121,7 +121,7 @@ struct GroupAggregateProcessingStep : ProcessingPrelude {
         : begin_(begin)
         , end_(end)
         , step_(step)
-        , ids_(std::forward(t))
+        , ids_(std::forward<T>(t))
     {
     }
 
@@ -158,7 +158,7 @@ struct MergeBy : MaterializationStep {
 
     template<class IdVec>
     MergeBy(IdVec&& ids)
-        : ids_(std::forward(ids))
+        : ids_(std::forward<IdVec>(ids))
     {
     }
 
@@ -191,7 +191,7 @@ struct Chain : MaterializationStep {
 
     template<class IdVec>
     Chain(IdVec&& vec)
-        : ids_(std::forward(vec))
+        : ids_(std::forward<IdVec>(vec))
     {
     }
 
@@ -227,7 +227,7 @@ struct Aggregate : MaterializationStep {
 
     template<class IdVec>
     Aggregate(IdVec&& vec, AggregationFunction fn)
-        : ids_(std::forward(vec))
+        : ids_(std::forward<IdVec>(vec))
         , fn_(fn)
     {
     }
@@ -265,7 +265,7 @@ struct AggregateCombiner : MaterializationStep {
 
     template<class IdVec>
     AggregateCombiner(IdVec&& vec, AggregationFunction fn)
-        : ids_(std::forward(vec))
+        : ids_(std::forward<IdVec>(vec))
         , fn_(fn)
     {
     }
@@ -323,7 +323,7 @@ struct Join : MaterializationStep {
 
     template<class IdVec>
     Join(IdVec&& vec, int cardinality, OrderBy order, aku_Timestamp begin, aku_Timestamp end)
-        : ids_(std::forward(vec))
+        : ids_(std::forward<IdVec>(vec))
         , cardinality_(cardinality)
         , order_(order)
         , begin_(begin)
@@ -370,6 +370,158 @@ struct Join : MaterializationStep {
         return AKU_SUCCESS;
     }
 };
+
+/**
+ * Merges several group-aggregate operators by chaining
+ */
+struct SeriesOrderAggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec, class FnVec>
+    SeriesOrderAggregate(IdVec&& vec, FnVec&& fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(std::forward<FnVec>(fn))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new SeriesOrderAggregateMaterializer(std::move(ids_), std::move(iters), fn_));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct TimeOrderAggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec, class FnVec>
+    TimeOrderAggregate(IdVec&& vec, FnVec&& fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(std::forward<FnVec>(fn))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new TimeOrderAggregateMaterializer(ids_, iters, fn_));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct TwoStepQueryPlan : IQueryPlan {
+    std::unique_ptr<ProcessingPrelude> prelude_;
+    std::unique_ptr<MaterializationStep> mater_;
+    std::unique_ptr<ColumnMaterializer> column_;
+
+    template<class T1, class T2>
+    TwoStepQueryPlan(T1&& t1, T2&& t2)
+        : prelude_(std::forward<T1>(t1))
+        , mater_(std::forward<T2>(t2))
+    {
+    }
+
+    aku_Status execute(const ColumnStore &cstore) {
+        auto status = prelude_->apply(cstore);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        status = mater_->apply(prelude_.get());
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        return mater_->extract_result(&column_);
+    }
+
+    std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
+        if (!column_) {
+            AKU_PANIC("Successful execute step required");
+        }
+        return column_->read(dest, size);
+    }
+};
+
+// ----------- Query plan builder ------------ //
+
+static std::unique_ptr<IQueryPlan> scan_query_plan(ReshapeRequest const& req) {
+    // Hardwired query plan for scan query
+    // Tier1
+    // - List of range scan operators
+    // Tier2
+    // - If group-by is enabled:
+    //   - Transform ids and matcher (generate new names)
+    //   - Add merge materialization step (series or time order, depending on the
+    //     order-by clause.
+    // - Otherwise
+    //   - If oreder-by is series add chain materialization step.
+    //   - Otherwise add merge materializer.
+
+    std::unique_ptr<IQueryPlan> result;
+
+    if (req.agg.enabled || req.select.columns.size() != 1) {
+        AKU_PANIC("Invalid request");
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, req.select.columns.at(0).ids));
+
+    std::unique_ptr<MaterializationStep> t2stage;
+    if (req.group_by.enabled) {
+        std::vector<aku_ParamId> ids;
+        for(auto id: req.select.columns.at(0).ids) {
+            auto it = req.group_by.transient_map.find(id);
+            if (it != req.group_by.transient_map.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new MergeBy<OrderBy::SERIES>(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME>(std::move(ids)));
+        }
+    } else {
+        auto ids = req.select.columns.at(0).ids;
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new Chain(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME>(std::move(ids)));
+        }
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return result;
+}
+
+std::unique_ptr<IQueryPlan> QueryPlanBuilder::create(const ReshapeRequest& req) {
+    return scan_query_plan(req);
+}
 
 
 typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesT;
