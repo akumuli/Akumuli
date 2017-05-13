@@ -519,7 +519,53 @@ static std::unique_ptr<IQueryPlan> scan_query_plan(ReshapeRequest const& req) {
     return result;
 }
 
+static std::unique_ptr<IQueryPlan> aggregate_query_plan(ReshapeRequest const& req) {
+    // Hardwired query plan for aggregate query
+    // Tier1
+    // - List of aggregate operators
+    // Tier2
+    // - If group-by is enabled:
+    //   - Transform ids and matcher (generate new names)
+    //   - Add merge materialization step (series or time order, depending on the
+    //     order-by clause.
+    // - Otherwise
+    //   - If oreder-by is series add chain materialization step.
+    //   - Otherwise add merge materializer.
+
+    std::unique_ptr<IQueryPlan> result;
+
+    if (req.order_by == OrderBy::TIME || req.agg.enabled == false ||
+        req.agg.func.size() != 1 || req.agg.step != 0)
+    {
+        AKU_PANIC("Invalid request");
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    t1stage.reset(new AggregateProcessingStep(req.select.begin, req.select.end, req.select.columns.at(0).ids));
+
+    std::unique_ptr<MaterializationStep> t2stage;
+    if (req.group_by.enabled) {
+        std::vector<aku_ParamId> ids;
+        for(auto id: req.select.columns.at(0).ids) {
+            auto it = req.group_by.transient_map.find(id);
+            if (it != req.group_by.transient_map.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        t2stage.reset(new AggregateCombiner(std::move(ids), req.agg.func.front()));
+    } else {
+        auto ids = req.select.columns.at(0).ids;
+        t2stage.reset(new Aggregate(std::move(ids), req.agg.func.front()));
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return result;
+}
+
 std::unique_ptr<IQueryPlan> QueryPlanBuilder::create(const ReshapeRequest& req) {
+    if (req.agg.enabled && req.agg.step == 0) {
+        return aggregate_query_plan(req);
+    }
     return scan_query_plan(req);
 }
 
