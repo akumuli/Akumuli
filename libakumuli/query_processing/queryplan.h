@@ -32,7 +32,7 @@ struct IQueryPlan {
 };
 
 struct QueryPlanBuilder {
-    std::unique_ptr<IQueryPlan> create(const ReshapeRequest& req);
+    std::tuple<aku_Status, std::unique_ptr<IQueryPlan> > create(const ReshapeRequest& req);
 };
 
 /*

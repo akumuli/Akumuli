@@ -470,7 +470,7 @@ struct TwoStepQueryPlan : IQueryPlan {
 
 // ----------- Query plan builder ------------ //
 
-static std::unique_ptr<IQueryPlan> scan_query_plan(ReshapeRequest const& req) {
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for scan query
     // Tier1
     // - List of range scan operators
@@ -486,7 +486,7 @@ static std::unique_ptr<IQueryPlan> scan_query_plan(ReshapeRequest const& req) {
     std::unique_ptr<IQueryPlan> result;
 
     if (req.agg.enabled || req.select.columns.size() != 1) {
-        AKU_PANIC("Invalid request");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
@@ -516,10 +516,10 @@ static std::unique_ptr<IQueryPlan> scan_query_plan(ReshapeRequest const& req) {
     }
 
     result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
-    return result;
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-static std::unique_ptr<IQueryPlan> aggregate_query_plan(ReshapeRequest const& req) {
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> aggregate_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for aggregate query
     // Tier1
     // - List of aggregate operators
@@ -537,7 +537,7 @@ static std::unique_ptr<IQueryPlan> aggregate_query_plan(ReshapeRequest const& re
     if (req.order_by == OrderBy::TIME || req.agg.enabled == false ||
         req.agg.func.size() != 1 || req.agg.step != 0)
     {
-        AKU_PANIC("Invalid request");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
@@ -559,12 +559,81 @@ static std::unique_ptr<IQueryPlan> aggregate_query_plan(ReshapeRequest const& re
     }
 
     result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
-    return result;
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-std::unique_ptr<IQueryPlan> QueryPlanBuilder::create(const ReshapeRequest& req) {
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(ReshapeRequest const& req) {
+    std::unique_ptr<IQueryPlan> result;
+
+    // Group-by and aggregation is not supported currently
+    if (req.agg.enabled || req.group_by.enabled || req.select.columns.size() < 2) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    std::vector<aku_ParamId> t1ids;
+    int cardinality = static_cast<int>(req.select.columns.size());
+    for (size_t i = 0; i < req.select.columns.at(0).ids.size(); i++) {
+        for (int c = 0; c < cardinality; c++) {
+            t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
+        }
+    }
+    t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
+
+    std::unique_ptr<MaterializationStep> t2stage;
+
+    if (req.group_by.enabled) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    } else {
+        t2stage.reset(new Join(req.select.columns.at(0).ids, cardinality, req.order_by, req.select.begin, req.select.end));
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> group_aggregate_query_plan(ReshapeRequest const& req) {
+    // Hardwired query plan for group aggregate query
+    // Tier1
+    // - List of group aggregate operators
+    // Tier2
+    // - If group-by is enabled:
+    //   - Transform ids and matcher (generate new names)
+    //   - Add merge materialization step (series or time order, depending on the
+    //     order-by clause.
+    // - Otherwise
+    //   - If oreder-by is series add chain materialization step.
+    //   - Otherwise add merge materializer.
+    std::unique_ptr<IQueryPlan> result;
+
+    if (!req.agg.enabled || req.agg.step == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    t1stage.reset(new GroupAggregateProcessingStep(req.select.begin, req.select.end, req.agg.step, req.select.columns.at(0).ids));
+
+    std::unique_ptr<MaterializationStep> t2stage;
+    if (req.order_by == OrderBy::SERIES) {
+        t2stage.reset(new SeriesOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+    } else {
+        t2stage.reset(new TimeOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> QueryPlanBuilder::create(const ReshapeRequest& req) {
     if (req.agg.enabled && req.agg.step == 0) {
+        // Aggregate query
         return aggregate_query_plan(req);
+    } else if (req.agg.enabled && req.agg.step != 0) {
+        // Group aggregate query
+        return group_aggregate_query_plan(req);
+    } else if (req.agg.enabled == false && req.select.columns.size() > 1) {
+        // Join query
+        return join_query_plan(req);
     }
     return scan_query_plan(req);
 }
