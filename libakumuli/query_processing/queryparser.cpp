@@ -616,7 +616,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.group_by.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
@@ -691,7 +691,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.group_by.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
@@ -799,7 +799,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.group_by.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);

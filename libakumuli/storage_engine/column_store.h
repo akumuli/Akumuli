@@ -91,43 +91,12 @@ public:
     NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
-    /**
-     * Slice and dice data according to request and feed it to query processor.
-     * This method should be used for select and aggregate queries.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
-    /**
-     * Joins several columns together by timestamps. Can be used to create a table from
-     * several time-series that came from the same source. This query returns list of tuples.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
-    /**
-     * Group values by time and aggregate values in each bucket.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
     size_t _get_uncommitted_memory() const;
 
     //! For debug reports
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> _get_columns() {
         return columns_;
     }
-
-    /**
-     * Build a query plan from request and execute the query.
-     * This method should be a sole entry point for all queries.
-     * @param req is a data reshape request
-     * @param qproc is a stream processor
-     */
-    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     // -------------
     // New-style API
@@ -207,17 +176,6 @@ public:
 
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
-
-    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
-
-    /**
-     * New style query execution.
-     * Build a query plan from request and execute the query.
-     * This method should be a sole entry point for all queries.
-     * @param req is a data reshape request
-     * @param qproc is a stream processor
-     */
-    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
 
     /**
      * Closes the session. This method should unload all cached trees

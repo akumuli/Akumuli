@@ -10,6 +10,7 @@
 
 #include "akumuli.h"
 #include "storage_engine/column_store.h"
+#include "query_processing/queryplan.h"
 #include "log_iface.h"
 #include "status_util.h"
 
@@ -103,6 +104,20 @@ struct QueryProcessorMock : QP::IStreamProcessor {
 };
 
 
+void execute(std::shared_ptr<ColumnStore> cstore, IStreamProcessor* proc, ReshapeRequest const& req) {
+    aku_Status status;
+    std::unique_ptr<QP::IQueryPlan> query_plan;
+    std::tie(status, query_plan) = QP::QueryPlanBuilder::create(req);
+    if (status != AKU_SUCCESS) {
+        throw std::runtime_error("Can't create query plan");
+    }
+    if (proc->start()) {
+        QueryPlanExecutor executor;
+        executor.execute(*cstore, std::move(query_plan), *proc);
+        proc->stop();
+    }
+}
+
 BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     auto cstore = create_cstore();
     auto session = create_session(cstore);
@@ -121,7 +136,7 @@ BOOST_AUTO_TEST_CASE(Test_column_store_query_1) {
     req.select.columns.emplace_back();
     req.select.columns[0].ids.push_back(sample.paramid);
     req.order_by = OrderBy::SERIES;
-    session->execute_query(req, qproc);
+    execute(cstore, &qproc, req);
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
     BOOST_REQUIRE(qproc.samples.size() == 1);
     BOOST_REQUIRE(qproc.samples.at(0).paramid == sample.paramid);
@@ -174,7 +189,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == ids.size()/inc*timestamps.size());
         size_t niter = 0;
@@ -199,7 +214,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == invids.size()/inc*invtimestamps.size());
         size_t niter = 0;
@@ -224,7 +239,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), ids.size()/inc*timestamps.size());
         size_t niter = 0;
@@ -253,7 +268,7 @@ static void test_column_store_query(aku_Timestamp begin, aku_Timestamp end) {
             req.select.columns[0].ids.push_back(invids[i]);
         }
         req.order_by = OrderBy::TIME;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE_EQUAL(qproc.error, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(qproc.samples.size(), invids.size()/inc*invtimestamps.size());
         size_t niter = 0;
@@ -330,13 +345,13 @@ void test_groupby_query() {
         ReshapeRequest req = {};
         req.group_by.enabled = true;
         req.group_by.transient_map = translation_table;
-        req.group_by.matcher = matcher;
+        req.select.matcher = matcher;
         req.select.begin = begin;
         req.select.end = 1 + end;
         req.select.columns.emplace_back();
         req.select.columns.at(0).ids = ids;
         req.order_by = OrderBy::SERIES;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == timestamps.size()*ids.size());
         size_t niter = 0;
@@ -357,13 +372,13 @@ void test_groupby_query() {
         ReshapeRequest req = {};
         req.group_by.enabled = true;
         req.group_by.transient_map = translation_table;
-        req.group_by.matcher = matcher;
+        req.select.matcher = matcher;
         req.select.begin = begin;
         req.select.end = 1 + end;
         req.select.columns.emplace_back();
         req.select.columns.at(0).ids = ids;
         req.order_by = OrderBy::TIME;
-        session->execute_query(req, qproc);
+        execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
         BOOST_REQUIRE(qproc.samples.size() == timestamps.size()*ids.size());
         size_t niter = 0;
@@ -423,7 +438,7 @@ void test_reopen(aku_Timestamp begin, aku_Timestamp end) {
         req.select.columns[0].ids.push_back(ids[i]);
     }
     req.order_by = OrderBy::SERIES;
-    session->execute_query(req, qproc);
+    execute(cstore, &qproc, req);
 
     // Check everything
     BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -471,7 +486,7 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     req.select.end = end;
     req.select.columns.push_back({ids});
 
-    cstore->execute_query(req, mock);
+    execute(cstore, &mock, req);
 
     BOOST_REQUIRE_EQUAL(mock.samples.size(), ids.size());
     for (auto i = 0u; i < mock.samples.size(); i++) {
@@ -524,14 +539,14 @@ void test_aggregation_group_by(aku_Timestamp begin, aku_Timestamp end) {
     req.agg.enabled = true;
     req.agg.func = { AggregationFunction::SUM };
     req.group_by.enabled = true;
-    req.group_by.matcher = matcher;
+    req.select.matcher = matcher;
     req.group_by.transient_map = translation_table;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
     req.select.end = end;
     req.select.columns.push_back({ids});
 
-    cstore->execute_query(req, mock);
+    execute(cstore, &mock, req);
 
     std::vector<double> sums = {sum1, sum2};
     ids = {1, 2};
@@ -626,7 +641,7 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
 
-        cstore->execute_query(req, mock);
+        execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -655,7 +670,7 @@ void test_join(aku_Timestamp begin, aku_Timestamp end) {
         req.select.columns.push_back({col1});
         req.select.columns.push_back({col2});
 
-        cstore->execute_query(req, mock);
+        execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -709,7 +724,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col});
 
-        cstore->execute_query(req, mock);
+        execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -742,7 +757,7 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         req.select.end = end;
         req.select.columns.push_back({col});
 
-        cstore->execute_query(req, mock);
+        execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
         u32 ix = 0;
@@ -798,9 +813,9 @@ void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
     req.select.end = end;
     req.select.columns.push_back({ids});
     req.group_by.enabled = true;
-    req.group_by.matcher = std::make_shared<SeriesMatcher>(1);
-    req.group_by.matcher->_add("odd", 100);
-    req.group_by.matcher->_add("even", 200);
+    req.select.matcher = std::make_shared<SeriesMatcher>(1);
+    req.select.matcher->_add("odd", 100);
+    req.select.matcher->_add("even", 200);
     req.group_by.transient_map = {
         { 11, 100 },
         { 13, 100 },
@@ -814,7 +829,7 @@ void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
         { 18, 200 },
     };
 
-    cstore->execute_query(req, mock);
+    execute(cstore, &mock, req);
 
     std::vector<aku_ParamId> gids = { 100, 200 };
 

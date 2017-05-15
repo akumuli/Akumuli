@@ -20,6 +20,7 @@
 #include "util.h"
 #include "queryprocessor.h"
 #include "query_processing/queryparser.h"
+#include "query_processing/queryplan.h"
 #include "log_iface.h"
 #include "status_util.h"
 #include "datetime.h"
@@ -815,6 +816,47 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     return str.second;
 }
 
+aku_Status Storage::parse_query(boost::property_tree::ptree const& ptree, QP::ReshapeRequest* req) const {
+    using namespace QP;
+    QueryKind kind;
+    aku_Status status;
+
+    std::tie(status, kind) = QueryParser::get_query_kind(ptree);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    switch (kind) {
+    case QueryKind::SELECT_META:
+        Logger::msg(AKU_LOG_ERROR, "Metadata query is not supported");
+        return AKU_EBAD_ARG;
+    case QueryKind::AGGREGATE:
+        std::tie(status, *req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::GROUP_AGGREGATE:
+        std::tie(status, *req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::SELECT:
+        std::tie(status, *req) = QueryParser::parse_select_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::JOIN:
+        std::tie(status, *req) = QueryParser::parse_join_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    };
+    return AKU_SUCCESS;
+}
+
 void Storage::query(StorageSession const* session, InternalCursor* cur, const char* query) const {
     using namespace QP;
     boost::property_tree::ptree ptree;
@@ -834,153 +876,64 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
     std::shared_ptr<IStreamProcessor> proc;
     ReshapeRequest req;
 
-    switch (kind) {
-    case QueryKind::SELECT_META: {
-            std::vector<aku_ParamId> ids;
-            std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
-            if (proc->start()) {
-                proc->stop();
-            }
+    if (kind == QueryKind::SELECT_META) {
+        std::vector<aku_ParamId> ids;
+        std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
             return;
         }
-        break;
-    case QueryKind::AGGREGATE: {
-            std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            GroupByTime groupbytime;
-            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-            if (req.group_by.enabled) {
-                session->set_series_matcher(req.group_by.matcher);
-            } else {
-                // Matcher can be substituted by previous call
-                session->clear_series_matcher();
-            }
-
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
         }
-        break;
-    case QueryKind::GROUP_AGGREGATE: {
-            std::tie(status, req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            // Replace matcher with local one
+        proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+        if (proc->start()) {
+            proc->stop();
+        }
+        return;
+    } else {
+        status = parse_query(ptree, &req);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        GroupByTime groupbytime;
+        proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+        if (req.select.matcher) {
             session->set_series_matcher(req.select.matcher);
-
-            // Start scanning
-            GroupByTime groupbytime;
-            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
+        } else {
+            session->clear_series_matcher();
         }
-        break;
-    case QueryKind::SELECT: {
-            std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            GroupByTime groupbytime;
-            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-            if (req.group_by.enabled) {
-                session->set_series_matcher(req.group_by.matcher);
-            } else {
-                session->clear_series_matcher();
-            }
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
+        // Return error if no series was found
+        if (req.select.columns.empty()) {
+            cur->set_error(AKU_EQUERY_PARSING_ERROR);
+            return;
         }
-        break;
-    case QueryKind::JOIN: {
-            std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            // Replace matcher with local one
-            session->set_series_matcher(req.select.matcher);
-
-            // Start scanning
-            GroupByTime groupbytime;
-            proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
+        if (req.select.columns.at(0).ids.empty()) {
+            cur->set_error(AKU_ENOT_FOUND);
+            return;
         }
-        break;
-    };
-    if (proc->start()) {
-        cstore_->execute_query(req, *proc);
-        proc->stop();
+        std::unique_ptr<QP::IQueryPlan> query_plan;
+        std::tie(status, query_plan) = QP::QueryPlanBuilder::create(req);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        // TODO: log query plan if required
+        if (proc->start()) {
+            QueryPlanExecutor executor;
+            executor.execute(*cstore_, std::move(query_plan), *proc);
+            proc->stop();
+        }
     }
 }
 

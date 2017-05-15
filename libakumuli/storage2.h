@@ -81,6 +81,8 @@ class Storage : public std::enable_shared_from_this<Storage> {
     std::shared_ptr<MetadataStorage> metadata_;
 
     void start_sync_worker();
+
+    aku_Status parse_query(const boost::property_tree::ptree &ptree, QP::ReshapeRequest* req) const;
 public:
 
     // Create empty in-memory storage
