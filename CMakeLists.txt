@@ -42,8 +42,9 @@ find_package(Boost 1.54.0
 find_package(Log4Cxx REQUIRED)
 find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
-
 find_package(Threads REQUIRED)
+find_package(MicroHttpd REQUIRED)
+find_package(JeMalloc REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${APR_INCLUDE_DIR}")
@@ -68,4 +69,3 @@ add_subdirectory(fuzzers)
 
 enable_testing()
 add_subdirectory(unittests)
-

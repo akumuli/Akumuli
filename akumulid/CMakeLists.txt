@@ -15,7 +15,7 @@ add_executable(akumulid
 
 target_link_libraries(akumulid
     akumuli
-    sqlite3
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
