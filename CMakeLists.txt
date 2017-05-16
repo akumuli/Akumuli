@@ -43,7 +43,6 @@ find_package(Log4Cxx REQUIRED)
 find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
 find_package(Threads REQUIRED)
-find_package(MicroHttpd REQUIRED)
 find_package(JeMalloc REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
