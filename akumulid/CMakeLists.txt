@@ -20,7 +20,7 @@ target_link_libraries(akumulid
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    microhttpd
+    ${LIBMICROHTTPD_LIBRARY}
 )
 
 include(CppcheckTargets)

@@ -44,11 +44,13 @@ find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
 find_package(Threads REQUIRED)
 find_package(JeMalloc REQUIRED)
+find_package(libmicrohttpd REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${APR_INCLUDE_DIR}")
 include_directories("${APRUTIL_INCLUDE_DIR}")
 include_directories("${SQLITE3_INCLUDE_DIR}")
+include_directories("${LIBMICROHTTPD_INCLUDE_DIRS}")
 
 #if(CMAKE_COMPILER_IS_GNUCXX)
 add_definitions(-std=c++1y -fvisibility=hidden)

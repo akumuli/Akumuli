@@ -69,9 +69,9 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(test_tcp_server
-    jemalloc
     akumuli
-    sqlite3
+    "${JEMALLOC_LIBRARY}"
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -92,8 +92,8 @@ add_executable(
 target_link_libraries(
     test_querycursor
     akumuli
-    jemalloc
-    sqlite3
+    "${JEMALLOC_LIBRARY}"
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
