@@ -109,7 +109,6 @@ struct Selection {
 struct GroupBy {
     bool enabled;
     std::unordered_map<aku_ParamId, aku_ParamId> transient_map;
-    std::shared_ptr<SeriesMatcher> matcher;
 };
 
 //! Output order

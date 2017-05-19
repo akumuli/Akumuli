@@ -101,6 +101,7 @@ struct MergeMaterializer : ColumnMaterializer {
     MergeMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<RealValuedOperator>>&& it)
         : iters_(std::move(it))
         , ids_(std::move(ids))
+        , forward_(true)
     {
         if (!iters_.empty()) {
             forward_ = iters_.front()->get_direction() == RealValuedOperator::Direction::FORWARD;
@@ -209,18 +210,20 @@ struct MergeMaterializer : ColumnMaterializer {
 
 };
 
-/**
- * Merges several materialized tuple sequences into one
- */
-struct MergeJoinMaterializer : ColumnMaterializer {
+namespace MergeJoinUtil {
+namespace {
+    std::tuple<aku_Timestamp, aku_ParamId> make_tord(aku_Sample const* s) {
+        return std::make_tuple(s->timestamp, s->paramid);
+    }
 
-    enum {
-        RANGE_SIZE=1024
-    };
+    std::tuple<aku_ParamId, aku_Timestamp> make_sord(aku_Sample const* s) {
+        return std::make_tuple(s->paramid, s->timestamp);
+    }
+}
 
-    template<int dir>
-    struct OrderByTimestamp {
-        typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    template<int dir, class TKey, TKey (*fnmake)(const aku_Sample*)>  // TKey expected to be tuple
+    struct OrderBy {
+        typedef TKey KeyType;
         struct HeapItem {
             KeyType key;
             aku_Sample const* sample;
@@ -235,6 +238,27 @@ struct MergeJoinMaterializer : ColumnMaterializer {
             }
             return less_(lhs.key, rhs.key);
         }
+
+        static KeyType make_key(aku_Sample const* sample) {
+            return fnmake(sample);
+        }
+    };
+
+    template<int dir>
+    using OrderByTimestamp = OrderBy<dir, std::tuple<aku_Timestamp, aku_ParamId>, &make_tord>;
+
+    template<int dir>
+    using OrderBySeries = OrderBy<dir, std::tuple<aku_ParamId, aku_Timestamp>, &make_sord>;
+};
+
+/**
+ * Merges several materialized tuple sequences into one
+ */
+template<template <int dir> class CmpPred>
+struct MergeJoinMaterializer : ColumnMaterializer {
+
+    enum {
+        RANGE_SIZE=1024
     };
 
     struct Range {
@@ -268,7 +292,7 @@ struct MergeJoinMaterializer : ColumnMaterializer {
         std::tuple<aku_Timestamp, aku_ParamId> top_key() const {
             u8 const* top = buffer.data() + pos;
             aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(top);
-            return std::make_tuple(sample->timestamp, sample->paramid);
+            return CmpPred<0>::make_key(sample);  // Direction doesn't matter here
         }
 
         aku_Sample const* top() const {
@@ -281,9 +305,18 @@ struct MergeJoinMaterializer : ColumnMaterializer {
     bool forward_;
     std::vector<Range> ranges_;
 
-    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward);
+    MergeJoinMaterializer(std::vector<std::unique_ptr<ColumnMaterializer>>&& it, bool forward)
+        : iters_(std::move(it))
+        , forward_(forward)
+    {
+    }
 
-    virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) override;
+    virtual std::tuple<aku_Status, size_t> read(u8* dest, size_t size) {
+        if (forward_) {
+            return kway_merge<0>(dest, size);
+        }
+        return kway_merge<1>(dest, size);
+    }
 
     template<int dir>
     std::tuple<aku_Status, size_t> kway_merge(u8* dest, size_t size) {
@@ -309,7 +342,7 @@ struct MergeJoinMaterializer : ColumnMaterializer {
             }
         }
 
-        typedef OrderByTimestamp<dir> Comp;
+        typedef CmpPred<dir> Comp;
         typedef typename Comp::HeapItem HeapItem;
         typedef typename Comp::KeyType KeyType;
         typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;

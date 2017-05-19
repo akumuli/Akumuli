@@ -31,8 +31,8 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_pipeline
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -53,8 +53,8 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_tcp_server
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -101,7 +101,7 @@ add_executable(
 
 target_link_libraries(
     perf_datetime_parsing
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_datetime_parsing PROPERTIES EXCLUDE_FROM_ALL 1)
@@ -158,8 +158,8 @@ set_target_properties(perf_compression_throughput PROPERTIES EXCLUDE_FROM_ALL 1)
 add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -190,7 +190,7 @@ add_executable(
 
 target_link_libraries(
     perf_invertedindex
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)
@@ -210,7 +210,7 @@ add_executable(
 
 target_link_libraries(
     perf_blockstore
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
@@ -234,7 +234,7 @@ add_executable(
 
 target_link_libraries(
     perf_nbtree
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}

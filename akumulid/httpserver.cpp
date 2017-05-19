@@ -39,8 +39,8 @@ static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
 static void free_callback(void *data) {
     ReadOperation* cur = (ReadOperation*)data;
     cur->close();
-    delete cur;
     logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " destroyed";
+    delete cur;
 }
 
 static int accept_connection(void           *cls,

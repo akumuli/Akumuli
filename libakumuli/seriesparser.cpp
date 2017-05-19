@@ -250,7 +250,7 @@ aku_Status SeriesParser::to_normal_form(const char* begin, const char* end,
         return AKU_EBAD_DATA;
     }
 
-    std::sort(tags, tags + ix_tag, [tags, end](const char* lhs, const char* rhs) {
+    auto sort_pred = [tags, end](const char* lhs, const char* rhs) {
         // lhs should be always less thenn rhs
         auto lenl = 0u;
         auto lenr = 0u;
@@ -277,8 +277,10 @@ aku_Status SeriesParser::to_normal_form(const char* begin, const char* end,
             it++;
         }
         return true;
-    });
+    };
 
+    std::sort(tags, tags + ix_tag, std::ref(sort_pred));  // std::sort can't move from predicate if predicate is a rvalue
+                                                          // nor it can pass predicate by reference
     // Copy tags to output string
     for (auto i = 0u; i < ix_tag; i++) {
         // insert space

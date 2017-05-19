@@ -75,7 +75,7 @@ public:
     ColumnStore& operator = (ColumnStore const&) = delete;
 
     //! Open storage or restore if needed
-    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping);
+    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping, bool force_init=false);
 
     std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
 
@@ -91,29 +91,6 @@ public:
     NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
-    /**
-     * Slice and dice data according to request and feed it to query processor.
-     * This method should be used for select and aggregate queries.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
-    /**
-     * Joins several columns together by timestamps. Can be used to create a table from
-     * several time-series that came from the same source. This query returns list of tuples.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
-    /**
-     * Group values by time and aggregate values in each bucket.
-     * @param req is a request that describes how data should be queried
-     * @param qproc is the output processor
-     */
-    void group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
-
     size_t _get_uncommitted_memory() const;
 
     //! For debug reports
@@ -121,13 +98,61 @@ public:
         return columns_;
     }
 
-    /**
-     * Build a query plan from request and execute the query.
-     * This method should be a sole entry point for all queries.
-     * @param req is a data reshape request
-     * @param qproc is a stream processor
-     */
-    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    // -------------
+    // New-style API
+    // -------------
+
+    template<class IterType, class Fn>
+    aku_Status iterate(const std::vector<aku_ParamId>& ids,
+                      std::vector<std::unique_ptr<IterType>>* dest,
+                      const Fn& fn) const
+    {
+        for (auto id: ids) {
+            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
+            auto it = columns_.find(id);
+            if (it != columns_.end()) {
+                if (!it->second->is_initialized()) {
+                    it->second->force_init();
+                }
+                std::unique_ptr<IterType> iter = fn(*it->second);
+                dest->push_back(std::move(iter));
+            } else {
+                return AKU_ENOT_FOUND;
+            }
+        }
+        return AKU_SUCCESS;
+    }
+
+    aku_Status scan(std::vector<aku_ParamId> const& ids,
+                    aku_Timestamp begin,
+                    aku_Timestamp end,
+                    std::vector<std::unique_ptr<RealValuedOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
+            return elist.search(begin, end);
+        });
+    }
+
+    aku_Status aggregate(std::vector<aku_ParamId> const& ids,
+                         aku_Timestamp begin,
+                         aku_Timestamp end,
+                         std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
+            return elist.aggregate(begin, end);
+        });
+    }
+
+    aku_Status group_aggregate(std::vector<aku_ParamId> const& ids,
+                               aku_Timestamp begin,
+                               aku_Timestamp end,
+                               aku_Timestamp step,
+                               std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, step](const NBTreeExtentsList& elist) {
+            return elist.group_aggregate(begin, end, step);
+        });
+    }
 };
 
 
@@ -152,16 +177,10 @@ public:
     //! Write sample
     NBTreeAppendResult write(const aku_Sample &sample, std::vector<LogicAddr>* rescue_points);
 
-    void query(const QP::ReshapeRequest &req, QP::IStreamProcessor& qproc);
-
     /**
-     * New style query execution.
-     * Build a query plan from request and execute the query.
-     * This method should be a sole entry point for all queries.
-     * @param req is a data reshape request
-     * @param qproc is a stream processor
+     * Closes the session. This method should unload all cached trees
      */
-    void execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc);
+    void close();
 };
 
 }}  // namespace

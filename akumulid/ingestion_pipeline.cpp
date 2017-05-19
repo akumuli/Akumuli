@@ -81,7 +81,12 @@ AkumuliConnection::AkumuliConnection(const char *path)
 
 AkumuliConnection::~AkumuliConnection() {
     db_logger_.info() << "Close database at: " << dbpath_;
-    aku_close_database(db_);
+    try {
+        aku_close_database(db_);
+    } catch (...) {
+        db_logger_.error() << boost::current_exception_diagnostic_information(true);
+        std::terminate();
+    }
 }
 
 std::string AkumuliConnection::get_all_stats() {

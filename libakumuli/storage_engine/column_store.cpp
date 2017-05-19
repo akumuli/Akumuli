@@ -1,7 +1,6 @@
 #include "column_store.h"
 #include "log_iface.h"
 #include "status_util.h"
-//#include "query_processing/queryparser.h"
 #include "query_processing/queryplan.h"
 #include "operators/aggregate.h"
 #include "operators/scan.h"
@@ -15,30 +14,6 @@ namespace StorageEngine {
 
 using namespace QP;
 
-static std::string to_string(ReshapeRequest const& req) {
-    std::stringstream str;
-    str << "ReshapeRequest(";
-    switch (req.order_by) {
-    case OrderBy::SERIES:
-        str << "order-by: series, ";
-        break;
-    case OrderBy::TIME:
-        str << "order-by: time, ";
-        break;
-    };
-    if (req.group_by.enabled) {
-        str << "group-by: enabled, ";
-    } else {
-        str << "group-by: disabled, ";
-    }
-    str << "range-begin: " << req.select.begin << ", range-end: " << req.select.end << ", ";
-    str << "select: " << req.select.columns.size() << ")";
-    return str.str();
-}
-
-static const size_t RANGE_SIZE = 1024;
-
-
 
 // ////////////// //
 //  Column-store  //
@@ -49,7 +24,7 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
-aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping) {
+aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping, bool force_init) {
     for (auto it: mapping) {
         aku_ParamId id = it.first;
         std::vector<LogicAddr> const& rescue_points = it.second;
@@ -69,7 +44,9 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
         } else {
             columns_[id] = std::move(tree);
         }
-        columns_[id]->force_init();
+        if (force_init) {
+            columns_[id]->force_init();
+        }
     }
     return AKU_SUCCESS;
 }
@@ -79,8 +56,10 @@ std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnSto
     std::lock_guard<std::mutex> tl(table_lock_);
     Logger::msg(AKU_LOG_INFO, "Column-store commit called");
     for (auto it: columns_) {
-        auto addrlist = it.second->close();
-        result[it.first] = addrlist;
+        if (it.second->is_initialized()) {
+            auto addrlist = it.second->close();
+            result[it.first] = addrlist;
+        }
     }
     Logger::msg(AKU_LOG_INFO, "Column-store commit completed");
     return result;
@@ -101,466 +80,13 @@ aku_Status ColumnStore::create_new_column(aku_ParamId id) {
     }
 }
 
-
-struct QueryExecutor {
-
-    void execute(std::unique_ptr<ColumnMaterializer>&& iter, QP::IStreamProcessor& qproc) {
-        const size_t dest_size = 0x1000;
-        std::vector<aku_Sample> dest;
-        dest.resize(dest_size);
-        aku_Status status = AKU_SUCCESS;
-        while(status == AKU_SUCCESS) {
-            size_t size;
-            // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
-            //
-            std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size*sizeof(aku_Sample));
-            if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
-                Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
-                qproc.set_error(status);
-                return;
-            }
-            size_t ixsize = size / sizeof(aku_Sample);
-            for (size_t ix = 0; ix < ixsize; ix++) {
-                if (!qproc.put(dest[ix])) {
-                    Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
-                    return;
-                }
-            }
-        }
-    }
-};
-
-void ColumnStore::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
-    QP::QueryPlan plan(req);
-
-    struct Tier1Context {
-        std::vector<std::unique_ptr<RealValuedOperator>>     scanlist;
-        std::vector<std::unique_ptr<AggregateOperator>>      agglist;
-    };
-
-    Tier1Context t1ctx;
-
-    auto build_scan_operator = [this, &t1ctx](const QP::QueryPlanStage& stage) {
-        std::vector<std::unique_ptr<RealValuedOperator>> iters;
-        for (auto id: stage.opt_ids_) {
-            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-            auto it = columns_.find(id);
-            if (it != columns_.end()) {
-                auto begin = stage.time_range_.first;
-                auto end = stage.time_range_.second;
-                std::unique_ptr<RealValuedOperator> iter = it->second->search(begin, end);
-                iters.push_back(std::move(iter));
-            } else {
-                return AKU_ENOT_FOUND;
-            }
-        }
-        t1ctx.scanlist = std::move(iters);
-        return AKU_SUCCESS;
-    };
-
-    struct Tier2Context {
-        std::unique_ptr<ColumnMaterializer> iter;
-    };
-
-    Tier2Context t2ctx;
-
-    auto build_merge_by_series_materializer = [&](QP::QueryPlanStage& stage) {
-        auto iters = std::move(t1ctx.scanlist);
-        t2ctx.iter.reset(new MergeMaterializer<SeriesOrder>(std::move(stage.opt_ids_), std::move(iters)));
-        return AKU_SUCCESS;
-    };
-
-    auto build_merge_by_time_materializer = [&](QP::QueryPlanStage& stage) {
-        auto iters = std::move(t1ctx.scanlist);
-        t2ctx.iter.reset(new MergeMaterializer<TimeOrder>(std::move(stage.opt_ids_), std::move(iters)));
-        return AKU_SUCCESS;
-    };
-
-    auto build_chain_materializer = [&](QP::QueryPlanStage& stage) {
-        auto iters = std::move(t1ctx.scanlist);
-        t2ctx.iter.reset(new ChainMaterializer(std::move(stage.opt_ids_), std::move(iters)));
-        return AKU_SUCCESS;
-    };
-
-
-    struct Tier3Context {
-    };
-
-
-    Tier3Context t3ctx;
-
-    AKU_UNUSED(t3ctx);
-
-    aku_Status status;
-    int top_tier = 0;
-    // Loop can modify `plan` in place
-    for (auto& stage: plan.stages_) {
-        switch(stage->tier_) {
-        case 1:
-            switch (stage->op_.tier1) {
-            case Tier1Operator::RANGE_SCAN:
-                status = build_scan_operator(*stage);
-                if (status != AKU_SUCCESS) {
-                    qproc.set_error(status);
-                    return;
-                }
-                break;
-            };
-            top_tier = 1;
-            break;
-        case 2:
-            switch (stage->op_.tier2) {
-            case Tier2Operator::MERGE_SERIES_ORDER:
-                status = build_merge_by_series_materializer(*stage);
-                if (status != AKU_SUCCESS) {
-                    qproc.set_error(status);
-                    return;
-                }
-                break;
-            case Tier2Operator::MERGE_TIME_ORDER:
-                status = build_merge_by_time_materializer(*stage);
-                if (status != AKU_SUCCESS) {
-                    qproc.set_error(status);
-                    return;
-                }
-                break;
-            case Tier2Operator::CHAIN_SERIES:
-                status = build_chain_materializer(*stage);
-                if (status != AKU_SUCCESS) {
-                    qproc.set_error(status);
-                    return;
-                }
-                break;
-            };
-            top_tier = 2;
-            break;
-        case 3:
-            top_tier = 3;
-            break;
-        default:
-            AKU_PANIC("Invalid query plan");
-        }
-    }
-
-    QueryExecutor exec;
-    if (top_tier == 2) {
-        Logger::msg(AKU_LOG_INFO, "Executiong tier-2 query");
-        exec.execute(std::move(t2ctx.iter), qproc);
-        return;
-    }
-    Logger::msg(AKU_LOG_ERROR, "Empty query plan!");
-    qproc.set_error(AKU_EBAD_ARG);
-}
-
-void ColumnStore::query(const ReshapeRequest &req, QP::IStreamProcessor& qproc) {
-    Logger::msg(AKU_LOG_TRACE, "ColumnStore `select` query: " + to_string(req));
-
-    // Query validations
-    if (req.select.columns.size() > 1) {
-        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, too many columns");
-        qproc.set_error(AKU_EBAD_ARG);
-        return;
-    } else if (req.select.columns.size() == 0) {
-        Logger::msg(AKU_LOG_ERROR, "Bad column-store `select` request, no columns");
-        qproc.set_error(AKU_EBAD_ARG);
-        return;
-    }
-    if (req.agg.enabled) {
-        if (req.agg.func.size() > 1) {
-            Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggregate` request, too many aggregation functions (not yet supported)");
-            qproc.set_error(AKU_EBAD_ARG);
-            return;
-        } else if (req.agg.func.empty()) {
-            Logger::msg(AKU_LOG_ERROR, "Bad column-store `aggregate` request, aggregation function is not set");
-            qproc.set_error(AKU_EBAD_ARG);
-            return;
-        }
-    }
-
-    std::unique_ptr<ColumnMaterializer> iter;
-    auto ids = req.select.columns.at(0).ids;
-    if (req.agg.enabled) {
-        std::vector<std::unique_ptr<AggregateOperator>> agglist;
-        for (auto id: req.select.columns.at(0).ids) {
-            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-            auto it = columns_.find(id);
-            if (it != columns_.end()) {
-                std::unique_ptr<AggregateOperator> agg = it->second->aggregate(req.select.begin, req.select.end);
-                agglist.push_back(std::move(agg));
-            } else {
-                qproc.set_error(AKU_ENOT_FOUND);
-                return;
-            }
-        }
-        if (req.group_by.enabled) {
-            std::map<aku_ParamId, std::unique_ptr<CombineAggregateOperator>> grouping;
-            for (size_t i = 0; i < ids.size(); i++) {
-                auto oldid = ids[i];
-                auto it = req.group_by.transient_map.find(oldid);
-                if (it != req.group_by.transient_map.end()) {
-                    ids[i] = it->second;
-                } else {
-                    // Bad transient id mapping found!
-                    qproc.set_error(AKU_ENOT_FOUND);
-                    return;
-                }
-            }
-            for (size_t i = 0; i < ids.size(); i++) {
-                if (!agglist.at(i)) {
-                    // One aggregator can't be included into several groupings.
-                    // Probably, this is caused by the algorithm failure.
-                    AKU_PANIC("Query processor failure");
-                }
-                auto agg = std::move(agglist.at(i));
-                auto id  = ids[i];
-                if (grouping.count(id) == 0) {
-                    std::vector<std::unique_ptr<AggregateOperator>> vec;
-                    vec.push_back(std::move(agg));
-                    grouping[id] = std::unique_ptr<CombineAggregateOperator>(new CombineAggregateOperator(std::move(vec)));
-                } else {
-                    grouping[id]->add(std::move(agg));
-                }
-            }
-            agglist.clear();
-            ids.clear();
-            for (auto& kv: grouping) {
-                ids.push_back(kv.first);
-                agglist.push_back(std::move(kv.second));
-            }
-            if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new AggregateMaterializer(std::move(ids), std::move(agglist), req.agg.func.front()));
-            } else {
-                // Error: invalid query
-                Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
-                qproc.set_error(AKU_ENOT_PERMITTED);
-                return;
-            }
-        } else {
-            if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new AggregateMaterializer(std::move(ids), std::move(agglist), req.agg.func.front()));
-            } else {
-                // Error: invalid query
-                Logger::msg(AKU_LOG_ERROR, "Bad `aggregate` query, order-by statement not supported");
-                qproc.set_error(AKU_ENOT_PERMITTED);
-                return;
-            }
-        }
-    } else {
-        std::vector<std::unique_ptr<RealValuedOperator>> iters;
-        for (auto id: req.select.columns.at(0).ids) {
-            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-            auto it = columns_.find(id);
-            if (it != columns_.end()) {
-                std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
-                iters.push_back(std::move(iter));
-            } else {
-                qproc.set_error(AKU_ENOT_FOUND);
-                return;
-            }
-        }
-        if (req.group_by.enabled) {
-            // Transform each id
-            for (size_t i = 0; i < ids.size(); i++) {
-                auto oldid = ids[i];
-                auto it = req.group_by.transient_map.find(oldid);
-                if (it != req.group_by.transient_map.end()) {
-                    ids[i] = it->second;
-                } else {
-                    // Bad transient id mapping found!
-                    qproc.set_error(AKU_ENOT_FOUND);
-                    return;
-                }
-            }
-            if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new MergeMaterializer<SeriesOrder>(std::move(ids), std::move(iters)));
-            } else {
-                iter.reset(new MergeMaterializer<TimeOrder>(std::move(ids), std::move(iters)));
-            }
-        } else {
-            if (req.order_by == OrderBy::SERIES) {
-                iter.reset(new ChainMaterializer(std::move(ids), std::move(iters)));
-            } else {
-                iter.reset(new MergeMaterializer<TimeOrder>(std::move(ids), std::move(iters)));
-            }
-        }
-    }
-
-    const size_t dest_size = 0x1000;
-    std::vector<aku_Sample> dest;
-    dest.resize(dest_size);
-    aku_Status status = AKU_SUCCESS;
-    while(status == AKU_SUCCESS) {
-        size_t size;
-        // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
-        //
-        std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size*sizeof(aku_Sample));
-        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
-            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
-            qproc.set_error(status);
-            return;
-        }
-        size_t ixsize = size / sizeof(aku_Sample);
-        for (size_t ix = 0; ix < ixsize; ix++) {
-            if (!qproc.put(dest[ix])) {
-                Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
-                return;
-            }
-        }
-    }
-}
-
-void ColumnStore::join_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
-    Logger::msg(AKU_LOG_TRACE, "ColumnStore `json` query: " + to_string(req));
-    if (req.select.columns.size() < 2) {
-        Logger::msg(AKU_LOG_ERROR, "Bad column-store `join` request, not enough columns");
-        qproc.set_error(AKU_EBAD_ARG);
-        return;
-    }
-    std::vector<std::unique_ptr<ColumnMaterializer>> iters;
-    for (u32 ix = 0; ix < req.select.columns.front().ids.size(); ix++) {
-        std::vector<std::unique_ptr<RealValuedOperator>> row;
-        std::vector<aku_ParamId> ids;
-        for (u32 col = 0; col < req.select.columns.size(); col++) {
-            auto id = req.select.columns[col].ids[ix];
-            ids.push_back(id);
-            std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-            auto it = columns_.find(id);
-            if (it != columns_.end()) {
-                std::unique_ptr<RealValuedOperator> iter = it->second->search(req.select.begin, req.select.end);
-                row.push_back(std::move(iter));
-            } else {
-                qproc.set_error(AKU_ENOT_FOUND);
-                return;
-            }
-        }
-        auto it = new JoinMaterializer(std::move(row), ids.front());
-        iters.push_back(std::unique_ptr<JoinMaterializer>(it));
-    }
-
-    if (req.order_by == OrderBy::SERIES) {
-        for (auto& it: iters) {
-            const size_t dest_size = 4096;
-            std::vector<u8> dest;
-            dest.resize(dest_size);
-            aku_Status status = AKU_SUCCESS;
-            while(status == AKU_SUCCESS) {
-                size_t size;
-                std::tie(status, size) = it->read(dest.data(), dest_size);
-                if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
-                    Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
-                    qproc.set_error(status);
-                    return;
-                }
-                // Parse `dest` buffer
-                u8 const* ptr = dest.data();
-                u8 const* end = ptr + size;
-                while (ptr < end) {
-                    aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(ptr);
-                    if (!qproc.put(*sample)) {
-                        Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
-                        return;
-                    }
-                    ptr += sample->payload.size;
-                }
-            }
-        }
-    } else {
-        std::unique_ptr<ColumnMaterializer> iter;
-        bool forward = req.select.begin < req.select.end;
-        iter.reset(new MergeJoinMaterializer(std::move(iters), forward));
-
-        const size_t dest_size = 0x1000;
-        std::vector<u8> dest;
-        dest.resize(dest_size);
-        aku_Status status = AKU_SUCCESS;
-        while(status == AKU_SUCCESS) {
-            size_t size;
-            std::tie(status, size) = iter->read(dest.data(), dest_size);
-            if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
-                Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
-                qproc.set_error(status);
-                return;
-            }
-            size_t pos = 0;
-            while(pos < size) {
-                aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
-                if (!qproc.put(*sample)) {
-                    Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
-                    return;
-                }
-                pos += sample->payload.size;
-            }
-        }
-    }
-}
-
-void ColumnStore::group_aggregate_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
-    Logger::msg(AKU_LOG_TRACE, "ColumnStore `json` query: " + to_string(req));
-    if (req.select.columns.size() > 1) {
-        Logger::msg(AKU_LOG_ERROR, "Bad column-store `group-aggregate` request, too many columns");
-        qproc.set_error(AKU_EBAD_ARG);
-        return;
-    }
-    if (!req.agg.enabled || req.agg.step == 0) {
-        Logger::msg(AKU_LOG_ERROR, "Bad column-store `group-aggregate` request, aggregation disabled");
-        qproc.set_error(AKU_EBAD_ARG);
-        return;
-    }
-    std::vector<std::unique_ptr<AggregateOperator>> agglist;
-    for (auto id: req.select.columns.at(0).ids) {
-        std::lock_guard<std::mutex> lg(table_lock_); AKU_UNUSED(lg);
-        auto it = columns_.find(id);
-        if (it != columns_.end()) {
-            std::unique_ptr<AggregateOperator> agg = it->second->group_aggregate(req.select.begin, req.select.end, req.agg.step);
-            agglist.push_back(std::move(agg));
-        } else {
-            qproc.set_error(AKU_ENOT_FOUND);
-            return;
-        }
-    }
-    std::unique_ptr<ColumnMaterializer> iter;
-    auto ids = req.select.columns.at(0).ids;
-    if (req.group_by.enabled) {
-        // FIXME: Not yet supported
-        Logger::msg(AKU_LOG_ERROR, "Group-by in `group-aggregate` query is not supported yet");
-        qproc.set_error(AKU_ENOT_PERMITTED);
-        return;
-    } else {
-        if (req.order_by == OrderBy::SERIES) {
-            iter.reset(new SeriesOrderAggregateMaterializer(std::move(ids), std::move(agglist), req.agg.func));
-        } else {
-            iter.reset(new TimeOrderAggregateMaterializer(ids, agglist, req.agg.func));
-        }
-    }
-    const size_t dest_size = 0x1000;
-    std::vector<u8> dest;
-    dest.resize(dest_size);
-    aku_Status status = AKU_SUCCESS;
-    while(status == AKU_SUCCESS) {
-        size_t size;
-        std::tie(status, size) = iter->read(dest.data(), dest_size);
-        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
-            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
-            qproc.set_error(status);
-            return;
-        }
-        size_t pos = 0;
-        while(pos < size) {
-            aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
-            if (!qproc.put(*sample)) {
-                Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
-                return;
-            }
-            pos += sample->payload.size;
-        }
-    }
-}
-
 size_t ColumnStore::_get_uncommitted_memory() const {
     std::lock_guard<std::mutex> guard(table_lock_);
     size_t total_size = 0;
     for (auto const& p: columns_) {
-        total_size += p.second->_get_uncommitted_size();
+        if (p.second->is_initialized()) {
+            total_size += p.second->_get_uncommitted_size();
+        }
     }
     return total_size;
 }
@@ -572,6 +98,9 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     aku_ParamId id = sample.paramid;
     auto it = columns_.find(id);
     if (it != columns_.end()) {
+        if (!it->second->is_initialized()) {
+            it->second->force_init();
+        }
         auto tree = it->second;
         auto res = tree->append(sample.timestamp, sample.payload.float64);
         if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
@@ -579,6 +108,8 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
             rescue_points->swap(tmp);
         }
         if (cache_or_null != nullptr) {
+            // Tree is guaranteed to be initialized here, so all values in the cache
+            // don't need to be checked.
             cache_or_null->insert(std::make_pair(id, tree));
         }
         return res;
@@ -614,12 +145,9 @@ NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<Lo
     return cstore_->write(sample, rescue_points, &cache_);
 }
 
-void CStoreSession::query(const ReshapeRequest &req, QP::IStreamProcessor& proc) {
-    cstore_->query(req, proc);
-}
-
-void CStoreSession::execute_query(QP::ReshapeRequest const& req, QP::IStreamProcessor& qproc) {
-    cstore_->execute_query(req, qproc);
+void CStoreSession::close() {
+    // This method can't be implemented yet, because it will waste space.
+    // Leaf node recovery should be implemented first.
 }
 
 }}  // namespace
