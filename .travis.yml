@@ -73,8 +73,9 @@ deploy:
 after_failure:
   addons:
     artifacts:
+      debug: true
       paths:
-        - /tmp/akumuli.log
+      - /tmp/akumuli.log
 deploy:
   provider: s3
   access_key_id: $ARTIFACTS_KEY
