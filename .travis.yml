@@ -78,10 +78,10 @@ after_failure:
     artifacts:
       paths:
       - $HOME/akumuli.log
-deploy:
-  provider: s3
-  access_key_id: $ARTIFACTS_KEY
-  secret_access_key: $ARTIFACTS_SECRET
-  bucket: $ARTIFACTS_BUCKET
-  skip_cleanup: true
-  acl: public_read
+  deploy:
+    provider: s3
+    access_key_id: $ARTIFACTS_KEY
+    secret_access_key: $ARTIFACTS_SECRET
+    bucket: $ARTIFACTS_BUCKET
+    skip_cleanup: true
+    acl: public_read
