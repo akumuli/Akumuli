@@ -300,7 +300,7 @@ std::string cli_format(std::string dest) {
             pos = line.find(pattern, pos);
             if (pos != std::string::npos) {
                 // match
-                auto code = token_num % 2 ? NORM : open;
+                auto code = (token_num % 2) ? NORM : open;
                 line.replace(pos, strlen(pattern), code);
                 token_num++;
             }
