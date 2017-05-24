@@ -363,7 +363,7 @@ struct TcpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        if (sysconf(_SC_NPROCESSORS_ONLN <= 4))
+        if (sysconf(_SC_NPROCESSORS_ONLN) <= 4)
             settings.nworkers = 1;
         else
             settings.nworkers =  std::thread::hardwared_concurrency() * 0.75;
