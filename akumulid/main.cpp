@@ -64,7 +64,7 @@ port=8181
 # port number
 port=8282
 # worker pool size
-pool_size=1
+pool_size=0
 
 
 # UDP ingestion server config (delete to disable)
