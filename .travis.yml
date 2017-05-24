@@ -38,28 +38,27 @@ script:
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
 - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-# python functests/test_query_language.py akumulid/
-# python functests/test_volume_overflow.py akumulid/
-# python functests/test_database_overflow.py akumulid/
-# python functests/test_restart.py akumulid/
-# python functests/test_kill.py akumulid/
-# python functests/test_concurrency.py akumulid/
-# python functests/test_ingestion_errors.py akumulid/
+- python functests/test_query_language.py akumulid/
+- python functests/test_volume_overflow.py akumulid/
+- python functests/test_database_overflow.py akumulid/
+- python functests/test_restart.py akumulid/
+- python functests/test_kill.py akumulid/
+- python functests/test_concurrency.py akumulid/
+- python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
 # Run on expandable storage
 - python functests/akumulid_test_tools.py set_nvolumes 0
-# python functests/test_data_ingestion.py akumulid/ TCP
-# python functests/test_data_ingestion.py akumulid/ UDP
-# python functests/test_data_ingestion_bulk.py akumulid/ TCP
-# python functests/test_data_ingestion_bulk.py akumulid/ UDP
-# python functests/test_query_language.py akumulid/
-# python functests/test_volume_overflow.py akumulid/
-# python functests/test_restart.py akumulid/
-# python functests/test_kill.py akumulid/
-# python functests/test_concurrency.py akumulid/
-# python functests/test_join_query.py akumulid/
+- python functests/test_data_ingestion.py akumulid/ TCP
+- python functests/test_data_ingestion.py akumulid/ UDP
+- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+- python functests/test_query_language.py akumulid/
+- python functests/test_volume_overflow.py akumulid/
+- python functests/test_restart.py akumulid/
+- python functests/test_kill.py akumulid/
+- python functests/test_concurrency.py akumulid/
+- python functests/test_join_query.py akumulid/
 - cpack
-- cat $HOME/akumuli.log
 
 deploy:
   provider: packagecloud
@@ -79,12 +78,13 @@ addons:
   artifacts:
     paths:
       - $(git ls-files -o | tr "\n" ":")
+      - $HOME/akumuli.log
 
 deploy:
 - provider: s3
+- region: us-west-2
 - access_key_id: $ARTIFACTS_KEY
 - secret_access_key: $ARTIFACTS_SECRET
 - bucket: $ARTIFACTS_BUCKET
 - skip_cleanup: true
 - acl: public_read
-- region: us-west-2
