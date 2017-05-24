@@ -67,15 +67,11 @@ struct ScanProcessingStep : ProcessingPrelude {
     }
 
     virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
-        // TODO: remove
-        throw std::runtime_error("Scan failed");
-        /*
         if (scanlist_.empty()) {
             return AKU_ENO_DATA;
         }
         *dest = std::move(scanlist_);
         return AKU_SUCCESS;
-        */
     }
 
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
