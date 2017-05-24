@@ -74,15 +74,17 @@ deploy:
   skip_cleanup: true
 
 after_failure:
-  addons:
-    artifacts:
-      paths:
-        - $HOME/akumuli.log
-      provider: s3
-      access_key_id: $ARTIFACTS_KEY
-      secret_access_key: $ARTIFACTS_SECRET
-      bucket: $ARTIFACTS_BUCKET
-      skip_cleanup: true
-      acl: public_read
-      region: us-west-2
-  skip_cleanup: true
+
+addons:
+  artifacts:
+    paths:
+      - $(git ls-files -o | tr "\n" ":")
+
+deploy:
+- provider: s3
+- access_key_id: $ARTIFACTS_KEY
+- secret_access_key: $ARTIFACTS_SECRET
+- bucket: $ARTIFACTS_BUCKET
+- skip_cleanup: true
+- acl: public_read
+- region: us-west-2
