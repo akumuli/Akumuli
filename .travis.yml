@@ -77,12 +77,10 @@ after_failure:
 addons:
   artifacts:
     paths:
-      - $(git ls-files -o | tr "\n" ":")
       - $HOME/akumuli.log
 
 deploy:
 - provider: s3
-- region: us-west-2
 - access_key_id: $ARTIFACTS_KEY
 - secret_access_key: $ARTIFACTS_SECRET
 - bucket: $ARTIFACTS_BUCKET
