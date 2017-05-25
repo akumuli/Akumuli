@@ -70,14 +70,14 @@ struct ServerFactory {
 
     typedef std::function<std::shared_ptr<Server>(std::shared_ptr<AkumuliConnection>,
                                                   std::shared_ptr<ReadOperationBuilder>,
-                                                  ServerSettings&)>
+                                                  const ServerSettings&)>
         Generator;
 
     std::map<std::string, Generator> gen_;
 
     std::shared_ptr<Server> create(std::shared_ptr<AkumuliConnection>    connection,
                                    std::shared_ptr<ReadOperationBuilder> qproc,
-                                   ServerSettings&                 settings) {
+                                   const ServerSettings&                 settings) {
         auto it = gen_.find(settings.name);
         if (it == gen_.end()) {
             return std::shared_ptr<Server>();
