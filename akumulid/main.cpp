@@ -63,8 +63,8 @@ port=8181
 [TCP]
 # port number
 port=8282
-# worker pool size
-pool_size=1
+# worker pool size (0 means that the size of the pool will be chosen automatically)
+pool_size=0
 
 
 # UDP ingestion server config (delete to disable)
