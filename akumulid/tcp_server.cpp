@@ -2,7 +2,6 @@
 #include "utility.h"
 #include <thread>
 #include <atomic>
-#include <unistd.h>
 #include <boost/function.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 
@@ -363,10 +362,12 @@ struct TcpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          ServerSettings& settings) {
-        if (sysconf(_SC_NPROCESSORS_ONLN) <= 4)
+        if ((int)std::thread::hardware_concurrency() <= 4) {
             settings.nworkers = 1;
-        else
-            settings.nworkers =  std::thread::hardware_concurrency() * 0.75;
+        }
+        else {
+            settings.nworkers =  (int)std::thread::hardware_concurrency() * 0.75;
+        }
         return std::make_shared<TcpServer>(con, settings.nworkers, settings.port);
     }
 };
