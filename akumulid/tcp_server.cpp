@@ -362,7 +362,14 @@ struct TcpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        return std::make_shared<TcpServer>(con, settings.nworkers, settings.port);
+        auto nworkers = settings.nworkers;
+        if ((int)std::thread::hardware_concurrency() <= 4) {
+            nworkers = 1;
+        }
+        else {
+            nworkers =  static_cast<int>(std::thread::hardware_concurrency() * 0.75);
+        }
+        return std::make_shared<TcpServer>(con, nworkers, settings.port);
     }
 };
 
