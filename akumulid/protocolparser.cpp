@@ -155,7 +155,7 @@ ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
     : done_(false)
     , rdbuf_(RDBUF_SIZE)
     , consumer_(consumer)
-    , logger_("protocol-parser", 32)
+    , logger_("protocol-parser")
 {
 }
 

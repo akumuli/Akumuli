@@ -25,7 +25,7 @@ TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool pa
     , strand_(*io)
     , spout_(spout)
     , parser_(spout)
-    , logger_(make_unique_session_name(), 10)
+    , logger_(make_unique_session_name())
 {
     logger_.info() << "Session created";
     parser_.start();
@@ -164,7 +164,7 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     , io_index_{0}
     , start_barrier_(2)
     , stop_barrier_(2)
-    , logger_("tcp-acceptor", 10)
+    , logger_("tcp-acceptor")
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
@@ -271,7 +271,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
-    , logger_("tcp-server", 32)
+    , logger_("tcp-server")
 {
     logger_.info() << "TCP server created, concurrency: " << concurrency;
     if (mode == Mode::EVENT_LOOP_PER_THREAD) {
@@ -313,7 +313,7 @@ void TcpServer::start(SignalHandler* sig, int id) {
             auto thread = pthread_self();
             pthread_setname_np(thread, "TCP-worker");
 #endif
-            Logger logger("tcp-server-worker", 10);
+            Logger logger("tcp-server-worker");
             try {
                 logger.info() << "Event loop " << cnt << " started";
                 io.run();

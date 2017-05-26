@@ -8,7 +8,7 @@
 namespace Akumuli {
 namespace Http {
 
-static Logger logger("http", 10);
+static Logger logger("http");
 
 //! Microhttpd callback functions
 namespace MHD {

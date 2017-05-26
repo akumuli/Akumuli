@@ -8,7 +8,7 @@
 
 namespace Akumuli {
 
-static Logger logger("query_results_pooler", 10);
+static Logger logger("query_results_pooler");
 
 static int popcount(u64 value) {
     u32 hi = static_cast<u32>(value);

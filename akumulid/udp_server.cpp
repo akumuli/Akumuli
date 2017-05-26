@@ -22,7 +22,7 @@ UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
     , stop_{0}
     , port_(port)
     , nworkers_(nworkers)
-    , logger_("UdpServer", 128)
+    , logger_("UdpServer")
 {
 }
 
