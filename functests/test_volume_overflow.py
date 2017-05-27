@@ -79,7 +79,9 @@ def read_in_backward_direction(batch_size):
 
             if iterations % batch_size == 0:
                 if iterations % (batch_size*1000) == 0:
-                    print("Read {0}".format(iterations))
+                    ts = datetime.datetime.now()
+                    ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+                    print("Read {0} - {1}".format(iterations, ts))
 
             iterations += 1
         except:

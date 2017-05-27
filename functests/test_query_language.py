@@ -29,7 +29,9 @@ def api_test(test_name):
             global g_num_fail
             n = g_test_run
             g_test_run += 1
-            print("Test #{0} - {1}".format(n, test_name))
+            ts = datetime.datetime.now()
+            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
             try:
                 func(*pos, **kv)
                 print("Test #{0} passed".format(n))

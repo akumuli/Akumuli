@@ -195,6 +195,8 @@ class Akumulid:
         subprocess.call([cmd, "--delete"])
 
     def serve(self):
+        ts = datetime.datetime.now()
+        print("Akumulid launch time: " + ts.strftime("%Y-%m-%d %H:%M:%S,%f"))
         cmd = os.path.join(self.__path, "akumulid")
         self.__process = subprocess.Popen([cmd])
 
