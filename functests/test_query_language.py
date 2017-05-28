@@ -835,6 +835,7 @@ def check_bad_query_handling():
                     for line in lines[:10]:
                         print(line.replace("\r", "\\r").replace("\n", "\\n"))
                     print("------------------------------")
+                    raise ValueError("Error expected")
                 else:
                     if not lines[0].startswith("-query parsing error"):
                         raise ValueError("Invalid response")

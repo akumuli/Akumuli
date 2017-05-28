@@ -395,7 +395,7 @@ void QueryResultsPooler::throw_if_not_started() const {
 
 void QueryResultsPooler::start() {
     throw_if_started();
-    enum Format { RESP, CSV };  // TODO: add protobuf support
+    enum Format { RESP, CSV };
     bool use_iso_timestamps = true;
     Format output_format = RESP;
     boost::property_tree::ptree tree;
