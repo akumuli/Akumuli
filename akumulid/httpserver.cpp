@@ -15,24 +15,11 @@ namespace MHD {
 static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
     ReadOperation* cur = (ReadOperation*)data;
-    auto status = cur->get_error();
-    if (status) {
-        const char* error_msg = aku_error_message(status);
-        logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " error (in callback): " << error_msg;
-        return MHD_CONTENT_READER_END_OF_STREAM;
-    }
     size_t sz;
     bool is_done;
     std::tie(sz, is_done) = cur->read_some(buf, max);
     if (is_done) {
-        // Check for error once again
-        auto status = cur->get_error();
-        if (status) {
-            const char* error_msg = aku_error_message(status);
-            logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " error (in callback): " << error_msg;
-        } else {
-            logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " done";
-        }
+        logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " done";
         return MHD_CONTENT_READER_END_OF_STREAM;
     } else {
         if (sz == 0u) {
