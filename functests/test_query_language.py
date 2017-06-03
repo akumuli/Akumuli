@@ -836,7 +836,7 @@ def check_bad_query_handling():
                         print(line.replace("\r", "\\r").replace("\n", "\\n"))
                     print("------------------------------")
                     raise ValueError("Error expected")
-                elif len(line) == 0:
+                elif len(lines) == 0:
                     print("Error: error message expected, empty response received")
                     raise ValueError("Error expected")
                 else:
