@@ -829,12 +829,15 @@ def check_bad_query_handling():
                 lines = []
                 for line in response:
                     lines.append(line)
-                if len(lines) != 1:
-                    print("Error: empty response expected, some data recieved. First 10 lines:")
+                if len(lines) > 1:
+                    print("Error: error message expected, some data recieved. First 10 lines:")
                     print("------------------------------")
                     for line in lines[:10]:
                         print(line.replace("\r", "\\r").replace("\n", "\\n"))
                     print("------------------------------")
+                    raise ValueError("Error expected")
+                elif len(line) == 0:
+                    print("Error: error message expected, empty response received")
                     raise ValueError("Error expected")
                 else:
                     if not lines[0].startswith("-query parsing error"):

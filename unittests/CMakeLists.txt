@@ -115,6 +115,7 @@ add_executable(
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/storage_engine/compression.cpp
 )
 
