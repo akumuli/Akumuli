@@ -63,7 +63,7 @@ port=8181
 [TCP]
 # port number
 port=8282
-# worker pool size
+# worker pool size (0 means that the size of the pool will be chosen automatically)
 pool_size=0
 
 
