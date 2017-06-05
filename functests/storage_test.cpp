@@ -180,6 +180,7 @@ struct LocalStorage : Storage {
     const i32 n_volumes_;
     const u32 durability_;
     bool enable_huge_tlb_;
+    bool enable_allocate_;
     const char* DBNAME_;
     aku_Database *db_;
     aku_Session  *session_;
@@ -192,7 +193,8 @@ struct LocalStorage : Storage {
             i32 n_volumes,
             // Open parameters, used unly to open database
             u32 durability = 1u,
-            bool huge_tlb = false
+            bool huge_tlb = false,
+            bool allocate = false
             )
         : work_dir_(work_dir)
         , compression_threshold_(compression_threshold)
@@ -200,6 +202,7 @@ struct LocalStorage : Storage {
         , n_volumes_(n_volumes)
         , durability_(durability)
         , enable_huge_tlb_(huge_tlb)
+        , enable_allocate_(allocate)
         , DBNAME_("test")
         , db_(nullptr)
         , session_(nullptr)
@@ -248,7 +251,7 @@ void LocalStorage::close() {
 }
 
 void LocalStorage::create_new() {
-    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_);
+    apr_status_t result = aku_create_database(DBNAME_, work_dir_.c_str(), work_dir_.c_str(), n_volumes_, enable_allocate_);
     throw_on_error(result);
 }
 
