@@ -1007,17 +1007,19 @@ aku_Status Storage::new_database( const char     *base_file_name
 
     StorageEngine::FileStorage::create(volmpage.string(), paths);
 
-    for (i32 i = 0; i < actual_nvols; i++) {
-        std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
-        boost::filesystem::path p = volpath / basename;
-        int fd = ::open(p.string().c_str(), O_WRONLY);
-        int ret = posix_fallocate(fd, 0, volume_size);
-        if (ret == 0) {
-            Logger::msg(AKU_LOG_INFO, "Preallocate file space success");
-        } else {
-            Logger::msg(AKU_LOG_ERROR, "Preallocate file space fail");
+    if (allocate) {
+        for (i32 i = 0; i < actual_nvols; i++) {
+            std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
+            boost::filesystem::path p = volpath / basename;
+            int fd = ::open(p.string().c_str(), O_WRONLY);
+            int ret = posix_fallocate(fd, 0, volume_size);
+            if (ret == 0) {
+                Logger::msg(AKU_LOG_INFO, "Preallocate file space success");
+            } else {
+                Logger::msg(AKU_LOG_ERROR, "Preallocate file space fail");
+            }
+            ::close(fd);
         }
-        ::close(fd);
     }
 
     // Create sqlite database for metadata
