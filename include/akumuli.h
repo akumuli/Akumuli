@@ -127,7 +127,7 @@ AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
  * @param num_volumes number of volumes to create
  */
 AKU_EXPORT aku_Status aku_create_database(const char* base_file_name, const char* metadata_path,
-                                          const char* volumes_path, i32 num_volumes);
+                                          const char* volumes_path, i32 num_volumes, bool allocate);
 
 /**
  * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
@@ -138,7 +138,7 @@ AKU_EXPORT aku_Status aku_create_database(const char* base_file_name, const char
  */
 AKU_EXPORT aku_Status aku_create_database_ex(const char* base_file_name, const char* metadata_path,
                                              const char* volumes_path, i32 num_volumes,
-                                             u64 page_size);
+                                             u64 page_size, bool allocate);
 
 
 /** Remove all volumes.

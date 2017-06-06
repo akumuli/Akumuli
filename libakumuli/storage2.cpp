@@ -946,7 +946,8 @@ aku_Status Storage::new_database( const char     *base_file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , i32             num_volumes
-                                , u64             volume_size)
+                                , u64             volume_size
+                                , bool            allocate)
 {
     // Check for max volume size
     const u64 MAX_SIZE = 0x100000000 * 4096 - 1;  // 15TB
@@ -1005,6 +1006,21 @@ aku_Status Storage::new_database( const char     *base_file_name
     boost::filesystem::path volmpage = volpath / basename;
 
     StorageEngine::FileStorage::create(volmpage.string(), paths);
+
+    if (allocate) {
+        for (i32 i = 0; i < actual_nvols; i++) {
+            std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
+            boost::filesystem::path p = volpath / basename;
+            int fd = ::open(p.string().c_str(), O_WRONLY);
+            int ret = posix_fallocate(fd, 0, volume_size);
+            if (ret == 0) {
+                Logger::msg(AKU_LOG_INFO, "Preallocate file space success");
+            } else {
+                Logger::msg(AKU_LOG_ERROR, "Preallocate file space fail");
+            }
+            ::close(fd);
+        }
+    }
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
