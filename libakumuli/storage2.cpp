@@ -36,6 +36,9 @@
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
 
+#include <fcntl.h>
+#include <cstdlib>
+
 namespace Akumuli {
 
 // Utility functions & classes //
@@ -1011,7 +1014,7 @@ aku_Status Storage::new_database( const char     *base_file_name
         for (i32 i = 0; i < actual_nvols; i++) {
             std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
             boost::filesystem::path p = volpath / basename;
-            int fd = ::open(p.string().c_str(), O_WRONLY);
+            int fd = open(p.string().c_str(), O_WRONLY);
             int ret = posix_fallocate(fd, 0, volume_size);
             if (ret == 0) {
                 Logger::msg(AKU_LOG_INFO, "Preallocate file space success");

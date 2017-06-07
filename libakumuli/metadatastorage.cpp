@@ -134,7 +134,12 @@ void MetadataStorage::create_tables() {
     query =
             "CREATE TABLE IF NOT EXISTS akumuli_volumes("
             "id INTEGER UNIQUE,"
-            "path TEXT UNIQUE"
+            "path TEXT UNIQUE,"
+            // Content of the metadata volume moved to sqlite
+            "version INTEGER,"
+            "nblocks INTEGER,"
+            "capacity INTEGER,"
+            "generation INTEGER"
             ");";
     execute_query(query);
 
@@ -215,10 +220,24 @@ void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     bool first = true;
     for (auto desc: volumes) {
         if (first) {
-            query << "\tSELECT " << desc.first << " as id, '" << desc.second << "' as path" << std::endl;
+            query << "\tSELECT "
+                  << desc.id << " as id, '"
+                  << desc.path << "' as path, '"
+                  << desc.version << "' as version, '"
+                  << desc.nblocks << "' as nblocks, '"
+                  << desc.capacity << "' as capacity, '"
+                  << desc.generation << "' as generation"
+                  << std::endl;
             first = false;
         } else {
-            query << "\tUNION SELECT " << desc.first << ", '" << desc.second << "'" << std::endl;
+            query << "\tUNION SELECT "
+                  << desc.id << ", '"
+                  << desc.path << ", '"
+                  << desc.version << ", '"
+                  << desc.nblocks << ", '"
+                  << desc.capacity << ", '"
+                  << desc.generation << "'"
+                  << std::endl;
         }
     }
     std::string full_query = query.str();
@@ -266,20 +285,26 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     // get rows
     auto ntuples = untyped.size();
     for (size_t i = 0; i < ntuples; i++) {
-        // get id
-        std::string idrepr = untyped.at(i).at(0);
-        int id = boost::lexical_cast<int>(idrepr);
-        // get path
-        std::string path = untyped.at(i).at(1);
-        tuples.push_back(std::make_pair(id, path));
+        VolumeDesc desc;
+        desc.id = boost::lexical_cast<u32>(untyped.at(i).at(0));
+        desc.path = untyped.at(i).at(1);
+        desc.version = boost::lexical_cast<u32>(untyped.at(i).at(2));
+        desc.nblocks = boost::lexical_cast<u32>(untyped.at(i).at(3));
+        desc.capacity = boost::lexical_cast<u32>(untyped.at(i).at(4));
+        desc.generation = boost::lexical_cast<u32>(untyped.at(i).at(5));
+        tuples.push_back(desc);
     }
     return tuples;
 }
 
 void MetadataStorage::add_volume(MetadataStorage::VolumeDesc vol) {
     std::string query =
-             "INSERT INTO akumuli_volumes (id, path) VALUES ";
-    query += "(" + std::to_string(vol.first) + ", \"" + vol.second + "\");";
+             "INSERT INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+    query += "(" + std::to_string(vol.id) + ", \"" + vol.path + "\", "
+                 + std::to_string(vol.version) + ", "
+                 + std::to_string(vol.nblocks) + ", "
+                 + std::to_string(vol.capacity) + ", "
+                 + std::to_string(vol.generation) + ");";
     Logger::msg(AKU_LOG_TRACE, "Execute query: " + query);
     int rows = execute_query(query);
     if (rows == 0) {

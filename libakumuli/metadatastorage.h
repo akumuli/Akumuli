@@ -52,7 +52,14 @@ struct MetadataStorage {
     typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)> PoolT;
     typedef const apr_dbd_driver_t* DriverT;
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
-    typedef std::pair<int, std::string>                  VolumeDesc;
+    typedef struct {
+        u32 id;
+        std::string path;
+        u32 version;
+        u32 nblocks;
+        u32 capacity;
+        u32 generation;
+    } VolumeDesc;
     typedef apr_dbd_prepared_t* PreparedT;
     typedef SeriesMatcher::SeriesNameT SeriesT;
 
