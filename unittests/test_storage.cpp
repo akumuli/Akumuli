@@ -71,15 +71,19 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
     MetadataStorage db(":memory:");
     std::vector<MetadataStorage::VolumeDesc> volumes = {
-        std::make_pair(0, "first"),
-        std::make_pair(1, "second"),
-        std::make_pair(2, "third"),
+        { 0, "first", 1, 2, 3, 4 },
+        { 1, "second", 5, 6, 7, 8 },
+        { 2, "third", 9, 10, 11, 12 },
     };
     db.init_volumes(volumes);
     auto actual = db.get_volumes();
-    for (int i = 0; i < 3; i++) {
-        BOOST_REQUIRE_EQUAL(volumes.at(i).first, actual.at(i).first);
-        BOOST_REQUIRE_EQUAL(volumes.at(i).second, actual.at(i).second);
+    for (size_t i = 0; i < 3; i++) {
+        BOOST_REQUIRE_EQUAL(volumes.at(i).id, actual.at(i).id);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).path, actual.at(i).path);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).capacity, actual.at(i).capacity);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).generation, actual.at(i).generation);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).nblocks, actual.at(i).nblocks);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).version, actual.at(i).version);
     }
 }
 

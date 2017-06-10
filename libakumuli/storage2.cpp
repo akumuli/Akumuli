@@ -24,6 +24,7 @@
 #include "log_iface.h"
 #include "status_util.h"
 #include "datetime.h"
+#include "akumuli_version.h"
 
 #include <algorithm>
 #include <atomic>
@@ -51,9 +52,10 @@ namespace Akumuli {
   * all the page file names and they order.
   * @return APR_EINIT on DB error.
   */
- static apr_status_t create_metadata_page(const char* db_name
+static apr_status_t create_metadata_page(const char* db_name
                                         , const char* file_name
                                         , std::vector<std::string> const& page_file_names
+                                        , std::vector<u32> const& capacities
                                         , const char* bstore_type )
 {
     using namespace std;
@@ -67,9 +69,17 @@ namespace Akumuli {
         storage->init_config(db_name, date_time, bstore_type);
 
         std::vector<MetadataStorage::VolumeDesc> desc;
-        int ix = 0;
+        u32 ix = 0;
         for(auto str: page_file_names) {
-            desc.push_back(std::make_pair(ix++, str));
+            MetadataStorage::VolumeDesc volume;
+            volume.path = str;
+            volume.generation = ix;
+            volume.capacity = capacities[ix];
+            volume.id = ix;
+            volume.nblocks = 0;
+            volume.version = AKUMULI_VERSION;
+            desc.push_back(volume);
+            ix++;
         }
         storage->init_volumes(desc);
 
