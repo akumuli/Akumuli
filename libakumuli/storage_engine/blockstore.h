@@ -123,7 +123,7 @@ protected:
     void handle_volume_transition();
 
 public:
-    static void create(std::string metapath, std::vector<std::tuple<u32, std::string>> vols);
+    static void create(std::vector<std::tuple<u32, std::string>> vols);
 
     /** Add block to blockstore.
      * @param data Pointer to buffer.

@@ -179,8 +179,7 @@ FileStorage::FileStorage(std::string metapath, std::vector<std::string> volpaths
     }
 }
 
-void FileStorage::create(std::string metapath,
-                         std::vector<std::tuple<u32, std::string>> vols)
+void FileStorage::create(std::vector<std::tuple<u32, std::string>> vols)
 {
     std::vector<u32> caps;
     for (auto cp: vols) {
@@ -190,7 +189,6 @@ void FileStorage::create(std::string metapath,
         Volume::create_new(path.c_str(), capacity);
         caps.push_back(capacity);
     }
-    MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
 void FileStorage::handle_volume_transition() {

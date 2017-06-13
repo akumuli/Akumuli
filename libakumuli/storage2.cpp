@@ -289,14 +289,14 @@ Storage::Storage(const char* path)
     // first volume is a metavolume
     auto volumes = metadata_->get_volumes();
     for (auto vol: volumes) {
+        u32 index;
         std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        u32 version;
+        u32 nblocks;
+        u32 capacity;
+        u32 generation;
+        std::tie(index, path, version, nblocks, capacity, generation) = vol;
+        volpaths.push_back(path);
     }
     std::string bstore_type = "FixedSizeFileStorage";
     std::string db_name = "db";
@@ -1014,39 +1014,42 @@ aku_Status Storage::new_database( const char     *base_file_name
         boost::filesystem::path p = volpath / basename;
         paths.push_back(std::make_tuple(volsize, p.string()));
     }
-    // Volumes meta-page
-    std::string basename = std::string(base_file_name) + ".metavol";
-    boost::filesystem::path volmpage = volpath / basename;
 
-    StorageEngine::FileStorage::create(volmpage.string(), paths);
+    StorageEngine::FileStorage::create(paths);
 
     if (allocate) {
-        for (i32 i = 0; i < actual_nvols; i++) {
-            std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
-            boost::filesystem::path p = volpath / basename;
-            int fd = open(p.string().c_str(), O_WRONLY);
-            int ret = posix_fallocate(fd, 0, volume_size);
-            if (ret == 0) {
-                Logger::msg(AKU_LOG_INFO, "Preallocate file space success");
-            } else {
-                Logger::msg(AKU_LOG_ERROR, "Preallocate file space fail");
+        for (const auto& path: paths) {
+            const auto& p = std::get<1>(path);
+            int fd = open(p.c_str(), O_WRONLY);
+            if (fd < 0) {
+                boost::system::error_code error(errno, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "Can't open file '" + p + "' reason: " + error.message() + ". Skip.");
+                break;
             }
+            int ret = posix_fallocate(fd, 0, std::get<0>(path));
             ::close(fd);
+            if (ret == 0) {
+                Logger::msg(AKU_LOG_INFO, "Disk space for " + p + " preallocated");
+            } else {
+                boost::system::error_code error(ret, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "posix_fallocate fail: " + error.message());
+            }
         }
     }
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
-    mpaths.push_back(volmpage.string());
+    std::vector<u32> msizes;
     for (auto p: paths) {
+        msizes.push_back(std::get<0>(p));
         mpaths.push_back(std::get<1>(p));
     }
     if (num_volumes == 0) {
         Logger::msg(AKU_LOG_INFO, "Creating expandable file storage");
-        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "ExpandableFileStorage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "ExpandableFileStorage");
     } else {
         Logger::msg(AKU_LOG_INFO, "Creating fixed file storage");
-        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "FixedSizeFileStorage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "FixedSizeFileStorage");
     }
     return AKU_SUCCESS;
 }
