@@ -16,6 +16,7 @@
  */
 
 #pragma once
+#include "metadatastorage.h"
 #include "volume.h"
 #include <random>
 #include <mutex>
@@ -99,8 +100,6 @@ struct BlockStore {
 
 class FileStorage : public BlockStore {
 protected:
-    //! Metadata volume.
-    std::unique_ptr<MetaVolume> meta_;
     //! Array of volumes.
     std::vector<std::unique_ptr<Volume>> volumes_;
     //! "Dirty" flags.
@@ -164,11 +163,13 @@ public:
 class ExpandableFileStorage : public FileStorage,
                               public std::enable_shared_from_this<ExpandableFileStorage> {
      std::string db_name_;
-     std::function<void(int, std::string)> on_volume_advance_;
+     typedef std::function<void(MetadataStorage::VolumeDesc)> OnAdvanceVolume;
+     OnAdvanceVolume on_volume_advance_;
+
      //! Secret c-tor.
      ExpandableFileStorage(std::string db_name, std::string metapath,
                            std::vector<std::string> volpaths,
-                           std::function<void(int, std::string)> const& on_volume_advance);
+                           OnAdvanceVolume const& on_volume_advance);
 
      std::unique_ptr<Volume> create_new_volume(u32 id);
 protected:
