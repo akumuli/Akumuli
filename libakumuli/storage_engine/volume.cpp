@@ -97,44 +97,14 @@ struct VolumeRef {
     u32 generation;
 };
 
-void MetaVolume::init_mmap() {
-    mmap_.reset(new MemoryMappedFile(path_.c_str(), false));
-    file_size_ = mmap_->get_size();
-    mmap_ptr_ = static_cast<u8*>(mmap_->get_pointer());
-    double_write_buffer_ = std::vector<u8>(mmap_->get_size(), 0);
-    memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_->get_size());
-}
-
-MetaVolume::MetaVolume(const std::string path)
-    : path_(path)
+MetaVolume::MetaVolume(size_t size)
+    : file_size_(size)
+    , double_write_buffer_(size, 0)
 {
-  init_mmap();
 }
 
 size_t MetaVolume::get_nvolumes() const {
     return file_size_/AKU_BLOCK_SIZE;
-}
-
-void MetaVolume::create_new(const char* path, size_t capacity, const u32 *vol_capacities) {
-    size_t size = capacity * AKU_BLOCK_SIZE;
-    _create_file(path, size);
-    MemoryMappedFile mmap(path, false);
-    u8* it = static_cast<u8*>(mmap.get_pointer());
-    u8* end = it + mmap.get_size();
-    u32 id = 0;
-    // Initialization
-    while(it < end) {
-        VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(it);
-        pvolume->capacity = vol_capacities[id];
-        pvolume->generation = id;
-        pvolume->id = id;
-        pvolume->nblocks = 0;
-        pvolume->version = AKUMULI_VERSION;
-        it += AKU_BLOCK_SIZE;
-        id++;
-    }
-    auto status = mmap.flush();
-    panic_on_error(status, "Flush error");
 }
 
 std::unique_ptr<MetaVolume> MetaVolume::open_existing(const char* path) {
@@ -178,9 +148,6 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
 }
 
 aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
-    auto status = mmap_->flush();
-    panic_on_error(status, "Flush error!");
-    mmap_.reset(nullptr);
 
     std::vector<u8> block(AKU_BLOCK_SIZE, 0);
     VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(block.data());
@@ -190,15 +157,10 @@ aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
     pvolume->nblocks = 0;
     pvolume->version = AKUMULI_VERSION;
 
-    AprPoolPtr pool = _make_apr_pool();
-    AprFilePtr f = _open_file(path_.c_str(), pool.get());
-    apr_off_t offset = 0;
-    _file_seek(f.get(), APR_END, &offset);
-    u64 block_size = AKU_BLOCK_SIZE;
-    _file_write(f.get(), block.data(), &block_size);
-    _close_apr_file(f.get());
+    size_t old_size = double_write_buffer_.size();
+    double_write_buffer_.resize(old_size + sizeof(VolumeRef));
+    memcpy(double_write_buffer_.data() + old_size, pvolume, sizeof(VolumeRef));
 
-    init_mmap();
     return AKU_SUCCESS;
 }
 
@@ -241,8 +203,7 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
 }
 
 void MetaVolume::flush() {
-    memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
-    auto status = mmap_->flush();
+    auto status = AKU_ENOT_IMPLEMENTED;
     panic_on_error(status, "Flush error");
 }
 
@@ -251,7 +212,7 @@ aku_Status MetaVolume::flush(u32 id) {
         memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
         size_t from = id * AKU_BLOCK_SIZE;
         size_t to = from + AKU_BLOCK_SIZE;
-        auto status = mmap_->flush(from, to);
+        auto status = AKU_ENOT_IMPLEMENTED;
         panic_on_error(status, "Flush (range) error");
         return AKU_SUCCESS;
     }

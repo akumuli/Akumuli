@@ -70,9 +70,10 @@ struct MetadataStorage {
     PreparedT       insert_;
 
     // Synchronization
-    std::mutex sync_lock_;
-    std::condition_variable sync_cvar_;
+    mutable std::mutex                                sync_lock_;
+    std::condition_variable                           sync_cvar_;
     std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
+    std::unordered_map<u32, VolumeDesc>               pending_volumes_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
@@ -124,6 +125,8 @@ struct MetadataStorage {
 
     void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);
 
+    void add_volume_desc(const VolumeDesc& vol);
+
     aku_Status wait_for_sync_request(int timeout_us);
 
     void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
@@ -144,6 +147,11 @@ struct MetadataStorage {
     /** Insert or update rescue provided points (generate sql query and execute it).
       */
     void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+
+    /**
+     * @brief Insert or update volume descriptors
+     */
+    void upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input);
 
 private:
 

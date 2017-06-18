@@ -29,6 +29,7 @@
 // project
 #include "akumuli.h"
 #include "util.h"
+#include "metadatastorage.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -57,17 +58,9 @@ class MetaVolume {
     mutable std::vector<u8> double_write_buffer_;
     const std::string       path_;
 
-    MetaVolume(const std::string path);
-    void init_mmap();
+    MetaVolume(size_t size);
 
 public:
-    /** Create new meta-volume.
-      * @param path Path to created file.
-      * @param capacity Size of the created file (in blocks).
-      * @param vol_capacities Array of capacities of all volumes.
-      * @throw std::runtime_exception
-      */
-    static void create_new(const char* path, size_t capacity, u32 const* vol_capacities);
 
     /** Open existing meta-volume.
       * @param path Path to meta-volume.

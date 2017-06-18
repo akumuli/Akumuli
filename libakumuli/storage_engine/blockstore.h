@@ -100,6 +100,8 @@ struct BlockStore {
 
 class FileStorage : public BlockStore {
 protected:
+    //! Metadata volume.
+    std::unique_ptr<MetaVolume> meta_;
     //! Array of volumes.
     std::vector<std::unique_ptr<Volume>> volumes_;
     //! "Dirty" flags.

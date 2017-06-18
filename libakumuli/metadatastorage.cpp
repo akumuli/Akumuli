@@ -95,11 +95,13 @@ MetadataStorage::MetadataStorage(const char* db)
 
 void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names) {
     // Make temporary copies under the lock
-    std::vector<SeriesMatcher::SeriesNameT> newnames;
+    std::vector<SeriesMatcher::SeriesNameT>           newnames;
     std::unordered_map<aku_ParamId, std::vector<u64>> rescue_points;
+    std::unordered_map<u32, VolumeDesc>               volume_records;
     {
         std::lock_guard<std::mutex> guard(sync_lock_);
         std::swap(rescue_points, pending_rescue_points_);
+        std::swap(volume_records, pending_volumes_);
     }
     pull_new_names(&newnames);
 
@@ -109,6 +111,10 @@ void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<
 
     // Save rescue points
     upsert_rescue_points(std::move(rescue_points));
+
+    // Save volume records
+    upsert_volume_records(std::move(volume_records));
+
     end_transaction();
 }
 
@@ -354,7 +360,7 @@ aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
     if (res == std::cv_status::timeout) {
         return AKU_ETIMEOUT;
     }
-    return pending_rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
+    return (pending_rescue_points_.empty() && pending_volumes_.empty()) ? AKU_ERETRY : AKU_SUCCESS;
 }
 
 void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
@@ -363,12 +369,50 @@ void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
     sync_cvar_.notify_one();
 }
 
+void MetadataStorage::add_volume_desc(const VolumeDesc& vol) {
+    std::lock_guard<std::mutex> guard(sync_lock_);
+    pending_volumes_[vol.id] = vol;
+    sync_cvar_.notify_one();
+}
+
 void MetadataStorage::begin_transaction() {
     execute_query("BEGIN TRANSACTION;");
 }
 
 void MetadataStorage::end_transaction() {
-    execute_query("END TRANSACTION;");
+    execute_query("END TRANSACTION;");}
+
+void MetadataStorage::upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input) {
+    if (input.empty()) {
+        return;
+    }
+    std::stringstream query;
+    std::vector<VolumeDesc> items;
+    for (const auto& kv: input) {
+        items.push_back(kv.second);
+    }
+    while(!items.empty()) {
+        const size_t batchsize = 500;  // This limit is defined by SQLITE_MAX_COMPOUND_SELECT
+        const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
+        std::vector<VolumeDesc> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
+        items.resize(newsize);
+        query << "INSERT OR REPLACE INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+        size_t ix = 0;
+        for (auto const& vol: batch) {
+            query << "(" << std::to_string(vol.id)         << ", \"" << vol.path << "\", "
+                         << std::to_string(vol.version)    << ", "
+                         << std::to_string(vol.nblocks)    << ", "
+                         << std::to_string(vol.capacity)   << ", "
+                         << std::to_string(vol.generation) << ")";
+            ix++;
+            if (ix == batch.size()) {
+                query << ";\n";
+            } else {
+                query << ",";
+            }
+        }
+    }
+    execute_query(query.str());
 }
 
 void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
@@ -409,6 +453,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
         }
     }
     execute_query(query.str());
+
 }
 
 void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {

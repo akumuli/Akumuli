@@ -132,17 +132,19 @@ void Block::set_addr(LogicAddr addr) {
     addr_ = addr;
 }
 
-FileStorage::FileStorage(std::shared_ptr<MetadataStorage> meta, std::vector<std::string> volpaths)
-    : meta_(meta)
+
+FileStorage::FileStorage(std::string metapath, std::vector<std::string> volpaths)
+    : meta_(MetaVolume::open_existing(metapath.c_str()))
     , current_volume_(0)
     , current_gen_(0)
     , total_size_(0)
     , volume_names_(volpaths)
 {
-    auto volumes = meta_->get_volumes();
     for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
         auto volpath = volpaths.at(ix);
-        u32 nblocks = volumes.at(ix).nblocks;
+        u32 nblocks = 0;
+        aku_Status status = AKU_SUCCESS;
+        std::tie(status, nblocks) = meta_->get_nblocks(ix);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, std::string("Can't open blockstore, volume " +
                                                    std::to_string(ix) + " failure: " +
@@ -160,8 +162,16 @@ FileStorage::FileStorage(std::shared_ptr<MetadataStorage> meta, std::vector<std:
 
     // set current volume, current volume is a first volume with free space available
     for (u32 i = 0u; i < volumes_.size(); i++) {
-        u32 curr_gen = volumes.at(ix).generation;
-        u32 nblocks = volumes.at(ix).nblocks;
+        u32 curr_gen, nblocks;
+        aku_Status status;
+        std::tie(status, curr_gen) = meta_->get_generation(i);
+        if (status == AKU_SUCCESS) {
+            std::tie(status, nblocks) = meta_->get_nblocks(i);
+        } else {
+            Logger::msg(AKU_LOG_ERROR, "Can't find current volume, meta-volume corrupted, error: "
+                        + StatusUtil::str(status));
+            AKU_PANIC("Meta-volume corrupted, " + StatusUtil::str(status));
+        }
         if (volumes_[i]->get_size() > nblocks) {
             // Free space available
             current_volume_ = i;
