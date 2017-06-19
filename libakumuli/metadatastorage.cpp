@@ -303,7 +303,7 @@ std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     return tuples;
 }
 
-void MetadataStorage::add_volume(MetadataStorage::VolumeDesc vol) {
+void MetadataStorage::add_volume(const VolumeDesc &vol) {
     std::string query =
              "INSERT INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
     query += "(" + std::to_string(vol.id) + ", \"" + vol.path + "\", "
@@ -383,6 +383,9 @@ void MetadataStorage::end_transaction() {
     execute_query("END TRANSACTION;");}
 
 void MetadataStorage::upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input) {
+    /* This function performs full update if VolumeDesc.path is set or
+     * just partial update (nblocks, capacity, generation) if path is not set
+     */
     if (input.empty()) {
         return;
     }
@@ -396,14 +399,26 @@ void MetadataStorage::upsert_volume_records(std::unordered_map<u32, VolumeDesc>&
         const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
         std::vector<VolumeDesc> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
         items.resize(newsize);
-        query << "INSERT OR REPLACE INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+        if (vol.path.empty()) {
+            query << "INSERT OR REPLACE INTO akumuli_volumes (id, nblocks, capacity, generation) VALUES ";
+        } else {
+            query << "INSERT OR REPLACE INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+        }
         size_t ix = 0;
         for (auto const& vol: batch) {
-            query << "(" << std::to_string(vol.id)         << ", \"" << vol.path << "\", "
-                         << std::to_string(vol.version)    << ", "
-                         << std::to_string(vol.nblocks)    << ", "
-                         << std::to_string(vol.capacity)   << ", "
-                         << std::to_string(vol.generation) << ")";
+            if (vol.path.empty()) {
+                query << "(" << std::to_string(vol.id)         << ", "
+                             << std::to_string(vol.nblocks)    << ", "
+                             << std::to_string(vol.capacity)   << ", "
+                             << std::to_string(vol.generation) << ")";
+
+            } else {
+                query << "(" << std::to_string(vol.id)         << ", \"" << vol.path << "\", "
+                             << std::to_string(vol.version)    << ", "
+                             << std::to_string(vol.nblocks)    << ", "
+                             << std::to_string(vol.capacity)   << ", "
+                             << std::to_string(vol.generation) << ")";
+            }
             ix++;
             if (ix == batch.size()) {
                 query << ";\n";

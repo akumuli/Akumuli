@@ -52,13 +52,12 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    std::unique_ptr<MemoryMappedFile> mmap_;
-    size_t                  file_size_;
-    u8*                     mmap_ptr_;
-    mutable std::vector<u8> double_write_buffer_;
-    const std::string       path_;
+    std::shared_ptr<MetadataStorage> meta_;
+    const size_t                     file_size_;
+    mutable std::vector<u8>          double_write_buffer_;
+    const std::string                path_;
 
-    MetaVolume(size_t size);
+    MetaVolume(std::shared_ptr<MetadataStorage> meta);
 
 public:
 
@@ -67,7 +66,7 @@ public:
       * @throw std::runtime_error on error.
       * @return new MetaVolume instance.
       */
-    static std::unique_ptr<MetaVolume> open_existing(const char* path);
+    static std::unique_ptr<MetaVolume> open_existing(std::shared_ptr<MetadataStorage> meta);
 
     // Accessors
 
@@ -84,7 +83,13 @@ public:
 
     // Mutators
 
-    aku_Status add_volume(u32 id, u32 vol_capacity);
+    /**
+     * @brief Adds new tracked volume
+     * @param id is a new volume's id
+     * @param vol_capacity is a volume's capacity
+     * @return status
+     */
+    aku_Status add_volume(u32 id, u32 vol_capacity, const std::string &path);
 
     aku_Status update(u32 id, u32 nblocks, u32 capacity, u32 gen);
 

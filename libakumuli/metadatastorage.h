@@ -104,7 +104,11 @@ struct MetadataStorage {
       */
     std::vector<VolumeDesc> get_volumes() const;
 
-    void add_volume(VolumeDesc vol);
+    /**
+     * @brief Add NEW volume synchroniously
+     * @param vol is a volume description
+     */
+    void add_volume(const VolumeDesc& vol);
 
     /**
      * @brief Get value of the configuration parameter
@@ -125,6 +129,10 @@ struct MetadataStorage {
 
     void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);
 
+    /**
+     * @brief Add/update volume metadata asynchronously
+     * @param vol is a volume description
+     */
     void add_volume_desc(const VolumeDesc& vol);
 
     aku_Status wait_for_sync_request(int timeout_us);

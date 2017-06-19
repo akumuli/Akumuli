@@ -97,19 +97,20 @@ struct VolumeRef {
     u32 generation;
 };
 
-MetaVolume::MetaVolume(size_t size)
-    : file_size_(size)
-    , double_write_buffer_(size, 0)
+MetaVolume::MetaVolume(std::shared_ptr<MetadataStorage> meta)
+    : meta_(meta)
+    , file_size_(meta->get_volumes().size() * sizeof(VolumeRef))
+    , double_write_buffer_(file_size_, 0)
 {
 }
 
 size_t MetaVolume::get_nvolumes() const {
-    return file_size_/AKU_BLOCK_SIZE;
+    return file_size_ / AKU_BLOCK_SIZE;
 }
 
-std::unique_ptr<MetaVolume> MetaVolume::open_existing(const char* path) {
+std::unique_ptr<MetaVolume> MetaVolume::open_existing(std::shared_ptr<MetadataStorage> meta) {
     std::unique_ptr<MetaVolume> result;
-    result.reset(new MetaVolume(path));
+    result.reset(new MetaVolume(meta));
     return std::move(result);
 }
 
@@ -147,29 +148,50 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
-aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
+aku_Status MetaVolume::add_volume(u32 id, u32 capacity, const std::string& path) {
 
     std::vector<u8> block(AKU_BLOCK_SIZE, 0);
-    VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(block.data());
-    pvolume->capacity = capacity;
+    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block.data());
+    pvolume->capacity   = capacity;
     pvolume->generation = id;
-    pvolume->id = id;
-    pvolume->nblocks = 0;
-    pvolume->version = AKUMULI_VERSION;
+    pvolume->id         = id;
+    pvolume->nblocks    = 0;
+    pvolume->version    = AKUMULI_VERSION;
 
     size_t old_size = double_write_buffer_.size();
     double_write_buffer_.resize(old_size + sizeof(VolumeRef));
     memcpy(double_write_buffer_.data() + old_size, pvolume, sizeof(VolumeRef));
+
+    // Update metadata storage
+    MetadataStorage::VolumeDesc vol;
+    vol.nblocks         = pvolume->nblocks;
+    vol.generation      = pvolume->generation;
+    vol.capacity        = pvolume->capacity;
+    vol.version         = AKUMULI_VERSION;
+    vol.id              = pvolume->id;
+    vol.path            = path;
+
+    meta_->add_volume(vol);
 
     return AKU_SUCCESS;
 }
 
 aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(double_write_buffer_.data(), id);
-        pvol->nblocks = nblocks;
-        pvol->capacity = capacity;
+        auto pvol        = get_volref(double_write_buffer_.data(), id);
+        pvol->nblocks    = nblocks;
+        pvol->capacity   = capacity;
         pvol->generation = gen;
+
+        // Update metadata storage (this update will be written into the sqlite
+        // database eventually in the asynchronous manner.
+        MetadataStorage::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+
+        meta_->add_volume_desc(vol);
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -179,6 +201,14 @@ aku_Status MetaVolume::set_nblocks(u32 id, u32 nblocks) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
+
+        MetadataStorage::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+
+        meta_->add_volume_desc(vol);
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -188,6 +218,14 @@ aku_Status MetaVolume::set_capacity(u32 id, u32 cap) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->capacity = cap;
+
+        MetadataStorage::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+
+        meta_->add_volume_desc(vol);
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -197,6 +235,14 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->generation = gen;
+
+        MetadataStorage::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+
+        meta_->add_volume_desc(vol);
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
