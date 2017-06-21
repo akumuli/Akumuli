@@ -16,7 +16,7 @@
  */
 
 #pragma once
-#include "metadatastorage.h"
+#include "volumeregistry.h"
 #include "volume.h"
 #include <random>
 #include <mutex>
@@ -118,7 +118,7 @@ protected:
     std::vector<std::string> volume_names_;
 
     //! Secret c-tor.
-    FileStorage(std::shared_ptr<MetadataStorage> meta);
+    FileStorage(std::shared_ptr<VolumeRegistry> meta);
 
     virtual void adjust_current_volume() = 0;
     void handle_volume_transition();
@@ -144,7 +144,7 @@ public:
 class FixedSizeFileStorage : public FileStorage,
                              public std::enable_shared_from_this<FixedSizeFileStorage> {
     //! Secret c-tor.
-    FixedSizeFileStorage(std::shared_ptr<MetadataStorage> meta);
+    FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta);
 
 protected:
     virtual void adjust_current_volume();
@@ -152,7 +152,7 @@ protected:
 public:
     /** Create BlockStore instance (can be created only on heap).
       */
-    static std::shared_ptr<FixedSizeFileStorage> open(std::shared_ptr<MetadataStorage> meta);
+    static std::shared_ptr<FixedSizeFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
 
     virtual bool exists(LogicAddr addr) const;
 
@@ -166,7 +166,7 @@ class ExpandableFileStorage : public FileStorage,
      std::string db_name_;
 
      //! Secret c-tor.
-     ExpandableFileStorage(std::shared_ptr<MetadataStorage> meta);
+     ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta);
 
      std::unique_ptr<Volume> create_new_volume(u32 id);
 protected:
@@ -180,7 +180,7 @@ public:
       * @param volpaths is a list of volume paths
       * @param on_volume_advance is function object that gets called when new volume is created
       */
-     static std::shared_ptr<ExpandableFileStorage> open(std::shared_ptr<MetadataStorage> meta);
+     static std::shared_ptr<ExpandableFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
 
      virtual bool exists(LogicAddr addr) const;
 

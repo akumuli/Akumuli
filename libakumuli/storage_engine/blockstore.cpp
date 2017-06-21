@@ -133,7 +133,7 @@ void Block::set_addr(LogicAddr addr) {
 }
 
 
-FileStorage::FileStorage(std::shared_ptr<MetadataStorage> meta)
+FileStorage::FileStorage(std::shared_ptr<VolumeRegistry> meta)
     : meta_(MetaVolume::open_existing(meta))
     , current_volume_(0)
     , current_gen_(0)
@@ -143,8 +143,8 @@ FileStorage::FileStorage(std::shared_ptr<MetadataStorage> meta)
     for (auto const& volrec: volumes) {
         volume_names_.push_back(volrec.path);
     }
-    for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
-        auto volpath = volpaths.at(ix);
+    for (u32 ix = 0ul; ix < volumes.size(); ix++) {
+        auto volpath = volumes.at(ix).path;
         u32 nblocks = 0;
         aku_Status status = AKU_SUCCESS;
         std::tie(status, nblocks) = meta_->get_nblocks(ix);
@@ -333,13 +333,13 @@ u32 FileStorage::checksum(u8 const* data, size_t size) const {
 
 // FixedSizeFileStorage
 
-FixedSizeFileStorage::FixedSizeFileStorage(std::shared_ptr<MetadataStorage> meta)
+FixedSizeFileStorage::FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta)
     : FileStorage::FileStorage(meta)
 {
     // nothing specific needed except calling the parent constructor
 }
 
-std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::shared_ptr<MetadataStorage> meta) {
+std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::shared_ptr<VolumeRegistry> meta) {
     auto bs = new FixedSizeFileStorage(meta);
     return std::shared_ptr<FixedSizeFileStorage>(bs);
 }
@@ -397,17 +397,13 @@ void FixedSizeFileStorage::adjust_current_volume() {
 
 // ExpandableFileStorage
 
-ExpandableFileStorage::ExpandableFileStorage(std::shared_ptr<MetadataStorage> meta)
+ExpandableFileStorage::ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta)
     : FileStorage::FileStorage(meta)
-    , db_name_(db_name)
+    , db_name_(meta->get_dbname())
 {
-    bool success = meta->get_config_param("db_name", &db_name_);
-    if (!success) {
-        AKU_PANIC("Configuration parameter 'db_name' is missing");
-    }
 }
 
-std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::shared_ptr<MetadataStorage> meta)
+std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::shared_ptr<VolumeRegistry> meta)
 {
     auto bs = new ExpandableFileStorage(meta);
     return std::shared_ptr<ExpandableFileStorage>(bs);

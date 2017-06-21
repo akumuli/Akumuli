@@ -29,7 +29,7 @@
 // project
 #include "akumuli.h"
 #include "util.h"
-#include "metadatastorage.h"
+#include "volumeregistry.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -52,12 +52,12 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    std::shared_ptr<MetadataStorage> meta_;
+    std::shared_ptr<VolumeRegistry>  meta_;
     const size_t                     file_size_;
     mutable std::vector<u8>          double_write_buffer_;
     const std::string                path_;
 
-    MetaVolume(std::shared_ptr<MetadataStorage> meta);
+    MetaVolume(std::shared_ptr<VolumeRegistry> meta);
 
 public:
 
@@ -66,7 +66,7 @@ public:
       * @throw std::runtime_error on error.
       * @return new MetaVolume instance.
       */
-    static std::unique_ptr<MetaVolume> open_existing(std::shared_ptr<MetadataStorage> meta);
+    static std::unique_ptr<MetaVolume> open_existing(std::shared_ptr<VolumeRegistry> meta);
 
     // Accessors
 

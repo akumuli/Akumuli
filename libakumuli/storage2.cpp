@@ -289,14 +289,7 @@ Storage::Storage(const char* path)
     // first volume is a metavolume
     auto volumes = metadata_->get_volumes();
     for (auto vol: volumes) {
-        u32 index;
-        std::string path;
-        u32 version;
-        u32 nblocks;
-        u32 capacity;
-        u32 generation;
-        std::tie(index, path, version, nblocks, capacity, generation) = vol;
-        volpaths.push_back(path);
+        volpaths.push_back(vol.path);
     }
     std::string bstore_type = "FixedSizeFileStorage";
     std::string db_name = "db";
@@ -304,20 +297,10 @@ Storage::Storage(const char* path)
     metadata_->get_config_param("db_name", &db_name);
     if (bstore_type == "FixedSizeFileStorage") {
         Logger::msg(AKU_LOG_INFO, "Open as fxied size storage");
-        bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+        bstore_ = StorageEngine::FixedSizeFileStorage::open(metadata_);
     } else if (bstore_type == "ExpandableFileStorage") {
         Logger::msg(AKU_LOG_INFO, "Open as expandable storage");
-        std::weak_ptr<MetadataStorage> weak_meta = metadata_;
-        std::function<void(int, std::string)> on_volume_advance = [weak_meta](int id, std::string path) {
-            auto ptr = weak_meta.lock();
-            if (ptr) {
-                Logger::msg(AKU_LOG_TRACE, "Add new volume to the metadata store: " + path);
-                ptr->add_volume(std::make_pair(id, path));
-            } else {
-                Logger::msg(AKU_LOG_ERROR, "Can't save new volumes path, metadata storage already closed.");
-            }
-        };
-        bstore_ = StorageEngine::ExpandableFileStorage::open(db_name, metapath, volpaths, on_volume_advance);
+        bstore_ = StorageEngine::ExpandableFileStorage::open(metadata_);
     } else {
         Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
         AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
@@ -581,17 +564,10 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
 
     // Load series matcher data
     SeriesMatcher matcher;
@@ -647,17 +623,10 @@ aku_Status Storage::generate_recovery_report(const char* path, const char *outpu
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
     auto cstore = std::make_shared<StorageEngine::ColumnStore>(bstore);
 
     // Load series matcher data
@@ -1064,19 +1033,14 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         // Bad database
         return AKU_EBAD_ARG;
     }
-    std::vector<std::string> volume_names(volumes.size() - 1, "");
-    // First volume is meta-page
-    std::string meta_file;
+    std::vector<std::string> volume_names(volumes.size(), "");
+
     for(auto it: volumes) {
-        if (it.first == 0) {
-            meta_file = it.second;
-        } else {
-            volume_names.at(static_cast<size_t>(it.first) - 1) = it.second;
-        }
+        volume_names.at(it.id) = it.path;
     }
     if (!force) {
         // Check whether or not database is empty
-        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta_file, volume_names);
+        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta);
         auto stats = fstore->get_stats();
         if (stats.nblocks != 0) {
             // DB is not empty
@@ -1094,7 +1058,6 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         }
         return AKU_SUCCESS;
     };
-    volume_names.push_back(meta_file);
     volume_names.push_back(file_name);
     std::vector<aku_Status> statuses;
     std::transform(volume_names.begin(), volume_names.end(), std::back_inserter(statuses), check_access);

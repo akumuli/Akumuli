@@ -27,6 +27,7 @@
 
 #include "akumuli_def.h"
 #include "seriesparser.h"
+#include "volumeregistry.h"
 
 namespace Akumuli {
 
@@ -47,19 +48,11 @@ struct AprHandleDeleter {
   * - Conviguration data
   * - Key to id mapping
   */
-struct MetadataStorage {
+struct MetadataStorage : VolumeRegistry {
     // Typedefs
     typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)> PoolT;
     typedef const apr_dbd_driver_t* DriverT;
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
-    typedef struct {
-        u32 id;
-        std::string path;
-        u32 version;
-        u32 nblocks;
-        u32 capacity;
-        u32 generation;
-    } VolumeDesc;
     typedef apr_dbd_prepared_t* PreparedT;
     typedef SeriesMatcher::SeriesNameT SeriesT;
 
@@ -102,13 +95,13 @@ struct MetadataStorage {
     /** Read list of volumes and their sequence numbers.
       * @throw std::runtime_error in a case of error
       */
-    std::vector<VolumeDesc> get_volumes() const;
+    virtual std::vector<VolumeDesc> get_volumes() const;
 
     /**
      * @brief Add NEW volume synchroniously
      * @param vol is a volume description
      */
-    void add_volume(const VolumeDesc& vol);
+    virtual void add_volume(const VolumeDesc& vol);
 
     /**
      * @brief Get value of the configuration parameter
@@ -133,7 +126,8 @@ struct MetadataStorage {
      * @brief Add/update volume metadata asynchronously
      * @param vol is a volume description
      */
-    void add_volume_desc(const VolumeDesc& vol);
+    virtual void update_volume(const VolumeDesc& vol);
+    virtual std::string get_dbname();
 
     aku_Status wait_for_sync_request(int timeout_us);
 
@@ -157,7 +151,10 @@ struct MetadataStorage {
     void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
 
     /**
-     * @brief Insert or update volume descriptors
+     * @brief Update volume descriptors
+     * This function performs partial update (nblocks, capacity, generation) of the akumuli_volumes
+     * table.
+     * New volume should be added using the `add_volume` function.
      */
     void upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input);
 

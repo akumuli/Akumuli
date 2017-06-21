@@ -328,6 +328,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/metadatastorage.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/operators/operator.cpp
     ../libakumuli/storage_engine/operators/aggregate.cpp
@@ -347,6 +348,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    "${SQLITE3_LIBRARY}"
 )
 
 add_test(nbtree test_nbtree)
