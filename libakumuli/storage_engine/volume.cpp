@@ -90,7 +90,7 @@ struct VolumeRef {
 
 MetaVolume::MetaVolume(std::shared_ptr<VolumeRegistry> meta)
     : meta_(meta)
-    , file_size_(meta->get_volumes().size() * sizeof(VolumeRef))
+    , file_size_(meta->get_volumes().size() * AKU_BLOCK_SIZE)
     , double_write_buffer_(file_size_, 0)
 {
 }
