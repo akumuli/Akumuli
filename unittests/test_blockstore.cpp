@@ -76,19 +76,21 @@ static std::shared_ptr<FixedSizeFileStorage> open_blockstore() {
         { 0, VOLPATH[0], 0, 0, CAPACITIES[0], 0 },
         { 1, VOLPATH[1], 0, 0, CAPACITIES[1], 0 },
     };
-    vrmock->dbname = "testdb";
+    vrmock->dbname = "test";
     auto bstore = FixedSizeFileStorage::open(vrmock);
     return bstore;
 }
 
-static std::shared_ptr<ExpandableFileStorage> open_expandable_storage(std::function<void(int, std::string)> cb) {
+static std::shared_ptr<ExpandableFileStorage> open_expandable_storage(std::shared_ptr<VolumeRegistryMock> *mock = 0) {
     std::shared_ptr<VolumeRegistryMock> vrmock(new VolumeRegistryMock());
     vrmock->volumes = {
-        { 0, VOLPATH[0], 0, 0, CAPACITIES[0], 0 },
-        { 1, VOLPATH[1], 0, 0, CAPACITIES[1], 0 },
+        { 0, EXP_VOLPATH[0], 0, 0, CAPACITIES[0], 0 },
     };
-    vrmock->dbname = "testdb";
+    vrmock->dbname = "test";
     auto bstore = ExpandableFileStorage::open(vrmock);
+    if (mock) {
+        *mock = vrmock;
+    }
     return bstore;
 }
 
@@ -184,8 +186,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 BOOST_AUTO_TEST_CASE(Test_blockstore_3) {
     delete_expandable_storage();
     create_expandable_storage();
-    auto dummy_cb = [](int, std::string s) {};
-    auto bstore = open_expandable_storage(dummy_cb);
+    auto bstore = open_expandable_storage();
     std::shared_ptr<Block> block;
     aku_Status status;
 
@@ -219,13 +220,8 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     const char* expected_path = "test_1.vol";
     boost::filesystem::remove(expected_path);
     create_expandable_storage();
-    std::string new_vol_path;
-    int new_vol_id;
-    auto cb = [&new_vol_path, &new_vol_id] (int id, std::string s) {
-        new_vol_path = s;
-        new_vol_id  = id;
-    };
-    auto bstore = open_expandable_storage(cb);
+    std::shared_ptr<VolumeRegistryMock> mock;
+    auto bstore = open_expandable_storage(&mock);
     std::shared_ptr<Block> block;
     aku_Status status;
     bool exist = boost::filesystem::exists(expected_path);
@@ -247,9 +243,11 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     std::tie(status, addr) = bstore->append_block(buffer);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
+    std::string new_vol_path = mock->volumes.at(1).path;
+    u32 new_vol_id = mock->volumes.at(1).id;
     exist = boost::filesystem::exists(expected_path);
     BOOST_REQUIRE(exist);
-    BOOST_REQUIRE_EQUAL(new_vol_id, 2);
+    BOOST_REQUIRE_EQUAL(new_vol_id, 1);
     BOOST_REQUIRE_EQUAL(new_vol_path, std::string(expected_path));
 
     // Should be readable now

@@ -150,7 +150,8 @@ aku_Status MetaVolume::add_volume(u32 id, u32 capacity, const std::string& path)
     pvolume->version    = AKUMULI_VERSION;
 
     size_t old_size = double_write_buffer_.size();
-    double_write_buffer_.resize(old_size + sizeof(VolumeRef));
+    double_write_buffer_.resize(old_size + AKU_BLOCK_SIZE);
+    file_size_ += AKU_BLOCK_SIZE;
     memcpy(double_write_buffer_.data() + old_size, pvolume, sizeof(VolumeRef));
 
     // Update metadata storage

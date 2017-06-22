@@ -53,7 +53,7 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   */
 class MetaVolume {
     std::shared_ptr<VolumeRegistry>  meta_;
-    const size_t                     file_size_;
+    size_t                           file_size_;
     mutable std::vector<u8>          double_write_buffer_;
     const std::string                path_;
 
