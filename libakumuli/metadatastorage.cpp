@@ -222,27 +222,27 @@ bool MetadataStorage::get_config_param(const std::string name, std::string* resu
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     std::stringstream query;
-    query << "INSERT INTO akumuli_volumes (id, path)" << std::endl;
+    query << "INSERT INTO akumuli_volumes (id, path, version, nblocks, capacity, generation)" << std::endl;
     bool first = true;
     for (auto desc: volumes) {
         if (first) {
             query << "\tSELECT "
                   << desc.id << " as id, '"
                   << desc.path << "' as path, '"
-                  << desc.version << "' as version, '"
-                  << desc.nblocks << "' as nblocks, '"
-                  << desc.capacity << "' as capacity, '"
-                  << desc.generation << "' as generation"
+                  << desc.version << "' as version, "
+                  << desc.nblocks << " as nblocks, "
+                  << desc.capacity << " as capacity, "
+                  << desc.generation << " as generation"
                   << std::endl;
             first = false;
         } else {
             query << "\tUNION SELECT "
                   << desc.id << ", '"
-                  << desc.path << ", '"
-                  << desc.version << ", '"
-                  << desc.nblocks << ", '"
-                  << desc.capacity << ", '"
-                  << desc.generation << "'"
+                  << desc.path << "', '"
+                  << desc.version << "', "
+                  << desc.nblocks << ", "
+                  << desc.capacity << ", "
+                  << desc.generation
                   << std::endl;
         }
     }
@@ -285,7 +285,7 @@ std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const c
 
 std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     const char* query =
-            "SELECT id, path FROM akumuli_volumes;";
+            "SELECT id, path, version, nblocks, capacity, generation FROM akumuli_volumes;";
     std::vector<VolumeDesc> tuples;
     std::vector<UntypedTuple> untyped = select_query(query);
     // get rows
