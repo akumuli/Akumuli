@@ -86,13 +86,31 @@ struct VolumeRef {
     u32 nblocks;
     u32 capacity;
     u32 generation;
+    char path[];
 };
+
+static void volcpy(u8* block, const VolumeRegistry::VolumeDesc* desc) {
+    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block);
+    pvolume->capacity   = desc->capacity;
+    pvolume->generation = desc->generation;
+    pvolume->id         = desc->id;
+    pvolume->nblocks    = desc->nblocks;
+    pvolume->version    = desc->version;
+    memcpy(pvolume->path, desc->path.data(), desc->path.size());
+    pvolume->path[desc->path.size()] = '\0';
+}
 
 MetaVolume::MetaVolume(std::shared_ptr<VolumeRegistry> meta)
     : meta_(meta)
-    , file_size_(meta->get_volumes().size() * AKU_BLOCK_SIZE)
-    , double_write_buffer_(file_size_, 0)
 {
+    auto volumes = meta_->get_volumes();
+    file_size_ = volumes.size() * AKU_BLOCK_SIZE;
+    double_write_buffer_.resize(file_size_);
+    auto block = double_write_buffer_.data();
+    for (const auto& vol: volumes) {
+        volcpy(block, &vol);
+        block += AKU_BLOCK_SIZE;
+    }
 }
 
 size_t MetaVolume::get_nvolumes() const {
@@ -140,19 +158,22 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
 }
 
 aku_Status MetaVolume::add_volume(u32 id, u32 capacity, const std::string& path) {
-
-    std::vector<u8> block(AKU_BLOCK_SIZE, 0);
-    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block.data());
-    pvolume->capacity   = capacity;
-    pvolume->generation = id;
-    pvolume->id         = id;
-    pvolume->nblocks    = 0;
-    pvolume->version    = AKUMULI_VERSION;
+    if (path.size() > AKU_BLOCK_SIZE - sizeof(VolumeRef)) {
+        return AKU_EBAD_ARG;
+    }
 
     size_t old_size = double_write_buffer_.size();
     double_write_buffer_.resize(old_size + AKU_BLOCK_SIZE);
     file_size_ += AKU_BLOCK_SIZE;
-    memcpy(double_write_buffer_.data() + old_size, pvolume, sizeof(VolumeRef));
+    u8* block = double_write_buffer_.data() + old_size;
+    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block);
+    pvolume->capacity   = capacity;
+    pvolume->generation = 0;
+    pvolume->id         = id;
+    pvolume->nblocks    = 0;
+    pvolume->version    = AKUMULI_VERSION;
+    memcpy(pvolume->path, path.data(), path.size());
+    pvolume->path[path.size()] = '\0';
 
     // Update metadata storage
     VolumeRegistry::VolumeDesc vol;
@@ -182,8 +203,9 @@ aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
-
+        vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -199,8 +221,9 @@ aku_Status MetaVolume::set_nblocks(u32 id, u32 nblocks) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
-
+        vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -216,8 +239,9 @@ aku_Status MetaVolume::set_capacity(u32 id, u32 cap) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
-
+        vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -233,8 +257,9 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
-
+        vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
