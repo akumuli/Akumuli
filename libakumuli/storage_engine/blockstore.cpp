@@ -139,7 +139,11 @@ FileStorage::FileStorage(std::shared_ptr<VolumeRegistry> meta)
     , current_gen_(0)
     , total_size_(0)
 {
+    typedef VolumeRegistry::VolumeDesc TVol;
     auto volumes = meta->get_volumes();
+    std::sort(volumes.begin(), volumes.end(), [](TVol const& a, TVol const& b) {
+        return a.id < b.id;
+    });
     for (auto const& volrec: volumes) {
         volume_names_.push_back(volrec.path);
     }

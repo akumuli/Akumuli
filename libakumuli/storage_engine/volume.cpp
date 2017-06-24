@@ -19,6 +19,7 @@
 #include <apr.h>
 #include <apr_general.h>
 #include <apr_file_io.h>
+#include <set>
 
 #include <boost/exception/all.hpp>
 
@@ -106,10 +107,14 @@ MetaVolume::MetaVolume(std::shared_ptr<VolumeRegistry> meta)
     auto volumes = meta_->get_volumes();
     file_size_ = volumes.size() * AKU_BLOCK_SIZE;
     double_write_buffer_.resize(file_size_);
-    auto block = double_write_buffer_.data();
+    std::set<u32> init_list;
     for (const auto& vol: volumes) {
+        if (init_list.count(vol.id) != 0) {
+            AKU_PANIC("Duplicate volume record");
+        }
+        init_list.insert(vol.id);
+        auto block = double_write_buffer_.data() + vol.id * AKU_BLOCK_SIZE;
         volcpy(block, &vol);
-        block += AKU_BLOCK_SIZE;
     }
 }
 
@@ -168,7 +173,7 @@ aku_Status MetaVolume::add_volume(u32 id, u32 capacity, const std::string& path)
     u8* block = double_write_buffer_.data() + old_size;
     VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block);
     pvolume->capacity   = capacity;
-    pvolume->generation = 0;
+    pvolume->generation = id;
     pvolume->id         = id;
     pvolume->nblocks    = 0;
     pvolume->version    = AKUMULI_VERSION;
@@ -195,6 +200,7 @@ aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
         pvol->nblocks    = nblocks;
         pvol->capacity   = capacity;
         pvol->generation = gen;
+        pvol->version    = AKUMULI_VERSION;
 
         // Update metadata storage (this update will be written into the sqlite
         // database eventually in the asynchronous manner.
@@ -203,6 +209,7 @@ aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
+        vol.version      = AKUMULI_VERSION;
         vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
 
@@ -221,6 +228,7 @@ aku_Status MetaVolume::set_nblocks(u32 id, u32 nblocks) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
+        vol.version      = pvol->version;
         vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
 
@@ -239,6 +247,7 @@ aku_Status MetaVolume::set_capacity(u32 id, u32 cap) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
+        vol.version      = pvol->version;
         vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
 
@@ -257,6 +266,7 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
         vol.generation   = pvol->generation;
         vol.capacity     = pvol->capacity;
         vol.id           = pvol->id;
+        vol.version      = pvol->version;
         vol.path.assign(static_cast<const char*>(pvol->path));
         meta_->update_volume(vol);
 
