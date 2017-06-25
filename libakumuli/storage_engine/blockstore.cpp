@@ -103,20 +103,33 @@ BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
 Block::Block(LogicAddr addr, std::vector<u8>&& data)
     : data_(std::move(data))
     , addr_(addr)
+    , zptr_(nullptr)
+{
+}
+
+Block::Block(LogicAddr addr, const u8* ptr)
+    : addr_(addr)
+    , zptr_(ptr)
 {
 }
 
 Block::Block()
     : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
     , addr_(EMPTY_ADDR)
+    , zptr_(nullptr)
 {
 }
 
 const u8* Block::get_data() const {
-    return data_.data();
+    return zptr_ ? zptr_ : data_.data();
+}
+
+bool Block::is_readonly() const {
+    return zptr_ != nullptr;
 }
 
 u8* Block::get_data() {
+    assert(is_readonly() == false);
     return data_.data();
 }
 
@@ -386,13 +399,23 @@ std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(
     if (actual_gen != gen || vol >= nblocks) {
         return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
     }
-    std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
-    status = volumes_[volix]->read_block(vol, dest.data());
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, std::unique_ptr<Block>());
+    // Try to use zero-copy if possible
+    const u8* mptr;
+    std::tie(status, mptr) = volumes_[volix]->read_block_zero_copy(vol);
+    if (status == AKU_SUCCESS) {
+        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
+        return std::make_tuple(status, std::move(zblock));
+    } else if (status == AKU_EUNAVAILABLE) {
+        // Fallback to copying if not possible
+        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
+        status = volumes_[volix]->read_block(vol, dest.data());
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, std::unique_ptr<Block>());
+        }
+        auto block = std::make_shared<Block>(addr, std::move(dest));
+        return std::make_tuple(status, std::move(block));
     }
-    auto block = std::make_shared<Block>(addr, std::move(dest));
-    return std::make_tuple(status, std::move(block));
+    return std::make_tuple(status, std::unique_ptr<Block>());
 }
 
 void FixedSizeFileStorage::adjust_current_volume() {
@@ -449,13 +472,23 @@ std::tuple<aku_Status, std::shared_ptr<Block>> ExpandableFileStorage::read_block
     if (actual_gen != gen || vol >= nblocks) {
       return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
     }
-    std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
-    status = volumes_[gen]->read_block(vol, dest.data());
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, std::unique_ptr<Block>());
+    // Try to use zero-copy if possible
+    const u8* mptr;
+    std::tie(status, mptr) = volumes_[gen]->read_block_zero_copy(vol);
+    if (status == AKU_SUCCESS) {
+        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
+        return std::make_tuple(status, std::move(zblock));
+    } else if (status == AKU_EUNAVAILABLE) {
+        // Fallback to copying if not possible
+        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
+        status = volumes_[gen]->read_block(vol, dest.data());
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, std::unique_ptr<Block>());
+        }
+        auto block = std::make_shared<Block>(addr, std::move(dest));
+        return std::make_tuple(status, std::move(block));
     }
-    auto block = std::make_shared<Block>(addr, std::move(dest));
-    return std::make_tuple(status, std::move(block));
+    return std::make_tuple(status, std::unique_ptr<Block>());
 }
 
 std::unique_ptr<Volume> ExpandableFileStorage::create_new_volume(u32 id) {

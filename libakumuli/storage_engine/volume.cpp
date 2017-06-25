@@ -362,6 +362,19 @@ aku_Status Volume::read_block(u32 ix, u8* dest) const {
     return AKU_SUCCESS;
 }
 
+std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {
+    if (ix >= write_pos_) {
+        return std::make_tuple(AKU_EBAD_ARG, nullptr);
+    }
+    if (mmap_ptr_) {
+        // Fast path
+        size_t offset = ix * AKU_BLOCK_SIZE;
+        auto ptr = mmap_ptr_ + offset;
+        return std::make_tuple(AKU_SUCCESS, ptr);
+    }
+    return std::make_tuple(AKU_EUNAVAILABLE, nullptr);
+}
+
 void Volume::flush() {
     apr_status_t status = apr_file_flush(apr_file_handle_.get());
     panic_on_error(status, "Volume flush error");

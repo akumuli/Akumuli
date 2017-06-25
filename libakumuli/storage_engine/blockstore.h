@@ -218,11 +218,17 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
 class Block {
     std::vector<u8>           data_;
     LogicAddr                 addr_;
+    const u8*                 zptr_;
 
 public:
     Block(LogicAddr addr, std::vector<u8>&& data);
 
+    //! This c-tor is used in zero-copy mechanism, ptr should outlive the Block object
+    Block(LogicAddr addr, const u8* ptr);
+
     Block();
+
+    bool is_readonly() const;
 
     const u8* get_data() const;
 
