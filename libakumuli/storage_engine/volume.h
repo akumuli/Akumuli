@@ -29,6 +29,7 @@
 // project
 #include "akumuli.h"
 #include "util.h"
+#include "volumeregistry.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -51,30 +52,21 @@ typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
   * a result of the partial sector write).
   */
 class MetaVolume {
-    std::unique_ptr<MemoryMappedFile> mmap_;
-    size_t                  file_size_;
-    u8*                     mmap_ptr_;
-    mutable std::vector<u8> double_write_buffer_;
-    const std::string       path_;
+    std::shared_ptr<VolumeRegistry>  meta_;
+    size_t                           file_size_;
+    mutable std::vector<u8>          double_write_buffer_;
+    const std::string                path_;
 
-    MetaVolume(const std::string path);
-    void init_mmap();
+    MetaVolume(std::shared_ptr<VolumeRegistry> meta);
 
 public:
-    /** Create new meta-volume.
-      * @param path Path to created file.
-      * @param capacity Size of the created file (in blocks).
-      * @param vol_capacities Array of capacities of all volumes.
-      * @throw std::runtime_exception
-      */
-    static void create_new(const char* path, size_t capacity, u32 const* vol_capacities);
 
     /** Open existing meta-volume.
       * @param path Path to meta-volume.
       * @throw std::runtime_error on error.
       * @return new MetaVolume instance.
       */
-    static std::unique_ptr<MetaVolume> open_existing(const char* path);
+    static std::unique_ptr<MetaVolume> open_existing(std::shared_ptr<VolumeRegistry> meta);
 
     // Accessors
 
@@ -91,7 +83,13 @@ public:
 
     // Mutators
 
-    aku_Status add_volume(u32 id, u32 vol_capacity);
+    /**
+     * @brief Adds new tracked volume
+     * @param id is a new volume's id
+     * @param vol_capacity is a volume's capacity
+     * @return status
+     */
+    aku_Status add_volume(u32 id, u32 vol_capacity, const std::string &path);
 
     aku_Status update(u32 id, u32 nblocks, u32 capacity, u32 gen);
 

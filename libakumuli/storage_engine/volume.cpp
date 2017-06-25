@@ -19,6 +19,7 @@
 #include <apr.h>
 #include <apr_general.h>
 #include <apr_file_io.h>
+#include <set>
 
 #include <boost/exception/all.hpp>
 
@@ -57,15 +58,6 @@ static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
     return std::move(file);
 }
 
-static void _file_seek(apr_file_t* f, apr_seek_where_t where, apr_off_t* offset) {
-    auto status = apr_file_seek(f, where, offset);
-    panic_on_error(status, "Can't seek in file");
-}
-
-static void _file_write(apr_file_t* f, const void* buf, apr_size_t* nbytes) {
-    auto status =  apr_file_write(f, buf, nbytes);
-    panic_on_error(status, "Can't write to file");
-}
 
 static size_t _get_file_size(apr_file_t* file) {
     apr_finfo_t info;
@@ -95,51 +87,44 @@ struct VolumeRef {
     u32 nblocks;
     u32 capacity;
     u32 generation;
+    char path[];
 };
 
-void MetaVolume::init_mmap() {
-    mmap_.reset(new MemoryMappedFile(path_.c_str(), false));
-    file_size_ = mmap_->get_size();
-    mmap_ptr_ = static_cast<u8*>(mmap_->get_pointer());
-    double_write_buffer_ = std::vector<u8>(mmap_->get_size(), 0);
-    memcpy(double_write_buffer_.data(), mmap_ptr_, mmap_->get_size());
+static void volcpy(u8* block, const VolumeRegistry::VolumeDesc* desc) {
+    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block);
+    pvolume->capacity   = desc->capacity;
+    pvolume->generation = desc->generation;
+    pvolume->id         = desc->id;
+    pvolume->nblocks    = desc->nblocks;
+    pvolume->version    = desc->version;
+    memcpy(pvolume->path, desc->path.data(), desc->path.size());
+    pvolume->path[desc->path.size()] = '\0';
 }
 
-MetaVolume::MetaVolume(const std::string path)
-    : path_(path)
+MetaVolume::MetaVolume(std::shared_ptr<VolumeRegistry> meta)
+    : meta_(meta)
 {
-  init_mmap();
+    auto volumes = meta_->get_volumes();
+    file_size_ = volumes.size() * AKU_BLOCK_SIZE;
+    double_write_buffer_.resize(file_size_);
+    std::set<u32> init_list;
+    for (const auto& vol: volumes) {
+        if (init_list.count(vol.id) != 0) {
+            AKU_PANIC("Duplicate volume record");
+        }
+        init_list.insert(vol.id);
+        auto block = double_write_buffer_.data() + vol.id * AKU_BLOCK_SIZE;
+        volcpy(block, &vol);
+    }
 }
 
 size_t MetaVolume::get_nvolumes() const {
-    return file_size_/AKU_BLOCK_SIZE;
+    return file_size_ / AKU_BLOCK_SIZE;
 }
 
-void MetaVolume::create_new(const char* path, size_t capacity, const u32 *vol_capacities) {
-    size_t size = capacity * AKU_BLOCK_SIZE;
-    _create_file(path, size);
-    MemoryMappedFile mmap(path, false);
-    u8* it = static_cast<u8*>(mmap.get_pointer());
-    u8* end = it + mmap.get_size();
-    u32 id = 0;
-    // Initialization
-    while(it < end) {
-        VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(it);
-        pvolume->capacity = vol_capacities[id];
-        pvolume->generation = id;
-        pvolume->id = id;
-        pvolume->nblocks = 0;
-        pvolume->version = AKUMULI_VERSION;
-        it += AKU_BLOCK_SIZE;
-        id++;
-    }
-    auto status = mmap.flush();
-    panic_on_error(status, "Flush error");
-}
-
-std::unique_ptr<MetaVolume> MetaVolume::open_existing(const char* path) {
+std::unique_ptr<MetaVolume> MetaVolume::open_existing(std::shared_ptr<VolumeRegistry> meta) {
     std::unique_ptr<MetaVolume> result;
-    result.reset(new MetaVolume(path));
+    result.reset(new MetaVolume(meta));
     return std::move(result);
 }
 
@@ -177,37 +162,57 @@ std::tuple<aku_Status, u32> MetaVolume::get_generation(u32 id) const {
     return std::make_tuple(AKU_EBAD_ARG, 0u);
 }
 
-aku_Status MetaVolume::add_volume(u32 id, u32 capacity) {
-    auto status = mmap_->flush();
-    panic_on_error(status, "Flush error!");
-    mmap_.reset(nullptr);
+aku_Status MetaVolume::add_volume(u32 id, u32 capacity, const std::string& path) {
+    if (path.size() > AKU_BLOCK_SIZE - sizeof(VolumeRef)) {
+        return AKU_EBAD_ARG;
+    }
 
-    std::vector<u8> block(AKU_BLOCK_SIZE, 0);
-    VolumeRef* pvolume = reinterpret_cast<VolumeRef*>(block.data());
-    pvolume->capacity = capacity;
+    size_t old_size = double_write_buffer_.size();
+    double_write_buffer_.resize(old_size + AKU_BLOCK_SIZE);
+    file_size_ += AKU_BLOCK_SIZE;
+    u8* block = double_write_buffer_.data() + old_size;
+    VolumeRef* pvolume  = reinterpret_cast<VolumeRef*>(block);
+    pvolume->capacity   = capacity;
     pvolume->generation = id;
-    pvolume->id = id;
-    pvolume->nblocks = 0;
-    pvolume->version = AKUMULI_VERSION;
+    pvolume->id         = id;
+    pvolume->nblocks    = 0;
+    pvolume->version    = AKUMULI_VERSION;
+    memcpy(pvolume->path, path.data(), path.size());
+    pvolume->path[path.size()] = '\0';
 
-    AprPoolPtr pool = _make_apr_pool();
-    AprFilePtr f = _open_file(path_.c_str(), pool.get());
-    apr_off_t offset = 0;
-    _file_seek(f.get(), APR_END, &offset);
-    u64 block_size = AKU_BLOCK_SIZE;
-    _file_write(f.get(), block.data(), &block_size);
-    _close_apr_file(f.get());
+    // Update metadata storage
+    VolumeRegistry::VolumeDesc vol;
+    vol.nblocks         = pvolume->nblocks;
+    vol.generation      = pvolume->generation;
+    vol.capacity        = pvolume->capacity;
+    vol.version         = AKUMULI_VERSION;
+    vol.id              = pvolume->id;
+    vol.path            = path;
 
-    init_mmap();
+    meta_->add_volume(vol);
+
     return AKU_SUCCESS;
 }
 
 aku_Status MetaVolume::update(u32 id, u32 nblocks, u32 capacity, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
-        auto pvol = get_volref(double_write_buffer_.data(), id);
-        pvol->nblocks = nblocks;
-        pvol->capacity = capacity;
+        auto pvol        = get_volref(double_write_buffer_.data(), id);
+        pvol->nblocks    = nblocks;
+        pvol->capacity   = capacity;
         pvol->generation = gen;
+        pvol->version    = AKUMULI_VERSION;
+
+        // Update metadata storage (this update will be written into the sqlite
+        // database eventually in the asynchronous manner.
+        VolumeRegistry::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+        vol.version      = AKUMULI_VERSION;
+        vol.path.assign(static_cast<const char*>(pvol->path));
+        meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -217,6 +222,16 @@ aku_Status MetaVolume::set_nblocks(u32 id, u32 nblocks) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->nblocks = nblocks;
+
+        VolumeRegistry::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+        vol.version      = pvol->version;
+        vol.path.assign(static_cast<const char*>(pvol->path));
+        meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -226,6 +241,16 @@ aku_Status MetaVolume::set_capacity(u32 id, u32 cap) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->capacity = cap;
+
+        VolumeRegistry::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+        vol.version      = pvol->version;
+        vol.path.assign(static_cast<const char*>(pvol->path));
+        meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
@@ -235,27 +260,26 @@ aku_Status MetaVolume::set_generation(u32 id, u32 gen) {
     if (id < file_size_/AKU_BLOCK_SIZE) {
         auto pvol = get_volref(double_write_buffer_.data(), id);
         pvol->generation = gen;
+
+        VolumeRegistry::VolumeDesc vol;
+        vol.nblocks      = pvol->nblocks;
+        vol.generation   = pvol->generation;
+        vol.capacity     = pvol->capacity;
+        vol.id           = pvol->id;
+        vol.version      = pvol->version;
+        vol.path.assign(static_cast<const char*>(pvol->path));
+        meta_->update_volume(vol);
+
         return AKU_SUCCESS;
     }
     return AKU_EBAD_ARG;  // id out of range
 }
 
 void MetaVolume::flush() {
-    memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
-    auto status = mmap_->flush();
-    panic_on_error(status, "Flush error");
 }
 
 aku_Status MetaVolume::flush(u32 id) {
-    if (id < file_size_/AKU_BLOCK_SIZE) {
-        memcpy(mmap_ptr_, double_write_buffer_.data(), mmap_->get_size());
-        size_t from = id * AKU_BLOCK_SIZE;
-        size_t to = from + AKU_BLOCK_SIZE;
-        auto status = mmap_->flush(from, to);
-        panic_on_error(status, "Flush (range) error");
-        return AKU_SUCCESS;
-    }
-    return AKU_EBAD_ARG;
+    return AKU_SUCCESS;
 }
 
 //--------------------------- Volume -----------------------------------//

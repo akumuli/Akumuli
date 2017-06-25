@@ -347,6 +347,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    "${SQLITE3_LIBRARY}"
 )
 
 add_test(nbtree test_nbtree)

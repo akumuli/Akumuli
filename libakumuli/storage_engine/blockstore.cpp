@@ -20,6 +20,7 @@
 #include "util.h"
 #include "status_util.h"
 #include "crc32c.h"
+#include "akumuli_version.h"
 
 #include <cassert>
 
@@ -131,15 +132,23 @@ void Block::set_addr(LogicAddr addr) {
     addr_ = addr;
 }
 
-FileStorage::FileStorage(std::string metapath, std::vector<std::string> volpaths)
-    : meta_(MetaVolume::open_existing(metapath.c_str()))
+
+FileStorage::FileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : meta_(MetaVolume::open_existing(meta))
     , current_volume_(0)
     , current_gen_(0)
     , total_size_(0)
-    , volume_names_(volpaths)
 {
-    for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
-        auto volpath = volpaths.at(ix);
+    typedef VolumeRegistry::VolumeDesc TVol;
+    auto volumes = meta->get_volumes();
+    std::sort(volumes.begin(), volumes.end(), [](TVol const& a, TVol const& b) {
+        return a.id < b.id;
+    });
+    for (auto const& volrec: volumes) {
+        volume_names_.push_back(volrec.path);
+    }
+    for (u32 ix = 0ul; ix < volumes.size(); ix++) {
+        auto volpath = volumes.at(ix).path;
         u32 nblocks = 0;
         aku_Status status = AKU_SUCCESS;
         std::tie(status, nblocks) = meta_->get_nblocks(ix);
@@ -179,8 +188,7 @@ FileStorage::FileStorage(std::string metapath, std::vector<std::string> volpaths
     }
 }
 
-void FileStorage::create(std::string metapath,
-                         std::vector<std::tuple<u32, std::string>> vols)
+void FileStorage::create(std::vector<std::tuple<u32, std::string>> vols)
 {
     std::vector<u32> caps;
     for (auto cp: vols) {
@@ -190,7 +198,6 @@ void FileStorage::create(std::string metapath,
         Volume::create_new(path.c_str(), capacity);
         caps.push_back(capacity);
     }
-    MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
 void FileStorage::handle_volume_transition() {
@@ -330,17 +337,14 @@ u32 FileStorage::checksum(u8 const* data, size_t size) const {
 
 // FixedSizeFileStorage
 
-FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
-    : FileStorage::FileStorage(metapath, volpaths)
+FixedSizeFileStorage::FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : FileStorage::FileStorage(meta)
 {
     // nothing specific needed except calling the parent constructor
 }
 
-std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
-    if (volpaths.empty() || metapath.empty()) {
-      AKU_PANIC("Database file(s) doesn't exists!");
-    }
-    auto bs = new FixedSizeFileStorage(metapath, volpaths);
+std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::shared_ptr<VolumeRegistry> meta) {
+    auto bs = new FixedSizeFileStorage(meta);
     return std::shared_ptr<FixedSizeFileStorage>(bs);
 }
 
@@ -397,26 +401,15 @@ void FixedSizeFileStorage::adjust_current_volume() {
 
 // ExpandableFileStorage
 
-ExpandableFileStorage::ExpandableFileStorage(std::string db_name,
-                                             std::string metapath,
-                                             std::vector<std::string> volpaths,
-                                             const std::function<void (int, std::string)> &on_advance_volume)
-    : FileStorage::FileStorage(metapath, volpaths)
-    , db_name_(db_name)
-    , on_volume_advance_(on_advance_volume)
+ExpandableFileStorage::ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : FileStorage::FileStorage(meta)
+    , db_name_(meta->get_dbname())
 {
-    // nothing specific needed except calling the parent constructor
 }
 
-std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::string db_name,
-                                                                   std::string metapath,
-                                                                   std::vector<std::string> volpaths,
-                                                                   const std::function<void (int, std::string)> &on_volume_advance)
+std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::shared_ptr<VolumeRegistry> meta)
 {
-    if (volpaths.empty() || metapath.empty()) {
-      AKU_PANIC("Database file(s) doesn't exists!");
-    }
-    auto bs = new ExpandableFileStorage(db_name, metapath, volpaths, on_volume_advance);
+    auto bs = new ExpandableFileStorage(meta);
     return std::shared_ptr<ExpandableFileStorage>(bs);
 }
 
@@ -480,18 +473,15 @@ void ExpandableFileStorage::adjust_current_volume() {
     if (current_volume_ >= volumes_.size()) {
         // add new volume
         auto vol = create_new_volume(current_volume_);
+
         // update internal state of this class to be consistent
         dirty_.push_back(0);
         volume_names_.push_back(vol->get_path());
         total_size_ += vol->get_size();
-        // update meta-volume
-        auto status = meta_->add_volume(current_volume_, vol->get_size());
-        if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Could not add new volume to MetaVolume! error: "
-                        + StatusUtil::str(status));
-            AKU_PANIC("Meta-volume not updated, " + StatusUtil::str(status));
-        }
-        on_volume_advance_(static_cast<int>(current_volume_) + 1, vol->get_path());
+
+        // update metadata
+        meta_->add_volume(current_volume_, vol->get_size(), vol->get_path());
+
         // finally add new volume to our internal list of volumes
         volumes_.push_back(std::move(vol));
     }
