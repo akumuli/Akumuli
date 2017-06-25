@@ -290,7 +290,26 @@ Volume::Volume(const char* path, size_t write_pos)
     , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
     , path_(path)
+    , mmap_ptr_(nullptr)
 {
+#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
+    // 64-bit architecture, we can use mmap for speed
+    mmap_.reset(new MemoryMappedFile(path, false));
+    if (mmap_->is_bad()) {
+        // Fallback on error
+        Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error: '" + mmap_->error_message() + "', fallback to `fopen`");
+        mmap_.reset();
+        mmap_ptr_ = nullptr;
+        return;
+    }
+    mmap_->protect_all();
+    mmap_ptr_ = static_cast<const u8*>(mmap_->get_pointer());
+    if (mmap_->get_size() != file_size_*AKU_BLOCK_SIZE) {
+        Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error, fallback to `fopen`");
+        mmap_ptr_ = nullptr;
+        mmap_.reset();
+    }
+#endif
 }
 
 void Volume::reset() {
@@ -327,6 +346,12 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
 aku_Status Volume::read_block(u32 ix, u8* dest) const {
     if (ix >= write_pos_) {
         return AKU_EBAD_ARG;
+    }
+    if (mmap_ptr_) {
+        // Fast path
+        size_t offset = ix * AKU_BLOCK_SIZE;
+        memcpy(dest, mmap_ptr_ + offset, AKU_BLOCK_SIZE);
+        return AKU_SUCCESS;
     }
     apr_off_t offset = ix * AKU_BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &offset);
