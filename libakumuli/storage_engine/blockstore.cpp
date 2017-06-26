@@ -138,7 +138,7 @@ u8* Block::get_data() {
 }
 
 size_t Block::get_size() const {
-    return data_.size();
+    return zptr_ ? AKU_BLOCK_SIZE : data_.size();
 }
 
 LogicAddr Block::get_addr() const {
