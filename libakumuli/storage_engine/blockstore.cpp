@@ -124,8 +124,12 @@ const u8* Block::get_data() const {
     return zptr_ ? zptr_ : data_.data();
 }
 
+const u8* Block::get_cdata() const {
+    return zptr_ ? zptr_ : data_.data();
+}
+
 bool Block::is_readonly() const {
-    return zptr_ != nullptr;
+    return zptr_ != nullptr || addr_ != EMPTY_ADDR;
 }
 
 u8* Block::get_data() {

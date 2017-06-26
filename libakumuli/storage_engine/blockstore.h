@@ -232,6 +232,8 @@ public:
 
     const u8* get_data() const;
 
+    const u8* get_cdata() const;
+
     u8* get_data();
 
     size_t get_size() const;
