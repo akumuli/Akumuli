@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     std::tie(status, block) = bstore->read_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_data();
+    const u8* block_data = block->get_cdata();
     size_t block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
@@ -151,13 +151,11 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
 
 
     // Fill data in
-    auto buffer = std::make_shared<Block>();
-
-
     LogicAddr addr;
     aku_Status status;
 
     for (int i = 0; i < 17; i++) {
+        auto buffer = std::make_shared<Block>();
         buffer->get_data()[0] = static_cast<u8>(i);
         std::tie(status, addr) = bstore->append_block(buffer);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
@@ -174,7 +172,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
     std::tie(status, block) = bstore->read_block(2ull << 32);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_data();
+    const u8* block_data = block->get_cdata();
     size_t block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
@@ -206,7 +204,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_3) {
     std::tie(status, block) = bstore->read_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_data();
+    const u8* block_data = block->get_cdata();
     size_t block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
@@ -254,7 +252,7 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     std::tie(status, block) = bstore->read_block(addr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_data();
+    const u8* block_data = block->get_cdata();
     size_t    block_size = block->get_size();
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
