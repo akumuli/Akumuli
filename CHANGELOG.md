@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.13
+--------------
+
+IMPROVEMENTS
+
+* Blockstore uses mmap to read data from disk if possible
+* Blockstore uses zero-copy mechanism for mmap data
+
 Version 0.7.12
 --------------
 

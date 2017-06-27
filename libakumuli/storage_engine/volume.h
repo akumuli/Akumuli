@@ -116,6 +116,9 @@ class Volume {
     u32         file_size_;
     u32         write_pos_;
     std::string path_;
+    // Optional mmap
+    std::unique_ptr<MemoryMappedFile> mmap_;
+    const u8* mmap_ptr_;
 
     Volume(const char* path, size_t write_pos);
     
@@ -149,6 +152,13 @@ public:
 
     //! Read filxed size block from file
     aku_Status read_block(u32 ix, u8* dest) const;
+
+    /**
+     * @brief Read block without copying the data (only works if mmap available)
+     * @param ix is an index of the page
+     * @return status (AKU_EUNAVAILABLE if mmap is not present and the caller should use `read_block` instead)
+     */
+    std::tuple<aku_Status, const u8*> read_block_zero_copy(u32 ix) const;
 
     //! Return size in blocks
     u32 get_size() const;
