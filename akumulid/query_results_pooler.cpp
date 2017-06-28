@@ -463,47 +463,25 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
         if (cursor_->is_done()) {
-            // TODO: remove
-            logger.trace() << "read_some - is_done (1)";
             // This can be the case if error occured
             if (cursor_->is_error(&status)) {
-                // TODO: remove
-                logger.trace() << "read_some - is_error (1)";
                 // Some error occured, put error message to the outgoing buffer and return
                 int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
-                // TODO: remove
-                std::string errorstr(buf, buf+len);
-                logger.trace() << "read_some - actual error(1): " << errorstr;
-                // end TODO
                 if (len > 0) {
-                    // TODO: remove
-                    logger.trace() << "read_some - return early (1)";
                     return std::make_tuple((size_t)len, true);
                 }
             }
-            // TODO: remove
-            logger.trace() << "read_some - return early (2)";
             return std::make_tuple(0u, true);
         }
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
         rdbuf_pos_ = 0u;
         if (cursor_->is_error(&status)) {
-            // TODO: remove
-            logger.trace() << "read_some - is_error (2)";
             // Some error occured, put error message to the outgoing buffer and return
             int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
-            // TODO: remove
-            std::string errorstr(buf, buf+len);
-            logger.trace() << "read_some - actual error(2): " << errorstr;
-            // end TODO
             if (len > 0) {
-                // TODO: remove
-                logger.trace() << "read_some - return early (3)";
                 return std::make_tuple((size_t)len, false);
             }
-            // TODO: remove
-            logger.trace() << "read_some - return early (4)";
             return std::make_tuple(0u, false);
         }
     }

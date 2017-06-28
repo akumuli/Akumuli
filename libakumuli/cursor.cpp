@@ -104,8 +104,6 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
 
 bool ConcurrentCursor::is_done() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "Cursor.is_done returned " + std::to_string(done_ && queue_.empty()));
     return done_ && queue_.empty();
 }
 
@@ -114,11 +112,6 @@ bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
     if (out_error_code_or_null != nullptr) {
         *out_error_code_or_null = error_code_;
     }
-    // TODO: remove
-    if (error_code_ != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_TRACE, "Cursor.is_error returned " + StatusUtil::str(error_code_) + ", done_ = " + std::to_string(done_));
-    }
-    // end remove
     return done_ && error_code_ != AKU_SUCCESS;
 }
 
@@ -138,8 +131,6 @@ void ConcurrentCursor::set_error(aku_Status error_code) {
     done_ = true;
     error_code_ = error_code;
     cond_.notify_all();
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, std::string("Cursor.set_error: ") + StatusUtil::str(error_code));
 }
 
 static std::shared_ptr<ConcurrentCursor::BufferT> make_empty() {
