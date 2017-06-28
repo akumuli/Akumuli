@@ -141,7 +141,11 @@ void TcpSession::handle_read(BufferT buffer,
 void TcpSession::handle_write_error(boost::system::error_code error) {
     if (!error) {
         logger_.info() << "Clean shutdown";
-        socket_.shutdown(SocketT::shutdown_both);
+        boost::system::error_code shutdownerr;
+        socket_.shutdown(SocketT::shutdown_both, shutdownerr);
+        if (shutdownerr) {
+            logger_.error() << "Shutdown error: " << shutdownerr.message();
+        }
     } else {
         logger_.error() << "Error sending error message to client";
         logger_.error() << error.message();

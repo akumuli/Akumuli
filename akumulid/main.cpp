@@ -352,12 +352,13 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
   */
 void create_db_files(const char* path,
                      i32 nvolumes,
-                     u64 volume_size)
+                     u64 volume_size,
+                     bool allocate)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        status = aku_create_database_ex("db", path, path, nvolumes, volume_size);
+        status = aku_create_database_ex("db", path, path, nvolumes, volume_size, allocate);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -418,7 +419,7 @@ void cmd_run_server() {
 
 /** Create database command.
   */
-void cmd_create_database(bool test_db=false) {
+void cmd_create_database(bool test_db=false, bool allocate=false) {
     auto config_path = ConfigFile::default_config_path();
 
     auto config      = ConfigFile::read_config_file(config_path);
@@ -430,7 +431,7 @@ void cmd_create_database(bool test_db=false) {
         volsize = AKU_TEST_DB_SIZE;
     }
 
-    create_db_files(path.c_str(), volumes, volsize);
+    create_db_files(path.c_str(), volumes, volsize, allocate);
 }
 
 void cmd_delete_database() {
@@ -556,6 +557,7 @@ int main(int argc, char** argv) {
         cli_only_options.add_options()
                 ("help", "Produce help message")
                 ("create", "Create database")
+                ("allocate", "Preallocate disk space")
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
@@ -605,7 +607,10 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("create")) {
-            cmd_create_database(false);
+            bool allocate = false;
+            if(vm.count("allocate"))
+                allocate = true;
+            cmd_create_database(false, allocate);
             exit(EXIT_SUCCESS);
         }
 

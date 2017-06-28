@@ -88,7 +88,7 @@ static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared
         return std::tie(status, block);
     }
     // Check consistency (works with both inner and leaf nodes).
-    u8 const* data = block->get_data();
+    u8 const* data = block->get_cdata();
     SubtreeRef const* subtree = subtree_cast(data);
     u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
     if (crc != subtree->checksum) {
@@ -110,7 +110,7 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
         AKU_PANIC("Can't read block - " + StatusUtil::str(status));
     }
     // Check consistency (works with both inner and leaf nodes).
-    u8 const* data = block->get_data();
+    u8 const* data = block->get_cdata();
     SubtreeRef const* subtree = subtree_cast(data);
     u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
     if (crc != subtree->checksum) {
@@ -1192,7 +1192,7 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block)
     : prev_(EMPTY_ADDR)
 {
     block_ = block;
-    SubtreeRef* subtree = subtree_cast(block_->get_data());
+    const SubtreeRef* subtree = subtree_cast(block_->get_cdata());
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
 }
@@ -1202,11 +1202,11 @@ size_t NBTreeLeaf::_get_uncommitted_size() const {
 }
 
 SubtreeRef const* NBTreeLeaf::get_leafmeta() const {
-    return subtree_cast(block_->get_data());
+    return subtree_cast(block_->get_cdata());
 }
 
 size_t NBTreeLeaf::nelements() const {
-    SubtreeRef const* subtree = subtree_cast(block_->get_data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata());
     return subtree->count;
 }
 
@@ -1215,12 +1215,12 @@ u16 NBTreeLeaf::get_fanout() const {
 }
 
 aku_ParamId NBTreeLeaf::get_id() const {
-    SubtreeRef const* subtree = subtree_cast(block_->get_data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata());
     return subtree->id;
 }
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeLeaf::get_timestamps() const {
-    SubtreeRef const* subtree = subtree_cast(block_->get_data());
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata());
     return std::make_tuple(subtree->begin, subtree->end);
 }
 
@@ -1234,7 +1234,7 @@ aku_Status NBTreeLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
                                 std::vector<double>* values) const
 {
     int windex = writer_.get_write_index();
-    DataBlockReader reader(block_->get_data() + sizeof(SubtreeRef), block_->get_size());
+    DataBlockReader reader(block_->get_cdata() + sizeof(SubtreeRef), block_->get_size());
     size_t sz = reader.nelements();
     timestamps->reserve(sz);
     values->reserve(sz);
@@ -1296,7 +1296,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->level = 0;
     subtree->fanout_index = fanout_index_;
     // Compute checksum
-    subtree->checksum = bstore->checksum(block_->get_data() + sizeof(SubtreeRef), size);
+    subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
     return bstore->append_block(block_);
 }
 
@@ -1316,7 +1316,7 @@ std::unique_ptr<AggregateOperator> NBTreeLeaf::aggregate(aku_Timestamp begin, ak
 std::unique_ptr<AggregateOperator> NBTreeLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
     AKU_UNUSED(hint);
     auto agg = INIT_AGGRES;
-    SubtreeRef* subtree = subtree_cast(block_->get_data());
+    const SubtreeRef* subtree = subtree_cast(block_->get_cdata());
     agg.copy_from(*subtree);
     std::unique_ptr<AggregateOperator> result;
     AggregateOperator::Direction dir = begin < end ? AggregateOperator::Direction::FORWARD : AggregateOperator::Direction::BACKWARD;
@@ -1397,7 +1397,7 @@ NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
     , immutable_(true)
 {
     // Use zero-copy here.
-    SubtreeRef const* ref = subtree_cast(block->get_data());
+    SubtreeRef const* ref = subtree_cast(block->get_cdata());
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
     prev_ = ref->addr;
@@ -1415,7 +1415,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     , immutable_(false)
 {
     std::shared_ptr<Block> block = read_block_from_bstore(bstore, addr);
-    SubtreeRef const* ref = subtree_cast(block->get_data());
+    SubtreeRef const* ref = subtree_cast(block->get_cdata());
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
     prev_ = ref->addr;
@@ -1424,7 +1424,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     if (remove_last && write_pos_ != 0) {
         // We can't use zero-copy here because `block` belongs to other node.
         write_pos_--;
-        memcpy(block_->get_data(), block->get_data(), AKU_BLOCK_SIZE);
+        memcpy(block_->get_data(), block->get_cdata(), AKU_BLOCK_SIZE);
     }
     else {
         // Zero copy
@@ -1433,7 +1433,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
 }
 
 SubtreeRef const* NBTreeSuperblock::get_sblockmeta() const {
-    SubtreeRef const* pref = subtree_cast(block_->get_data());
+    SubtreeRef const* pref = subtree_cast(block_->get_cdata());
     return pref;
 }
 
@@ -1454,7 +1454,7 @@ aku_ParamId NBTreeSuperblock::get_id() const {
 }
 
 LogicAddr NBTreeSuperblock::get_prev_addr() const {
-    return subtree_cast(block_->get_data())->addr;
+    return subtree_cast(block_->get_cdata())->addr;
 }
 
 aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
@@ -1511,7 +1511,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     backref->level = level_;
     backref->version = AKUMULI_VERSION;
     // add checksum
-    backref->checksum = bstore->checksum(block_->get_data() + sizeof(SubtreeRef), backref->payload_size);
+    backref->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), backref->payload_size);
     return bstore->append_block(block_);
 }
 
@@ -1520,7 +1520,7 @@ bool NBTreeSuperblock::is_full() const {
 }
 
 aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
-    SubtreeRef const* ref = subtree_cast(block_->get_data());
+    SubtreeRef const* ref = subtree_cast(block_->get_cdata());
     for(u32 ix = 0u; ix < write_pos_; ix++) {
         auto p = ref + 1 + ix;
         refs->push_back(*p);
@@ -1529,7 +1529,7 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
 }
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeSuperblock::get_timestamps() const {
-    SubtreeRef const* pref = subtree_cast(block_->get_data());
+    SubtreeRef const* pref = subtree_cast(block_->get_cdata());
     return std::tie(pref->begin, pref->end);
 }
 
@@ -1611,7 +1611,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
             } else if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
-                auto psubtree = subtree_cast(block->get_data());
+                auto psubtree = subtree_cast(block->get_cdata());
                 fanout_index_ = psubtree->fanout_index + 1;
                 if (fanout_index_ == AKU_NBTREE_FANOUT) {
                     fanout_index_ = 0;
@@ -1840,7 +1840,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             } else if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
-                auto psubtree = subtree_cast(block->get_data());
+                auto psubtree = subtree_cast(block->get_cdata());
                 fanout_index_ = psubtree->fanout_index + 1;
                 if (fanout_index_ == AKU_NBTREE_FANOUT) {
                     fanout_index_ = 0;
@@ -1947,7 +1947,7 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
                 stream << tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
                 continue;
             }
-            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+            auto subtreeref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
             u16 level = subtreeref->level;
             if (level == 0) {
                 // leaf node
@@ -2678,7 +2678,7 @@ NBTreeExtentsList::RepairStatus NBTreeExtentsList::repair_status(std::vector<Log
 
 
 static NBTreeBlockType _dbg_get_block_type(std::shared_ptr<Block> block) {
-    auto ref = reinterpret_cast<SubtreeRef const*>(block->get_data());
+    auto ref = reinterpret_cast<SubtreeRef const*>(block->get_cdata());
     return ref->level == 0 ? NBTreeBlockType::LEAF : NBTreeBlockType::INNER;
 }
 

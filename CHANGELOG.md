@@ -1,25 +1,39 @@
-Akumuli project changelog
-=========================
+Release notes
+=============
 
-0.2.0
-=====
-Storage system:
----------------
-- Separate tests runners for different components for better reporting and code quality
-- API updates
-  - native IEEE 745 data type, new API method `aku_write_double`
-  - `aku_write` renamed to `aku_write_blob` (macro definition for backward compatibility)
-  - `aku_create_database` optional parameters now passed by value, not by pointer
-  - new open parameters:
-    - durability - allows to trade some durability for speed (default is max durability)
-    - enable_huge_tlb - allows to enable or diable huge tlb in memory mapped files (0 - disabled)
+Version 0.7.13
+--------------
 
-----------------------------  
+IMPROVEMENTS
 
-0.1.0
-=====
-Storage system:
----------------
-- better C-compatibility
-- tuning parameters and storage options revamp
+* Blockstore uses mmap to read data from disk if possible
+* Blockstore uses zero-copy mechanism for mmap data
 
+Version 0.7.12
+--------------
+
+IMPROVEMENTS
+
+* Blockstore is not using metadata file to track volume information (issue #177)
+* Volume information is stored in the sqlite3 database now (with recovery information)
+
+Version 0.7.x
+-------------
+
+NEW FEATURES
+
+* New storage engine based on NB+tree (B+tree variant) with crash recovery
+* Blockstore implementation added (fixed size and extendable)
+* HTTP-server with JSON based search API
+* Ingestion through TCP and UDP
+* REST based ingestion format
+* Bulk data ingestion
+* Query API
+  - Metadata query ("select meta")
+  - Scan query ("select" statement)
+  - Aggregations ("aggregate" statement)
+  - Group-by on series names ("group-by" statement)
+  - Group-aggregate on data points ("group-aggregate" statement)
+  - Join query ("join" statement)
+* Column-store with query planner with support for different materialization strategies
+  and operators

@@ -128,7 +128,8 @@ public:
                                   , const char     *metadata_path
                                   , const char     *volumes_path
                                   , i32             num_volumes
-                                  , u64             page_size);
+                                  , u64             page_size
+                                  , bool            allocate);
 
     /**
      * @brief Open storage and generate report (dont' modify anything)

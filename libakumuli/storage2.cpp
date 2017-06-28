@@ -24,6 +24,7 @@
 #include "log_iface.h"
 #include "status_util.h"
 #include "datetime.h"
+#include "akumuli_version.h"
 
 #include <algorithm>
 #include <atomic>
@@ -35,6 +36,9 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
+
+#include <fcntl.h>
+#include <cstdlib>
 
 namespace Akumuli {
 
@@ -48,9 +52,10 @@ namespace Akumuli {
   * all the page file names and they order.
   * @return APR_EINIT on DB error.
   */
- static apr_status_t create_metadata_page(const char* db_name
+static apr_status_t create_metadata_page(const char* db_name
                                         , const char* file_name
                                         , std::vector<std::string> const& page_file_names
+                                        , std::vector<u32> const& capacities
                                         , const char* bstore_type )
 {
     using namespace std;
@@ -64,9 +69,17 @@ namespace Akumuli {
         storage->init_config(db_name, date_time, bstore_type);
 
         std::vector<MetadataStorage::VolumeDesc> desc;
-        int ix = 0;
+        u32 ix = 0;
         for(auto str: page_file_names) {
-            desc.push_back(std::make_pair(ix++, str));
+            MetadataStorage::VolumeDesc volume;
+            volume.path = str;
+            volume.generation = ix;
+            volume.capacity = capacities[ix];
+            volume.id = ix;
+            volume.nblocks = 0;
+            volume.version = AKUMULI_VERSION;
+            desc.push_back(volume);
+            ix++;
         }
         storage->init_volumes(desc);
 
@@ -276,14 +289,7 @@ Storage::Storage(const char* path)
     // first volume is a metavolume
     auto volumes = metadata_->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
     std::string bstore_type = "FixedSizeFileStorage";
     std::string db_name = "db";
@@ -291,20 +297,10 @@ Storage::Storage(const char* path)
     metadata_->get_config_param("db_name", &db_name);
     if (bstore_type == "FixedSizeFileStorage") {
         Logger::msg(AKU_LOG_INFO, "Open as fxied size storage");
-        bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+        bstore_ = StorageEngine::FixedSizeFileStorage::open(metadata_);
     } else if (bstore_type == "ExpandableFileStorage") {
         Logger::msg(AKU_LOG_INFO, "Open as expandable storage");
-        std::weak_ptr<MetadataStorage> weak_meta = metadata_;
-        std::function<void(int, std::string)> on_volume_advance = [weak_meta](int id, std::string path) {
-            auto ptr = weak_meta.lock();
-            if (ptr) {
-                Logger::msg(AKU_LOG_TRACE, "Add new volume to the metadata store: " + path);
-                ptr->add_volume(std::make_pair(id, path));
-            } else {
-                Logger::msg(AKU_LOG_ERROR, "Can't save new volumes path, metadata storage already closed.");
-            }
-        };
-        bstore_ = StorageEngine::ExpandableFileStorage::open(db_name, metapath, volpaths, on_volume_advance);
+        bstore_ = StorageEngine::ExpandableFileStorage::open(metadata_);
     } else {
         Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
         AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
@@ -568,17 +564,10 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
 
     // Load series matcher data
     SeriesMatcher matcher;
@@ -634,17 +623,10 @@ aku_Status Storage::generate_recovery_report(const char* path, const char *outpu
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
     auto cstore = std::make_shared<StorageEngine::ColumnStore>(bstore);
 
     // Load series matcher data
@@ -946,7 +928,8 @@ aku_Status Storage::new_database( const char     *base_file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , i32             num_volumes
-                                , u64             volume_size)
+                                , u64             volume_size
+                                , bool            allocate)
 {
     // Check for max volume size
     const u64 MAX_SIZE = 0x100000000 * 4096 - 1;  // 15TB
@@ -1000,24 +983,42 @@ aku_Status Storage::new_database( const char     *base_file_name
         boost::filesystem::path p = volpath / basename;
         paths.push_back(std::make_tuple(volsize, p.string()));
     }
-    // Volumes meta-page
-    std::string basename = std::string(base_file_name) + ".metavol";
-    boost::filesystem::path volmpage = volpath / basename;
 
-    StorageEngine::FileStorage::create(volmpage.string(), paths);
+    StorageEngine::FileStorage::create(paths);
+
+    if (allocate) {
+        for (const auto& path: paths) {
+            const auto& p = std::get<1>(path);
+            int fd = open(p.c_str(), O_WRONLY);
+            if (fd < 0) {
+                boost::system::error_code error(errno, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "Can't open file '" + p + "' reason: " + error.message() + ". Skip.");
+                break;
+            }
+            int ret = posix_fallocate(fd, 0, std::get<0>(path));
+            ::close(fd);
+            if (ret == 0) {
+                Logger::msg(AKU_LOG_INFO, "Disk space for " + p + " preallocated");
+            } else {
+                boost::system::error_code error(ret, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "posix_fallocate fail: " + error.message());
+            }
+        }
+    }
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
-    mpaths.push_back(volmpage.string());
+    std::vector<u32> msizes;
     for (auto p: paths) {
+        msizes.push_back(std::get<0>(p));
         mpaths.push_back(std::get<1>(p));
     }
     if (num_volumes == 0) {
         Logger::msg(AKU_LOG_INFO, "Creating expandable file storage");
-        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "ExpandableFileStorage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "ExpandableFileStorage");
     } else {
         Logger::msg(AKU_LOG_INFO, "Creating fixed file storage");
-        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, "FixedSizeFileStorage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "FixedSizeFileStorage");
     }
     return AKU_SUCCESS;
 }
@@ -1032,19 +1033,14 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         // Bad database
         return AKU_EBAD_ARG;
     }
-    std::vector<std::string> volume_names(volumes.size() - 1, "");
-    // First volume is meta-page
-    std::string meta_file;
+    std::vector<std::string> volume_names(volumes.size(), "");
+
     for(auto it: volumes) {
-        if (it.first == 0) {
-            meta_file = it.second;
-        } else {
-            volume_names.at(static_cast<size_t>(it.first) - 1) = it.second;
-        }
+        volume_names.at(it.id) = it.path;
     }
     if (!force) {
         // Check whether or not database is empty
-        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta_file, volume_names);
+        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta);
         auto stats = fstore->get_stats();
         if (stats.nblocks != 0) {
             // DB is not empty
@@ -1062,7 +1058,6 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         }
         return AKU_SUCCESS;
     };
-    volume_names.push_back(meta_file);
     volume_names.push_back(file_name);
     std::vector<aku_Status> statuses;
     std::transform(volume_names.begin(), volume_names.end(), std::back_inserter(statuses), check_access);
