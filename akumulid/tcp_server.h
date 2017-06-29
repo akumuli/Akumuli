@@ -40,10 +40,10 @@ typedef boost::asio::strand                  StrandT;
 typedef boost::asio::io_service::work        WorkT;
 typedef std::function<void(aku_Status, u64)> ErrorCallback;
 
-/** Server session. Reads data from socket.
+/** Server session that handles RESP messages.
  *  Must be created in the heap.
   */
-class TcpSession : public std::enable_shared_from_this<TcpSession> {
+class RESPSession : public std::enable_shared_from_this<RESPSession> {
     // TODO: Unique session ID
     enum {
         BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
@@ -59,9 +59,9 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
 public:
     typedef Byte* BufferT;
 
-    TcpSession(IOServiceT* io, std::shared_ptr<DbSession> spout, bool parallel=true);
+    RESPSession(IOServiceT* io, std::shared_ptr<DbSession> spout, bool parallel=true);
 
-    ~TcpSession();
+    ~RESPSession();
 
     SocketT& socket();
 
@@ -130,7 +130,14 @@ public:
 
 private:
     //! Accept event handler
-    void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);
+    void handle_accept(std::shared_ptr<RESPSession> session, boost::system::error_code err);
+};
+
+
+struct SessionBuilder {
+
+    // session = std::make_shared<RESPSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
+    std::unique_ptr<ISession> create(IOServiceT* io, Spout);
 };
 
 

@@ -18,7 +18,7 @@ std::string make_unique_session_name() {
     return str.str();
 }
 
-TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
+RESPSession::RESPSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
     : parallel_(parallel)
     , io_(io)
     , socket_(*io)
@@ -31,20 +31,20 @@ TcpSession::TcpSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool pa
     parser_.start();
 }
 
-TcpSession::~TcpSession() {
+RESPSession::~RESPSession() {
     logger_.info() << "Session destroyed";
 }
 
-SocketT& TcpSession::socket() {
+SocketT& RESPSession::socket() {
     return socket_;
 }
 
-std::tuple<TcpSession::BufferT, size_t> TcpSession::get_next_buffer() {
+std::tuple<RESPSession::BufferT, size_t> RESPSession::get_next_buffer() {
     Byte *buffer = parser_.get_next_buffer();
     return std::make_tuple(buffer, BUFFER_SIZE);
 }
 
-void TcpSession::start() {
+void RESPSession::start() {
     BufferT buf;
     size_t buf_size;
     std::tie(buf, buf_size) = get_next_buffer();
@@ -52,7 +52,7 @@ void TcpSession::start() {
         socket_.async_read_some(
                 boost::asio::buffer(buf, buf_size),
                 strand_.wrap(
-                    boost::bind(&TcpSession::handle_read,
+                    boost::bind(&RESPSession::handle_read,
                                 shared_from_this(),
                                 buf,
                                 boost::asio::placeholders::error,
@@ -61,7 +61,7 @@ void TcpSession::start() {
         // Strand is not used here
         socket_.async_read_some(
                 boost::asio::buffer(buf, buf_size),
-                boost::bind(&TcpSession::handle_read,
+                boost::bind(&RESPSession::handle_read,
                             shared_from_this(),
                             buf,
                             boost::asio::placeholders::error,
@@ -69,10 +69,10 @@ void TcpSession::start() {
     }
 }
 
-ErrorCallback TcpSession::get_error_cb() {
+ErrorCallback RESPSession::get_error_cb() {
     logger_.info() << "Creating error handler for session";
     auto self = shared_from_this();
-    auto weak = std::weak_ptr<TcpSession>(self);
+    auto weak = std::weak_ptr<RESPSession>(self);
     auto fn = [weak](aku_Status status, u64) {
         auto session = weak.lock();
         if (session) {
@@ -83,7 +83,7 @@ ErrorCallback TcpSession::get_error_cb() {
             os << "-DB " << msg << "\r\n";
             boost::asio::async_write(session->socket_,
                                      stream,
-                                     boost::bind(&TcpSession::handle_write_error,
+                                     boost::bind(&RESPSession::handle_write_error,
                                                  session,
                                                  boost::asio::placeholders::error));
         }
@@ -91,7 +91,7 @@ ErrorCallback TcpSession::get_error_cb() {
     return ErrorCallback(fn);
 }
 
-void TcpSession::handle_read(BufferT buffer,
+void RESPSession::handle_read(BufferT buffer,
                              boost::system::error_code error,
                              size_t nbytes) {
     if (error) {
@@ -108,7 +108,7 @@ void TcpSession::handle_read(BufferT buffer,
             std::ostream os(&stream);
             os << "-PARSER " << resp_err.what() << "\r\n";
             boost::asio::async_write(socket_, stream,
-                                     boost::bind(&TcpSession::handle_write_error,
+                                     boost::bind(&RESPSession::handle_write_error,
                                                  shared_from_this(),
                                                  boost::asio::placeholders::error)
                                      );
@@ -119,7 +119,7 @@ void TcpSession::handle_read(BufferT buffer,
             std::ostream os(&stream);
             os << "-DB " << dberr.what() << "\r\n";
             boost::asio::async_write(socket_, stream,
-                                     boost::bind(&TcpSession::handle_write_error,
+                                     boost::bind(&RESPSession::handle_write_error,
                                                  shared_from_this(),
                                                  boost::asio::placeholders::error)
                                      );
@@ -130,7 +130,7 @@ void TcpSession::handle_read(BufferT buffer,
             std::ostream os(&stream);
             os << "-ERR " << boost::current_exception_diagnostic_information() << "\r\n";
             boost::asio::async_write(socket_, stream,
-                                     boost::bind(&TcpSession::handle_write_error,
+                                     boost::bind(&RESPSession::handle_write_error,
                                                  shared_from_this(),
                                                  boost::asio::placeholders::error)
                                      );
@@ -138,7 +138,7 @@ void TcpSession::handle_read(BufferT buffer,
     }
 }
 
-void TcpSession::handle_write_error(boost::system::error_code error) {
+void RESPSession::handle_write_error(boost::system::error_code error) {
     if (!error) {
         logger_.info() << "Clean shutdown";
         boost::system::error_code shutdownerr;
@@ -222,11 +222,11 @@ void TcpAcceptor::_run_one() {
 }
 
 void TcpAcceptor::_start() {
-    std::shared_ptr<TcpSession> session;
+    std::shared_ptr<RESPSession> session;
     auto con = connection_.lock();
     if (con) {
         auto spout = con->create_session();
-        session = std::make_shared<TcpSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
+        session = std::make_shared<RESPSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
     } else {
         logger_.error() << "Database was already closed";
     }
@@ -258,7 +258,7 @@ void TcpAcceptor::_stop() {
     sessions_work_.clear();
 }
 
-void TcpAcceptor::handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err) {
+void TcpAcceptor::handle_accept(std::shared_ptr<RESPSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start();
         _start();
