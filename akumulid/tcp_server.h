@@ -189,6 +189,8 @@ public:
     //! Run one handler (should be used only for testing)
     void _run_one();
 
+    std::string name() const;
+
 private:
     //! Accept event handler
     void handle_accept(std::shared_ptr<ProtocolSession> session, boost::system::error_code err);
@@ -202,7 +204,7 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
     };
     typedef std::unique_ptr<IOServiceT>  IOPtr;
     std::weak_ptr<DbConnection>          connection_;
-    std::shared_ptr<TcpAcceptor>         serv;
+    std::vector<std::shared_ptr<TcpAcceptor>> acceptors_;
     std::vector<IOPtr>                   ios_;
     std::vector<IOServiceT*>             iovec;
     boost::barrier                       barrier;

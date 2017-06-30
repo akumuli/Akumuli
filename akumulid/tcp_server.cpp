@@ -309,6 +309,10 @@ void TcpAcceptor::_stop() {
     sessions_work_.clear();
 }
 
+std::string TcpAcceptor::name() const {
+    return protocol_->name();
+}
+
 void TcpAcceptor::handle_accept(std::shared_ptr<ProtocolSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start();
@@ -343,8 +347,9 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     bool parallel = mode == Mode::SHARED_EVENT_LOOP;
     auto con = connection_.lock();
     if (con) {
-        serv = std::make_shared<TcpAcceptor>(iovec, port, con, parallel);
+        auto serv = std::make_shared<TcpAcceptor>(iovec, port, con, parallel);
         serv->start();
+        acceptors_.push_back(serv);
     } else {
         logger_.error() << "Can't start TCP server, database closed";
         std::runtime_error err("DB connection closed");
@@ -361,9 +366,34 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
     , stopped{0}
     , logger_("tcp-server", 32)
 {
-    AKU_UNUSED(protocol_map);
-    AKU_UNUSED(mode);
-    throw "Not implemented";
+    logger_.info() << "TCP server created, concurrency: " << concurrency;
+    if (mode == Mode::EVENT_LOOP_PER_THREAD) {
+        for(int i = 0; i < concurrency; i++) {
+            IOPtr ptr = IOPtr(new IOServiceT(1));
+            iovec.push_back(ptr.get());
+            ios_.push_back(std::move(ptr));
+        }
+    } else {
+        IOPtr ptr = IOPtr(new IOServiceT(static_cast<size_t>(concurrency)));
+        iovec.push_back(ptr.get());
+        ios_.push_back(std::move(ptr));
+    }
+    bool parallel = mode == Mode::SHARED_EVENT_LOOP;
+    auto con = connection_.lock();
+    for (auto& kv: protocol_map) {
+        int port = kv.first;
+        auto protocol = std::move(kv.second);
+        logger_.info() << "Create acceptor for " << protocol->name() << ", port: " << port;
+        if (con) {
+            auto serv = std::make_shared<TcpAcceptor>(iovec, port, std::move(protocol), con, parallel);
+            serv->start();
+            acceptors_.push_back(serv);
+        } else {
+            logger_.error() << "Can't start TCP server, database closed";
+            std::runtime_error err("DB connection closed");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
 }
 
 TcpServer::~TcpServer() {
@@ -409,8 +439,10 @@ void TcpServer::start(SignalHandler* sig, int id) {
 
 void TcpServer::stop() {
     if (stopped++ == 0) {
-        serv->stop();
-        logger_.info() << "TcpServer stopped";
+        for (auto serv: acceptors_) {
+            serv->stop();
+            logger_.info() << "TcpServer " << serv->name() << " stopped";
+        }
 
         for(auto& svc: ios_) {
             svc->stop();
