@@ -7,8 +7,31 @@
 
 namespace Akumuli {
 
+//                           //
+//     Protocol builders     //
+//                           //
+
+struct RESPSessionBuilder : ProtocolSessionBuilder {
+    bool parallel_;
+
+    RESPSessionBuilder(bool parallel=true)
+        : parallel_(parallel)
+    {
+    }
+
+    virtual std::unique_ptr<ProtocolSession> create(IOServiceT *io, std::shared_ptr<DbSession> session) {
+        std::unique_ptr<ProtocolSession> result;
+        result.reset(new RESPSession(io, session, parallel_));
+        return result;
+    }
+
+    virtual std::string name() const {
+        return "RESP";
+    }
+};
+
 //                     //
-//     Tcp Session     //
+//     RESP Session    //
 //                     //
 
 std::string make_unique_session_name() {
@@ -163,6 +186,32 @@ TcpAcceptor::TcpAcceptor(// Server parameters
                         std::shared_ptr<DbConnection> connection , bool parallel)
     : parallel_(parallel)
     , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    , protocol_(new RESPSessionBuilder(true))
+    , sessions_io_(io)
+    , connection_(connection)
+    , io_index_{0}
+    , start_barrier_(2)
+    , stop_barrier_(2)
+    , logger_("tcp-acceptor", 10)
+{
+    logger_.info() << "Server created!";
+    logger_.info() << "Port: " << port;
+
+    // Blocking I/O services
+    for (auto io: sessions_io_) {
+        sessions_work_.emplace_back(*io);
+    }
+}
+
+TcpAcceptor::TcpAcceptor(
+        std::vector<IOServiceT*> io,
+        int port,
+        std::unique_ptr<ProtocolSessionBuilder> protocol,
+        std::shared_ptr<DbConnection> connection,
+        bool parallel)
+    : parallel_(parallel)
+    , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    , protocol_(std::move(protocol))
     , sessions_io_(io)
     , connection_(connection)
     , io_index_{0}
@@ -191,8 +240,9 @@ void TcpAcceptor::start() {
     std::thread accept_thread([self]() {
 #ifdef __gnu_linux__
         // Name the thread
+        std::string thread_name = "TCP-accept-" + self->protocol_->name();
         auto thread = pthread_self();
-        pthread_setname_np(thread, "TCP-accept");
+        pthread_setname_np(thread, thread_name.c_str());
 #endif
         self->logger_.info() << "Starting acceptor worker thread";
         self->start_barrier_.wait();
@@ -222,11 +272,12 @@ void TcpAcceptor::_run_one() {
 }
 
 void TcpAcceptor::_start() {
-    std::shared_ptr<RESPSession> session;
+    std::shared_ptr<ProtocolSession> session;
     auto con = connection_.lock();
     if (con) {
-        auto spout = con->create_session();
-        session = std::make_shared<RESPSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
+        std::shared_ptr<DbSession> spout = con->create_session();
+        IOServiceT* io = sessions_io_.at(static_cast<size_t>(io_index_++) % sessions_io_.size());
+        session = protocol_->create(io, spout);
     } else {
         logger_.error() << "Database was already closed";
     }
@@ -258,7 +309,7 @@ void TcpAcceptor::_stop() {
     sessions_work_.clear();
 }
 
-void TcpAcceptor::handle_accept(std::shared_ptr<RESPSession> session, boost::system::error_code err) {
+void TcpAcceptor::handle_accept(std::shared_ptr<ProtocolSession> session, boost::system::error_code err) {
     if (AKU_LIKELY(!err)) {
         session->start();
         _start();
@@ -303,7 +354,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
 
 TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
                      int concurrency,
-                     std::map<int, std::unique_ptr<SessionBuilder>> protocol_map,
+                     std::map<int, std::unique_ptr<ProtocolSessionBuilder> > protocol_map,
                      TcpServer::Mode mode)
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)

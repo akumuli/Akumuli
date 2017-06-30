@@ -65,6 +65,26 @@ struct ProtocolSession {
     virtual ErrorCallback get_error_cb() = 0;
 };
 
+
+/**
+ * Object of this class can be used by the TCP-server to build
+ * protocol sessions.
+ */
+struct ProtocolSessionBuilder {
+
+    /**
+     * @brief create new ProtocolSession instance
+     * @param io is an IOServiceT instance
+     * @param session is a database session instance
+     */
+    virtual std::unique_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
+
+    /**
+     * Get the name of the protocol
+     */
+    virtual std::string name() const = 0;
+};
+
 /** Server session that handles RESP messages.
  *  Must be created in the heap.
   */
@@ -111,9 +131,12 @@ private:
   * Accepts connections and creates new client sessions
   */
 class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
+    typedef std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilderT;
+
     const bool                         parallel_;  //< Flag for TcpSession instances
     IOServiceT                           own_io_;  //< Acceptor's own io-service
     AcceptorT                          acceptor_;  //< Acceptor
+    ProtocolSessionBuilderT            protocol_;  //< Protocol builder
     std::vector<IOServiceT*>        sessions_io_;  //< List of io-services for sessions
     std::vector<WorkT>            sessions_work_;  //< Work to block io-services from completing too early
     std::weak_ptr<DbConnection>      connection_;  //< DB connection
@@ -128,11 +151,24 @@ public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
       * @param port port to listen for new connections
-      * @param pipeline ingestion pipeline
+      * @param connection to the database
       */
-    TcpAcceptor(  // Server parameters
+    TcpAcceptor(
         std::vector<IOServiceT*> io, int port,
-        // Storage & pipeline
+        std::shared_ptr<DbConnection> connection,
+        bool parallel=true);
+
+    /**
+     * Create multiprotocol c-tor
+      * @param io io-service instance
+      * @param port port to listen for new connections
+      * @param protocol is a protocol builder
+      * @param connection to the database
+     */
+    TcpAcceptor(
+        std::vector<IOServiceT*> io,
+        int port,
+        std::unique_ptr<ProtocolSessionBuilder> protocol,
         std::shared_ptr<DbConnection> connection,
         bool parallel=true);
 
@@ -155,22 +191,7 @@ public:
 
 private:
     //! Accept event handler
-    void handle_accept(std::shared_ptr<RESPSession> session, boost::system::error_code err);
-};
-
-
-/**
- * Object of this class can be used by the TCP-server to build
- * protocol sessions.
- */
-struct SessionBuilder {
-
-    /**
-     * @brief create new ProtocolSession instance
-     * @param io is an IOServiceT instance
-     * @param session is a database session instance
-     */
-    virtual std::unique_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
+    void handle_accept(std::shared_ptr<ProtocolSession> session, boost::system::error_code err);
 };
 
 
@@ -200,7 +221,7 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
 
     TcpServer(std::shared_ptr<DbConnection> connection,
               int concurrency,
-              std::map<int, std::unique_ptr<SessionBuilder>> protocol_map,
+              std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map,
               Mode mode=Mode::EVENT_LOOP_PER_THREAD);
 
     ~TcpServer();
