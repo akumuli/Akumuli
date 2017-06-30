@@ -188,7 +188,21 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
     std::atomic<int>                     stopped;
     Logger                               logger_;
 
+    /**
+     * @brief Creates TCP server that accepts only RESP connections
+     * @param connection is a pointer to opened database connection
+     * @param concurrency is a concurrency hint (how many threads should be used)
+     * @param port is a port number to listen
+     * @param mode is a server mode (event loop per thread or one shared event loop)
+     * @note I've found that on Linux Mode::EVENT_LOOP_PER_THREAD gives more consistent results (the other option should be used for windows)
+     */
     TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, Mode mode=Mode::EVENT_LOOP_PER_THREAD);
+
+    TcpServer(std::shared_ptr<DbConnection> connection,
+              int concurrency,
+              std::map<int, std::unique_ptr<SessionBuilder>> protocol_map,
+              Mode mode=Mode::EVENT_LOOP_PER_THREAD);
+
     ~TcpServer();
 
     //! Run IO service

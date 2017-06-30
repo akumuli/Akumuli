@@ -301,6 +301,20 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     }
 }
 
+TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
+                     int concurrency,
+                     std::map<int, std::unique_ptr<SessionBuilder>> protocol_map,
+                     TcpServer::Mode mode)
+    : connection_(connection)
+    , barrier(static_cast<u32>(concurrency) + 1)
+    , stopped{0}
+    , logger_("tcp-server", 32)
+{
+    AKU_UNUSED(protocol_map);
+    AKU_UNUSED(mode);
+    throw "Not implemented";
+}
+
 TcpServer::~TcpServer() {
     logger_.info() << "TCP server destroyed";
 }
