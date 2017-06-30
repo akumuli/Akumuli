@@ -40,10 +40,35 @@ typedef boost::asio::strand                  StrandT;
 typedef boost::asio::io_service::work        WorkT;
 typedef std::function<void(aku_Status, u64)> ErrorCallback;
 
+
+/**
+ * Common interface for all protocol session (RESP, line, etc)
+ */
+struct ProtocolSession {
+
+    virtual ~ProtocolSession() = default;
+
+    /**
+     * Returns socket instance (used by acceptor to esteblish new connection)
+     */
+    virtual SocketT& socket() = 0;
+
+    /**
+     * Initiates data ingestion
+     */
+    virtual void start() = 0;
+
+    /**
+     * Returns error callback that can be used by the other code
+     * to report errors.
+     */
+    virtual ErrorCallback get_error_cb() = 0;
+};
+
 /** Server session that handles RESP messages.
  *  Must be created in the heap.
   */
-class RESPSession : public std::enable_shared_from_this<RESPSession> {
+class RESPSession : public ProtocolSession, public std::enable_shared_from_this<RESPSession> {
     // TODO: Unique session ID
     enum {
         BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
@@ -63,11 +88,11 @@ public:
 
     ~RESPSession();
 
-    SocketT& socket();
+    virtual SocketT& socket();
 
-    void start();
+    virtual void start();
 
-    ErrorCallback get_error_cb();
+    virtual ErrorCallback get_error_cb();
 
 private:
     /** Allocate new buffer.
@@ -134,10 +159,18 @@ private:
 };
 
 
+/**
+ * Object of this class can be used by the TCP-server to build
+ * protocol sessions.
+ */
 struct SessionBuilder {
 
-    // session = std::make_shared<RESPSession>(sessions_io_.at(io_index_++ % sessions_io_.size()), std::move(spout), parallel_);
-    std::unique_ptr<ISession> create(IOServiceT* io, Spout);
+    /**
+     * @brief create new ProtocolSession instance
+     * @param io is an IOServiceT instance
+     * @param session is a database session instance
+     */
+    virtual std::unique_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
 };
 
 
