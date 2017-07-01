@@ -73,7 +73,7 @@ std::shared_ptr<const char> buffer_from_static_string(const char* str) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
     parser.start();
@@ -91,7 +91,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parser_bulk_1) {
     const char *messages = "+1|2\r\n:3\r\n*2\r\n+45.6\r\n+7.89\r\n+10|11|12\r\n:13\r\n*3\r\n+1.4\r\n+15\r\n+1.6\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, strlen(messages));
     parser.start();
@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
     const char *message2 = "\r\n+10\r\n:11\r\n+12.13\r\n+14\r\n:15\r\n+16.7\r\n";
 
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
 
     auto buf = parser.get_next_buffer();
@@ -157,7 +157,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
@@ -188,7 +188,7 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
     };
 
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, message, pivot1);
@@ -350,7 +350,7 @@ struct NameCheckingConsumer : DbSession {
 
 void test_series_name_parsing(const char* messages, const char* expected_tags, int n) {
     std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tags, n));
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     size_t buflen = strlen(messages);

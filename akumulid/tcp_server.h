@@ -91,14 +91,14 @@ struct ProtocolSessionBuilder {
 class RESPSession : public ProtocolSession, public std::enable_shared_from_this<RESPSession> {
     // TODO: Unique session ID
     enum {
-        BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
+        BUFFER_SIZE = RESPProtocolParser::RDBUF_SIZE,  //< Buffer size
     };
     const bool                      parallel_;
     IOServiceT*                     io_;
     SocketT                         socket_;
     StrandT                         strand_;
     std::shared_ptr<DbSession>      spout_;
-    ProtocolParser                  parser_;
+    RESPProtocolParser                  parser_;
     Logger                          logger_;
 
 public:

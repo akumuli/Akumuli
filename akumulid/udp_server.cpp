@@ -60,7 +60,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     int sockfd, retval;
     sockaddr_in sa{};
 
-    ProtocolParser parser(spout);
+    RESPProtocolParser parser(spout);
     try {
 
         parser.start();

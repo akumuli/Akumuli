@@ -151,7 +151,7 @@ void ReadBuffer::push(ReadBuffer::BufferT, u32 size) {
 
 // ProtocolParser class //
 
-ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
+RESPProtocolParser::RESPProtocolParser(std::shared_ptr<DbSession> consumer)
     : done_(false)
     , rdbuf_(RDBUF_SIZE)
     , consumer_(consumer)
@@ -159,11 +159,11 @@ ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
 {
 }
 
-void ProtocolParser::start() {
+void RESPProtocolParser::start() {
     logger_.info() << "Starting protocol parser";
 }
 
-bool ProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
+bool RESPProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
     bool success = false;
     int bytes_read = 0;
     const size_t tsbuflen = 28;
@@ -202,7 +202,7 @@ bool ProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
     return true;
 }
 
-int ProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
+int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
     bool success;
     int bytes_read;
     int rowwidth = -1;
@@ -244,7 +244,7 @@ int ProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues)
     return rowwidth;
 }
 
-bool ProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
+bool RESPProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
     const size_t buflen = 64;
     Byte buf[buflen];
     int bytes_read;
@@ -369,7 +369,7 @@ bool ProtocolParser::parse_values(RESPStream& stream, double* values, int nvalue
     return true;
 }
 
-void ProtocolParser::worker() {
+void RESPProtocolParser::worker() {
     // Buffer to read strings from
     u64 paramids[AKU_LIMITS_MAX_ROW_WIDTH];
     double values[AKU_LIMITS_MAX_ROW_WIDTH];
@@ -416,16 +416,16 @@ void ProtocolParser::worker() {
     }
 }
 
-void ProtocolParser::parse_next(Byte* buffer, u32 sz) {
+void RESPProtocolParser::parse_next(Byte* buffer, u32 sz) {
     rdbuf_.push(buffer, sz);
     worker();
 }
 
-Byte* ProtocolParser::get_next_buffer() {
+Byte* RESPProtocolParser::get_next_buffer() {
     return rdbuf_.pull();
 }
 
-void ProtocolParser::close() {
+void RESPProtocolParser::close() {
     done_ = true;
 }
 

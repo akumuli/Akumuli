@@ -111,7 +111,44 @@ public:
 };
 
 
-class ProtocolParser {
+/**
+ * @brief RESP protocol parser
+ * Implements two complimentary protocols:
+ * - data point protocol
+ * - row protocol
+ *
+ * DATA POINT PROTOCOL is used to insert individual data points. First line of
+ * each PDU should contain a RESP string. This string is interpreted as a series name.
+ * The second line should contain a RESP string that contains ISO8601 formatted
+ * timestamp (only basic ISO8601 format supported). Alternatively, if the second line
+ * contains a RESP integer, it's interpreted as a timestamp (number of nanoseconds since
+ * epoch). The timestamp should be followed by the value. Value can be encoded using
+ * RESP string or RESP integer. If the value is encoded as a string, it's interpreted as
+ * a floating point number. If the value is an integer, the value is used as is.
+ * Example:
+ *     +balancers.memusage host=machine1 region=NW
+ *     +20141210T074343.999999999
+ *     :31
+ *
+ * ROW PROTOCOL is used to insert logically corelated data points using single PDU.
+ * 'Logically corelated' means one particular thing: all data points share the set of
+ * tags and a timestamp. First line of the PDU should contain a RESP string. This string
+ * is interpreted as a compound series name. The second line should contain a RESP string
+ * that contains ISO8601 formatted timestamp (only basic ISO8601 format supported).
+ * Alternatively, if the second line contains a RESP integer, it's interpreted as a timestamp
+ * (number of nanoseconds since epoch). The timestamp should be followed by the array of values.
+ * The array of value is encoded using RESP array.
+ * Example:
+ *     +cpu.real|cpu.user|cpu.sys host=machine1 region=NW
+ *     +20141210T074343
+ *     *3
+ *     +3.12
+ *     +8.11
+ *     +12.6
+ *
+ * Protocol data units of each protocol can be interleaved.
+ */
+class RESPProtocolParser {
     bool                               done_;
     ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
@@ -129,7 +166,7 @@ public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
     };
-    ProtocolParser(std::shared_ptr<DbSession> consumer);
+    RESPProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();
     void parse_next(Byte *buffer, u32 sz);
     void close();
