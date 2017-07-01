@@ -199,4 +199,23 @@ public:
 };
 
 
+/**
+ * @brief OpenTSDBProtocolParser class
+ *
+ * Implements OpenTSDB protocol. In this protocol PDU delimiter is a new line character.
+ * Each line contains exactly one data point. Line starts with metric name, followed by
+ * the list of tags (comma delimited), followed by the timestamp followed by the value.
+ * Example:
+ *     cpu.real host=machine1,region=NW 20141210T074343 3.12
+ *     cpu.user host=machine1,region=NW 20141210T074343 8.11
+ *     cpu.sys host=machine1,region=NW 20141210T074343 12.6
+ */
+class OpenTSDBProtocolParser {
+    std::shared_ptr<DbSession>         consumer_;
+    Logger                             logger_;
+public:
+    OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer);
+
+};
+
 }  // namespace
