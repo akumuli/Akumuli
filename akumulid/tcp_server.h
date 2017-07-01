@@ -77,7 +77,7 @@ struct ProtocolSessionBuilder {
      * @param io is an IOServiceT instance
      * @param session is a database session instance
      */
-    virtual std::unique_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
+    virtual std::shared_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
 
     /**
      * Get the name of the protocol

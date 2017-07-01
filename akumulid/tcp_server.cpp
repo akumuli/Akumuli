@@ -19,8 +19,8 @@ struct RESPSessionBuilder : ProtocolSessionBuilder {
     {
     }
 
-    virtual std::unique_ptr<ProtocolSession> create(IOServiceT *io, std::shared_ptr<DbSession> session) {
-        std::unique_ptr<ProtocolSession> result;
+    virtual std::shared_ptr<ProtocolSession> create(IOServiceT *io, std::shared_ptr<DbSession> session) {
+        std::shared_ptr<ProtocolSession> result;
         result.reset(new RESPSession(io, session, parallel_));
         return result;
     }
