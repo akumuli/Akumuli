@@ -429,4 +429,13 @@ void RESPProtocolParser::close() {
     done_ = true;
 }
 
+
+//   Line protocol    //
+
+LineProtocolParser::LineProtocolParser(std::shared_ptr<DbSession> consumer)
+    : consumer_(consumer)
+    , logger_("line-protocol-parser", 32)
+{
+}
+
 }
