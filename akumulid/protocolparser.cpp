@@ -469,138 +469,141 @@ void OpenTSDBProtocolParser::close() {
 }
 
 void OpenTSDBProtocolParser::worker() {
-    aku_Sample sample;
-    aku_Status status = AKU_SUCCESS;
     const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
     Byte buffer[buffer_len];
-    int len = rdbuf_.read_line(buffer, buffer_len);
-    if (len < 0) {
-        // Buffer don't have a full PDU
-        return;
-    }
-    Byte* pbuf = buffer;
-    Byte const* pend = buffer + len;
-    // Find series name in the buffer
-    int quota = len;
-    bool skip = true;
-    while(quota--) {
-        int ix = len - quota;
-        Byte c = buffer[ix];
-        if (c == ',') {
-            buffer[ix] = ' ';
-        } else if (c == ' ') {
-            if (skip) {  // we should skip first space character that delimits metric name from tags
-                skip = false;
-            } else {
+    while(true) {
+        aku_Sample sample;
+        aku_Status status = AKU_SUCCESS;
+        int len = rdbuf_.read_line(buffer, buffer_len);
+        if (len <= 0) {
+            // Buffer don't have a full PDU
+            return;
+        }
+        Byte* pbuf = buffer;
+        Byte const* pend = buffer + len;
+        // Find series name in the buffer
+        int quota = len;
+        bool skip = true;
+        while(quota--) {
+            int ix = len - quota;
+            Byte c = buffer[ix];
+            if (c == ',') {
+                buffer[ix] = ' ';
+            } else if (c == ' ') {
+                if (skip) {  // we should skip first space character that delimits metric name from tags
+                    skip = false;
+                } else {
+                    break;
+                }
+            }
+        }
+        if (quota == 0) {
+            // Invalid series name
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name, can't find the end");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        // Buffer contains only one data point
+        status = consumer_->series_to_param_id(pbuf, static_cast<u32>(len - quota), &sample);
+        if (status != AKU_SUCCESS) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        pbuf += static_cast<u32>(len - quota);
+
+        // Read timestamp
+        while(pbuf < pend && *pbuf == ' ') {
+            pbuf++;
+        }
+
+        if (pbuf >= pend) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+
+        len = static_cast<int>(pend - pbuf);
+        quota = len;
+
+        while(quota--) {
+            int ix = len - quota;
+            Byte c = pbuf[ix];
+            if (c == ' ') {
                 break;
             }
         }
-    }
-    if (quota == 0) {
-        // Invalid series name
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name, can't find the end");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-    // Buffer contains only one data point
-    status = consumer_->series_to_param_id(pbuf, static_cast<u32>(len - quota), &sample);
-    if (status != AKU_SUCCESS) {
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-    pbuf += static_cast<u32>(len - quota);
-
-    // Read timestamp
-    while(pbuf < pend && *pbuf == ' ') {
-        pbuf++;
-    }
-
-    if (pbuf >= pend) {
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-
-    len = static_cast<int>(pend - pbuf);
-    quota = len;
-
-    while(quota--) {
-        int ix = len - quota;
-        Byte c = pbuf[ix];
-        if (c == ' ') {
-            break;
-        }
-    }
-    if (quota == 0) {
-        // Invalid timestamp
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp, can't find the end");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-    status = aku_parse_timestamp(pbuf, &sample);
-    if (status != AKU_SUCCESS) {
-        bool err = false;
-        if (status == AKU_EBAD_ARG) {
-            // Try to parse as int
-            Byte* endptr;
-            pbuf[len - quota] = '\0';
-            auto result = strtol(pbuf, &endptr, 10);
-            pbuf[len - quota] = ' ';
-            if (result == 0) {
-                err = true;
-            }
-        } else {
-            err = true;
-        }
-        if (err) {
+        if (quota == 0) {
+            // Invalid timestamp
             std::string msg;
             size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp format");
+            std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp, can't find the end");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
+        status = aku_parse_timestamp(pbuf, &sample);
+        if (status != AKU_SUCCESS) {
+            bool err = false;
+            if (status == AKU_EBAD_ARG) {
+                // Try to parse as int
+                Byte* endptr;
+                pbuf[len - quota] = '\0';
+                auto result = strtol(pbuf, &endptr, 10);
+                pbuf[len - quota] = ' ';
+                if (result == 0) {
+                    err = true;
+                }
+                sample.timestamp = result;
+            } else {
+                err = true;
+            }
+            if (err) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp format");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+        }
+        pbuf += static_cast<u32>(len - quota);
+
+        // Read value
+        while(pbuf < pend && *pbuf == ' ') {
+            pbuf++;
+        }
+
+        if (pbuf >= pend) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+
+        len = static_cast<int>(pend - pbuf);
+        quota = len - 1;
+
+        pbuf[quota] = '\0';
+        char* endptr = nullptr;
+        double value = strtod(pbuf, &endptr);
+        if (endptr - pbuf != quota) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("bad floating point value");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+
+        sample.payload.float64 = value;
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+
+        // Put value
+        status = consumer_->write(sample);
+        if (status != AKU_SUCCESS) {
+            BOOST_THROW_EXCEPTION(DatabaseError(status));
+        }
+
+        rdbuf_.consume();
     }
-    pbuf += static_cast<u32>(len - quota);
-
-    // Read value
-    while(pbuf < pend && *pbuf == ' ') {
-        pbuf++;
-    }
-
-    if (pbuf >= pend) {
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-
-    len = static_cast<int>(pend - pbuf);
-    quota = len - 1;
-
-    pbuf[quota] = '\0';
-    char* endptr = nullptr;
-    double value = strtod(pbuf, &endptr);
-    if (endptr - pbuf != quota) {
-        std::string msg;
-        size_t pos;
-        std::tie(msg, pos) = rdbuf_.get_error_context("bad floating point value");
-        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-    }
-
-    sample.payload.float64 = value;
-    sample.payload.type = AKU_PAYLOAD_FLOAT;
-
-    // Put value
-    status = consumer_->write(sample);
-    if (status != AKU_SUCCESS) {
-        BOOST_THROW_EXCEPTION(DatabaseError(status));
-    }
-
-    rdbuf_.consume();
 }
 
 }

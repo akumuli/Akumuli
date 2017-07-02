@@ -4,6 +4,7 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/trim.hpp>
 
 #include "ingestion_pipeline.h"
 #include "protocolparser.h"
@@ -38,6 +39,7 @@ struct ConsumerMock : DbSession {
 
     virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
         std::string num(begin, begin + sz);
+        boost::algorithm::trim(num);
         sample->paramid = boost::lexical_cast<u64>(num);
         return AKU_SUCCESS;
     }
@@ -293,24 +295,48 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
 
 struct NameCheckingConsumer : DbSession {
     enum { ID = 101 };
-    std::string expected_;
+
     int called_;
     int num_calls_expected_;
 
+    std::map<u64, std::string> series;
+    std::map<std::string, u64> index;
+    std::vector<aku_ParamId>   ids;
+    std::vector<aku_Timestamp> ts;
+    std::vector<double>        xs;
+
+
     NameCheckingConsumer(std::string expected, int ncalls_expected)
-        : expected_(expected)
-        , called_(0)
+        : called_(0)
         , num_calls_expected_(ncalls_expected)
-    {}
+    {
+        series[ID] = expected;
+        index[expected] = ID;
+    }
+
+    NameCheckingConsumer(std::vector<std::string> expected, int ncalls_expected)
+        : called_(0)
+        , num_calls_expected_(ncalls_expected)
+    {
+        aku_ParamId id = ID;
+        for (const auto& name: expected) {
+            series[id] = name;
+            index[name] = id;
+            id++;
+        }
+    }
 
     virtual ~NameCheckingConsumer() {
-        if (called_ != num_calls_expected_) {
+        if (num_calls_expected_ >= 0 && called_ != num_calls_expected_) {
             BOOST_FAIL("Test wasn't called");
         }
     }
 
     virtual aku_Status write(const aku_Sample &sample) override {
         called_++;
+        ids.push_back(sample.paramid);
+        ts.push_back(sample.timestamp);
+        xs.push_back(sample.payload.type == AKU_PAYLOAD_FLOAT ? sample.payload.float64 : static_cast<double>(INFINITY));
         return AKU_SUCCESS;
     }
 
@@ -319,9 +345,10 @@ struct NameCheckingConsumer : DbSession {
     }
 
     virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
-        if (id == ID) {
-            size_t bytes_copied = std::min(sz, expected_.size());
-            memcpy(buf, expected_.data(), bytes_copied);
+        if (series.count(id)) {
+            std::string expected = series[id];
+            size_t bytes_copied = std::min(sz, expected.size());
+            memcpy(buf, expected.data(), bytes_copied);
             return static_cast<int>(bytes_copied);
         }
         return 0;
@@ -329,19 +356,18 @@ struct NameCheckingConsumer : DbSession {
 
     virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
         std::string name(begin, begin + sz);
-        if (name == expected_) {
-            sample->paramid = ID;
+        if (index.count(name)) {
+            sample->paramid = index[name];
             return AKU_SUCCESS;
         }
         BOOST_FAIL("Invalid series name");
         return AKU_SUCCESS;
     }
 
-    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32) override {
         std::string name(begin, end);
-        if (name == expected_) {
-            assert(cap);
-            ids[0] = ID;
+        if (index.count(name)) {
+            ids[0] = index[name];
             return 1;
         }
         return 0;
@@ -375,12 +401,40 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2)
 
 BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
     std::string messages = "test tag1=value1,tag2=value2 2 12.3\n";
-    std::string expected_tags = "test tag1=value1 tag2=value2";
-    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tags, 1));
+    std::string expected_tag = "test tag1=value1 tag2=value2";
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tag, 1));
     OpenTSDBProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages.data(), messages.size());
     parser.start();
     parser.parse_next(buf, static_cast<u32>(messages.size()));
     parser.close();
+
+    BOOST_REQUIRE_EQUAL(cons->ids.size(), 1);
+    BOOST_REQUIRE_EQUAL(cons->ids.at(0), cons->index[expected_tag]);
+    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2);
+    BOOST_REQUIRE_EQUAL(cons->xs.at(0), 12.3);
+}
+
+BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
+    std::string messages = "test tag=1 2 34.5\n"
+                           "test tag=2 7 89.0\n";
+    std::vector<std::string> expected_names = {
+        "test tag=1", "test tag=2"
+    };
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_names, -1));
+    OpenTSDBProtocolParser parser(cons);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages.data(), messages.size());
+    parser.start();
+    parser.parse_next(buf, static_cast<u32>(messages.size()));
+    parser.close();
+
+    BOOST_REQUIRE_EQUAL(cons->ids.size(), 2);
+    BOOST_REQUIRE_EQUAL(cons->ids.at(0),  cons->index[expected_names[0]]);
+    BOOST_REQUIRE_EQUAL(cons->ids.at(1),  cons->index[expected_names[1]]);
+    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2);
+    BOOST_REQUIRE_EQUAL(cons->ts.at(1),  7);
+    BOOST_REQUIRE_EQUAL(cons->xs.at(0), 34.5);
+    BOOST_REQUIRE_EQUAL(cons->xs.at(1), 89.0);
 }
