@@ -372,3 +372,15 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2)
     const char *messages = "+trialrank2 tag1=hello tag2=check\n:1418224205000000000\n:31\n";
     test_series_name_parsing(messages, "trialrank2 tag1=hello tag2=check", 1);
 }
+
+BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
+    std::string messages = "test tag1=value1,tag2=value2 2 12.3\n";
+    std::string expected_tags = "test tag1=value1 tag2=value2";
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tags, 1));
+    OpenTSDBProtocolParser parser(cons);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages.data(), messages.size());
+    parser.start();
+    parser.parse_next(buf, static_cast<u32>(messages.size()));
+    parser.close();
+}

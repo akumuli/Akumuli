@@ -211,11 +211,23 @@ public:
  *     cpu.sys host=machine1,region=NW 20141210T074343 12.6
  */
 class OpenTSDBProtocolParser {
+    bool                               done_;
+    ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
+
+    void worker();
 public:
+    enum {
+        RDBUF_SIZE = 0x1000,  // 4KB
+    };
+
     OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer);
 
+    void start();
+    void parse_next(Byte *buffer, u32 sz);
+    void close();
+    Byte* get_next_buffer();
 };
 
 }  // namespace
