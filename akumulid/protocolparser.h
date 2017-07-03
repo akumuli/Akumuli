@@ -175,31 +175,6 @@ public:
 
 
 /**
- * @brief LineProtocolParser class
- *
- * Implements line protocol. In this protocol PDU delimiter is a new line character.
- * Each line contains one or several data points. Line starts with the comma delimited
- * list of tags (without the metric name). Each tag is a key-value pair (e.g. region=NW).
- * The list of tags is followed by the space character and the list of values. Each value
- * is a key-value pair in wich the metric name is used as a key. This list is comma
- * separated as well. The values list is followed by the space character and the timestamp.
- * The timestamp is an ISO8601 encoded timesamp (using basic format) or an integer that
- * contains number of nanoseconds since epoch.
- * Example:
- *     host=machine1,region=NW cpu.real=3.12,cpu.user=8.11,cpu.sys=12.6 20141210T074343
- *
- * Spaces inside the list of tags and values are prohibited. If you need to use space or
- * comma inside the tag name or value or inside the metric name, you should use escape character.
- */
-class LineProtocolParser {
-    std::shared_ptr<DbSession>         consumer_;
-    Logger                             logger_;
-public:
-    LineProtocolParser(std::shared_ptr<DbSession> consumer);
-};
-
-
-/**
  * @brief OpenTSDBProtocolParser class
  *
  * Implements OpenTSDB protocol. In this protocol PDU delimiter is a new line character.

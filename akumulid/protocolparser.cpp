@@ -430,17 +430,6 @@ void RESPProtocolParser::close() {
 }
 
 
-
-//   Line protocol    //
-
-LineProtocolParser::LineProtocolParser(std::shared_ptr<DbSession> consumer)
-    : consumer_(consumer)
-    , logger_("line-protocol-parser", 32)
-{
-}
-
-
-
 //     OpenTSDB protocol      //
 
 OpenTSDBProtocolParser::OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer)
