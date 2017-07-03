@@ -166,8 +166,10 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     BOOST_REQUIRE_THROW(parser.parse_next(buf, 29), RESPError);
 }
 
-template<class Pred>
-void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred) {
+
+
+template<class Protocol, class Pred, class Mock>
+void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred, std::shared_ptr<Mock> cons) {
 
     auto buffer1 = buffer_from_static_string(message);
     auto buffer2 = buffer_from_static_string(message + pivot1);
@@ -189,8 +191,7 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
         0u
     };
 
-    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    RESPProtocolParser parser(cons);
+    Protocol parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, message, pivot1);
@@ -248,7 +249,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing) {
     for (int i = 0; i < 100; i++) {
         size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
         size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
-        find_framing_issues(message, msglen, pivot1, pivot2, pred);
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
     }
 }
 
@@ -287,7 +289,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
     for (int i = 0; i < 100; i++) {
         size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
         size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
-        find_framing_issues(message, msglen, pivot1, pivot2, pred);
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
     }
 }
 
@@ -437,4 +440,48 @@ BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
     BOOST_REQUIRE_EQUAL(cons->ts.at(1),  7);
     BOOST_REQUIRE_EQUAL(cons->xs.at(0), 34.5);
     BOOST_REQUIRE_EQUAL(cons->xs.at(1), 89.0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_open_tsdb_protocol_parser_framing) {
+
+    const char *message = "test tag1=1,tag2=1 10001 34.57\n"
+                          "test tag1=2,tag2=2 10002 81.09\n"
+                          "test tag1=3,tag2=3 10003 12.13\n"
+                          "test tag1=1,tag2=1 10004 16.71\n";
+
+    std::vector<std::string> expected = {
+        "test tag1=1 tag2=1",
+        "test tag1=2 tag2=2",
+        "test tag1=3 tag2=3",
+    };
+
+    auto pred = [&] (std::shared_ptr<NameCheckingConsumer> cons) {
+
+        BOOST_REQUIRE_EQUAL(cons->ids.size(), 4);
+        // 0
+        BOOST_REQUIRE_EQUAL(cons->ids[0], cons->index[expected.at(0)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[0], 10001);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[0], 34.57, 1e-9);
+        // 1
+        BOOST_REQUIRE_EQUAL(cons->ids[1], cons->index[expected.at(1)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[1], 10002);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[1], 81.09, 1e-9);
+        // 2
+        BOOST_REQUIRE_EQUAL(cons->ids[2], cons->index[expected.at(2)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[2], 10003);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[2], 12.13, 1e-9);
+        // 3
+        BOOST_REQUIRE_EQUAL(cons->ids[3], cons->index[expected.at(0)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[3], 10004);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[3], 16.71, 1e-9);
+    };
+
+    size_t msglen = strlen(message);
+
+    for (int i = 0; i < 100; i++) {
+        size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
+        std::shared_ptr<NameCheckingConsumer> cons = std::make_shared<NameCheckingConsumer>(expected, -1);
+        find_framing_issues<OpenTSDBProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
+    }
 }
