@@ -457,6 +457,11 @@ void OpenTSDBProtocolParser::close() {
     done_ = true;
 }
 
+static bool is_put(const Byte* p) {
+    static const u32 asciiput = 0x20747570;
+    return *reinterpret_cast<const u32*>(p) == asciiput;
+}
+
 void OpenTSDBProtocolParser::worker() {
     const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
     Byte buffer[buffer_len];
@@ -468,7 +473,31 @@ void OpenTSDBProtocolParser::worker() {
             // Buffer don't have a full PDU
             return;
         }
+        if (len <= 4 || !is_put(buffer)) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+
+        // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+        // to 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+
         Byte* pbuf = buffer;
+        pbuf += 4;  // skip 'put '
+        len  -= 4;
+        while (*pbuf == ' ' && len > 0) {
+            pbuf++;
+            len--;
+        }  // Skip redundant space characters
+
+        // Convert 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+        // to 'cpu.real host=machine1 region=NW 20141210T074343 3.12'
+        // using std::rotate:
+        //  std::rotate(a, b, pend)
+        //  where a = '20141210T074343 3.12 host=machine1 region=NW'
+        //    and b = 'host=machine1 region=NW'
+
         Byte const* pend = buffer + len;
         // Find series name in the buffer
         int quota = len;

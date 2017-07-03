@@ -178,12 +178,12 @@ public:
  * @brief OpenTSDBProtocolParser class
  *
  * Implements OpenTSDB protocol. In this protocol PDU delimiter is a new line character.
- * Each line contains exactly one data point. Line starts with metric name, followed by
- * the list of tags (comma delimited), followed by the timestamp followed by the value.
+ * Each line contains exactly one command. This parser supports only 'put' command.
+ *
  * Example:
- *     cpu.real host=machine1,region=NW 20141210T074343 3.12
- *     cpu.user host=machine1,region=NW 20141210T074343 8.11
- *     cpu.sys host=machine1,region=NW 20141210T074343 12.6
+ *     put cpu.real 20141210T074343 3.12 host=machine1 region=NW
+ *     put cpu.user 20141210T074343 8.11 host=machine1 region=NW
+ *     put cpu.sys 20141210T074343 12.6 host=machine1 region=NW
  */
 class OpenTSDBProtocolParser {
     bool                               done_;
