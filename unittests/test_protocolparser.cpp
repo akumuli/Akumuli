@@ -402,8 +402,13 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2)
     test_series_name_parsing(messages, "trialrank2 tag1=hello tag2=check", 1);
 }
 
+
+//                                    //
+//   OpenTSDB protocol parser tests   //
+//                                    //
+
 BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
-    std::string messages = "test tag1=value1,tag2=value2 2 12.3\n";
+    std::string messages = "put test 2 12.3 tag1=value1 tag2=value2\n";
     std::string expected_tag = "test tag1=value1 tag2=value2";
     std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tag, 1));
     OpenTSDBProtocolParser parser(cons);
@@ -420,10 +425,25 @@ BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
-    std::string messages = "test tag=1 2 34.5\n"
-                           "test tag=2 7 89.0\n";
+    std::string messages =
+        "put test 2 34.5 tag=1\n"
+        "put test 7 89.0 tag=2\n"
+        "put  test 10 11.1 tag=3\n"
+        "put test  13 14.5 tag=4\n"
+        "put test 16  17.1 tag=5\n"
+        "put test 19 20.2  tag=6\n"
+        "put test 22 23.2 tag=7 \n";
     std::vector<std::string> expected_names = {
-        "test tag=1", "test tag=2"
+        "test tag=1", "test tag=2",
+        "test tag=3", "test  tag=4",  // for actual series parser "test  tag=4" and "test tag=4" is the same
+        "test tag=5", "test tag=6",
+        "test tag=7"
+    };
+    std::vector<aku_Timestamp> expected_ts = {
+        2, 7, 10, 13, 16, 19, 22
+    };
+    std::vector<double> expected_values = {
+        34.5, 89.0, 11.1, 14.5, 17.1, 20.2, 23.2
     };
     std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_names, -1));
     OpenTSDBProtocolParser parser(cons);
@@ -433,21 +453,20 @@ BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
     parser.parse_next(buf, static_cast<u32>(messages.size()));
     parser.close();
 
-    BOOST_REQUIRE_EQUAL(cons->ids.size(), 2);
-    BOOST_REQUIRE_EQUAL(cons->ids.at(0),  cons->index[expected_names[0]]);
-    BOOST_REQUIRE_EQUAL(cons->ids.at(1),  cons->index[expected_names[1]]);
-    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2);
-    BOOST_REQUIRE_EQUAL(cons->ts.at(1),  7);
-    BOOST_REQUIRE_EQUAL(cons->xs.at(0), 34.5);
-    BOOST_REQUIRE_EQUAL(cons->xs.at(1), 89.0);
+    BOOST_REQUIRE_EQUAL(cons->ids.size(), 7);
+    for (int i = 0; i < 7; i++) {
+        BOOST_REQUIRE_EQUAL(cons->ids.at(i),  cons->index[expected_names[i]]);
+        BOOST_REQUIRE_EQUAL(cons->ts.at(i),  expected_ts.at(i));
+        BOOST_REQUIRE_EQUAL(cons->xs.at(i), expected_values.at(i));
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_open_tsdb_protocol_parser_framing) {
 
-    const char *message = "test tag1=1,tag2=1 10001 34.57\n"
-                          "test tag1=2,tag2=2 10002 81.09\n"
-                          "test tag1=3,tag2=3 10003 12.13\n"
-                          "test tag1=1,tag2=1 10004 16.71\n";
+    const char *message = "put test 10001 34.57 tag1=1 tag2=1\n"
+                          "put test 10002 81.09 tag1=2 tag2=2\n"
+                          "put test 10003 12.13 tag1=3 tag2=3\n"
+                          "put test 10004 16.71 tag1=1 tag2=1\n";
 
     std::vector<std::string> expected = {
         "test tag1=1 tag2=1",

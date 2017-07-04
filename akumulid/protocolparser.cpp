@@ -462,6 +462,37 @@ static bool is_put(const Byte* p) {
     return *reinterpret_cast<const u32*>(p) == asciiput;
 }
 
+/**
+ * @brief Skip element of the space separated list
+ * @return new pointer, adjusted length, and number of trailing spaces
+ * @invariant quota >= ntrailing, ntrailing >= 1
+ */
+static std::tuple<Byte*, int, int> skip_element(Byte* buffer, int len) {
+    int quota = len;
+    Byte* p = buffer;
+    // Skip element
+    while(quota) {
+        Byte c = *p;
+        if (c == ' ' || c == '\n') {
+            break;
+        }
+        p++;
+        quota--;
+    }
+    // Skip space
+    int ntrailing = 0;
+    while(quota) {
+        Byte c = *p;
+        if (c != ' ' && c != '\n') {
+            break;
+        }
+        p++;
+        quota--;
+        ntrailing++;
+    }
+    return std::make_tuple(p, quota, ntrailing);
+}
+
 void OpenTSDBProtocolParser::worker() {
     const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
     Byte buffer[buffer_len];
@@ -483,6 +514,7 @@ void OpenTSDBProtocolParser::worker() {
         // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
         // to 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
 
+        Byte* pend = buffer + len;
         Byte* pbuf = buffer;
         pbuf += 4;  // skip 'put '
         len  -= 4;
@@ -498,78 +530,76 @@ void OpenTSDBProtocolParser::worker() {
         //  where a = '20141210T074343 3.12 host=machine1 region=NW'
         //    and b = 'host=machine1 region=NW'
 
-        Byte const* pend = buffer + len;
-        // Find series name in the buffer
+        // Skip metric name
+        Byte* a;
         int quota = len;
-        bool skip = true;
-        while(quota--) {
-            int ix = len - quota;
-            Byte c = buffer[ix];
-            if (c == ',') {
-                buffer[ix] = ' ';
-            } else if (c == ' ') {
-                if (skip) {  // we should skip first space character that delimits metric name from tags
-                    skip = false;
-                } else {
-                    break;
-                }
-            }
-        }
-        if (quota == 0) {
-            // Invalid series name
+        int nspaces = 0;
+        std::tie(a, quota, nspaces) = skip_element(pbuf, quota);
+        if (a == pend) {
             std::string msg;
             size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name, can't find the end");
+            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 0)");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
+        int metric_size = len - quota;
+
+        // Skip timestamp and value
+        Byte* b = a;
+        int timestamp_size = quota;
+        int timestamp_trailing = 0;
+        std::tie(b, quota, timestamp_trailing) = skip_element(b, quota);
+        timestamp_size -= quota;
+        if (b == pend) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 1)");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        int value_size = quota;
+        int value_trailing = 0;
+        std::tie(b, quota, value_trailing) = skip_element(b, quota);
+        value_size -= quota;
+        if (b == pend) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 2)");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        // This is the size of the timestamp and value combined
+        int name_size = quota + metric_size;
+        int tags_trailing = 0;
+        Byte const* c = b + quota - 1;
+        while (c > b) {
+            if (*c != ' ' && *c != '\n') {
+                break;
+            }
+            c--;
+            tags_trailing++;
+        }
+
+        // Rotate
+        std::rotate(a, b, pend);
+
         // Buffer contains only one data point
-        status = consumer_->series_to_param_id(pbuf, static_cast<u32>(len - quota), &sample);
+        status = consumer_->series_to_param_id(pbuf, static_cast<u32>(name_size - tags_trailing), &sample);  // -1 because name_size includes space
         if (status != AKU_SUCCESS) {
             std::string msg;
             size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-        pbuf += static_cast<u32>(len - quota);
-
-        // Read timestamp
-        while(pbuf < pend && *pbuf == ' ') {
-            pbuf++;
-        }
-
-        if (pbuf >= pend) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
+            std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid series name format");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
 
-        len = static_cast<int>(pend - pbuf);
-        quota = len;
-
-        while(quota--) {
-            int ix = len - quota;
-            Byte c = pbuf[ix];
-            if (c == ' ') {
-                break;
-            }
-        }
-        if (quota == 0) {
-            // Invalid timestamp
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp, can't find the end");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
+        pbuf += name_size;
         status = aku_parse_timestamp(pbuf, &sample);
         if (status != AKU_SUCCESS) {
             bool err = false;
             if (status == AKU_EBAD_ARG) {
                 // Try to parse as int
                 Byte* endptr;
-                pbuf[len - quota] = '\0';
-                auto result = strtol(pbuf, &endptr, 10);
-                pbuf[len - quota] = ' ';
+                const int eix = timestamp_size - timestamp_trailing;
+                pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
+                auto result = strtoul(pbuf, &endptr, 10);
+                pbuf[eix] = ' ';
                 if (result == 0) {
                     err = true;
                 }
@@ -580,34 +610,21 @@ void OpenTSDBProtocolParser::worker() {
             if (err) {
                 std::string msg;
                 size_t pos;
-                std::tie(msg, pos) = rdbuf_.get_error_context("invalid timestamp format");
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid timestamp format");
                 BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
         }
-        pbuf += static_cast<u32>(len - quota);
+        pbuf += timestamp_size;
 
-        // Read value
-        while(pbuf < pend && *pbuf == ' ') {
-            pbuf++;
-        }
-
-        if (pbuf >= pend) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("unexpected end of PDU");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-
-        len = static_cast<int>(pend - pbuf);
-        quota = len - 1;
-
-        pbuf[quota] = '\0';
+        const int tix = value_size - value_trailing;
+        pbuf[tix] = '\0';  // Replace space with 0-terminator
         char* endptr = nullptr;
+        pbuf[tix] = ' ';
         double value = strtod(pbuf, &endptr);
-        if (endptr - pbuf != quota) {
+        if (endptr - pbuf != (value_size - value_trailing)) {
             std::string msg;
             size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("bad floating point value");
+            std::tie(msg, pos) = rdbuf_.get_error_context("put: bad floating point value");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
 
