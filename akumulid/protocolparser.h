@@ -171,6 +171,18 @@ public:
     void parse_next(Byte *buffer, u32 sz);
     void close();
     Byte* get_next_buffer();
+
+    // Error representation
+    enum {
+        DB,
+        ERR,
+        PARSE,
+    };
+
+    /**
+     * @brief Return error representation in OpenTSDB telnet protocol
+     */
+    std::string error_repr(int kind, std::string const& err) const;
 };
 
 
@@ -203,6 +215,18 @@ public:
     void parse_next(Byte *buffer, u32 sz);
     void close();
     Byte* get_next_buffer();
+
+    // Error representation
+    enum {
+        DB,
+        ERR,
+        PARSE,
+    };
+
+    /**
+     * @brief Return error representation in OpenTSDB telnet protocol
+     */
+    std::string error_repr(int kind, std::string const& err) const;
 };
 
 }  // namespace

@@ -429,6 +429,18 @@ void RESPProtocolParser::close() {
     done_ = true;
 }
 
+std::string RESPProtocolParser::error_repr(int kind, std::string const& err) const {
+    switch (kind) {
+    case ERR:
+        return "-ERR " + err + "\r\n";
+    case DB:
+        return "-DB " + err + "\r\n";
+    case PARSE:
+        return "-PARSER " + err + "\r\n";
+    };
+    return "-UNKNOWN " + err + "\r\n";
+}
+
 
 //     OpenTSDB protocol      //
 
@@ -639,6 +651,16 @@ void OpenTSDBProtocolParser::worker() {
 
         rdbuf_.consume();
     }
+}
+
+std::string OpenTSDBProtocolParser::error_repr(int kind, std::string const& err) const {
+    switch (kind) {
+    case ERR:
+        return "error: " + err + "\n";
+    case DB:
+        return "database: " + err + "\n";
+    };
+    return err + "\n";
 }
 
 }

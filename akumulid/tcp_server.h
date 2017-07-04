@@ -83,47 +83,20 @@ struct ProtocolSessionBuilder {
      * Get the name of the protocol
      */
     virtual std::string name() const = 0;
-};
 
-/** Server session that handles RESP messages.
- *  Must be created in the heap.
-  */
-class RESPSession : public ProtocolSession, public std::enable_shared_from_this<RESPSession> {
-    // TODO: Unique session ID
-    enum {
-        BUFFER_SIZE = RESPProtocolParser::RDBUF_SIZE,  //< Buffer size
-    };
-    const bool                      parallel_;
-    IOServiceT*                     io_;
-    SocketT                         socket_;
-    StrandT                         strand_;
-    std::shared_ptr<DbSession>      spout_;
-    RESPProtocolParser                  parser_;
-    Logger                          logger_;
+    /**
+     * @brief Create RESP parser builder
+     * @param parallel use thread safe implementation if true
+     * @return newly created object
+     */
+    static std::unique_ptr<ProtocolSessionBuilder> create_resp_builder(bool parallel=true);
 
-public:
-    typedef Byte* BufferT;
-
-    RESPSession(IOServiceT* io, std::shared_ptr<DbSession> spout, bool parallel=true);
-
-    ~RESPSession();
-
-    virtual SocketT& socket();
-
-    virtual void start();
-
-    virtual ErrorCallback get_error_cb();
-
-private:
-    /** Allocate new buffer.
-      */
-    std::tuple<BufferT, size_t> get_next_buffer();
-
-    void handle_read(BufferT buffer, boost::system::error_code error, size_t nbytes);
-
-    void handle_write_error(boost::system::error_code error);
-
-    void drain_pipeline_spout();
+    /**
+     * @brief Create OpenTSDB parser builder
+     * @param parallel use thread safe implementation if true
+     * @return newly created object
+     */
+    static std::unique_ptr<ProtocolSessionBuilder> create_opentsdb_builder(bool parallel=true);
 };
 
 

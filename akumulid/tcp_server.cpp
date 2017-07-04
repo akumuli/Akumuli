@@ -7,6 +7,181 @@
 
 namespace Akumuli {
 
+
+//                       //
+//     Telnet Session    //
+//                       //
+
+std::string make_unique_session_name() {
+    static std::atomic<int> counter = {0};
+    std::stringstream str;
+    str << "tcp-session-" << counter.fetch_add(1);
+    return str.str();
+}
+
+/** Server session that handles RESP messages.
+ *  Must be created in the heap.
+  */
+template<class ProtocolT>
+class TelnetSession : public ProtocolSession, public std::enable_shared_from_this<TelnetSession<ProtocolT>> {
+    // TODO: Unique session ID
+    enum {
+        BUFFER_SIZE = ProtocolT::RDBUF_SIZE,  //< Buffer size
+    };
+    const bool                      parallel_;
+    IOServiceT*                     io_;
+    SocketT                         socket_;
+    StrandT                         strand_;
+    std::shared_ptr<DbSession>      spout_;
+    ProtocolT                       parser_;
+    Logger                          logger_;
+
+public:
+    typedef Byte* BufferT;
+
+    TelnetSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
+        : parallel_(parallel)
+        , io_(io)
+        , socket_(*io)
+        , strand_(*io)
+        , spout_(spout)
+        , parser_(spout)
+        , logger_(make_unique_session_name(), 10)
+    {
+        logger_.info() << "Session created";
+        parser_.start();
+    }
+
+    ~TelnetSession() {
+        logger_.info() << "Session destroyed";
+    }
+
+    virtual SocketT& socket() {
+        return socket_;
+    }
+
+    virtual void start() {
+        BufferT buf;
+        size_t buf_size;
+        std::tie(buf, buf_size) = get_next_buffer();
+        if (parallel_) {
+            socket_.async_read_some(
+                    boost::asio::buffer(buf, buf_size),
+                    strand_.wrap(
+                        boost::bind(&TelnetSession<ProtocolT>::handle_read,
+                                    this->shared_from_this(),
+                                    buf,
+                                    boost::asio::placeholders::error,
+                                    boost::asio::placeholders::bytes_transferred)));
+        } else {
+            // Strand is not used here
+            socket_.async_read_some(
+                    boost::asio::buffer(buf, buf_size),
+                    boost::bind(&TelnetSession<ProtocolT>::handle_read,
+                                this->shared_from_this(),
+                                buf,
+                                boost::asio::placeholders::error,
+                                boost::asio::placeholders::bytes_transferred));
+        }
+    }
+
+    virtual ErrorCallback get_error_cb() {
+        logger_.info() << "Creating error handler for session";
+        auto self = this->shared_from_this();
+        auto weak = std::weak_ptr<TelnetSession>(self);
+        auto fn = [weak](aku_Status status, u64) {
+            auto session = weak.lock();
+            if (session) {
+                const char* msg = aku_error_message(status);
+                session->logger_.trace() << msg;
+                boost::asio::streambuf stream;
+                std::ostream os(&stream);
+                os << session->parser_.error_repr(ProtocolT::DB, msg);
+                boost::asio::async_write(session->socket_,
+                                         stream,
+                                         boost::bind(&TelnetSession<ProtocolT>::handle_write_error,
+                                                     session,
+                                                     boost::asio::placeholders::error));
+            }
+        };
+        return ErrorCallback(fn);
+    }
+
+private:
+    /** Allocate new buffer.
+      */
+    std::tuple<BufferT, size_t> get_next_buffer() {
+        Byte *buffer = parser_.get_next_buffer();
+        return std::make_tuple(buffer, BUFFER_SIZE);
+    }
+
+    void handle_read(BufferT buffer,
+                     boost::system::error_code error,
+                     size_t nbytes)
+    {
+        if (error) {
+            logger_.error() << error.message();
+            parser_.close();
+        } else {
+            try {
+                parser_.parse_next(buffer, static_cast<u32>(nbytes));
+                start();
+            } catch (StreamError const& stream_error) {
+                // This error is related to client so we need to send it back
+                logger_.error() << stream_error.what();
+                boost::asio::streambuf stream;
+                std::ostream os(&stream);
+                os << parser_.error_repr(ProtocolT::PARSE, stream_error.what());
+                boost::asio::async_write(socket_, stream,
+                                         boost::bind(&TelnetSession::handle_write_error,
+                                                     this->shared_from_this(),
+                                                     boost::asio::placeholders::error)
+                                         );
+            } catch (DatabaseError const& dberr) {
+                // Database error
+                logger_.error() << boost::current_exception_diagnostic_information();
+                boost::asio::streambuf stream;
+                std::ostream os(&stream);
+                os << parser_.error_repr(ProtocolT::DB, dberr.what());
+                boost::asio::async_write(socket_, stream,
+                                         boost::bind(&TelnetSession::handle_write_error,
+                                                     this->shared_from_this(),
+                                                     boost::asio::placeholders::error)
+                                         );
+            } catch (...) {
+                // Unexpected error
+                logger_.error() << boost::current_exception_diagnostic_information();
+                boost::asio::streambuf stream;
+                std::ostream os(&stream);
+                os << parser_.error_repr(ProtocolT::ERR, boost::current_exception_diagnostic_information());
+                boost::asio::async_write(socket_, stream,
+                                         boost::bind(&TelnetSession::handle_write_error,
+                                                     this->shared_from_this(),
+                                                     boost::asio::placeholders::error)
+                                         );
+            }
+        }
+    }
+
+    void handle_write_error(boost::system::error_code error) {
+        if (!error) {
+            logger_.info() << "Clean shutdown";
+            boost::system::error_code shutdownerr;
+            socket_.shutdown(SocketT::shutdown_both, shutdownerr);
+            if (shutdownerr) {
+                logger_.error() << "Shutdown error: " << shutdownerr.message();
+            }
+        } else {
+            logger_.error() << "Error sending error message to client";
+            logger_.error() << error.message();
+            parser_.close();
+        }
+    }
+};
+
+typedef TelnetSession<RESPProtocolParser> RESPSession;
+typedef TelnetSession<OpenTSDBProtocolParser> OpenTSDBSession;
+
 //                           //
 //     Protocol builders     //
 //                           //
@@ -30,150 +205,36 @@ struct RESPSessionBuilder : ProtocolSessionBuilder {
     }
 };
 
-//                     //
-//     RESP Session    //
-//                     //
 
-std::string make_unique_session_name() {
-    static std::atomic<int> counter = {0};
-    std::stringstream str;
-    str << "tcp-session-" << counter.fetch_add(1);
-    return str.str();
-}
+struct OpenTSDBSessionBuilder : ProtocolSessionBuilder {
+    bool parallel_;
 
-RESPSession::RESPSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
-    : parallel_(parallel)
-    , io_(io)
-    , socket_(*io)
-    , strand_(*io)
-    , spout_(spout)
-    , parser_(spout)
-    , logger_(make_unique_session_name(), 10)
-{
-    logger_.info() << "Session created";
-    parser_.start();
-}
-
-RESPSession::~RESPSession() {
-    logger_.info() << "Session destroyed";
-}
-
-SocketT& RESPSession::socket() {
-    return socket_;
-}
-
-std::tuple<RESPSession::BufferT, size_t> RESPSession::get_next_buffer() {
-    Byte *buffer = parser_.get_next_buffer();
-    return std::make_tuple(buffer, BUFFER_SIZE);
-}
-
-void RESPSession::start() {
-    BufferT buf;
-    size_t buf_size;
-    std::tie(buf, buf_size) = get_next_buffer();
-    if (parallel_) {
-        socket_.async_read_some(
-                boost::asio::buffer(buf, buf_size),
-                strand_.wrap(
-                    boost::bind(&RESPSession::handle_read,
-                                shared_from_this(),
-                                buf,
-                                boost::asio::placeholders::error,
-                                boost::asio::placeholders::bytes_transferred)));
-    } else {
-        // Strand is not used here
-        socket_.async_read_some(
-                boost::asio::buffer(buf, buf_size),
-                boost::bind(&RESPSession::handle_read,
-                            shared_from_this(),
-                            buf,
-                            boost::asio::placeholders::error,
-                            boost::asio::placeholders::bytes_transferred));
+    OpenTSDBSessionBuilder(bool parallel=true)
+        : parallel_(parallel)
+    {
     }
-}
 
-ErrorCallback RESPSession::get_error_cb() {
-    logger_.info() << "Creating error handler for session";
-    auto self = shared_from_this();
-    auto weak = std::weak_ptr<RESPSession>(self);
-    auto fn = [weak](aku_Status status, u64) {
-        auto session = weak.lock();
-        if (session) {
-            const char* msg = aku_error_message(status);
-            session->logger_.trace() << msg;
-            boost::asio::streambuf stream;
-            std::ostream os(&stream);
-            os << "-DB " << msg << "\r\n";
-            boost::asio::async_write(session->socket_,
-                                     stream,
-                                     boost::bind(&RESPSession::handle_write_error,
-                                                 session,
-                                                 boost::asio::placeholders::error));
-        }
-    };
-    return ErrorCallback(fn);
-}
-
-void RESPSession::handle_read(BufferT buffer,
-                             boost::system::error_code error,
-                             size_t nbytes) {
-    if (error) {
-        logger_.error() << error.message();
-        parser_.close();
-    } else {
-        try {
-            parser_.parse_next(buffer, static_cast<u32>(nbytes));
-            start();
-        } catch (StreamError const& resp_err) {
-            // This error is related to client so we need to send it back
-            logger_.error() << resp_err.what();
-            boost::asio::streambuf stream;
-            std::ostream os(&stream);
-            os << "-PARSER " << resp_err.what() << "\r\n";
-            boost::asio::async_write(socket_, stream,
-                                     boost::bind(&RESPSession::handle_write_error,
-                                                 shared_from_this(),
-                                                 boost::asio::placeholders::error)
-                                     );
-        } catch (DatabaseError const& dberr) {
-            // Database error
-            logger_.error() << boost::current_exception_diagnostic_information();
-            boost::asio::streambuf stream;
-            std::ostream os(&stream);
-            os << "-DB " << dberr.what() << "\r\n";
-            boost::asio::async_write(socket_, stream,
-                                     boost::bind(&RESPSession::handle_write_error,
-                                                 shared_from_this(),
-                                                 boost::asio::placeholders::error)
-                                     );
-        } catch (...) {
-            // Unexpected error
-            logger_.error() << boost::current_exception_diagnostic_information();
-            boost::asio::streambuf stream;
-            std::ostream os(&stream);
-            os << "-ERR " << boost::current_exception_diagnostic_information() << "\r\n";
-            boost::asio::async_write(socket_, stream,
-                                     boost::bind(&RESPSession::handle_write_error,
-                                                 shared_from_this(),
-                                                 boost::asio::placeholders::error)
-                                     );
-        }
+    virtual std::shared_ptr<ProtocolSession> create(IOServiceT *io, std::shared_ptr<DbSession> session) {
+        std::shared_ptr<ProtocolSession> result;
+        result.reset(new OpenTSDBSession(io, session, parallel_));
+        return result;
     }
+
+    virtual std::string name() const {
+        return "OpenTSDB";
+    }
+};
+
+std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_resp_builder(bool parallel) {
+    std::unique_ptr<ProtocolSessionBuilder> res;
+    res.reset(new RESPSessionBuilder(parallel));
+    return res;
 }
 
-void RESPSession::handle_write_error(boost::system::error_code error) {
-    if (!error) {
-        logger_.info() << "Clean shutdown";
-        boost::system::error_code shutdownerr;
-        socket_.shutdown(SocketT::shutdown_both, shutdownerr);
-        if (shutdownerr) {
-            logger_.error() << "Shutdown error: " << shutdownerr.message();
-        }
-    } else {
-        logger_.error() << "Error sending error message to client";
-        logger_.error() << error.message();
-        parser_.close();
-    }
+std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_opentsdb_builder(bool parallel) {
+    std::unique_ptr<ProtocolSessionBuilder> res;
+    res.reset(new OpenTSDBSessionBuilder(parallel));
+    return res;
 }
 
 //                      //
@@ -186,7 +247,7 @@ TcpAcceptor::TcpAcceptor(// Server parameters
                         std::shared_ptr<DbConnection> connection , bool parallel)
     : parallel_(parallel)
     , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
-    , protocol_(new RESPSessionBuilder(true))
+    , protocol_(ProtocolSessionBuilder::create_resp_builder(true))
     , sessions_io_(io)
     , connection_(connection)
     , io_index_{0}
