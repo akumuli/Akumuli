@@ -51,7 +51,7 @@ nvolumes=%1%
 volume_size=4GB
 
 
-# HTTP server config
+# HTTP API endpoint configuration
 
 [HTTP]
 # port number
@@ -74,6 +74,14 @@ pool_size=0
 port=8383
 # worker pool size
 pool_size=1
+
+# OpenTSDB telnet-style data connection enabled (remove this section to disable).
+
+[OpenTSDB]
+# port number
+port=4242
+
+
 
 # Logging configuration
 # This is just a log4cxx configuration without any modifications
@@ -204,7 +212,7 @@ struct ConfigFile {
     static ServerSettings get_http_server(PTree conf) {
         ServerSettings settings;
         settings.name = "HTTP";
-        settings.port = conf.get<int>("HTTP.port");
+        settings.protocols.push_back({ "HTTP", conf.get<int>("HTTP.port")});
         settings.nworkers = -1;
         return settings;
     }
@@ -212,7 +220,7 @@ struct ConfigFile {
     static ServerSettings get_udp_server(PTree conf) {
         ServerSettings settings;
         settings.name = "UDP";
-        settings.port = conf.get<int>("UDP.port");
+        settings.protocols.push_back({ "UDP", conf.get<int>("UDP.port")});
         settings.nworkers = conf.get<int>("UDP.pool_size");
         return settings;
     }
@@ -220,7 +228,10 @@ struct ConfigFile {
     static ServerSettings get_tcp_server(PTree conf) {
         ServerSettings settings;
         settings.name = "TCP";
-        settings.port = conf.get<int>("TCP.port");
+        settings.protocols.push_back({ "RESP", conf.get<int>("TCP.port")});
+        if (conf.count("OpenTSDB")) {
+            settings.protocols.push_back({ "OpenTSDB", conf.get<int>("OpenTSDB.port")});
+        }
         settings.nworkers = conf.get<int>("TCP.pool_size");
         return settings;
     }
@@ -254,6 +265,8 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
         akumulid --init
 
+        akumulid --init-expandable
+
         akumulid --create
 
         akumuild --delete
@@ -269,10 +282,15 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
         **init**
             create  configuration  file at `~/.akumulid`  filled with
-            default values and exit.
+            default values and exit
+
+        **init-expandable**
+            create  configuration  file at `~/.akumulid`  filled with
+            default values and exit (sets nvolumes to 0)
 
         **create**
-            generate database files in `~/.akumuli` folder
+            generate database files in `~/.akumuli` folder, use with
+            --allocate flag to actually allocate disk space
 
         **delete**
             delete database files in `~/.akumuli` folder
@@ -406,7 +424,10 @@ void cmd_run_server() {
             srvnames[srvid] = settings.name;
             srv->start(&sighandler, srvid);
             logger.info() << "Starting " << settings.name << " index " << srvid;
-            std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+            for (const auto& protocol: settings.protocols) {
+                std::cout << cli_format("**OK** ") << protocol.name << " server started, port: " << protocol.port << std::endl;
+                logger.info() << "Protocol: " << protocol.name << " port: " << protocol.port;
+            }
             srvid++;
         }
         auto srvids = sighandler.wait();

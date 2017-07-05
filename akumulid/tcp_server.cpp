@@ -515,6 +515,8 @@ void TcpServer::stop() {
     }
 }
 
+static Logger s_logger_("tcp-server", 32);
+
 struct TcpServerBuilder {
 
     TcpServerBuilder() {
@@ -525,13 +527,27 @@ struct TcpServerBuilder {
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
         auto nworkers = settings.nworkers;
-        if ((int)std::thread::hardware_concurrency() <= 4) {
+        auto ncpus = std::thread::hardware_concurrency();
+        if (ncpus <= 4) {
             nworkers = 1;
+        } else if (ncpus <= 8) {
+            nworkers = static_cast<int>(ncpus - 2);
+        } else {
+            nworkers = static_cast<int>(ncpus - 4);
         }
-        else {
-            nworkers =  static_cast<int>(std::thread::hardware_concurrency() * 0.75);
+        std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
+        for (const auto& protocol: settings.protocols) {
+            std::unique_ptr<ProtocolSessionBuilder> inst;
+            if (protocol.name == "RESP") {
+                inst = ProtocolSessionBuilder::create_resp_builder(true);
+            } else if (protocol.name == "OpenTSDB") {
+                inst = ProtocolSessionBuilder::create_opentsdb_builder(true);
+            } else {
+                s_logger_.error() << "Unknown protocol " << protocol.name;
+            }
+            protocol_map[protocol.port] = std::move(inst);
         }
-        return std::make_shared<TcpServer>(con, nworkers, settings.port);
+        return std::make_shared<TcpServer>(con, nworkers, std::move(protocol_map));
     }
 };
 
