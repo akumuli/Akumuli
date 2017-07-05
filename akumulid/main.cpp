@@ -424,9 +424,17 @@ void cmd_run_server() {
             srvnames[srvid] = settings.name;
             srv->start(&sighandler, srvid);
             logger.info() << "Starting " << settings.name << " index " << srvid;
-            for (const auto& protocol: settings.protocols) {
-                std::cout << cli_format("**OK** ") << protocol.name << " server started, port: " << protocol.port << std::endl;
-                logger.info() << "Protocol: " << protocol.name << " port: " << protocol.port;
+            if (settings.protocols.size() == 1) {
+                std::cout << cli_format("**OK** ") << settings.name
+                          << " server started, port: " << settings.protocols[0].port << std::endl;
+            } else {
+                std::cout << cli_format("**OK** ") << settings.name
+                          << " server started";
+                for (const auto& protocol: settings.protocols) {
+                    std::cout << ", " << protocol.name << " port: " << protocol.port;
+                    logger.info() << "Protocol: " << protocol.name << " port: " << protocol.port;
+                }
+                std::cout << std::endl;
             }
             srvid++;
         }
