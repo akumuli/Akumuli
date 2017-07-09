@@ -26,13 +26,6 @@ if [ ! -f expected-meta-results.resp ]; then
     echo "expected-meta-results.resp downloaded"
 fi
 
-if [ ! -f expected-join-results.resp.gz ]; then
-    # Download data from S3
-    echo "Downloading expected-join-results.resp.gz ..."
-    wget -q https://s3-us-west-2.amazonaws.com/travis-ci-data/expected-join-results.resp.gz
-    echo "expected-join-results.resp.gz downloaded"
-fi
-
 echo "Starting akumulid..."
 # Re-initialize the database
 ./akumulid/akumulid --delete
@@ -56,10 +49,13 @@ if ! cmp expected-meta-results.resp actual-meta-results.resp >/dev/null 2>&1
 then
     error="Metadata query error (RESP)"
 fi
-curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000000.000000" }}' | gzip > actual-join-results.resp.gz
+
+curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000000.000000" }}' -o actual-join-results.resp
+gzip -f actual-join-results.resp
+rm actual-join-results.resp
 
 # check the results
-if ! diff -q <(zcat expected-join-results.resp.gz) <(zcat actual-join-results.resp.gz)
+if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz)
 then
     error="Join query error(RESP), ${error}"
 fi
@@ -69,6 +65,7 @@ echo "Restarting akumulid..."
 kill -INT ${pid}
 sleep 5
 
+exit
 # Re-initialize the database
 ./akumulid/akumulid --delete
 ./akumulid/akumulid --create

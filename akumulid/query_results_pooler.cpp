@@ -251,7 +251,6 @@ struct RESPOutputFormatter : OutputFormatter {
                 // Not enough space
                 return nullptr;
             }
-            len--;  // terminating '\0' character should be rewritten
             begin += len;
             size  -= len;
             // Add trailing \r\n to the end
