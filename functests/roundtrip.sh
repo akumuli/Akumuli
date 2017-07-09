@@ -52,9 +52,7 @@ then
     error="Metadata query error (RESP)"
 fi
 
-curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' > actual-join-results.resp
-gzip -fk actual-join-results.resp
-#rm actual-join-results.resp
+curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results.resp.gz
 
 # check the results
 if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz)
@@ -67,7 +65,6 @@ echo "Restarting akumulid..."
 kill -INT ${pid}
 sleep 5
 
-exit
 # Re-initialize the database
 ./akumulid/akumulid --delete
 ./akumulid/akumulid --create
@@ -82,6 +79,8 @@ echo "Writing data in OpenTSDB format"
 time cat opentsdb_1day_1000names_10sec_step.gz | gunzip > /dev/tcp/127.0.0.1/4242
 echo "Completed"
 
+sleep 5
+
 # read data back
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results-opentsdb.resp
 
@@ -89,10 +88,10 @@ if ! cmp expected-meta-results.resp actual-meta-results-opentsdb.resp >/dev/null
 then
     error="Metadata query error (OpenTSDB), ${error}"
 fi
-curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000000.000000" }}' | gzip > actual-join-results-opentsdb.resp.gz
+curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results-opentsdb.resp.gz
 
 # check the results
-if ! diff -q <(zcat expected-join-results.resp.gz) <(zcat actual-join-results-opentsdb.resp.gz)
+if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results-opentsdb.resp.gz)
 then
     error="Join query error(OpenTSDB), ${error}"
 fi
