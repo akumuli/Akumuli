@@ -602,22 +602,35 @@ void OpenTSDBProtocolParser::worker() {
         }
 
         pbuf += name_size;
-        status = aku_parse_timestamp(pbuf, &sample);
-        if (status != AKU_SUCCESS) {
+        // try to parse as Unix timestamp first
+        {
             bool err = false;
-            if (status == AKU_EBAD_ARG) {
-                // Try to parse as int
-                Byte* endptr;
-                const int eix = timestamp_size - timestamp_trailing;
-                pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
-                auto result = strtoul(pbuf, &endptr, 10);
-                pbuf[eix] = ' ';
-                if (result == 0) {
-                    err = true;
-                }
-                sample.timestamp = result;
-            } else {
+            Byte* endptr;
+            const int eix = timestamp_size - timestamp_trailing;
+            pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
+            auto result = strtoul(pbuf, &endptr, 10);
+            pbuf[eix] = ' ';
+            if (result == 0) {
                 err = true;
+            }
+            if (result < 0xFFFFFFFF) {
+                // If the Unix timestamp was sent, it will be less than 0xFFFFFFFF.
+                // In this case we need to adjust the value.
+                // If the value is larger than 0xFFFFFFFF, then the nanosecond timestamp
+                // was passed. We don't need to do anything.
+                // With this schema first 4.5 seconds of the nanosecond timestamp will be
+                // treated as normal Unix timestamps.
+                result <<= 32;
+            }
+            sample.timestamp = result;
+            if (err) {
+                // This is an extension of the OpenTSDB telnet protocol. If value can't be
+                // interpreted as a Unix timestamp or as a nanosecond timestamp, Akumuli
+                // should try to parse it as a ISO-timestamp (because why not?).
+                status = aku_parse_timestamp(pbuf, &sample);
+                if (status == AKU_SUCCESS) {
+                    err = false;
+                }
             }
             if (err) {
                 std::string msg;
