@@ -45,14 +45,16 @@ echo "Completed"
 # read data back
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results.resp
 
+sleep 5
+
 if ! cmp expected-meta-results.resp actual-meta-results.resp >/dev/null 2>&1
 then
     error="Metadata query error (RESP)"
 fi
 
-curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000000.000000" }}' -o actual-join-results.resp
-gzip -f actual-join-results.resp
-rm actual-join-results.resp
+curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' > actual-join-results.resp
+gzip -fk actual-join-results.resp
+#rm actual-join-results.resp
 
 # check the results
 if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz)
