@@ -505,6 +505,14 @@ static std::tuple<Byte*, int, int> skip_element(Byte* buffer, int len) {
     return std::make_tuple(p, quota, ntrailing);
 }
 
+static aku_Timestamp from_unix_time(u64 ts) {
+    static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
+    boost::posix_time::ptime t = boost::posix_time::from_time_t(static_cast<std::time_t>(ts));
+    boost::posix_time::time_duration duration = t - EPOCH;
+    auto ns = static_cast<aku_Timestamp>(duration.total_nanoseconds());
+    return ns;
+}
+
 void OpenTSDBProtocolParser::worker() {
     const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
     Byte buffer[buffer_len];
@@ -620,7 +628,7 @@ void OpenTSDBProtocolParser::worker() {
                 // was passed. We don't need to do anything.
                 // With this schema first 4.5 seconds of the nanosecond timestamp will be
                 // treated as normal Unix timestamps.
-                result <<= 32;
+                result = from_unix_time(result);
             }
             sample.timestamp = result;
             if (err) {
