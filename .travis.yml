@@ -80,5 +80,5 @@ addons:
     bucket: $ARTIFACTS_BUCKET
     acl: public_read
     paths:
-	  - *.resp
+      - *.resp
       - *.gz 
