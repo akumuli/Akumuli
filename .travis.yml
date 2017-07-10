@@ -70,3 +70,15 @@ deploy:
   on:
       branch: master
   skip_cleanup: true
+
+addons:
+  artifacts:
+    provider: s3
+    s3_region: "us-west-2"
+    access_key_id: $ARTIFACTS_KEY
+    secret_access_key: $ARTIFACTS_SECRET
+    bucket: $ARTIFACTS_BUCKET
+    acl: public_read
+    paths:
+	  - *.resp
+      - *.gz 
