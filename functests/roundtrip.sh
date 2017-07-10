@@ -39,24 +39,45 @@ sleep 5
 # Insert downloaded data
 echo "Writing data in RESP format"
 time cat resp_1day_1000names_10sec_step.gz | gunzip > /dev/tcp/127.0.0.1/8282
-echo "Completed"
+
+# Some encoded text data can still be in the receive buffer so we need to wait
+# until everyting will be written to disk.
+response=
+c=0
+printf "Waiting until write will be completed "
+until [ -n "$response" ]; do
+    response=$(curl -s --url localhost:8181/api/query -d '{ "select": "cpu.user", "range": { "from": "20170101T235959.000000", "to": "20170103T000000.000000" }}')
+    printf '.'
+    sleep 1
+    ((c++)) && ((c==20)) && break
+done
+printf "\nCompleted\n"
 
 
 # read data back
+echo "Query metadata"
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results.resp
 
 sleep 5
 
-if ! cmp expected-meta-results.resp actual-meta-results.resp >/dev/null 2>&1
-then
+diffres=$(diff expected-meta-results.resp actual-meta-results.resp | head -20)
+if [ -n "$diffres" ]; then
+    echo "Metadata query error! (RESP)"
+    echo "Output truncated to 20 lines"
+    printf "\n$diffres\n"
     error="Metadata query error (RESP)"
 fi
 
+echo "Query data points"
 curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results.resp.gz
 
+diffres= $(diff <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz) | head -100)
 # check the results
-if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz)
+if [ -n "$diffres" ];
 then
+    echo "Join query error!(RESP)"
+    echo "Output truncated to 100 lines"
+    printf "\n$diffres\n"
     error="Join query error(RESP), ${error}"
 fi
 
@@ -77,22 +98,43 @@ sleep 5
 # Insert OpenTSDB data
 echo "Writing data in OpenTSDB format"
 time cat opentsdb_1day_1000names_10sec_step.gz | gunzip > /dev/tcp/127.0.0.1/4242
-echo "Completed"
 
-sleep 5
+# Some encoded text data can still be in the receive buffer so we need to wait
+# until everyting will be written to disk.
+response=
+c=0
+printf "Waiting until write will be completed "
+until [ -n "$response" ]; do
+    response=$(curl -s --url localhost:8181/api/query -d '{ "select": "cpu.user", "range": { "from": "20170101T235959.000000", "to": "20170103T000000.000000" }}')
+    printf '.'
+    sleep 1
+    ((c++)) && ((c==20)) && break
+done
+printf "\nCompleted\n"
 
 # read data back
+echo "Query metadata"
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results-opentsdb.resp
 
-if ! cmp expected-meta-results.resp actual-meta-results-opentsdb.resp >/dev/null 2>&1
+diffres=$(diff expected-meta-results.resp actual-meta-results-opentsdb.resp | head -20)
+if [ -n "$diffres" ];
 then
+    echo "Metadata query error! (OpenTSDB)"
+    echo "Output truncated to 20 lines"
+    printf "\n$diffres\n"
     error="Metadata query error (OpenTSDB), ${error}"
 fi
+
+echo "Query data points"
 curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results-opentsdb.resp.gz
 
 # check the results
-if ! diff -q <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results-opentsdb.resp.gz)
+diffres=$(diff <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results-opentsdb.resp.gz) | head -100)
+if [ -n "$diffres" ];
 then
+    echo "Join query error!(OpenTSDB)"
+    echo "Output truncated to 100 lines"
+    printf "\n$diffres\n"
     error="Join query error(OpenTSDB), ${error}"
 fi
 
@@ -100,6 +142,7 @@ echo "Stopping akumulid..."
 kill -INT ${pid}
 
 if [ -n "${error}" ]; then
+    echo "Test failed!"
     echo "${error}"
     exit 1
 fi
