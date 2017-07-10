@@ -332,7 +332,7 @@ struct RESPOutputFormatter : OutputFormatter {
             // Output array elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
             for (int ix = 0; ix < nelements_set; ix++) {
-                if (bits.d && (1 << ix)) {
+                if (bits.u && (1 << ix)) {
                     len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
                 } else {
                     // Empty tuple value encountered. RESP uses bulk string with length equal to -1
