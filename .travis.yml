@@ -71,18 +71,3 @@ deploy:
       branch: master
   skip_cleanup: true
 
-addons:
-  artifacts:
-    provider: s3
-    s3_region: "us-west-2"
-    access_key_id: $ARTIFACTS_KEY
-    secret_access_key: $ARTIFACTS_SECRET
-    bucket: $ARTIFACTS_BUCKET
-    acl: public_read
-    paths:
-      - actual-join-results-opentsdb.resp.gz
-      - actual-join-results.resp.gz
-      - actual-meta-results-opentsdb.resp
-      - actual-meta-results.resp
-      - resp_1day_1000names_10sec_step.gz
-      - opentsdb_1day_1000names_10sec_step.gz
