@@ -4,6 +4,7 @@
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/trim.hpp>
 
 #include "ingestion_pipeline.h"
 #include "protocolparser.h"
@@ -38,6 +39,7 @@ struct ConsumerMock : DbSession {
 
     virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
         std::string num(begin, begin + sz);
+        boost::algorithm::trim(num);
         sample->paramid = boost::lexical_cast<u64>(num);
         return AKU_SUCCESS;
     }
@@ -73,7 +75,7 @@ std::shared_ptr<const char> buffer_from_static_string(const char* str) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+6\r\n:7\r\n+8.9\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
     parser.start();
@@ -91,7 +93,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_1) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parser_bulk_1) {
     const char *messages = "+1|2\r\n:3\r\n*2\r\n+45.6\r\n+7.89\r\n+10|11|12\r\n:13\r\n*3\r\n+1.4\r\n+15\r\n+1.6\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock());
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, strlen(messages));
     parser.start();
@@ -121,7 +123,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
     const char *message2 = "\r\n+10\r\n:11\r\n+12.13\r\n+14\r\n:15\r\n+16.7\r\n";
 
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
 
     auto buf = parser.get_next_buffer();
@@ -157,15 +159,17 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_2) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     const char *messages = "+1\r\n:2\r\n+34.5\r\n+2\r\n:d\r\n+8.9\r\n";
     std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
     BOOST_REQUIRE_THROW(parser.parse_next(buf, 29), RESPError);
 }
 
-template<class Pred>
-void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred) {
+
+
+template<class Protocol, class Pred, class Mock>
+void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred, std::shared_ptr<Mock> cons) {
 
     auto buffer1 = buffer_from_static_string(message);
     auto buffer2 = buffer_from_static_string(message + pivot1);
@@ -187,8 +191,7 @@ void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size
         0u
     };
 
-    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
-    ProtocolParser parser(cons);
+    Protocol parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     memcpy(buf, message, pivot1);
@@ -246,7 +249,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing) {
     for (int i = 0; i < 100; i++) {
         size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
         size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
-        find_framing_issues(message, msglen, pivot1, pivot2, pred);
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
     }
 }
 
@@ -285,7 +289,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
     for (int i = 0; i < 100; i++) {
         size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
         size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
-        find_framing_issues(message, msglen, pivot1, pivot2, pred);
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
     }
 }
 
@@ -293,24 +298,48 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
 
 struct NameCheckingConsumer : DbSession {
     enum { ID = 101 };
-    std::string expected_;
+
     int called_;
     int num_calls_expected_;
 
+    std::map<u64, std::string> series;
+    std::map<std::string, u64> index;
+    std::vector<aku_ParamId>   ids;
+    std::vector<aku_Timestamp> ts;
+    std::vector<double>        xs;
+
+
     NameCheckingConsumer(std::string expected, int ncalls_expected)
-        : expected_(expected)
-        , called_(0)
+        : called_(0)
         , num_calls_expected_(ncalls_expected)
-    {}
+    {
+        series[ID] = expected;
+        index[expected] = ID;
+    }
+
+    NameCheckingConsumer(std::vector<std::string> expected, int ncalls_expected)
+        : called_(0)
+        , num_calls_expected_(ncalls_expected)
+    {
+        aku_ParamId id = ID;
+        for (const auto& name: expected) {
+            series[id] = name;
+            index[name] = id;
+            id++;
+        }
+    }
 
     virtual ~NameCheckingConsumer() {
-        if (called_ != num_calls_expected_) {
+        if (num_calls_expected_ >= 0 && called_ != num_calls_expected_) {
             BOOST_FAIL("Test wasn't called");
         }
     }
 
     virtual aku_Status write(const aku_Sample &sample) override {
         called_++;
+        ids.push_back(sample.paramid);
+        ts.push_back(sample.timestamp);
+        xs.push_back(sample.payload.type == AKU_PAYLOAD_FLOAT ? sample.payload.float64 : static_cast<double>(INFINITY));
         return AKU_SUCCESS;
     }
 
@@ -319,9 +348,10 @@ struct NameCheckingConsumer : DbSession {
     }
 
     virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
-        if (id == ID) {
-            size_t bytes_copied = std::min(sz, expected_.size());
-            memcpy(buf, expected_.data(), bytes_copied);
+        if (series.count(id)) {
+            std::string expected = series[id];
+            size_t bytes_copied = std::min(sz, expected.size());
+            memcpy(buf, expected.data(), bytes_copied);
             return static_cast<int>(bytes_copied);
         }
         return 0;
@@ -329,19 +359,18 @@ struct NameCheckingConsumer : DbSession {
 
     virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
         std::string name(begin, begin + sz);
-        if (name == expected_) {
-            sample->paramid = ID;
+        if (index.count(name)) {
+            sample->paramid = index[name];
             return AKU_SUCCESS;
         }
         BOOST_FAIL("Invalid series name");
         return AKU_SUCCESS;
     }
 
-    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
+    virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32) override {
         std::string name(begin, end);
-        if (name == expected_) {
-            assert(cap);
-            ids[0] = ID;
+        if (index.count(name)) {
+            ids[0] = index[name];
             return 1;
         }
         return 0;
@@ -350,7 +379,7 @@ struct NameCheckingConsumer : DbSession {
 
 void test_series_name_parsing(const char* messages, const char* expected_tags, int n) {
     std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tags, n));
-    ProtocolParser parser(cons);
+    RESPProtocolParser parser(cons);
     parser.start();
     auto buf = parser.get_next_buffer();
     size_t buflen = strlen(messages);
@@ -371,4 +400,109 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return) {
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2) {
     const char *messages = "+trialrank2 tag1=hello tag2=check\n:1418224205000000000\n:31\n";
     test_series_name_parsing(messages, "trialrank2 tag1=hello tag2=check", 1);
+}
+
+
+//                                    //
+//   OpenTSDB protocol parser tests   //
+//                                    //
+
+static const u64 NANOSECONDS = 1000000000;
+
+BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
+    std::string messages = "put test 2 12.3 tag1=value1 tag2=value2\n";
+    std::string expected_tag = "test tag1=value1 tag2=value2";
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_tag, 1));
+    OpenTSDBProtocolParser parser(cons);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages.data(), messages.size());
+    parser.start();
+    parser.parse_next(buf, static_cast<u32>(messages.size()));
+    parser.close();
+
+    BOOST_REQUIRE_EQUAL(cons->ids.size(), 1);
+    BOOST_REQUIRE_EQUAL(cons->ids.at(0), cons->index[expected_tag]);
+    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2*NANOSECONDS);
+    BOOST_REQUIRE_EQUAL(cons->xs.at(0), 12.3);
+}
+
+BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
+    std::string messages =
+        "put test 2 34.5 tag=1\n"
+        "put test 7 89.0 tag=2\n"
+        "put  test 10 11.1 tag=3\n"
+        "put test  13 14.5 tag=4\n"
+        "put test 16  17.1 tag=5\n"
+        "put test 19 20.2  tag=6\n"
+        "put test 22 23.2 tag=7 \n";
+    std::vector<std::string> expected_names = {
+        "test tag=1", "test tag=2",
+        "test tag=3", "test  tag=4",  // for actual series parser "test  tag=4" and "test tag=4" is the same
+        "test tag=5", "test tag=6",
+        "test tag=7"
+    };
+    std::vector<aku_Timestamp> expected_ts = {
+        2, 7, 10, 13, 16, 19, 22
+    };
+    std::vector<double> expected_values = {
+        34.5, 89.0, 11.1, 14.5, 17.1, 20.2, 23.2
+    };
+    std::shared_ptr<NameCheckingConsumer> cons(new NameCheckingConsumer(expected_names, -1));
+    OpenTSDBProtocolParser parser(cons);
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, messages.data(), messages.size());
+    parser.start();
+    parser.parse_next(buf, static_cast<u32>(messages.size()));
+    parser.close();
+
+    BOOST_REQUIRE_EQUAL(cons->ids.size(), 7);
+    for (int i = 0; i < 7; i++) {
+        BOOST_REQUIRE_EQUAL(cons->ids.at(i),  cons->index[expected_names[i]]);
+        BOOST_REQUIRE_EQUAL(cons->ts.at(i),  expected_ts.at(i)*NANOSECONDS);
+        BOOST_REQUIRE_EQUAL(cons->xs.at(i), expected_values.at(i));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_open_tsdb_protocol_parser_framing) {
+
+    const char *message = "put test 10001 34.57 tag1=1 tag2=1\n"
+                          "put test 10002 81.09 tag1=2 tag2=2\n"
+                          "put test 10003 12.13 tag1=3 tag2=3\n"
+                          "put test 10004 16.71 tag1=1 tag2=1\n";
+
+    std::vector<std::string> expected = {
+        "test tag1=1 tag2=1",
+        "test tag1=2 tag2=2",
+        "test tag1=3 tag2=3",
+    };
+
+    auto pred = [&] (std::shared_ptr<NameCheckingConsumer> cons) {
+
+        BOOST_REQUIRE_EQUAL(cons->ids.size(), 4);
+        // 0
+        BOOST_REQUIRE_EQUAL(cons->ids[0], cons->index[expected.at(0)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[0], 10001*NANOSECONDS);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[0], 34.57, 1e-9);
+        // 1
+        BOOST_REQUIRE_EQUAL(cons->ids[1], cons->index[expected.at(1)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[1], 10002*NANOSECONDS);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[1], 81.09, 1e-9);
+        // 2
+        BOOST_REQUIRE_EQUAL(cons->ids[2], cons->index[expected.at(2)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[2], 10003*NANOSECONDS);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[2], 12.13, 1e-9);
+        // 3
+        BOOST_REQUIRE_EQUAL(cons->ids[3], cons->index[expected.at(0)]);
+        BOOST_REQUIRE_EQUAL(cons->ts[3], 10004*NANOSECONDS);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[3], 16.71, 1e-9);
+    };
+
+    size_t msglen = strlen(message);
+
+    for (int i = 0; i < 100; i++) {
+        size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
+        std::shared_ptr<NameCheckingConsumer> cons = std::make_shared<NameCheckingConsumer>(expected, -1);
+        find_framing_issues<OpenTSDBProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
+    }
 }

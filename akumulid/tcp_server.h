@@ -40,45 +40,63 @@ typedef boost::asio::strand                  StrandT;
 typedef boost::asio::io_service::work        WorkT;
 typedef std::function<void(aku_Status, u64)> ErrorCallback;
 
-/** Server session. Reads data from socket.
- *  Must be created in the heap.
-  */
-class TcpSession : public std::enable_shared_from_this<TcpSession> {
-    // TODO: Unique session ID
-    enum {
-        BUFFER_SIZE = ProtocolParser::RDBUF_SIZE,  //< Buffer size
-    };
-    const bool                      parallel_;
-    IOServiceT*                     io_;
-    SocketT                         socket_;
-    StrandT                         strand_;
-    std::shared_ptr<DbSession>      spout_;
-    ProtocolParser                  parser_;
-    Logger                          logger_;
 
-public:
-    typedef Byte* BufferT;
+/**
+ * Common interface for all protocol session (RESP, line, etc)
+ */
+struct ProtocolSession {
 
-    TcpSession(IOServiceT* io, std::shared_ptr<DbSession> spout, bool parallel=true);
+    virtual ~ProtocolSession() = default;
 
-    ~TcpSession();
+    /**
+     * Returns socket instance (used by acceptor to esteblish new connection)
+     */
+    virtual SocketT& socket() = 0;
 
-    SocketT& socket();
+    /**
+     * Initiates data ingestion
+     */
+    virtual void start() = 0;
 
-    void start();
+    /**
+     * Returns error callback that can be used by the other code
+     * to report errors.
+     */
+    virtual ErrorCallback get_error_cb() = 0;
+};
 
-    ErrorCallback get_error_cb();
 
-private:
-    /** Allocate new buffer.
-      */
-    std::tuple<BufferT, size_t> get_next_buffer();
+/**
+ * Object of this class can be used by the TCP-server to build
+ * protocol sessions.
+ */
+struct ProtocolSessionBuilder {
 
-    void handle_read(BufferT buffer, boost::system::error_code error, size_t nbytes);
+    /**
+     * @brief create new ProtocolSession instance
+     * @param io is an IOServiceT instance
+     * @param session is a database session instance
+     */
+    virtual std::shared_ptr<ProtocolSession> create(IOServiceT* io, std::shared_ptr<DbSession> session) = 0;
 
-    void handle_write_error(boost::system::error_code error);
+    /**
+     * Get the name of the protocol
+     */
+    virtual std::string name() const = 0;
 
-    void drain_pipeline_spout();
+    /**
+     * @brief Create RESP parser builder
+     * @param parallel use thread safe implementation if true
+     * @return newly created object
+     */
+    static std::unique_ptr<ProtocolSessionBuilder> create_resp_builder(bool parallel=true);
+
+    /**
+     * @brief Create OpenTSDB parser builder
+     * @param parallel use thread safe implementation if true
+     * @return newly created object
+     */
+    static std::unique_ptr<ProtocolSessionBuilder> create_opentsdb_builder(bool parallel=true);
 };
 
 
@@ -86,9 +104,12 @@ private:
   * Accepts connections and creates new client sessions
   */
 class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
+    typedef std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilderT;
+
     const bool                         parallel_;  //< Flag for TcpSession instances
     IOServiceT                           own_io_;  //< Acceptor's own io-service
     AcceptorT                          acceptor_;  //< Acceptor
+    ProtocolSessionBuilderT            protocol_;  //< Protocol builder
     std::vector<IOServiceT*>        sessions_io_;  //< List of io-services for sessions
     std::vector<WorkT>            sessions_work_;  //< Work to block io-services from completing too early
     std::weak_ptr<DbConnection>      connection_;  //< DB connection
@@ -103,11 +124,24 @@ public:
     /** C-tor. Should be created in the heap.
       * @param io io-service instance
       * @param port port to listen for new connections
-      * @param pipeline ingestion pipeline
+      * @param connection to the database
       */
-    TcpAcceptor(  // Server parameters
+    TcpAcceptor(
         std::vector<IOServiceT*> io, int port,
-        // Storage & pipeline
+        std::shared_ptr<DbConnection> connection,
+        bool parallel=true);
+
+    /**
+     * Create multiprotocol c-tor
+      * @param io io-service instance
+      * @param port port to listen for new connections
+      * @param protocol is a protocol builder
+      * @param connection to the database
+     */
+    TcpAcceptor(
+        std::vector<IOServiceT*> io,
+        int port,
+        std::unique_ptr<ProtocolSessionBuilder> protocol,
         std::shared_ptr<DbConnection> connection,
         bool parallel=true);
 
@@ -128,9 +162,11 @@ public:
     //! Run one handler (should be used only for testing)
     void _run_one();
 
+    std::string name() const;
+
 private:
     //! Accept event handler
-    void handle_accept(std::shared_ptr<TcpSession> session, boost::system::error_code err);
+    void handle_accept(std::shared_ptr<ProtocolSession> session, boost::system::error_code err);
 };
 
 
@@ -141,14 +177,28 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
     };
     typedef std::unique_ptr<IOServiceT>  IOPtr;
     std::weak_ptr<DbConnection>          connection_;
-    std::shared_ptr<TcpAcceptor>         serv;
+    std::vector<std::shared_ptr<TcpAcceptor>> acceptors_;
     std::vector<IOPtr>                   ios_;
     std::vector<IOServiceT*>             iovec;
     boost::barrier                       barrier;
     std::atomic<int>                     stopped;
     Logger                               logger_;
 
+    /**
+     * @brief Creates TCP server that accepts only RESP connections
+     * @param connection is a pointer to opened database connection
+     * @param concurrency is a concurrency hint (how many threads should be used)
+     * @param port is a port number to listen
+     * @param mode is a server mode (event loop per thread or one shared event loop)
+     * @note I've found that on Linux Mode::EVENT_LOOP_PER_THREAD gives more consistent results (the other option should be used for windows)
+     */
     TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, Mode mode=Mode::EVENT_LOOP_PER_THREAD);
+
+    TcpServer(std::shared_ptr<DbConnection> connection,
+              int concurrency,
+              std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map,
+              Mode mode=Mode::EVENT_LOOP_PER_THREAD);
+
     ~TcpServer();
 
     //! Run IO service

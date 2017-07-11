@@ -78,8 +78,7 @@ struct SessionMock : DbSession {
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {
             memcpy(buffer, strid.data(), strid.size());
-            buffer[strid.size()] = 0;
-            return static_cast<int>(strid.size()) + 1;
+            return static_cast<int>(strid.size());
         }
         return -1*static_cast<int>(strid.size());
     }
