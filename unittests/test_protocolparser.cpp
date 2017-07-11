@@ -407,6 +407,8 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_series_name_error_no_carriage_return_2)
 //   OpenTSDB protocol parser tests   //
 //                                    //
 
+static const u64 NANOSECONDS = 1000000000;
+
 BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
     std::string messages = "put test 2 12.3 tag1=value1 tag2=value2\n";
     std::string expected_tag = "test tag1=value1 tag2=value2";
@@ -420,7 +422,7 @@ BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_1) {
 
     BOOST_REQUIRE_EQUAL(cons->ids.size(), 1);
     BOOST_REQUIRE_EQUAL(cons->ids.at(0), cons->index[expected_tag]);
-    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2);
+    BOOST_REQUIRE_EQUAL(cons->ts.at(0),  2*NANOSECONDS);
     BOOST_REQUIRE_EQUAL(cons->xs.at(0), 12.3);
 }
 
@@ -456,7 +458,7 @@ BOOST_AUTO_TEST_CASE(Test_opentsdb_protocol_parse_2) {
     BOOST_REQUIRE_EQUAL(cons->ids.size(), 7);
     for (int i = 0; i < 7; i++) {
         BOOST_REQUIRE_EQUAL(cons->ids.at(i),  cons->index[expected_names[i]]);
-        BOOST_REQUIRE_EQUAL(cons->ts.at(i),  expected_ts.at(i));
+        BOOST_REQUIRE_EQUAL(cons->ts.at(i),  expected_ts.at(i)*NANOSECONDS);
         BOOST_REQUIRE_EQUAL(cons->xs.at(i), expected_values.at(i));
     }
 }
@@ -479,19 +481,19 @@ BOOST_AUTO_TEST_CASE(Test_open_tsdb_protocol_parser_framing) {
         BOOST_REQUIRE_EQUAL(cons->ids.size(), 4);
         // 0
         BOOST_REQUIRE_EQUAL(cons->ids[0], cons->index[expected.at(0)]);
-        BOOST_REQUIRE_EQUAL(cons->ts[0], 10001);
+        BOOST_REQUIRE_EQUAL(cons->ts[0], 10001*NANOSECONDS);
         BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[0], 34.57, 1e-9);
         // 1
         BOOST_REQUIRE_EQUAL(cons->ids[1], cons->index[expected.at(1)]);
-        BOOST_REQUIRE_EQUAL(cons->ts[1], 10002);
+        BOOST_REQUIRE_EQUAL(cons->ts[1], 10002*NANOSECONDS);
         BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[1], 81.09, 1e-9);
         // 2
         BOOST_REQUIRE_EQUAL(cons->ids[2], cons->index[expected.at(2)]);
-        BOOST_REQUIRE_EQUAL(cons->ts[2], 10003);
+        BOOST_REQUIRE_EQUAL(cons->ts[2], 10003*NANOSECONDS);
         BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[2], 12.13, 1e-9);
         // 3
         BOOST_REQUIRE_EQUAL(cons->ids[3], cons->index[expected.at(0)]);
-        BOOST_REQUIRE_EQUAL(cons->ts[3], 10004);
+        BOOST_REQUIRE_EQUAL(cons->ts[3], 10004*NANOSECONDS);
         BOOST_REQUIRE_CLOSE_FRACTION(cons->xs[3], 16.71, 1e-9);
     };
 
