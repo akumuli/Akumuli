@@ -23,6 +23,7 @@ file(COPY
     test_concurrency.py
     test_ingestion_errors.py
     test_join_query.py
+    roundtrip.sh
     DESTINATION
     ./
 )

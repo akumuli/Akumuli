@@ -60,7 +60,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     int sockfd, retval;
     sockaddr_in sa{};
 
-    ProtocolParser parser(spout);
+    RESPProtocolParser parser(spout);
     try {
 
         parser.start();
@@ -161,6 +161,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     stop_barrier_.wait();
 }
 
+static Logger s_logger_("udp-server", 32);
 
 struct UdpServerBuilder {
 
@@ -171,7 +172,11 @@ struct UdpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection> con,
                                          std::shared_ptr<ReadOperationBuilder>,
                                          const ServerSettings& settings) {
-        return std::make_shared<UdpServer>(con, settings.nworkers, settings.port);
+        if (settings.protocols.size() != 1) {
+            s_logger_.error() << "Can't initialize UDP server, more than one protocol specified";
+            BOOST_THROW_EXCEPTION(std::runtime_error("invalid upd-server settings"));
+        }
+        return std::make_shared<UdpServer>(con, settings.nworkers, settings.protocols.front().port);
     }
 };
 

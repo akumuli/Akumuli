@@ -1,6 +1,7 @@
 sudo: required
 dist: trusty
 language: python
+group: edge
 compiler: gcc
 env:
   global:
@@ -58,6 +59,7 @@ script:
 - python functests/test_kill.py akumulid/
 - python functests/test_concurrency.py akumulid/
 - python functests/test_join_query.py akumulid/
+- bash functests/roundtrip.sh
 - cpack
 
 deploy:

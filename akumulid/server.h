@@ -10,10 +10,15 @@
 
 namespace Akumuli {
 
-struct ServerSettings {
+struct ProtocolSettings {
     std::string name;
     int         port;
-    int         nworkers;
+};
+
+struct ServerSettings {
+    std::string                   name;
+    std::vector<ProtocolSettings> protocols;
+    int                           nworkers;
 };
 
 

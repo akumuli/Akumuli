@@ -63,7 +63,7 @@ std::tuple<aku_Sample*, double*> JoinMaterializer::cast(u8* dest) {
 std::tuple<aku_Status, size_t> JoinMaterializer::read(u8 *dest, size_t size) {
     aku_Status status      = AKU_SUCCESS;
     size_t ncolumns        = iters_.size();
-    size_t max_sample_size = sizeof(aku_Sample) + ncolumns;
+    size_t max_sample_size = sizeof(aku_Sample) + sizeof(double)*ncolumns;
     size_t output_size     = 0;
 
     while(size >= max_sample_size) {

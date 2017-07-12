@@ -163,6 +163,8 @@ void HttpServer::stop() {
     MHD_stop_daemon(daemon_);
 }
 
+static Logger s_logger_("http-server", 32);
+
 struct HttpServerBuilder {
 
     HttpServerBuilder() {
@@ -172,7 +174,11 @@ struct HttpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection>,
                                          std::shared_ptr<ReadOperationBuilder> qproc,
                                          const ServerSettings& settings) {
-        return std::make_shared<HttpServer>(settings.port, qproc);
+        if (settings.protocols.size() != 1) {
+            s_logger_.error() << "Can't initialize HTTP server, more than one protocol specified";
+            BOOST_THROW_EXCEPTION(std::runtime_error("invalid http-server settings"));
+        }
+        return std::make_shared<HttpServer>(settings.protocols.front().port, qproc);
     }
 };
 
