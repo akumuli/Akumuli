@@ -1,6 +1,17 @@
 Release notes
 =============
 
+Version 0.7.14
+
+NEW FEATURES
+
+* OpenTSDB telnet-style API implemented (partially)
+
+BUG FIXES
+
+* Join query error fixed #194
+* Name truncation error #197 is fixed
+
 Version 0.7.13
 --------------
 
