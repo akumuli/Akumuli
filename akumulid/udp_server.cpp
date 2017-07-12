@@ -161,7 +161,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     stop_barrier_.wait();
 }
 
-static Logger s_logger_("udp-server", 32);
+static Logger s_logger_("udp-server");
 
 struct UdpServerBuilder {
 

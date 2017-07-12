@@ -448,7 +448,7 @@ OpenTSDBProtocolParser::OpenTSDBProtocolParser(std::shared_ptr<DbSession> consum
     : done_(false)
     , rdbuf_(RDBUF_SIZE)
     , consumer_(consumer)
-    , logger_("opentsdb-protocol-parser", 32)
+    , logger_("opentsdb-protocol-parser")
 {
 }
 

@@ -253,7 +253,7 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     , io_index_{0}
     , start_barrier_(2)
     , stop_barrier_(2)
-    , logger_("tcp-acceptor", 10)
+    , logger_("tcp-acceptor")
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
@@ -425,7 +425,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
-    , logger_("tcp-server", 32)
+    , logger_("tcp-server")
 {
     logger_.info() << "TCP server created, concurrency: " << concurrency;
     if (mode == Mode::EVENT_LOOP_PER_THREAD) {
@@ -515,7 +515,7 @@ void TcpServer::stop() {
     }
 }
 
-static Logger s_logger_("tcp-server", 32);
+static Logger s_logger_("tcp-server");
 
 struct TcpServerBuilder {
 

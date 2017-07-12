@@ -163,7 +163,7 @@ void HttpServer::stop() {
     MHD_stop_daemon(daemon_);
 }
 
-static Logger s_logger_("http-server", 32);
+static Logger s_logger_("http-server");
 
 struct HttpServerBuilder {
 
