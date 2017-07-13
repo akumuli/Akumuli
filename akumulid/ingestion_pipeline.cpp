@@ -11,7 +11,7 @@
 namespace Akumuli
 {
 
-static Logger db_logger_ = Logger("akumuli-storage", 32);
+static Logger db_logger_ = Logger("akumuli-storage");
 
 //! Abstraction layer above aku_Cursor
 struct AkumuliCursor : DbCursor {

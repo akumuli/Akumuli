@@ -14,7 +14,7 @@
 using namespace Akumuli;
 
 
-static Logger logger_ = Logger("tcp-server-test", 10);
+static Logger logger_ = Logger("tcp-server-test");
 typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
 
 

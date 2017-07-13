@@ -22,6 +22,10 @@
 #include <string.h>
 #include <algorithm>
 
+// TODO: remove
+#include "log_iface.h"
+#include "status_util.h"
+
 
 namespace Akumuli {
 
@@ -112,6 +116,7 @@ bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
 }
 
 void ConcurrentCursor::close() {
+    std::lock_guard<std::mutex> lock(mutex_);
     done_ = true;
     cond_.notify_all();
     if (thread_.joinable()) {

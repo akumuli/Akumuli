@@ -6,7 +6,7 @@
 
 namespace Akumuli {
 
-static Logger logger("sighandler", 10);
+static Logger logger("sighandler");
 
 SignalHandler::SignalHandler()
 {

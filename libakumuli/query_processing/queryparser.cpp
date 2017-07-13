@@ -477,7 +477,7 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, QueryKind::SELECT);
 }
 
-aku_Status validate_querey(boost::property_tree::ptree const& ptree) {
+aku_Status validate_query(boost::property_tree::ptree const& ptree) {
     static const std::vector<std::string> UNIQUE_STMTS = {
         "select",
         "aggregate",
@@ -526,7 +526,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
         SeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> ids;
-    aku_Status status = validate_querey(ptree);
+    aku_Status status = validate_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);
     }
@@ -558,7 +558,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
 {
     ReshapeRequest result = {};
 
-    aku_Status status = validate_querey(ptree);
+    aku_Status status = validate_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -625,7 +625,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
     ReshapeRequest result = {};
 
-    aku_Status status = validate_querey(ptree);
+    aku_Status status = validate_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -732,7 +732,7 @@ static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
     ReshapeRequest result = {};
 
-    aku_Status status = validate_querey(ptree);
+    aku_Status status = validate_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -849,7 +849,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
                                                                      SeriesMatcher const& matcher)
 {
     ReshapeRequest result = {};
-    aku_Status status = validate_querey(ptree);
+    aku_Status status = validate_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }

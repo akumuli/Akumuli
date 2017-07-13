@@ -1,7 +1,15 @@
 Release notes
 =============
 
+Version 0.7.15
+--------------
+
+BUG FIXES
+
+* Race condition in HTTP server that prevented server from sending error response
+
 Version 0.7.14
+--------------
 
 NEW FEATURES
 
