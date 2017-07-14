@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator.h"
+#include "merge.h"
 
 
 namespace Akumuli {
@@ -23,9 +24,6 @@ struct JoinMaterializer : ColumnMaterializer {
 
     aku_Status fill_buffers();
 
-    /** Get pointer to buffer and return pointer to sample and tuple data */
-    static std::tuple<aku_Sample*, double*> cast(u8* dest);
-
     /** Read values to buffer. Values is aku_Sample with variable sized payload.
       * Format: float64 contains bitmap, data contains array of nonempty values (whether a
       * value is empty or not is defined by bitmap)
@@ -34,6 +32,50 @@ struct JoinMaterializer : ColumnMaterializer {
       * @return status and output size (in bytes)
       */
     std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
+};
+
+
+/** Operator that can be used to join several series.
+  * This materializer is based on merge-join but returns tuples ordered by time
+  * instead of individual values.
+  * Tuple can contain up to 58 elements.
+  */
+class JoinMaterializer2 : public ColumnMaterializer {
+
+    std::unique_ptr<ColumnMaterializer> merge_;         //< underlying merge-iterator
+    std::vector<aku_ParamId>            orig_ids_;      //< array of original ids
+    aku_ParamId                         id_;            //< id of the resulting time-series
+    aku_Timestamp                       curr_;          //< timestamp of the currently processed sample
+    std::vector<u8>                     buffer_;        //< the read buffer
+    u32                                 buffer_size_;   //< read buffer size (capacity is defined by the vector size)
+    u32                                 buffer_pos_;    //< position in the read buffer
+    const u32                           max_ssize_;     //< element size (in bytes)
+
+public:
+
+    /**
+     * @brief JoinMaterializer2 c-tor
+     * @param ids is a original ids of the series
+     * @param iters is an array of scan operators
+     * @param id is an id of the resulting series
+     */
+    JoinMaterializer2(std::vector<aku_ParamId> &&ids,
+                      std::vector<std::unique_ptr<RealValuedOperator>>&& iters,
+                      aku_ParamId id);
+
+    /**
+      * @brief Read materialized value into buffer
+      * Read values to buffer. Values is aku_Sample with variable sized payload.
+      * Format: float64 contains bitmap, data contains array of nonempty values (whether a
+      * value is empty or not is defined by bitmap)
+      * @param dest is a pointer to recieving buffer
+      * @param size is a size of the recieving buffer
+      * @return status and output size (in bytes)
+      */
+    std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
+
+private:
+    aku_Status fill_buffer();
 };
 
 struct JoinConcatMaterializer : ColumnMaterializer {
