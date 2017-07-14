@@ -264,6 +264,17 @@ struct NBTreeExtent {
 
     virtual ~NBTreeExtent() = default;
 
+    enum class ExtentStatus {
+        OK,
+        NEW,
+        KILLED_BY_RETENTION,
+    };
+
+    /**
+     * @brief Check node status
+     */
+    virtual ExtentStatus status() const = 0;
+
     /** Append new data to the root (doesn't work with superblocks)
       * If new root created - return address of the previous root, otherwise return EMPTY
       */
