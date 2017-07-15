@@ -290,6 +290,8 @@ double TupleOutputUtils::get_flags(std::vector<AggregationFunction> const& tup) 
         u64 u;
     } bits;
     bits.u = (1ull << tup.size()) - 1;
+    // Save number of elements in the bitflags
+    bits.u |= tup.size() << 58;
     return bits.d;
 }
 

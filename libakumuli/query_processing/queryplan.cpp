@@ -354,7 +354,7 @@ struct Join : MaterializationStep {
                 ids.push_back(ix);
             }
             std::unique_ptr<ColumnMaterializer> it;
-            it.reset(new JoinMaterializer2(std::move(ids), std::move(joined), ids_.at(i)));
+            it.reset(new JoinMaterializer(std::move(ids), std::move(joined), ids_.at(i)));
             iters.push_back(std::move(it));
         }
         if (order_ == OrderBy::SERIES) {
