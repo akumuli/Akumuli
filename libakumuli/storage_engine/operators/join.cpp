@@ -90,9 +90,7 @@ std::tuple<aku_Status, size_t> JoinMaterializer::read(u8 *dest, size_t size) {
             values[tuple_pos] = srcsample->payload.float64;
             tuple_pos++;
 
-            auto prev_pos = buffer_pos_;
             buffer_pos_ += srcsample->payload.size;
-            assert((buffer_pos_ - prev_pos) != 0);
             assert(buffer_pos_ <= buffer_.size());
         }
 
