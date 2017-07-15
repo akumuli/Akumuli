@@ -27,6 +27,24 @@ struct TimeOrder {
 };
 
 
+/**
+ * This predicate is used by the join materializer.
+ * Merge join should preserve order of the series supplied by the user.
+ */
+template<int dir>  // 0 - forward, 1 - backward
+struct MergeJoinOrder {
+    typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
+    typedef std::tuple<KeyType, double, u32> HeapItem;
+
+    bool operator () (HeapItem const& lhs, HeapItem const& rhs) const {
+        if (dir == 0) {
+            return std::get<0>(std::get<0>(lhs)) > std::get<0>(std::get<0>(rhs));
+        }
+        return std::get<0>(std::get<0>(lhs)) < std::get<0>(std::get<0>(rhs));
+    }
+};
+
+
 template<int dir>  // 0 - forward, 1 - backward
 struct SeriesOrder {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
