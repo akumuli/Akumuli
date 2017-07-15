@@ -29,7 +29,9 @@ def api_test(test_name):
             global g_num_fail
             n = g_test_run
             g_test_run += 1
-            print("Test #{0} - {1}".format(n, test_name))
+            ts = datetime.datetime.now()
+            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
             try:
                 func(*pos, **kv)
                 print("Test #{0} passed".format(n))
@@ -827,12 +829,16 @@ def check_bad_query_handling():
                 lines = []
                 for line in response:
                     lines.append(line)
-                if len(lines) != 1:
-                    print("Error: empty response expected, some data recieved. First 10 lines:")
+                if len(lines) > 1:
+                    print("Error: error message expected, some data recieved. First 10 lines:")
                     print("------------------------------")
                     for line in lines[:10]:
                         print(line.replace("\r", "\\r").replace("\n", "\\n"))
                     print("------------------------------")
+                    raise ValueError("Error expected")
+                elif len(lines) == 0:
+                    print("Error: error message expected, empty response received")
+                    raise ValueError("Error expected")
                 else:
                     if not lines[0].startswith("-query parsing error"):
                         raise ValueError("Invalid response")

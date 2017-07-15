@@ -22,7 +22,7 @@ UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
     , stop_{0}
     , port_(port)
     , nworkers_(nworkers)
-    , logger_("UdpServer", 128)
+    , logger_("UdpServer")
 {
 }
 
@@ -161,7 +161,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     stop_barrier_.wait();
 }
 
-static Logger s_logger_("udp-server", 32);
+static Logger s_logger_("udp-server");
 
 struct UdpServerBuilder {
 

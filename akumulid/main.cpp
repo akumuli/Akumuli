@@ -32,7 +32,7 @@ enum {
     AKU_TEST_DB_SIZE = 2*1024*1024,  // 2MB
 };
 
-static Logger logger("main", 10);
+static Logger logger("main");
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -351,7 +351,7 @@ void rich_print(const char* msg) {
 
 /** Logger f-n that shuld be used in libakumuli */
 static void static_logger(aku_LogLevel tag, const char * msg) {
-    static Logger logger = Logger("Main", 32);
+    static Logger logger = Logger("Main");
     switch(tag) {
     case AKU_LOG_ERROR:
         logger.error() << msg;

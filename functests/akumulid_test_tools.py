@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import sys
 import subprocess
@@ -194,6 +195,8 @@ class Akumulid:
         subprocess.call([cmd, "--delete"])
 
     def serve(self):
+        ts = datetime.datetime.now()
+        print("Akumulid launch time: " + ts.strftime("%Y-%m-%d %H:%M:%S,%f"))
         cmd = os.path.join(self.__path, "akumulid")
         self.__process = subprocess.Popen([cmd])
 
@@ -233,3 +236,66 @@ def create_akumulid(path):
         print("Path {0} doesn't exists".format(path))
         sys.exit(1)
     return Akumulid(path)
+
+def set_log_path(path):
+    key = 'log4j.appender.file.filename'
+    edit_config_file(key, path)
+
+def set_nvolumes(num):
+    key = 'nvolumes'
+    edit_config_file(key, str(num))
+
+def set_volume_size(size):
+    key = 'volume_size'
+    edit_config_file(key, size)
+
+def edit_config_file(key, value):
+    abspath = os.path.expanduser("~/.akumulid")
+    lines = []
+    success = False
+    with open(abspath, 'r') as configfile:
+        for line in configfile:
+            if line.startswith(key):
+                lines.append(key + '=' + value + '\n')
+                success = True
+            else:
+                lines.append(line)
+
+    if not success:
+        lines.append(key + '=' + value + '\n')
+
+    with open(abspath, 'w') as configfile:
+        for line in lines:
+            configfile.write(line)
+
+
+if __name__=='__main__':
+    if len(sys.argv) < 2:
+        print("Command required: commands available:\n" +
+              " set_log_path <path>\n")
+        sys.exit(1)
+    cmd = sys.argv[1]
+    if cmd == 'set_log_path':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_log_path <path>`")
+            sys.exit(1)
+        else:
+            path = sys.argv[2]
+            set_log_path(path)
+    elif cmd == 'set_nvolumes':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_nvolumes <num>`")
+            sys.exit(1)
+        else:
+            num = sys.argv[2]
+            set_nvolumes(num)
+    elif cmd == 'set_volume_size':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_volume_size <size>`")
+            sys.exit(1)
+        else:
+            size = sys.argv[2]
+            set_volume_size(size)
+    else:
+        print("Unknown command " + cmd)
+        sys.exit(1)
