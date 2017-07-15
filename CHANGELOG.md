@@ -1,6 +1,19 @@
 Release notes
 =============
 
+Version 0.7.16
+--------------
+
+BUG FIXES
+
+* Panic on open is fixed (#193).
+* Join query error on incomplete data is fixed (#200).
+
+IMPROVEMENTS
+
+* New join query implementation handles missing data properly, join query can be
+  used even if data poins are not perfectly aligned in time.
+
 Version 0.7.15
 --------------
 
