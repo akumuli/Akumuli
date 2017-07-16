@@ -23,7 +23,7 @@ JoinMaterializer::JoinMaterializer(std::vector<aku_ParamId>&& ids,
     , buffer_pos_(0)
     , max_ssize_(static_cast<u32>(sizeof(aku_Sample) + sizeof(double)*ids.size()))
 {
-    merge_.reset(new MergeMaterializer<MergeJoinOrder>(std::move(ids), std::move(iters)));
+    merge_.reset(new MergeMaterializer<MergeJoinOrder, true>(std::move(ids), std::move(iters)));
     buffer_.resize(0x1000);
 }
 

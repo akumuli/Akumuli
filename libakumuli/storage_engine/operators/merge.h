@@ -66,7 +66,7 @@ struct SeriesOrder {
 };
 
 
-template<template <int dir> class CmpPred>
+template<template <int dir> class CmpPred, bool IsStable=false>
 struct MergeMaterializer : ColumnMaterializer {
     std::vector<std::unique_ptr<RealValuedOperator>> iters_;
     std::vector<aku_ParamId> ids_;
@@ -163,7 +163,7 @@ struct MergeMaterializer : ColumnMaterializer {
         typedef CmpPred<dir> Comp;
         typedef typename Comp::HeapItem HeapItem;
         typedef typename Comp::KeyType KeyType;
-        typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>> Heap;
+        typedef boost::heap::skew_heap<HeapItem, boost::heap::compare<Comp>, boost::heap::stable<IsStable>> Heap;
         Heap heap;
 
         int index = 0;
