@@ -345,13 +345,16 @@ struct Join : MaterializationStep {
             // ids_ contain ids of the joined series that corresponds
             // to the names in the series matcher
             std::vector<std::unique_ptr<RealValuedOperator>> joined;
+            std::vector<aku_ParamId> ids;
             for (int j = 0; j < inc; j++) {
                 // `inc` number of storage level operators correspond to one
                 // materializer
-                joined.push_back(std::move(scanlist.at(i*inc + j)));
+                auto ix = i*inc + j;
+                joined.push_back(std::move(scanlist.at(ix)));
+                ids.push_back(ix);
             }
             std::unique_ptr<ColumnMaterializer> it;
-            it.reset(new JoinMaterializer(std::move(joined), ids_.at(i)));
+            it.reset(new JoinMaterializer(std::move(ids), std::move(joined), ids_.at(i)));
             iters.push_back(std::move(it));
         }
         if (order_ == OrderBy::SERIES) {

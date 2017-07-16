@@ -1622,6 +1622,14 @@ struct NBTreeLeafExtent : NBTreeExtent {
         reset_leaf();
     }
 
+    virtual ExtentStatus status() const {
+        // Leaf extent can be new and empty or new and filled with data
+        if (leaf_->nelements() == 0) {
+            return ExtentStatus::NEW;
+        }
+        return ExtentStatus::OK;
+    }
+
     aku_Status get_prev_subtreeref(SubtreeRef &payload) {
         aku_Status status = AKU_SUCCESS;
         std::shared_ptr<Block> block;
@@ -1814,7 +1822,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     u16 fanout_index_;
     u16 level_;
     // padding
-    u32 pad_;
+    u32 killed_;
 
     NBTreeSBlockExtent(std::shared_ptr<BlockStore> bstore,
                        std::shared_ptr<NBTreeExtentsList> roots,
@@ -1827,7 +1835,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         , last_(EMPTY_ADDR)
         , fanout_index_(0)
         , level_(level)
-        , pad_{}
+        , killed_(0)
     {
         if (addr != EMPTY_ADDR) {
             // `addr` is not empty. Node should be restored from
@@ -1837,6 +1845,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             std::tie(status, block) = read_and_check(bstore_, addr);
             if (status  == AKU_EUNAVAILABLE) {
                 addr = EMPTY_ADDR;
+                killed_ = 1;
             } else if (status != AKU_SUCCESS) {
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
@@ -1856,6 +1865,17 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             // `addr` is not set. Node should be created from scratch.
             curr_.reset(new NBTreeSuperblock(id, EMPTY_ADDR, 0, level));
         }
+    }
+
+    ExtentStatus status() const {
+        if (killed_) {
+            return ExtentStatus::KILLED_BY_RETENTION;
+        } else if (curr_->nelements() == 0) {
+            // Node is new
+            return ExtentStatus::NEW;
+        }
+        // Node is filled with data or created using CoW constructor
+        return ExtentStatus::OK;
     }
 
     void reset_subtree() {
@@ -2394,6 +2414,22 @@ void NBTreeExtentsList::open() {
 
         extents_.push_back(std::move(root));
     }
+    // Scan extents backwards and remove stalled extents
+    int ext2remove = 0;
+    for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+        if ((*it)->status() == NBTreeExtent::ExtentStatus::KILLED_BY_RETENTION) {
+            ext2remove++;
+        } else {
+            break;
+        }
+    }
+    // All extents can't be removed because leaf extent can't return `KILLED_BY_RETENTION` status.
+    // If all data was deleted by retention, only one new leaf node will be present in the `extents_`
+    // list.
+    for(;ext2remove --> 0;) {
+        extents_.pop_back();
+    }
+
     // Restore `last_`
     if (extents_.size()) {
         auto it = extents_.back()->search(AKU_MAX_TIMESTAMP, 0);
@@ -2403,8 +2439,10 @@ void NBTreeExtentsList::open() {
         size_t nread;
         std::tie(status, nread) = it->read(&ts, &val, 1);
         if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Can't restore last timestamp from tree");
-            AKU_PANIC("Can't restore last timestamp from tree");
+            // The tree is empty due to retention so we can use smallest possible
+            // timestamp
+            Logger::msg(AKU_LOG_TRACE, "Tree " + std::to_string(this->id_) + " is empty due to retention");
+            ts = AKU_MIN_TIMESTAMP;
         }
         last_ = ts;
     }

@@ -10,13 +10,6 @@ namespace Akumuli {
 
 static Logger logger("query_results_pooler");
 
-static int popcount(u64 value) {
-    u32 hi = static_cast<u32>(value);
-    u32 lo = static_cast<u32>(value >> 32);
-    int res = __builtin_popcount(hi) + __builtin_popcount(lo);
-    return res;
-}
-
 static boost::property_tree::ptree from_json(std::string json) {
     //! C-string to streambuf adapter
     struct MemStreambuf : std::streambuf {
@@ -151,15 +144,17 @@ struct CSVOutputFormatter : OutputFormatter {
                 double d;
             } bits;
             bits.d = sample.payload.float64;
-            int nelements = popcount(bits.u);
+            int nelements = bits.u >> 58;  // top 6 bits contains number of elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            int tup_ix = 0;
             for (int ix = 0; ix < nelements; ix++) {
                 if (bits.u & (1 << ix)) {
-                    if (ix == 0) {
-                        len = snprintf(begin, size, "%.17g", tuple[ix]);
+                    if (tup_ix == 0) {
+                        len = snprintf(begin, size, "%.17g", tuple[tup_ix]);
                     } else {
-                        len = snprintf(begin, size, ",%.17g", tuple[ix]);
+                        len = snprintf(begin, size, ",%.17g", tuple[tup_ix]);
                     }
+                    tup_ix++;
                 } else {
                     len = snprintf(begin, size, ",");
                 }
@@ -319,10 +314,10 @@ struct RESPOutputFormatter : OutputFormatter {
                 double d;
             } bits;
             bits.d = sample.payload.float64;
-            int nelements_set = popcount(bits.u);
+            int nelements = bits.u >> 58;  // top 6 bits contains number of elements
 
             // Output RESP array, start with number of elements
-            len = snprintf(begin, size, "*%d\r\n", nelements_set);
+            len = snprintf(begin, size, "*%d\r\n", nelements);
             if (len == size || len < 0) {
                 return nullptr;
             }
@@ -331,9 +326,10 @@ struct RESPOutputFormatter : OutputFormatter {
 
             // Output array elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
-            for (int ix = 0; ix < nelements_set; ix++) {
-                if (bits.u && (1 << ix)) {
-                    len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
+            int tup_ix = 0;
+            for (int ix = 0; ix < nelements; ix++) {
+                if (bits.u & (1 << ix)) {
+                    len = snprintf(begin, size, "+%.17g\r\n", tuple[tup_ix++]);
                 } else {
                     // Empty tuple value encountered. RESP uses bulk string with length equal to -1
                     // to represent Null values.

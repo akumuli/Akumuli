@@ -55,10 +55,11 @@ printf "\nCompleted\n"
 
 
 # read data back
-echo "Query metadata"
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Query metadata    -- $timestamp"
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results.resp
-
-sleep 5
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Done              -- $timestamp"
 
 diffres=$(diff expected-meta-results.resp actual-meta-results.resp | head -20)
 if [ -n "$diffres" ]; then
@@ -68,10 +69,13 @@ if [ -n "$diffres" ]; then
     error="Metadata query error (RESP)"
 fi
 
-echo "Query data points"
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Query data points -- $timestamp"
 curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results.resp.gz
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Done              -- $timestamp"
 
-diffres= $(diff <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz) | head -100)
+diffres=$(diff <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results.resp.gz) | head -100)
 # check the results
 if [ -n "$diffres" ];
 then
@@ -113,8 +117,11 @@ done
 printf "\nCompleted\n"
 
 # read data back
-echo "Query metadata"
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Query metadata    -- $timestamp"
 curl -s --url localhost:8181/api/query -d '{ "select": "meta:names" }' > actual-meta-results-opentsdb.resp
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Done              -- $timestamp"
 
 diffres=$(diff expected-meta-results.resp actual-meta-results-opentsdb.resp | head -20)
 if [ -n "$diffres" ];
@@ -125,8 +132,11 @@ then
     error="Metadata query error (OpenTSDB), ${error}"
 fi
 
-echo "Query data points"
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Query data points -- $timestamp"
 curl -s --url localhost:8181/api/query -d '{ "join": ["cpu.user","cpu.sys","cpu.real","idle","mem.commit","mem.virt","iops","tcp.packets.in","tcp.packets.out","tcp.ret"], "range": { "from": "20170101T000000.000000", "to": "20170102T000010.000000" }}' | gzip > actual-join-results-opentsdb.resp.gz
+timestamp=$(date +%Y%m%dT%H%M%S)
+echo "Done              -- $timestamp"
 
 # check the results
 diffres=$(diff <(zcat resp_1day_1000names_10sec_step.gz) <(zcat actual-join-results-opentsdb.resp.gz) | head -100)
