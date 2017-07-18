@@ -185,6 +185,9 @@ public:
 
     //! Group-aggregate query results iterator
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
+
+    // Node split experiment //
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore, aku_Timestamp pivot, bool);
 };
 
 
@@ -256,6 +259,9 @@ public:
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin,
                                                       aku_Timestamp end,
                                                       u64 step, std::shared_ptr<BlockStore> bstore) const;
+
+    // Node split experiment //
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore, aku_Timestamp where, bool preserve_horizontal_links);
 };
 
 
@@ -425,6 +431,22 @@ public:
     //! Walk the tree from the root and print it to the stdout
     static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
 };
+
+/**
+ * @brief Initialize SubtreeRef by reading leaf node (addr field is not set)
+ * @param leaf is a non-empty leaf node
+ * @param out is an output parameter
+ * @return status
+ */
+aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
+
+/**
+ * @brief Initialize SubtreeRef by reading subtree (addr field is not set)
+ * @param leaf is a non-empty superblock
+ * @param out is an output parameter
+ * @return status
+ */
+aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref);
 
 }
 }  // namespaces
