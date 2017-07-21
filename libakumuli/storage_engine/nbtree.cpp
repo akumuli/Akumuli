@@ -1836,6 +1836,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
     virtual bool is_dirty() const;
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
 };
 
 
@@ -1985,6 +1986,47 @@ bool NBTreeLeafExtent::is_dirty() const {
     return false;
 }
 
+std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
+    aku_Status status;
+    LogicAddr addr;
+    std::tie(status, addr) = leaf_->split(this->bstore_, pivot, true);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(false, EMPTY_ADDR);
+    }
+    auto block = read_block_from_bstore(bstore_, addr);
+    NBTreeSuperblock sblock(block);
+    // Gather stats and send them to upper-level node
+    SubtreeRef payload = INIT_SUBTREE_REF;
+    status = init_subtree_from_subtree(sblock, payload);
+    if (status != AKU_SUCCESS) {
+        // This shouldn't happen because sblock can't be empty, it contains
+        // two or one child element.
+        AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
+    }
+    payload.addr = addr;
+    bool parent_saved = false;
+    auto roots_collection = roots_.lock();
+    size_t next_level = payload.level; // payload level is always 1
+    if (roots_collection) {
+        if (roots_collection->_get_roots().size() > next_level) {
+            parent_saved = roots_collection->append(payload);
+        }
+    } else {
+        // Invariant broken.
+        // Roots collection was destroyed before write process
+        // stops.
+        AKU_PANIC("Roots collection destroyed");
+    }
+    fanout_index_++;
+    last_ = addr;
+    if (fanout_index_ == AKU_NBTREE_FANOUT) {
+        fanout_index_ = 0;
+        last_ = EMPTY_ADDR;
+    }
+    reset_leaf();
+    return std::make_tuple(parent_saved, addr);
+}
+
 // ////////////////////// //
 //   NBTreeSBlockExtent   //
 // ////////////////////// //
@@ -2079,6 +2121,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
     virtual bool is_dirty() const;
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
 };
 
 void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
@@ -2270,6 +2313,46 @@ bool NBTreeSBlockExtent::is_dirty() const {
     return false;
 }
 
+std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
+    aku_Status status;
+    LogicAddr addr;
+    std::tie(status, addr) = curr_->split(this->bstore_, pivot, true);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(false, EMPTY_ADDR);
+    }
+    auto block = read_block_from_bstore(bstore_, addr);
+    NBTreeSuperblock sblock(block);
+    // Gather stats and send them to upper-level node
+    SubtreeRef payload = INIT_SUBTREE_REF;
+    status = init_subtree_from_subtree(sblock, payload);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
+    }
+    payload.addr = addr;
+    bool parent_saved = false;
+    auto roots_collection = roots_.lock();
+    size_t next_level = payload.level + 1;
+    if (roots_collection) {
+        if (roots_collection->_get_roots().size() > next_level) {
+            // We shouldn't create new root if `commit` called from `close` method.
+            parent_saved = roots_collection->append(payload);
+        }
+    } else {
+        // Invariant broken.
+        // Roots collection was destroyed before write process
+        // stops.
+        AKU_PANIC("Roots collection destroyed");
+    }
+    fanout_index_++;
+    last_ = addr;
+    if (fanout_index_ == AKU_NBTREE_FANOUT) {
+        fanout_index_ = 0;
+        last_ = EMPTY_ADDR;
+    }
+    reset_subtree();
+    return std::make_tuple(parent_saved, addr);
+}
+
 
 static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBTreeSuperblock const* sblock, u16 required_level) {
     // For each child.
@@ -2407,6 +2490,11 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     , rescue_points_(std::move(addresses))
     , initialized_(false)
     , write_count_(0ul)
+    // test
+    , rd_()
+    , rand_gen_(rd_())
+    , dist_(0, 1000)
+    , threshold_(15)
 {
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
@@ -2449,6 +2537,35 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
     return result;
 }
 
+std::tuple<bool, LogicAddr, u32> NBTreeExtentsList::split_random_node() {
+    std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
+    u32 ixnode = rext(rand_gen_);
+    auto it = extents_.at(ixnode)->aggregate(0, AKU_MAX_TIMESTAMP);
+    aku_Timestamp ts;
+    AggregationResult dest;
+    size_t outsz;
+    aku_Status status;
+    std::tie(status, outsz) = it->read(&ts, &dest, 1);
+    if (outsz == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Can't split the node: no data returned from aggregate query");
+        return std::make_tuple(false, EMPTY_ADDR, ixnode);
+    }
+    if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+        Logger::msg(AKU_LOG_ERROR, "Can't split the node: " + StatusUtil::str(status));
+        return std::make_tuple(false, EMPTY_ADDR, ixnode);
+    }
+    aku_Timestamp begin = dest._begin;
+    aku_Timestamp end   = dest._end;
+
+    // Chose the pivot point
+    std::uniform_int_distribution<aku_Timestamp> rsplit(begin, end);
+    aku_Timestamp pivot = rsplit(rand_gen_);
+    LogicAddr addr;
+    bool parent_saved;
+    std::tie(parent_saved, addr) = extents_.at(ixnode)->split(pivot);
+    return std::make_tuple(parent_saved, addr, ixnode);
+}
+
 NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
                              //       recursively (maybe even many times).
@@ -2467,6 +2584,26 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         extents_.push_back(std::move(leaf));
         rescue_points_.push_back(EMPTY_ADDR);
     }
+    auto result = NBTreeAppendResult::OK;
+    // -- Testing -- //
+    if (dist_(rand_gen_) < threshold_) {
+        // This code is activated with some small probability.
+        // Split some random node, the `split` method acts as `commit`
+        // thus we need to update rescue points in some cases.
+        bool psaved = false;
+        LogicAddr paddr = EMPTY_ADDR;
+        u32 extent_index;
+        std::tie(psaved, paddr, extent_index) = split_random_node();
+        if (paddr != EMPTY_ADDR) {
+            if (rescue_points_.size() > extent_index) {
+                rescue_points_.at(extent_index) = paddr;
+            } else {
+                rescue_points_.push_back(paddr);
+            }
+            result = NBTreeAppendResult::OK_FLUSH_NEEDED;
+        }
+    }
+    // -- Testing -- //
     bool parent_saved = false;
     LogicAddr addr = EMPTY_ADDR;
     std::tie(parent_saved, addr) = extents_.front()->append(ts, value);
@@ -2476,9 +2613,9 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         } else {
             rescue_points_.push_back(addr);
         }
-        return NBTreeAppendResult::OK_FLUSH_NEEDED;
+        result = NBTreeAppendResult::OK_FLUSH_NEEDED;
     }
-    return NBTreeAppendResult::OK;
+    return result;
 }
 
 bool NBTreeExtentsList::append(const SubtreeRef &pl) {

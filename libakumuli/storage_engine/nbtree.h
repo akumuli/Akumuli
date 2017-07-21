@@ -318,6 +318,9 @@ struct NBTreeExtent {
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
+
+    // Node split //
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp ts) = 0;
 };
 
 
@@ -349,6 +352,14 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     void repair();
     void init();
     mutable RWLock lock_;
+
+    // Testing
+    std::random_device              rd_;
+    std::mt19937                    rand_gen_;
+    std::uniform_int_distribution<> dist_;
+    const int                       threshold_;
+
+    std::tuple<bool, LogicAddr, u32> split_random_node();
 public:
 
     /** C-tor
