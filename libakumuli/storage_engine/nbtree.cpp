@@ -1375,7 +1375,14 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
     return std::move(res_iter);
 }
 
-std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> bstore, aku_Timestamp pivot, bool) {
+std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> bstore,
+                                                    aku_Timestamp pivot,
+                                                    bool preserve_backrefs,
+                                                    NBTreeSuperblock* top_level)
+{
+    /* When the method is called from NBTreeSuperblock::split method, the
+     * top_level node will be provided. Otherwise it will be null.
+     */
     aku_Status status;
     std::vector<double> xss;
     std::vector<aku_Timestamp> tss;
@@ -1442,22 +1449,25 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
     }
     // Superblock
     NBTreeSuperblock sblock(get_id(), get_prev_addr(), get_fanout(), 1);
+    NBTreeSuperblock* psblock = top_level == nullptr ? &sblock : top_level;
     if (lhs_ref.addr != EMPTY_ADDR) {
-        status = sblock.append(lhs_ref);
+        status = psblock->append(lhs_ref);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, EMPTY_ADDR);
         }
     }
     if (rhs_ref.addr != EMPTY_ADDR) {
-        status = sblock.append(rhs_ref);
+        status = psblock->append(rhs_ref);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, EMPTY_ADDR);
         }
     }
-    LogicAddr newsblock_addr;
-    std::tie(status, newsblock_addr) = sblock.commit(bstore);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, EMPTY_ADDR);
+    LogicAddr newsblock_addr = EMPTY_ADDR;
+    if (top_level == nullptr) {
+        std::tie(status, newsblock_addr) = sblock.commit(bstore);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
     }
     return std::make_tuple(AKU_SUCCESS, newsblock_addr);
 }
@@ -1652,7 +1662,10 @@ std::unique_ptr<AggregateOperator> NBTreeSuperblock::group_aggregate(aku_Timesta
     return std::move(result);
 }
 
-std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockStore> bstore, aku_Timestamp pivot, bool preserve_horizontal_links) {
+std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockStore> bstore,
+                                                          aku_Timestamp pivot,
+                                                          bool preserve_horizontal_links)
+{
     // for each node in BFS order:
     //      if pivot is inside the node:
     //          node.split() <-- recursive call
@@ -1666,7 +1679,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockS
     for (u32 i = 0; i < refs.size(); i++) {
         if (refs[i].begin <= pivot && pivot <= refs[i].end) {
             // Do split the node
+            bool split_in_place = false;
             LogicAddr new_ith_child_addr = EMPTY_ADDR;
+            // Clone current node
+            NBTreeSuperblock new_sblock(id_, prev_, get_fanout(), level_);
+            for (u32 j = 0; j < i; j++) {
+                new_sblock.append(refs[j]);
+            }
             if (refs[i].level > 0) {
                 std::shared_ptr<Block> block;
                 std::tie(status, block) = read_and_check(bstore, refs[i].addr);
@@ -1684,26 +1703,28 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockS
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
                 }
+                NBTreeSuperblock *top_level = nullptr;
+                if ((refs.size() - AKU_NBTREE_FANOUT) > 1) {
+                    top_level = &new_sblock;
+                    split_in_place = true;
+                }
                 NBTreeLeaf oldleaf(block);
-                std::tie(status, new_ith_child_addr) = oldleaf.split(bstore, pivot, false);
+                std::tie(status, new_ith_child_addr) = oldleaf.split(bstore, pivot, false, top_level);
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
                 }
             }
-            // Clone current node
-            NBTreeSuperblock new_sblock(id_, prev_, get_fanout(), level_);
-            for (u32 j = 0; j < i; j++) {
-                new_sblock.append(refs[j]);
+            if (!split_in_place) {
+                SubtreeRef newref;
+                std::shared_ptr<Block> block = read_block_from_bstore(bstore, new_ith_child_addr);
+                NBTreeSuperblock child(block);
+                status = init_subtree_from_subtree(child, newref);
+                if (status != AKU_SUCCESS) {
+                    return std::make_tuple(status, EMPTY_ADDR);
+                }
+                newref.addr = new_ith_child_addr;
+                new_sblock.append(newref);
             }
-            SubtreeRef newref;
-            std::shared_ptr<Block> block = read_block_from_bstore(bstore, new_ith_child_addr);
-            NBTreeSuperblock child(block);
-            status = init_subtree_from_subtree(child, newref);
-            if (status != AKU_SUCCESS) {
-                return std::make_tuple(status, EMPTY_ADDR);
-            }
-            newref.addr = new_ith_child_addr;
-            new_sblock.append(newref);
             if (preserve_horizontal_links) {
                 // Fix backrefs on the right from the pivot
                 // Move from left to right and clone the blocks fixing

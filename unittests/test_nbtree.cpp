@@ -1938,18 +1938,12 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     const aku_ParamId id = 42;
     LogicAddr prev = EMPTY_ADDR;
     NBTreeSuperblock sblock(id, EMPTY_ADDR, 0, 1);
-    // 0
-    NBTreeLeaf l0(id, prev, 0);
-    fill_leaf(&l0, tss[0]);
-    prev = save_leaf(&l0, &sblock, bstore);
-    // 1
-    NBTreeLeaf l1(id, prev, 1);
-    fill_leaf(&l1, tss[1]);
-    prev = save_leaf(&l1, &sblock, bstore);
-    // 2
-    NBTreeLeaf l2(id, prev, 2);
-    fill_leaf(&l2, tss[2]);
-    prev = save_leaf(&l2, &sblock, bstore);
+
+    for(auto kv: tss) {
+        NBTreeLeaf leaf(id, prev, static_cast<u16>(kv.first));
+        fill_leaf(&leaf, kv.second);
+        prev = save_leaf(&leaf, &sblock, bstore);
+    }
 
     LogicAddr root;
     aku_Status status;
@@ -2000,19 +1994,19 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_21) {
     /* Split middle node in:
      *          [inner]
      *         /   |   \
-     *  [leaf0] [leaf1] [leaf2]
+     *  [leaf0] [leaf1] [leaf2] ... [leaf31]
      *
      * The result of the first split should look like this:
      *          [inner]
      *         /   |   \
-     *  [leaf0] [inner] [leaf3]
+     *  [leaf0] [inner] [leaf3] ... [leaf31]
      *           /   \
      *       [leaf1] [leaf2]
      *
      * The result of the first split should look like this:
      *          [inner]
      *         /   |   \
-     *  [leaf0] [inner] [leaf4]
+     *  [leaf0] [inner] [leaf4] ... [leaf34]
      *         /   |   \
      *  [leaf1] [leaf2] [leaf2]
      */
@@ -2022,5 +2016,8 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_21) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 2, 5);
+    for (int i = 3; i < 32; i++) {
+        tss[i] = { static_cast<aku_Timestamp>(i*10 + 1) };
+    }
+    test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 2, 34);
 }

@@ -95,6 +95,8 @@ struct NBTreeCandlestickHint {
 };
 
 
+class NBTreeSuperblock;
+
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
   */
@@ -187,7 +189,19 @@ public:
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
 
     // Node split experiment //
-    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore, aku_Timestamp pivot, bool);
+    /**
+     * @brief Split the node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs
+     * @param top_level is an optional top level node (if provided, the method will add links to this node
+     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
+     * @return status and address of the new topmost node (or EMPTY_ADDR if `top_level` have been provided)
+     */
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                            aku_Timestamp pivot,
+                                            bool preserve_backrefs,
+                                            NBTreeSuperblock* top_level=nullptr);
 };
 
 
@@ -261,7 +275,9 @@ public:
                                                       u64 step, std::shared_ptr<BlockStore> bstore) const;
 
     // Node split experiment //
-    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore, aku_Timestamp where, bool preserve_horizontal_links);
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                            aku_Timestamp where,
+                                            bool preserve_horizontal_links);
 };
 
 
