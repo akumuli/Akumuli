@@ -6,6 +6,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <apr.h>
+#include <queue>
 
 #include "akumuli.h"
 #include "storage_engine/blockstore.h"
@@ -1890,4 +1891,136 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_15) {
         { 3, { 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 }},
     };
     test_node_split_algorithm_lvl3(31, tss);
+}
+
+static std::tuple<int, int> count_nbtree_nodes(std::shared_ptr<BlockStore> bstore, LogicAddr root_addr) {
+    std::queue<std::pair<LogicAddr, bool>> addrlist;
+    addrlist.push(std::make_pair(root_addr, false));
+    int number_of_inner_nodes = 0;
+    int number_of_leaf_nodes = 0;
+    while(!addrlist.empty()) {
+        bool is_leaf;
+        LogicAddr addr;
+        std::tie(addr, is_leaf) = addrlist.front();
+        addrlist.pop();
+        if (is_leaf) {
+            number_of_leaf_nodes++;
+        } else {
+            number_of_inner_nodes++;
+            NBTreeSuperblock sblock(read_block(bstore, addr));
+            std::vector<SubtreeRef> refs;
+            auto status = sblock.read_all(&refs);
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            for (auto r: refs) {
+                LogicAddr a = r.addr;
+                bool isl = r.level == 0;
+                addrlist.push(std::make_pair(a, isl));
+            }
+        }
+    }
+    return std::tie(number_of_inner_nodes, number_of_leaf_nodes);
+}
+
+/**
+ * @brief Test node split in the case when the node is being split twice
+ * @param pivot1 is the first pivot point (when the first split occurs)
+ * @param pivot2 is the second pivot point
+ * @param tss
+ */
+void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
+                                                aku_Timestamp pivot2,
+                                                std::map<int, std::vector<aku_Timestamp>>& tss,
+                                                int expected_inner_nodes,
+                                                int expected_leaf_nodes
+                                                )
+{
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    const aku_ParamId id = 42;
+    LogicAddr prev = EMPTY_ADDR;
+    NBTreeSuperblock sblock(id, EMPTY_ADDR, 0, 1);
+    // 0
+    NBTreeLeaf l0(id, prev, 0);
+    fill_leaf(&l0, tss[0]);
+    prev = save_leaf(&l0, &sblock, bstore);
+    // 1
+    NBTreeLeaf l1(id, prev, 1);
+    fill_leaf(&l1, tss[1]);
+    prev = save_leaf(&l1, &sblock, bstore);
+    // 2
+    NBTreeLeaf l2(id, prev, 2);
+    fill_leaf(&l2, tss[2]);
+    prev = save_leaf(&l2, &sblock, bstore);
+
+    LogicAddr root;
+    aku_Status status;
+    std::tie(status, root) = sblock.commit(bstore);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(root - prev, 1);
+
+    // First split
+
+    LogicAddr new_root1;
+    std::tie(status, new_root1) = sblock.split(bstore, pivot1, false);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_NE(new_root1 - root, 0);
+
+    NBTreeSuperblock new_sblock1(read_block(bstore, new_root1));
+    std::unique_ptr<RealValuedOperator> it = new_sblock1.search(0, 100, bstore);
+    auto actual = extract_timestamps(*it);
+
+    std::unique_ptr<RealValuedOperator> orig_it = sblock.search(0, 100, bstore);
+    auto expected = extract_timestamps(*orig_it);
+
+    BOOST_REQUIRE_NE(actual.size(), 0);
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
+
+    // Second split
+
+    LogicAddr new_root2;
+    std::tie(status, new_root2) = new_sblock1.split(bstore, pivot2, false);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    BOOST_REQUIRE_NE(new_root2 - new_root1, 0);
+
+    NBTreeSuperblock new_sblock2(read_block(bstore, new_root2));
+    it = new_sblock2.search(0, 100, bstore);
+    actual = extract_timestamps(*it);
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
+
+    // Check the structure
+
+    int num_inner_nodes, num_leaf_nodes;
+    std::tie(num_inner_nodes, num_leaf_nodes) = count_nbtree_nodes(bstore, new_root2);
+    BOOST_REQUIRE_EQUAL(num_inner_nodes, expected_inner_nodes);
+    BOOST_REQUIRE_EQUAL(num_leaf_nodes, expected_leaf_nodes);
+}
+
+BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_21) {
+
+    /* Split middle node in:
+     *          [inner]
+     *         /   |   \
+     *  [leaf0] [leaf1] [leaf2]
+     *
+     * The result of the first split should look like this:
+     *          [inner]
+     *         /   |   \
+     *  [leaf0] [inner] [leaf3]
+     *           /   \
+     *       [leaf1] [leaf2]
+     *
+     * The result of the first split should look like this:
+     *          [inner]
+     *         /   |   \
+     *  [leaf0] [inner] [leaf4]
+     *         /   |   \
+     *  [leaf1] [leaf2] [leaf2]
+     */
+
+    std::map<int, std::vector<aku_Timestamp>> tss = {
+        { 0, {  1,  2,  3,  4,  5,  6,  7,  8,  9, 10 }},
+        { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
+        { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
+    };
+    test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 2, 5);
 }
