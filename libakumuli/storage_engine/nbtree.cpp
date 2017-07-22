@@ -34,6 +34,15 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+std::ostream& operator << (std::ostream& out, NBTreeBlockType blocktype) {
+    if (blocktype == NBTreeBlockType::LEAF) {
+        out << "NBTreeLeaf";
+    } else {
+        out << "NBTreeSuperblock";
+    }
+    return out;
+}
+
 static const SubtreeRef INIT_SUBTREE_REF = {
     0,
     //! Series Id
@@ -58,12 +67,14 @@ static const SubtreeRef INIT_SUBTREE_REF = {
     .0,
     //! Last value in subtree
     .0,
-    //! Node version
-    AKUMULI_VERSION,
+    //! Block type
+    NBTreeBlockType::LEAF,
     //! Node level in the tree
     0,
     //! Payload size (real)
     0,
+    //! Node version
+    AKUMULI_VERSION,
     //! Fan out index of the element (current)
     0,
     //! Checksum of the block (not used for links to child nodes)
@@ -172,6 +183,7 @@ aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& b
     // Node level information
     backref.id = node.get_id();
     backref.level = node.get_level();
+    backref.type = NBTreeBlockType::INNER;
     backref.version = AKUMULI_VERSION;
     backref.fanout_index = node.get_fanout();
     backref.payload_size = 0;
@@ -403,7 +415,7 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
         if (!subtree_in_range(ref, min, max)) {
             // Subtree not in [begin_, end_) range. Proceed to next.
             result = std::make_tuple(AKU_ENOT_FOUND, std::move(empty));
-        } else if (ref.level == 0) {
+        } else if (ref.type == NBTreeBlockType::LEAF) {
             result = std::move(make_leaf_iterator(ref));
         } else {
             result = std::move(make_superblock_iterator(ref));
@@ -1164,6 +1176,7 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->addr = prev;
     subtree->level = 0;  // Leaf node
+    subtree->type = NBTreeBlockType::LEAF;
     subtree->id = id;
     subtree->version = AKUMULI_VERSION;
     subtree->payload_size = 0;
@@ -1293,6 +1306,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     }
     subtree->version = AKUMULI_VERSION;
     subtree->level = 0;
+    subtree->type  = NBTreeBlockType::LEAF;
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
@@ -1448,7 +1462,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
         rhs_ref.addr = rhs_addr;
     }
     // Superblock
-    NBTreeSuperblock sblock(get_id(), get_prev_addr(), get_fanout(), 1);
+    NBTreeSuperblock sblock(get_id(), get_prev_addr(), get_fanout(), 0);
     NBTreeSuperblock* psblock = top_level == nullptr ? &sblock : top_level;
     if (lhs_ref.addr != EMPTY_ADDR) {
         status = psblock->append(lhs_ref);
@@ -1494,6 +1508,7 @@ NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
 {
     // Use zero-copy here.
     SubtreeRef const* ref = subtree_cast(block->get_cdata());
+    assert(ref->type == NBTreeBlockType::INNER);
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
     prev_ = ref->addr;
@@ -1512,6 +1527,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
 {
     std::shared_ptr<Block> block = read_block_from_bstore(bstore, addr);
     SubtreeRef const* ref = subtree_cast(block->get_cdata());
+    assert(ref->type == NBTreeBlockType::INNER);
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
     prev_ = ref->addr;
@@ -1601,6 +1617,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     backref->fanout_index = fanout_index_;
     backref->id = id_;
     backref->level = level_;
+    backref->type  = NBTreeBlockType::INNER;
     backref->version = AKUMULI_VERSION;
     // add checksum
     backref->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), backref->payload_size);
@@ -1686,7 +1703,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockS
             for (u32 j = 0; j < i; j++) {
                 new_sblock.append(refs[j]);
             }
-            if (refs[i].level > 0) {
+            if (refs[i].type == NBTreeBlockType::INNER) {
                 std::shared_ptr<Block> block;
                 std::tie(status, block) = read_and_check(bstore, refs[i].addr);
                 if (status != AKU_SUCCESS) {
@@ -1881,7 +1898,7 @@ static void dump_subtree_ref(std::ostream& stream,
         }
         return std::to_string(addr);
     };
-    if (ref->level == 0) {
+    if (ref->type == NBTreeBlockType::LEAF) {
         stream << tag("type")     << "Leaf"                       << "</type>\n";
     } else {
         stream << tag("type")     << "Superblock"                 << "</type>\n";
@@ -1900,6 +1917,7 @@ static void dump_subtree_ref(std::ostream& stream,
     stream << tag("last")         << ref->last                    << "</last>\n";
     stream << tag("version")      << ref->version                 << "</version>\n";
     stream << tag("level")        << ref->level                   << "</level>\n";
+    stream << tag("type")         << ref->type                    << "</level>\n";
     stream << tag("payload_size") << ref->payload_size            << "</payload_size>\n";
     stream << tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
     stream << tag("checksum")     << ref->checksum                << "</checksum>\n";
@@ -2027,11 +2045,8 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
     payload.addr = addr;
     bool parent_saved = false;
     auto roots_collection = roots_.lock();
-    size_t next_level = payload.level; // payload level is always 1
     if (roots_collection) {
-        if (roots_collection->_get_roots().size() > next_level) {
-            parent_saved = roots_collection->append(payload);
-        }
+        parent_saved = roots_collection->append(payload);
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process
@@ -2352,12 +2367,9 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
     payload.addr = addr;
     bool parent_saved = false;
     auto roots_collection = roots_.lock();
-    size_t next_level = payload.level + 1;
     if (roots_collection) {
-        if (roots_collection->_get_roots().size() > next_level) {
-            // We shouldn't create new root if `commit` called from `close` method.
-            parent_saved = roots_collection->append(payload);
-        }
+        // We shouldn't create new root if `commit` called from `close` method.
+        parent_saved = roots_collection->append(payload);
     } else {
         // Invariant broken.
         // Roots collection was destroyed before write process

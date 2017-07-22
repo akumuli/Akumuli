@@ -12,7 +12,7 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-enum class NBTreeBlockType {
+enum class NBTreeBlockType : u16 {
     LEAF,   // data block
     INNER,  // super block
 };
@@ -58,12 +58,14 @@ struct SubtreeRef {
     double first;
     //! Last value in subtree
     double last;
-    //! Node version
-    u16 version;
+    //! Node type
+    NBTreeBlockType type;
     //! Node level in the tree
     u16 level;
     //! Payload size (real)
     u16 payload_size;
+    //! Node version
+    u16 version;
     //! Fan out index of the element (current)
     u16 fanout_index;
     //! Checksum of the block (not used for links to child nodes)
