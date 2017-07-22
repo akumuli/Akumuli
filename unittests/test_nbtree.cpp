@@ -1994,6 +1994,32 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_21) {
     /* Split middle node in:
      *          [inner]
      *         /   |   \
+     *  [leaf0] [leaf1] [leaf2]
+     *
+     * The result of the first split should look like this:
+     *          [ inner ]
+     *         /   |   \ \
+     *  [leaf0] [leaf1] [leaf2] [leaf3]
+     *
+     * The result of the first split should look like this:
+     *          [  inner  ]
+     *         /   |   \ \ \
+     *  [leaf0] [leaf1] [leaf2] [leaf3] [leaf4]
+     */
+
+    std::map<int, std::vector<aku_Timestamp>> tss = {
+        { 0, {  1,  2,  3,  4,  5,  6,  7,  8,  9, 10 }},
+        { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
+        { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
+    };
+    test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 1, 5);
+}
+
+BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_22) {
+
+    /* Split middle node in:
+     *          [inner]
+     *         /   |   \
      *  [leaf0] [leaf1] [leaf2] ... [leaf31]
      *
      * The result of the first split should look like this:
