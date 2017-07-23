@@ -835,7 +835,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
     extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
-    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
+    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT || gen <= 1000000ul) {  // we should build three levels
         double value = rwalk.next();
         aku_Timestamp ts = gen++;
         extents->append(ts, value);
@@ -849,8 +849,8 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
             }
         }
     }
-    double first = xss.front();
-    double last = xss.back();
+    double first = xss.empty() ? 0 : xss.front();
+    double last  = xss.empty() ? 0 : xss.back();
     if (begin > end) {
         std::reverse(xss.begin(), xss.end());
     }
@@ -863,6 +863,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     std::vector<aku_Timestamp> destts(size, 0);
     std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(size, 1);
 
@@ -1494,7 +1495,8 @@ void test_node_split_algorithm_lvl2(aku_Timestamp pivot, std::map<int, std::vect
     BOOST_REQUIRE_EQUAL(root - prev, 1);
 
     LogicAddr new_root;
-    std::tie(status, new_root) = sblock.split(bstore, pivot, false);
+    LogicAddr last_child;
+    std::tie(status, new_root, last_child) = sblock.split(bstore, pivot, false, nullptr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(new_root - root, num_new_nodes);
 
@@ -1665,7 +1667,8 @@ void test_node_split_algorithm_lvl3(aku_Timestamp pivot, std::map<int, std::vect
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     LogicAddr new_inner0_addr;
-    std::tie(status, new_inner0_addr) = inner0.split(bstore, pivot, true);
+    LogicAddr last_child;
+    std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true, nullptr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     NBTreeSuperblock new_sblock(read_block(bstore, new_inner0_addr));
@@ -1954,7 +1957,8 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     // First split
 
     LogicAddr new_root1;
-    std::tie(status, new_root1) = sblock.split(bstore, pivot1, false);
+    LogicAddr last_child1;
+    std::tie(status, new_root1, last_child1) = sblock.split(bstore, pivot1, false, nullptr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root1 - root, 0);
 
@@ -1971,7 +1975,8 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     // Second split
 
     LogicAddr new_root2;
-    std::tie(status, new_root2) = new_sblock1.split(bstore, pivot2, false);
+    LogicAddr last_child2;
+    std::tie(status, new_root2, last_child2) = new_sblock1.split(bstore, pivot2, false, nullptr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root2 - new_root1, 0);
 
