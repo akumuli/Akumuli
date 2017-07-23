@@ -1500,6 +1500,8 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u
     , prev_(prev)
     , immutable_(false)
 {
+    SubtreeRef* pref = subtree_cast(block_->get_data());
+    pref->type = NBTreeBlockType::INNER;
 }
 
 NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
@@ -1601,12 +1603,22 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
             return std::make_tuple(status, EMPTY_ADDR);
         } else {
             // Everything is OK
-            NBTreeSuperblock subtree(block);
-            status = init_subtree_from_subtree(subtree, *backref);
-            if (status != AKU_SUCCESS) {
-                return std::make_tuple(status, EMPTY_ADDR);
+            const SubtreeRef* prev_header = subtree_cast(block->get_cdata());
+            if (prev_header->type == NBTreeBlockType::INNER) {
+                NBTreeSuperblock subtree(block);
+                status = init_subtree_from_subtree(subtree, *backref);
+                if (status != AKU_SUCCESS) {
+                    return std::make_tuple(status, EMPTY_ADDR);
+                }
+                backref->addr = prev_;
+            } else {
+                NBTreeLeaf subtree(block);
+                status = init_subtree_from_leaf(subtree, *backref);
+                if (status != AKU_SUCCESS) {
+                    return std::make_tuple(status, EMPTY_ADDR);
+                }
+                backref->addr = prev_;
             }
-            backref->addr = prev_;
         }
     } else {
         backref->addr = EMPTY_ADDR;
