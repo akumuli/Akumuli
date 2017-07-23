@@ -1401,7 +1401,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
     std::vector<double> xss;
     std::vector<aku_Timestamp> tss;
     status = read_all(&tss, &xss);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || tss.size() == 0) {
         return std::make_tuple(status, EMPTY_ADDR);
     }
     // Make new superblock with two leafs
@@ -2041,7 +2041,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
     aku_Status status;
     LogicAddr addr;
     std::tie(status, addr) = leaf_->split(this->bstore_, pivot, true);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || addr == EMPTY_ADDR) {
         return std::make_tuple(false, EMPTY_ADDR);
     }
     auto block = read_block_from_bstore(bstore_, addr);
@@ -2365,7 +2365,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
     aku_Status status;
     LogicAddr addr;
     std::tie(status, addr) = curr_->split(this->bstore_, pivot, true);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || addr == EMPTY_ADDR) {
         return std::make_tuple(false, EMPTY_ADDR);
     }
     auto block = read_block_from_bstore(bstore_, addr);
