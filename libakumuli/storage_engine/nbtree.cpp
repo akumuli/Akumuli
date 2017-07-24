@@ -1437,7 +1437,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
         lhs_ref.addr = lhs_addr;
         fanout_index++;
     }
-    // Right hand side leaf node
+    // Right hand side leaf node, it can't be empty in any case
+    // because the leaf node is not empty.
     NBTreeLeaf rhs(get_id(), lhs_ref.addr, fanout_index);
     for (u32 i = ixbase; i < tss.size(); i++) {
         status = rhs.append(tss[i], xss[i]);
@@ -1702,7 +1703,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split(std::shared_ptr<BlockS
     //          node.clone().fix_horizontal_link()
     std::vector<SubtreeRef> refs;
     aku_Status status = read_all(&refs);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || refs.empty()) {
         return std::make_tuple(status, EMPTY_ADDR);
     }
     for (u32 i = 0; i < refs.size(); i++) {
@@ -2435,7 +2436,8 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
             Logger::msg(AKU_LOG_INFO, "Block " + std::to_string(refs[i].addr));
         } else if (status == AKU_SUCCESS) {
             SubtreeRef out = INIT_SUBTREE_REF;
-            if (required_level == 0) {
+            const SubtreeRef* iref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
+            if (iref->type == NBTreeBlockType::LEAF) {
                 NBTreeLeaf leaf(block);
                 status = init_subtree_from_leaf(leaf, out);
                 if (status != AKU_SUCCESS) {
@@ -2501,10 +2503,13 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore, NBT
     }
 
     // Recur
-    if (required_level > 0) {
-        for (auto addr: nodes2follow) {
+    for (auto addr: nodes2follow) {
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = read_and_check(bstore, addr);
+        const SubtreeRef* iref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
+        if (iref->type == NBTreeBlockType::INNER) {
             NBTreeSuperblock child(addr, bstore);
-            check_superblock_consistency(bstore, &child, required_level - 1);
+            check_superblock_consistency(bstore, &child, required_level == 0 ? 0 : required_level - 1);
         }
     }
 }
