@@ -111,6 +111,9 @@ class NBTreeLeaf {
     u16 fanout_index_;
 
 public:
+    //! Empty tag to choose c-tor
+    struct CloneTag {};
+
     enum class LeafLoadMethod {
         FULL_PAGE_LOAD,
         ONLY_HEADER,
@@ -134,6 +137,12 @@ public:
       */
     NBTreeLeaf(std::shared_ptr<Block> bstore);
 
+    /**
+     * @brief Clone leaf node
+     * @param block is a pointer to block that contains leaf's data
+     */
+    NBTreeLeaf(std::shared_ptr<Block> block, CloneTag tag);
+
     /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
@@ -152,6 +161,9 @@ public:
 
     //! Get logic address of the previous node
     LogicAddr get_prev_addr() const;
+
+    //! Set prev addr (works only on mutable node)
+    void set_prev_addr(LogicAddr addr);
 
     /** Read all elements from the leaf node.
       * @param timestamps Destination for timestamps.
@@ -275,9 +287,18 @@ public:
                                                       u64 step, std::shared_ptr<BlockStore> bstore) const;
 
     // Node split experiment //
-    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
-                                            aku_Timestamp where,
-                                            bool preserve_horizontal_links);
+    /**
+     * @brief split the node
+     * @param bstore
+     * @param pivot
+     * @param preserve_horizontal_links
+     * @param root is an optional root node
+     * @return status, address of the current node (or empty if root was used), address of the last child (if preserve_horizontal_links
+     *         was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                            aku_Timestamp pivot,
+                                            bool preserve_horizontal_links, NBTreeSuperblock *root);
 };
 
 
@@ -375,7 +396,7 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     std::uniform_int_distribution<> dist_;
     const int                       threshold_;
 
-    std::tuple<bool, LogicAddr, u32> split_random_node();
+    std::tuple<LogicAddr, u32> split_random_node();
 public:
 
     /** C-tor
