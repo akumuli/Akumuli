@@ -1209,11 +1209,22 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block)
     fanout_index_ = subtree->fanout_index;
 }
 
+static std::shared_ptr<Block> clone(std::shared_ptr<Block> block) {
+    auto res = std::make_shared<Block>();
+    memcpy(res->get_data(), block->get_cdata(), AKU_BLOCK_SIZE);
+    return res;
+}
+
+static aku_ParamId getid(std::shared_ptr<Block> const& block) {
+    auto ptr = reinterpret_cast<SubtreeRef const*>(block->get_cdata());
+    return ptr->id;
+}
+
 NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block, NBTreeLeaf::CloneTag)
     : prev_(EMPTY_ADDR)
+    , block_(clone(block))
+    , writer_(getid(block_), block_->get_data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
 {
-    block_ = std::make_shared<Block>();
-    memcpy(block_->get_data(), block->get_data(), AKU_BLOCK_SIZE);
     const SubtreeRef* subtree = subtree_cast(block_->get_cdata());
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
