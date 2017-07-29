@@ -849,8 +849,8 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
             }
         }
     }
-    double first = xss.front();
-    double last = xss.back();
+    double first = xss.empty() ? 0 : xss.front();
+    double last  = xss.empty() ? 0 : xss.back();
     if (begin > end) {
         std::reverse(xss.begin(), xss.end());
     }
@@ -863,6 +863,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     std::vector<aku_Timestamp> destts(size, 0);
     std::vector<AggregationResult> destxs(size, INIT_AGGRES);
     std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(size, 1);
 

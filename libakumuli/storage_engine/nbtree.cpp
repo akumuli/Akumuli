@@ -1077,9 +1077,23 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggr
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggregator::make_superblock_iterator(SubtreeRef const& ref) {
     std::unique_ptr<AggregateOperator> result;
-    auto const start_bucket = (ref.begin - begin_) / step_;
-    auto const stop_bucket = (ref.end - begin_) / step_;
-    if (start_bucket == stop_bucket) {
+    bool inner = false;
+    if (get_direction() == Direction::FORWARD) {
+        auto const query_boundary = (end_ - begin_) / step_;
+        auto const start_bucket = (ref.begin - begin_) / step_;
+        auto const stop_bucket = (ref.end - begin_) / step_;
+        if (start_bucket == stop_bucket && stop_bucket != query_boundary) {
+            inner = true;
+        }
+    } else {
+        auto const query_boundary = (begin_ - end_) / step_;
+        auto const start_bucket = (begin_ - ref.end) / step_;
+        auto const stop_bucket = (begin_ - ref.begin) / step_;
+        if (start_bucket == stop_bucket && stop_bucket != query_boundary) {
+            inner = true;
+        }
+    }
+    if (inner) {
         // We don't need to go to lower level, value from subtree ref can be used instead.
         auto agg = INIT_AGGRES;
         agg.copy_from(ref);
