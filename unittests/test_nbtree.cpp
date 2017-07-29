@@ -835,7 +835,7 @@ void test_nbtree_superblock_aggregation(aku_Timestamp begin, aku_Timestamp end) 
     std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
     extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
-    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT) {  // we should build three levels
+    while(ncommits < AKU_NBTREE_FANOUT*AKU_NBTREE_FANOUT || gen <= 1000000ul) {  // we should build three levels
         double value = rwalk.next();
         aku_Timestamp ts = gen++;
         extents->append(ts, value);
