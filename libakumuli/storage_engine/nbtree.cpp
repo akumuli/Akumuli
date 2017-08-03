@@ -1277,6 +1277,10 @@ void NBTreeLeaf::set_prev_addr(LogicAddr addr) {
     subtree->addr = addr;
 }
 
+LogicAddr NBTreeLeaf::get_addr() const {
+    return block_->get_addr();
+}
+
 LogicAddr NBTreeLeaf::get_prev_addr() const {
     // Should be set correctly no metter how NBTreeLeaf was created.
     return prev_;
@@ -1608,6 +1612,10 @@ aku_ParamId NBTreeSuperblock::get_id() const {
 
 LogicAddr NBTreeSuperblock::get_prev_addr() const {
     return subtree_cast(block_->get_cdata())->addr;
+}
+
+LogicAddr NBTreeSuperblock::get_addr() const {
+    return block_->get_addr();
 }
 
 aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
@@ -1968,6 +1976,7 @@ static void dump_subtree_ref(std::ostream& stream,
                              SubtreeRef const* ref,
                              LogicAddr prev_addr,
                              int base_indent,
+                             LogicAddr self_addr,
                              std::function<std::string(aku_Timestamp)> tsformat)
 {
     auto tag = [base_indent](const char* tag_name) {
@@ -1989,6 +1998,7 @@ static void dump_subtree_ref(std::ostream& stream,
     } else {
         stream << tag("type")     << "Superblock"                 << "</type>\n";
     }
+    stream << tag("addr")         << afmt(self_addr)              << "</addr>\n";
     stream << tag("id")           << ref->id                      << "</id>\n";
     stream << tag("prev_addr")    << afmt(prev_addr)              << "</prev_addr>\n";
     stream << tag("begin")        << tsformat(ref->begin)         << "</begin>\n";
@@ -2013,7 +2023,7 @@ static void dump_subtree_ref(std::ostream& stream,
 void NBTreeLeafExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
     SubtreeRef const* ref = leaf_->get_leafmeta();
     stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
-    dump_subtree_ref(stream, ref, leaf_->get_prev_addr(), base_indent + 1, tsformat);
+    dump_subtree_ref(stream, ref, leaf_->get_prev_addr(), base_indent + 1, leaf_->get_addr(), tsformat);
     stream << std::string(static_cast<size_t>(base_indent), '\t') << "</node>\n";
 }
 
@@ -2249,7 +2259,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
 void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
     SubtreeRef const* ref = curr_->get_sblockmeta();
     stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
-    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, tsformat);
+    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, curr_->get_addr(), tsformat);
 
     std::vector<SubtreeRef> refs;
     aku_Status status = curr_->read_all(&refs);
@@ -2309,17 +2319,16 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
                 continue;
             }
             auto subtreeref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
-            u16 level = subtreeref->level;
-            if (level == 0) {
+            if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // leaf node
                 NBTreeLeaf leaf(block);
                 SubtreeRef const* ref = leaf.get_leafmeta();
-                dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, tsformat);
+                dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, leaf.get_addr(), tsformat);
             } else {
                 // superblock
                 NBTreeSuperblock sblock(block);
                 SubtreeRef const* ref = sblock.get_sblockmeta();
-                dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, tsformat);
+                dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, sblock.get_addr(), tsformat);
                 std::vector<SubtreeRef> children;
                 status = sblock.read_all(&children);
                 if (status != AKU_SUCCESS) {

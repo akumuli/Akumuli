@@ -165,6 +165,9 @@ public:
     //! Set prev addr (works only on mutable node)
     void set_prev_addr(LogicAddr addr);
 
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
     /** Read all elements from the leaf node.
       * @param timestamps Destination for timestamps.
       * @param values Destination for values.
@@ -267,6 +270,9 @@ public:
 
     //! Return addr of the previous node
     LogicAddr get_prev_addr() const;
+
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
 
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
