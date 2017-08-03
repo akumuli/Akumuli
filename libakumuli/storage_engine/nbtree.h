@@ -165,6 +165,9 @@ public:
     //! Set prev addr (works only on mutable node)
     void set_prev_addr(LogicAddr addr);
 
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
     /** Read all elements from the leaf node.
       * @param timestamps Destination for timestamps.
       * @param values Destination for values.
@@ -268,6 +271,9 @@ public:
     //! Return addr of the previous node
     LogicAddr get_prev_addr() const;
 
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
@@ -351,7 +357,10 @@ struct NBTreeExtent {
 
     // Service functions //
 
-    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
+    virtual void debug_dump(std::ostream& stream,
+                            int base_indent,
+                            std::function<std::string(aku_Timestamp)> tsformat,
+                            u32 mask=0xFFFFFFFF) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
