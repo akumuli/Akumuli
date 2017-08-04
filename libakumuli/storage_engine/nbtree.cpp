@@ -2443,19 +2443,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
     LogicAddr addr;
     LogicAddr last_child_addr;
     std::tie(status, addr, last_child_addr) = curr_->split(bstore_, pivot, true, clone.get());
-    if (status != AKU_SUCCESS || addr == EMPTY_ADDR) {
-        return empty_res;
-    }
-    auto block = read_block_from_bstore(bstore_, addr);
-    NBTreeSuperblock sblock(block);
-    // Gather stats and send them to upper-level node
-    SubtreeRef payload = INIT_SUBTREE_REF;
-    status = init_subtree_from_subtree(sblock, payload);
-    if (status != AKU_SUCCESS) {
-        AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
-    }
-    payload.addr = addr;
-    status = clone->append(payload);
+    // The addr variable should be empty, because we're using the clone
     if (status != AKU_SUCCESS) {
         return empty_res;
     }

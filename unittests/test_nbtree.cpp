@@ -7,6 +7,7 @@
 
 #include <apr.h>
 #include <queue>
+#include <fstream>
 
 #include "akumuli.h"
 #include "storage_engine/blockstore.h"
@@ -895,6 +896,15 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
     }
 }
 
+static std::string to_isostring(aku_Timestamp ts) {
+    if (ts == AKU_MAX_TIMESTAMP) {
+        return "MAX";
+    } else if (ts == AKU_MIN_TIMESTAMP) {
+        return "MIN";
+    }
+    return std::to_string(ts);
+}
+
 void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) {
     // Build this tree structure.
     assert(nremoved <= nblocks);  // both numbers are actually a numbers
@@ -929,6 +939,21 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     std::shared_ptr<NBTreeExtentsList> recovered(new NBTreeExtentsList(42, rescue_points, bstore));
     recovered->force_init();
 
+    std::fstream outstream;
+    outstream.open("recovered.xml", std::fstream::out);
+    for(auto ext: recovered->get_extents()) {
+        outstream << "<extent>" << std::endl;
+        ext->debug_dump(outstream, 1, to_isostring);
+        outstream << "</extent>" << std::endl;
+    }
+    outstream.close();
+    outstream.open("original.xml", std::fstream::out);
+    for(auto ext: extents->get_extents()) {
+        outstream << "<extent>" << std::endl;
+        ext->debug_dump(outstream, 1, to_isostring);
+        outstream << "</extent>" << std::endl;
+    }
+
     auto it = recovered->search(begin, end);
     if (end > begin) {
         size_t sz = end - begin;
@@ -958,15 +983,15 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_with_retention_1) {
     std::vector<std::pair<LogicAddr, LogicAddr>> addrlist = {
-        { 1, 0 },
-        { 1, 1 },
-        { 2, 0 },
-        { 2, 1 },
+//        { 1, 0 },
+//        { 1, 1 },
+//        { 2, 0 },
+//        { 2, 1 },
         { 33, 1},
-        { 33, 10},
-        { 33, 33},
-        { 33*33, 33},
-        { 33*33, 33*33},
+//        { 33, 10},
+//        { 33, 33},
+//        { 33*33, 33},
+//        { 33*33, 33*33},
     };
     for(auto pair: addrlist) {
         test_nbtree_recovery_with_retention(pair.first, pair.second);
