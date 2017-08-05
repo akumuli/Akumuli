@@ -983,15 +983,15 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_with_retention_1) {
     std::vector<std::pair<LogicAddr, LogicAddr>> addrlist = {
-//        { 1, 0 },
-//        { 1, 1 },
-//        { 2, 0 },
-//        { 2, 1 },
+        { 1, 0 },
+        { 1, 1 },
+        { 2, 0 },
+        { 2, 1 },
         { 33, 1},
-//        { 33, 10},
-//        { 33, 33},
-//        { 33*33, 33},
-//        { 33*33, 33*33},
+        { 33, 10},
+        { 33, 33},
+        { 33*33, 33},
+        { 33*33, 33*33},
     };
     for(auto pair: addrlist) {
         test_nbtree_recovery_with_retention(pair.first, pair.second);
@@ -1521,7 +1521,7 @@ void test_node_split_algorithm_lvl2(aku_Timestamp pivot, std::map<int, std::vect
 
     LogicAddr new_root;
     LogicAddr last_child;
-    std::tie(status, new_root, last_child) = sblock.split(bstore, pivot, false, nullptr);
+    std::tie(status, new_root, last_child) = sblock.split(bstore, pivot, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(new_root - root, num_new_nodes);
 
@@ -1545,8 +1545,8 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_1) {
      *
      * The result should look like this:
      *
-     *              [inner]
-     *         /      | |       \
+     *          ____[inner]____
+     *         /    |     |    \
      *  [leaf0] [leaf1] [leaf2] [leaf3]
      *
      * 3 new nodes should be created
@@ -1572,7 +1572,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
      *         /   |   \
      *  [leaf0] [leaf1] [leaf2]
      *
-     * 3 new nodes should be created
+     * 2 new nodes should be created
      */
 
     std::map<int, std::vector<aku_Timestamp>> tss = {
@@ -1580,7 +1580,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2(1, tss, 3);
+    test_node_split_algorithm_lvl2(1, tss, 2);
 }
 
 BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
@@ -1592,12 +1592,10 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
      *
      * The result should look like this:
      *          [inner]
-     *         /   |   \
-     *  [leaf0] [leaf1] [inner]
-     *                   /   \
-     *              [leaf2] [leaf3]
+     *         /   |   \ \
+     *  [leaf0] [leaf1] [leaf2] [leaf3]
      *
-     * 4 new nodes should be created
+     * 3 new nodes should be created
      */
 
     std::map<int, std::vector<aku_Timestamp>> tss = {
@@ -1605,7 +1603,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2(30, tss, 4);
+    test_node_split_algorithm_lvl2(30, tss, 3);
 }
 
 static LogicAddr append_inner_node(NBTreeSuperblock& root, NBTreeSuperblock& child, std::shared_ptr<BlockStore> bstore) {
@@ -1690,7 +1688,7 @@ void test_node_split_algorithm_lvl3(aku_Timestamp pivot, std::map<int, std::vect
 
     LogicAddr new_inner0_addr;
     LogicAddr last_child;
-    std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true, nullptr);
+    std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     NBTreeSuperblock new_sblock(read_block(bstore, new_inner0_addr));
@@ -1938,7 +1936,7 @@ static std::tuple<int, int> count_nbtree_nodes(std::shared_ptr<BlockStore> bstor
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             for (auto r: refs) {
                 LogicAddr a = r.addr;
-                bool isl = r.level == 0;
+                bool isl = r.type == NBTreeBlockType::LEAF;
                 addrlist.push(std::make_pair(a, isl));
             }
         }
@@ -1980,7 +1978,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
 
     LogicAddr new_root1;
     LogicAddr last_child1;
-    std::tie(status, new_root1, last_child1) = sblock.split(bstore, pivot1, false, nullptr);
+    std::tie(status, new_root1, last_child1) = sblock.split(bstore, pivot1, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root1 - root, 0);
 
@@ -1998,7 +1996,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
 
     LogicAddr new_root2;
     LogicAddr last_child2;
-    std::tie(status, new_root2, last_child2) = new_sblock1.split(bstore, pivot2, false, nullptr);
+    std::tie(status, new_root2, last_child2) = new_sblock1.split(bstore, pivot2, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root2 - new_root1, 0);
 
