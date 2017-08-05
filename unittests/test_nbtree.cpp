@@ -1545,8 +1545,8 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_1) {
      *
      * The result should look like this:
      *
-     *              [inner]
-     *         /      | |       \
+     *          ____[inner]____
+     *         /    |     |    \
      *  [leaf0] [leaf1] [leaf2] [leaf3]
      *
      * 3 new nodes should be created
@@ -1572,7 +1572,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
      *         /   |   \
      *  [leaf0] [leaf1] [leaf2]
      *
-     * 3 new nodes should be created
+     * 2 new nodes should be created
      */
 
     std::map<int, std::vector<aku_Timestamp>> tss = {
@@ -1580,7 +1580,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2(1, tss, 3);
+    test_node_split_algorithm_lvl2(1, tss, 2);
 }
 
 BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
@@ -1592,12 +1592,10 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
      *
      * The result should look like this:
      *          [inner]
-     *         /   |   \
-     *  [leaf0] [leaf1] [inner]
-     *                   /   \
-     *              [leaf2] [leaf3]
+     *         /   |   \ \
+     *  [leaf0] [leaf1] [leaf2] [leaf3]
      *
-     * 4 new nodes should be created
+     * 3 new nodes should be created
      */
 
     std::map<int, std::vector<aku_Timestamp>> tss = {
@@ -1605,7 +1603,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2(30, tss, 4);
+    test_node_split_algorithm_lvl2(30, tss, 3);
 }
 
 static LogicAddr append_inner_node(NBTreeSuperblock& root, NBTreeSuperblock& child, std::shared_ptr<BlockStore> bstore) {
@@ -1938,7 +1936,7 @@ static std::tuple<int, int> count_nbtree_nodes(std::shared_ptr<BlockStore> bstor
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             for (auto r: refs) {
                 LogicAddr a = r.addr;
-                bool isl = r.level == 0;
+                bool isl = r.type == NBTreeBlockType::LEAF;
                 addrlist.push(std::make_pair(a, isl));
             }
         }
