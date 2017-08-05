@@ -357,7 +357,10 @@ struct NBTreeExtent {
 
     // Service functions //
 
-    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
+    virtual void debug_dump(std::ostream& stream,
+                            int base_indent,
+                            std::function<std::string(aku_Timestamp)> tsformat,
+                            u32 mask=0xFFFFFFFF) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);

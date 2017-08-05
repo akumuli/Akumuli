@@ -943,14 +943,14 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     outstream.open("recovered.xml", std::fstream::out);
     for(auto ext: recovered->get_extents()) {
         outstream << "<extent>" << std::endl;
-        ext->debug_dump(outstream, 1, to_isostring);
+        ext->debug_dump(outstream, 1, to_isostring, 0x4807B);
         outstream << "</extent>" << std::endl;
     }
     outstream.close();
     outstream.open("original.xml", std::fstream::out);
     for(auto ext: extents->get_extents()) {
         outstream << "<extent>" << std::endl;
-        ext->debug_dump(outstream, 1, to_isostring);
+        ext->debug_dump(outstream, 1, to_isostring, 0x4807B);
         outstream << "</extent>" << std::endl;
     }
 
@@ -1544,13 +1544,12 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_1) {
      *  [leaf0] [leaf1] [leaf2]
      *
      * The result should look like this:
-     *          [inner]
-     *         /   |   \
-     *  [leaf0] [inner] [leaf3]
-     *           /   \
-     *       [leaf1] [leaf2]
      *
-     * 4 new nodes should be created
+     *              [inner]
+     *         /      | |       \
+     *  [leaf0] [leaf1] [leaf2] [leaf3]
+     *
+     * 3 new nodes should be created
      */
 
     std::map<int, std::vector<aku_Timestamp>> tss = {
@@ -1558,7 +1557,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_1) {
         { 1, { 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }},
         { 2, { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 }},
     };
-    test_node_split_algorithm_lvl2(15, tss, 4);
+    test_node_split_algorithm_lvl2(15, tss, 3);
 }
 
 BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
@@ -1571,9 +1570,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_2) {
      * The result should look like this:
      *          [inner]
      *         /   |   \
-     *  [inner] [leaf1] [leaf2]
-     *     |
-     *  [leaf0]
+     *  [leaf0] [leaf1] [leaf2]
      *
      * 3 new nodes should be created
      */

@@ -1967,7 +1967,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
     virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
     virtual bool is_dirty() const;
-    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
+    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const override;
     virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
 };
 
@@ -1977,7 +1977,8 @@ static void dump_subtree_ref(std::ostream& stream,
                              LogicAddr prev_addr,
                              int base_indent,
                              LogicAddr self_addr,
-                             std::function<std::string(aku_Timestamp)> tsformat)
+                             std::function<std::string(aku_Timestamp)> tsformat,
+                             u32 mask=0xFFFFFFFF)
 {
     auto tag = [base_indent](const char* tag_name) {
         std::stringstream str;
@@ -1993,37 +1994,77 @@ static void dump_subtree_ref(std::ostream& stream,
         }
         return std::to_string(addr);
     };
-    if (ref->type == NBTreeBlockType::LEAF) {
-        stream << tag("type")     << "Leaf"                       << "</type>\n";
-    } else {
-        stream << tag("type")     << "Superblock"                 << "</type>\n";
+    if (mask&1) {
+        if (ref->type == NBTreeBlockType::LEAF) {
+            stream << tag("type")     << "Leaf"                       << "</type>\n";
+        } else {
+            stream << tag("type")     << "Superblock"                 << "</type>\n";
+        }
     }
-    stream << tag("addr")         << afmt(self_addr)              << "</addr>\n";
-    stream << tag("id")           << ref->id                      << "</id>\n";
-    stream << tag("prev_addr")    << afmt(prev_addr)              << "</prev_addr>\n";
-    stream << tag("begin")        << tsformat(ref->begin)         << "</begin>\n";
-    stream << tag("end")          << tsformat(ref->end)           << "</end>\n";
-    stream << tag("count")        << ref->count                   << "</count>\n";
-    stream << tag("min")          << ref->min                     << "</min>\n";
-    stream << tag("min_time")     << tsformat(ref->min_time)      << "</min_time>\n";
-    stream << tag("max")          << ref->max                     << "</max>\n";
-    stream << tag("max_time")     << tsformat(ref->max_time)      << "</max_time>\n";
-    stream << tag("sum")          << ref->sum                     << "</sum>\n";
-    stream << tag("first")        << ref->first                   << "</first>\n";
-    stream << tag("last")         << ref->last                    << "</last>\n";
-    stream << tag("version")      << ref->version                 << "</version>\n";
-    stream << tag("level")        << ref->level                   << "</level>\n";
-    stream << tag("type")         << ref->type                    << "</level>\n";
-    stream << tag("payload_size") << ref->payload_size            << "</payload_size>\n";
-    stream << tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
-    stream << tag("checksum")     << ref->checksum                << "</checksum>\n";
+    if (mask & 2) {
+        stream << tag("addr")         << afmt(self_addr)              << "</addr>\n";
+    }
+    if (mask & 4) {
+        stream << tag("id")           << ref->id                      << "</id>\n";
+    }
+    if (mask & 8) {
+        stream << tag("prev_addr")    << afmt(prev_addr)              << "</prev_addr>\n";
+    }
+    if (mask & 16) {
+        stream << tag("begin")        << tsformat(ref->begin)         << "</begin>\n";
+    }
+    if (mask & 32) {
+        stream << tag("end")          << tsformat(ref->end)           << "</end>\n";
+    }
+    if (mask & 64) {
+        stream << tag("count")        << ref->count                   << "</count>\n";
+    }
+    if (mask & 128) {
+        stream << tag("min")          << ref->min                     << "</min>\n";
+    }
+    if (mask & 0x100) {
+        stream << tag("min_time")     << tsformat(ref->min_time)      << "</min_time>\n";
+    }
+    if (mask & 0x200) {
+        stream << tag("max")          << ref->max                     << "</max>\n";
+    }
+    if (mask & 0x400) {
+        stream << tag("max_time")     << tsformat(ref->max_time)      << "</max_time>\n";
+    }
+    if (mask & 0x800) {
+        stream << tag("sum")          << ref->sum                     << "</sum>\n";
+    }
+    if (mask & 0x1000) {
+        stream << tag("first")        << ref->first                   << "</first>\n";
+    }
+    if (mask & 0x2000) {
+        stream << tag("last")         << ref->last                    << "</last>\n";
+    }
+    if (mask & 0x4000) {
+        stream << tag("version")      << ref->version                 << "</version>\n";
+    }
+    if (mask & 0x8000) {
+        stream << tag("level")        << ref->level                   << "</level>\n";
+    }
+    if (mask & 0x10000) {
+        stream << tag("type")         << ref->type                    << "</level>\n";
+    }
+    if (mask & 0x20000) {
+        stream << tag("payload_size") << ref->payload_size            << "</payload_size>\n";
+    }
+    if (mask & 0x40000) {
+        stream << tag("fanout_index") << ref->fanout_index            << "</fanout_index>\n";
+    }
+    if (mask & 0x80000) {
+        stream << tag("checksum")     << ref->checksum                << "</checksum>\n";
+    }
 }
 
 
-void NBTreeLeafExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
+void NBTreeLeafExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {
     SubtreeRef const* ref = leaf_->get_leafmeta();
     stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
-    dump_subtree_ref(stream, ref, leaf_->get_prev_addr(), base_indent + 1, leaf_->get_addr(), tsformat);
+    dump_subtree_ref(stream, ref, leaf_->get_prev_addr(), base_indent + 1, leaf_->get_addr(), tsformat, mask);
     stream << std::string(static_cast<size_t>(base_indent), '\t') << "</node>\n";
 }
 
@@ -2252,14 +2293,14 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
     virtual bool is_dirty() const;
-    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const override;
+    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const override;
     virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
 };
 
-void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const {
+void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {
     SubtreeRef const* ref = curr_->get_sblockmeta();
     stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
-    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, curr_->get_addr(), tsformat);
+    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, curr_->get_addr(), tsformat, mask);
 
     std::vector<SubtreeRef> refs;
     aku_Status status = curr_->read_all(&refs);
@@ -2323,12 +2364,12 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
                 // leaf node
                 NBTreeLeaf leaf(block);
                 SubtreeRef const* ref = leaf.get_leafmeta();
-                dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, leaf.get_addr(), tsformat);
+                dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, leaf.get_addr(), tsformat, mask);
             } else {
                 // superblock
                 NBTreeSuperblock sblock(block);
                 SubtreeRef const* ref = sblock.get_sblockmeta();
-                dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, sblock.get_addr(), tsformat);
+                dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, sblock.get_addr(), tsformat, mask);
                 std::vector<SubtreeRef> children;
                 status = sblock.read_all(&children);
                 if (status != AKU_SUCCESS) {
