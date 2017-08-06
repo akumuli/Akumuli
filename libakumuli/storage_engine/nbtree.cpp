@@ -1559,6 +1559,7 @@ NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u
 {
     SubtreeRef* pref = subtree_cast(block_->get_data());
     pref->type = NBTreeBlockType::INNER;
+    assert(prev_ != 0);
 }
 
 NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
@@ -1573,6 +1574,7 @@ NBTreeSuperblock::NBTreeSuperblock(std::shared_ptr<Block> block)
     prev_ = ref->addr;
     write_pos_ = ref->payload_size;
     level_ = ref->level;
+    assert(prev_ != 0);
 }
 
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore)
@@ -1595,6 +1597,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     if (remove_last && write_pos_ != 0) {
         write_pos_--;
     }
+    assert(prev_ != 0);
     // We can't use zero-copy here because `block` belongs to other node.
     memcpy(block_->get_data(), block->get_cdata(), AKU_BLOCK_SIZE);
 }
@@ -1621,10 +1624,11 @@ aku_ParamId NBTreeSuperblock::get_id() const {
 }
 
 LogicAddr NBTreeSuperblock::get_prev_addr() const {
-    return subtree_cast(block_->get_cdata())->addr;
+    return prev_;
 }
 
 void NBTreeSuperblock::set_prev_addr(LogicAddr addr) {
+    assert(addr != 0);
     prev_ = addr;
     subtree_cast(block_->get_data())->addr = addr;
 }
@@ -1837,7 +1841,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                     // The child node can be an inner node or leaf node
                     if (refs[j].type == NBTreeBlockType::INNER) {
                         NBTreeSuperblock cloned_child(refs[j].addr, bstore, false);
-                        cloned_child.prev_ = prev;
+                        cloned_child.set_prev_addr(prev);
                         std::tie(status, childaddr) = cloned_child.commit(bstore);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
@@ -2765,8 +2769,11 @@ std::tuple<LogicAddr, u32> NBTreeExtentsList::split_random_node() {
     aku_Timestamp pivot = rsplit(rand_gen_);
     LogicAddr addr;
     bool parent_saved;
-    std::tie(parent_saved, addr) = extents_.at(ixnode)->split(pivot);
-    return std::make_tuple(addr, ixnode);
+    if (extents_.at(ixnode)->is_dirty()) {
+        std::tie(parent_saved, addr) = extents_.at(ixnode)->split(pivot);
+        return std::make_tuple(addr, ixnode);
+    }
+    return std::make_tuple(EMPTY_ADDR, ixnode);
 }
 
 NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
