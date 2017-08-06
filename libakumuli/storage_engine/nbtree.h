@@ -204,19 +204,32 @@ public:
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
 
     // Node split experiment //
+
+    /**
+     * @brief Split the node into the specified top node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @param top_level is a top level node (the method will add links to this node
+     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
+     * @return status and address of the new topmost node (always EMPTY_ADDR)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_backrefs,
+                                                 NBTreeSuperblock* top_level);
+
+
     /**
      * @brief Split the node
      * @param bstore is a pointer to blockstore
      * @param pivot is a pivot point of the split
-     * @param preserve_backrefs is a flag that controls the backrefs
-     * @param top_level is an optional top level node (if provided, the method will add links to this node
-     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
-     * @return status and address of the new topmost node (or EMPTY_ADDR if `top_level` have been provided)
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @return status and address of the new topmost node
      */
     std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
                                             aku_Timestamp pivot,
-                                            bool preserve_backrefs,
-                                            NBTreeSuperblock* top_level=nullptr);
+                                            bool preserve_backrefs);
 };
 
 
@@ -271,6 +284,9 @@ public:
     //! Return addr of the previous node
     LogicAddr get_prev_addr() const;
 
+    //! Set previous addr for the node
+    void set_prev_addr(LogicAddr addr);
+
     //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
     LogicAddr get_addr() const;
 
@@ -294,17 +310,31 @@ public:
 
     // Node split experiment //
     /**
-     * @brief split the node
-     * @param bstore
-     * @param pivot
-     * @param preserve_horizontal_links
-     * @param root is an optional root node
+     * @brief Split the node (the results are copied to the provided node)
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
+     * @param root is a new root node (all content of this node will be copied there alongside the updated refs)
+     * @return status, address of the last child (if preserve_horizontal_links was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links,
+                                                 NBTreeSuperblock *root);
+
+    /**
+     * @brief Split the node
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
      * @return status, address of the current node (or empty if root was used), address of the last child (if preserve_horizontal_links
      *         was set to true)
      */
     std::tuple<aku_Status, LogicAddr, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
-                                            aku_Timestamp pivot,
-                                            bool preserve_horizontal_links, NBTreeSuperblock *root);
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links);
 };
 
 
@@ -367,6 +397,13 @@ struct NBTreeExtent {
 
     // Node split //
     virtual std::tuple<bool, LogicAddr> split(aku_Timestamp ts) = 0;
+
+    /**
+     * @brief Updates address of the previous element (used by split)
+     * @param addr is an address of the prev element for the newly created node
+     * @return error code
+     */
+    virtual aku_Status update_prev_addr(LogicAddr addr) = 0;
 };
 
 

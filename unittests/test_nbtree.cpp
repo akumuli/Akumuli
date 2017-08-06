@@ -1521,7 +1521,7 @@ void test_node_split_algorithm_lvl2(aku_Timestamp pivot, std::map<int, std::vect
 
     LogicAddr new_root;
     LogicAddr last_child;
-    std::tie(status, new_root, last_child) = sblock.split(bstore, pivot, false, nullptr);
+    std::tie(status, new_root, last_child) = sblock.split(bstore, pivot, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(new_root - root, num_new_nodes);
 
@@ -1688,7 +1688,7 @@ void test_node_split_algorithm_lvl3(aku_Timestamp pivot, std::map<int, std::vect
 
     LogicAddr new_inner0_addr;
     LogicAddr last_child;
-    std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true, nullptr);
+    std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     NBTreeSuperblock new_sblock(read_block(bstore, new_inner0_addr));
@@ -1978,7 +1978,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
 
     LogicAddr new_root1;
     LogicAddr last_child1;
-    std::tie(status, new_root1, last_child1) = sblock.split(bstore, pivot1, false, nullptr);
+    std::tie(status, new_root1, last_child1) = sblock.split(bstore, pivot1, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root1 - root, 0);
 
@@ -1996,7 +1996,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
 
     LogicAddr new_root2;
     LogicAddr last_child2;
-    std::tie(status, new_root2, last_child2) = new_sblock1.split(bstore, pivot2, false, nullptr);
+    std::tie(status, new_root2, last_child2) = new_sblock1.split(bstore, pivot2, false);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root2 - new_root1, 0);
 
