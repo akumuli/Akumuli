@@ -2804,6 +2804,19 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         u32 extent_index;
         std::tie(paddr, extent_index) = split_random_node();
         if (paddr != EMPTY_ADDR) {
+            /*
+            aku_Status status;
+            std::shared_ptr<Block> rblock;
+            std::tie(status, rblock) = read_and_check(bstore_, paddr);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Can't read back the data");
+            }
+            // extent_index and the level of the node can mismatch
+            auto pnode = subtree_cast(rblock->get_cdata());
+            */
+            if (extent_index > 0) {
+                extent_index--;
+            }
             if (rescue_points_.size() > extent_index) {
                 rescue_points_.at(extent_index) = paddr;
             } else {
