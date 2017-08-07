@@ -983,15 +983,15 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_with_retention_1) {
     std::vector<std::pair<LogicAddr, LogicAddr>> addrlist = {
-//        { 1, 0 },
-//        { 1, 1 },
-//        { 2, 0 },
-//        { 2, 1 },
+        { 1, 0 },
+        { 1, 1 },
+        { 2, 0 },
+        { 2, 1 },
         { 33, 1},
-//        { 33, 10},
-//        { 33, 33},
-//        { 33*33, 33},
-//        { 33*33, 33*33},
+        { 33, 10},
+        { 33, 33},
+        { 33*33, 33},
+        { 33*33, 33*33},
     };
     for(auto pair: addrlist) {
         test_nbtree_recovery_with_retention(pair.first, pair.second);
