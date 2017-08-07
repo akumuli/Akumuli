@@ -1663,7 +1663,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
         return std::make_tuple(AKU_EBAD_DATA, EMPTY_ADDR);
     }
     SubtreeRef* backref = subtree_cast(block_->get_data());
-    if (fanout_index_ != 0) {
+    if (fanout_index_ != 0 && prev_ != EMPTY_ADDR) {
+        // If the node was created by split procedure, the prev_ variable can be set to
+        // EMPTY_ADDR even if fanout_index_ is not 0. The split method doesn't need to maintain
+        // this invariant for all levels, because this backrefs is not longer used for recovery.
         aku_Status status;
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore, prev_);
