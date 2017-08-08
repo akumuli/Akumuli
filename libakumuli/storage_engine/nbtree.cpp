@@ -479,6 +479,7 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
 
     //! Create leaf iterator (used by `get_next_iter` template method).
     virtual std::tuple<aku_Status, TIter> make_leaf_iterator(const SubtreeRef &ref) {
+        assert(ref.type == NBTreeBlockType::LEAF);
         aku_Status status;
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore_, ref.addr);
@@ -1663,42 +1664,11 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
         return std::make_tuple(AKU_EBAD_DATA, EMPTY_ADDR);
     }
     SubtreeRef* backref = subtree_cast(block_->get_data());
-    if (fanout_index_ != 0 && prev_ != EMPTY_ADDR) {
-        // If the node was created by split procedure, the prev_ variable can be set to
-        // EMPTY_ADDR even if fanout_index_ is not 0. The split method doesn't need to maintain
-        // this invariant for all levels, because this backrefs is not longer used for recovery.
-        aku_Status status;
-        std::shared_ptr<Block> block;
-        std::tie(status, block) = read_and_check(bstore, prev_);
-        if (status == AKU_EUNAVAILABLE) {
-            // Previous root was deleted due to retention policy
-            backref->addr = EMPTY_ADDR;
-        } else if (status !=  AKU_SUCCESS) {
-            // Some other error!
-            return std::make_tuple(status, EMPTY_ADDR);
-        } else {
-            // Everything is OK
-            const SubtreeRef* prev_header = subtree_cast(block->get_cdata());
-            if (prev_header->type == NBTreeBlockType::INNER) {
-                NBTreeSuperblock subtree(block);
-                status = init_subtree_from_subtree(subtree, *backref);
-                if (status != AKU_SUCCESS) {
-                    return std::make_tuple(status, EMPTY_ADDR);
-                }
-                backref->addr = prev_;
-            } else {
-                NBTreeLeaf subtree(block);
-                status = init_subtree_from_leaf(subtree, *backref);
-                if (status != AKU_SUCCESS) {
-                    return std::make_tuple(status, EMPTY_ADDR);
-                }
-                backref->addr = prev_;
-            }
-        }
-    } else {
-        backref->addr = EMPTY_ADDR;
+    auto status = init_subtree_from_subtree(*this, *backref);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, EMPTY_ADDR);
     }
-    // This fields should be rewrited to store node's own information
+    backref->addr = prev_;
     backref->payload_size = static_cast<u16>(write_pos_);
     assert(backref->payload_size + sizeof(SubtreeRef) < AKU_BLOCK_SIZE);
     backref->fanout_index = fanout_index_;
@@ -1789,34 +1759,33 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
             for (u32 j = 0; j < i; j++) {
                 root->append(refs[j]);
             }
+            std::shared_ptr<Block> block;
+            std::tie(status, block) = read_and_check(bstore, refs[i].addr);
+            if (status != AKU_SUCCESS) {
+                return std::make_tuple(status, EMPTY_ADDR);
+            }
+            auto refsi = subtree_cast(block->get_cdata());
+            assert(refsi->count == refs[i].count);
+            assert(refsi->type  == refs[i].type);
+            assert(refsi->begin == refs[i].begin);
             if (refs[i].type == NBTreeBlockType::INNER) {
-                std::shared_ptr<Block> block;
-                std::tie(status, block) = read_and_check(bstore, refs[i].addr);
-                if (status != AKU_SUCCESS) {
-                    return std::make_tuple(status, EMPTY_ADDR);
-                }
                 NBTreeSuperblock sblock(block);
                 LogicAddr ignored;
                 std::tie(status, new_ith_child_addr, ignored) = sblock.split(bstore, pivot, false);
+                assert(ignored == EMPTY_ADDR);
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
                 }
             } else {
-                std::shared_ptr<Block> block;
-                std::tie(status, block) = read_and_check(bstore, refs[i].addr);
-                if (status != AKU_SUCCESS) {
-                    return std::make_tuple(status, EMPTY_ADDR);
-                }
+                NBTreeLeaf oldleaf(block);
                 if ((refs.size() - AKU_NBTREE_FANOUT) > 1) {
                     // Split in-place
-                    NBTreeLeaf oldleaf(block);
                     std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, false, root);
                     if (status != AKU_SUCCESS) {
                         return std::make_tuple(status, EMPTY_ADDR);
                     }
                 } else {
                     // Create new level in the tree
-                    NBTreeLeaf oldleaf(block);
                     std::tie(status, new_ith_child_addr) = oldleaf.split(bstore, pivot, false);
                     if (status != AKU_SUCCESS) {
                         return std::make_tuple(status, EMPTY_ADDR);
