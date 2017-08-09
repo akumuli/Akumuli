@@ -143,6 +143,7 @@ aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
     out.payload_size = 0;
     out.checksum = 0;
     out.addr = EMPTY_ADDR;  // Leaf metadta stores address of the previous node!
+    out.type = NBTreeBlockType::LEAF;
     return AKU_SUCCESS;
 }
 
@@ -486,6 +487,8 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, std::unique_ptr<RealValuedOperator>());
         }
+        auto blockref = subtree_cast(block->get_cdata());
+        assert(blockref->type == ref.type);
         NBTreeLeaf leaf(block);
         std::unique_ptr<RealValuedOperator> result;
         result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
@@ -1340,9 +1343,10 @@ aku_Status NBTreeLeaf::append(aku_Timestamp ts, double value) {
 
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore> bstore) {
     assert(nelements() != 0);
-    size_t size = writer_.commit();
+    u16 size = static_cast<u16>(writer_.commit());
+    assert(size);
     SubtreeRef* subtree = subtree_cast(block_->get_data());
-    subtree->payload_size = static_cast<u16>(size);
+    subtree->payload_size = size;
     if (prev_ != EMPTY_ADDR && fanout_index_ > 0) {
         subtree->addr = prev_;
     } else {
@@ -1534,7 +1538,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
     aku_Status status;
     LogicAddr  addr;
     std::tie(status, addr) = split_into(bstore, pivot, preserve_backrefs, &sblock);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || sblock.nelements() == 0) {
         return std::make_tuple(status, EMPTY_ADDR);
     }
     std::tie(status, addr) = sblock.commit(bstore);
@@ -1872,7 +1876,7 @@ std::tuple<aku_Status, LogicAddr, LogicAddr> NBTreeSuperblock::split(std::shared
     LogicAddr last_child;
     NBTreeSuperblock new_sblock(id_, prev_, get_fanout(), level_);
     std::tie(status, last_child) = split_into(bstore, pivot, preserve_horizontal_links, &new_sblock);
-    if (status != AKU_SUCCESS) {
+    if (status != AKU_SUCCESS || new_sblock.nelements() == 0) {
         return std::make_tuple(status, EMPTY_ADDR, EMPTY_ADDR);
     }
     LogicAddr newaddr = EMPTY_ADDR;
