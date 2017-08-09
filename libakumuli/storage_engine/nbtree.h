@@ -442,7 +442,13 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     std::uniform_int_distribution<> dist_;
     const int                       threshold_;
 
-    std::tuple<LogicAddr, u32> split_random_node();
+    LogicAddr split_random_node(u32 ix);
+
+    u32 chose_random_node();
+
+    std::tuple<aku_Status, AggregationResult> get_aggregates(u32 ixnode) const;
+
+    void check_rescue_points(u32 i) const;
 public:
 
     /** C-tor
