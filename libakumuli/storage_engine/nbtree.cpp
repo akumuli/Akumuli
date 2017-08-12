@@ -489,6 +489,11 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
         }
         auto blockref = subtree_cast(block->get_cdata());
         assert(blockref->type == ref.type);
+        // TODO: remove
+        if (blockref->count == 1 && (blockref->begin == blockref->end)) {
+            std::cout << "failcase" << std::endl;
+        }
+        // endremove
         NBTreeLeaf leaf(block);
         std::unique_ptr<RealValuedOperator> result;
         result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
@@ -1361,7 +1366,20 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
-    return bstore->append_block(block_);
+    // TODO: remove
+    if (nelements() == 1) {
+        std::cout << "1element" << std::endl;
+    }
+    if (subtree->begin == 17 && subtree->end == 17) {
+        std::cout << "failcase" << std::endl;
+    }
+    auto tup = bstore->append_block(block_);
+    if (std::get<1>(tup) == 771) {
+        std::cout << "failcase" << std::endl;
+    }
+    return tup;
+    // endremove (uncomment next)
+    //return bstore->append_block(block_);
 }
 
 
@@ -1458,8 +1476,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
     // Make new superblock with two leafs
     // Left hand side leaf node
     u32 ixbase = 0;
-    u16 fanout_index = 0;
-    NBTreeLeaf lhs(get_id(), EMPTY_ADDR, fanout_index);
+    u16 fanout_index = preserve_backrefs ? fanout_index_ : 0;
+    NBTreeLeaf lhs(get_id(), preserve_backrefs ? prev_ : EMPTY_ADDR, fanout_index);
     for (u32 i = 0; i < tss.size(); i++) {
         if (tss[i] < pivot) {
             status = lhs.append(tss[i], xss[i]);
@@ -1490,7 +1508,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
     }
     // Right hand side leaf node, it can't be empty in any case
     // because the leaf node is not empty.
-    NBTreeLeaf rhs(get_id(), lhs_ref.addr, fanout_index);
+    auto prev = lhs_ref.addr == EMPTY_ADDR ? prev_ : lhs_ref.addr;
+    NBTreeLeaf rhs(get_id(), preserve_backrefs ? prev : EMPTY_ADDR, fanout_index);
     for (u32 i = ixbase; i < tss.size(); i++) {
         status = rhs.append(tss[i], xss[i]);
         if (status != AKU_SUCCESS) {
@@ -1526,7 +1545,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
             return std::make_tuple(status, EMPTY_ADDR);
         }
     }
-    return std::make_tuple(AKU_SUCCESS, EMPTY_ADDR);
+    auto result = rhs_ref.addr;
+    return std::make_tuple(AKU_SUCCESS, result);
 }
 
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> bstore,
@@ -1534,10 +1554,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
                                                     bool preserve_backrefs)
 {
     // New superblock
-    NBTreeSuperblock sblock(get_id(), get_prev_addr(), get_fanout(), 0);
+    NBTreeSuperblock sblock(get_id(), preserve_backrefs ? get_prev_addr() : EMPTY_ADDR, get_fanout(), 0);
     aku_Status status;
     LogicAddr  addr;
-    std::tie(status, addr) = split_into(bstore, pivot, preserve_backrefs, &sblock);
+    std::tie(status, addr) = split_into(bstore, pivot, false, &sblock);
     if (status != AKU_SUCCESS || sblock.nelements() == 0) {
         return std::make_tuple(status, EMPTY_ADDR);
     }
@@ -1784,7 +1804,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                 NBTreeLeaf oldleaf(block);
                 if ((refs.size() - AKU_NBTREE_FANOUT) > 1) {
                     // Split in-place
-                    std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, false, root);
+                    std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, preserve_horizontal_links, root);
                     if (status != AKU_SUCCESS) {
                         return std::make_tuple(status, EMPTY_ADDR);
                     }
@@ -1814,7 +1834,6 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                 // the back references.
                 LogicAddr prev = new_ith_child_addr;
                 for (u32 j = i+1; j < refs.size(); j++) {
-                    // The child node can be an inner node or leaf node
                     if (refs[j].type == NBTreeBlockType::INNER) {
                         NBTreeSuperblock cloned_child(refs[j].addr, bstore, false);
                         cloned_child.set_prev_addr(prev);
@@ -2721,8 +2740,10 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
 }
 
 u32 NBTreeExtentsList::chose_random_node() {
-    std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
-    u32 ixnode = rext(rand_gen_);
+    //std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
+    //u32 ixnode = rext(rand_gen_);
+    int r = rand();
+    u32 ixnode = static_cast<u32>(r % extents_.size());
     return ixnode;
 }
 
@@ -2744,6 +2765,11 @@ std::tuple<aku_Status, AggregationResult> NBTreeExtentsList::get_aggregates(u32 
 }
 
 LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
+    // TODO: remove
+    if (ixnode == 0) {
+        return EMPTY_ADDR;
+    }
+    // End
     AggregationResult dest;
     aku_Status status;
     std::tie(status, dest) = get_aggregates(ixnode);
@@ -2754,8 +2780,13 @@ LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
     aku_Timestamp end   = dest._end;
 
     // Chose the pivot point
-    std::uniform_int_distribution<aku_Timestamp> rsplit(begin, end);
-    aku_Timestamp pivot = rsplit(rand_gen_);
+    //std::uniform_int_distribution<aku_Timestamp> rsplit(begin, end);
+    //aku_Timestamp pivot = rsplit(rand_gen_);
+    int r = rand();
+    if (begin == end) {
+        return EMPTY_ADDR;
+    }
+    aku_Timestamp pivot = begin + (r % (end - begin));
     LogicAddr addr;
     bool parent_saved;
     if (extents_.at(ixnode)->is_dirty()) {
@@ -2840,7 +2871,8 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     }
     auto result = NBTreeAppendResult::OK;
     // -- Testing -- //
-    if (dist_(rand_gen_) < threshold_) {
+    if (rand() % 1000 < threshold_) {
+    //if (dist_(rand_gen_) < threshold_) {
         // This code is activated with some small probability.
         // Split some random node, the `split` method acts as `commit`
         // thus we need to update rescue points in some cases.

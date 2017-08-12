@@ -8,6 +8,7 @@
 #include <apr.h>
 #include <queue>
 #include <fstream>
+#include <stdlib.h>
 
 #include "akumuli.h"
 #include "storage_engine/blockstore.h"
@@ -39,6 +40,9 @@ enum class ScanDir {
 };
 
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
+    // TODO: remove
+        srand(1);
+    // end remove
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
@@ -650,7 +654,8 @@ struct RandomWalk {
         , distribution(mean, stddev)
         , value(start)
     {
-        //generator.seed(1);
+        // TODO:
+        generator.seed(1);
     }
 
     double next() {
@@ -909,14 +914,14 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     // Build this tree structure.
     assert(nremoved <= nblocks);  // both numbers are actually a numbers
     aku_Timestamp gen = 1000;
-    aku_Timestamp begin, end, last_ts;
+    aku_Timestamp begin = gen, end = gen, last_ts = gen;
     size_t buffer_cnt = 0;
     auto commit_counter = [&](LogicAddr) {
+        buffer_cnt++;
         if (buffer_cnt == nremoved) {
             // one time event
             begin = gen;
         }
-        buffer_cnt++;
         end = last_ts;
     };
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
@@ -962,8 +967,12 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
         aku_Status stat;
         size_t outsz;
         std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
-        BOOST_REQUIRE_EQUAL(outsz, sz);
-        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        if (outsz != sz) {
+            BOOST_REQUIRE_EQUAL(outsz, sz);
+        }
+        if (stat != AKU_SUCCESS && stat != AKU_ENO_DATA) {
+            BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        }
         for(aku_Timestamp ts: tss) {
             BOOST_REQUIRE_EQUAL(ts, begin);
             begin++;
@@ -976,8 +985,12 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
         aku_Status stat;
         size_t outsz;
         std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
-        BOOST_REQUIRE_EQUAL(outsz, 0);
-        BOOST_REQUIRE(stat == AKU_ENO_DATA);
+        if (outsz != 0) {
+            BOOST_REQUIRE_EQUAL(outsz, 0);
+        }
+        if (stat != AKU_ENO_DATA) {
+            BOOST_REQUIRE(stat == AKU_ENO_DATA);
+        }
     }
 }
 
