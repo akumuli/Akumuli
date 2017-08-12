@@ -2721,8 +2721,10 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
 }
 
 u32 NBTreeExtentsList::chose_random_node() {
-    std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
-    u32 ixnode = rext(rand_gen_);
+    //std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
+    //u32 ixnode = rext(rand_gen_);
+    int r = rand();
+    u32 ixnode = static_cast<u32>(r % extents_.size());
     return ixnode;
 }
 
@@ -2744,6 +2746,11 @@ std::tuple<aku_Status, AggregationResult> NBTreeExtentsList::get_aggregates(u32 
 }
 
 LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
+    // TODO: remove
+    if (ixnode != 0) {
+        return EMPTY_ADDR;
+    }
+    // End
     AggregationResult dest;
     aku_Status status;
     std::tie(status, dest) = get_aggregates(ixnode);
@@ -2754,8 +2761,13 @@ LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
     aku_Timestamp end   = dest._end;
 
     // Chose the pivot point
-    std::uniform_int_distribution<aku_Timestamp> rsplit(begin, end);
-    aku_Timestamp pivot = rsplit(rand_gen_);
+    //std::uniform_int_distribution<aku_Timestamp> rsplit(begin, end);
+    //aku_Timestamp pivot = rsplit(rand_gen_);
+    int r = rand();
+    if (begin == end) {
+        return EMPTY_ADDR;
+    }
+    aku_Timestamp pivot = begin + (r % (end - begin));
     LogicAddr addr;
     bool parent_saved;
     if (extents_.at(ixnode)->is_dirty()) {
@@ -2840,7 +2852,8 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     }
     auto result = NBTreeAppendResult::OK;
     // -- Testing -- //
-    if (dist_(rand_gen_) < threshold_) {
+    if (rand() % 1000 < threshold_) {
+    //if (dist_(rand_gen_) < threshold_) {
         // This code is activated with some small probability.
         // Split some random node, the `split` method acts as `commit`
         // thus we need to update rescue points in some cases.
