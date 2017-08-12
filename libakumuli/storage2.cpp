@@ -437,8 +437,7 @@ void dump_tree(std::ostream &stream,
                 continue;
             }
             auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
-            u16 level = subtreeref->level;
-            if (level == 0) {
+            if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
                 NBTreeLeaf leaf(block);
                 SubtreeRef const* ref = leaf.get_leafmeta();
