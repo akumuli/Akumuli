@@ -489,11 +489,6 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
         }
         auto blockref = subtree_cast(block->get_cdata());
         assert(blockref->type == ref.type);
-        // TODO: remove
-        if (blockref->count == 1 && (blockref->begin == blockref->end)) {
-            std::cout << "failcase" << std::endl;
-        }
-        // endremove
         NBTreeLeaf leaf(block);
         std::unique_ptr<RealValuedOperator> result;
         result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
@@ -1248,6 +1243,27 @@ NBTreeLeaf::NBTreeLeaf(std::shared_ptr<Block> block, NBTreeLeaf::CloneTag)
     , block_(clone(block))
     , writer_(getid(block_), block_->get_data() + sizeof(SubtreeRef), AKU_BLOCK_SIZE - sizeof(SubtreeRef))
 {
+    // Re-insert the data
+    DataBlockReader reader(block->get_cdata() + sizeof(SubtreeRef), block->get_size());
+    size_t sz = reader.nelements();
+    for (size_t ix = 0; ix < sz; ix++) {
+        aku_Status status;
+        aku_Timestamp ts;
+        double value;
+        std::tie(status, ts, value) = reader.next();
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Leaf node clone error, can't read the previous node (some data will be lost)");
+            assert(false);
+            return;
+        }
+        status = writer_.put(ts, value);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Leaf node clone error, can't write to the new node (some data will be lost)");
+            assert(false);
+            return;
+        }
+    }
+
     const SubtreeRef* subtree = subtree_cast(block_->get_cdata());
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
@@ -1284,6 +1300,13 @@ void NBTreeLeaf::set_prev_addr(LogicAddr addr) {
     prev_ = addr;
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->addr = addr;
+}
+
+void NBTreeLeaf::set_node_fanout(u16 fanout) {
+    assert(fanout < AKU_NBTREE_FANOUT);
+    fanout_index_ = fanout;
+    SubtreeRef* subtree = subtree_cast(block_->get_data());
+    subtree->fanout_index = fanout;
 }
 
 LogicAddr NBTreeLeaf::get_addr() const {
@@ -1366,20 +1389,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
-    // TODO: remove
-    if (nelements() == 1) {
-        std::cout << "1element" << std::endl;
-    }
-    if (subtree->begin == 17 && subtree->end == 17) {
-        std::cout << "failcase" << std::endl;
-    }
-    auto tup = bstore->append_block(block_);
-    if (std::get<1>(tup) == 771) {
-        std::cout << "failcase" << std::endl;
-    }
-    return tup;
-    // endremove (uncomment next)
-    //return bstore->append_block(block_);
+    return bstore->append_block(block_);
 }
 
 
@@ -1461,6 +1471,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockStore> bstore,
                                                          aku_Timestamp pivot,
                                                          bool preserve_backrefs,
+                                                         u16 *fanout_index,
                                                          NBTreeSuperblock* top_level)
 {
     /* When the method is called from NBTreeSuperblock::split method, the
@@ -1476,8 +1487,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
     // Make new superblock with two leafs
     // Left hand side leaf node
     u32 ixbase = 0;
-    u16 fanout_index = preserve_backrefs ? fanout_index_ : 0;
-    NBTreeLeaf lhs(get_id(), preserve_backrefs ? prev_ : EMPTY_ADDR, fanout_index);
+    NBTreeLeaf lhs(get_id(), preserve_backrefs ? prev_ : EMPTY_ADDR, *fanout_index);
     for (u32 i = 0; i < tss.size(); i++) {
         if (tss[i] < pivot) {
             status = lhs.append(tss[i], xss[i]);
@@ -1504,12 +1514,12 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
             return std::make_tuple(status, EMPTY_ADDR);
         }
         lhs_ref.addr = lhs_addr;
-        fanout_index++;
+        (*fanout_index)++;
     }
     // Right hand side leaf node, it can't be empty in any case
     // because the leaf node is not empty.
     auto prev = lhs_ref.addr == EMPTY_ADDR ? prev_ : lhs_ref.addr;
-    NBTreeLeaf rhs(get_id(), preserve_backrefs ? prev : EMPTY_ADDR, fanout_index);
+    NBTreeLeaf rhs(get_id(), prev, *fanout_index);
     for (u32 i = ixbase; i < tss.size(); i++) {
         status = rhs.append(tss[i], xss[i]);
         if (status != AKU_SUCCESS) {
@@ -1531,6 +1541,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
             return std::make_tuple(status, EMPTY_ADDR);
         }
         rhs_ref.addr = rhs_addr;
+        (*fanout_index)++;
     }
     // Superblock
     if (lhs_ref.addr != EMPTY_ADDR) {
@@ -1545,8 +1556,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockSt
             return std::make_tuple(status, EMPTY_ADDR);
         }
     }
-    auto result = rhs_ref.addr;
-    return std::make_tuple(AKU_SUCCESS, result);
+    return std::make_tuple(AKU_SUCCESS, EMPTY_ADDR);
 }
 
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> bstore,
@@ -1557,7 +1567,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
     NBTreeSuperblock sblock(get_id(), preserve_backrefs ? get_prev_addr() : EMPTY_ADDR, get_fanout(), 0);
     aku_Status status;
     LogicAddr  addr;
-    std::tie(status, addr) = split_into(bstore, pivot, false, &sblock);
+    u16 fanout = 0;
+    std::tie(status, addr) = split_into(bstore, pivot, false, &fanout, &sblock);
     if (status != AKU_SUCCESS || sblock.nelements() == 0) {
         return std::make_tuple(status, EMPTY_ADDR);
     }
@@ -1658,6 +1669,12 @@ void NBTreeSuperblock::set_prev_addr(LogicAddr addr) {
     subtree_cast(block_->get_data())->addr = addr;
 }
 
+void NBTreeSuperblock::set_node_fanout(u16 newfanout) {
+    assert(newfanout < AKU_NBTREE_FANOUT);
+    fanout_index_ = newfanout;
+    subtree_cast(block_->get_data())->fanout_index = newfanout;
+}
+
 LogicAddr NBTreeSuperblock::get_addr() const {
     return block_->get_addr();
 }
@@ -1716,6 +1733,25 @@ aku_Status NBTreeSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
         refs->push_back(*p);
     }
     return AKU_SUCCESS;
+}
+
+bool NBTreeSuperblock::top(SubtreeRef* outref) const {
+    if (write_pos_ == 0) {
+        return false;
+    }
+    SubtreeRef const* ref = subtree_cast(block_->get_cdata());
+    auto p = ref + write_pos_;
+    *outref = *p;
+    return true;
+}
+
+bool NBTreeSuperblock::top(LogicAddr* outaddr) const {
+    SubtreeRef child;
+    if (top(&child)) {
+        *outaddr = child.addr;
+        return true;
+    }
+    return false;
 }
 
 std::tuple<aku_Timestamp, aku_Timestamp> NBTreeSuperblock::get_timestamps() const {
@@ -1779,9 +1815,11 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
         if (refs[i].begin <= pivot && pivot <= refs[i].end) {
             // Do split the node
             LogicAddr new_ith_child_addr = EMPTY_ADDR;
+            u16 current_fanout = 0;
             // Clone current node
             for (u32 j = 0; j < i; j++) {
                 root->append(refs[j]);
+                current_fanout++;
             }
             std::shared_ptr<Block> block;
             std::tie(status, block) = read_and_check(bstore, refs[i].addr);
@@ -1804,7 +1842,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                 NBTreeLeaf oldleaf(block);
                 if ((refs.size() - AKU_NBTREE_FANOUT) > 1) {
                     // Split in-place
-                    std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, preserve_horizontal_links, root);
+                    std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, preserve_horizontal_links, &current_fanout, root);
                     if (status != AKU_SUCCESS) {
                         return std::make_tuple(status, EMPTY_ADDR);
                     }
@@ -1826,17 +1864,23 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                 }
                 newref.addr = new_ith_child_addr;
                 root->append(newref);
+                current_fanout++;
             }
             LogicAddr childaddr = EMPTY_ADDR;
             if (preserve_horizontal_links) {
                 // Fix backrefs on the right from the pivot
                 // Move from left to right and clone the blocks fixing
                 // the back references.
-                LogicAddr prev = new_ith_child_addr;
+                LogicAddr prev;
+                if (!root->top(&prev)) {
+                    AKU_PANIC("Attempt to split an empty node");
+                }
                 for (u32 j = i+1; j < refs.size(); j++) {
                     if (refs[j].type == NBTreeBlockType::INNER) {
                         NBTreeSuperblock cloned_child(refs[j].addr, bstore, false);
                         cloned_child.set_prev_addr(prev);
+                        cloned_child.set_node_fanout(current_fanout);
+                        current_fanout++;
                         std::tie(status, childaddr) = cloned_child.commit(bstore);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
@@ -1857,6 +1901,8 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                         std::tie(status, child_block) = read_and_check(bstore, refs[j].addr);
                         NBTreeLeaf cloned_child(child_block, NBTreeLeaf::CloneTag());
                         cloned_child.set_prev_addr(prev);
+                        cloned_child.set_node_fanout(current_fanout);
+                        current_fanout++;
                         LogicAddr childaddr;
                         std::tie(status, childaddr) = cloned_child.commit(bstore);
                         if (status != AKU_SUCCESS) {

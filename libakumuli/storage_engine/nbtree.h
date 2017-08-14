@@ -165,6 +165,9 @@ public:
     //! Set prev addr (works only on mutable node)
     void set_prev_addr(LogicAddr addr);
 
+    //! Set fanout index of the node
+    void set_node_fanout(u16 fanout);
+
     //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
     LogicAddr get_addr() const;
 
@@ -216,7 +219,7 @@ public:
      */
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
-                                                 bool preserve_backrefs,
+                                                 bool preserve_backrefs, u16 *fanout_index,
                                                  NBTreeSuperblock* top_level);
 
 
@@ -268,6 +271,10 @@ public:
 
     aku_Status read_all(std::vector<SubtreeRef>* refs) const;
 
+    bool top(SubtreeRef* outref) const;
+
+    bool top(LogicAddr* outaddr) const;
+
     //! Get node's level
     u16 get_level() const;
 
@@ -286,6 +293,9 @@ public:
 
     //! Set previous addr for the node
     void set_prev_addr(LogicAddr addr);
+
+    //! Change fanout index ouf the node
+    void set_node_fanout(u16 newfanout);
 
     //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
     LogicAddr get_addr() const;
