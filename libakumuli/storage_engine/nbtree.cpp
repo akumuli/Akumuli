@@ -489,6 +489,7 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
         }
         auto blockref = subtree_cast(block->get_cdata());
         assert(blockref->type == ref.type);
+        AKU_UNUSED(blockref);
         NBTreeLeaf leaf(block);
         std::unique_ptr<RealValuedOperator> result;
         result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
@@ -1190,7 +1191,6 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     , fanout_index_(fanout_index)
 {
     // Check that invariant holds.
-    assert((prev == EMPTY_ADDR && fanout_index == 0) || (prev != EMPTY_ADDR && fanout_index > 0));
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->addr = prev;
     subtree->level = 0;  // Leaf node
@@ -1830,11 +1830,11 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
             assert(refsi->count == refs[i].count);
             assert(refsi->type  == refs[i].type);
             assert(refsi->begin == refs[i].begin);
+            AKU_UNUSED(refsi);
             if (refs[i].type == NBTreeBlockType::INNER) {
                 NBTreeSuperblock sblock(block);
                 LogicAddr ignored;
                 std::tie(status, new_ith_child_addr, ignored) = sblock.split(bstore, pivot, false);
-                assert(ignored == EMPTY_ADDR);
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
                 }
@@ -1848,7 +1848,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                     }
                 } else {
                     // Create new level in the tree
-                    std::tie(status, new_ith_child_addr) = oldleaf.split(bstore, pivot, false);
+                    std::tie(status, new_ith_child_addr) = oldleaf.split(bstore, pivot, preserve_horizontal_links);
                     if (status != AKU_SUCCESS) {
                         return std::make_tuple(status, EMPTY_ADDR);
                     }
