@@ -1866,22 +1866,21 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                 root->append(newref);
                 current_fanout++;
             }
-            LogicAddr childaddr = EMPTY_ADDR;
+            LogicAddr last_child_addr;
+            if (!root->top(&last_child_addr)) {
+                AKU_PANIC("Attempt to split an empty node");
+            }
             if (preserve_horizontal_links) {
                 // Fix backrefs on the right from the pivot
                 // Move from left to right and clone the blocks fixing
                 // the back references.
-                LogicAddr prev;
-                if (!root->top(&prev)) {
-                    AKU_PANIC("Attempt to split an empty node");
-                }
                 for (u32 j = i+1; j < refs.size(); j++) {
                     if (refs[j].type == NBTreeBlockType::INNER) {
                         NBTreeSuperblock cloned_child(refs[j].addr, bstore, false);
-                        cloned_child.set_prev_addr(prev);
+                        cloned_child.set_prev_addr(last_child_addr);
                         cloned_child.set_node_fanout(current_fanout);
                         current_fanout++;
-                        std::tie(status, childaddr) = cloned_child.commit(bstore);
+                        std::tie(status, last_child_addr) = cloned_child.commit(bstore);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
@@ -1890,21 +1889,19 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
-                        backref.addr = childaddr;
+                        backref.addr = last_child_addr;
                         status = root->append(backref);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
-                        prev = childaddr;
                     } else {
                         std::shared_ptr<Block> child_block;
                         std::tie(status, child_block) = read_and_check(bstore, refs[j].addr);
                         NBTreeLeaf cloned_child(child_block, NBTreeLeaf::CloneTag());
-                        cloned_child.set_prev_addr(prev);
+                        cloned_child.set_prev_addr(last_child_addr);
                         cloned_child.set_node_fanout(current_fanout);
                         current_fanout++;
-                        LogicAddr childaddr;
-                        std::tie(status, childaddr) = cloned_child.commit(bstore);
+                        std::tie(status, last_child_addr) = cloned_child.commit(bstore);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
@@ -1913,12 +1910,11 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
-                        backref.addr = childaddr;
+                        backref.addr = last_child_addr;
                         status = root->append(backref);
                         if (status != AKU_SUCCESS) {
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
-                        prev = childaddr;
                     }
                 }
             } else {
@@ -1926,7 +1922,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<B
                     root->append(refs[j]);
                 }
             }
-            return std::tie(status, childaddr);
+            return std::tie(status, last_child_addr);
         }
     }
     // The pivot point is not found
