@@ -360,6 +360,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
 
     u32 nleafs = 0;
     u32 nitems = 0;
+    u64 lastts = 0;
     for (u32 i = 0; true; i++) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
@@ -370,6 +371,12 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
             std::swap(newroots, addrlist);
             auto status = NBTreeExtentsList::repair_status(addrlist);
             BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::REPAIR);
+            if (collection->_get_uncommitted_size() == 1) {
+                // We shouldn't count writes caused by node splits!
+                // If the previous leaf node was saved, the new one will contain
+                // exactly one element.
+                lastts = i - 1;
+            }
             nleafs++;
             if (nleafs == N_blocks) {
                 nitems = i;
@@ -413,13 +420,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         // Expect zero, data was stored in single leaf-node.
         BOOST_REQUIRE(sz == 0);
     } else {
-        if (nleafs == N_blocks) {
-            // new leaf was empty before 'crash'
-            BOOST_REQUIRE(sz == nitems);
-        } else {
-            // some data can be lost!
-            BOOST_REQUIRE(sz <= nitems);
-        }
+        BOOST_REQUIRE_EQUAL(lastts + 1, sz);
     }
     // Note: `status` should be equal to AKU_SUCCESS if size of the destination
     // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
