@@ -22,6 +22,15 @@ void test_logger(aku_LogLevel tag, const char* msg) {
     BOOST_TEST_MESSAGE(msg);
 }
 
+static std::string to_isostring(aku_Timestamp ts) {
+    if (ts == AKU_MAX_TIMESTAMP) {
+        return "MAX";
+    } else if (ts == AKU_MIN_TIMESTAMP) {
+        return "MIN";
+    }
+    return std::to_string(ts);
+}
+
 struct AkumuliInitializer {
     AkumuliInitializer() {
         apr_initialize();
@@ -40,9 +49,6 @@ enum class ScanDir {
 };
 
 void test_nbtree_roots_collection(u32 N, u32 begin, u32 end) {
-    // TODO: remove
-        srand(1);
-    // end remove
     ScanDir dir = begin < end ? ScanDir::FWD : ScanDir::BWD;
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;  // should be empty at first
@@ -375,7 +381,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
                 // We shouldn't count writes caused by node splits!
                 // If the previous leaf node was saved, the new one will contain
                 // exactly one element.
-                lastts = i - 1;
+                lastts = i;
             }
             nleafs++;
             if (nleafs == N_blocks) {
@@ -420,7 +426,7 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         // Expect zero, data was stored in single leaf-node.
         BOOST_REQUIRE(sz == 0);
     } else {
-        BOOST_REQUIRE_EQUAL(lastts + 1, sz);
+        BOOST_REQUIRE_EQUAL(lastts, sz);
     }
     // Note: `status` should be equal to AKU_SUCCESS if size of the destination
     // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
@@ -499,7 +505,7 @@ void test_storage_recovery_2(u32 N_blocks) {
 
     u32 nleafs = 0;
 
-    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N) {
+    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N, bool dump) {
         auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
         col->force_init();
 
@@ -544,7 +550,9 @@ void test_storage_recovery_2(u32 N_blocks) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
             if (nleafs % 10 == 0) {
-                try_to_recover(collection->get_roots(), i);
+                if (collection->_get_uncommitted_size() == 1) {
+                    try_to_recover(collection->get_roots(), i, dump);
+                }
             }
             nleafs++;
             if (nleafs == N_blocks) {
@@ -902,15 +910,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_aggregation) {
     }
 }
 
-static std::string to_isostring(aku_Timestamp ts) {
-    if (ts == AKU_MAX_TIMESTAMP) {
-        return "MAX";
-    } else if (ts == AKU_MIN_TIMESTAMP) {
-        return "MIN";
-    }
-    return std::to_string(ts);
-}
-
 void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) {
     // Build this tree structure.
     assert(nremoved <= nblocks);  // both numbers are actually a numbers
@@ -944,21 +943,6 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     // We shouldn't close `extents` to emulate program state after crush.
     std::shared_ptr<NBTreeExtentsList> recovered(new NBTreeExtentsList(42, rescue_points, bstore));
     recovered->force_init();
-
-    std::fstream outstream;
-    outstream.open("recovered.xml", std::fstream::out);
-    for(auto ext: recovered->get_extents()) {
-        outstream << "<extent>" << std::endl;
-        ext->debug_dump(outstream, 1, to_isostring, 0x4807B);
-        outstream << "</extent>" << std::endl;
-    }
-    outstream.close();
-    outstream.open("original.xml", std::fstream::out);
-    for(auto ext: extents->get_extents()) {
-        outstream << "<extent>" << std::endl;
-        ext->debug_dump(outstream, 1, to_isostring, 0x4807B);
-        outstream << "</extent>" << std::endl;
-    }
 
     auto it = recovered->search(begin, end);
     if (end > begin) {
