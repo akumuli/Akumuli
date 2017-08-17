@@ -20,6 +20,7 @@ enum class NBTreeBlockType : u16 {
 
 enum {
     AKU_NBTREE_FANOUT = 32,
+    AKU_NBTREE_MAX_FANOUT_INDEX = 31,
 };
 
 

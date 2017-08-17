@@ -22,7 +22,7 @@ void test_logger(aku_LogLevel tag, const char* msg) {
     BOOST_TEST_MESSAGE(msg);
 }
 
-static std::string to_isostring(aku_Timestamp ts) {
+std::string to_isostring(aku_Timestamp ts) {
     if (ts == AKU_MAX_TIMESTAMP) {
         return "MAX";
     } else if (ts == AKU_MIN_TIMESTAMP) {
@@ -505,10 +505,9 @@ void test_storage_recovery_2(u32 N_blocks) {
 
     u32 nleafs = 0;
 
-    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N, bool dump) {
+    auto try_to_recover = [&](std::vector<LogicAddr>&& addrlist, u32 N) {
         auto col = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
         col->force_init();
-
         // scan
         auto it = col->search(0, N);
         std::vector<aku_Timestamp> ts(N, 0);
@@ -551,7 +550,7 @@ void test_storage_recovery_2(u32 N_blocks) {
             // addrlist changed
             if (nleafs % 10 == 0) {
                 if (collection->_get_uncommitted_size() == 1) {
-                    try_to_recover(collection->get_roots(), i, dump);
+                    try_to_recover(collection->get_roots(), i);
                 }
             }
             nleafs++;

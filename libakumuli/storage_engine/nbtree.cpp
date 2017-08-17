@@ -1303,7 +1303,7 @@ void NBTreeLeaf::set_prev_addr(LogicAddr addr) {
 }
 
 void NBTreeLeaf::set_node_fanout(u16 fanout) {
-    assert(fanout < AKU_NBTREE_FANOUT);
+    assert(fanout <= AKU_NBTREE_FANOUT);
     fanout_index_ = fanout;
     SubtreeRef* subtree = subtree_cast(block_->get_data());
     subtree->fanout_index = fanout;
@@ -1670,7 +1670,7 @@ void NBTreeSuperblock::set_prev_addr(LogicAddr addr) {
 }
 
 void NBTreeSuperblock::set_node_fanout(u16 newfanout) {
-    assert(newfanout < AKU_NBTREE_FANOUT);
+    assert(newfanout <= AKU_NBTREE_FANOUT);
     fanout_index_ = newfanout;
     subtree_cast(block_->get_data())->fanout_index = newfanout;
 }
@@ -2016,6 +2016,16 @@ struct NBTreeLeafExtent : NBTreeExtent {
         return AKU_EACCESS;
     }
 
+    virtual aku_Status update_fanout_index(u16 fanout_index) override {
+        if (leaf_->get_addr() == EMPTY_ADDR) {
+            leaf_->set_node_fanout(fanout_index);
+            fanout_index_ = fanout_index;
+            return AKU_SUCCESS;
+        }
+        // This can happen due to concurrent access
+        return AKU_EACCESS;
+    }
+
     aku_Status get_prev_subtreeref(SubtreeRef &payload) {
         aku_Status status = AKU_SUCCESS;
         std::shared_ptr<Block> block;
@@ -2350,6 +2360,15 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual aku_Status update_prev_addr(LogicAddr addr) override {
         if (curr_->get_addr() == EMPTY_ADDR) {
             curr_->set_prev_addr(addr);
+            return AKU_SUCCESS;
+        }
+        return AKU_EACCESS;
+    }
+
+    virtual aku_Status update_fanout_index(u16 fanout_index) override {
+        if (curr_->get_addr() == EMPTY_ADDR) {
+            curr_->set_node_fanout(fanout_index);
+            fanout_index_ = fanout_index;
             return AKU_SUCCESS;
         }
         return AKU_EACCESS;
@@ -2943,10 +2962,20 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
             check_rescue_points(extent_index);
             result = NBTreeAppendResult::OK_FLUSH_NEEDED;
             if (extent_index > 0) {
+                u16 prev_fanout = 0;
+                LogicAddr prev_addr = EMPTY_ADDR;
+                if (pnode->fanout_index < AKU_NBTREE_MAX_FANOUT_INDEX) {
+                    prev_fanout = pnode->fanout_index + 1;
+                    prev_addr   = paddr;
+                }
                 auto prev_extent = extent_index - 1;
-                status = extents_.at(prev_extent)->update_prev_addr(paddr);
+                status = extents_.at(prev_extent)->update_prev_addr(prev_addr);
                 if (status != AKU_SUCCESS) {
                     AKU_PANIC("Invalid access pattern in split method");
+                }
+                status = extents_.at(prev_extent)->update_fanout_index(prev_fanout);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Can't update fanout index of the node");
                 }
             }
 

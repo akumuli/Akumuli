@@ -414,6 +414,16 @@ struct NBTreeExtent {
      * @return error code
      */
     virtual aku_Status update_prev_addr(LogicAddr addr) = 0;
+
+    /**
+     * @brief  Update current fanout index of the extent.
+     * @note   Fanout of the extent is a position of the current extent in the next extent, this position can change
+     *         due to split procedure. If split in the i+1 extent resulted in higher occupancy the i-th extent should
+     *         get an increased fanout index.
+     * @param  fanout_index is a new fanout index
+     * @return status
+     */
+    virtual aku_Status update_fanout_index(u16 fanout_index) = 0;
 };
 
 
