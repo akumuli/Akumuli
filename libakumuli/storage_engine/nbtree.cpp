@@ -2757,7 +2757,7 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     , rd_()
     , rand_gen_(rd_())
     , dist_(0, 1000)
-    , threshold_(15)
+    , threshold_(1)
 {
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
@@ -2772,7 +2772,6 @@ void NBTreeExtentsList::force_init() {
 }
 
 size_t NBTreeExtentsList::_get_uncommitted_size() const {
-    SharedLock lock(lock_);
     if (!extents_.empty()) {
         auto leaf = dynamic_cast<NBTreeLeafExtent const*>(extents_.front().get());
         if (leaf == nullptr) {

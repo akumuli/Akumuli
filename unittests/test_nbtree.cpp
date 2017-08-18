@@ -915,17 +915,20 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     aku_Timestamp gen = 1000;
     aku_Timestamp begin = gen, end = gen, last_ts = gen;
     size_t buffer_cnt = 0;
+    std::shared_ptr<NBTreeExtentsList> extents;
     auto commit_counter = [&](LogicAddr) {
-        buffer_cnt++;
-        if (buffer_cnt == nremoved) {
-            // one time event
-            begin = gen;
+        if (extents->_get_uncommitted_size() == 1) {
+            buffer_cnt++;
+            if (buffer_cnt == nremoved) {
+                // one time event
+                begin = gen;
+            }
+            end = last_ts;
         }
-        end = last_ts;
     };
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
-    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    extents.reset(new NBTreeExtentsList(42, empty, bstore));
     extents->force_init();
     RandomWalk rwalk(1.0, 0.1, 0.1);
     while(buffer_cnt < nblocks) {
