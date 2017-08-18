@@ -662,8 +662,6 @@ struct RandomWalk {
         , distribution(mean, stddev)
         , value(start)
     {
-        // TODO:
-        generator.seed(1);
     }
 
     double next() {
