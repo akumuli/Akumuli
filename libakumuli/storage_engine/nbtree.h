@@ -471,6 +471,8 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     void check_rescue_points(u32 i) const;
 public:
 
+    std::tuple<aku_Status, LogicAddr> _split(aku_Timestamp pivot);
+
     /** C-tor
       * @param addresses List of root addresses in blockstore or list of resque points.
       * @param bstore Block-store.

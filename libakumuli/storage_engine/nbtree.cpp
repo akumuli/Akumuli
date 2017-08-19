@@ -2899,6 +2899,66 @@ void NBTreeExtentsList::check_rescue_points(u32 i) const {
     assert(res.mints    == newres.mints);
 }
 
+std::tuple<aku_Status, LogicAddr> NBTreeExtentsList::_split(aku_Timestamp pivot) {
+    aku_Status status;
+    LogicAddr paddr = EMPTY_ADDR;
+    size_t extent_index = extents_.size();
+    // Find the extent that contains the pivot
+    for (size_t i = 0; i < extents_.size(); i++) {
+        auto it = extents_.at(i)->aggregate(AKU_MIN_TIMESTAMP, AKU_MAX_TIMESTAMP);
+        AggregationResult res;
+        size_t outsz;
+        aku_Timestamp ts;
+        std::tie(status, outsz) = it->read(&ts, &res, 1);
+        if (status == AKU_SUCCESS) {
+            if (res._begin <= pivot && pivot < res._end) {
+                extent_index = i;
+            }
+            break;
+        } else if (status == AKU_ENO_DATA || status == AKU_EUNAVAILABLE) {
+            continue;
+        }
+        return std::make_tuple(status, paddr);
+    }
+    if (extent_index == extents_.size()) {
+        return std::make_tuple(AKU_ENOT_FOUND, paddr);
+    }
+    bool parent_saved = false;
+    std::tie(parent_saved, paddr) = extents_.at(extent_index)->split(pivot);
+    if (paddr != EMPTY_ADDR) {
+        std::shared_ptr<Block> rblock;
+        std::tie(status, rblock) = read_and_check(bstore_, paddr);
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't read back the data");
+        }
+        // extent_index and the level of the node can mismatch
+        auto pnode = subtree_cast(rblock->get_cdata());
+        if (rescue_points_.size() > pnode->level) {
+            rescue_points_.at(pnode->level) = paddr;
+        } else {
+            rescue_points_.push_back(paddr);
+        }
+        if (extent_index > 0) {
+            u16 prev_fanout = 0;
+            LogicAddr prev_addr = EMPTY_ADDR;
+            if (pnode->fanout_index < AKU_NBTREE_MAX_FANOUT_INDEX) {
+                prev_fanout = pnode->fanout_index + 1;
+                prev_addr   = paddr;
+            }
+            auto prev_extent = extent_index - 1;
+            status = extents_.at(prev_extent)->update_prev_addr(prev_addr);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Invalid access pattern in split method");
+            }
+            status = extents_.at(prev_extent)->update_fanout_index(prev_fanout);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Can't update fanout index of the node");
+            }
+        }
+    }
+    return std::make_tuple(status, paddr);
+}
+
 NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
                              //       recursively (maybe even many times).
@@ -2918,71 +2978,6 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
         rescue_points_.push_back(EMPTY_ADDR);
     }
     auto result = NBTreeAppendResult::OK;
-    // -- Testing -- //
-    if (dist_(rand_gen_) < threshold_) {
-        // This code is activated with some small probability.
-        // Split some random node, the `split` method acts as `commit`
-        // thus we need to update rescue points in some cases.
-        aku_Status status;
-        LogicAddr paddr = EMPTY_ADDR;
-        u32 extent_index = chose_random_node();
-        AggregationResult pre_split;
-        std::tie(status, pre_split) = get_aggregates(extent_index);
-        assert(status == AKU_SUCCESS);
-        paddr = split_random_node(extent_index);
-        if (paddr != EMPTY_ADDR) {
-
-            std::shared_ptr<Block> rblock;
-            std::tie(status, rblock) = read_and_check(bstore_, paddr);
-            if (status != AKU_SUCCESS) {
-                AKU_PANIC("Can't read back the data");
-            }
-            // extent_index and the level of the node can mismatch
-            auto pnode = subtree_cast(rblock->get_cdata());
-
-            if (rescue_points_.size() > pnode->level) {
-                rescue_points_.at(pnode->level) = paddr;
-            } else {
-                rescue_points_.push_back(paddr);
-            }
-            check_rescue_points(extent_index);
-            result = NBTreeAppendResult::OK_FLUSH_NEEDED;
-            if (extent_index > 0) {
-                u16 prev_fanout = 0;
-                LogicAddr prev_addr = EMPTY_ADDR;
-                if (pnode->fanout_index < AKU_NBTREE_MAX_FANOUT_INDEX) {
-                    prev_fanout = pnode->fanout_index + 1;
-                    prev_addr   = paddr;
-                }
-                auto prev_extent = extent_index - 1;
-                status = extents_.at(prev_extent)->update_prev_addr(prev_addr);
-                if (status != AKU_SUCCESS) {
-                    AKU_PANIC("Invalid access pattern in split method");
-                }
-                status = extents_.at(prev_extent)->update_fanout_index(prev_fanout);
-                if (status != AKU_SUCCESS) {
-                    AKU_PANIC("Can't update fanout index of the node");
-                }
-            }
-
-            // Check the results
-            if (extent_index != 0) {
-                AggregationResult post_split;
-                std::tie(status, post_split) = get_aggregates(extent_index);
-                assert(status == AKU_SUCCESS);
-                assert(pre_split._begin == post_split._begin);
-                assert(pre_split._end == post_split._end);
-                assert(pre_split.cnt == post_split.cnt);
-                assert(pre_split.first == post_split.first);
-                assert(pre_split.last == post_split.last);
-                assert(pre_split.max == post_split.max);
-                assert(pre_split.min == post_split.min);
-                assert(pre_split.maxts == post_split.maxts);
-                assert(pre_split.mints == post_split.mints);
-            }
-        }
-    }
-    // -- Testing -- //
     bool parent_saved = false;
     LogicAddr addr = EMPTY_ADDR;
     std::tie(parent_saved, addr) = extents_.front()->append(ts, value);
