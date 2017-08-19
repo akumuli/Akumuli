@@ -366,7 +366,6 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
 
     u32 nleafs = 0;
     u32 nitems = 0;
-    u64 lastts = 0;
     for (u32 i = 0; true; i++) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
@@ -377,12 +376,6 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
             std::swap(newroots, addrlist);
             auto status = NBTreeExtentsList::repair_status(addrlist);
             BOOST_REQUIRE(status == NBTreeExtentsList::RepairStatus::REPAIR);
-            if (collection->_get_uncommitted_size() == 1) {
-                // We shouldn't count writes caused by node splits!
-                // If the previous leaf node was saved, the new one will contain
-                // exactly one element.
-                lastts = i;
-            }
             nleafs++;
             if (nleafs == N_blocks) {
                 nitems = i;
@@ -426,7 +419,13 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         // Expect zero, data was stored in single leaf-node.
         BOOST_REQUIRE(sz == 0);
     } else {
-        BOOST_REQUIRE_EQUAL(lastts, sz);
+        if (nleafs == N_blocks) {
+            // new leaf was empty before 'crash'
+            BOOST_REQUIRE(sz == nitems);
+        } else {
+            // some data can be lost!
+            BOOST_REQUIRE(sz <= nitems);
+        }
     }
     // Note: `status` should be equal to AKU_SUCCESS if size of the destination
     // is equal to array's length. Otherwise iterator should return AKU_ENO_DATA
@@ -549,9 +548,7 @@ void test_storage_recovery_2(u32 N_blocks) {
         if (collection->append(i, i) == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             // addrlist changed
             if (nleafs % 10 == 0) {
-                if (collection->_get_uncommitted_size() == 1) {
-                    try_to_recover(collection->get_roots(), i);
-                }
+                try_to_recover(collection->get_roots(), i);
             }
             nleafs++;
             if (nleafs == N_blocks) {
@@ -915,14 +912,12 @@ void test_nbtree_recovery_with_retention(LogicAddr nblocks, LogicAddr nremoved) 
     size_t buffer_cnt = 0;
     std::shared_ptr<NBTreeExtentsList> extents;
     auto commit_counter = [&](LogicAddr) {
-        if (extents->_get_uncommitted_size() == 1) {
-            buffer_cnt++;
-            if (buffer_cnt == nremoved) {
-                // one time event
-                begin = gen;
-            }
-            end = last_ts;
+        buffer_cnt++;
+        if (buffer_cnt == nremoved) {
+            // one time event
+            begin = gen;
         }
+        end = last_ts;
     };
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
     std::vector<LogicAddr> empty;
