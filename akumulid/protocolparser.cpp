@@ -469,9 +469,52 @@ void OpenTSDBProtocolParser::close() {
     done_ = true;
 }
 
+enum CMD_PREF_LEN {
+    PUT_LEN = 4,
+    ROLLUP_LEN = 6,
+    HISTOGRAM_LEN = 4,
+    STATS_LEN = 5,
+    VERSION_LEN = 7,
+    HELP_LEN = 4,
+    DROPCACHES_LEN = 10,
+};
+
 static bool is_put(const Byte* p) {
     static const u32 asciiput = 0x20747570;
     return *reinterpret_cast<const u32*>(p) == asciiput;
+}
+
+static bool is_rollup(const Byte* p) {
+    return std::equal(p, p + ROLLUP_LEN, "rollup");
+}
+
+static bool is_histogram(const Byte* p) {
+    return std::equal(p, p + HISTOGRAM_LEN, "hist");
+}
+
+static bool is_stats(const Byte* p) {
+    return std::equal(p, p + STATS_LEN, "stats");
+}
+
+static bool is_version(const Byte* p) {
+    return std::equal(p, p + VERSION_LEN, "version");
+}
+
+static bool is_help(const Byte* p) {
+    return std::equal(p, p + HELP_LEN, "help");
+}
+
+static bool is_dropcaches(const Byte* p) {
+    return std::equal(p, p + DROPCACHES_LEN, "dropcaches");
+}
+
+static bool unsupported_command(Byte* p, int len) {
+    return (len >= ROLLUP_LEN && is_rollup(p))
+        || (len >= HISTOGRAM_LEN && is_histogram(p))
+        || (len >= STATS_LEN && is_stats(p))
+        || (len >= VERSION_LEN && is_version(p))
+        || (len >= HELP_LEN && is_help(p))
+        || (len >= DROPCACHES_LEN && is_dropcaches(p));
 }
 
 /**
@@ -525,10 +568,13 @@ void OpenTSDBProtocolParser::worker() {
             return;
         }
         if (len <= 4 || !is_put(buffer)) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            if (!unsupported_command(buffer, len)) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+            continue;  // process next command
         }
 
         // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
