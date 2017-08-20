@@ -124,7 +124,17 @@ private:
             parser_.close();
         } else {
             try {
-                parser_.parse_next(buffer, static_cast<u32>(nbytes));
+                auto response = parser_.parse_next(buffer, static_cast<u32>(nbytes));
+                if(response.is_available()) {
+                    boost::asio::streambuf stream;
+                    std::ostream os(&stream);
+                    os << ProtocolT::PARSE, response.get_body();
+                    boost::asio::async_write(socket_, stream,
+                                             boost::bind(&TelnetSession::handle_write,
+                                                         this->shared_from_this(),
+                                                         boost::asio::placeholders::error)
+                                             );
+                }
                 start();
             } catch (StreamError const& stream_error) {
                 // This error is related to client so we need to send it back
@@ -160,6 +170,15 @@ private:
                                                      boost::asio::placeholders::error)
                                          );
             }
+        }
+    }
+
+
+    void handle_write(boost::system::error_code error) {
+        if (error) {
+            logger_.error() << "Error sending error message to client";
+            logger_.error() << error.message();
+            parser_.close();
         }
     }
 

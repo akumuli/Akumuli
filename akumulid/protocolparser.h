@@ -48,6 +48,15 @@ struct DatabaseError : std::exception {
 };
 
 
+/** Protocol parser response.
+ */
+struct ProtocolParserResponse {
+    virtual ~ProtocolParserResponse() = default;
+    virtual bool is_available() const = 0;
+    virtual std::string get_body() const = 0;
+};
+
+
 //! Fwd
 struct DbSession;
 
@@ -111,6 +120,15 @@ public:
 };
 
 
+struct NullResponse : ProtocolParserResponse {
+    virtual bool is_available() const {
+        return false;
+    }
+    virtual std::string get_body() const {
+        return std::string();
+    }
+};
+
 /**
  * @brief RESP protocol parser
  * Implements two complimentary protocols:
@@ -168,7 +186,7 @@ public:
     };
     RESPProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();
-    void parse_next(Byte *buffer, u32 sz);
+    NullResponse parse_next(Byte *buffer, u32 sz);
     void close();
     Byte* get_next_buffer();
 
@@ -185,6 +203,30 @@ public:
     std::string error_repr(int kind, std::string const& err) const;
 };
 
+
+struct OpenTSDBResponse : ProtocolParserResponse {
+    bool is_set_;
+    const char* body_;
+
+    OpenTSDBResponse()
+        : is_set_(false)
+        , body_(nullptr)
+    {
+    }
+
+    OpenTSDBResponse(const char* body)
+        : is_set_(true)
+        , body_(body)
+    {
+    }
+
+    virtual bool is_available() const {
+        return is_set_;
+    }
+    virtual std::string get_body() const {
+        return body_;
+    }
+};
 
 /**
  * @brief OpenTSDBProtocolParser class
@@ -203,7 +245,7 @@ class OpenTSDBProtocolParser {
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
 
-    void worker();
+    OpenTSDBResponse worker();
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
@@ -212,7 +254,7 @@ public:
     OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer);
 
     void start();
-    void parse_next(Byte *buffer, u32 sz);
+    OpenTSDBResponse parse_next(Byte *buffer, u32 sz);
     void close();
     Byte* get_next_buffer();
 

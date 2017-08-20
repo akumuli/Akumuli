@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.18
+--------------
+
+IMPROVEMENTS
+
+* OpenTSDB protocol improved. TCollector can send data to Akumuli now.
+
 Version 0.7.17
 --------------
 
