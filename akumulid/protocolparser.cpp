@@ -416,9 +416,11 @@ void RESPProtocolParser::worker() {
     }
 }
 
-void RESPProtocolParser::parse_next(Byte* buffer, u32 sz) {
+NullResponse RESPProtocolParser::parse_next(Byte* buffer, u32 sz) {
+    static NullResponse response;
     rdbuf_.push(buffer, sz);
     worker();
+    return response;
 }
 
 Byte* RESPProtocolParser::get_next_buffer() {
@@ -456,9 +458,9 @@ void OpenTSDBProtocolParser::start() {
     logger_.info() << "Starting protocol parser";
 }
 
-void OpenTSDBProtocolParser::parse_next(Byte* buffer, u32 sz) {
+OpenTSDBResponse OpenTSDBProtocolParser::parse_next(Byte* buffer, u32 sz) {
     rdbuf_.push(buffer, sz);
-    worker();
+    return worker();
 }
 
 Byte* OpenTSDBProtocolParser::get_next_buffer() {
@@ -484,6 +486,17 @@ static bool is_put(const Byte* p) {
     return *reinterpret_cast<const u32*>(p) == asciiput;
 }
 
+enum class OpenTSDBMessageType {
+    PUT,
+    ROLLUP,
+    HISTOGRAM,
+    STATS,
+    VERSION,
+    HELP,
+    DROPCACHES,
+    UNKNOWN,
+};
+
 static bool is_rollup(const Byte* p) {
     return std::equal(p, p + ROLLUP_LEN, "rollup");
 }
@@ -508,13 +521,24 @@ static bool is_dropcaches(const Byte* p) {
     return std::equal(p, p + DROPCACHES_LEN, "dropcaches");
 }
 
-static bool unsupported_command(Byte* p, int len) {
-    return (len >= ROLLUP_LEN && is_rollup(p))
-        || (len >= HISTOGRAM_LEN && is_histogram(p))
-        || (len >= STATS_LEN && is_stats(p))
-        || (len >= VERSION_LEN && is_version(p))
-        || (len >= HELP_LEN && is_help(p))
-        || (len >= DROPCACHES_LEN && is_dropcaches(p));
+static OpenTSDBMessageType message_dispatch(Byte* p, int len) {
+    // Fast path
+    if (len >= 4 && is_put(p)) {
+        return OpenTSDBMessageType::PUT;
+    } else if (len >= ROLLUP_LEN && is_rollup(p)) {
+        return OpenTSDBMessageType::ROLLUP;
+    } else if (len >= HISTOGRAM_LEN && is_histogram(p)) {
+        return OpenTSDBMessageType::HISTOGRAM;
+    } else if (len >= STATS_LEN && is_stats(p)) {
+        return OpenTSDBMessageType::STATS;
+    } else if (len >= VERSION_LEN && is_version(p)) {
+        return OpenTSDBMessageType::VERSION;
+    } else if (len >= HELP_LEN && is_help(p)) {
+        return OpenTSDBMessageType::HELP;
+    } else if (len >= DROPCACHES_LEN && is_dropcaches(p)) {
+        return OpenTSDBMessageType::DROPCACHES;
+    }
+    return OpenTSDBMessageType::UNKNOWN;
 }
 
 /**
@@ -556,7 +580,8 @@ static aku_Timestamp from_unix_time(u64 ts) {
     return ns;
 }
 
-void OpenTSDBProtocolParser::worker() {
+OpenTSDBResponse OpenTSDBProtocolParser::worker() {
+    static OpenTSDBResponse result;
     const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
     Byte buffer[buffer_len];
     while(true) {
@@ -565,159 +590,168 @@ void OpenTSDBProtocolParser::worker() {
         int len = rdbuf_.read_line(buffer, buffer_len);
         if (len <= 0) {
             // Buffer don't have a full PDU
-            return;
+            return result;
         }
-        if (len <= 4 || !is_put(buffer)) {
-            if (!unsupported_command(buffer, len)) {
+        auto msgtype = message_dispatch(buffer, len);
+        switch(msgtype) {
+        case OpenTSDBMessageType::PUT:
+        {
+            // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+            // to 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+
+            Byte* pend = buffer + len;
+            Byte* pbuf = buffer;
+            pbuf += 4;  // skip 'put '
+            len  -= 4;
+            while (*pbuf == ' ' && len > 0) {
+                pbuf++;
+                len--;
+            }  // Skip redundant space characters
+
+            // Convert 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+            // to 'cpu.real host=machine1 region=NW 20141210T074343 3.12'
+            // using std::rotate:
+            //  std::rotate(a, b, pend)
+            //  where a = '20141210T074343 3.12 host=machine1 region=NW'
+            //    and b = 'host=machine1 region=NW'
+
+            // Skip metric name
+            Byte* a;
+            int quota = len;
+            int nspaces = 0;
+            std::tie(a, quota, nspaces) = skip_element(pbuf, quota);
+            if (a == pend) {
                 std::string msg;
                 size_t pos;
-                std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 0)");
                 BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
-            continue;  // process next command
-        }
+            int metric_size = len - quota;
 
-        // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
-        // to 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
-
-        Byte* pend = buffer + len;
-        Byte* pbuf = buffer;
-        pbuf += 4;  // skip 'put '
-        len  -= 4;
-        while (*pbuf == ' ' && len > 0) {
-            pbuf++;
-            len--;
-        }  // Skip redundant space characters
-
-        // Convert 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
-        // to 'cpu.real host=machine1 region=NW 20141210T074343 3.12'
-        // using std::rotate:
-        //  std::rotate(a, b, pend)
-        //  where a = '20141210T074343 3.12 host=machine1 region=NW'
-        //    and b = 'host=machine1 region=NW'
-
-        // Skip metric name
-        Byte* a;
-        int quota = len;
-        int nspaces = 0;
-        std::tie(a, quota, nspaces) = skip_element(pbuf, quota);
-        if (a == pend) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 0)");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-        int metric_size = len - quota;
-
-        // Skip timestamp and value
-        Byte* b = a;
-        int timestamp_size = quota;
-        int timestamp_trailing = 0;
-        std::tie(b, quota, timestamp_trailing) = skip_element(b, quota);
-        timestamp_size -= quota;
-        if (b == pend) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 1)");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-        int value_size = quota;
-        int value_trailing = 0;
-        std::tie(b, quota, value_trailing) = skip_element(b, quota);
-        value_size -= quota;
-        if (b == pend) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 2)");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-        // This is the size of the timestamp and value combined
-        int name_size = quota + metric_size;
-        int tags_trailing = 0;
-        Byte const* c = b + quota - 1;
-        while (c > b) {
-            if (*c != ' ' && *c != '\n') {
-                break;
+            // Skip timestamp and value
+            Byte* b = a;
+            int timestamp_size = quota;
+            int timestamp_trailing = 0;
+            std::tie(b, quota, timestamp_trailing) = skip_element(b, quota);
+            timestamp_size -= quota;
+            if (b == pend) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 1)");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
-            c--;
-            tags_trailing++;
-        }
-
-        // Rotate
-        std::rotate(a, b, pend);
-
-        // Buffer contains only one data point
-        status = consumer_->series_to_param_id(pbuf, static_cast<u32>(name_size - tags_trailing), &sample);  // -1 because name_size includes space
-        if (status != AKU_SUCCESS) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid series name format");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-
-        pbuf += name_size;
-        // try to parse as Unix timestamp first
-        {
-            bool err = false;
-            Byte* endptr;
-            const int eix = timestamp_size - timestamp_trailing;
-            pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
-            auto result = strtoul(pbuf, &endptr, 10);
-            pbuf[eix] = ' ';
-            if (result == 0) {
-                err = true;
+            int value_size = quota;
+            int value_trailing = 0;
+            std::tie(b, quota, value_trailing) = skip_element(b, quota);
+            value_size -= quota;
+            if (b == pend) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 2)");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
-            if (result < 0xFFFFFFFF) {
-                // If the Unix timestamp was sent, it will be less than 0xFFFFFFFF.
-                // In this case we need to adjust the value.
-                // If the value is larger than 0xFFFFFFFF, then the nanosecond timestamp
-                // was passed. We don't need to do anything.
-                // With this schema first 4.5 seconds of the nanosecond timestamp will be
-                // treated as normal Unix timestamps.
-                result = from_unix_time(result);
+            // This is the size of the timestamp and value combined
+            int name_size = quota + metric_size;
+            int tags_trailing = 0;
+            Byte const* c = b + quota - 1;
+            while (c > b) {
+                if (*c != ' ' && *c != '\n') {
+                    break;
+                }
+                c--;
+                tags_trailing++;
             }
-            sample.timestamp = result;
-            if (err) {
-                // This is an extension of the OpenTSDB telnet protocol. If value can't be
-                // interpreted as a Unix timestamp or as a nanosecond timestamp, Akumuli
-                // should try to parse it as a ISO-timestamp (because why not?).
-                status = aku_parse_timestamp(pbuf, &sample);
-                if (status == AKU_SUCCESS) {
-                    err = false;
+
+            // Rotate
+            std::rotate(a, b, pend);
+
+            // Buffer contains only one data point
+            status = consumer_->series_to_param_id(pbuf, static_cast<u32>(name_size - tags_trailing), &sample);  // -1 because name_size includes space
+            if (status != AKU_SUCCESS) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid series name format");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+
+            pbuf += name_size;
+            // try to parse as Unix timestamp first
+            {
+                bool err = false;
+                Byte* endptr;
+                const int eix = timestamp_size - timestamp_trailing;
+                pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
+                auto result = strtoul(pbuf, &endptr, 10);
+                pbuf[eix] = ' ';
+                if (result == 0) {
+                    err = true;
+                }
+                if (result < 0xFFFFFFFF) {
+                    // If the Unix timestamp was sent, it will be less than 0xFFFFFFFF.
+                    // In this case we need to adjust the value.
+                    // If the value is larger than 0xFFFFFFFF, then the nanosecond timestamp
+                    // was passed. We don't need to do anything.
+                    // With this schema first 4.5 seconds of the nanosecond timestamp will be
+                    // treated as normal Unix timestamps.
+                    result = from_unix_time(result);
+                }
+                sample.timestamp = result;
+                if (err) {
+                    // This is an extension of the OpenTSDB telnet protocol. If value can't be
+                    // interpreted as a Unix timestamp or as a nanosecond timestamp, Akumuli
+                    // should try to parse it as a ISO-timestamp (because why not?).
+                    status = aku_parse_timestamp(pbuf, &sample);
+                    if (status == AKU_SUCCESS) {
+                        err = false;
+                    }
+                }
+                if (err) {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid timestamp format");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             }
-            if (err) {
+            pbuf += timestamp_size;
+
+            const int tix = value_size - value_trailing;
+            pbuf[tix] = '\0';  // Replace space with 0-terminator
+            char* endptr = nullptr;
+            pbuf[tix] = ' ';
+            double value = strtod(pbuf, &endptr);
+            if (endptr - pbuf != (value_size - value_trailing)) {
                 std::string msg;
                 size_t pos;
-                std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid timestamp format");
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: bad floating point value");
                 BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
-        }
-        pbuf += timestamp_size;
 
-        const int tix = value_size - value_trailing;
-        pbuf[tix] = '\0';  // Replace space with 0-terminator
-        char* endptr = nullptr;
-        pbuf[tix] = ' ';
-        double value = strtod(pbuf, &endptr);
-        if (endptr - pbuf != (value_size - value_trailing)) {
+            sample.payload.float64 = value;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+
+            // Put value
+            status = consumer_->write(sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_THROW_EXCEPTION(DatabaseError(status));
+            }
+
+            rdbuf_.consume();
+            break;
+        }
+        case OpenTSDBMessageType::VERSION: {
+            OpenTSDBResponse ver("net.opentsdb.tools BuildData built at revision a000000\n"
+                                 "Akumuli to TSD converter/n");
+            return ver;
+        }
+        default: {
             std::string msg;
             size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("put: bad floating point value");
+            std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
-
-        sample.payload.float64 = value;
-        sample.payload.type = AKU_PAYLOAD_FLOAT;
-
-        // Put value
-        status = consumer_->write(sample);
-        if (status != AKU_SUCCESS) {
-            BOOST_THROW_EXCEPTION(DatabaseError(status));
-        }
-
-        rdbuf_.consume();
+        };  // endswitch
     }
+    return result;
 }
 
 std::string OpenTSDBProtocolParser::error_repr(int kind, std::string const& err) const {
