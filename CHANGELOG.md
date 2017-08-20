@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.17
+--------------
+
+IMPROVEMENTS
+
+* Node-split algorithm added to NB-tree. This algorithm can be used as a building
+  block for the update/delete implementation.
+
 Version 0.7.16
 --------------
 

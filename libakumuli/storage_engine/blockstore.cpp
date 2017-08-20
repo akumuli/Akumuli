@@ -558,7 +558,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
         return std::make_tuple(AKU_EBAD_ARG, block);
     }
     if (addr < removed_pos_) {
-        return std::make_tuple(AKU_EBAD_ARG, block);
+        return std::make_tuple(AKU_EUNAVAILABLE, block);
     }
     std::vector<u8> data;
     data.reserve(AKU_BLOCK_SIZE);
