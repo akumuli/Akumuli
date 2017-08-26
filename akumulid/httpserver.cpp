@@ -56,12 +56,12 @@ static int accept_connection(void           *cls,
         return ret;
     };
     if (strcmp(method, "POST") == 0) {
-        if (path == "/api/query") {
+        if (path == "/api/query" || path == "/api/suggest") {
             ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
             ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
-
+            ApiEndpoint endpoint = path == "/api/query" ? ApiEndpoint::QUERY : ApiEndpoint::SUGGEST;
             if (cursor == nullptr) {
-                cursor = queryproc->create();
+                cursor = queryproc->create(endpoint);
                 *con_cls = cursor;
                 logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
                 return MHD_YES;

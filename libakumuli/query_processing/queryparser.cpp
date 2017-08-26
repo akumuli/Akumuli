@@ -122,6 +122,74 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     return std::make_tuple(AKU_SUCCESS, ids);
 }
 
+std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(SeriesMatcher const& matcher) const {
+    std::vector<aku_ParamId> ids;
+    // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
+    if (metric_.empty()) {
+        // Case 1, metric not set.
+        return std::make_tuple(AKU_EBAD_ARG, ids);
+    } else {
+        auto first_metric = metric_.front();
+        if (tags_.empty()) {
+            // Case 2, only metric is set
+            std::stringstream regex;
+            regex << first_metric << "\\S*(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
+            std::string expression = regex.str();
+            auto results = matcher.regex_match(expression.c_str());
+            for (auto res: results) {
+                ids.push_back(std::get<2>(res));
+            }
+        } else {
+            // Case 3, both metric and tags are set
+            std::stringstream regexp;
+            regexp << first_metric << "\\S*";
+            for (auto kv: tags_) {
+                auto const& key = kv.first;
+                bool first = true;
+                regexp << "(?:";
+                for (auto const& val: kv.second) {
+                    if (first) {
+                        first = false;
+                    } else {
+                        regexp << "|";
+                    }
+                    regexp << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*\\s" << key << "=" << val << "(?:\\s[\\w\\.\\-]+=[\\w\\.\\-]+)*";
+                }
+                regexp << ")";
+            }
+            std::string expression = regexp.str();
+            auto results = matcher.regex_match(expression.c_str());
+            for (auto res: results) {
+                ids.push_back(std::get<2>(res));
+            }
+        }
+
+        if (metric_.size() > 1) {
+            std::vector<std::string> tail(metric_.begin() + 1, metric_.end());
+            std::vector<aku_ParamId> full(ids);
+            for (auto metric: tail) {
+                for (auto id: ids) {
+                    SeriesMatcher::StringT name = matcher.id2str(id);
+                    if (name.second == 0) {
+                        // This shouldn't happen but it can happen after memory corruption or data-race.
+                        // Clearly indicates an error.
+                        Logger::msg(AKU_LOG_ERROR, "Matcher data is broken, can read series name for " + std::to_string(id));
+                        AKU_PANIC("Matcher data is broken");
+                    }
+                    std::string series_tags(name.first + first_metric.size(), name.first + name.second);
+                    std::string alt_name = metric + series_tags;
+                    auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
+                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                                          // combination of metric and tags. Different strategies can be used to deal with
+                                          // such cases. Query can leave this element of the tuple blank or discard it.
+                }
+            }
+            ids.swap(full);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, ids);
+}
+
 
 static const std::set<std::string> META_QUERIES = {
     "meta:names"
@@ -420,6 +488,48 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
     return std::make_tuple(status, output);
 }
 
+/** Parse `where` statement, format:
+  * { "where": { "tag": [ "value1", "value2" ], ... }, ... }
+  * Perform fuzzy text search on metric name
+  */
+static std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_search(boost::property_tree::ptree const& ptree,
+                                                                     std::vector<std::string> metrics,
+                                                                     SeriesMatcher const& matcher)
+{
+    aku_Status status = AKU_SUCCESS;
+    std::vector<aku_ParamId> output;
+    auto where = ptree.get_child_optional("where");
+    if (where) {
+        if (metrics.empty()) {
+            Logger::msg(AKU_LOG_ERROR, "Metric is not set");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, output);
+        }
+        SeriesRetreiver retreiver(metrics);
+        for (auto item: *where) {
+            std::string tag = item.first;
+            auto idslist = item.second;
+            // Read idlist
+            if (!idslist.empty()) {
+                std::vector<std::string> tag_values;
+                for (auto idnode: idslist) {
+                    tag_values.push_back(idnode.second.get_value<std::string>());
+                }
+                retreiver.add_tags(tag, tag_values);
+            } else {
+                retreiver.add_tag(tag, idslist.get_value<std::string>());
+            }
+        }
+        std::tie(status, output) = retreiver.fuzzy_match(matcher);
+    } else if (metrics.size()) {
+        // only metric is specified
+        SeriesRetreiver retreiver(metrics);
+        std::tie(status, output) = retreiver.fuzzy_match(matcher);
+    } else {
+        // Output should be mepty
+    }
+    return std::make_tuple(status, output);
+}
+
 static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
     std::stringstream ss;
     boost::property_tree::write_json(ss, ptree, pretty_print);
@@ -546,6 +656,28 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
     }
 
     std::tie(status, ids) = parse_where_clause(ptree, metrics, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    return std::make_tuple(AKU_SUCCESS, ids);
+}
+
+std::tuple<aku_Status, std::vector<aku_ParamId>>
+    QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher)
+{
+    std::vector<aku_ParamId> ids;
+    aku_Status status = validate_query(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    std::string name;
+    std::tie(status, name) = parse_select_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+
+    std::vector<std::string> metrics = { name };
+    std::tie(status, ids) = fuzzy_search(ptree, metrics, matcher);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);
     }

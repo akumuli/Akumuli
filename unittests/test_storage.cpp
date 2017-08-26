@@ -464,6 +464,55 @@ BOOST_AUTO_TEST_CASE(Test_storage_metadata_query) {
     test_metadata_query();
 }
 
+// Test suggest
+
+static void test_suggest() {
+    auto query = "{\"select\": \"test\"}";
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    std::vector<std::string> series_names = {
+        "test.aaa key=0",
+        "test.aaa key=1",
+        "test.bbb key=2",
+        "test.bbb key=3",
+        "test.ccc key=4",
+        "test.ccc key=5",
+        "test.ddd key=6",
+        "test.ddd key=7",
+        "test.eee key=8",
+        "test.eee key=9",
+    };
+    for (auto name: series_names) {
+        aku_Sample s;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        s.timestamp = 111;
+        s.payload.type = AKU_PAYLOAD_FLOAT;
+        s.payload.float64 = 0.;
+        status = session->write(s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    CursorMock cursor;
+    session->suggest(&cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names.size());
+    for (auto sample: cursor.samples) {
+        const int buffer_size = AKU_LIMITS_MAX_SNAME;
+        char buffer[buffer_size];
+        auto len = session->get_series_name(sample.paramid, buffer, buffer_size);
+        if (len <= 0) {
+            BOOST_FAIL("no such id");
+        }
+        std::string name(buffer, buffer + len);
+        auto cnt = std::count(series_names.begin(), series_names.end(), name);
+        BOOST_REQUIRE_EQUAL(cnt, 1);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_suggest_query) {
+    test_suggest();
+}
+
 // Group-by query
 
 static const aku_Timestamp gb_begin = 100;

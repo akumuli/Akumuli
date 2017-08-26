@@ -66,6 +66,13 @@ public:
 
     void query(InternalCursor* cur, const char* query) const;
 
+    /**
+     * @brief suggest query implementation
+     * @param cur is a pointer to internal cursor
+     * @param query is a string that contains query
+     */
+    void suggest(InternalCursor* cur, const char* query) const;
+
     // Temporary reset series matcher
     void set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const;
     void clear_series_matcher() const;
@@ -106,6 +113,14 @@ public:
     std::shared_ptr<StorageSession> create_write_session();
 
     void query(StorageSession const* session, InternalCursor* cur, const char* query) const;
+
+    /**
+     * @brief suggest query implementation
+     * @param session is a session pointer
+     * @param cur is an internal cursor
+     * @param query is a query string (JSON)
+     */
+    void suggest(StorageSession const* session, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
 

@@ -26,7 +26,11 @@ struct ConsumerMock : DbSession {
         return AKU_SUCCESS;
     }
 
-    virtual std::shared_ptr<DbCursor> search(std::string) override {
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
         throw "Not implemented";
     }
 
@@ -343,7 +347,11 @@ struct NameCheckingConsumer : DbSession {
         return AKU_SUCCESS;
     }
 
-    virtual std::shared_ptr<DbCursor> search(std::string) override {
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
         throw "Not implemented";
     }
 

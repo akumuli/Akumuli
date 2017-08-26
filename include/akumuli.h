@@ -237,11 +237,18 @@ AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
 //---------
 
 /** @brief Query database
-  * @param db should point to opened database instance
+  * @param session should point to opened session instance
   * @param query should contain valid query
   * @return cursor instance
   */
 AKU_EXPORT aku_Cursor* aku_query(aku_Session* session, const char* query);
+
+/** @brief Suggest query
+  * @param sesson should point to opened session instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_suggest(aku_Session* session, const char* query);
 
 /**
  * @brief Close cursor

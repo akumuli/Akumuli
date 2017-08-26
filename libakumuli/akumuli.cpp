@@ -124,6 +124,47 @@ struct CursorImpl : aku_Cursor {
 };
 
 
+/**
+ * Cursor that returns results of the 'suggest' query
+ * used by Grafana.
+ */
+struct SuggestCursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
+    aku_Status status_;
+    std::string query_;
+
+    SuggestCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
+        : query_(query)
+    {
+        status_ = AKU_SUCCESS;
+        cursor_ = ConcurrentCursor::make(&StorageSession::suggest, storage, query_.data());
+    }
+
+    ~SuggestCursorImpl() {
+        cursor_->close();
+    }
+
+    bool is_done() const {
+        return cursor_->is_done();
+    }
+
+    bool is_error(aku_Status* out_error_code_or_null) const {
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
+    }
+
+    u32 read_values( void  *values
+                   , u32    values_size )
+    {
+        return cursor_->read(values, values_size);
+    }
+};
+
+
+
 class Session : public aku_Session {
     std::shared_ptr<StorageSession> session_;
 public:
@@ -151,6 +192,11 @@ public:
 
     CursorImpl* query(const char* q) {
         auto res = new CursorImpl(session_, q);
+        return res;
+    }
+
+    SuggestCursorImpl* suggest(const char* q) {
+        auto res = new SuggestCursorImpl(session_, q);
         return res;
     }
 };
@@ -299,6 +345,12 @@ void aku_close_database(aku_Database* db) {
 aku_Cursor* aku_query(aku_Session* session, const char* query) {
     auto impl = reinterpret_cast<Session*>(session);
     auto cursor = impl->query(query);
+    return static_cast<aku_Cursor*>(cursor);
+}
+
+aku_Cursor* aku_suggest(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->suggest(query);
     return static_cast<aku_Cursor*>(cursor);
 }
 

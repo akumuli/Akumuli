@@ -36,6 +36,8 @@ public:
 
     //! Get results
     std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(SeriesMatcher const& matcher) const;
+
+    std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_match(SeriesMatcher const& matcher) const;
 };
 
 
@@ -58,6 +60,14 @@ struct QueryParser {
       * @param matcher is a global matcher
       */
     static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_meta_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+
+    /**
+     * @brief Parse suggest query
+     * @param ptree is a property tree generated from query json
+     * @param matcher is a series matcher object
+     */
+    static std::tuple<aku_Status, std::vector<aku_ParamId>>
+        parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
 
     /** Parse aggregate query and produce reshape request.
      */

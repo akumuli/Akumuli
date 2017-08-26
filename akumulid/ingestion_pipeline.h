@@ -56,8 +56,11 @@ struct DbSession {
     //! Write value to DB
     virtual aku_Status write(const aku_Sample& sample) = 0;
 
-    //! Execute search query
-    virtual std::shared_ptr<DbCursor> search(std::string query) = 0;
+    //! Execute database query
+    virtual std::shared_ptr<DbCursor> query(std::string query) = 0;
+
+    //! Execute suggest query
+    virtual std::shared_ptr<DbCursor> suggest(std::string query) = 0;
 
     //! Convert paramid to series name
     virtual int param_id_to_series(aku_ParamId id, char* buffer, size_t buffer_size) = 0;
@@ -85,7 +88,8 @@ public:
     AkumuliSession(aku_Session* session);
     virtual ~AkumuliSession() override;
     virtual aku_Status write(const aku_Sample &sample) override;
-    virtual std::shared_ptr<DbCursor> search(std::string query) override;
+    virtual std::shared_ptr<DbCursor> query(std::string query) override;
+    virtual std::shared_ptr<DbCursor> suggest(std::string query) override;
     virtual int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) override;
     virtual aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) override;
     virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override;
