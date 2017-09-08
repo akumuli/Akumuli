@@ -46,7 +46,7 @@ struct SeriesMatcher {
     typedef StringTools::InvT   InvT;
 
     // Variables
-    StringPool               pool;       //! String pool that stores time-series
+    LegacyStringPool               pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
     u64                      series_id;  //! Series ID counter

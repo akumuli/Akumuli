@@ -36,7 +36,11 @@ struct StringPoolOffset {
     size_t offset;
 };
 
-struct StringPool {
+//                        //
+//   Legacy String Pool   //
+//                        //
+
+struct LegacyStringPool {
 
     typedef std::pair<const char*, int> StringT;
     const int MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME * 0x1000;
@@ -45,9 +49,9 @@ struct StringPool {
     mutable std::mutex            pool_mutex;
     std::atomic<size_t>           counter;
 
-    StringPool();
-    StringPool(StringPool const&) = delete;
-    StringPool& operator=(StringPool const&) = delete;
+    LegacyStringPool();
+    LegacyStringPool(LegacyStringPool const&) = delete;
+    LegacyStringPool& operator=(LegacyStringPool const&) = delete;
 
     StringT add(const char* begin, const char* end);
 
@@ -62,6 +66,46 @@ struct StringPool {
     std::vector<StringT> regex_match(const char* regex, StringPoolOffset* outoffset = nullptr,
                                      size_t* psize = nullptr) const;
 };
+
+//                       //
+//      String Pool      //
+//                       //
+
+typedef std::pair<const char*, u32> StringT;
+
+class StringPool {
+public:
+    const u64 MAX_BIN_SIZE = AKU_LIMITS_MAX_SNAME * 0x1000;  // 8Mb
+
+    std::deque<std::vector<char>> pool;
+    mutable std::mutex            pool_mutex;
+    std::atomic<size_t>           counter;
+
+    StringPool();
+    StringPool(StringPool const&) = delete;
+    StringPool& operator=(StringPool const&) = delete;
+
+    /**
+     * @brief add value to string pool
+     * @param begin is a pointer to the begining of the string
+     * @param end is a pointer to the next character after the end of the string
+     * @return Z-order encoded address of the string (0 in case of error)
+     */
+    u64 add(const char* begin, const char* end);
+
+    /**
+     * @brief str returns string representation
+     * @param bits is a Z-order encoded position in the string buffer
+     * @return 0-copy string representation (or empty string)
+     */
+    StringT str(u64 bits) const;
+
+    //! Get number of stored strings atomically
+    size_t size() const;
+
+    size_t mem_used() const;
+};
+
 
 struct StringTools {
     //! Pooled string

@@ -19,16 +19,16 @@
 
 namespace Akumuli {
 
-//                       //
-//      String Pool      //
-//                       //
+//                        //
+//   Legacy String Pool   //
+//                        //
 
-StringPool::StringPool()
+LegacyStringPool::LegacyStringPool()
     : counter{0}
 {
 }
 
-StringPool::StringT StringPool::add(const char* begin, const char* end) {
+LegacyStringPool::StringT LegacyStringPool::add(const char* begin, const char* end) {
     std::lock_guard<std::mutex> guard(pool_mutex);  // Maybe I'll need to optimize this
     if (pool.empty()) {
         pool.emplace_back();
@@ -57,12 +57,12 @@ StringPool::StringT StringPool::add(const char* begin, const char* end) {
     return std::make_pair(p, token_size);
 }
 
-size_t StringPool::size() const {
+size_t LegacyStringPool::size() const {
     return std::atomic_load(&counter);
 }
 
-std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, StringPoolOffset *offset, size_t* psize) const {
-    std::vector<StringPool::StringT> results;
+std::vector<LegacyStringPool::StringT> LegacyStringPool::regex_match(const char *regex, StringPoolOffset *offset, size_t* psize) const {
+    std::vector<LegacyStringPool::StringT> results;
     boost::regex series_regex(regex, boost::regex_constants::optimize);
     typedef std::vector<char> const* PBuffer;
     std::vector<PBuffer> buffers;
@@ -125,6 +125,77 @@ std::vector<StringPool::StringT> StringPool::regex_match(const char *regex, Stri
     }
     return results;
 }
+
+//                       //
+//      String Pool      //
+//                       //
+
+StringPool::StringPool()
+    : counter{0}
+{
+}
+
+u64 StringPool::add(const char* begin, const char* end) {
+    assert(begin < end);
+    std::lock_guard<std::mutex> guard(pool_mutex);
+    if (pool.empty()) {
+        pool.emplace_back();
+        pool.back().reserve(MAX_BIN_SIZE);
+    }
+    auto size = static_cast<u64>(end - begin);
+    if (size == 0) {
+        return 0;
+    }
+    size += 1;  // 1 is for 0 character
+    u32 bin_index = static_cast<u32>(pool.size()); // bin index is 1-based
+    std::vector<char>* bin = &pool.back();
+    if (bin->size() + size > MAX_BIN_SIZE) {
+        // New bin
+        pool.emplace_back();
+        bin = &pool.back();
+        bin->reserve(MAX_BIN_SIZE);
+        bin_index = static_cast<u32>(pool.size());
+    }
+    u32 offset = static_cast<u32>(bin->size()); // offset is 0-based
+    for(auto i = begin; i < end; i++) {
+        bin->push_back(*i);
+    }
+    bin->push_back('\0');
+    std::atomic_fetch_add(&counter, 1ul);
+    return bin_index*MAX_BIN_SIZE + offset;
+}
+
+StringT StringPool::str(u64 bits) const {
+    u64 ix     = bits / MAX_BIN_SIZE;
+    u64 offset = bits % MAX_BIN_SIZE;
+    assert(ix != 0);
+    std::lock_guard<std::mutex> guard(pool_mutex);
+    if (ix <= pool.size()) {
+        std::vector<char> const* bin = &pool.at(ix - 1);
+        if (offset < bin->size()) {
+            const char* pstr = bin->data() + offset;
+            return std::make_pair(pstr, std::strlen(pstr));
+        }
+    }
+    return std::make_pair(nullptr, 0);
+}
+
+size_t StringPool::size() const {
+    return std::atomic_load(&counter);
+}
+
+size_t StringPool::mem_used() const {
+    size_t res = 0;
+    std::lock_guard<std::mutex> guard(pool_mutex);
+    for (auto const& bin: pool) {
+        res += bin.size();
+    }
+    return res;
+}
+
+//               //
+//  StringTools  //
+//               //
 
 size_t StringTools::hash(StringT str) {
     // implementation of Dan Bernstein's djb2

@@ -121,7 +121,7 @@ std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* r
 
 std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
     std::vector<SeriesNameT> series;
-    std::vector<StringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
+    std::vector<LegacyStringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
 
     std::lock_guard<std::mutex> guard(mutex);
     std::transform(res.begin(), res.end(), std::back_inserter(series), [this](StringT s) {

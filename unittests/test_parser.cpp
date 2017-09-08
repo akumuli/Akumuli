@@ -50,7 +50,7 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 
 BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
-    StringPool pool;
+    LegacyStringPool pool;
     const char* foo = "foo";
     auto result_foo = pool.add(foo, foo + 3);
     const char* bar = "123456";
@@ -82,7 +82,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesmatcher_0) {
 
 BOOST_AUTO_TEST_CASE(Test_seriesmatcher_1) {
 
-    StringPool spool;
+    LegacyStringPool spool;
     const char* foo = "host=1 region=A";
     const char* bar = "host=1 region=B";
     const char* buz = "host=2 region=C";

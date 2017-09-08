@@ -17,10 +17,14 @@
 #pragma once
 #include "akumuli.h"
 #include "hashfnfamily.h"
+#include "util.h"
 
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <cassert>
+#include <iterator>
+#include <algorithm>
 
 namespace Akumuli {
 
@@ -36,42 +40,291 @@ struct TwoUnivHashFnFamily {
     u64 hash(int ix, u64 value) const;
 };
 
-/** Posting list.
- * In case of time-series data posting list is a pair of time-series Id and time-stamp
- * of the occurence.
- */
-struct Postings {
-    std::unordered_map<aku_ParamId, size_t> counters_;
+//             //
+//  CM-sketch  //
+//             //
 
-    void append(aku_ParamId id);
+namespace details {
+//! Base 128 encoded integer
+template <class TVal> class Base128Int {
+    TVal                  value_;
+    typedef unsigned char byte_t;
+    typedef byte_t*       byte_ptr;
 
-    size_t get_count(aku_ParamId id) const;
+public:
+    Base128Int(TVal val)
+        : value_(val) {}
 
-    size_t get_size() const;
+    Base128Int()
+        : value_() {}
 
-    void merge(const Postings& other);
+    /** Read base 128 encoded integer from the binary stream
+      * FwdIter - forward iterator.
+      */
+    const unsigned char* get(const unsigned char* begin, const unsigned char* end) {
+        assert(begin < end);
+
+        auto                 acc = TVal();
+        auto                 cnt = TVal();
+        const unsigned char* p   = begin;
+
+        while (true) {
+            if (p == end) {
+                return begin;
+            }
+            auto i = static_cast<byte_t>(*p & 0x7F);
+            acc |= TVal(i) << cnt;
+            if ((*p++ & 0x80) == 0) {
+                break;
+            }
+            cnt += 7;
+        }
+        value_ = acc;
+        return p;
+    }
+
+    /** Write base 128 encoded integer to the binary stream.
+      * @returns 'begin' on error, iterator to next free region otherwise
+      */
+    void put(std::vector<char>& vec) const {
+        TVal           value = value_;
+        unsigned char p;
+        while (true) {
+            p = value & 0x7F;
+            value >>= 7;
+            if (value != 0) {
+                p |= 0x80;
+                vec.push_back(static_cast<char>(p));
+            } else {
+                vec.push_back(static_cast<char>(p));
+                break;
+            }
+        }
+    }
+
+    //! turn into integer
+    operator TVal() const { return value_; }
+};
+
+//! Base128 encoder
+struct Base128StreamWriter {
+    // underlying memory region
+    std::vector<char>* buffer_;
+
+    Base128StreamWriter(std::vector<char>& buffer)
+        : buffer_(&buffer)
+    {}
+
+    Base128StreamWriter(Base128StreamWriter const& other)
+        : buffer_(other.buffer_)
+    {}
+
+    Base128StreamWriter& operator = (Base128StreamWriter const& other) {
+        if (&other == this) {
+            return *this;
+        }
+        buffer_ = other.buffer_;
+        return *this;
+    }
+
+    void reset(std::vector<char>& buffer) {
+        buffer_ = &buffer;
+    }
+
+    bool empty() const { return buffer_->empty(); }
+
+    //! Put value into stream.
+    template <class TVal> bool put(TVal value) {
+        Base128Int<TVal> val(value);
+        val.put(*buffer_);
+        return true;
+    }
+};
+
+//! Base128 decoder
+struct Base128StreamReader {
+    const unsigned char* pos_;
+    const unsigned char* end_;
+
+    Base128StreamReader(const unsigned char* begin, const unsigned char* end)
+        : pos_(begin)
+        , end_(end) {}
+
+    Base128StreamReader(Base128StreamReader const& other)
+        : pos_(other.pos_)
+        , end_(other.end_)
+    {
+    }
+
+    Base128StreamReader& operator = (Base128StreamReader const& other) {
+        if (&other == this) {
+            return *this;
+        }
+        pos_ = other.pos_;
+        end_ = other.end_;
+        return *this;
+    }
+
+    template <class TVal> TVal next() {
+        Base128Int<TVal> value;
+        auto             p = value.get(pos_, end_);
+        if (p == pos_) {
+            AKU_PANIC("Base128Stream read error");
+        }
+        pos_ = p;
+        return static_cast<TVal>(value);
+    }
+};
+
+template <class Stream, typename TVal> struct DeltaStreamWriter {
+    Stream* stream_;
+    TVal   prev_;
+
+    template<class Substream>
+    DeltaStreamWriter(Substream& stream)
+        : stream_(&stream)
+        , prev_{}
+    {}
+
+    DeltaStreamWriter(DeltaStreamWriter const& other)
+        : stream_(other.stream_)
+        , prev_(other.prev_)
+    {
+    }
+
+    DeltaStreamWriter& operator = (DeltaStreamWriter const& other) {
+        if (this == &other) {
+            return *this;
+        }
+        stream_ = other.stream_;
+        prev_   = other.prev_;
+        return *this;
+    }
+
+    bool put(TVal value) {
+        auto result = stream_->put(static_cast<TVal>(value) - prev_);
+        prev_       = value;
+        return result;
+    }
 };
 
 
-/** Inverted index.
- * One dimension of the inv-index is fixed (table size). Only postings can grow.
+template <class Stream, typename TVal> struct DeltaStreamReader {
+    Stream* stream_;
+    TVal   prev_;
+
+    DeltaStreamReader(Stream& stream)
+        : stream_(&stream)
+        , prev_() {}
+
+    DeltaStreamReader(DeltaStreamReader const& other)
+        : stream_(other.stream_)
+        , prev_(other.prev_)
+    {
+    }
+
+    DeltaStreamReader& operator = (DeltaStreamReader const& other) {
+        if (&other == this) {
+            return *this;
+        }
+        stream_ = other.stream_;
+        prev_   = other.prev_;
+        return *this;
+    }
+
+    TVal next() {
+        TVal delta = stream_->template next<TVal>();
+        TVal value = prev_ + delta;
+        prev_      = value;
+        return value;
+    }
+};
+
+}
+
+// Iterator for compressed PList
+
+class CompressedPListConstIterator {
+    size_t card_;
+    details::Base128StreamReader reader_;
+    details::DeltaStreamReader<details::Base128StreamReader, u64> delta_;
+    size_t pos_;
+    u64 curr_;
+public:
+    typedef u64 value_type;
+
+    CompressedPListConstIterator(std::vector<char> const& vec, size_t c);
+
+    /**
+     * @brief Create iterator pointing to the end of the sequence
+     */
+    CompressedPListConstIterator(std::vector<char> const& vec, size_t c, bool);
+
+    CompressedPListConstIterator(CompressedPListConstIterator const& other);
+
+    CompressedPListConstIterator& operator = (CompressedPListConstIterator const& other);
+
+    u64 operator * () const;
+
+    CompressedPListConstIterator& operator ++ ();
+
+    bool operator == (CompressedPListConstIterator const& other) const;
+
+    bool operator != (CompressedPListConstIterator const& other) const;
+};
+
+}  // namespace Akumuli
+
+namespace std {
+    template<>
+    struct iterator_traits<Akumuli::CompressedPListConstIterator> {
+        typedef u64 value_type;
+        typedef forward_iterator_tag iterator_category;
+    };
+}
+
+namespace Akumuli {
+
+/**
+ * Compressed postings list
  */
-struct InvertedIndex {
-    TwoUnivHashFnFamily table_hash_;
+class CompressedPList {
+    std::vector<char> buffer_;
+    details::Base128StreamWriter writer_;
+    details::DeltaStreamWriter<details::Base128StreamWriter, u64> delta_;
+    size_t cardinality_;
+    bool moved_;
+public:
 
-    //! Size of the table
-    const size_t table_size_;
+    typedef u64 value_type;
 
-    //! Hash to postings list mapping.
-    std::vector<std::unique_ptr<Postings>> table_;
+    CompressedPList();
 
-    //! C-tor. Argument `table_size` should be a power of two.
-    InvertedIndex(const size_t table_size);
+    CompressedPList(CompressedPList const& other);
 
-    //! Add value to index
-    void append(aku_ParamId id, const char* begin, const char* end);
+    CompressedPList& operator = (CompressedPList && other);
 
-    std::vector<std::pair<aku_ParamId, size_t>> get_count(const char* begin, const char* end);
+    CompressedPList(CompressedPList && other);
+
+    CompressedPList& operator = (CompressedPList const& other) = delete;
+
+    void add(u64 x);
+
+    void push_back(u64 x);
+
+    size_t getSizeInBytes() const;
+
+    size_t cardinality() const;
+
+    CompressedPList operator & (CompressedPList const& other) const;
+
+    CompressedPList operator | (CompressedPList const& other) const;
+
+    CompressedPList operator ^ (CompressedPList const& other) const;
+
+    CompressedPListConstIterator begin() const;
+
+    CompressedPListConstIterator end() const;
 };
 
 }  // namespace
