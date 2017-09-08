@@ -16,8 +16,7 @@
 
 #pragma once
 #include "akumuli_def.h"
-//#include "queryprocessor_framework.h"
-#include "stringpool.h"
+#include "index/stringpool.h"
 
 #include <deque>
 #include <map>

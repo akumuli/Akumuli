@@ -25,7 +25,7 @@
 
 #include "akumuli_def.h"
 #include "metadatastorage.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "util.h"
 
 #include "storage_engine/blockstore.h"

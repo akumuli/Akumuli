@@ -3,8 +3,8 @@
 #include <string>
 
 #include "queryprocessor_framework.h"
-#include "seriesparser.h"
-#include "stringpool.h"
+#include "index/seriesparser.h"
+#include "index/stringpool.h"
 #include "internal_cursor.h"
 
 namespace Akumuli {

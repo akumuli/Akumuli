@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "queryprocessor_framework.h"
 #include "storage_engine/column_store.h"
 

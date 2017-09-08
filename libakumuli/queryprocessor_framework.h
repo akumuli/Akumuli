@@ -4,7 +4,7 @@
 
 #include "akumuli.h"
 #include "util.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "storage_engine/operators/operator.h"
 
 #include <boost/property_tree/ptree.hpp>

@@ -1,8 +1,6 @@
 add_library(akumuli SHARED
     akumuli.cpp
-    seriesparser.cpp
     metadatastorage.cpp
-    stringpool.cpp
     datetime.cpp
     log_iface.cpp
     util.cpp
@@ -10,6 +8,9 @@ add_library(akumuli SHARED
     crc32c.cpp
     status_util.cpp
     cursor.cpp
+    index/stringpool.cpp
+    index/seriesparser.cpp
+    index/invertedindex.cpp
     storage_engine/blockstore.cpp
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp

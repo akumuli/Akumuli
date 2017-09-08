@@ -37,7 +37,7 @@
 #include "akumuli_def.h"
 #include "external_cursor.h"
 #include "metadatastorage.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "storage_engine/nbtree.h"
 #include "queryprocessor_framework.h"
 

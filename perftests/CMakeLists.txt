@@ -74,8 +74,8 @@ set_target_properties(perf_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
 add_executable(
     perf_seriesmatcher
     perf_seriesmatcher.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
@@ -121,8 +121,8 @@ add_executable(
     ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
 )
 
 target_link_libraries(
@@ -185,7 +185,7 @@ add_executable(
     perf_invertedindex
     perf_invertedindex.cpp
     perftest_tools.cpp
-    ../libakumuli/invertedindex.cpp
+    ../libakumuli/index/invertedindex.cpp
 )
 
 target_link_libraries(

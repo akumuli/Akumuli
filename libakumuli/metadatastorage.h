@@ -26,7 +26,7 @@
 #include <apr_dbd.h>
 
 #include "akumuli_def.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "volumeregistry.h"
 
 namespace Akumuli {
