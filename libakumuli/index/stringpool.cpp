@@ -226,5 +226,13 @@ StringTools::SetT StringTools::create_set(size_t size) {
     return SetT(size, &StringTools::hash, &StringTools::equal);
 }
 
+StringTools::L2TableT StringTools::create_l2_table(size_t size_hint) {
+    return L2TableT(size_hint, &StringTools::hash, &StringTools::equal);
+}
+
+StringTools::L3TableT StringTools::create_l3_table(size_t size_hint) {
+    return L3TableT(size_hint, &StringTools::hash, &StringTools::equal);
+}
+
 }
 

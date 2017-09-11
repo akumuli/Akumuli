@@ -509,4 +509,197 @@ public:
     IndexQueryResultsIterator end() const;
 };
 
+
+//             //
+//  IndexBase  //
+//             //
+
+struct IndexBase {
+    virtual ~IndexBase() = default;
+    virtual IndexQueryResults tagvalue_query(TagValuePair const& value) const = 0;
+    virtual IndexQueryResults metric_query(MetricName const& value) const = 0;
+    virtual std::vector<StringT> list_metric_names() const = 0;
+    virtual std::vector<StringT> list_tags(StringT metric) const = 0;
+    virtual std::vector<StringT> list_tag_values(StringT metric, StringT tag) const = 0;
+};
+
+
+//                      //
+//  IndexQueryNodeBase  //
+//                      //
+
+class IndexQueryNodeBase {
+    const char* const name_;
+
+public:
+
+    /**
+     * @brief IndexQueryNodeBase c-tor
+     * @param name is a static string that contains node name (used for introspection)
+     */
+    IndexQueryNodeBase(const char* name)
+        : name_(name)
+    {
+    }
+
+    virtual ~IndexQueryNodeBase() = default;
+
+    virtual IndexQueryResults query(const IndexBase&) const = 0;
+
+    const char* get_name() const {
+        return name_;
+    }
+};
+
+
+//               //
+//  IncludeTags  //
+//               //
+
+/**
+ * Extracts only series that have specified tag-value
+ * combinations.
+ */
+struct IncludeTags : IndexQueryNodeBase {
+    constexpr static const char* node_name_ = "include-tags";
+    MetricName metric_;
+    std::vector<TagValuePair> pairs_;
+
+    template<class Iter>
+    IncludeTags(MetricName const& metric, Iter begin, Iter end)
+        : IndexQueryNodeBase(node_name_)
+        , metric_(metric)
+        , pairs_(begin, end)
+    {
+    }
+
+    virtual IndexQueryResults query(IndexBase const&) const;
+};
+
+
+//                   //
+//  IncludeIfHasTag  //
+//                   //
+
+/**
+ * Extracts only series that have specified tag-value
+ * combinations.
+ */
+struct IncludeIfHasTag : IndexQueryNodeBase {
+    constexpr static const char* node_name_ = "include-tags";
+    MetricName metric_;
+    StringT tagname_;
+
+    IncludeIfHasTag(MetricName const& metric, StringT tag_name)
+        : IndexQueryNodeBase(node_name_)
+        , metric_(metric)
+        , tagname_(tag_name)
+    {
+    }
+
+    virtual IndexQueryResults query(IndexBase const&) const;
+};
+
+//               //
+//  ExcludeTags  //
+//               //
+
+/**
+ * Extracts only series that doesn't have specified tag-value
+ * combinations.
+ */
+struct ExcludeTags : IndexQueryNodeBase {
+    constexpr static const char* node_name_ = "exclude-tags";
+    MetricName metric_;
+    std::vector<TagValuePair> pairs_;
+
+    template<class Iter>
+    ExcludeTags(MetricName const& metric, Iter begin, Iter end)
+        : IndexQueryNodeBase(node_name_)
+        , metric_(metric)
+        , pairs_(begin, end)
+    {
+    }
+
+    virtual IndexQueryResults query(IndexBase const&) const;
+};
+
+
+//              //
+//  JoinByTags  //
+//              //
+
+struct JoinByTags : IndexQueryNodeBase {
+    constexpr static const char* node_name_ = "join-by-tags";
+    std::vector<MetricName> metrics_;
+    std::vector<TagValuePair> pairs_;
+
+    template<class MIter, class TIter>
+    JoinByTags(MIter mbegin, MIter mend, TIter tbegin, TIter tend)
+        : IndexQueryNodeBase(node_name_)
+        , metrics_(mbegin, mend)
+        , pairs_(tbegin, tend)
+    {
+    }
+
+    virtual IndexQueryResults query(IndexBase const&) const;
+};
+
+
+//                      //
+//  SeriesNameTopology  //
+//                      //
+
+class SeriesNameTopology {
+    typedef StringTools::L3TableT IndexT;
+    IndexT index_;
+public:
+    SeriesNameTopology();
+
+    void add_name(StringT name);
+
+    std::vector<StringT> list_metric_names() const;
+
+    std::vector<StringT> list_tags(StringT metric) const;
+
+    std::vector<StringT> list_tag_values(StringT metric, StringT tag) const;
+};
+
+
+//         //
+//  Index  //
+//         //
+
+class Index : public IndexBase {
+    StringPool pool_;
+    StringTools::TableT table_;
+    CMSketch metrics_names_;
+    CMSketch tagvalue_pairs_;
+    SeriesNameTopology topology_;
+public:
+    Index();
+
+    SeriesNameTopology const& get_topology() const;
+
+    size_t cardinality() const;
+
+    size_t memory_use() const;
+
+    size_t index_memory_use() const;
+
+    size_t pool_memory_use() const;
+
+    aku_Status append(const char* begin, const char* end);
+
+    virtual IndexQueryResults tagvalue_query(const TagValuePair &value) const;
+
+    virtual IndexQueryResults metric_query(const MetricName &value) const;
+
+    virtual std::vector<StringT> list_metric_names() const;
+
+    virtual std::vector<StringT> list_tags(StringT metric) const;
+
+    virtual std::vector<StringT> list_tag_values(StringT metric, StringT tag) const;
+};
+
 }  // namespace

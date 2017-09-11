@@ -121,11 +121,19 @@ struct StringTools {
     typedef std::unordered_set<StringT, decltype(&StringTools::hash), decltype(&StringTools::equal)>
         SetT;
 
+    typedef std::unordered_map<StringT, SetT, decltype(&StringTools::hash), decltype(&StringTools::equal)> L2TableT;
+
+    typedef std::unordered_map<StringT, L2TableT, decltype(&StringTools::hash), decltype(&StringTools::equal)> L3TableT;
+
     //! Inverted table type (id to string mapping)
     typedef std::unordered_map<u64, StringT> InvT;
 
     static TableT create_table(size_t size);
 
     static SetT create_set(size_t size);
+
+    static L2TableT create_l2_table(size_t size_hint);
+
+    static L3TableT create_l3_table(size_t size_hint);
 };
 }

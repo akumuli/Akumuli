@@ -19,9 +19,11 @@
 #include <random>
 #include <memory>
 #include <algorithm>
+#include <sstream>
 
 #include "util.h"
 #include "stringpool.h"
+#include "seriesparser.h"
 
 namespace Akumuli {
 
@@ -81,6 +83,40 @@ static StringT skip_metric_name(const char* begin, const char* end) {
     }
     return std::make_pair(m, p - m);
 }
+
+StringT tostrt(const char* p) {
+    return std::make_pair(p, strlen(p));
+}
+
+StringT tostrt(std::string const& s) {
+    return std::make_pair(s.data(), s.size());
+}
+
+std::string fromstrt(StringT s) {
+    return std::string(s.first, s.first + s.second);
+}
+
+/**
+ * @brief Split tag=value pair into tag and value
+ * @return true on success, false otherwise
+ */
+static bool split_pair(StringT pair, StringT* outtag, StringT* outval) {
+    const char* p = pair.first;
+    const char* end = p + pair.second;
+    while (*p != '=' && p < end) {
+        p++;
+    }
+    if (p == end) {
+        return false;
+    }
+    *outtag = std::make_pair(pair.first, p - pair.first);
+    *outval = std::make_pair(p + 1, pair.second - (p - pair.first + 1));
+    return true;
+}
+
+//                       //
+//  TwoUnivHashFnFamily  //
+//                       //
 
 TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
     : INTERNAL_CARDINALITY_(cardinality)
@@ -504,6 +540,259 @@ IndexQueryResultsIterator IndexQueryResults::begin() const {
 
 IndexQueryResultsIterator IndexQueryResults::end() const {
     return IndexQueryResultsIterator(postinglist_.end(), spool_);
+}
+
+
+//               //
+//  IncludeTags  //
+//               //
+
+IndexQueryResults IncludeTags::query(IndexBase const& index) const {
+    IndexQueryResults results = index.metric_query(metric_);
+    for(auto const& tv: pairs_) {
+        auto res = index.tagvalue_query(tv);
+        results = results.intersection(res);
+    }
+    return results.filter(metric_).filter(pairs_);
+}
+
+
+//                   //
+//  IncludeIfHasTag  //
+//                   //
+
+IndexQueryResults IncludeIfHasTag::query(IndexBase const& index) const {
+    // Query available tag=value pairs first
+    std::vector<TagValuePair> pairs;
+    auto values = index.list_tag_values(metric_.get_value(), tagname_);
+    for (auto val: values) {
+        std::stringstream str;
+        str << fromstrt(tagname_) << '=' << fromstrt(val);
+        auto kv = str.str();
+        pairs.emplace_back(kv.c_str());
+    }
+    IndexQueryResults results = index.metric_query(metric_);
+    for(auto const& tv: pairs) {
+        auto res = index.tagvalue_query(tv);
+        results = results.intersection(res);
+    }
+    return results.filter(metric_).filter(pairs);
+}
+
+
+//               //
+//  ExcludeTags  //
+//               //
+
+
+IndexQueryResults ExcludeTags::query(IndexBase const& index) const {
+    IndexQueryResults results = index.metric_query(metric_);
+    for(auto const& tv: pairs_) {
+        auto res = index.tagvalue_query(tv);
+        results = results.difference(res);
+    }
+    return results.filter(metric_);
+}
+
+
+//              //
+//  JoinByTags  //
+//              //
+
+IndexQueryResults JoinByTags::query(IndexBase const& index) const {
+    IndexQueryResults results;
+    for(auto const& m: metrics_) {
+        auto res = index.metric_query(m);
+        results = results.join(res);
+    }
+    for(auto const& tv: pairs_) {
+        auto res = index.tagvalue_query(tv);
+        results.difference(res);
+    }
+    return results.filter(metrics_).filter(pairs_);
+}
+
+
+//                      //
+//  SeriesNameTopology  //
+//                      //
+
+
+SeriesNameTopology::SeriesNameTopology()
+    : index_(StringTools::create_l3_table(1000))
+{
+}
+
+void SeriesNameTopology::add_name(StringT name) {
+    StringT metric = skip_metric_name(name.first, name.first + name.second);
+    StringT tags = std::make_pair(name.first + metric.second, name.second - metric.second);
+    auto it = index_.find(metric);
+    if (it == index_.end()) {
+        StringTools::L2TableT tagtable = StringTools::create_l2_table(1024);
+        index_[metric] = std::move(tagtable);
+        it = index_.find(metric);
+    }
+    // Iterate through tags
+    const char* p = tags.first;
+    const char* end = p + tags.second;
+    p = skip_space(p, end);
+    if (p == end) {
+        return;
+    }
+    // Check tags
+    bool error = false;
+    while (!error && p < end) {
+        const char* tag_start = p;
+        const char* tag_end = skip_tag(tag_start, end, &error);
+        auto tagstr = std::make_pair(tag_start, tag_end - tag_start);
+        StringT tag;
+        StringT val;
+        if (!split_pair(tagstr, &tag, &val)) {
+            error = true;
+        }
+        StringTools::L2TableT& tagtable = it->second;
+        auto tagit = tagtable.find(tag);
+        if (tagit == tagtable.end()) {
+            auto valtab = StringTools::create_set(1024);
+            tagtable[tag] = std::move(valtab);
+            tagit = tagtable.find(tag);
+        }
+        StringTools::SetT& valueset = tagit->second;
+        valueset.insert(val);
+        // next
+        p = skip_space(tag_end, end);
+    }
+}
+
+std::vector<StringT> SeriesNameTopology::list_metric_names() const {
+    std::vector<StringT> res;
+    std::transform(index_.begin(), index_.end(), std::back_inserter(res),
+                   [](std::pair<StringT, StringTools::L2TableT> const& v) {
+                        return v.first;
+                   });
+    return res;
+}
+
+std::vector<StringT> SeriesNameTopology::list_tags(StringT metric) const {
+    std::vector<StringT> res;
+    auto it = index_.find(metric);
+    if (it == index_.end()) {
+        return res;
+    }
+    std::transform(it->second.begin(), it->second.end(), std::back_inserter(res),
+                   [](std::pair<StringT, StringTools::SetT> const& v) {
+                        return v.first;
+                   });
+    return res;
+}
+
+std::vector<StringT> SeriesNameTopology::list_tag_values(StringT metric, StringT tag) const {
+    std::vector<StringT> res;
+    auto it = index_.find(metric);
+    if (it == index_.end()) {
+        return res;
+    }
+    auto vit = it->second.find(tag);
+    if (vit == it->second.end()) {
+        return res;
+    }
+    const auto& set = vit->second;
+    std::copy(set.begin(), set.end(), std::back_inserter(res));
+    return res;
+}
+
+//         //
+//  Index  //
+//         //
+
+Index::Index()
+    : table_(StringTools::create_table(100000))
+    , metrics_names_(1024)
+    , tagvalue_pairs_(1024)
+{
+}
+
+SeriesNameTopology const& Index::get_topology() const {
+    return topology_;
+}
+
+size_t Index::cardinality() const {
+    return table_.size();
+}
+
+size_t Index::memory_use() const {
+    // TODO: use counting allocator for table_ to provide memory stats
+    size_t sm = metrics_names_.get_size_in_bytes();
+    size_t st = tagvalue_pairs_.get_size_in_bytes();
+    size_t sp = pool_.mem_used();
+    return sm + st + sp;
+}
+
+size_t Index::index_memory_use() const {
+    // TODO: use counting allocator for table_ to provide memory stats
+    size_t sm = metrics_names_.get_size_in_bytes();
+    size_t st = tagvalue_pairs_.get_size_in_bytes();
+    return sm + st;
+}
+
+size_t Index::pool_memory_use() const {
+    return pool_.mem_used();
+}
+
+aku_Status Index::append(const char* begin, const char* end) {
+    // Parse string value and sort tags alphabetically
+    const char* tags_begin;
+    const char* tags_end;
+    char buffer[0x1000];
+    auto status = SeriesParser::to_normal_form(begin, end, buffer, buffer + 0x1000, &tags_begin, &tags_end);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    // Check if name is already been added
+    auto name = std::make_pair(static_cast<const char*>(buffer), tags_end - buffer);
+    if (table_.count(name) == 0) {
+        // insert value
+        auto id = pool_.add(buffer, tags_end);
+        if (id == 0) {
+            return AKU_EBAD_DATA;
+        }
+        write_tags(tags_begin, tags_end, &tagvalue_pairs_, id);
+        name = pool_.str(id);  // name now have the same lifetime as pool
+        table_[name] = id;
+        auto mname = skip_metric_name(buffer, tags_begin);
+        if (mname.second == 0) {
+            return AKU_EBAD_DATA;
+        }
+        auto mhash = StringTools::hash(mname);
+        metrics_names_.add(mhash, id);
+        // update topology
+        topology_.add_name(name);
+    }
+    return AKU_SUCCESS;
+}
+
+IndexQueryResults Index::tagvalue_query(const TagValuePair &value) const {
+    auto hash = StringTools::hash(value.get_value());
+    auto post = tagvalue_pairs_.extract(hash);
+    return IndexQueryResults(std::move(post), &pool_);
+}
+
+IndexQueryResults Index::metric_query(const MetricName &value) const {
+    auto hash = StringTools::hash(value.get_value());
+    auto post = metrics_names_.extract(hash);
+    return IndexQueryResults(std::move(post), &pool_);
+}
+
+std::vector<StringT> Index::list_metric_names() const {
+    return topology_.list_metric_names();
+}
+
+std::vector<StringT> Index::list_tags(StringT metric) const {
+    return topology_.list_tags(metric);
+}
+
+std::vector<StringT> Index::list_tag_values(StringT metric, StringT tag) const {
+    return topology_.list_tag_values(metric, tag);
 }
 
 }  // namespace
