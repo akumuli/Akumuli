@@ -17,6 +17,7 @@
 #pragma once
 #include "akumuli.h"
 #include "hashfnfamily.h"
+#include "stringpool.h"
 #include "util.h"
 
 #include <memory>
@@ -325,6 +326,187 @@ public:
     CompressedPListConstIterator begin() const;
 
     CompressedPListConstIterator end() const;
+};
+
+
+//            //
+//  CMSketch  //
+//            //
+
+class CMSketch {
+    typedef CompressedPList TVal;
+    std::vector<std::vector<TVal>> table_;
+    const u32 N;
+    const u32 M;
+    const u32 mask_;
+    const u32 bits_;
+
+    inline u32 extracthash(u64 key, u32 i) const {
+        u32 hash = (key >> (i * bits_)) & mask_;
+        return hash;
+    }
+public:
+    CMSketch(u32 M);
+
+    void add(u64 key, u64 value);
+
+    size_t get_size_in_bytes() const;
+
+    TVal extract(u64 value) const;
+};
+
+
+//              //
+//  MetricName  //
+//              //
+
+class MetricName {
+    std::string name_;
+public:
+    MetricName(const char* begin, const char* end);
+
+    MetricName(const char* str);
+
+    StringT get_value() const;
+
+    bool check(const char* begin, const char* end) const;
+};
+
+
+//                //
+//  TagValuePair  //
+//                //
+
+/**
+ * @brief Tag value pair
+ */
+class TagValuePair {
+    std::string value_;  //! Value that holds both tag and value
+public:
+    TagValuePair(const char* begin, const char* end);
+
+    TagValuePair(const char* str);
+
+    StringT get_value() const;
+
+    bool check(const char* begin, const char* end) const;
+};
+
+
+//                             //
+//  IndexQueryResultsIterator  //
+//                             //
+
+/**
+ * Iterates through query results.
+ * This is a pretty minimal implementation, only one ++ operator
+ * variant is implemented and no move semantics and traits.
+ * It works with set algorithms but shouldn't work with all
+ * std algorithms in general.
+ */
+class IndexQueryResultsIterator {
+    CompressedPListConstIterator it_;
+    StringPool const* spool_;
+public:
+    IndexQueryResultsIterator(CompressedPListConstIterator postinglist, StringPool const* spool);
+
+    StringT operator * () const;
+
+    IndexQueryResultsIterator& operator ++ ();
+
+    bool operator == (IndexQueryResultsIterator const& other) const;
+
+    bool operator != (IndexQueryResultsIterator const& other) const;
+};
+
+
+//                     //
+//  IndexQueryResults  //
+//                     //
+
+class IndexQueryResults {
+    CompressedPList postinglist_;
+    StringPool const* spool_;
+public:
+    IndexQueryResults();
+
+    IndexQueryResults(CompressedPList&& plist, StringPool const* spool);
+
+    IndexQueryResults(IndexQueryResults const& other);
+
+    IndexQueryResults& operator = (IndexQueryResults && other);
+
+    IndexQueryResults(IndexQueryResults&& plist);
+
+    template<class Checkable>
+    IndexQueryResults filter(std::vector<Checkable> const& values) {
+        bool rewrite = false;
+        // Check for falce positives
+        for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
+            auto id = *it;
+            auto str = spool_->str(id);
+            for (auto const& value: values) {
+                if (!value.check(str.first, str.first + str.second)) {
+                    rewrite = true;
+                    break;
+                }
+            }
+        }
+        if (rewrite) {
+            // This code only gets triggered when false positives are present
+            CompressedPList newplist;
+            for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
+                auto id = *it;
+                auto str = spool_->str(id);
+                for (auto const& value: values) {
+                    if (value.check(str.first, str.first + str.second)) {
+                        newplist.add(id);
+                    }
+                }
+            }
+            return IndexQueryResults(std::move(newplist), spool_);
+        }
+        return *this;
+    }
+
+    template<class Checkable>
+    IndexQueryResults filter(Checkable const& value) {
+        bool rewrite = false;
+        // Check for falce positives
+        for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
+            auto id = *it;
+            auto str = spool_->str(id);
+            if (!value.check(str.first, str.first + str.second)) {
+                rewrite = true;
+                break;
+            }
+        }
+        if (rewrite) {
+            // This code only gets triggered when false positives are present
+            CompressedPList newplist;
+            for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
+                auto id = *it;
+                auto str = spool_->str(id);
+                if (value.check(str.first, str.first + str.second)) {
+                    newplist.add(id);
+                }
+            }
+            return IndexQueryResults(std::move(newplist), spool_);
+        }
+        return *this;
+    }
+
+    IndexQueryResults intersection(IndexQueryResults const& other);
+
+    IndexQueryResults difference(IndexQueryResults const& other);
+
+    IndexQueryResults join(IndexQueryResults const& other);
+
+    size_t cardinality() const;
+
+    IndexQueryResultsIterator begin() const;
+
+    IndexQueryResultsIterator end() const;
 };
 
 }  // namespace

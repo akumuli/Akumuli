@@ -20,9 +20,67 @@
 #include <memory>
 #include <algorithm>
 
+#include "util.h"
+#include "stringpool.h"
+
 namespace Akumuli {
 
-static const int CARDINALITY = 3;
+//! Move pointer to the of the whitespace, return this pointer or end on error
+static const char* skip_space(const char* p, const char* end) {
+    while(p < end && (*p == ' ' || *p == '\t')) {
+        p++;
+    }
+    return p;
+}
+
+//! Move pointer to the beginning of the next tag, return this pointer or end on error
+static const char* skip_tag(const char* p, const char* end, bool *error) {
+    // skip until '='
+    while(p < end && *p != '=' && *p != ' ' && *p != '\t') {
+        p++;
+    }
+    if (p == end || *p != '=') {
+        *error = true;
+        return end;
+    }
+    // skip until ' '
+    const char* c = p;
+    while(c < end && *c != ' ') {
+        c++;
+    }
+    *error = c == p;
+    return c;
+}
+
+static bool write_tags(const char* begin, const char* end, CMSketch* dest_sketch, u64 id) {
+    const char* tag_begin = begin;
+    const char* tag_end = begin;
+    bool err = false;
+    while(!err && tag_begin != end) {
+        tag_begin = skip_space(tag_begin, end);
+        tag_end = tag_begin;
+        tag_end = skip_tag(tag_end, end, &err);
+        auto tagpair = std::make_pair(tag_begin, static_cast<u32>(tag_end - tag_begin));
+        u64 hash = StringTools::hash(tagpair);
+        dest_sketch->add(hash, id);
+        tag_begin = tag_end;
+    }
+    return err;
+}
+
+static StringT skip_metric_name(const char* begin, const char* end) {
+    const char* p = begin;
+    // skip metric name
+    p = skip_space(p, end);
+    if (p == end) {
+        return std::make_pair(nullptr, 0);
+    }
+    const char* m = p;
+    while(*p != ' ') {
+        p++;
+    }
+    return std::make_pair(m, p - m);
+}
 
 TwoUnivHashFnFamily::TwoUnivHashFnFamily(int cardinality, size_t modulo)
     : INTERNAL_CARDINALITY_(cardinality)
@@ -218,6 +276,234 @@ CompressedPListConstIterator CompressedPList::begin() const {
 CompressedPListConstIterator CompressedPList::end() const {
     assert(!moved_);
     return CompressedPListConstIterator(buffer_, cardinality_, false);
+}
+
+//  CMSketch  //
+
+CMSketch::CMSketch(u32 M)
+    : N(3)
+    , M(M)
+    , mask_(M-1)
+    , bits_(static_cast<u32>(log2(static_cast<i64>(mask_))))
+{
+    // M should be a power of two
+    if ((mask_&M) != 0) {
+        std::runtime_error err("invalid argument K (should be a power of two)");
+        throw err;
+    }
+    table_.resize(N);
+    for (auto& row: table_) {
+        row.resize(M);
+    }
+}
+
+void CMSketch::add(u64 key, u64 value) {
+    for (u32 i = 0; i < N; i++) {
+        // calculate hash from id to K
+        u32 hash = extracthash(key, i);
+        table_[i][hash].add(value);
+    }
+}
+
+size_t CMSketch::get_size_in_bytes() const {
+    size_t sum = 0;
+    for (auto const& row: table_) {
+        for (auto const& bmp: row) {
+            sum += bmp.getSizeInBytes();
+        }
+    }
+    return sum;
+}
+
+CMSketch::TVal CMSketch::extract(u64 value) const {
+    std::vector<const TVal*> inputs;
+    for (u32 i = 0; i < N; i++) {
+        // calculate hash from id to K
+        u32 hash = extracthash(value, i);
+        inputs.push_back(&table_[i][hash]);
+    }
+    return *inputs[0] & *inputs[1] & *inputs[2];
+}
+
+
+//              //
+//  MetricName  //
+//              //
+
+MetricName::MetricName(const char* begin, const char* end)
+    : name_(begin, end)
+{
+}
+
+MetricName::MetricName(const char* str)
+    : name_(str)
+{
+}
+
+StringT MetricName::get_value() const {
+    return std::make_pair(name_.data(), name_.size());
+}
+
+bool MetricName::check(const char* begin, const char* end) const {
+    auto name = skip_metric_name(begin, end);
+    if (name.second == 0) {
+        return false;
+    }
+    // compare
+    bool eq = std::equal(name.first, name.first + name.second, name_.begin(), name_.end());
+    if (eq) {
+        return true;
+    }
+    return false;
+}
+
+
+//                //
+//  TagValuePair  //
+//                //
+
+TagValuePair::TagValuePair(const char* begin, const char* end)
+    : value_(begin, end)
+{
+}
+
+TagValuePair::TagValuePair(const char* str)
+    : value_(str)
+{
+}
+
+StringT TagValuePair::get_value() const {
+    return std::make_pair(value_.data(), value_.size());
+}
+
+bool TagValuePair::check(const char* begin, const char* end) const {
+    const char* p = begin;
+    // skip metric name
+    p = skip_space(p, end);
+    if (p == end) {
+        return false;
+    }
+    while(*p != ' ') {
+        p++;
+    }
+    p = skip_space(p, end);
+    if (p == end) {
+        return false;
+    }
+    // Check tags
+    bool error = false;
+    while (!error && p < end) {
+        const char* tag_start = p;
+        const char* tag_end = skip_tag(tag_start, end, &error);
+        bool eq = std::equal(tag_start, tag_end, value_.begin(), value_.end());
+        if (eq) {
+            return true;
+        }
+        p = skip_space(tag_end, end);
+    }
+    return false;
+}
+
+
+//                             //
+//  IndexQueryResultsIterator  //
+//                             //
+
+IndexQueryResultsIterator::IndexQueryResultsIterator(CompressedPListConstIterator postinglist, StringPool const* spool)
+    : it_(postinglist)
+    , spool_(spool)
+{
+}
+
+StringT IndexQueryResultsIterator::operator * () const {
+    auto id = *it_;
+    auto str = spool_->str(id);
+    return str;
+}
+
+IndexQueryResultsIterator& IndexQueryResultsIterator::operator ++ () {
+    ++it_;
+    return *this;
+}
+
+bool IndexQueryResultsIterator::operator == (IndexQueryResultsIterator const& other) const {
+    return it_ == other.it_;
+}
+
+bool IndexQueryResultsIterator::operator != (IndexQueryResultsIterator const& other) const {
+    return it_ != other.it_;
+}
+
+
+//                     //
+//  IndexQueryResults  //
+//                     //
+
+IndexQueryResults::IndexQueryResults()
+    : spool_(nullptr)
+{}
+
+IndexQueryResults::IndexQueryResults(CompressedPList&& plist, StringPool const* spool)
+    : postinglist_(plist)
+    , spool_(spool)
+{
+}
+
+IndexQueryResults::IndexQueryResults(IndexQueryResults const& other)
+    : postinglist_(other.postinglist_)
+    , spool_(other.spool_)
+{
+}
+
+IndexQueryResults& IndexQueryResults::operator = (IndexQueryResults && other) {
+    if (this == &other) {
+        return *this;
+    }
+    postinglist_ = std::move(other.postinglist_);
+    spool_ = other.spool_;
+    return *this;
+}
+
+IndexQueryResults::IndexQueryResults(IndexQueryResults&& plist)
+    : postinglist_(std::move(plist.postinglist_))
+    , spool_(plist.spool_)
+{
+}
+
+IndexQueryResults IndexQueryResults::intersection(IndexQueryResults const& other) {
+    if (spool_ == nullptr) {
+        spool_ = other.spool_;
+    }
+    IndexQueryResults result(postinglist_ & other.postinglist_, spool_);
+    return result;
+}
+
+IndexQueryResults IndexQueryResults::difference(IndexQueryResults const& other) {
+    if (spool_ == nullptr) {
+        spool_ = other.spool_;
+    }
+    IndexQueryResults result(postinglist_ ^ other.postinglist_, spool_);
+    return result;
+}
+
+IndexQueryResults IndexQueryResults::join(IndexQueryResults const& other) {
+    if (spool_ == nullptr) {
+        spool_ = other.spool_;
+    }
+    IndexQueryResults result(postinglist_ | other.postinglist_, spool_);
+    return result;
+}
+
+size_t IndexQueryResults::cardinality() const {
+    return postinglist_.cardinality();
+}
+
+IndexQueryResultsIterator IndexQueryResults::begin() const {
+    return IndexQueryResultsIterator(postinglist_.begin(), spool_);
+}
+
+IndexQueryResultsIterator IndexQueryResults::end() const {
+    return IndexQueryResultsIterator(postinglist_.end(), spool_);
 }
 
 }  // namespace
