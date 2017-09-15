@@ -179,6 +179,7 @@ add_executable(
     ../libakumuli/log_iface.cpp
     ../libakumuli/index/seriesparser.cpp
     ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/crc32c.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/storage_engine/blockstore.cpp
@@ -226,6 +227,7 @@ add_executable(
     test_parser.cpp
     ../libakumuli/index/seriesparser.cpp
     ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
@@ -251,6 +253,7 @@ add_executable(
     ../libakumuli/hashfnfamily.cpp
     ../libakumuli/index/seriesparser.cpp
     ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
@@ -374,6 +377,7 @@ add_executable(
     ../libakumuli/crc32c.cpp
     ../libakumuli/index/seriesparser.cpp
     ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/metadatastorage.cpp
 )
 

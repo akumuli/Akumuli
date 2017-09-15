@@ -56,7 +56,7 @@ namespace StorageEngine {
 class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     std::shared_ptr<StorageEngine::BlockStore> blockstore_;
     std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList>> columns_;
-    SeriesMatcher global_matcher_;
+    LegacySeriesMatcher global_matcher_;
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
     //! Mutex for metadata storage and rescue points list

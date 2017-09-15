@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
 BOOST_AUTO_TEST_CASE(Test_seriesmatcher_0) {
 
-    SeriesMatcher matcher(1ul);
+    LegacySeriesMatcher matcher(1ul);
     const char* foo = "foobar";
     const char* bar = "barfoobar";
     const char* buz = "buz";

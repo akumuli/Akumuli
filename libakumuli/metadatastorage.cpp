@@ -95,7 +95,7 @@ MetadataStorage::MetadataStorage(const char* db)
 
 void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names) {
     // Make temporary copies under the lock
-    std::vector<SeriesMatcher::SeriesNameT>           newnames;
+    std::vector<LegacySeriesMatcher::SeriesNameT>           newnames;
     std::unordered_map<aku_ParamId, std::vector<u64>> rescue_points;
     std::unordered_map<u32, VolumeDesc>               volume_records;
     {
@@ -524,7 +524,7 @@ boost::optional<u64> MetadataStorage::get_prev_largest_id() {
     }
 }
 
-aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
+aku_Status MetadataStorage::load_matcher_data(LegacySeriesMatcher& matcher) {
     auto query = "SELECT series_id || ' ' || keyslist, storage_id FROM akumuli_series;";
     try {
         auto results = select_query(query);

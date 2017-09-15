@@ -689,7 +689,11 @@ public:
 
     size_t pool_memory_use() const;
 
-    aku_Status append(const char* begin, const char* end);
+    /**
+     * @brief Add new string to index
+     * @return status and resulting string (scope of the string is the same as the scope of the index)
+     */
+    std::tuple<aku_Status, StringT> append(const char* begin, const char* end);
 
     virtual IndexQueryResults tagvalue_query(const TagValuePair &value) const;
 

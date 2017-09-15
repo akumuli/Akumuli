@@ -54,7 +54,7 @@ aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> 
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(SeriesMatcher const& matcher) const {
+std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(LegacySeriesMatcher const& matcher) const {
     std::vector<aku_ParamId> ids;
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
     if (metric_.empty()) {
@@ -101,7 +101,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    SeriesMatcher::StringT name = matcher.id2str(id);
+                    LegacySeriesMatcher::StringT name = matcher.id2str(id);
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -122,7 +122,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     return std::make_tuple(AKU_SUCCESS, ids);
 }
 
-std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(SeriesMatcher const& matcher) const {
+std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(LegacySeriesMatcher const& matcher) const {
     std::vector<aku_ParamId> ids;
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
     if (metric_.empty()) {
@@ -169,7 +169,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Se
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    SeriesMatcher::StringT name = matcher.id2str(id);
+                    LegacySeriesMatcher::StringT name = matcher.id2str(id);
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -449,7 +449,7 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
   */
 static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                                            std::vector<std::string> metrics,
-                                                                           SeriesMatcher const& matcher)
+                                                                           LegacySeriesMatcher const& matcher)
 {
     aku_Status status = AKU_SUCCESS;
     std::vector<aku_ParamId> output;
@@ -494,7 +494,7 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
   */
 static std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_search(boost::property_tree::ptree const& ptree,
                                                                      std::vector<std::string> metrics,
-                                                                     SeriesMatcher const& matcher)
+                                                                     LegacySeriesMatcher const& matcher)
 {
     aku_Status status = AKU_SUCCESS;
     std::vector<aku_ParamId> output;
@@ -633,7 +633,7 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
  */
 std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta_query(
         boost::property_tree::ptree const& ptree,
-        SeriesMatcher const& matcher)
+        LegacySeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> ids;
     aku_Status status = validate_query(ptree);
@@ -663,7 +663,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
 }
 
 std::tuple<aku_Status, std::vector<aku_ParamId>>
-    QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher)
+    QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> ids;
     aku_Status status = validate_query(ptree);
@@ -686,7 +686,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>>
 
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
                                                     boost::property_tree::ptree const& ptree,
-                                                    const SeriesMatcher &matcher)
+                                                    const LegacySeriesMatcher &matcher)
 {
     ReshapeRequest result = {};
 
@@ -748,13 +748,13 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<LegacySeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
-std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
+std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher) {
     ReshapeRequest result = {};
 
     aku_Status status = validate_query(ptree);
@@ -823,19 +823,19 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_aggregate_query(boost:
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<LegacySeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
 static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
-                                                  SeriesMatcher const& global_matcher,
+                                                  LegacySeriesMatcher const& global_matcher,
                                                   std::string metric_name,
                                                   std::vector<AggregationFunction> const& func_names)
 {
     std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
-    auto matcher = std::make_shared<SeriesMatcher>();
+    auto matcher = std::make_shared<LegacySeriesMatcher>();
     for (auto id: ids) {
         auto sname = global_matcher.id2str(id);
         std::string name(sname.first, sname.first + sname.second);
@@ -861,7 +861,7 @@ static aku_Status init_matcher_in_group_aggregate(ReshapeRequest* req,
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
+std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher) {
     ReshapeRequest result = {};
 
     aku_Status status = validate_query(ptree);
@@ -931,7 +931,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<SeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<LegacySeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
@@ -939,7 +939,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
 }
 
 static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
-                                             SeriesMatcher const& global_matcher,
+                                             LegacySeriesMatcher const& global_matcher,
                                              std::vector<std::string> const& metric_names)
 {
     if (req->select.columns.size() < 2) {
@@ -951,7 +951,7 @@ static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
         return AKU_EBAD_ARG;
     }
     std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
-    auto matcher = std::make_shared<SeriesMatcher>();
+    auto matcher = std::make_shared<LegacySeriesMatcher>();
     for (auto id: ids) {
         auto sname = global_matcher.id2str(id);
         std::string name(sname.first, sname.first + sname.second);
@@ -978,7 +978,7 @@ static aku_Status init_matcher_in_join_query(ReshapeRequest* req,
 }
 
 std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::property_tree::ptree const& ptree,
-                                                                     SeriesMatcher const& matcher)
+                                                                     LegacySeriesMatcher const& matcher)
 {
     ReshapeRequest result = {};
     aku_Status status = validate_query(ptree);

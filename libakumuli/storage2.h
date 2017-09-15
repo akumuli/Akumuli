@@ -42,10 +42,10 @@ class Storage;
 
 class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<Storage> storage_;
-    SeriesMatcher local_matcher_;
+    LegacySeriesMatcher local_matcher_;
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
-    mutable std::shared_ptr<SeriesMatcher> matcher_substitute_;
+    mutable std::shared_ptr<LegacySeriesMatcher> matcher_substitute_;
 public:
     StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
 
@@ -74,7 +74,7 @@ public:
     void suggest(InternalCursor* cur, const char* query) const;
 
     // Temporary reset series matcher
-    void set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const;
+    void set_series_matcher(std::shared_ptr<LegacySeriesMatcher> matcher) const;
     void clear_series_matcher() const;
 };
 
@@ -84,7 +84,7 @@ class Storage : public std::enable_shared_from_this<Storage> {
     std::atomic<int> done_;
     boost::barrier close_barrier_;
     mutable std::mutex lock_;
-    SeriesMatcher global_matcher_;
+    LegacySeriesMatcher global_matcher_;
     std::shared_ptr<MetadataStorage> metadata_;
 
     void start_sync_worker();
@@ -105,9 +105,9 @@ public:
             bool                                        start_worker);
 
     //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
+    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, LegacySeriesMatcher *local_matcher);
 
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, LegacySeriesMatcher *local_matcher);
 
     //! Create new write session
     std::shared_ptr<StorageSession> create_write_session();

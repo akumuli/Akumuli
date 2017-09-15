@@ -739,14 +739,15 @@ size_t Index::pool_memory_use() const {
     return pool_.mem_used();
 }
 
-aku_Status Index::append(const char* begin, const char* end) {
+std::tuple<aku_Status, StringT> Index::append(const char* begin, const char* end) {
+    static StringT EMPTY_STRING = std::make_pair(nullptr, 0);
     // Parse string value and sort tags alphabetically
     const char* tags_begin;
     const char* tags_end;
     char buffer[0x1000];
     auto status = SeriesParser::to_normal_form(begin, end, buffer, buffer + 0x1000, &tags_begin, &tags_end);
     if (status != AKU_SUCCESS) {
-        return status;
+        return std::make_tuple(status, EMPTY_STRING);
     }
     // Check if name is already been added
     auto name = std::make_pair(static_cast<const char*>(buffer), tags_end - buffer);
@@ -754,21 +755,23 @@ aku_Status Index::append(const char* begin, const char* end) {
         // insert value
         auto id = pool_.add(buffer, tags_end);
         if (id == 0) {
-            return AKU_EBAD_DATA;
+            return std::make_tuple(AKU_EBAD_DATA, EMPTY_STRING);
         }
         write_tags(tags_begin, tags_end, &tagvalue_pairs_, id);
         name = pool_.str(id);  // name now have the same lifetime as pool
         table_[name] = id;
         auto mname = skip_metric_name(buffer, tags_begin);
         if (mname.second == 0) {
-            return AKU_EBAD_DATA;
+            return std::make_tuple(AKU_EBAD_DATA, EMPTY_STRING);
         }
         auto mhash = StringTools::hash(mname);
         metrics_names_.add(mhash, id);
         // update topology
         topology_.add_name(name);
+        return std::make_tuple(AKU_SUCCESS, name);
     }
-    return AKU_SUCCESS;
+    auto it = table_.find(name);
+    return std::make_tuple(AKU_SUCCESS, it->first);
 }
 
 IndexQueryResults Index::tagvalue_query(const TagValuePair &value) const {

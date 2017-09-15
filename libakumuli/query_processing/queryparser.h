@@ -35,9 +35,9 @@ public:
     aku_Status add_tags(std::string name, std::vector<std::string> values);
 
     //! Get results
-    std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(SeriesMatcher const& matcher) const;
+    std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(LegacySeriesMatcher const& matcher) const;
 
-    std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_match(SeriesMatcher const& matcher) const;
+    std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_match(LegacySeriesMatcher const& matcher) const;
 };
 
 
@@ -53,13 +53,13 @@ struct QueryParser {
       * @param ptree contains query
       * @returns status and ReshapeRequest
       */
-    static std::tuple<aku_Status, ReshapeRequest> parse_select_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, ReshapeRequest> parse_select_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher);
 
     /** Parse select query (metadata query).
       * @param ptree is a property tree generated from query json
       * @param matcher is a global matcher
       */
-    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_meta_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_select_meta_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher);
 
     /**
      * @brief Parse suggest query
@@ -67,15 +67,15 @@ struct QueryParser {
      * @param matcher is a series matcher object
      */
     static std::tuple<aku_Status, std::vector<aku_ParamId>>
-        parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+        parse_suggest_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher);
 
     /** Parse aggregate query and produce reshape request.
      */
-    static std::tuple<aku_Status, ReshapeRequest> parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, ReshapeRequest> parse_aggregate_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher);
 
     /** Parse join query and create `reshape` request for column-store.
      */
-    static std::tuple<aku_Status, ReshapeRequest> parse_join_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+    static std::tuple<aku_Status, ReshapeRequest> parse_join_query(boost::property_tree::ptree const& ptree, LegacySeriesMatcher const& matcher);
 
     /**
      * Parse group-aggregate query
@@ -84,7 +84,7 @@ struct QueryParser {
      * @return status and request object
      */
     static std::tuple<aku_Status, ReshapeRequest> parse_group_aggregate_query(boost::property_tree::ptree const& ptree,
-                                                                              SeriesMatcher const& matcher);
+                                                                              LegacySeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query

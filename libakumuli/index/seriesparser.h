@@ -17,6 +17,7 @@
 #pragma once
 #include "akumuli_def.h"
 #include "index/stringpool.h"
+#include "index/invertedindex.h"
 
 #include <deque>
 #include <map>
@@ -33,10 +34,34 @@ namespace Akumuli {
 static const u64 AKU_STARTING_SERIES_ID = 1024;
 
 
+/** Series index. Can be used to retreive series names and ids by tags.
+  */
+struct SeriesMatcher {
+    //! Series name descriptor - pointer to string, length, series id.
+    typedef std::tuple<const char*, int, u64> SeriesNameT;
+
+    typedef StringTools::TableT TableT;
+    typedef StringTools::InvT   InvT;
+
+    Index                    index;      //! Series name index and storage
+    TableT                   table;      //! Series table (name to id mapping)
+    InvT                     inv_table;  //! Ids table (id to name mapping)
+    u64                      series_id;  //! Series ID counter
+    std::vector<SeriesNameT> names;      //! List of recently added names
+    mutable std::mutex       mutex;      //! Mutex for shared data
+
+    SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
+
+    /** Add new string to matcher.
+      */
+    u64 add(const char* begin, const char* end);
+};
+
+
 /** Series matcher. Table that maps series names to series
   * ids. Should be initialized on startup from sqlite table.
   */
-struct SeriesMatcher {
+struct LegacySeriesMatcher {
     //! Pooled string
     typedef StringTools::StringT StringT;
     //! Series name descriptor - pointer to string, length, series id.
@@ -46,14 +71,14 @@ struct SeriesMatcher {
     typedef StringTools::InvT   InvT;
 
     // Variables
-    LegacyStringPool               pool;       //! String pool that stores time-series
+    LegacyStringPool         pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
     u64                      series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
     mutable std::mutex       mutex;      //! Mutex for shared data
 
-    SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
+    LegacySeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */
@@ -119,23 +144,6 @@ struct SeriesParser {
 };
 
 
-/** Filter series using regex.
-  */
-struct RegexFilter {
-    std::string regex_;
-    std::unordered_set<aku_ParamId> ids_;
-    SeriesMatcher const& matcher_;
-    StringPoolOffset offset_;
-    size_t prev_size_;
-
-    RegexFilter(std::string regex, SeriesMatcher const& matcher);
-
-    void refresh();
-
-    std::vector<aku_ParamId> get_ids();
-};
-
-
 /** Group-by processor. Maps set of global series names to
   * some other set of local series ids.
   */
@@ -144,7 +152,7 @@ struct GroupByTag {
     //! Mapping from global parameter ids to local parameter ids
     std::unordered_map<aku_ParamId, aku_ParamId> ids_;
     //! Shared series matcher
-    SeriesMatcher const& matcher_;
+    LegacySeriesMatcher const& matcher_;
     //! Previous string pool offset
     StringPoolOffset offset_;
     //! Previous string pool size
@@ -152,12 +160,12 @@ struct GroupByTag {
     //! List of tags of interest
     std::vector<std::string> tags_;
     //! Local string pool. All transient series names lives here.
-    SeriesMatcher local_matcher_;
+    LegacySeriesMatcher local_matcher_;
     //! List of string already added string pool
     StringTools::SetT snames_;
 
     //! Main c-tor
-    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
+    GroupByTag(const LegacySeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
 
     void refresh_();
 

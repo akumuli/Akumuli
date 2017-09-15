@@ -29,11 +29,9 @@
 
 namespace Akumuli {
 
-//                          //
-//      Series Matcher      //
-//                          //
-
-static const SeriesMatcher::StringT EMPTY = std::make_pair(nullptr, 0);
+//                        //
+//     SeriesMatcher      //
+//                        //
 
 SeriesMatcher::SeriesMatcher(u64 starting_id)
     : table(StringTools::create_table(0x1000))
@@ -45,6 +43,38 @@ SeriesMatcher::SeriesMatcher(u64 starting_id)
 }
 
 u64 SeriesMatcher::add(const char* begin, const char* end) {
+    std::lock_guard<std::mutex> guard(mutex);
+    auto id = series_id++;
+    aku_Status status;
+    StringT sname;
+    std::tie(status, sname) = index.append(begin, end);
+    if (status != AKU_SUCCESS) {
+        series_id = id;
+        return 0;
+    }
+    auto tup = std::make_tuple(std::get<0>(sname), std::get<1>(sname), id);
+    table[sname] = id;
+    inv_table[id] = sname;
+    names.push_back(tup);
+    return id;
+}
+
+//                          //
+//   LegacySeriesMatcher    //
+//                          //
+
+static const LegacySeriesMatcher::StringT EMPTY = std::make_pair(nullptr, 0);
+
+LegacySeriesMatcher::LegacySeriesMatcher(u64 starting_id)
+    : table(StringTools::create_table(0x1000))
+    , series_id(starting_id)
+{
+    if (starting_id == 0u) {
+        AKU_PANIC("Bad series ID");
+    }
+}
+
+u64 LegacySeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
     StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
@@ -55,7 +85,7 @@ u64 SeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
-void SeriesMatcher::_add(std::string series, u64 id) {
+void LegacySeriesMatcher::_add(std::string series, u64 id) {
     if (series.empty()) {
         return;
     }
@@ -67,14 +97,14 @@ void SeriesMatcher::_add(std::string series, u64 id) {
     inv_table[id] = pstr;
 }
 
-void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+void LegacySeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     StringT pstr = pool.add(begin, end);
     std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
-u64 SeriesMatcher::match(const char* begin, const char* end) const {
+u64 LegacySeriesMatcher::match(const char* begin, const char* end) const {
 
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
@@ -87,7 +117,7 @@ u64 SeriesMatcher::match(const char* begin, const char* end) const {
     return it->second;
 }
 
-SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
+LegacySeriesMatcher::StringT LegacySeriesMatcher::id2str(u64 tokenid) const {
     std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
@@ -96,12 +126,12 @@ SeriesMatcher::StringT SeriesMatcher::id2str(u64 tokenid) const {
     return it->second;
 }
 
-void SeriesMatcher::pull_new_names(std::vector<SeriesMatcher::SeriesNameT> *buffer) {
+void LegacySeriesMatcher::pull_new_names(std::vector<LegacySeriesMatcher::SeriesNameT> *buffer) {
     std::lock_guard<std::mutex> guard(mutex);
     std::swap(names, *buffer);
 }
 
-std::vector<u64> SeriesMatcher::get_all_ids() const {
+std::vector<u64> LegacySeriesMatcher::get_all_ids() const {
     std::vector<u64> result;
     {
         std::lock_guard<std::mutex> guard(mutex);
@@ -113,13 +143,13 @@ std::vector<u64> SeriesMatcher::get_all_ids() const {
     return result;
 }
 
-std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp) const {
+std::vector<LegacySeriesMatcher::SeriesNameT> LegacySeriesMatcher::regex_match(const char* rexp) const {
     StringPoolOffset offset = {};
     size_t size = 0;
     return regex_match(rexp, &offset, &size);
 }
 
-std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
+std::vector<LegacySeriesMatcher::SeriesNameT> LegacySeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
     std::vector<SeriesNameT> series;
     std::vector<LegacyStringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
 
@@ -349,40 +379,12 @@ std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesPa
 }
 
 
-// /////////// //
-// RegexFilter //
-// /////////// //
-
-RegexFilter::RegexFilter(std::string regex, SeriesMatcher const& matcher)
-    : regex_(regex)
-    , matcher_(matcher)
-    , offset_{}
-    , prev_size_(0ul)
-{
-    refresh();
-}
-
-void RegexFilter::refresh() {
-    std::vector<SeriesMatcher::SeriesNameT> results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
-    for (SeriesMatcher::SeriesNameT item: results) {
-        ids_.insert(std::get<2>(item));
-    }
-}
-
-std::vector<aku_ParamId> RegexFilter::get_ids() {
-    std::vector<aku_ParamId> result;
-    std::copy(ids_.begin(), ids_.end(), std::back_inserter(result));
-    std::sort(result.begin(), result.end());
-    return result;
-}
-
-
 // ////////// //
 // GroupByTag //
 // ////////// //
 
 
-GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const LegacySeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
