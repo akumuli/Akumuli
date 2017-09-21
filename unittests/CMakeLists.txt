@@ -230,6 +230,7 @@ add_executable(
     ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/datetime.cpp
 )
 
@@ -255,6 +256,7 @@ add_executable(
     ../libakumuli/index/stringpool.cpp
     ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
     # query_processing folder

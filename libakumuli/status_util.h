@@ -13,6 +13,8 @@ struct StatusUtil {
 
     //! Convert status to std::string
     static std::string str(aku_Status status);
+
+    static void throw_on_error(aku_Status status);
 };
 
 

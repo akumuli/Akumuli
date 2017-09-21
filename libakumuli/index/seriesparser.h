@@ -55,6 +55,37 @@ struct SeriesMatcher {
     /** Add new string to matcher.
       */
     u64 add(const char* begin, const char* end);
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    void _add(std::string series, u64 id);
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    void _add(const char*  begin, const char* end, u64 id);
+
+    /**
+      * Match string and return it's id. If string is new return 0.
+      */
+    u64 match(const char* begin, const char* end) const;
+
+    /**
+      * Convert id to string
+      */
+    StringT id2str(u64 tokenid) const;
+
+    /** Push all new elements to the buffer.
+      * @param buffer is an output parameter that will receive new elements
+      */
+    void pull_new_names(std::vector<SeriesNameT>* buffer);
+
+    std::vector<u64> get_all_ids() const;
 };
 
 

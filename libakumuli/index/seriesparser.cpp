@@ -18,6 +18,7 @@
 #include "seriesparser.h"
 #include "util.h"
 #include "datetime.h"
+#include "status_util.h"
 
 #include <string>
 #include <map>
@@ -32,6 +33,8 @@ namespace Akumuli {
 //                        //
 //     SeriesMatcher      //
 //                        //
+
+static const StringT EMPTY = std::make_pair(nullptr, 0);
 
 SeriesMatcher::SeriesMatcher(u64 starting_id)
     : table(StringTools::create_table(0x1000))
@@ -59,11 +62,66 @@ u64 SeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
+void SeriesMatcher::_add(std::string series, u64 id) {
+    if (series.empty()) {
+        return;
+    }
+    _add(series.data(), series.data() + series.size(), id);
+}
+
+void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+    std::lock_guard<std::mutex> guard(mutex);
+    aku_Status status;
+    StringT sname;
+    std::tie(status, sname) = index.append(begin, end);
+    StatusUtil::throw_on_error(status);
+    auto tup = std::make_tuple(std::get<0>(sname), std::get<1>(sname), id);
+    table[sname] = id;
+    inv_table[id] = sname;
+    names.push_back(tup);
+}
+
+u64 SeriesMatcher::match(const char* begin, const char* end) const {
+    int len = static_cast<int>(end - begin);
+    StringT str = std::make_pair(begin, len);
+
+    std::lock_guard<std::mutex> guard(mutex);
+    auto it = table.find(str);
+    if (it == table.end()) {
+        return 0ul;
+    }
+    return it->second;
+}
+
+StringT SeriesMatcher::id2str(u64 tokenid) const {
+    std::lock_guard<std::mutex> guard(mutex);
+    auto it = inv_table.find(tokenid);
+    if (it == inv_table.end()) {
+        return EMPTY;
+    }
+    return it->second;
+}
+
+void SeriesMatcher::pull_new_names(std::vector<LegacySeriesMatcher::SeriesNameT> *buffer) {
+    std::lock_guard<std::mutex> guard(mutex);
+    std::swap(names, *buffer);
+}
+
+std::vector<u64> SeriesMatcher::get_all_ids() const {
+    std::vector<u64> result;
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        for (auto const &tup: inv_table) {
+            result.push_back(tup.first);
+        }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
 //                          //
 //   LegacySeriesMatcher    //
 //                          //
-
-static const LegacySeriesMatcher::StringT EMPTY = std::make_pair(nullptr, 0);
 
 LegacySeriesMatcher::LegacySeriesMatcher(u64 starting_id)
     : table(StringTools::create_table(0x1000))
