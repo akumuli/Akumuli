@@ -50,33 +50,35 @@ aku_Sample make(aku_Timestamp t, aku_ParamId id, double value) {
 
 BOOST_AUTO_TEST_CASE(Test_stringpool_0) {
 
-    LegacyStringPool pool;
+    StringPool pool;
     const char* foo = "foo";
-    auto result_foo = pool.add(foo, foo + 3);
+    auto id_foo = pool.add(foo, foo + 3);
+    auto result_foo = pool.str(id_foo);
     const char* bar = "123456";
-    auto result_bar = pool.add(bar, bar + 6);
-    BOOST_REQUIRE_EQUAL(result_foo.second, 3);
+    auto id_bar = pool.add(bar, bar + 6);
+    auto result_bar = pool.str(id_bar);
     BOOST_REQUIRE_EQUAL(std::string(result_foo.first, result_foo.first + result_foo.second), foo);
-    BOOST_REQUIRE_EQUAL(result_bar.second, 6);
     BOOST_REQUIRE_EQUAL(std::string(result_bar.first, result_bar.first + result_bar.second), bar);
 }
 
 BOOST_AUTO_TEST_CASE(Test_seriesmatcher_0) {
 
-    LegacySeriesMatcher matcher(1ul);
-    const char* foo = "foobar";
-    const char* bar = "barfoobar";
-    const char* buz = "buz";
-    matcher.add(foo, foo+6);
-    matcher.add(bar, bar+9);
+    SeriesMatcher matcher(1ul);
+    const char* foo = "foo ba=r";
+    const char* bar = "bar foo=bar";
+    const char* buz = "buz b=uz";
+    auto exp_foo = matcher.add(foo, foo+8);
+    auto exp_bar = matcher.add(bar, bar+11);
 
-    auto foo_id = matcher.match(foo, foo+6);
+    auto foo_id = matcher.match(foo, foo+8);
     BOOST_REQUIRE_EQUAL(foo_id, 1ul);
+    BOOST_REQUIRE_EQUAL(foo_id, exp_foo);
 
-    auto bar_id = matcher.match(bar, bar+9);
+    auto bar_id = matcher.match(bar, bar+11);
     BOOST_REQUIRE_EQUAL(bar_id, 2ul);
+    BOOST_REQUIRE_EQUAL(bar_id, exp_bar);
 
-    auto buz_id = matcher.match(buz, buz+3);
+    auto buz_id = matcher.match(buz, buz+8);
     BOOST_REQUIRE_EQUAL(buz_id, 0ul);
 }
 
@@ -198,5 +200,34 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_6) {
     std::tie(status, result) = SeriesParser::filter_tags(name, filter, out);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(std::string("metric tag2=2 tag4=4"), std::string(result.first, result.first + result.second));
+}
+
+BOOST_AUTO_TEST_CASE(Test_index_0) {
+    SeriesMatcher matcher(10ul);
+    std::vector<std::string> names = {
+        "foo tagA=1 tagB=1",
+        "foo tagA=1 tagB=2",
+        "foo tagA=1 tagB=3",
+        "foo tagA=1 tagB=4",
+        "foo tagA=2 tagB=1",
+        "foo tagA=2 tagB=2",
+        "foo tagA=2 tagB=3",
+        "foo tagA=2 tagB=4",
+    };
+    std::vector<u64> ids;
+    for (auto name: names) {
+        auto id = matcher.add(name.data(), name.data() + name.size());
+        if (id == 0) {
+            BOOST_FAIL("Bad id");
+        }
+        ids.push_back(id);
+    }
+    MetricName mname("foo");
+    std::vector<TagValuePair> tags = {
+        TagValuePair("tagA=1")
+    };
+    IncludeTags query(mname, tags.begin(), tags.end());
+    auto res = matcher.search(query);
+    BOOST_REQUIRE_EQUAL(res.size(), 4);
 }
 
