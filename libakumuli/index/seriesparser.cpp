@@ -119,6 +119,40 @@ std::vector<u64> SeriesMatcher::get_all_ids() const {
     return result;
 }
 
+std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::search(IndexQueryNodeBase const& query) const {
+    std::vector<SeriesMatcher::SeriesNameT> result;
+    std::lock_guard<std::mutex> guard(mutex);
+    auto resultset = query.query(index);
+    for (auto it = resultset.begin(); it != resultset.end(); ++it) {
+        auto str = *it;
+        auto fit = table.find(str);
+        if (fit == table.end()) {
+            AKU_PANIC("Invalid index state");
+        }
+        result.push_back(std::make_tuple(str.first, str.second, fit->second));
+    }
+    return result;
+}
+
+std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char* end) const {
+    std::vector<StringT> results;
+    auto len = end - begin;
+    if (len < 4) {
+        return results;
+    }
+    std::lock_guard<std::mutex> guard(mutex);
+    auto names = index.get_topology().list_metric_names();
+    auto resit = std::remove_if(names.begin(), names.end(), [begin, end, len](StringT val) {
+        if (val.second < len) {
+            return true;
+        }
+        auto eq = std::equal(begin, end, val.first, val.first + len);
+        return !eq;
+    });
+    results.erase(resit, results.end());
+    return results;
+}
+
 //                          //
 //   LegacySeriesMatcher    //
 //                          //

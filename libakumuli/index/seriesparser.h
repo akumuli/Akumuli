@@ -86,6 +86,10 @@ struct SeriesMatcher {
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
     std::vector<u64> get_all_ids() const;
+
+    std::vector<SeriesNameT> search(IndexQueryNodeBase const& query) const;
+
+    std::vector<StringT> suggest_metric(const char* begin, const char* end) const;
 };
 
 
