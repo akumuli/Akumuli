@@ -171,7 +171,7 @@ CompressedPListConstIterator::CompressedPListConstIterator(std::vector<char> con
 CompressedPListConstIterator::CompressedPListConstIterator(CompressedPListConstIterator const& other)
     : card_(other.card_)
     , reader_(other.reader_)
-    , delta_(other.delta_)
+    , delta_(reader_, other.delta_)
     , pos_(other.pos_)
     , curr_(other.curr_)
 {
@@ -228,6 +228,8 @@ CompressedPList::CompressedPList(CompressedPList const& other)
     , delta_(writer_)
     , cardinality_(other.cardinality_)
     , moved_(false)
+    // TODO: remove
+    , debug_view(other.debug_view)
 {
     assert(!other.moved_);
 }
@@ -245,6 +247,9 @@ CompressedPList& CompressedPList::operator = (CompressedPList && other) {
     // update prev_ field
     delta_.prev_ = other.delta_.prev_;
     cardinality_ = other.cardinality_;
+    // TODO: remove
+    debug_view = other.debug_view;
+    // END
     return *this;
 }
 
@@ -254,6 +259,8 @@ CompressedPList::CompressedPList(CompressedPList && other)
     , delta_(writer_)
     , cardinality_(other.cardinality_)
     , moved_(false)
+    // TODO: remove
+    , debug_view(std::move(other.debug_view))
 {
     assert(!other.moved_);
     other.moved_ = true;
@@ -263,6 +270,8 @@ void CompressedPList::add(u64 x) {
     assert(!moved_);
     delta_.put(x);
     cardinality_++;
+    // TODO: remove
+    debug_view.push_back(x);
 }
 
 void CompressedPList::push_back(u64 x) {
@@ -547,7 +556,7 @@ IndexQueryResultsIterator IndexQueryResults::end() const {
 //  IncludeTags  //
 //               //
 
-IndexQueryResults IncludeTags::query(IndexBase const& index) const {
+IndexQueryResults IncludeIfAllTagsMatch::query(IndexBase const& index) const {
     IndexQueryResults results = index.metric_query(metric_);
     for(auto const& tv: pairs_) {
         auto res = index.tagvalue_query(tv);
@@ -555,7 +564,6 @@ IndexQueryResults IncludeTags::query(IndexBase const& index) const {
     }
     return results.filter(metric_).filter(pairs_);
 }
-
 
 //                   //
 //  IncludeIfHasTag  //
@@ -571,10 +579,15 @@ IndexQueryResults IncludeIfHasTag::query(IndexBase const& index) const {
         auto kv = str.str();
         pairs.emplace_back(kv.c_str());
     }
-    IndexQueryResults results = index.metric_query(metric_);
-    for(auto const& tv: pairs) {
-        auto res = index.tagvalue_query(tv);
-        results = results.intersection(res);
+    IndexQueryResults results;
+    if (pairs.size() > 0) {
+        results = index.tagvalue_query(pairs[0]);
+        for (size_t i = 1; i < pairs.size(); i++) {
+            auto res = index.tagvalue_query(pairs[i]);
+            results = results.join(res);
+        }
+        IndexQueryResults m = index.metric_query(metric_);
+        results = results.intersection(m);
     }
     return results.filter(metric_).filter(pairs);
 }

@@ -88,7 +88,7 @@ public:
       * @returns 'begin' on error, iterator to next free region otherwise
       */
     void put(std::vector<char>& vec) const {
-        TVal           value = value_;
+        TVal value = value_;
         unsigned char p;
         while (true) {
             p = value & 0x7F;
@@ -120,7 +120,19 @@ struct Base128StreamWriter {
         : buffer_(other.buffer_)
     {}
 
+    Base128StreamWriter(Base128StreamWriter && other)
+        : buffer_(other.buffer_)
+    {}
+
     Base128StreamWriter& operator = (Base128StreamWriter const& other) {
+        if (&other == this) {
+            return *this;
+        }
+        buffer_ = other.buffer_;
+        return *this;
+    }
+
+    Base128StreamWriter& operator = (Base128StreamWriter && other) {
         if (&other == this) {
             return *this;
         }
@@ -135,8 +147,8 @@ struct Base128StreamWriter {
     bool empty() const { return buffer_->empty(); }
 
     //! Put value into stream.
-    template <class TVal> bool put(TVal value) {
-        Base128Int<TVal> val(value);
+    bool put(u64 value) {
+        Base128Int<u64> val(value);
         val.put(*buffer_);
         return true;
     }
@@ -157,6 +169,12 @@ struct Base128StreamReader {
     {
     }
 
+    Base128StreamReader(Base128StreamReader && other)
+        : pos_(other.pos_)
+        , end_(other.end_)
+    {
+    }
+
     Base128StreamReader& operator = (Base128StreamReader const& other) {
         if (&other == this) {
             return *this;
@@ -166,28 +184,42 @@ struct Base128StreamReader {
         return *this;
     }
 
-    template <class TVal> TVal next() {
-        Base128Int<TVal> value;
-        auto             p = value.get(pos_, end_);
+    Base128StreamReader& operator = (Base128StreamReader && other) {
+        if (&other == this) {
+            return *this;
+        }
+        pos_ = other.pos_;
+        end_ = other.end_;
+        return *this;
+    }
+
+    u64 next() {
+        Base128Int<u64> value;
+        auto p = value.get(pos_, end_);
         if (p == pos_) {
             AKU_PANIC("Base128Stream read error");
         }
         pos_ = p;
-        return static_cast<TVal>(value);
+        return static_cast<u64>(value);
     }
 };
 
-template <class Stream, typename TVal> struct DeltaStreamWriter {
-    Stream* stream_;
-    TVal   prev_;
+struct DeltaStreamWriter {
+    Base128StreamWriter* stream_;
+    u64 prev_;
 
-    template<class Substream>
-    DeltaStreamWriter(Substream& stream)
+    DeltaStreamWriter(Base128StreamWriter& stream)
         : stream_(&stream)
-        , prev_{}
+        , prev_(0)
     {}
 
     DeltaStreamWriter(DeltaStreamWriter const& other)
+        : stream_(other.stream_)
+        , prev_(other.prev_)
+    {
+    }
+
+    DeltaStreamWriter(DeltaStreamWriter && other)
         : stream_(other.stream_)
         , prev_(other.prev_)
     {
@@ -202,23 +234,46 @@ template <class Stream, typename TVal> struct DeltaStreamWriter {
         return *this;
     }
 
-    bool put(TVal value) {
-        auto result = stream_->put(static_cast<TVal>(value) - prev_);
+    DeltaStreamWriter& operator = (DeltaStreamWriter && other) {
+        if (this == &other) {
+            return *this;
+        }
+        stream_ = other.stream_;
+        prev_   = other.prev_;
+        return *this;
+    }
+
+    bool put(u64 value) {
+        auto result = stream_->put(value - prev_);
         prev_       = value;
         return result;
     }
 };
 
 
-template <class Stream, typename TVal> struct DeltaStreamReader {
-    Stream* stream_;
-    TVal   prev_;
+struct DeltaStreamReader {
+    Base128StreamReader* stream_;
+    u64 prev_;
 
-    DeltaStreamReader(Stream& stream)
+    DeltaStreamReader(Base128StreamReader& stream)
         : stream_(&stream)
-        , prev_() {}
+        , prev_(0)
+    {
+    }
+
+    DeltaStreamReader(Base128StreamReader& stream, DeltaStreamReader const& other)
+        : stream_(&stream)
+        , prev_(other.prev_)
+    {
+    }
 
     DeltaStreamReader(DeltaStreamReader const& other)
+        : stream_(other.stream_)
+        , prev_(other.prev_)
+    {
+    }
+
+    DeltaStreamReader(DeltaStreamReader && other)
         : stream_(other.stream_)
         , prev_(other.prev_)
     {
@@ -233,9 +288,18 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
         return *this;
     }
 
-    TVal next() {
-        TVal delta = stream_->template next<TVal>();
-        TVal value = prev_ + delta;
+    DeltaStreamReader& operator = (DeltaStreamReader && other) {
+        if (&other == this) {
+            return *this;
+        }
+        stream_ = other.stream_;
+        prev_   = other.prev_;
+        return *this;
+    }
+
+    u64 next() {
+        u64 delta = stream_->next();
+        u64 value = prev_ + delta;
         prev_      = value;
         return value;
     }
@@ -248,7 +312,7 @@ template <class Stream, typename TVal> struct DeltaStreamReader {
 class CompressedPListConstIterator {
     size_t card_;
     details::Base128StreamReader reader_;
-    details::DeltaStreamReader<details::Base128StreamReader, u64> delta_;
+    details::DeltaStreamReader delta_;
     size_t pos_;
     u64 curr_;
 public:
@@ -292,9 +356,13 @@ namespace Akumuli {
 class CompressedPList {
     std::vector<char> buffer_;
     details::Base128StreamWriter writer_;
-    details::DeltaStreamWriter<details::Base128StreamWriter, u64> delta_;
+    details::DeltaStreamWriter delta_;
     size_t cardinality_;
     bool moved_;
+    // TODO: remove
+#ifdef DEBUG
+    std::vector<u64> debug_view;
+#endif
 public:
 
     typedef u64 value_type;
@@ -557,16 +625,16 @@ public:
 //               //
 
 /**
- * Extracts only series that have specified tag-value
+ * Extracts only series that have all specified tag-value
  * combinations.
  */
-struct IncludeTags : IndexQueryNodeBase {
+struct IncludeIfAllTagsMatch : IndexQueryNodeBase {
     constexpr static const char* node_name_ = "include-tags";
     MetricName metric_;
     std::vector<TagValuePair> pairs_;
 
     template<class Iter>
-    IncludeTags(MetricName const& metric, Iter begin, Iter end)
+    IncludeIfAllTagsMatch(MetricName const& metric, Iter begin, Iter end)
         : IndexQueryNodeBase(node_name_)
         , metric_(metric)
         , pairs_(begin, end)
@@ -575,7 +643,6 @@ struct IncludeTags : IndexQueryNodeBase {
 
     virtual IndexQueryResults query(IndexBase const&) const;
 };
-
 
 //                   //
 //  IncludeIfHasTag  //

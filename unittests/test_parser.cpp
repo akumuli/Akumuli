@@ -226,8 +226,142 @@ BOOST_AUTO_TEST_CASE(Test_index_0) {
     std::vector<TagValuePair> tags = {
         TagValuePair("tagA=1")
     };
-    IncludeTags query(mname, tags.begin(), tags.end());
+    IncludeIfAllTagsMatch query(mname, tags.begin(), tags.end());
     auto res = matcher.search(query);
     BOOST_REQUIRE_EQUAL(res.size(), 4);
+    int i = 0;
+    u64 exp_id = 10ul;
+    for (auto tup: res) {
+        const char* name;
+        int size;
+        u64 id;
+        std::tie(name, size, id) = tup;
+        BOOST_REQUIRE_EQUAL(std::string(name, name + size), names[i]);
+        BOOST_REQUIRE_EQUAL(id, exp_id);
+        i++;
+        exp_id++;
+    }
 }
 
+BOOST_AUTO_TEST_CASE(Test_index_1) {
+    u64 base_id = 10ul;
+    SeriesMatcher matcher(base_id);
+    std::vector<std::string> names = {
+        "foo tagA=1 tagB=1",
+        "foo tagA=1 tagB=2",
+        "foo tagA=1 tagB=3",
+        "foo tagA=1 tagB=4",
+        "foo tagA=2 tagB=1",
+        "foo tagA=2 tagB=2",
+        "foo tagA=2 tagB=3",
+        "foo tagA=2 tagB=4",
+    };
+    std::vector<u64> ids;
+    for (auto name: names) {
+        auto id = matcher.add(name.data(), name.data() + name.size());
+        if (id == 0) {
+            BOOST_FAIL("Bad id");
+        }
+        ids.push_back(id);
+    }
+    MetricName mname("foo");
+    std::vector<TagValuePair> tags = {
+        TagValuePair("tagA=2"),
+        TagValuePair("tagB=3")
+    };
+
+    IncludeIfAllTagsMatch query(mname, tags.begin(), tags.end());
+    auto res = matcher.search(query);
+    BOOST_REQUIRE_EQUAL(res.size(), 1);
+    int i = 0;
+    std::vector<u64> offsets = {
+        6,
+    };
+    for (auto tup: res) {
+        const char* name;
+        int size;
+        u64 id;
+        std::tie(name, size, id) = tup;
+        std::string exp_name = names[offsets[i]];
+        BOOST_REQUIRE_EQUAL(std::string(name, name + size), exp_name);
+        BOOST_REQUIRE_EQUAL(id, base_id + offsets[i]);
+        i++;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_index_2) {
+    u64 base_id = 10ul;
+    SeriesMatcher matcher(base_id);
+    std::vector<std::string> names = {
+        "foo tagA=1 tagB=1",
+        "foo tagA=1 tagB=2",
+        "foo tagA=1 tagB=3",
+        "foo tagA=1 tagB=4",
+        "foo tagA=2 tagB=1",
+        "foo tagA=2 tagB=2",
+        "foo tagA=2 tagB=3",
+        "foo tagA=2 tagB=4",
+    };
+    std::vector<u64> ids;
+    for (auto name: names) {
+        auto id = matcher.add(name.data(), name.data() + name.size());
+        if (id == 0) {
+            BOOST_FAIL("Bad id");
+        }
+        ids.push_back(id);
+    }
+    MetricName mname("bar");
+    std::vector<TagValuePair> tags = {
+        TagValuePair("tagA=1"),
+    };
+
+    IncludeIfAllTagsMatch query(mname, tags.begin(), tags.end());
+    auto res = matcher.search(query);
+    BOOST_REQUIRE_EQUAL(res.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_index_3) {
+    u64 base_id = 10ul;
+    SeriesMatcher matcher(base_id);
+    std::vector<std::string> names = {
+        "foo tagA=1 tagB=1 tagC=2",
+        "foo tagA=1 tagB=2 tagD=1",
+        "foo tagA=1 tagB=3 tagC=8",
+        "foo tagA=1 tagB=4 tagC=2",
+        "foo tagA=2 tagB=1 tagC=3",
+        "foo tagA=2 tagB=2 tagD=0",
+        "foo tagA=2 tagB=3 tagC=9",
+        "foo tagA=2 tagB=4 tagC=4",
+    };
+    std::vector<u64> ids;
+    for (auto name: names) {
+        auto id = matcher.add(name.data(), name.data() + name.size());
+        if (id == 0) {
+            BOOST_FAIL("Bad id");
+        }
+        ids.push_back(id);
+    }
+    MetricName mname("foo");
+    std::vector<TagValuePair> tags = {
+        TagValuePair("tagD=2"),
+    };
+
+    IncludeIfHasTag query(mname, std::make_pair("tagD", 4));
+    auto res = matcher.search(query);
+    BOOST_REQUIRE_EQUAL(res.size(), 2);
+    int i = 0;
+    std::vector<u64> offsets = {
+        1,
+        5,
+    };
+    for (auto tup: res) {
+        const char* name;
+        int size;
+        u64 id;
+        std::tie(name, size, id) = tup;
+        std::string exp_name = names[offsets[i]];
+        BOOST_REQUIRE_EQUAL(std::string(name, name + size), exp_name);
+        BOOST_REQUIRE_EQUAL(id, base_id + offsets[i]);
+        i++;
+    }
+}
