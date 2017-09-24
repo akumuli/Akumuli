@@ -365,3 +365,50 @@ BOOST_AUTO_TEST_CASE(Test_index_3) {
         i++;
     }
 }
+
+BOOST_AUTO_TEST_CASE(Test_index_4) {
+    u64 base_id = 10ul;
+    SeriesMatcher matcher(base_id);
+    std::vector<std::string> names = {
+        "foo tagA=1 tagB=1",
+        "foo tagA=1 tagB=2",
+        "foo tagA=1 tagB=3",
+        "foo tagA=1 tagB=4",
+        "foo tagA=2 tagB=1",
+        "foo tagA=2 tagB=2",
+        "foo tagA=2 tagB=3",
+        "foo tagA=2 tagB=4",
+    };
+    std::vector<u64> ids;
+    for (auto name: names) {
+        auto id = matcher.add(name.data(), name.data() + name.size());
+        if (id == 0) {
+            BOOST_FAIL("Bad id");
+        }
+        ids.push_back(id);
+    }
+    std::string mname("foo");
+    std::map<std::string, std::vector<std::string>> tags = {
+        {"tagA", {"2"}},
+        {"tagB", {"2", "3"}},
+    };
+
+    IncludeMany2Many query(mname, tags);
+    auto res = matcher.search(query);
+    BOOST_REQUIRE_EQUAL(res.size(), 1);
+    int i = 0;
+    std::vector<u64> offsets = {
+        5,
+        6,
+    };
+    for (auto tup: res) {
+        const char* name;
+        int size;
+        u64 id;
+        std::tie(name, size, id) = tup;
+        std::string exp_name = names[offsets[i]];
+        BOOST_REQUIRE_EQUAL(std::string(name, name + size), exp_name);
+        BOOST_REQUIRE_EQUAL(id, base_id + offsets[i]);
+        i++;
+    }
+}

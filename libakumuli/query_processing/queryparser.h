@@ -37,6 +37,8 @@ public:
     //! Get results
     std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(LegacySeriesMatcher const& matcher) const;
 
+    std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(SeriesMatcher const& matcher) const;
+
     std::tuple<aku_Status, std::vector<aku_ParamId>> fuzzy_match(LegacySeriesMatcher const& matcher) const;
 };
 

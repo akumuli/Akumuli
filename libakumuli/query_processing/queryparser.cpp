@@ -54,6 +54,46 @@ aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> 
     return AKU_SUCCESS;
 }
 
+std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(SeriesMatcher const& matcher) const {
+    std::vector<aku_ParamId> ids;
+    // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
+    if (metric_.empty()) {
+        // Case 1, metric not set.
+        ids = matcher.get_all_ids();
+    } else {
+        // Case 2, metric is set
+        auto first_metric = metric_.front();
+        IncludeMany2Many query(first_metric, tags_);
+        auto search_results = matcher.search(query);
+        for (auto tup: search_results) {
+            ids.push_back(std::get<2>(tup));
+        }
+        if (metric_.size() > 1) {
+            std::vector<std::string> tail(metric_.begin() + 1, metric_.end());
+            std::vector<aku_ParamId> full(ids);
+            for (auto metric: tail) {
+                for (auto id: ids) {
+                    LegacySeriesMatcher::StringT name = matcher.id2str(id);
+                    if (name.second == 0) {
+                        // This shouldn't happen but it can happen after memory corruption or data-race.
+                        // Clearly indicates an error.
+                        Logger::msg(AKU_LOG_ERROR, "Matcher data is broken, can read series name for " + std::to_string(id));
+                        AKU_PANIC("Matcher data is broken");
+                    }
+                    std::string series_tags(name.first + first_metric.size(), name.first + name.second);
+                    std::string alt_name = metric + series_tags;
+                    auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
+                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                                          // combination of metric and tags. Different strategies can be used to deal with
+                                          // such cases. Query can leave this element of the tuple blank or discard it.
+                }
+            }
+            ids.swap(full);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, ids);
+}
+
 std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(LegacySeriesMatcher const& matcher) const {
     std::vector<aku_ParamId> ids;
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.

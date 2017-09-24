@@ -26,6 +26,8 @@
 #include <cassert>
 #include <iterator>
 #include <algorithm>
+#include <map>
+#include <sstream>
 
 namespace Akumuli {
 
@@ -455,6 +457,8 @@ public:
 
     TagValuePair(const char* str);
 
+    TagValuePair(std::string str);
+
     StringT get_value() const;
 
     bool check(const char* begin, const char* end) const;
@@ -642,6 +646,21 @@ struct IncludeIfAllTagsMatch : IndexQueryNodeBase {
     }
 
     virtual IndexQueryResults query(IndexBase const&) const;
+};
+
+
+//                    //
+//  IncludeMany2Many  //
+//                    //
+
+struct IncludeMany2Many : IndexQueryNodeBase {
+    constexpr static const char* node_name_ = "many2many";
+    MetricName metric_;
+    std::map<std::string, std::vector<std::string>> tags_;
+
+    IncludeMany2Many(std::string mname, std::map<std::string, std::vector<std::string>> const& map);
+
+    virtual IndexQueryResults query(IndexBase const& index) const;
 };
 
 //                   //

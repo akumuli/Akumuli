@@ -417,6 +417,11 @@ TagValuePair::TagValuePair(const char* str)
 {
 }
 
+TagValuePair::TagValuePair(std::string str)
+    : value_(str)
+{
+}
+
 StringT TagValuePair::get_value() const {
     return std::make_pair(value_.data(), value_.size());
 }
@@ -563,6 +568,49 @@ IndexQueryResults IncludeIfAllTagsMatch::query(IndexBase const& index) const {
         results = results.intersection(res);
     }
     return results.filter(metric_).filter(pairs_);
+}
+
+//                    //
+//  IncludeMany2Many  //
+//                    //
+
+IncludeMany2Many::IncludeMany2Many(std::string mname, std::map<std::string, std::vector<std::string>> const& map)
+    : IndexQueryNodeBase(node_name_)
+    , metric_(mname.data(), mname.data() + mname.size())
+    , tags_(map)
+{
+}
+
+IndexQueryResults IncludeMany2Many::query(IndexBase const& index) const {
+    std::vector<TagValuePair> tgv;
+    IndexQueryResults final_res;
+    bool first = true;
+    for (auto kv: tags_) {
+        if (kv.second.size() > 0) {
+            std::stringstream pair;
+            pair << kv.first << "=" << kv.second[0];
+            TagValuePair tagval(pair.str());
+            auto results = index.tagvalue_query(tagval);
+            tgv.push_back(tagval);
+            for (size_t ix = 1; ix < kv.second.size(); ix++) {
+                std::stringstream ixpair;
+                ixpair << kv.first << "=" << kv.second[ix];
+                TagValuePair ixtagval(pair.str());
+                tgv.push_back(ixtagval);
+                auto res = index.tagvalue_query(ixtagval);
+                results = results.join(res);
+            }
+            if (first) {
+                final_res = std::move(results);
+                first = false;
+            } else {
+                final_res = final_res.intersection(results);
+            }
+        }
+    }
+    auto allmetric = index.metric_query(metric_);
+    final_res = final_res.intersection(allmetric);
+    return final_res.filter(metric_).filter(tgv);
 }
 
 //                   //
