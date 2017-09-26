@@ -102,7 +102,7 @@ StringT SeriesMatcher::id2str(u64 tokenid) const {
     return it->second;
 }
 
-void SeriesMatcher::pull_new_names(std::vector<LegacySeriesMatcher::SeriesNameT> *buffer) {
+void SeriesMatcher::pull_new_names(std::vector<PlainSeriesMatcher::SeriesNameT> *buffer) {
     std::lock_guard<std::mutex> guard(mutex);
     std::swap(names, *buffer);
 }
@@ -157,7 +157,7 @@ std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char
 //   LegacySeriesMatcher    //
 //                          //
 
-LegacySeriesMatcher::LegacySeriesMatcher(u64 starting_id)
+PlainSeriesMatcher::PlainSeriesMatcher(u64 starting_id)
     : table(StringTools::create_table(0x1000))
     , series_id(starting_id)
 {
@@ -166,7 +166,7 @@ LegacySeriesMatcher::LegacySeriesMatcher(u64 starting_id)
     }
 }
 
-u64 LegacySeriesMatcher::add(const char* begin, const char* end) {
+u64 PlainSeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
     StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
@@ -177,7 +177,7 @@ u64 LegacySeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
-void LegacySeriesMatcher::_add(std::string series, u64 id) {
+void PlainSeriesMatcher::_add(std::string series, u64 id) {
     if (series.empty()) {
         return;
     }
@@ -189,14 +189,14 @@ void LegacySeriesMatcher::_add(std::string series, u64 id) {
     inv_table[id] = pstr;
 }
 
-void LegacySeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+void PlainSeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     StringT pstr = pool.add(begin, end);
     std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
-u64 LegacySeriesMatcher::match(const char* begin, const char* end) const {
+u64 PlainSeriesMatcher::match(const char* begin, const char* end) const {
 
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
@@ -209,7 +209,7 @@ u64 LegacySeriesMatcher::match(const char* begin, const char* end) const {
     return it->second;
 }
 
-LegacySeriesMatcher::StringT LegacySeriesMatcher::id2str(u64 tokenid) const {
+StringT PlainSeriesMatcher::id2str(u64 tokenid) const {
     std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
@@ -218,12 +218,12 @@ LegacySeriesMatcher::StringT LegacySeriesMatcher::id2str(u64 tokenid) const {
     return it->second;
 }
 
-void LegacySeriesMatcher::pull_new_names(std::vector<LegacySeriesMatcher::SeriesNameT> *buffer) {
+void PlainSeriesMatcher::pull_new_names(std::vector<PlainSeriesMatcher::SeriesNameT> *buffer) {
     std::lock_guard<std::mutex> guard(mutex);
     std::swap(names, *buffer);
 }
 
-std::vector<u64> LegacySeriesMatcher::get_all_ids() const {
+std::vector<u64> PlainSeriesMatcher::get_all_ids() const {
     std::vector<u64> result;
     {
         std::lock_guard<std::mutex> guard(mutex);
@@ -235,13 +235,13 @@ std::vector<u64> LegacySeriesMatcher::get_all_ids() const {
     return result;
 }
 
-std::vector<LegacySeriesMatcher::SeriesNameT> LegacySeriesMatcher::regex_match(const char* rexp) const {
+std::vector<PlainSeriesMatcher::SeriesNameT> PlainSeriesMatcher::regex_match(const char* rexp) const {
     StringPoolOffset offset = {};
     size_t size = 0;
     return regex_match(rexp, &offset, &size);
 }
 
-std::vector<LegacySeriesMatcher::SeriesNameT> LegacySeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
+std::vector<PlainSeriesMatcher::SeriesNameT> PlainSeriesMatcher::regex_match(const char* rexp, StringPoolOffset* offset, size_t *prevsize) const {
     std::vector<SeriesNameT> series;
     std::vector<LegacyStringPool::StringT> res = pool.regex_match(rexp, offset, prevsize);
 
@@ -476,7 +476,7 @@ std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesPa
 // ////////// //
 
 
-GroupByTag::GroupByTag(const LegacySeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+LegacyGroupByTag::LegacyGroupByTag(const PlainSeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
@@ -497,11 +497,11 @@ GroupByTag::GroupByTag(const LegacySeriesMatcher& matcher, std::string metric, s
     refresh_();
 }
 
-std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
+std::unordered_map<aku_ParamId, aku_ParamId> LegacyGroupByTag::get_mapping() const {
     return ids_;
 }
 
-void GroupByTag::refresh_() {
+void LegacyGroupByTag::refresh_() {
     auto results = matcher_.regex_match(regex_.c_str(), &offset_, &prev_size_);
     auto filter = StringTools::create_set(tags_.size());
     for (const auto& tag: tags_) {
@@ -532,7 +532,7 @@ void GroupByTag::refresh_() {
     }
 }
 
-bool GroupByTag::apply(aku_Sample* sample) {
+bool LegacyGroupByTag::apply(aku_Sample* sample) {
     if (matcher_.pool.size() != prev_size_) {
         refresh_();
     }
@@ -543,5 +543,59 @@ bool GroupByTag::apply(aku_Sample* sample) {
     }
     return false;
 }
+
+//              //
+//  GroupByTag  //
+//              //
+
+
+GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+    : matcher_(matcher)
+    , offset_{}
+    , prev_size_(0)
+    , metric_(metric)
+    , tags_(tags)
+    , local_matcher_(1ul)
+    , snames_(StringTools::create_set(64))
+{
+    refresh_();
+}
+
+std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
+    return ids_;
+}
+
+void GroupByTag::refresh_() {
+    IncludeIfHasTag tag_query(metric_, tags_);
+    auto results = matcher_.search(tag_query);
+    auto filter = StringTools::create_set(tags_.size());
+    for (const auto& tag: tags_) {
+        filter.insert(std::make_pair(tag.data(), tag.size()));
+    }
+    char buffer[AKU_LIMITS_MAX_SNAME];
+    for (auto item: results) {
+        aku_Status status;
+        SeriesParser::StringT result, stritem;
+        stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
+        std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
+        if (status == AKU_SUCCESS) {
+            if (snames_.count(result) == 0) {
+                // put result to local stringpool and ids list
+                auto localid = local_matcher_.add(result.first, result.first + result.second);
+                auto str = local_matcher_.id2str(localid);
+                snames_.insert(str);
+                ids_[std::get<2>(item)] = localid;
+            } else {
+                // local name already created
+                auto localid = local_matcher_.match(result.first, result.first + result.second);
+                if (localid == 0ul) {
+                    AKU_PANIC("inconsistent matcher state");
+                }
+                ids_[std::get<2>(item)] = localid;
+            }
+        }
+    }
+}
+
 
 }

@@ -97,7 +97,7 @@ struct Selection {
     aku_Timestamp end;
 
     //! This matcher should be used by Join-statement
-    std::shared_ptr<LegacySeriesMatcher> matcher;
+    std::shared_ptr<PlainSeriesMatcher> matcher;
 
     // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
     // The samples will have ids from first column but textual representation should be different

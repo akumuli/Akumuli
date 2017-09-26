@@ -619,25 +619,17 @@ IndexQueryResults IncludeMany2Many::query(IndexBase const& index) const {
 
 IndexQueryResults IncludeIfHasTag::query(IndexBase const& index) const {
     // Query available tag=value pairs first
-    std::vector<TagValuePair> pairs;
-    auto values = index.list_tag_values(metric_.get_value(), tagname_);
-    for (auto val: values) {
-        std::stringstream str;
-        str << fromstrt(tagname_) << '=' << fromstrt(val);
-        auto kv = str.str();
-        pairs.emplace_back(kv.c_str());
-    }
-    IndexQueryResults results;
-    if (pairs.size() > 0) {
-        results = index.tagvalue_query(pairs[0]);
-        for (size_t i = 1; i < pairs.size(); i++) {
-            auto res = index.tagvalue_query(pairs[i]);
-            results = results.join(res);
+    std::map<std::string, std::vector<std::string>> pairs;
+    for (auto tag: tagnames_) {
+        std::vector<std::string> values;
+        auto res = index.list_tag_values(tostrt(metric_), tostrt(tag));
+        for (auto val: res) {
+            values.push_back(fromstrt(val));
         }
-        IndexQueryResults m = index.metric_query(metric_);
-        results = results.intersection(m);
+        pairs[tag] = values;
     }
-    return results.filter(metric_).filter(pairs);
+    IncludeMany2Many subquery(metric_, pairs);
+    return subquery.query(index);
 }
 
 

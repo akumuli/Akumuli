@@ -54,7 +54,7 @@ struct MetadataStorage : VolumeRegistry {
     typedef const apr_dbd_driver_t* DriverT;
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
     typedef apr_dbd_prepared_t* PreparedT;
-    typedef LegacySeriesMatcher::SeriesNameT SeriesT;
+    typedef PlainSeriesMatcher::SeriesNameT SeriesT;
 
     // Members
     PoolT           pool_;
@@ -114,7 +114,7 @@ struct MetadataStorage : VolumeRegistry {
     /** Read larges series id */
     boost::optional<u64> get_prev_largest_id();
 
-    aku_Status load_matcher_data(LegacySeriesMatcher& matcher);
+    aku_Status load_matcher_data(SeriesMatcherBase &matcher);
 
     aku_Status load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping);
 

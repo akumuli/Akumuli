@@ -687,7 +687,7 @@ void test_retreiver() {
         "bbb foo=4 bar=4 buz=5",
         "bbb foo=4 bar=4 buz=6",
     };
-    LegacySeriesMatcher m;
+    PlainSeriesMatcher m;
     for (auto s: test_data) {
         char buffer[0x100];
         const char* pkeys_begin;

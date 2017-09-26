@@ -672,14 +672,23 @@ struct IncludeMany2Many : IndexQueryNodeBase {
  * combinations.
  */
 struct IncludeIfHasTag : IndexQueryNodeBase {
-    constexpr static const char* node_name_ = "include-tags";
-    MetricName metric_;
-    StringT tagname_;
+    constexpr static const char* node_name_ = "include-if-has-tag";
+    std::string metric_;
+    std::vector<std::string> tagnames_;
 
-    IncludeIfHasTag(MetricName const& metric, StringT tag_name)
+    template<class Vec>
+    IncludeIfHasTag(std::string const& metric, Vec && tags)
         : IndexQueryNodeBase(node_name_)
         , metric_(metric)
-        , tagname_(tag_name)
+        , tagnames_(std::forward<Vec>(tags))
+    {
+    }
+
+    template<class FwIt>
+    IncludeIfHasTag(std::string const& metric, FwIt begin, FwIt end)
+        : IndexQueryNodeBase(node_name_)
+        , metric_(metric)
+        , tagnames_(begin, end)
     {
     }
 

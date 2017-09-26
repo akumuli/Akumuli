@@ -341,12 +341,11 @@ BOOST_AUTO_TEST_CASE(Test_index_3) {
         }
         ids.push_back(id);
     }
-    MetricName mname("foo");
     std::vector<TagValuePair> tags = {
         TagValuePair("tagD=2"),
     };
-
-    IncludeIfHasTag query(mname, std::make_pair("tagD", 4));
+    std::vector<std::string> qtags = {"tagD"};
+    IncludeIfHasTag query("foo", qtags);
     auto res = matcher.search(query);
     BOOST_REQUIRE_EQUAL(res.size(), 2);
     int i = 0;
