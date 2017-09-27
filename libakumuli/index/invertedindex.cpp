@@ -386,7 +386,10 @@ bool MetricName::check(const char* begin, const char* end) const {
         return false;
     }
     // compare
-    bool eq = std::equal(name.first, name.first + name.second, name_.begin(), name_.end());
+    if (name.second != name_.size()) {
+        return false;
+    }
+    bool eq = std::equal(name.first, name.first + name.second, name_.begin());
     if (eq) {
         return true;
     }
@@ -436,7 +439,10 @@ bool TagValuePair::check(const char* begin, const char* end) const {
     while (!error && p < end) {
         const char* tag_start = p;
         const char* tag_end = skip_tag(tag_start, end, &error);
-        bool eq = std::equal(tag_start, tag_end, value_.begin(), value_.end());
+        bool eq = false;
+        if (static_cast<size_t>(tag_end - tag_start) == value_.size()) {
+            eq = std::equal(tag_start, tag_end, value_.begin());
+        }
         if (eq) {
             return true;
         }
