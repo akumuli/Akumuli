@@ -146,7 +146,7 @@ std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char
         if (val.second < len) {
             return true;
         }
-        auto eq = std::equal(begin, end, val.first, val.first + len);
+        auto eq = std::equal(begin, end, val.first);
         return !eq;
     });
     results.erase(resit, results.end());

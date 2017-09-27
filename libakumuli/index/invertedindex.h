@@ -361,10 +361,6 @@ class CompressedPList {
     details::DeltaStreamWriter delta_;
     size_t cardinality_;
     bool moved_;
-    // TODO: remove
-#ifdef DEBUG
-    std::vector<u64> debug_view;
-#endif
 public:
 
     typedef u64 value_type;

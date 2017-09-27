@@ -228,8 +228,6 @@ CompressedPList::CompressedPList(CompressedPList const& other)
     , delta_(writer_)
     , cardinality_(other.cardinality_)
     , moved_(false)
-    // TODO: remove
-    , debug_view(other.debug_view)
 {
     assert(!other.moved_);
 }
@@ -247,9 +245,6 @@ CompressedPList& CompressedPList::operator = (CompressedPList && other) {
     // update prev_ field
     delta_.prev_ = other.delta_.prev_;
     cardinality_ = other.cardinality_;
-    // TODO: remove
-    debug_view = other.debug_view;
-    // END
     return *this;
 }
 
@@ -259,8 +254,6 @@ CompressedPList::CompressedPList(CompressedPList && other)
     , delta_(writer_)
     , cardinality_(other.cardinality_)
     , moved_(false)
-    // TODO: remove
-    , debug_view(std::move(other.debug_view))
 {
     assert(!other.moved_);
     other.moved_ = true;
@@ -270,8 +263,6 @@ void CompressedPList::add(u64 x) {
     assert(!moved_);
     delta_.put(x);
     cardinality_++;
-    // TODO: remove
-    debug_view.push_back(x);
 }
 
 void CompressedPList::push_back(u64 x) {
