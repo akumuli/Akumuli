@@ -394,7 +394,7 @@ BOOST_AUTO_TEST_CASE(Test_index_4) {
 
     IncludeMany2Many query(mname, tags);
     auto res = matcher.search(query);
-    BOOST_REQUIRE_EQUAL(res.size(), 1);
+    BOOST_REQUIRE_EQUAL(res.size(), 2);
     int i = 0;
     std::vector<u64> offsets = {
         5,
