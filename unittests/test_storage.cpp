@@ -470,6 +470,13 @@ static void test_suggest() {
     auto query = "{\"select\": \"test\"}";
     auto storage = create_storage();
     auto session = storage->create_write_session();
+    std::set<std::string> expected_metric_names = {
+        "test.aaa",
+        "test.bbb",
+        "test.ccc",
+        "test.ddd",
+        "test.eee",
+    };
     std::vector<std::string> series_names = {
         "test.aaa key=0",
         "test.aaa key=1",
@@ -481,6 +488,7 @@ static void test_suggest() {
         "test.ddd key=7",
         "test.eee key=8",
         "test.eee key=9",
+        "fff.test key=0",
     };
     for (auto name: series_names) {
         aku_Sample s;
@@ -495,7 +503,7 @@ static void test_suggest() {
     CursorMock cursor;
     session->suggest(&cursor, query);
     BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
-    BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names.size());
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_metric_names.size());
     for (auto sample: cursor.samples) {
         const int buffer_size = AKU_LIMITS_MAX_SNAME;
         char buffer[buffer_size];
@@ -504,8 +512,10 @@ static void test_suggest() {
             BOOST_FAIL("no such id");
         }
         std::string name(buffer, buffer + len);
-        auto cnt = std::count(series_names.begin(), series_names.end(), name);
+        auto cnt = expected_metric_names.count(name);
         BOOST_REQUIRE_EQUAL(cnt, 1);
+        // Ensure no duplicates
+        expected_metric_names.erase(expected_metric_names.find(name));
     }
 }
 

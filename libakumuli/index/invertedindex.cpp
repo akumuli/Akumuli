@@ -592,7 +592,7 @@ IndexQueryResults IncludeMany2Many::query(IndexBase const& index) const {
             for (size_t ix = 1; ix < kv.second.size(); ix++) {
                 std::stringstream ixpair;
                 ixpair << kv.first << "=" << kv.second[ix];
-                TagValuePair ixtagval(pair.str());
+                TagValuePair ixtagval(ixpair.str());
                 tgv.push_back(ixtagval);
                 auto res = index.tagvalue_query(ixtagval);
                 results = results.join(res);

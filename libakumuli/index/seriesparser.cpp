@@ -141,8 +141,8 @@ std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char
         return results;
     }
     std::lock_guard<std::mutex> guard(mutex);
-    auto names = index.get_topology().list_metric_names();
-    auto resit = std::remove_if(names.begin(), names.end(), [begin, end, len](StringT val) {
+    results = index.get_topology().list_metric_names();
+    auto resit = std::remove_if(results.begin(), results.end(), [begin, end, len](StringT val) {
         if (val.second < len) {
             return true;
         }
