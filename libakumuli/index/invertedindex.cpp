@@ -304,6 +304,12 @@ CompressedPList CompressedPList::operator ^ (CompressedPList const& other) const
     return result;
 }
 
+CompressedPList CompressedPList::unique() const {
+    CompressedPList result;
+    std::unique_copy(begin(), end(), std::back_inserter(result));
+    return result;
+}
+
 CompressedPListConstIterator CompressedPList::begin() const {
     assert(!moved_);
     return CompressedPListConstIterator(buffer_, cardinality_);
@@ -517,27 +523,36 @@ IndexQueryResults::IndexQueryResults(IndexQueryResults&& plist)
 {
 }
 
-IndexQueryResults IndexQueryResults::intersection(IndexQueryResults const& other) {
-    if (spool_ == nullptr) {
-        spool_ = other.spool_;
-    }
-    IndexQueryResults result(postinglist_ & other.postinglist_, spool_);
+
+IndexQueryResults IndexQueryResults::unique() const {
+    IndexQueryResults result(postinglist_.unique(), spool_);
     return result;
 }
 
-IndexQueryResults IndexQueryResults::difference(IndexQueryResults const& other) {
-    if (spool_ == nullptr) {
-        spool_ = other.spool_;
+IndexQueryResults IndexQueryResults::intersection(IndexQueryResults const& other) const {
+    const StringPool *spool = spool_;
+    if (spool == nullptr) {
+        spool = other.spool_;
     }
-    IndexQueryResults result(postinglist_ ^ other.postinglist_, spool_);
+    IndexQueryResults result(postinglist_ & other.postinglist_, spool);
     return result;
 }
 
-IndexQueryResults IndexQueryResults::join(IndexQueryResults const& other) {
-    if (spool_ == nullptr) {
-        spool_ = other.spool_;
+IndexQueryResults IndexQueryResults::difference(IndexQueryResults const& other) const {
+    const StringPool *spool = spool_;
+    if (spool == nullptr) {
+        spool = other.spool_;
     }
-    IndexQueryResults result(postinglist_ | other.postinglist_, spool_);
+    IndexQueryResults result(postinglist_ ^ other.postinglist_, spool);
+    return result;
+}
+
+IndexQueryResults IndexQueryResults::join(IndexQueryResults const& other) const {
+    const StringPool *spool = spool_;
+    if (spool == nullptr) {
+        spool = other.spool_;
+    }
+    IndexQueryResults result(postinglist_ | other.postinglist_, spool);
     return result;
 }
 
@@ -595,7 +610,7 @@ IndexQueryResults IncludeMany2Many::query(IndexBase const& index) const {
                 TagValuePair ixtagval(ixpair.str());
                 tgv.push_back(ixtagval);
                 auto res = index.tagvalue_query(ixtagval);
-                results = results.join(res);
+                results = results.join(res).unique();
             }
             if (first) {
                 final_res = std::move(results);
@@ -606,6 +621,10 @@ IndexQueryResults IncludeMany2Many::query(IndexBase const& index) const {
         }
     }
     auto allmetric = index.metric_query(metric_);
+    if (tgv.empty()) {
+        // Select by metric only
+        return allmetric.filter(metric_);
+    }
     final_res = final_res.intersection(allmetric);
     return final_res.filter(metric_).filter(tgv);
 }

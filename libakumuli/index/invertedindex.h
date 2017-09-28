@@ -389,6 +389,8 @@ public:
 
     CompressedPList operator ^ (CompressedPList const& other) const;
 
+    CompressedPList unique() const;
+
     CompressedPListConstIterator begin() const;
 
     CompressedPListConstIterator end() const;
@@ -507,17 +509,22 @@ public:
     IndexQueryResults(IndexQueryResults&& plist);
 
     template<class Checkable>
-    IndexQueryResults filter(std::vector<Checkable> const& values) {
+    IndexQueryResults filter(std::vector<Checkable> const& values) const {
         bool rewrite = false;
         // Check for falce positives
         for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
             auto id = *it;
             auto str = spool_->str(id);
+            bool success = false;
             for (auto const& value: values) {
-                if (!value.check(str.first, str.first + str.second)) {
-                    rewrite = true;
+                if (value.check(str.first, str.first + str.second)) {
+                    success = true;
                     break;
                 }
+            }
+            if (!success) {
+                rewrite = true;
+                break;
             }
         }
         if (rewrite) {
@@ -527,7 +534,12 @@ public:
                 auto id = *it;
                 auto str = spool_->str(id);
                 for (auto const& value: values) {
+                    bool add = false;
                     if (value.check(str.first, str.first + str.second)) {
+                        add = true;
+                        break;
+                    }
+                    if (add) {
                         newplist.add(id);
                     }
                 }
@@ -538,7 +550,7 @@ public:
     }
 
     template<class Checkable>
-    IndexQueryResults filter(Checkable const& value) {
+    IndexQueryResults filter(Checkable const& value) const {
         bool rewrite = false;
         // Check for falce positives
         for (auto it = postinglist_.begin(); it != postinglist_.end(); ++it) {
@@ -564,11 +576,13 @@ public:
         return *this;
     }
 
-    IndexQueryResults intersection(IndexQueryResults const& other);
+    IndexQueryResults unique() const;
 
-    IndexQueryResults difference(IndexQueryResults const& other);
+    IndexQueryResults intersection(IndexQueryResults const& other) const;
 
-    IndexQueryResults join(IndexQueryResults const& other);
+    IndexQueryResults difference(IndexQueryResults const& other) const;
+
+    IndexQueryResults join(IndexQueryResults const& other) const;
 
     size_t cardinality() const;
 
