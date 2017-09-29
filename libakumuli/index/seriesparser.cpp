@@ -75,10 +75,8 @@ void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     StringT sname;
     std::tie(status, sname) = index.append(begin, end);
     StatusUtil::throw_on_error(status);
-    auto tup = std::make_tuple(std::get<0>(sname), std::get<1>(sname), id);
     table[sname] = id;
     inv_table[id] = sname;
-    names.push_back(tup);
 }
 
 u64 SeriesMatcher::match(const char* begin, const char* end) const {
