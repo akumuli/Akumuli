@@ -660,24 +660,159 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
     return std::make_tuple(AKU_SUCCESS, ids);
 }
 
+/**
+ * Suggest query parser
+ *
+ * 1) Suggest metric name
+ *
+ * Return all metric names that starts with 'df.'
+ * ```json
+ * {
+ *      "select": "metric-names",
+ *      "starts-with": "df."
+ * }
+ * ```
+ *
+ * Return all metric names
+ * ```json
+ * {
+ *      "select": "metric-names"
+ * }
+ * ```
+ *
+ * 2) Suggest tag names
+ *
+ * Return all tag names that starts with 'h' and used with 'df.used' metric
+ * ```json
+ * {
+ *      "select": "tag-names",
+ *      "metric": "df.used",
+ *      "starts-with": "h"
+ * }
+ * ```
+ *
+ * Return all tag names that was used with 'df.used' metric
+ * ```json
+ * {
+ *      "select": "tag-names",
+ *      "metric": "df.used",
+ * }
+ * ```
+ *
+ * 3) Suggest tag values
+ *
+ * Return all values for the 'host' tag that starts with '192.' and was used with 'df.used' metric.
+ * ```json
+ * {
+ *      "select": "tag-values",
+ *      "metric": "df.used",
+ *      "tag": "host"
+ *      "starts-with": "192."
+ * }
+ * ```
+ *
+ * Return all values for the 'host' tag that was used with 'df.used' metric.
+ * ```json
+ * {
+ *      "select": "tag-values",
+ *      "metric": "df.used",
+ *      "tag": "host"
+ * }
+ * ```
+ */
+
+enum class SuggestQueryKind {
+    SUGGEST_METRIC_NAMES,
+    SUGGEST_TAG_NAMES,
+    SUGGEST_TAG_VALUES,
+    SUGGEST_ERROR,
+};
+
+static aku_Status validate_suggest_query(boost::property_tree::ptree const& ptree) {
+    static const std::set<std::string> ALLOWED_STMTS = {
+        "select",
+        "metric",
+        "tag",
+        "starts-with"
+    };
+    for (const auto& item: ptree) {
+        std::string keyword = item.first;
+        if (ALLOWED_STMTS.count(keyword) == 0) {
+            Logger::msg(AKU_LOG_ERROR, "Unexpected `" + keyword + "` statement");
+            return AKU_EQUERY_PARSING_ERROR;
+        }
+    }
+    return AKU_SUCCESS;
+}
+
+static std::tuple<SuggestQueryKind, aku_Status> get_suggest_query_type(boost::property_tree::ptree const& ptree) {
+    auto child = ptree.get_child_optional("select");
+    if (!child) {
+        Logger::msg(AKU_LOG_ERROR, "Select statement not found");
+        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+    }
+    auto value = child->get_value_optional<std::string>();
+    if (!value) {
+        Logger::msg(AKU_LOG_ERROR, "Bad select statement, single value expected");
+        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+    }
+    auto strval = value.get();
+    if (strval == "metric-names") {
+        return std::make_tuple(SuggestQueryKind::SUGGEST_METRIC_NAMES, AKU_SUCCESS);
+    } else if (strval == "tag-names") {
+        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_NAMES, AKU_SUCCESS);
+    } else if (strval == "tag-values") {
+        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_VALUES, AKU_SUCCESS);
+    }
+    Logger::msg(AKU_LOG_ERROR, "Bad select statement, invalid target");
+    return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+}
+
+static std::string get_starts_with(boost::property_tree::ptree const& ptree) {
+    auto child = ptree.get_child_optional("starts-with");
+    if (!child) {
+        return std::string();
+    }
+    auto value = child->get_value_optional<std::string>();
+    if (!value) {
+        return std::string();
+    }
+    auto strval = value.get();
+    return strval;
+}
+
 std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_ParamId>>
     QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher)
 {
     std::shared_ptr<PlainSeriesMatcher> substitute;
     std::vector<aku_ParamId> ids;
-    aku_Status status = validate_query(ptree);
+    aku_Status status = validate_suggest_query(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, substitute, ids);
     }
-    std::string name;
-    std::tie(status, name) = parse_select_stmt(ptree);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, substitute, ids);
-    }
+    SuggestQueryKind kind;
+    std::tie(kind, status) = get_suggest_query_type(ptree);
+    std::string starts_with = get_starts_with(ptree);
+    std::vector<StringT> results;
+    switch (kind) {
+    case SuggestQueryKind::SUGGEST_METRIC_NAMES:
+        // This should work for empty 'starts_with' values. Method should return all metric names.
+        results = matcher.suggest_metric(starts_with.data(), starts_with.data() + starts_with.size());
+    break;
+    case SuggestQueryKind::SUGGEST_TAG_NAMES:
+        // Not implemented yet
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+    break;
+    case SuggestQueryKind::SUGGEST_TAG_VALUES:
+        // Not implemented yet
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+    break;
+    case SuggestQueryKind::SUGGEST_ERROR:
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+    break;
+    };
 
-    auto results = matcher.suggest_metric(name.data(), name.data() + name.size());
     substitute.reset(new PlainSeriesMatcher());
-
     for (auto mname: results) {
         auto mid = substitute->add(mname.first, mname.first + mname.second);
         ids.push_back(mid);

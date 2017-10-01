@@ -135,9 +135,6 @@ std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::search(IndexQueryNodeBase
 std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char* end) const {
     std::vector<StringT> results;
     auto len = end - begin;
-    if (len < 4) {
-        return results;
-    }
     std::lock_guard<std::mutex> guard(mutex);
     results = index.get_topology().list_metric_names();
     auto resit = std::remove_if(results.begin(), results.end(), [begin, end, len](StringT val) {
