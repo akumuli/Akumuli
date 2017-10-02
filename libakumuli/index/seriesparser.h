@@ -124,7 +124,11 @@ struct SeriesMatcher : SeriesMatcherBase {
 
     std::vector<SeriesNameT> search(IndexQueryNodeBase const& query) const;
 
-    std::vector<StringT> suggest_metric(const char* begin, const char* end) const;
+    std::vector<StringT> suggest_metric(std::string prefix) const;
+
+    std::vector<StringT> suggest_tags(std::string metric, std::string tag_prefix) const;
+
+    std::vector<StringT> suggest_tag_values(std::string metric, std::string tag, std::string value_prefix) const;
 };
 
 

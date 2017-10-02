@@ -132,16 +132,45 @@ std::vector<SeriesMatcher::SeriesNameT> SeriesMatcher::search(IndexQueryNodeBase
     return result;
 }
 
-std::vector<StringT> SeriesMatcher::suggest_metric(const char* begin, const char* end) const {
+std::vector<StringT> SeriesMatcher::suggest_metric(std::string prefix) const {
     std::vector<StringT> results;
-    auto len = end - begin;
     std::lock_guard<std::mutex> guard(mutex);
     results = index.get_topology().list_metric_names();
-    auto resit = std::remove_if(results.begin(), results.end(), [begin, end, len](StringT val) {
-        if (val.second < len) {
+    auto resit = std::remove_if(results.begin(), results.end(), [prefix](StringT val) {
+        if (val.second < prefix.size()) {
             return true;
         }
-        auto eq = std::equal(begin, end, val.first);
+        auto eq = std::equal(prefix.begin(), prefix.end(), val.first);
+        return !eq;
+    });
+    results.erase(resit, results.end());
+    return results;
+}
+
+std::vector<StringT> SeriesMatcher::suggest_tags(std::string metric, std::string tag_prefix) const {
+    std::vector<StringT> results;
+    std::lock_guard<std::mutex> guard(mutex);
+    results = index.get_topology().list_tags(tostrt(metric));
+    auto resit = std::remove_if(results.begin(), results.end(), [tag_prefix](StringT val) {
+        if (val.second < tag_prefix.size()) {
+            return true;
+        }
+        auto eq = std::equal(tag_prefix.begin(), tag_prefix.end(), val.first);
+        return !eq;
+    });
+    results.erase(resit, results.end());
+    return results;
+}
+
+std::vector<StringT> SeriesMatcher::suggest_tag_values(std::string metric, std::string tag, std::string value_prefix) const {
+    std::vector<StringT> results;
+    std::lock_guard<std::mutex> guard(mutex);
+    results = index.get_topology().list_tag_values(tostrt(metric), tostrt(tag));
+    auto resit = std::remove_if(results.begin(), results.end(), [value_prefix](StringT val) {
+        if (val.second < value_prefix.size()) {
+            return true;
+        }
+        auto eq = std::equal(value_prefix.begin(), value_prefix.end(), val.first);
         return !eq;
     });
     results.erase(resit, results.end());

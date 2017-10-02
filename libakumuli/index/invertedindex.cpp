@@ -84,18 +84,6 @@ static StringT skip_metric_name(const char* begin, const char* end) {
     return std::make_pair(m, p - m);
 }
 
-StringT tostrt(const char* p) {
-    return std::make_pair(p, strlen(p));
-}
-
-StringT tostrt(std::string const& s) {
-    return std::make_pair(s.data(), s.size());
-}
-
-std::string fromstrt(StringT s) {
-    return std::string(s.first, s.first + s.second);
-}
-
 /**
  * @brief Split tag=value pair into tag and value
  * @return true on success, false otherwise

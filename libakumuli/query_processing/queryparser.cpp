@@ -781,6 +781,19 @@ static std::string get_starts_with(boost::property_tree::ptree const& ptree) {
     return strval;
 }
 
+static std::tuple<aku_Status, std::string> get_property(std::string name, boost::property_tree::ptree const& ptree) {
+    auto child = ptree.get_child_optional(name);
+    if (!child) {
+        return std::make_tuple(AKU_ENOT_FOUND, std::string());
+    }
+    auto value = child->get_value_optional<std::string>();
+    if (!value) {
+        return std::make_tuple(AKU_EBAD_ARG, std::string());
+    }
+    auto strval = value.get();
+    return std::make_tuple(AKU_SUCCESS, strval);
+}
+
 std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_ParamId>>
     QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher)
 {
@@ -794,22 +807,36 @@ std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_Para
     std::tie(kind, status) = get_suggest_query_type(ptree);
     std::string starts_with = get_starts_with(ptree);
     std::vector<StringT> results;
+    std::string metric_name;
+    std::string tag_name;
     switch (kind) {
     case SuggestQueryKind::SUGGEST_METRIC_NAMES:
         // This should work for empty 'starts_with' values. Method should return all metric names.
-        results = matcher.suggest_metric(starts_with.data(), starts_with.data() + starts_with.size());
+        results = matcher.suggest_metric(starts_with);
     break;
     case SuggestQueryKind::SUGGEST_TAG_NAMES:
-        // Not implemented yet
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        std::tie(status, metric_name) = get_property("metric", ptree);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Metric name expected");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        }
+        results = matcher.suggest_tags(metric_name, starts_with);
     break;
     case SuggestQueryKind::SUGGEST_TAG_VALUES:
-        // Not implemented yet
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        std::tie(status, metric_name) = get_property("metric", ptree);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Metric name expected");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        }
+        std::tie(status, tag_name) = get_property("tag", ptree);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, "Tag name expected");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        }
+        results = matcher.suggest_tag_values(metric_name, tag_name, starts_with);
     break;
     case SuggestQueryKind::SUGGEST_ERROR:
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
-    break;
     };
 
     substitute.reset(new PlainSeriesMatcher());

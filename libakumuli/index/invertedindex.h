@@ -43,6 +43,22 @@ struct TwoUnivHashFnFamily {
     u64 hash(int ix, u64 value) const;
 };
 
+namespace {
+
+inline StringT tostrt(const char* p) {
+    return std::make_pair(p, strlen(p));
+}
+
+inline StringT tostrt(std::string const& s) {
+    return std::make_pair(s.data(), s.size());
+}
+
+inline std::string fromstrt(StringT s) {
+    return std::string(s.first, s.first + s.second);
+}
+
+}
+
 //             //
 //  CM-sketch  //
 //             //
