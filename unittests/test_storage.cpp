@@ -467,7 +467,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_metadata_query) {
 // Test suggest
 
 static void test_suggest() {
-    auto query = "{\"select\": \"test\"}";
+    auto query = "{\"select\": \"metric-names\", \"starts-with\": \"test\" }";
     auto storage = create_storage();
     auto session = storage->create_write_session();
     std::set<std::string> expected_metric_names = {
