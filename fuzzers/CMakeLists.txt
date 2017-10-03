@@ -35,3 +35,17 @@ target_link_libraries(afl_series_name_parser
 )
 
 set_target_properties(afl_series_name_parser PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# Timestamp parser
+
+add_executable(afl_timestamp_parser
+    afl_timestamp_parser.cpp
+    ../libakumuli/datetime.cpp
+    )
+
+target_link_libraries(afl_timestamp_parser
+    pthread
+    "${Boost_LIBRARIES}"
+)
+
+set_target_properties(afl_timestamp_parser PROPERTIES EXCLUDE_FROM_ALL 1)
