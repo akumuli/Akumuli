@@ -1,4 +1,5 @@
 include_directories(../libakumuli)
+include_directories(../akumulid)
 
 # Compression
 
@@ -49,3 +50,18 @@ target_link_libraries(afl_timestamp_parser
 )
 
 set_target_properties(afl_timestamp_parser PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# RESP parser
+
+add_executable(afl_resp_parser
+    afl_resp_parser.cpp
+    ../akumulid/stream.cpp
+    ../akumulid/resp.cpp
+    )
+
+target_link_libraries(afl_resp_parser
+    pthread
+    "${Boost_LIBRARIES}"
+)
+
+set_target_properties(afl_resp_parser PROPERTIES EXCLUDE_FROM_ALL 1)
