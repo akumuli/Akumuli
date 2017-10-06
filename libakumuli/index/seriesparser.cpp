@@ -321,12 +321,13 @@ static const char* copy_until(const char* begin, const char* end, const char pat
 }
 
 //! Move pointer to the beginning of the next tag, return this pointer or end on error
-static const char* skip_tag(const char* p, const char* end, bool *error) {
+static const char* skip_tag(const char* begin, const char* end, bool *error) {
     // skip until '='
+    const char* p = begin;
     while(p < end && *p != '=' && *p != ' ' && *p != '\t') {
         p++;
     }
-    if (p == end || *p != '=') {
+    if (p == begin || p == end || *p != '=') {
         *error = true;
         return end;
     }
@@ -413,7 +414,7 @@ aku_Status SeriesParser::to_normal_form(const char* begin, const char* end,
                 return it < lenl;
             }
             if (lhs[it] == '=' || rhs[it] == '=') {
-                return lhs[it] == '=';
+                return lhs[it] == '=' && rhs[it] != '=';
             }
             if (lhs[it] < rhs[it]) {
                 return true;
