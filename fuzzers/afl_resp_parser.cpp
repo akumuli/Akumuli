@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
                 break;
             };
         }
-    } catch (const RESPError&) {
+    } catch (const StreamError&) {
         // Ignore format errors
     }
 }
