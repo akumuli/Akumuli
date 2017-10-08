@@ -733,7 +733,8 @@ static aku_Status validate_suggest_query(boost::property_tree::ptree const& ptre
         "select",
         "metric",
         "tag",
-        "starts-with"
+        "starts-with",
+        "output"
     };
     for (const auto& item: ptree) {
         std::string keyword = item.first;

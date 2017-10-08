@@ -765,22 +765,20 @@ void test_storage_where_clause(aku_Timestamp begin, aku_Timestamp end, int nseri
         check_paramids(*session, cursor, OrderBy::SERIES, expected_series, expected_size, true);
     };
 
-    //TODO: uncomment
-//    std::vector<int> first = { 0 };
-//    check_case(first);
+    std::vector<int> first = { 0 };
+    check_case(first);
 
-//    std::vector<int> last = { nseries - 1 };
-//    check_case(last);
+    std::vector<int> last = { nseries - 1 };
+    check_case(last);
 
     std::vector<int> all; for (int i = 0; i < nseries; i++) { all.push_back(i); };
     check_case(all);
 
-    //TODO: uncomment
-//    std::vector<int> even; std::copy_if(all.begin(), all.end(), std::back_inserter(even), [](int i) {return i % 2 == 0;});
-//    check_case(even);
+    std::vector<int> even; std::copy_if(all.begin(), all.end(), std::back_inserter(even), [](int i) {return i % 2 == 0;});
+    check_case(even);
 
-//    std::vector<int> odd; std::copy_if(all.begin(), all.end(), std::back_inserter(odd), [](int i) {return i % 2 != 0;});
-//    check_case(odd);
+    std::vector<int> odd; std::copy_if(all.begin(), all.end(), std::back_inserter(odd), [](int i) {return i % 2 != 0;});
+    check_case(odd);
 }
 
 BOOST_AUTO_TEST_CASE(Test_storage_where_clause) {
