@@ -250,6 +250,13 @@ AKU_EXPORT aku_Cursor* aku_query(aku_Session* session, const char* query);
   */
 AKU_EXPORT aku_Cursor* aku_suggest(aku_Session* session, const char* query);
 
+/** @brief Search query
+  * @param sesson should point to opened session instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_search(aku_Session* session, const char* query);
+
 /**
  * @brief Close cursor
  * @param pcursor pointer to cursor

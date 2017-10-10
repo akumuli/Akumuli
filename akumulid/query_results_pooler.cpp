@@ -449,6 +449,9 @@ void QueryResultsPooler::_init_cursor() {
     case ApiEndpoint::SUGGEST:
         cursor_ = session_->suggest(query_text_);
         break;
+    case ApiEndpoint::SEARCH:
+        cursor_ = session_->search(query_text_);
+        break;
     default:
         BOOST_THROW_EXCEPTION(std::runtime_error("Init-cursor failure, invalid endpoint"));
     };

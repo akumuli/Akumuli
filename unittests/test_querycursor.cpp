@@ -77,6 +77,10 @@ struct SessionMock : DbSession {
         return std::make_shared<CursorMock>();
     }
 
+    std::shared_ptr<DbCursor> search(std::string query) {
+        return std::make_shared<CursorMock>();
+    }
+
     int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {

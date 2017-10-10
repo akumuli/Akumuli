@@ -38,6 +38,10 @@ struct SessionMock : DbSession {
         throw "not implemented";
     }
 
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
+        throw "not implemented";
+    }
+
     virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
         auto str = std::to_string(id);
         assert(str.size() <= sz);
@@ -93,6 +97,9 @@ struct DbSessionErrorMock : DbSession {
         throw "not implemented";
     }
     virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "not implemented";
+    }
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
     virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {

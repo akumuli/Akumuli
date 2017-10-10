@@ -63,6 +63,7 @@ enum class ApiEndpoint {
     QUERY,
     SUGGEST,
     SEARCH,
+    UNKNOWN,
 };
 
 //! Interface that can be used to create read operations

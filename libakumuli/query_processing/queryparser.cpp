@@ -235,6 +235,7 @@ static const std::set<std::string> META_QUERIES = {
     "meta:names"
 };
 
+// TODO: remove depricated
 bool is_meta_query(std::string name) {
     for (auto perf: META_QUERIES) {
         if (boost::starts_with(name, perf)) {
@@ -570,6 +571,7 @@ std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tr
             if (status != AKU_SUCCESS) {
                 return std::make_tuple(status, QueryKind::SELECT);
             } else if (is_meta_query(series)) {
+                // TODO: Depricated
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META);
             } else {
                 return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT);
@@ -626,7 +628,7 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
     return AKU_SUCCESS;
 }
 
-/** Select statement should look like this:
+/** DEPRICATED! Select statement should look like this:
  * { "select": "meta:*", ...}
  */
 std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta_query(
@@ -653,6 +655,48 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
         metrics.push_back(name);
     }
 
+    std::tie(status, ids) = parse_where_clause(ptree, metrics, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    return std::make_tuple(AKU_SUCCESS, ids);
+}
+
+
+/**
+ * Search query parser
+ *
+ * The only supported search query:
+ * ```
+ * {
+ *  "select": "metric",
+ *  "where": { "tag": ["value1", "value2"], ... }
+ * }
+ * ```
+ *
+ * Returns list of series names.
+ *
+ * Limit/offset/output statements also supported.
+ */
+
+std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_search_query(
+        boost::property_tree::ptree const& ptree,
+        SeriesMatcher const& matcher)
+{
+    std::vector<aku_ParamId> ids;
+    aku_Status status = validate_query(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    std::string name;
+    std::tie(status, name) = parse_select_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, ids);
+    }
+    std::vector<std::string> metrics;
+    if (!name.empty()) {
+        metrics.push_back(name);
+    }
     std::tie(status, ids) = parse_where_clause(ptree, metrics, matcher);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids);

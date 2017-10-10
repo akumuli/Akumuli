@@ -37,6 +37,17 @@ static void free_callback(void *data) {
     delete cur;
 }
 
+static ApiEndpoint get_endpoint(const std::string& path) {
+    if (path == "/api/query") {
+        return ApiEndpoint::QUERY;
+    } else if (path == "/api/suggest") {
+        return ApiEndpoint::SUGGEST;
+    } else if (path == "/api/search") {
+        return ApiEndpoint::SEARCH;
+    }
+    return ApiEndpoint::UNKNOWN;
+}
+
 static int accept_connection(void           *cls,
                              MHD_Connection *connection,
                              const char     *url,
@@ -56,10 +67,10 @@ static int accept_connection(void           *cls,
         return ret;
     };
     if (strcmp(method, "POST") == 0) {
-        if (path == "/api/query" || path == "/api/suggest") {
+        ApiEndpoint endpoint = get_endpoint(path);
+        if (endpoint != ApiEndpoint::UNKNOWN) {
             ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
             ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
-            ApiEndpoint endpoint = path == "/api/query" ? ApiEndpoint::QUERY : ApiEndpoint::SUGGEST;
             if (cursor == nullptr) {
                 cursor = queryproc->create(endpoint);
                 *con_cls = cursor;

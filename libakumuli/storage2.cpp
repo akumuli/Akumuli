@@ -258,6 +258,10 @@ void StorageSession::suggest(InternalCursor* cur, const char* query) const {
     storage_->suggest(this, cur, query);
 }
 
+void StorageSession::search(InternalCursor* cur, const char* query) const {
+    storage_->search(this, cur, query);
+}
+
 void StorageSession::set_series_matcher(std::shared_ptr<PlainSeriesMatcher> matcher) const {
     matcher_substitute_ = matcher;
 }
@@ -946,6 +950,35 @@ void Storage::suggest(StorageSession const* session, InternalCursor* cur, const 
         return;
     }
     session->set_series_matcher(substitute);
+    std::shared_ptr<IStreamProcessor> proc =
+            std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+    if (proc->start()) {
+        proc->stop();
+    }
+}
+
+void Storage::search(StorageSession const* session, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    session->clear_series_matcher();
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids) = QueryParser::parse_search_query(ptree, global_matcher_);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<std::shared_ptr<Node>> nodes;
+    std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
     std::shared_ptr<IStreamProcessor> proc =
             std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
     if (proc->start()) {

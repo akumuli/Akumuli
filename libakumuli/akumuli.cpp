@@ -163,6 +163,44 @@ struct SuggestCursorImpl : aku_Cursor {
     }
 };
 
+/**
+ * Cursor that returns results of the 'search' query.
+ */
+struct SearchCursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
+    aku_Status status_;
+    std::string query_;
+
+    SearchCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
+        : query_(query)
+    {
+        status_ = AKU_SUCCESS;
+        cursor_ = ConcurrentCursor::make(&StorageSession::search, storage, query_.data());
+    }
+
+    ~SearchCursorImpl() {
+        cursor_->close();
+    }
+
+    bool is_done() const {
+        return cursor_->is_done();
+    }
+
+    bool is_error(aku_Status* out_error_code_or_null) const {
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
+    }
+
+    u32 read_values( void  *values
+                   , u32    values_size )
+    {
+        return cursor_->read(values, values_size);
+    }
+};
+
 
 
 class Session : public aku_Session {
@@ -197,6 +235,11 @@ public:
 
     SuggestCursorImpl* suggest(const char* q) {
         auto res = new SuggestCursorImpl(session_, q);
+        return res;
+    }
+
+    SearchCursorImpl* search(const char* q) {
+        auto res = new SearchCursorImpl(session_, q);
         return res;
     }
 };
@@ -351,6 +394,12 @@ aku_Cursor* aku_query(aku_Session* session, const char* query) {
 aku_Cursor* aku_suggest(aku_Session* session, const char* query) {
     auto impl = reinterpret_cast<Session*>(session);
     auto cursor = impl->suggest(query);
+    return static_cast<aku_Cursor*>(cursor);
+}
+
+aku_Cursor* aku_search(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->search(query);
     return static_cast<aku_Cursor*>(cursor);
 }
 

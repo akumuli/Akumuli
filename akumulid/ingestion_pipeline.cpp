@@ -62,6 +62,11 @@ std::shared_ptr<DbCursor> AkumuliSession::suggest(std::string query) {
     return std::make_shared<AkumuliCursor>(cursor);
 }
 
+std::shared_ptr<DbCursor> AkumuliSession::search(std::string query) {
+    aku_Cursor* cursor = aku_search(session_, query.c_str());
+    return std::make_shared<AkumuliCursor>(cursor);
+}
+
 int AkumuliSession::param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
     return aku_param_id_to_series(session_, id, buffer, buffer_size);
 }

@@ -34,6 +34,10 @@ struct ConsumerMock : DbSession {
         throw "Not implemented";
     }
 
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
+        throw "Not implemented";
+    }
+
     virtual int param_id_to_series(aku_ParamId id, char* buf, size_t sz) override {
         auto str = std::to_string(id);
         assert(str.size() <= sz);
@@ -352,6 +356,10 @@ struct NameCheckingConsumer : DbSession {
     }
 
     virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "Not implemented";
     }
 
