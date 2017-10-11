@@ -1,6 +1,18 @@
 Release notes
 =============
 
+Version 0.7.19
+--------------
+
+NEW FEATURES
+
+* New search API
+* New suggest API (for Grafana plugin)
+
+IMPROVEMENTS
+
+* Inverted index for series names
+
 Version 0.7.18
 --------------
 

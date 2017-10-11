@@ -26,6 +26,14 @@ struct ConsumerMock : DbSession {
         return AKU_SUCCESS;
     }
 
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "Not implemented";
+    }
+
     virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "Not implemented";
     }
@@ -341,6 +349,14 @@ struct NameCheckingConsumer : DbSession {
         ts.push_back(sample.timestamp);
         xs.push_back(sample.payload.type == AKU_PAYLOAD_FLOAT ? sample.payload.float64 : static_cast<double>(INFINITY));
         return AKU_SUCCESS;
+    }
+
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "Not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "Not implemented";
     }
 
     virtual std::shared_ptr<DbCursor> search(std::string) override {

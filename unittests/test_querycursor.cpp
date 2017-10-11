@@ -69,10 +69,17 @@ struct SessionMock : DbSession {
     void close() {
     }
 
-    std::shared_ptr<DbCursor> search(std::string query) {
+    std::shared_ptr<DbCursor> query(std::string query) {
         return std::make_shared<CursorMock>();
     }
 
+    std::shared_ptr<DbCursor> suggest(std::string query) {
+        return std::make_shared<CursorMock>();
+    }
+
+    std::shared_ptr<DbCursor> search(std::string query) {
+        return std::make_shared<CursorMock>();
+    }
 
     int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
         std::string strid = std::to_string(id);
@@ -111,7 +118,7 @@ BOOST_AUTO_TEST_CASE(Test_query_cursor) {
     std::shared_ptr<DbSession> session;
     session.reset(new SessionMock());
     char buffer[0x1000];
-    QueryResultsPooler cursor(session, 1000);
+    QueryResultsPooler cursor(session, 1000, ApiEndpoint::QUERY);
     cursor.append("{}", 2);
     cursor.start();
     size_t len;

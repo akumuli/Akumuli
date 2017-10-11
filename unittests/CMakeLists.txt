@@ -177,8 +177,9 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
     ../libakumuli/log_iface.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/crc32c.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/storage_engine/blockstore.cpp
@@ -224,10 +225,12 @@ add_test(storage test_storage)
 add_executable(
     test_seriesparser
     test_parser.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/datetime.cpp
 )
 
@@ -249,9 +252,11 @@ add_executable(
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
     ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
     # query_processing folder
@@ -372,8 +377,9 @@ add_executable(
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/crc32c.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/metadatastorage.cpp
 )
 

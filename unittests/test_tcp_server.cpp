@@ -30,6 +30,14 @@ struct SessionMock : DbSession {
         return AKU_SUCCESS;
     }
 
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "not implemented";
+    }
+
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "not implemented";
+    }
+
     virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";
     }
@@ -84,6 +92,12 @@ struct DbSessionErrorMock : DbSession {
 
     virtual aku_Status write(const aku_Sample&) override {
         return err;
+    }
+    virtual std::shared_ptr<DbCursor> query(std::string) override {
+        throw "not implemented";
+    }
+    virtual std::shared_ptr<DbCursor> suggest(std::string) override {
+        throw "not implemented";
     }
     virtual std::shared_ptr<DbCursor> search(std::string) override {
         throw "not implemented";

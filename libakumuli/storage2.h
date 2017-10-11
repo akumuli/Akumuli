@@ -25,7 +25,7 @@
 
 #include "akumuli_def.h"
 #include "metadatastorage.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
 #include "util.h"
 
 #include "storage_engine/blockstore.h"
@@ -42,10 +42,10 @@ class Storage;
 
 class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<Storage> storage_;
-    SeriesMatcher local_matcher_;
+    PlainSeriesMatcher local_matcher_;
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
-    mutable std::shared_ptr<SeriesMatcher> matcher_substitute_;
+    mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
 public:
     StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
 
@@ -66,8 +66,22 @@ public:
 
     void query(InternalCursor* cur, const char* query) const;
 
+    /**
+     * @brief suggest query implementation
+     * @param cur is a pointer to internal cursor
+     * @param query is a string that contains query
+     */
+    void suggest(InternalCursor* cur, const char* query) const;
+
+    /**
+     * @brief search query implementation
+     * @param cur is a pointer to internal cursor
+     * @param query is a string that contains query
+     */
+    void search(InternalCursor* cur, const char* query) const;
+
     // Temporary reset series matcher
-    void set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const;
+    void set_series_matcher(std::shared_ptr<PlainSeriesMatcher> matcher) const;
     void clear_series_matcher() const;
 };
 
@@ -98,14 +112,30 @@ public:
             bool                                        start_worker);
 
     //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher);
+    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
 
-    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher);
+    int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher);
 
     //! Create new write session
     std::shared_ptr<StorageSession> create_write_session();
 
     void query(StorageSession const* session, InternalCursor* cur, const char* query) const;
+
+    /**
+     * @brief suggest query implementation
+     * @param session is a session pointer
+     * @param cur is an internal cursor
+     * @param query is a query string (JSON)
+     */
+    void suggest(StorageSession const* session, InternalCursor* cur, const char* query) const;
+
+    /**
+     * @brief search query implementation
+     * @param session is a session pointer
+     * @param cur is an internal cursor
+     * @param query is a query string (JSON)
+     */
+    void search(StorageSession const* session, InternalCursor* cur, const char* query) const;
 
     void debug_print() const;
 

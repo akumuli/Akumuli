@@ -231,7 +231,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
 }
 
 int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
-    SeriesMatcher::StringT name;
+    StringT name;
     if (matcher_substitute_) {
         // Use temporary matcher
         name = matcher_substitute_->id2str(id);
@@ -254,7 +254,15 @@ void StorageSession::query(InternalCursor* cur, const char* query) const {
     storage_->query(this, cur, query);
 }
 
-void StorageSession::set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const {
+void StorageSession::suggest(InternalCursor* cur, const char* query) const {
+    storage_->suggest(this, cur, query);
+}
+
+void StorageSession::search(InternalCursor* cur, const char* query) const {
+    storage_->search(this, cur, query);
+}
+
+void StorageSession::set_series_matcher(std::shared_ptr<PlainSeriesMatcher> matcher) const {
     matcher_substitute_ = matcher;
 }
 
@@ -339,7 +347,7 @@ static std::string to_isostring(aku_Timestamp ts) {
 // Run through mappings and dump contents
 void dump_tree(std::ostream &stream,
                std::shared_ptr<StorageEngine::BlockStore> bstore,
-               SeriesMatcher const& matcher,
+               PlainSeriesMatcher const& matcher,
                aku_ParamId id,
                std::vector<StorageEngine::LogicAddr> rescue_points)
 {
@@ -569,7 +577,7 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
     auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
 
     // Load series matcher data
-    SeriesMatcher matcher;
+    PlainSeriesMatcher matcher;
     auto status = metadata->load_matcher_data(matcher);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
@@ -629,7 +637,7 @@ aku_Status Storage::generate_recovery_report(const char* path, const char *outpu
     auto cstore = std::make_shared<StorageEngine::ColumnStore>(bstore);
 
     // Load series matcher data
-    SeriesMatcher matcher;
+    PlainSeriesMatcher matcher;
     auto status = metadata->load_matcher_data(matcher);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
@@ -710,7 +718,7 @@ void Storage::start_sync_worker() {
     // This order guarantees that metadata storage always contains correct rescue points and
     // other metadata.
     auto sync_worker = [this]() {
-        auto get_names = [this](std::vector<SeriesMatcher::SeriesNameT>* names) {
+        auto get_names = [this](std::vector<PlainSeriesMatcher::SeriesNameT>* names) {
             std::lock_guard<std::mutex> guard(lock_);
             global_matcher_.pull_new_names(names);
         };
@@ -760,7 +768,7 @@ std::shared_ptr<StorageSession> Storage::create_write_session() {
     return std::make_shared<StorageSession>(shared_from_this(), session);
 }
 
-aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
     u64 id = 0;
     bool create_new = false;
     {
@@ -782,7 +790,7 @@ aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sampl
     return AKU_SUCCESS;
 }
 
-int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher) {
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -790,11 +798,11 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     // copy value to local matcher
     local_matcher->_add(str.first, str.first + str.second, id);
     // copy the string to out buffer
-    if (str.second > static_cast<int>(buffer_size)) {
+    if (str.second > buffer_size) {
         return -1*str.second;
     }
     memcpy(buffer, str.first, static_cast<size_t>(str.second));
-    return str.second;
+    return static_cast<int>(str.second);
 }
 
 aku_Status Storage::parse_query(boost::property_tree::ptree const& ptree, QP::ReshapeRequest* req) const {
@@ -915,6 +923,66 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             executor.execute(*cstore_, std::move(query_plan), *proc);
             proc->stop();
         }
+    }
+}
+
+void Storage::suggest(StorageSession const* session, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    session->clear_series_matcher();
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<aku_ParamId> ids;
+    std::shared_ptr<PlainSeriesMatcher> substitute;
+    std::tie(status, substitute, ids) = QueryParser::parse_suggest_query(ptree, global_matcher_);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<std::shared_ptr<Node>> nodes;
+    std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    session->set_series_matcher(substitute);
+    std::shared_ptr<IStreamProcessor> proc =
+            std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+    if (proc->start()) {
+        proc->stop();
+    }
+}
+
+void Storage::search(StorageSession const* session, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    session->clear_series_matcher();
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids) = QueryParser::parse_search_query(ptree, global_matcher_);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<std::shared_ptr<Node>> nodes;
+    std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::shared_ptr<IStreamProcessor> proc =
+            std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+    if (proc->start()) {
+        proc->stop();
     }
 }
 

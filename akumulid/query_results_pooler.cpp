@@ -363,10 +363,11 @@ struct RESPOutputFormatter : OutputFormatter {
     }
 };
 
-QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize)
+QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize, ApiEndpoint endpoint)
     : session_(session)
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
+    , endpoint_(endpoint)
 {
     try {
         rdbuf_.resize(readbufsize);
@@ -399,7 +400,7 @@ void QueryResultsPooler::start() {
     } catch (boost::property_tree::json_parser_error const& e) {
         logger.error() << "Bad JSON document received, error: " << e.what();
         // We need to pass invalid document further to generate proper error response
-        cursor_ = session_->search(query_text_);
+        _init_cursor();
         return;
     }
     auto output = tree.get_child_optional("output");
@@ -437,7 +438,23 @@ void QueryResultsPooler::start() {
         break;
     };
 
-    cursor_ = session_->search(query_text_);
+    _init_cursor();
+}
+
+void QueryResultsPooler::_init_cursor() {
+    switch (endpoint_) {
+    case ApiEndpoint::QUERY:
+        cursor_ = session_->query(query_text_);
+        break;
+    case ApiEndpoint::SUGGEST:
+        cursor_ = session_->suggest(query_text_);
+        break;
+    case ApiEndpoint::SEARCH:
+        cursor_ = session_->search(query_text_);
+        break;
+    default:
+        BOOST_THROW_EXCEPTION(std::runtime_error("Init-cursor failure, invalid endpoint"));
+    };
 }
 
 void QueryResultsPooler::append(const char *data, size_t data_size) {
@@ -516,10 +533,10 @@ QueryProcessor::~QueryProcessor() {
     logger.info() << "QueryProcessor destructed";
 }
 
-ReadOperation *QueryProcessor::create() {
+ReadOperation *QueryProcessor::create(ApiEndpoint endpoint) {
     auto con = con_.lock();
     if (con) {
-        return new QueryResultsPooler(con->create_session(), rdbufsize_);
+        return new QueryResultsPooler(con->create_session(), rdbufsize_, endpoint);
     }
     std::runtime_error err("Database connection was closed");
     BOOST_THROW_EXCEPTION(err);

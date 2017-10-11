@@ -47,6 +47,7 @@ script:
 - python functests/test_concurrency.py akumulid/
 - python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
+- python functests/test_search_api.py akumulid/
 # Run on expandable storage
 - python functests/akumulid_test_tools.py set_nvolumes 0
 - python functests/test_data_ingestion.py akumulid/ TCP

@@ -146,7 +146,12 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
 
                 auto buf = parser.get_next_buffer();
                 memcpy(buf, iobuf->bufs[i], mlen);
-                parser.parse_next(buf, mlen);
+                try {
+                    parser.parse_next(buf, mlen);
+                } catch (StreamError const& err) {
+                    // Catch protocol parsing errors here and continue processing data
+                    logger_.error() << err.what();
+                }
             }
             if (retval != 0) {
                 iobuf = std::make_shared<IOBuf>();

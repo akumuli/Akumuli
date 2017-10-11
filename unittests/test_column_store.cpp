@@ -330,7 +330,7 @@ void test_groupby_query() {
             translation_table[id] = 2;
         }
     }
-    std::shared_ptr<SeriesMatcher> matcher = std::make_shared<SeriesMatcher>();
+    std::shared_ptr<PlainSeriesMatcher> matcher = std::make_shared<PlainSeriesMatcher>();
     matcher->_add("_ten_", 1);
     matcher->_add("_twenty_", 2);
     std::vector<aku_ParamId> invids;
@@ -522,7 +522,7 @@ void test_aggregation_group_by(aku_Timestamp begin, aku_Timestamp end) {
             translation_table[id] = 2;
         }
     }
-    std::shared_ptr<SeriesMatcher> matcher = std::make_shared<SeriesMatcher>();
+    std::shared_ptr<PlainSeriesMatcher> matcher = std::make_shared<PlainSeriesMatcher>();
     matcher->_add("_ten_", 1);
     matcher->_add("_twenty_", 2);
     double sum1 = 0, sum2 = 0;
@@ -813,7 +813,7 @@ void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
     req.select.end = end;
     req.select.columns.push_back({ids});
     req.group_by.enabled = true;
-    req.select.matcher = std::make_shared<SeriesMatcher>(1);
+    req.select.matcher = std::make_shared<PlainSeriesMatcher>(1);
     req.select.matcher->_add("odd", 100);
     req.select.matcher->_add("even", 200);
     req.group_by.transient_map = {

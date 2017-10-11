@@ -738,17 +738,26 @@ OpenTSDBResponse OpenTSDBProtocolParser::worker() {
             rdbuf_.consume();
             break;
         }
+        case OpenTSDBMessageType::STATS: {
+            // Fake response
+            // TODO: revamp akumuli stats
+            OpenTSDBResponse stats("akumuli.rpcs 1479600574 0 type=fake\n" );
+            return stats;
+        }
         case OpenTSDBMessageType::VERSION: {
             OpenTSDBResponse ver("net.opentsdb.tools BuildData built at revision a000000\n"
                                  "Akumuli to TSD converter/n");
             return ver;
         }
-        default: {
+        case OpenTSDBMessageType::UNKNOWN: {
             std::string msg;
             size_t pos;
             std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
+        default:
+            // Just ignore the rest of the commands
+            continue;
         };  // endswitch
     }
     return result;

@@ -52,8 +52,18 @@ aku_Status AkumuliSession::write(const aku_Sample &sample) {
     return aku_write(session_, &sample);
 }
 
-std::shared_ptr<DbCursor> AkumuliSession::search(std::string query) {
+std::shared_ptr<DbCursor> AkumuliSession::query(std::string query) {
     aku_Cursor* cursor = aku_query(session_, query.c_str());
+    return std::make_shared<AkumuliCursor>(cursor);
+}
+
+std::shared_ptr<DbCursor> AkumuliSession::suggest(std::string query) {
+    aku_Cursor* cursor = aku_suggest(session_, query.c_str());
+    return std::make_shared<AkumuliCursor>(cursor);
+}
+
+std::shared_ptr<DbCursor> AkumuliSession::search(std::string query) {
+    aku_Cursor* cursor = aku_search(session_, query.c_str());
     return std::make_shared<AkumuliCursor>(cursor);
 }
 
