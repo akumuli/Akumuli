@@ -440,6 +440,23 @@ public:
 };
 
 
+//               //
+// Inverted Index //
+//               //
+
+class InvertedIndex {
+    typedef CompressedPList TVal;
+    std::unordered_map<u64, TVal> table_;
+public:
+    InvertedIndex(u32);
+
+    void add(u64 key, u64 value);
+
+    size_t get_size_in_bytes() const;
+
+    TVal extract(u64 value) const;
+};
+
 //              //
 //  MetricName  //
 //              //
@@ -794,8 +811,10 @@ public:
 class Index : public IndexBase {
     StringPool pool_;
     StringTools::TableT table_;
-    CMSketch metrics_names_;
-    CMSketch tagvalue_pairs_;
+    //CMSketch metrics_names_;
+    //CMSketch tagvalue_pairs_;
+    InvertedIndex metrics_names_;
+    InvertedIndex tagvalue_pairs_;
     SeriesNameTopology topology_;
 public:
     Index();

@@ -54,7 +54,8 @@ static const char* skip_tag(const char* p, const char* end, bool *error) {
     return c;
 }
 
-static bool write_tags(const char* begin, const char* end, CMSketch* dest_sketch, u64 id) {
+template<class Table>
+bool write_tags(const char* begin, const char* end, Table* dest_sketch, u64 id) {
     const char* tag_begin = begin;
     const char* tag_end = begin;
     bool err = false;
@@ -353,6 +354,35 @@ CMSketch::TVal CMSketch::extract(u64 value) const {
         inputs.push_back(&table_[i][hash]);
     }
     return *inputs[0] & *inputs[1] & *inputs[2];
+}
+
+//               //
+// InvertedIndex //
+//               //
+
+InvertedIndex::InvertedIndex(u32) {
+}
+
+void InvertedIndex::add(u64 key, u64 value) {
+    table_[key].add(value);
+}
+
+size_t InvertedIndex::get_size_in_bytes() const {
+    size_t sum = 0;
+    for (auto const& row: table_) {
+        auto const& list = row.second;
+        sum += list.getSizeInBytes();
+    }
+    return sum;
+}
+
+InvertedIndex::TVal InvertedIndex::extract(u64 value) const {
+    auto it = table_.find(value);
+    if (it == table_.end()) {
+        // Return empty value
+        return TVal();
+    }
+    return it->second;
 }
 
 
