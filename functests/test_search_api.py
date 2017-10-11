@@ -67,6 +67,8 @@ METRICS = [
     'net.tcp.out',
 ]
 
+ALL_SERIES_NAMES = sorted([metric + ' ' + tagline for tagline in ALL_TAG_COMBINATIONS for metric in METRICS ])
+
 @api_test("suggest metric name")
 def test_suggest_metric():
     """Test suggest query."""
@@ -208,6 +210,72 @@ def test_suggest_value_prefix():
     if set(actual) != set(expected):
         raise ValueError("Query results mismatch")
 
+@api_test("search all names")
+def test_search_all_names():
+    """Test search query."""
+    query = {
+        "select": "",
+        "output": { "format":  "csv" },
+    }
+    queryurl = "http://{0}:{1}/api/search".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    all_names = []
+    for line in response:
+        try:
+            name = line.strip()
+            all_names.append(name)
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if set(all_names) != set(ALL_SERIES_NAMES):
+        raise ValueError("Query results mismatch")
+
+@api_test("search names with metric")
+def test_search_names_with_metric():
+    """Test search query."""
+    query = {
+        "select": "df.free",
+        "output": { "format":  "csv" },
+    }
+    queryurl = "http://{0}:{1}/api/search".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    expected = [name for name in ALL_SERIES_NAMES if name.startswith("df.free")]
+    all_names = []
+    for line in response:
+        try:
+            name = line.strip()
+            all_names.append(name)
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if set(all_names) != set(expected):
+        raise ValueError("Query results mismatch")
+
+@api_test("search names by tag")
+def test_search_names_with_tag():
+    """Test search query."""
+    query = {
+        "select": "df.free",
+        "output": { "format":  "csv" },
+        "where": { "team": "Stretch" },
+    }
+    queryurl = "http://{0}:{1}/api/search".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+
+    expected = [name for name in ALL_SERIES_NAMES if name.startswith("df.free") and name.count("team=Stretch")]
+    all_names = []
+    for line in response:
+        try:
+            name = line.strip()
+            all_names.append(name)
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if set(all_names) != set(expected):
+        raise ValueError("Query results mismatch")
+
 def main(path):
     akumulid = att.create_akumulid(path)
 
@@ -239,6 +307,9 @@ def main(path):
         test_suggest_tag_prefix()
         test_suggest_value()
         test_suggest_value_prefix()
+        test_search_all_names()
+        test_search_names_with_metric()
+        test_search_names_with_tag()
 
     finally:
         print("Stopping server...")
