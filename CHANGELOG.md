@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.20
+--------------
+
+BUG FIXES
+
+* Group-aggregate query failure is fixed (#208).
+
 Version 0.7.19
 --------------
 
