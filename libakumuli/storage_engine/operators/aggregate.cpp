@@ -151,9 +151,14 @@ aku_Status CombineGroupAggregateOperator::refill_read_buffer() {
                 // Check last and first values of rdbuf_ and outxs
                 auto const& last  = rdbuf_.at(pos - 1);
                 auto const& first = outxs.front();
-                auto const  delta = dir_ == Direction::FORWARD ? first._begin - last._begin
-                                                               : last._end - first._end;
-                if (delta < step_) {
+                aku_Timestamp lastts  = dir_ == Direction::FORWARD ? last._begin - begin_
+                                                                   : begin_ - last._begin;
+                aku_Timestamp firstts = dir_ == Direction::FORWARD ? first._begin - begin_
+                                                                   : begin_ - first._begin;
+                auto lastbin = lastts / step_;
+                auto firstbin = firstts / step_;
+
+                if (lastbin == firstbin) {
                     pos--;
                 }
             }

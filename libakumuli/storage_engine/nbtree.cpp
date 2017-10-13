@@ -3306,7 +3306,7 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timest
         }
     }
     std::unique_ptr<AggregateOperator> concat;
-    concat.reset(new CombineGroupAggregateOperator(step, std::move(iterators)));
+    concat.reset(new CombineGroupAggregateOperator(begin, step, std::move(iterators)));
     return concat;
 }
 
