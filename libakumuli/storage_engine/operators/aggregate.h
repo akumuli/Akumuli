@@ -44,6 +44,7 @@ struct CombineAggregateOperator : AggregateOperator {
 struct CombineGroupAggregateOperator : AggregateOperator {
     typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
     typedef std::vector<AggregationResult> ReadBuffer;
+    const aku_Timestamp begin_;
     const u64           step_;
     IterVec             iter_;
     Direction           dir_;
@@ -67,8 +68,9 @@ struct CombineGroupAggregateOperator : AggregateOperator {
 
     //! C-tor. Create iterator from list of iterators.
     template<class TVec>
-    CombineGroupAggregateOperator(u64 step, TVec&& iter)
-        : step_(step)
+    CombineGroupAggregateOperator(aku_Timestamp begin, u64 step, TVec&& iter)
+        : begin_(begin)
+        , step_(step)
         , iter_(std::forward<TVec>(iter))
         , iter_index_(0)
         , rdpos_(0)
