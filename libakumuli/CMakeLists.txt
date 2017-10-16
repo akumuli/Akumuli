@@ -30,6 +30,7 @@ add_library(akumuli SHARED
     anomalydetector.cpp
     query_processing/anomaly.cpp
     saxencoder.cpp
+    query_processing/rate.cpp
     query_processing/sax.cpp
     query_processing/paa.cpp
     query_processing/filterbyid.cpp

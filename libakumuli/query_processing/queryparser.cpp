@@ -605,7 +605,8 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
         "offset",
         "range",
         "where",
-        "group-aggregate"
+        "group-aggregate",
+        "apply"
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
@@ -1308,14 +1309,26 @@ std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> QueryParser::parse_pr
     boost::property_tree::ptree const& ptree,
     InternalCursor* cursor)
 {
-    // TODO: all processing steps are bypassed now, this should be fixed
-    auto terminal = std::make_shared<TerminalNode>(cursor);
+    std::shared_ptr<Node> terminal = std::make_shared<TerminalNode>(cursor);
+    auto prev = terminal;
     std::vector<std::shared_ptr<Node>> result;
+
+    auto apply = ptree.get_child_optional("apply");
+    if (apply) {
+        for (auto it = apply->rbegin(); it != apply->rend(); it++) {
+            aku_Status status;
+            std::shared_ptr<Node> node;
+            std::tie(status, node) = make_sampler(it->second, prev);
+            result.push_back(node);
+            prev = node;
+        }
+    }
 
     auto limoff = parse_limit_offset(ptree);
     if (limoff.first != 0 || limoff.second != 0) {
-        auto node = std::make_shared<QP::Limiter>(limoff.first, limoff.second, terminal);
+        auto node = std::make_shared<QP::Limiter>(limoff.first, limoff.second, prev);
         result.push_back(node);
+        prev = node;
     }
 
     result.push_back(terminal);
