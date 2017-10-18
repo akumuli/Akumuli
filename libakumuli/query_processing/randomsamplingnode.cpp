@@ -70,6 +70,6 @@ void RandomSamplingNode::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-static QueryParserToken<RandomSamplingNode> token("reservoir");
+//static QueryParserToken<RandomSamplingNode> token("reservoir");
 
 }}  // namespace

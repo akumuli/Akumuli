@@ -106,11 +106,11 @@ typedef GenericPAA<SelectMin> MinPAA;
 typedef GenericPAA<SelectFirst> FirstPAA;
 typedef GenericPAA<SelectLast> LastPAA;
 
-static QueryParserToken<MeanPAA> mean_paa_token("paa");
-static QueryParserToken<MedianPAA> median_paa_token("median-paa");
-static QueryParserToken<MaxPAA> max_paa_token("max-paa");
-static QueryParserToken<MinPAA> min_paa_token("min-paa");
-static QueryParserToken<FirstPAA> first_paa_token("first-paa");
-static QueryParserToken<LastPAA> last_paa_token("last-paa");
+//static QueryParserToken<MeanPAA> mean_paa_token("paa");
+//static QueryParserToken<MedianPAA> median_paa_token("median-paa");
+//static QueryParserToken<MaxPAA> max_paa_token("max-paa");
+//static QueryParserToken<MinPAA> min_paa_token("min-paa");
+//static QueryParserToken<FirstPAA> first_paa_token("first-paa");
+//static QueryParserToken<LastPAA> last_paa_token("last-paa");
 
 }}  // namespace

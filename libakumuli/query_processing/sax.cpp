@@ -77,6 +77,6 @@ int SAXNode::get_requirements() const {
     return GROUP_BY_REQUIRED;
 }
 
-static QueryParserToken<SAXNode> sax_token("sax");
+//static QueryParserToken<SAXNode> sax_token("sax");
 
 }}  // namespace

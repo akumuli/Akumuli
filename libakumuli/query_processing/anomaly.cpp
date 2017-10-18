@@ -214,7 +214,7 @@ int AnomalyDetector::get_requirements() const {
 }
 
 //! Register anomaly detector for use in queries
-static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
+//static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
 
 }}  // namespace
 
