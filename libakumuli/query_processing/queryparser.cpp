@@ -1319,8 +1319,12 @@ std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> QueryParser::parse_pr
             aku_Status status;
             std::shared_ptr<Node> node;
             std::tie(status, node) = make_sampler(it->second, prev);
-            result.push_back(node);
-            prev = node;
+            if (status == AKU_SUCCESS) {
+                result.push_back(node);
+                prev = node;
+            } else {
+                return std::make_tuple(status, result);
+            }
         }
     }
 
