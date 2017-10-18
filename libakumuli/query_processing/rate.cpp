@@ -24,6 +24,7 @@ static double get_first_value(const aku_Sample* sample) {
         u64 u;
     } bits;
     bits.d = sample->payload.float64;
+    AKU_UNUSED(bits);
     assert(sample->payload.type == AKU_PAYLOAD_TUPLE && bits.u == 0x400000000000001ul);
     const double* value = reinterpret_cast<const double*>(sample->payload.data);
     return *value;
@@ -35,6 +36,7 @@ static void set_first_value(aku_Sample* sample, double x) {
         u64 u;
     } bits;
     bits.d = sample->payload.float64;
+    AKU_UNUSED(bits);
     assert(sample->payload.type == AKU_PAYLOAD_TUPLE && bits.u == 0x400000000000001ul);
     double* value = reinterpret_cast<double*>(sample->payload.data);
     *value = x;
