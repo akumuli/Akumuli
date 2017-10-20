@@ -253,7 +253,7 @@ bool PredictionError::put(const aku_Sample &sample) {
         const size_t buffersize = sizeof(aku_Sample) + sizeof(double);
         char buffer[buffersize];
         auto mut = TupleOutputUtils::copy_sample(&sample, buffer, buffersize);
-        TupleOutputUtils::set_first_value(mut, std::abs(value));
+        TupleOutputUtils::set_first_value(mut, value);
         return next_->put(*mut);
     }
     double value = sample.payload.float64;
@@ -265,7 +265,7 @@ bool PredictionError::put(const aku_Sample &sample) {
     ewma.add(value);
     value = value - exp;
     aku_Sample mut = sample;
-    mut.payload.float64 = std::abs(value);
+    mut.payload.float64 = value;
     return next_->put(mut);
 }
 

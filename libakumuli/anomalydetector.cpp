@@ -757,10 +757,10 @@ void EWMA::add(double value) {
         value_ += value;
         warmup_++;
     } else if (warmup_ == EWMA_WARMUP) {
-        value_ += value;
-        value_ = value_ / static_cast<double>(EWMA_WARMUP);
-        value_ = (value * decay_) + (value_ * (1.0 - decay_));
         warmup_++;
+        value_ += value;
+        value_ = value_ / static_cast<double>(warmup_);
+        value_ = (value * decay_) + (value_ * (1.0 - decay_));
     } else {
         value_ = (value * decay_) + (value_ * (1.0 - decay_));
     }
