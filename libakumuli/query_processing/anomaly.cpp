@@ -1,23 +1,24 @@
 #include "anomaly.h"
 #include "../util.h"
+#include "../storage_engine/operators/aggregate.h"
 
 #include <boost/exception/all.hpp>
 
 namespace Akumuli {
 namespace QP {
 
-static AnomalyDetector::FcastMethod parse_anomaly_detector_type(boost::property_tree::ptree const& ptree) {
+static Forecasting::FcastMethod parse_anomaly_detector_type(boost::property_tree::ptree const& ptree) {
     bool approx = ptree.get<bool>("approx");
     std::string name = ptree.get<std::string>("method");
-    AnomalyDetector::FcastMethod method;
+    Forecasting::FcastMethod method;
     if (name == "ewma" || name == "exp-smoothing") {
-        method = approx ? AnomalyDetector::EWMA_SKETCH : AnomalyDetector::EWMA;
+        method = approx ? Forecasting::EWMA_SKETCH : Forecasting::EWMA;
     } else if (name == "sma" || name == "simple-moving-average") {
-        method = approx ? AnomalyDetector::SMA_SKETCH : AnomalyDetector::SMA;
+        method = approx ? Forecasting::SMA_SKETCH : Forecasting::SMA;
     } else if (name == "double-exp-smoothing") {
-        method = approx ? AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH : AnomalyDetector::DOUBLE_EXP_SMOOTHING;
+        method = approx ? Forecasting::DOUBLE_EXP_SMOOTHING_SKETCH : Forecasting::DOUBLE_EXP_SMOOTHING;
     } else if (name == "holt-winters") {
-        method = approx ? AnomalyDetector::HOLT_WINTERS_SKETCH : AnomalyDetector::HOLT_WINTERS;
+        method = approx ? Forecasting::HOLT_WINTERS_SKETCH : Forecasting::HOLT_WINTERS;
     } else {
         QueryParserError err("Unknown forecasting method");
         BOOST_THROW_EXCEPTION(err);
@@ -58,27 +59,27 @@ static void validate_all_params(std::vector<std::string> required, boost::proper
 static void validate_anomaly_detector_params(boost::property_tree::ptree const& ptree) {
     auto type = parse_anomaly_detector_type(ptree);
     switch(type) {
-    case AnomalyDetector::SMA_SKETCH:
+    case Forecasting::SMA_SKETCH:
         validate_sketch_params(ptree);
-    case AnomalyDetector::SMA:
+    case Forecasting::SMA:
         validate_all_params({"period"}, ptree);
         break;
 
-    case AnomalyDetector::EWMA_SKETCH:
+    case Forecasting::EWMA_SKETCH:
         validate_sketch_params(ptree);
-    case AnomalyDetector::EWMA:
+    case Forecasting::EWMA:
         validate_all_params({"alpha"}, ptree);
         break;
 
-    case AnomalyDetector::DOUBLE_EXP_SMOOTHING_SKETCH:
+    case Forecasting::DOUBLE_EXP_SMOOTHING_SKETCH:
         validate_sketch_params(ptree);
-    case AnomalyDetector::DOUBLE_EXP_SMOOTHING:
+    case Forecasting::DOUBLE_EXP_SMOOTHING:
         validate_all_params({"alpha", "gamma"}, ptree);
         break;
 
-    case AnomalyDetector::HOLT_WINTERS_SKETCH:
+    case Forecasting::HOLT_WINTERS_SKETCH:
         validate_sketch_params(ptree);
-    case AnomalyDetector::HOLT_WINTERS:
+    case Forecasting::HOLT_WINTERS:
         validate_all_params({"alpha", "beta", "gamma", "period"}, ptree);
         break;
     }
@@ -109,28 +110,28 @@ AnomalyDetector::AnomalyDetector(boost::property_tree::ptree const& ptree, std::
     validate_coef(gamma, 0.0, 1.0, "`gamma` should be in [0, 1] range");
 
     switch(method) {
-    case SMA:
+    case Forecasting::SMA:
         detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
         break;
-    case SMA_SKETCH:
+    case Forecasting::SMA_SKETCH:
         detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
         break;
-    case EWMA:
+    case Forecasting::EWMA:
         detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
         break;
-    case EWMA_SKETCH:
+    case Forecasting::EWMA_SKETCH:
         detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
         break;
-    case DOUBLE_EXP_SMOOTHING:
+    case Forecasting::DOUBLE_EXP_SMOOTHING:
         detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
         break;
-    case DOUBLE_EXP_SMOOTHING_SKETCH:
+    case Forecasting::DOUBLE_EXP_SMOOTHING_SKETCH:
         detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
         break;
-    case HOLT_WINTERS:
+    case Forecasting::HOLT_WINTERS:
         detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
         break;
-    case HOLT_WINTERS_SKETCH:
+    case Forecasting::HOLT_WINTERS_SKETCH:
         detector_ = AnomalyDetectorUtil::create_approx_holt_winters(nhashes, 1 << bits, threshold, alpha, beta, gamma, period);
         break;
     default:
@@ -152,28 +153,28 @@ AnomalyDetector::AnomalyDetector(
 {
     try {
         switch(method) {
-        case SMA:
+        case Forecasting::SMA:
             detector_ = AnomalyDetectorUtil::create_precise_sma(threshold, period);
             break;
-        case SMA_SKETCH:
+        case Forecasting::SMA_SKETCH:
             detector_ = AnomalyDetectorUtil::create_approx_sma(nhashes, 1 << bits, threshold, period);
             break;
-        case EWMA:
+        case Forecasting::EWMA:
             detector_ = AnomalyDetectorUtil::create_precise_ewma(threshold, alpha);
             break;
-        case EWMA_SKETCH:
+        case Forecasting::EWMA_SKETCH:
             detector_ = AnomalyDetectorUtil::create_approx_ewma(nhashes, 1 << bits, threshold, alpha);
             break;
-        case DOUBLE_EXP_SMOOTHING:
+        case Forecasting::DOUBLE_EXP_SMOOTHING:
             detector_ = AnomalyDetectorUtil::create_precise_double_exp_smoothing(threshold, alpha, gamma);
             break;
-        case DOUBLE_EXP_SMOOTHING_SKETCH:
+        case Forecasting::DOUBLE_EXP_SMOOTHING_SKETCH:
             detector_ = AnomalyDetectorUtil::create_approx_double_exp_smoothing(nhashes, 1 << bits, threshold, alpha, gamma);
             break;
-        case HOLT_WINTERS:
+        case Forecasting::HOLT_WINTERS:
             detector_ = AnomalyDetectorUtil::create_precise_holt_winters(threshold, alpha, beta, gamma, period);
             break;
-        case HOLT_WINTERS_SKETCH:
+        case Forecasting::HOLT_WINTERS_SKETCH:
             detector_ = AnomalyDetectorUtil::create_approx_holt_winters(nhashes, 1 << bits, threshold, alpha, beta, gamma, period);
             break;
         default:
@@ -213,8 +214,73 @@ int AnomalyDetector::get_requirements() const {
     return TERMINAL|GROUP_BY_REQUIRED;
 }
 
+
+// -------------------------
+// Prediction error function
+// -------------------------
+
+
+PredictionError::PredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    : next_(next)
+{
+    decay_ = ptree.get<double>("decay");
+}
+
+PredictionError::PredictionError(double decay, std::shared_ptr<Node> next)
+    : decay_(decay)
+    , next_(next)
+{
+}
+
+void PredictionError::complete() {
+    next_->complete();
+}
+
+bool PredictionError::put(const aku_Sample &sample) {
+    bool is_tuple = TupleOutputUtils::is_one_element_tuple(&sample);
+    if (sample.payload.type != AKU_PAYLOAD_FLOAT && !is_tuple) {
+        return false;
+    }
+    if (is_tuple) {
+        double value = TupleOutputUtils::get_first_value(&sample);
+        if (swind_.count(sample.paramid) == 0) {
+            swind_[sample.paramid] = EWMA(decay_);
+        }
+        EWMA& ewma = swind_[sample.paramid];
+        double exp = ewma.get(value);
+        ewma.add(value);
+        value = value - exp;
+        const size_t buffersize = sizeof(aku_Sample) + sizeof(double);
+        char buffer[buffersize];
+        auto mut = TupleOutputUtils::copy_sample(&sample, buffer, buffersize);
+        TupleOutputUtils::set_first_value(mut, std::abs(value));
+        return next_->put(*mut);
+    }
+    double value = sample.payload.float64;
+    if (swind_.count(sample.paramid) == 0) {
+        swind_[sample.paramid] = EWMA(decay_);
+    }
+    EWMA& ewma = swind_[sample.paramid];
+    double exp = ewma.get(value);
+    ewma.add(value);
+    value = value - exp;
+    aku_Sample mut = sample;
+    mut.payload.float64 = std::abs(value);
+    return next_->put(mut);
+}
+
+void PredictionError::set_error(aku_Status status) {
+    next_->set_error(status);
+}
+
+int PredictionError::get_requirements() const {
+    return TERMINAL;
+}
+
+
 //! Register anomaly detector for use in queries
 //static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
+static QueryParserToken<PredictionError> ewma_token("ewma-error");
 
 }}  // namespace
 

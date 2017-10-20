@@ -8,10 +8,7 @@
 namespace Akumuli {
 namespace QP {
 
-
-struct AnomalyDetector : Node {
-    typedef std::unique_ptr<AnomalyDetectorIface> PDetector;
-
+namespace Forecasting {
     enum FcastMethod {
         SMA,
         SMA_SKETCH,
@@ -22,6 +19,11 @@ struct AnomalyDetector : Node {
         HOLT_WINTERS,
         HOLT_WINTERS_SKETCH,
     };
+}
+
+struct AnomalyDetector : Node {
+    typedef std::unique_ptr<AnomalyDetectorIface> PDetector;
+    typedef Forecasting::FcastMethod FcastMethod;
 
     std::shared_ptr<Node> next_;
     PDetector             detector_;
@@ -39,5 +41,24 @@ struct AnomalyDetector : Node {
 
     virtual int get_requirements() const;
 };
+
+struct PredictionError : Node {
+    double decay_;
+    std::unordered_map<aku_ParamId, EWMA> swind_;
+    std::shared_ptr<Node> next_;
+
+    PredictionError(double decay, std::shared_ptr<Node> next);
+
+    PredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+
+    virtual void complete();
+
+    virtual bool put(const aku_Sample& sample);
+
+    virtual void set_error(aku_Status status);
+
+    virtual int get_requirements() const;
+};
+
 }
 }  // namespace

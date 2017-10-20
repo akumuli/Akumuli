@@ -18,45 +18,14 @@ void SimpleRate::complete() {
     next_->complete();
 }
 
-static double get_first_value(const aku_Sample* sample) {
-    union {
-        double d;
-        u64 u;
-    } bits;
-    bits.d = sample->payload.float64;
-    AKU_UNUSED(bits);
-    assert(sample->payload.type == AKU_PAYLOAD_TUPLE && bits.u == 0x400000000000001ul);
-    const double* value = reinterpret_cast<const double*>(sample->payload.data);
-    return *value;
-}
-
-static void set_first_value(aku_Sample* sample, double x) {
-    union {
-        double d;
-        u64 u;
-    } bits;
-    bits.d = sample->payload.float64;
-    AKU_UNUSED(bits);
-    assert(sample->payload.type == AKU_PAYLOAD_TUPLE && bits.u == 0x400000000000001ul);
-    double* value = reinterpret_cast<double*>(sample->payload.data);
-    *value = x;
-}
-
 bool SimpleRate::put(const aku_Sample& sample) {
     // Formula: rate = Δx/Δt
     bool tuple = false;
     if (sample.payload.type != AKU_PAYLOAD_FLOAT) {
-        if (sample.payload.type == AKU_PAYLOAD_TUPLE) {
-            union {
-                double d;
-                u64 u;
-            } bits;
-            bits.d = sample.payload.float64;
-            if (bits.u != 0x400000000000001ul) {
-                // only one element tuples supported
-                return false;
-            }
+        if (TupleOutputUtils::is_one_element_tuple(&sample)) {
             tuple = true;
+        } else {
+            return false;
         }
     }
     if (!tuple) {
@@ -95,15 +64,15 @@ bool SimpleRate::put(const aku_Sample& sample) {
             oldT = std::get<0>(it->second);
             oldX = std::get<1>(it->second);
         }
-        auto newX = get_first_value(&sample);
+        auto newX = TupleOutputUtils::get_first_value(&sample);
         auto newT = sample.timestamp;
 
-        char buffer[sizeof(aku_Sample) + sizeof(double)];
-        aku_Sample *result = reinterpret_cast<aku_Sample*>(buffer);
-        memcpy(result, &sample, sample.payload.size == 0 ? sizeof(aku_Sample) : sample.payload.size);
+        const size_t buffer_size = sizeof(aku_Sample) + sizeof(double);
+        char buffer[buffer_size];
+        aku_Sample *result = TupleOutputUtils::copy_sample(&sample, buffer, buffer_size);
         const double nsec = 1000000000;
         double x = (newX - oldX) / (newT - oldT) * nsec;
-        set_first_value(result, x);
+        TupleOutputUtils::set_first_value(result, x);
 
         // Update table
         if (it != table_.end()) {

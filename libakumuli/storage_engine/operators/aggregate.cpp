@@ -1,5 +1,6 @@
 #include "aggregate.h"
 #include "log_iface.h"
+#include "../tuples.h"
 
 #include <cassert>
 
@@ -277,70 +278,6 @@ std::tuple<aku_Status, size_t> AggregateMaterializer::read(u8* dest, size_t size
         }
     }
     return std::make_tuple(status, nelements*sizeof(aku_Sample));
-}
-
-
-std::tuple<aku_Sample*, double*> TupleOutputUtils::cast(u8* dest) {
-    aku_Sample* sample = reinterpret_cast<aku_Sample*>(dest);
-    double* tuple      = reinterpret_cast<double*>(sample->payload.data);
-    return std::make_tuple(sample, tuple);
-}
-
-double TupleOutputUtils::get_flags(std::vector<AggregationFunction> const& tup) {
-    // Shift will produce power of two (e.g. if tup.size() == 3 then
-    // (1 << tup.size) will give us 8, 8-1 is 7 (exactly three lower
-    // bits is set)).
-    union {
-        double d;
-        u64 u;
-    } bits;
-    bits.u = (1ull << tup.size()) - 1;
-    // Save number of elements in the bitflags
-    bits.u |= tup.size() << 58;
-    return bits.d;
-}
-
-double TupleOutputUtils::get(AggregationResult const& res, AggregationFunction afunc) {
-    double out = 0;
-    switch (afunc) {
-    case AggregationFunction::CNT:
-        out = res.cnt;
-        break;
-    case AggregationFunction::SUM:
-        out = res.sum;
-        break;
-    case AggregationFunction::MIN:
-        out = res.min;
-        break;
-    case AggregationFunction::MIN_TIMESTAMP:
-        out = static_cast<double>(res.mints);
-        break;
-    case AggregationFunction::MAX:
-        out = res.max;
-        break;
-    case AggregationFunction::MAX_TIMESTAMP:
-        out = res.maxts;
-        break;
-    case AggregationFunction::MEAN:
-        out = res.sum / res.cnt;
-        break;
-    }
-    return out;
-}
-
-void TupleOutputUtils::set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, AggregationResult const& res) {
-    for (size_t i = 0; i < comp.size(); i++) {
-        auto elem = comp[i];
-        *tuple = get(res, elem);
-        tuple++;
-    }
-}
-
-size_t TupleOutputUtils::get_tuple_size(const std::vector<AggregationFunction>& tup) {
-    size_t payload = 0;
-    assert(!tup.empty());
-    payload = sizeof(double)*tup.size();
-    return sizeof(aku_Sample) + payload;
 }
 
 
