@@ -134,6 +134,7 @@ bool SampleUtil::publish(SampleUtil::Context ctx, double newvalue, const aku_Sam
        return next->put(*mut);
    }
    };
+   return false;
 }
 
 }}  // namespace
