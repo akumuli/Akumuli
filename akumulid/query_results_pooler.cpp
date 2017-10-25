@@ -551,5 +551,15 @@ std::string QueryProcessor::get_all_stats() {
     BOOST_THROW_EXCEPTION(err);
 }
 
+std::string QueryProcessor::get_resource(std::string name) {
+    size_t outbufsize = 0x1000;
+    char outbuf[outbufsize];
+    aku_Status status = aku_get_resource(name.c_str(), outbuf, &outbufsize);
+    if (status != AKU_SUCCESS) {
+        return "-Invalid resource name";
+    }
+    return std::string(outbuf, outbuf + outbufsize);
+}
+
 }  // namespace
 

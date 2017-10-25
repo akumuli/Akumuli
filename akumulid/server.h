@@ -68,11 +68,11 @@ enum class ApiEndpoint {
 
 //! Interface that can be used to create read operations
 struct ReadOperationBuilder {
-    virtual ~ReadOperationBuilder()                = default;
-    virtual ReadOperation* create(ApiEndpoint ep)  = 0;
-    virtual std::string    get_all_stats()         = 0;
+    virtual ~ReadOperationBuilder()                        = default;
+    virtual ReadOperation* create(ApiEndpoint ep)          = 0;
+    virtual std::string    get_all_stats()                 = 0;
+    virtual std::string    get_resource(std::string name)  = 0;
 };
-
 
 //! Server interface
 struct Server {

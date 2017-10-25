@@ -472,3 +472,21 @@ void aku_debug_print(aku_Database *db) {
     AKU_PANIC("Not implemented");
 }
 
+aku_Status aku_get_resource(const char* res_name, char* buf, size_t* bufsize) {
+    std::string res(res_name);
+    if (res != "function-names") {
+        return AKU_EBAD_ARG;
+    }
+    auto names = QP::list_query_registry();
+    std::string result;
+    for (auto name: names) {
+        result += name;
+        result += "\n";
+    }
+    if (result.size() > *bufsize) {
+        return AKU_EOVERFLOW;
+    }
+    std::copy(result.begin(), result.end(), buf);
+    *bufsize = result.size();
+    return AKU_SUCCESS;
+}

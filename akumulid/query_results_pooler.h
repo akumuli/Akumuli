@@ -56,6 +56,7 @@ struct QueryProcessor : ReadOperationBuilder {
     virtual ReadOperation* create(ApiEndpoint endpoint);
 
     virtual std::string get_all_stats();
+    virtual std::string get_resource(std::string name);
 };
 
 }  // namespace

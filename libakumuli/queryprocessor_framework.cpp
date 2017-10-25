@@ -13,6 +13,14 @@ struct QueryParserRegistry {
     }
 };
 
+std::vector<std::string> list_query_registry() {
+    std::vector<std::string> names;
+    for (auto kv: QueryParserRegistry::get().registry) {
+        names.push_back(kv.first);
+    }
+    return names;
+}
+
 void add_queryparsertoken_to_registry(const BaseQueryParserToken *ptr) {
     QueryParserRegistry::get().registry[ptr->get_tag()] = ptr;
 }

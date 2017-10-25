@@ -239,6 +239,8 @@ struct BaseQueryParserToken {
 //! Register QueryParserToken
 void add_queryparsertoken_to_registry(BaseQueryParserToken const* ptr);
 
+std::vector<std::string> list_query_registry();
+
 //! Create new node using token registry
 std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree,
                                   std::shared_ptr<Node> next);
