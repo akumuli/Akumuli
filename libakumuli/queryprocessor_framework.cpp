@@ -1,4 +1,5 @@
 #include "queryprocessor_framework.h"
+#include "storage_engine/tuples.h"
 #include <map>
 
 namespace Akumuli {
@@ -93,6 +94,46 @@ bool GroupByTime::put(aku_Sample const& sample, Node& next) {
 
 bool GroupByTime::empty() const {
     return step_ == 0;
+}
+
+// ----------
+// SampleUtil
+// ----------
+
+std::tuple<double, SampleUtil::Context> SampleUtil::get_value(const aku_Sample& sample) {
+    double value = 0;
+    Context chan = ERROR;
+    bool is_tuple = TupleOutputUtils::is_one_element_tuple(&sample);
+    if (sample.payload.type != AKU_PAYLOAD_FLOAT && !is_tuple) {
+        return std::make_tuple(0.0, ERROR);
+    }
+    if (is_tuple) {
+        value = TupleOutputUtils::get_first_value(&sample);
+        chan  = TUPLE;
+    } else {
+        value = sample.payload.float64;
+        chan  = SCALAR;
+    }
+    return std::make_tuple(value, chan);
+}
+
+bool SampleUtil::publish(SampleUtil::Context ctx, double newvalue, const aku_Sample& sample, Node* next) {
+   switch (ctx) {
+   case ERROR:
+       return false;
+   case SCALAR: {
+       aku_Sample mut = sample;
+       mut.payload.float64 = newvalue;
+       return next->put(mut);
+   }
+   case TUPLE: {
+       const size_t buffersize = sizeof(aku_Sample) + sizeof(double);
+       char buffer[buffersize];
+       auto mut = TupleOutputUtils::copy_sample(&sample, buffer, buffersize);
+       TupleOutputUtils::set_first_value(mut, newvalue);
+       return next->put(*mut);
+   }
+   };
 }
 
 }}  // namespace

@@ -169,6 +169,16 @@ struct Node {
     virtual int get_requirements() const = 0;
 };
 
+struct SampleUtil {
+    enum Context {
+        ERROR,
+        TUPLE,
+        SCALAR,
+    };
+    static std::tuple<double, Context> get_value(const aku_Sample& sample);
+    static bool publish(Context ctx, double newvalue, const aku_Sample& sample, Node* next);
+};
+
 
 struct NodeException : std::runtime_error {
     NodeException(const char* msg)

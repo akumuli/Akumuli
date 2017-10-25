@@ -220,67 +220,50 @@ int AnomalyDetector::get_requirements() const {
 // -------------------------
 
 
-PredictionError::PredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+EWMAPredictionError::EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
     : next_(next)
 {
     decay_ = ptree.get<double>("decay");
 }
 
-PredictionError::PredictionError(double decay, std::shared_ptr<Node> next)
+EWMAPredictionError::EWMAPredictionError(double decay, std::shared_ptr<Node> next)
     : decay_(decay)
     , next_(next)
 {
 }
 
-void PredictionError::complete() {
+void EWMAPredictionError::complete() {
     next_->complete();
 }
 
-bool PredictionError::put(const aku_Sample &sample) {
-    bool is_tuple = TupleOutputUtils::is_one_element_tuple(&sample);
-    if (sample.payload.type != AKU_PAYLOAD_FLOAT && !is_tuple) {
+bool EWMAPredictionError::put(const aku_Sample &sample) {
+    SampleUtil::Context ctx;
+    double value;
+    std::tie(value, ctx) = SampleUtil::get_value(sample);
+    if (ctx == SampleUtil::ERROR) {
         return false;
     }
-    if (is_tuple) {
-        double value = TupleOutputUtils::get_first_value(&sample);
-        if (swind_.count(sample.paramid) == 0) {
-            swind_[sample.paramid] = EWMA(decay_);
-        }
-        EWMA& ewma = swind_[sample.paramid];
-        double exp = ewma.get(value);
-        ewma.add(value);
-        value = value - exp;
-        const size_t buffersize = sizeof(aku_Sample) + sizeof(double);
-        char buffer[buffersize];
-        auto mut = TupleOutputUtils::copy_sample(&sample, buffer, buffersize);
-        TupleOutputUtils::set_first_value(mut, value);
-        return next_->put(*mut);
-    }
-    double value = sample.payload.float64;
-    if (swind_.count(sample.paramid) == 0) {
-        swind_[sample.paramid] = EWMA(decay_);
-    }
+    // calculate next value
     EWMA& ewma = swind_[sample.paramid];
     double exp = ewma.get(value);
     ewma.add(value);
     value = value - exp;
-    aku_Sample mut = sample;
-    mut.payload.float64 = value;
-    return next_->put(mut);
+    // publish next value
+    return SampleUtil::publish(ctx, value, sample, next_.get());
 }
 
-void PredictionError::set_error(aku_Status status) {
+void EWMAPredictionError::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-int PredictionError::get_requirements() const {
+int EWMAPredictionError::get_requirements() const {
     return TERMINAL;
 }
 
 
 //! Register anomaly detector for use in queries
 //static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
-static QueryParserToken<PredictionError> ewma_token("ewma-error");
+static QueryParserToken<EWMAPredictionError> ewma_token("ewma-error");
 
 }}  // namespace
 
