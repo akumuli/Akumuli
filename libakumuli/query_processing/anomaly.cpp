@@ -244,6 +244,9 @@ bool EWMAPredictionError::put(const aku_Sample &sample) {
         return false;
     }
     // calculate next value
+    if (swind_.count(sample.paramid) == 0) {
+        swind_[sample.paramid] = EWMA(decay_);
+    }
     EWMA& ewma = swind_[sample.paramid];
     double exp = ewma.get(value);
     ewma.add(value);
