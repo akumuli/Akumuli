@@ -220,23 +220,25 @@ int AnomalyDetector::get_requirements() const {
 // -------------------------
 
 
-EWMAPredictionError::EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+EWMAPrediction::EWMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
     : next_(next)
+    , delta_(false)
 {
     decay_ = ptree.get<double>("decay");
 }
 
-EWMAPredictionError::EWMAPredictionError(double decay, std::shared_ptr<Node> next)
+EWMAPrediction::EWMAPrediction(double decay, bool calculate_delta, std::shared_ptr<Node> next)
     : decay_(decay)
     , next_(next)
+    , delta_(calculate_delta)
 {
 }
 
-void EWMAPredictionError::complete() {
+void EWMAPrediction::complete() {
     next_->complete();
 }
 
-bool EWMAPredictionError::put(const aku_Sample &sample) {
+bool EWMAPrediction::put(const aku_Sample &sample) {
     SampleUtil::Context ctx;
     double value;
     std::tie(value, ctx) = SampleUtil::get_value(sample);
@@ -250,23 +252,34 @@ bool EWMAPredictionError::put(const aku_Sample &sample) {
     EWMA& ewma = swind_[sample.paramid];
     double exp = ewma.get(value);
     ewma.add(value);
-    value = value - exp;
+    if (delta_) {
+        value = value - exp;
+    } else {
+        value = exp;
+    }
     // publish next value
     return SampleUtil::publish(ctx, value, sample, next_.get());
 }
 
-void EWMAPredictionError::set_error(aku_Status status) {
+void EWMAPrediction::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-int EWMAPredictionError::get_requirements() const {
+int EWMAPrediction::get_requirements() const {
     return TERMINAL;
 }
 
+struct EWMAPredictionError : EWMAPrediction {
+    EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+        : EWMAPrediction(ptree.get<double>("decay"), true, next)
+    {
+    }
+};
 
 //! Register anomaly detector for use in queries
 //static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
-static QueryParserToken<EWMAPredictionError> ewma_token("ewma-error");
+static QueryParserToken<EWMAPredictionError> ewma_error_token("ewma-error");
+static QueryParserToken<EWMAPrediction> ewma_token("ewma");
 
 }}  // namespace
 

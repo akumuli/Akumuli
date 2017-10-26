@@ -1300,7 +1300,14 @@ std::tuple<aku_Status, std::shared_ptr<Node>>
         name = ptree.get<std::string>("name");
         return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, next));
     } catch (const boost::property_tree::ptree_error& e) {
+        Logger::msg(AKU_LOG_ERROR, std::string("Can't query json: ") + e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
+    } catch (const QueryParserError& e) {
         Logger::msg(AKU_LOG_ERROR, std::string("Can't parse query: ") + e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
+    } catch (...) {
+        Logger::msg(AKU_LOG_ERROR, std::string("Unknown query parsing error: ") +
+                    boost::current_exception_diagnostic_information());
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
     }
 }

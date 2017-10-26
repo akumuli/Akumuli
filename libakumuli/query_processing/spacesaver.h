@@ -69,7 +69,7 @@ struct SpaceSaver : Node {
             if (support < estimate) {
                 aku_Sample s;
                 s.paramid         = it.first;
-                s.payload.type    = aku_PData::PARAMID_BIT | aku_PData::FLOAT_BIT;
+                s.payload.type    = AKU_PAYLOAD_FLOAT;
                 s.payload.float64 = it.second.count;
                 s.payload.size    = sizeof(aku_Sample);
                 samples.push_back(s);

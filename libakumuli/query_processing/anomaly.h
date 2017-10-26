@@ -42,14 +42,15 @@ struct AnomalyDetector : Node {
     virtual int get_requirements() const;
 };
 
-struct EWMAPredictionError : Node {
+struct EWMAPrediction : Node {
     double decay_;
     std::unordered_map<aku_ParamId, EWMA> swind_;
     std::shared_ptr<Node> next_;
+    const bool delta_;
 
-    EWMAPredictionError(double decay, std::shared_ptr<Node> next);
+    EWMAPrediction(double decay, bool calculate_delta, std::shared_ptr<Node> next);
 
-    EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+    EWMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
 
     virtual void complete();
 
