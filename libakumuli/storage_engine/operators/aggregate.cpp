@@ -321,7 +321,7 @@ std::tuple<aku_Status, size_t> SeriesOrderAggregateMaterializer::read(u8 *dest, 
         aku_Sample* sample;
         std::tie(sample, tup)   = cast(dest);
         dest                   += sample_size;
-        sample->payload.type    = AKU_PAYLOAD_TUPLE;
+        sample->payload.type    = AKU_PAYLOAD_TUPLE|aku_PData::REGULLAR;
         sample->payload.size    = static_cast<u16>(sample_size);
         sample->paramid         = outids[i];
         sample->timestamp       = destts_vec[i];

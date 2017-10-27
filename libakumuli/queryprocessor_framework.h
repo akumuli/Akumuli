@@ -132,16 +132,6 @@ struct QueryParserError : std::runtime_error {
         : std::runtime_error(parser_message) {}
 };
 
-static const aku_Sample NO_DATA = { 0u, 0u, { 0.0, sizeof(aku_Sample), aku_PData::EMPTY } };
-
-static const aku_Sample SAMPLING_LO_MARGIN = { 0u,
-                                               0u,
-                                               { 0.0, sizeof(aku_Sample), aku_PData::LO_MARGIN } };
-
-static const aku_Sample SAMPLING_HI_MARGIN = { 0u,
-                                               0u,
-                                               { 0.0, sizeof(aku_Sample), aku_PData::HI_MARGIN } };
-
 struct Node {
 
     virtual ~Node() = default;
@@ -186,26 +176,6 @@ struct NodeException : std::runtime_error {
 };
 
 
-
-/** Group-by time statement processor */
-struct GroupByTime {
-    aku_Timestamp step_;
-    bool          first_hit_;
-    aku_Timestamp lowerbound_;
-    aku_Timestamp upperbound_;
-
-    GroupByTime();
-
-    GroupByTime(aku_Timestamp step);
-
-    GroupByTime(const GroupByTime& other);
-
-    GroupByTime& operator=(const GroupByTime& other);
-
-    bool put(aku_Sample const& sample, Node& next);
-
-    bool empty() const;
-};
 
 //! Stream processor interface
 struct IStreamProcessor {

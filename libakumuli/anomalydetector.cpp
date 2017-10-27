@@ -734,45 +734,6 @@ std::unique_ptr<AnomalyDetectorIface>
     return std::move(result);
 }
 
-// EWMA
-
-static const u32 EWMA_WARMUP = 10;
-
-EWMA::EWMA()
-    : warmup_(0)
-    , value_(0.0)
-    , decay_(0.0)
-{
-}
-
-EWMA::EWMA(double decay)
-    : warmup_(0)
-    , value_(0.0)
-    , decay_(decay)
-{
-}
-
-void EWMA::add(double value) {
-    if (warmup_ < EWMA_WARMUP) {
-        value_ += value;
-        warmup_++;
-    } else if (warmup_ == EWMA_WARMUP) {
-        warmup_++;
-        value_ += value;
-        value_ = value_ / static_cast<double>(warmup_);
-        value_ = (value * decay_) + (value_ * (1.0 - decay_));
-    } else {
-        value_ = (value * decay_) + (value_ * (1.0 - decay_));
-    }
-}
-
-double EWMA::get(double default_value) const {
-    if (warmup_ <= EWMA_WARMUP) {
-        return default_value;
-    }
-    return value_;
-}
-
 }
 }
 

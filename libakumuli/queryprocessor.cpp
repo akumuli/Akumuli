@@ -25,8 +25,7 @@ namespace QP {
 
 //  ScanQueryProcessor  //
 
-ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, GroupByTime groupby)
-    : groupby_(groupby)
+ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, bool group_by_time)
 {
     if (nodes.empty()) {
         AKU_PANIC("`nodes` shouldn't be empty")
@@ -36,7 +35,7 @@ ScanQueryProcessor::ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
     last_node_ = nodes.back();
 
     // validate query processor data
-    if (groupby_.empty()) {
+    if (group_by_time) {
         for (auto ptr: nodes) {
             if ((ptr->get_requirements() & Node::GROUP_BY_REQUIRED) != 0) {
                 NodeException err("`group_by` required");  // TODO: more detailed error message
@@ -63,10 +62,7 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
-    if (AKU_UNLIKELY(sample.payload.type == aku_PData::EMPTY)) {
-        return last_node_->put(sample);
-    }
-    return groupby_.put(sample, *root_node_);
+    return root_node_->put(sample);
 }
 
 void ScanQueryProcessor::stop() {

@@ -1275,15 +1275,11 @@ struct TerminalNode : QP::Node {
     }
 
     bool put(const aku_Sample& sample) {
-        if (sample.payload.type != aku_PData::MARGIN) {
-            return cursor->put(sample);
-        }
-        return true;
+        return cursor->put(sample);
     }
 
     void set_error(aku_Status status) {
         cursor->set_error(status);
-        //throw std::runtime_error("search error detected");
     }
 
     int get_requirements() const {

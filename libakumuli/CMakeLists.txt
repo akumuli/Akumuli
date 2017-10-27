@@ -26,17 +26,16 @@ add_library(akumuli SHARED
     query_processing/queryplan.cpp
     queryprocessor.cpp
     queryprocessor_framework.cpp
-    hashfnfamily.cpp
-    anomalydetector.cpp
-    query_processing/anomaly.cpp
+    #hashfnfamily.cpp
+    #anomalydetector.cpp
     saxencoder.cpp
     query_processing/rate.cpp
     query_processing/sax.cpp
-    query_processing/paa.cpp
-    query_processing/filterbyid.cpp
-    query_processing/randomsamplingnode.cpp
-    query_processing/spacesaver.cpp
+    #query_processing/anomaly.cpp
+    #query_processing/filterbyid.cpp
+    #query_processing/spacesaver.cpp
     query_processing/limiter.cpp
+    query_processing/sliding_window.cpp
     query_processing/queryparser.cpp
 )
 

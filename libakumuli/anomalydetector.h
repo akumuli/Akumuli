@@ -55,18 +55,5 @@ struct AnomalyDetectorUtil {
                                double gamma, int period);
 };
 
-class EWMA {
-    u32 warmup_;
-    double value_;
-    double decay_;
-public:
-    EWMA();
-    EWMA(double decay);
-    // Update sliding window
-    void add(double value);
-    // Return current prediction (default_value will be used for warmup period)
-    double get(double default_value) const;
-};
-
 }
 }

@@ -895,7 +895,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             cur->set_error(status);
             return;
         }
-        GroupByTime groupbytime;
+        bool groupbytime = kind == QueryKind::GROUP_AGGREGATE;
         proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
         if (req.select.matcher) {
             session->set_series_matcher(req.select.matcher);

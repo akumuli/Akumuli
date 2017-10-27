@@ -16,10 +16,6 @@ void Limiter::complete() {
 }
 
 bool Limiter::put(const aku_Sample& sample) {
-    if (sample.payload.type > aku_PData::MARGIN || sample.payload.type == aku_PData::EMPTY) {
-        // If margin or empty - continue
-        return true;
-    }
     if (counter_ < offset_) {
         // continue iteration
         return true;

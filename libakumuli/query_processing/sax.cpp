@@ -42,9 +42,6 @@ void SAXNode::complete() {
 }
 
 bool SAXNode::put(const aku_Sample &sample) {
-    if (sample.payload.type > aku_PData::MARGIN) {
-        return true;
-    }
     SAX::SAXWord word;
     auto it = encoders_.find(sample.paramid);
     if (it == encoders_.end()) {

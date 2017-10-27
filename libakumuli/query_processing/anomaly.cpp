@@ -192,18 +192,7 @@ void AnomalyDetector::complete() {
 }
 
 bool AnomalyDetector::put(const aku_Sample &sample) {
-    if (sample.payload.type > aku_PData::MARGIN) {
-        detector_->move_sliding_window();
-        return next_->put(sample);
-    } else if (sample.payload.type & aku_PData::FLOAT_BIT) {
-        detector_->add(sample.paramid, sample.payload.float64);
-        if (detector_->is_anomaly_candidate(sample.paramid)) {
-            aku_Sample anomaly = sample;
-            anomaly.payload.type |= aku_PData::URGENT;
-            return next_->put(anomaly);
-        }
-    }
-    return true;
+    return false;
 }
 
 void AnomalyDetector::set_error(aku_Status status) {
@@ -214,72 +203,6 @@ int AnomalyDetector::get_requirements() const {
     return TERMINAL|GROUP_BY_REQUIRED;
 }
 
-
-// -------------------------
-// Prediction error function
-// -------------------------
-
-
-EWMAPrediction::EWMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
-    : next_(next)
-    , delta_(false)
-{
-    decay_ = ptree.get<double>("decay");
-}
-
-EWMAPrediction::EWMAPrediction(double decay, bool calculate_delta, std::shared_ptr<Node> next)
-    : decay_(decay)
-    , next_(next)
-    , delta_(calculate_delta)
-{
-}
-
-void EWMAPrediction::complete() {
-    next_->complete();
-}
-
-bool EWMAPrediction::put(const aku_Sample &sample) {
-    SampleUtil::Context ctx;
-    double value;
-    std::tie(value, ctx) = SampleUtil::get_value(sample);
-    if (ctx == SampleUtil::ERROR) {
-        return false;
-    }
-    // calculate next value
-    if (swind_.count(sample.paramid) == 0) {
-        swind_[sample.paramid] = EWMA(decay_);
-    }
-    EWMA& ewma = swind_[sample.paramid];
-    double exp = ewma.get(value);
-    ewma.add(value);
-    if (delta_) {
-        value = value - exp;
-    } else {
-        value = exp;
-    }
-    // publish next value
-    return SampleUtil::publish(ctx, value, sample, next_.get());
-}
-
-void EWMAPrediction::set_error(aku_Status status) {
-    next_->set_error(status);
-}
-
-int EWMAPrediction::get_requirements() const {
-    return TERMINAL;
-}
-
-struct EWMAPredictionError : EWMAPrediction {
-    EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
-        : EWMAPrediction(ptree.get<double>("decay"), true, next)
-    {
-    }
-};
-
-//! Register anomaly detector for use in queries
-//static QueryParserToken<AnomalyDetector> detector_token("anomaly-detector");
-static QueryParserToken<EWMAPredictionError> ewma_error_token("ewma-error");
-static QueryParserToken<EWMAPrediction> ewma_token("ewma");
 
 }}  // namespace
 
