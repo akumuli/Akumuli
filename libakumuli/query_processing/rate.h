@@ -9,7 +9,11 @@ namespace QP {
 
 struct SimpleRate : Node {
 
-    std::unordered_map<aku_ParamId, std::tuple<aku_Timestamp, double>> table_;
+    std::unordered_map< std::tuple<aku_ParamId, u32>
+                      , std::tuple<aku_Timestamp, double>
+                      , KeyHash
+                      , KeyEqual> table_;
+
     std::shared_ptr<Node> next_;
 
     SimpleRate(std::shared_ptr<Node> next);
@@ -27,7 +31,11 @@ struct SimpleRate : Node {
 
 struct SimpleSum : Node {
 
-    std::unordered_map<aku_ParamId, double> table_;
+    std::unordered_map< std::tuple<aku_ParamId, u32>
+                      , double
+                      , KeyHash
+                      , KeyEqual> table_;
+
     std::shared_ptr<Node> next_;
 
     SimpleSum(std::shared_ptr<Node> next);

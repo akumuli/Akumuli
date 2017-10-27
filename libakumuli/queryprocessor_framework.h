@@ -159,14 +159,54 @@ struct Node {
     virtual int get_requirements() const = 0;
 };
 
-struct SampleUtil {
-    enum Context {
-        ERROR,
-        TUPLE,
-        SCALAR,
+struct MutableSample {
+    union Payload {
+        aku_Sample sample;
+        char       raw[sizeof(aku_Sample) + sizeof(double)*58];
     };
-    static std::tuple<double, Context> get_value(const aku_Sample& sample);
-    static bool publish(Context ctx, double newvalue, const aku_Sample& sample, Node* next);
+    Payload payload_;
+    u32     size_;
+    u32     bitmap_;
+
+    MutableSample(const aku_Sample* source);
+
+    u32 size() const;
+
+    double* operator[] (u32 index);
+
+    bool publish(Node* next);
+
+};
+
+/**
+  * @brief Key hash that can be used in processing functions (aka Nodes)
+  * Most of the time the function state is accessed via u64:u32 tuple (id:index).
+  */
+struct KeyHash : public std::unary_function<std::tuple<aku_ParamId, u32>, std::size_t>
+{
+    typedef std::tuple<aku_ParamId, u32> Key;
+
+    static void hash_combine(std::size_t& seed, u32 v) {
+        seed ^= std::hash<u32>()(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    }
+
+    std::size_t operator()(Key value) const {
+        size_t seed = std::hash<aku_ParamId>()(std::get<0>(value));
+        hash_combine(seed, std::get<1>(value));
+        return seed;
+    }
+};
+
+/**
+  * @brief Key comparator that can be used in processing functions (aka Nodes)
+  * Most of the time the function state is accessed via u64:u32 tuple (id:index).
+  */
+struct KeyEqual : public std::binary_function<std::tuple<aku_ParamId, u32>, std::tuple<aku_ParamId, u32>, bool>
+{
+    typedef std::tuple<aku_ParamId, u32> Key;
+    bool operator()(const Key& lhs, const Key& rhs) const {
+        return lhs == rhs;
+    }
 };
 
 

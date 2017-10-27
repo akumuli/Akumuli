@@ -74,26 +74,29 @@ void EWMAPrediction::complete() {
 }
 
 bool EWMAPrediction::put(const aku_Sample &sample) {
-    SampleUtil::Context ctx;
-    double value;
-    std::tie(value, ctx) = SampleUtil::get_value(sample);
-    if (ctx == SampleUtil::ERROR) {
-        return false;
+    MutableSample mut(&sample);
+    auto size = mut.size();
+
+    for (u32 ix = 0; ix < size; ix++) {
+        double* value = mut[ix];
+        if (value) {
+            // calculate new value
+            auto key = std::make_tuple(sample.paramid, ix);
+            if (swind_.count(key) == 0) {
+                swind_[key] = EWMA(decay_);
+            }
+            EWMA& ewma = swind_[key];
+            double exp = ewma.get(*value);
+            ewma.add(*value);
+            if (delta_) {
+                *value -= exp;
+            } else {
+                *value  = exp;
+            }
+        }
     }
-    // calculate next value
-    if (swind_.count(sample.paramid) == 0) {
-        swind_[sample.paramid] = EWMA(decay_);
-    }
-    EWMA& ewma = swind_[sample.paramid];
-    double exp = ewma.get(value);
-    ewma.add(value);
-    if (delta_) {
-        value = value - exp;
-    } else {
-        value = exp;
-    }
-    // publish next value
-    return SampleUtil::publish(ctx, value, sample, next_.get());
+
+    return mut.publish(next_.get());
 }
 
 void EWMAPrediction::set_error(aku_Status status) {

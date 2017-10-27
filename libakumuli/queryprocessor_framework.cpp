@@ -1,5 +1,6 @@
 #include "queryprocessor_framework.h"
 #include "storage_engine/tuples.h"
+#include "util.h"
 #include <map>
 
 namespace Akumuli {
@@ -37,45 +38,41 @@ std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree c
 }
 
 
-// ----------
-// SampleUtil
-// ----------
+// -------------
+// MutableSample
+// -------------
 
-std::tuple<double, SampleUtil::Context> SampleUtil::get_value(const aku_Sample& sample) {
-    double value = 0;
-    Context chan = ERROR;
-    bool is_tuple = TupleOutputUtils::is_one_element_tuple(&sample);
-    if (sample.payload.type != AKU_PAYLOAD_FLOAT && !is_tuple) {
-        return std::make_tuple(0.0, ERROR);
-    }
-    if (is_tuple) {
-        value = TupleOutputUtils::get_first_value(&sample);
-        chan  = TUPLE;
-    } else {
-        value = sample.payload.float64;
-        chan  = SCALAR;
-    }
-    return std::make_tuple(value, chan);
+MutableSample::MutableSample(const aku_Sample* source)
+{
+    auto size = std::max(sizeof(aku_Sample), static_cast<size_t>(source->payload.size));
+    memcpy(payload_.raw, source, size);
+    std::tie(size_, bitmap_) = TupleOutputUtils::get_size_and_bitmap(source->payload.float64);
 }
 
-bool SampleUtil::publish(SampleUtil::Context ctx, double newvalue, const aku_Sample& sample, Node* next) {
-   switch (ctx) {
-   case ERROR:
-       return false;
-   case SCALAR: {
-       aku_Sample mut = sample;
-       mut.payload.float64 = newvalue;
-       return next->put(mut);
-   }
-   case TUPLE: {
-       const size_t buffersize = sizeof(aku_Sample) + sizeof(double);
-       char buffer[buffersize];
-       auto mut = TupleOutputUtils::copy_sample(&sample, buffer, buffersize);
-       TupleOutputUtils::set_first_value(mut, newvalue);
-       return next->put(*mut);
-   }
-   };
-   return false;
+u32 MutableSample::size() const {
+    return size_;
+}
+
+static int count_ones(u64 value) {
+    return value == 0 ? 0 : (64 - __builtin_clzll(value));
+}
+
+double* MutableSample::operator[] (u32 index) {
+    const auto bit = static_cast<u32>(1 << index);
+    if (bitmap_ & bit) {
+        // value is present
+        // count 1's before index
+        const auto mask = bit - 1;
+        const auto tail = mask & bitmap_;
+        const auto offset = count_ones(tail);
+        double* tuple = reinterpret_cast<double*>(payload_.sample.payload.data);
+        return tuple + offset;
+    }
+    return nullptr;
+}
+
+bool MutableSample::publish(Node* next) {
+    return next->put(payload_.sample);
 }
 
 }}  // namespace

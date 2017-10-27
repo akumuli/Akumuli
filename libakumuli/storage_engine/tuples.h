@@ -30,6 +30,18 @@ struct TupleOutputUtils {
         return bits.d;
     }
 
+    // Returns size of the tuple and bitmap
+    static std::tuple<u32, u64> get_size_and_bitmap(double value) {
+        union {
+            double d;
+            u64 u;
+        } bits;
+        bits.d = value;
+        u32 size = static_cast<u32>(bits.u >> 58);
+        u32 bitmap = 0x3ffffffffffffff & bits.u;
+        return std::make_tuple(size, bitmap);
+    }
+
     static double get(StorageEngine::AggregationResult const& res, StorageEngine::AggregationFunction afunc) {
         double out = 0;
         switch (afunc) {

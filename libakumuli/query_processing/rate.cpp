@@ -23,26 +23,29 @@ void SimpleRate::complete() {
 }
 
 bool SimpleRate::put(const aku_Sample& sample) {
-    aku_Timestamp oldT = 0;
-    double oldX = 0;
-    aku_ParamId id = sample.paramid;
-    auto it = table_.find(id);
-    if (it != table_.end()) {
-        oldT = std::get<0>(it->second);
-        oldX = std::get<1>(it->second);
+    MutableSample mut(&sample);
+    auto size = mut.size();
+    for (u32 ix = 0; ix < size; ix++) {
+        double* value = mut[ix];
+        if (value) {
+            // calculate new value
+            auto key = std::make_tuple(sample.paramid, ix);
+            double oldX = 0;
+            aku_Timestamp oldT = 0;
+            auto it = table_.find(key);
+            if (it != table_.end()) {
+                oldT = std::get<0>(it->second);
+                oldX = std::get<1>(it->second);
+            }
+            auto newT = sample.timestamp;
+            double newX = *value;
+            // Formula: rate = Δx/Δt
+            const double nsec = 1000000000;
+            double dX = (newX - oldX) / (newT - oldT) * nsec;
+            *value = dX;
+        }
     }
-    auto newT = sample.timestamp;
-    double newX;
-    SampleUtil::Context ctx;
-    std::tie(newX, ctx) = SampleUtil::get_value(sample);
-    if (ctx == SampleUtil::ERROR) {
-        return false;
-    }
-    // Formula: rate = Δx/Δt
-    const double nsec = 1000000000;
-    double dX = (newX - oldX) / (newT - oldT) * nsec;
-    // publish next value
-    return SampleUtil::publish(ctx, dX, sample, next_.get());
+    return mut.publish(next_.get());
 }
 
 void SimpleRate::set_error(aku_Status status) {
@@ -72,21 +75,28 @@ void SimpleSum::complete() {
 }
 
 bool SimpleSum::put(const aku_Sample& sample) {
-    double prev = 0;
-    aku_ParamId id = sample.paramid;
-    auto it = table_.find(id);
-    if (it != table_.end()) {
-        prev = it->second;
+    MutableSample mut(&sample);
+    auto size = mut.size();
+    for (u32 ix = 0; ix < size; ix++) {
+        double* value = mut[ix];
+        if (value) {
+            // calculate new value
+            auto key = std::make_tuple(sample.paramid, ix);
+            double prev = 0;
+            auto it = table_.find(key);
+            if (it != table_.end()) {
+                prev = it->second;
+            } else {
+                table_[key] = 0;
+                it = table_.find(key);
+            }
+            double cur = *value;
+            double sum = cur + prev;
+            *value = sum;
+            it->second = sum;
+        }
     }
-    double curr;
-    SampleUtil::Context ctx;
-    std::tie(curr, ctx) = SampleUtil::get_value(sample);
-    if (ctx == SampleUtil::ERROR) {
-        return false;
-    }
-    double sum = curr + prev;
-    // publish next value
-    return SampleUtil::publish(ctx, sum, sample, next_.get());
+    return mut.publish(next_.get());
 }
 
 void SimpleSum::set_error(aku_Status status) {

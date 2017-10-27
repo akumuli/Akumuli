@@ -28,7 +28,7 @@ public:
 
 struct EWMAPrediction : Node {
     double decay_;
-    std::unordered_map<aku_ParamId, EWMA> swind_;
+    std::unordered_map<std::tuple<aku_ParamId, u32>, EWMA, KeyHash, KeyEqual> swind_;
     std::shared_ptr<Node> next_;
     const bool delta_;
 
