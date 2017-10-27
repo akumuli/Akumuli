@@ -587,8 +587,8 @@ struct TupleQueryProcessorMock : QP::IStreamProcessor {
         stopped = true;
     }
     virtual bool put(const aku_Sample &sample) override {
-        if (sample.payload.type != AKU_PAYLOAD_TUPLE) {
-            BOOST_REQUIRE(sample.payload.type == AKU_PAYLOAD_TUPLE);
+        if (sample.payload.type != (AKU_PAYLOAD_TUPLE|aku_PData::REGULLAR)) {
+            BOOST_REQUIRE(sample.payload.type == (AKU_PAYLOAD_TUPLE|aku_PData::REGULLAR));
         }
         union {
             double d;
