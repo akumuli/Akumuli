@@ -29,7 +29,7 @@ struct SimpleRate : Node {
     virtual int get_requirements() const;
 };
 
-struct SimpleSum : Node {
+struct CumulativeSum : Node {
 
     std::unordered_map< std::tuple<aku_ParamId, u32>
                       , double
@@ -38,9 +38,9 @@ struct SimpleSum : Node {
 
     std::shared_ptr<Node> next_;
 
-    SimpleSum(std::shared_ptr<Node> next);
+    CumulativeSum(std::shared_ptr<Node> next);
 
-    SimpleSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    CumulativeSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
 
     virtual void complete();
 

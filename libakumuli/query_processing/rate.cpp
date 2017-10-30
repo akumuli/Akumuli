@@ -60,21 +60,21 @@ int SimpleRate::get_requirements() const {
 // SimpleSum
 // ---------
 
-SimpleSum::SimpleSum(std::shared_ptr<Node> next)
+CumulativeSum::CumulativeSum(std::shared_ptr<Node> next)
     : next_(next)
 {
 }
 
-SimpleSum::SimpleSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
+CumulativeSum::CumulativeSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
     : next_(next)
 {
 }
 
-void SimpleSum::complete() {
+void CumulativeSum::complete() {
     next_->complete();
 }
 
-bool SimpleSum::put(const aku_Sample& sample) {
+bool CumulativeSum::put(const aku_Sample& sample) {
     MutableSample mut(&sample);
     auto size = mut.size();
     for (u32 ix = 0; ix < size; ix++) {
@@ -99,17 +99,17 @@ bool SimpleSum::put(const aku_Sample& sample) {
     return mut.publish(next_.get());
 }
 
-void SimpleSum::set_error(aku_Status status) {
+void CumulativeSum::set_error(aku_Status status) {
     next_->set_error(status);
 }
 
-int SimpleSum::get_requirements() const {
+int CumulativeSum::get_requirements() const {
     return TERMINAL;
 }
 
 static QueryParserToken<SimpleRate> rate_token("rate");
 
-static QueryParserToken<SimpleSum>  sum_token("sum");
+static QueryParserToken<CumulativeSum>  sum_token("accumulate");
 
 }}  // namespace
 

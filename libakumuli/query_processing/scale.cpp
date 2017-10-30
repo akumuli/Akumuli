@@ -3,9 +3,9 @@
 namespace Akumuli {
 namespace QP {
 
-// ---------
-// SimpleSum
-// ---------
+// -----
+// Scale
+// -----
 
 Scale::Scale(std::vector<double> weights, std::shared_ptr<Node> next)
     : weights_(weights)
@@ -13,9 +13,17 @@ Scale::Scale(std::vector<double> weights, std::shared_ptr<Node> next)
 {
 }
 
-Scale::Scale(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
+Scale::Scale(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
     : next_(next)
 {
+    // Read weights from json
+    auto const& list = ptree.get_child_optional("weights");
+    if (list) {
+        for (const auto& value: *list) {
+            double val = value.second.get_value<double>();
+            weights_.push_back(val);
+        }
+    }
 }
 
 void Scale::complete() {
@@ -24,7 +32,7 @@ void Scale::complete() {
 
 bool Scale::put(const aku_Sample& sample) {
     MutableSample mut(&sample);
-    auto size = mut.size();
+    auto size = std::min(mut.size(), static_cast<u32>(weights_.size()));
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         double weight = weights_[ix];

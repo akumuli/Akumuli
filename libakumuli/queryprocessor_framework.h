@@ -164,13 +164,20 @@ struct MutableSample {
         aku_Sample sample;
         char       raw[sizeof(aku_Sample) + sizeof(double)*58];
     };
-    Payload payload_;
-    u32     size_;
-    u32     bitmap_;
+    Payload        payload_;
+    u32            size_;
+    u32            bitmap_;
+    const bool     istuple_;
 
     MutableSample(const aku_Sample* source);
 
     u32 size() const;
+
+    /** Collapse tuple to single value, the value will be allocated
+      * and set to 0. This will be used by functions that produces a
+      * single value out of tuple (e.g. sum).
+      */
+    void collapse();
 
     double* operator[] (u32 index);
 
