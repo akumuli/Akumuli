@@ -10,6 +10,8 @@ try:
 except ImportError:
     import configparser as ini
 import StringIO
+import time
+from functools import wraps
 
 
 def parse_timestamp(ts):
@@ -268,6 +270,77 @@ def edit_config_file(key, value):
         for line in lines:
             configfile.write(line)
 
+# Globals to count test runs
+g_test_run = 1
+g_num_fail = 0
+
+def api_test(test_name):
+    def decorator(func):
+        def wrapper(*pos, **kv):
+            global g_test_run
+            global g_num_fail
+            n = g_test_run
+            g_test_run += 1
+            ts = datetime.datetime.now()
+            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
+            try:
+                func(*pos, **kv)
+                print("Test #{0} passed".format(n))
+            except ValueError as e:
+                print("Test #{0} failed: {1}".format(n, e))
+                g_num_fail += 1
+                traceback.print_exc()
+        return wrapper
+    return decorator
+
+def on_exit():
+    global g_num_fail
+    if g_num_fail != 0:
+        print("{0} tests failed".format(g_num_fail))
+        sys.exit(1)
+
+def retry(ExceptionToCheck, tries=4, delay=3, backoff=2, logger=None):
+    """Retry calling the decorated function using an exponential backoff.
+
+    http://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
+    original from: http://wiki.python.org/moin/PythonDecoratorLibrary#Retry
+
+    :param ExceptionToCheck: the exception to check. may be a tuple of
+        exceptions to check
+    :type ExceptionToCheck: Exception or tuple
+    :param tries: number of times to try (not retry) before giving up
+    :type tries: int
+    :param delay: initial delay between retries in seconds
+    :type delay: int
+    :param backoff: backoff multiplier e.g. value of 2 will double the delay
+        each retry
+    :type backoff: int
+    :param logger: logger to use. If None, print
+    :type logger: logging.Logger instance
+    """
+    def deco_retry(f):
+
+        @wraps(f)
+        def f_retry(*args, **kwargs):
+            mtries, mdelay = tries, delay
+            while mtries > 1:
+                try:
+                    return f(*args, **kwargs)
+                except ExceptionToCheck, e:
+                    msg = "%s, Retrying in %d seconds..." % (str(e), mdelay)
+                    if logger:
+                        logger.warning(msg)
+                    else:
+                        print(msg)
+                    time.sleep(mdelay)
+                    mtries -= 1
+                    mdelay *= backoff
+            return f(*args, **kwargs)
+
+        return f_retry  # true decorator
+
+    return deco_retry
 
 if __name__=='__main__':
     if len(sys.argv) < 2:

@@ -5,11 +5,12 @@ import socket
 import datetime
 import time
 import akumulid_test_tools as att
+from akumulid_test_tools import retry, api_test, on_exit
 import json
 try:
-    from urllib2 import urlopen, HTTPError
+    from urllib2 import urlopen, HTTPError, URLError
 except ImportError:
-    from urllib import urlopen, HTTPError
+    from urllib import urlopen, HTTPError, URLError
 import traceback
 import itertools
 import math
@@ -18,35 +19,6 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-g_test_run = 1
-g_num_fail = 0
-
-
-def api_test(test_name):
-    def decorator(func):
-        def wrapper(*pos, **kv):
-            global g_test_run
-            global g_num_fail
-            n = g_test_run
-            g_test_run += 1
-            ts = datetime.datetime.now()
-            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
-            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
-            try:
-                func(*pos, **kv)
-                print("Test #{0} passed".format(n))
-            except ValueError as e:
-                print("Test #{0} failed: {1}".format(n, e))
-                g_num_fail += 1
-                traceback.print_exc()
-        return wrapper
-    return decorator
-
-def on_exit():
-    global g_num_fail
-    if g_num_fail != 0:
-        print("{0} tests failed".format(g_num_fail))
-        sys.exit(1)
 
 @api_test("read all data in backward direction")
 def test_read_all_in_backward_direction(dtstart, delta, N):
@@ -822,6 +794,7 @@ def check_bad_query_handling():
     }
     for title, query in queries.iteritems():
         @api_test(title)
+	@retry(URLError, tries=3)
         def test():
             queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
             try:
