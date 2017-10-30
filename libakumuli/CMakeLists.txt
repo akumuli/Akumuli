@@ -31,6 +31,7 @@ add_library(akumuli SHARED
     saxencoder.cpp
     query_processing/rate.cpp
     query_processing/sax.cpp
+    query_processing/scale.cpp
     #query_processing/anomaly.cpp
     #query_processing/filterbyid.cpp
     #query_processing/spacesaver.cpp
