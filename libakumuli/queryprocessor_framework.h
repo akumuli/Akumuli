@@ -132,37 +132,14 @@ struct QueryParserError : std::runtime_error {
         : std::runtime_error(parser_message) {}
 };
 
-struct Node {
-
-    virtual ~Node() = default;
-
-    //! Complete adding values
-    virtual void complete() = 0;
-
-    /** Process value, return false to interrupt process.
-      * Empty sample can be sent to flush all updates.
-      */
-    virtual bool put(aku_Sample const& sample) = 0;
-
-    virtual void set_error(aku_Status status) = 0;
-
-    // Query validation
-
-    enum QueryFlags {
-        EMPTY             = 0,
-        GROUP_BY_REQUIRED = 1,
-        TERMINAL          = 2,
-    };
-
-    /** This method returns set of flags that describes its functioning.
-      */
-    virtual int get_requirements() const = 0;
-};
+struct Node;
 
 struct MutableSample {
+    static constexpr size_t MAX_PAYLOAD_SIZE = sizeof(double)*58;
+    static constexpr size_t MAX_SIZE = sizeof(aku_Sample) + MAX_PAYLOAD_SIZE;
     union Payload {
         aku_Sample sample;
-        char       raw[sizeof(aku_Sample) + sizeof(double)*58];
+        char       raw[MAX_SIZE];
     };
     Payload        payload_;
     u32            size_;
@@ -181,9 +158,42 @@ struct MutableSample {
 
     double* operator[] (u32 index);
 
-    bool publish(Node* next);
+    aku_Timestamp get_timestamp() const;
 
+    aku_ParamId get_paramid() const;
+
+    void convert_to_sax_word(u32 width);
+
+    char* get_payload();
 };
+
+struct Node {
+
+    virtual ~Node() = default;
+
+    //! Complete adding values
+    virtual void complete() = 0;
+
+    /** Process value, return false to interrupt process.
+      * Empty sample can be sent to flush all updates.
+      */
+    virtual bool put(MutableSample& sample) = 0;
+
+    virtual void set_error(aku_Status status) = 0;
+
+    // Query validation
+
+    enum QueryFlags {
+        EMPTY             = 0,
+        GROUP_BY_REQUIRED = 1,
+        TERMINAL          = 2,
+    };
+
+    /** This method returns set of flags that describes its functioning.
+      */
+    virtual int get_requirements() const = 0;
+};
+
 
 /**
   * @brief Key hash that can be used in processing functions (aka Nodes)

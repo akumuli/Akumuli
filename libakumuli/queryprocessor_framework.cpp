@@ -101,8 +101,29 @@ double* MutableSample::operator[] (u32 index) {
     return nullptr;
 }
 
-bool MutableSample::publish(Node* next) {
-    return next->put(payload_.sample);
+aku_Timestamp MutableSample::get_timestamp() const {
+    return payload_.sample.timestamp;
+}
+
+aku_ParamId MutableSample::get_paramid() const {
+    return payload_.sample.paramid;
+}
+
+void MutableSample::convert_to_sax_word(u32 width) {
+    auto id = get_paramid();
+    auto ts = get_timestamp();
+    u32 used_size = width + static_cast<u32>(sizeof(aku_Sample));
+    std::fill(payload_.raw, payload_.raw + used_size, 0);
+    payload_.sample.paramid = id;
+    payload_.sample.timestamp = ts;
+    payload_.sample.payload.type = aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::SAX_WORD;
+    payload_.sample.payload.size = static_cast<u16>(used_size);
+    bitmap_ = 0;
+    size_ = width;
+}
+
+char* MutableSample::get_payload() {
+    return payload_.sample.payload.data;
 }
 
 }}  // namespace

@@ -38,7 +38,7 @@ struct EWMAPrediction : Node {
 
     virtual void complete();
 
-    virtual bool put(const aku_Sample& sample);
+    virtual bool put(MutableSample& sample);
 
     virtual void set_error(aku_Status status);
 

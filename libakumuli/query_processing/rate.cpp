@@ -22,14 +22,13 @@ void SimpleRate::complete() {
     next_->complete();
 }
 
-bool SimpleRate::put(const aku_Sample& sample) {
-    MutableSample mut(&sample);
+bool SimpleRate::put(MutableSample &mut) {
     auto size = mut.size();
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         if (value) {
             // calculate new value
-            auto key = std::make_tuple(sample.paramid, ix);
+            auto key = std::make_tuple(mut.get_paramid(), ix);
             double oldX = 0;
             aku_Timestamp oldT = 0;
             auto it = table_.find(key);
@@ -37,7 +36,7 @@ bool SimpleRate::put(const aku_Sample& sample) {
                 oldT = std::get<0>(it->second);
                 oldX = std::get<1>(it->second);
             }
-            auto newT = sample.timestamp;
+            auto newT = mut.get_timestamp();
             double newX = *value;
             // Formula: rate = Δx/Δt
             const double nsec = 1000000000;
@@ -45,7 +44,7 @@ bool SimpleRate::put(const aku_Sample& sample) {
             *value = dX;
         }
     }
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void SimpleRate::set_error(aku_Status status) {
@@ -74,14 +73,13 @@ void CumulativeSum::complete() {
     next_->complete();
 }
 
-bool CumulativeSum::put(const aku_Sample& sample) {
-    MutableSample mut(&sample);
+bool CumulativeSum::put(MutableSample &mut) {
     auto size = mut.size();
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         if (value) {
             // calculate new value
-            auto key = std::make_tuple(sample.paramid, ix);
+            auto key = std::make_tuple(mut.get_paramid(), ix);
             double prev = 0;
             auto it = table_.find(key);
             if (it != table_.end()) {
@@ -96,7 +94,7 @@ bool CumulativeSum::put(const aku_Sample& sample) {
             it->second = sum;
         }
     }
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void CumulativeSum::set_error(aku_Status status) {
@@ -110,6 +108,7 @@ int CumulativeSum::get_requirements() const {
 static QueryParserToken<SimpleRate> rate_token("rate");
 
 static QueryParserToken<CumulativeSum>  sum_token("accumulate");
+static QueryParserToken<CumulativeSum>  cusum_token("cusum");
 
 }}  // namespace
 

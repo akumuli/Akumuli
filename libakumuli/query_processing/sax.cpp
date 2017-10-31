@@ -31,8 +31,11 @@ SAXNode::SAXNode(boost::property_tree::ptree const& ptree, std::shared_ptr<Node>
         QueryParserError err("`alphabet_size` should be in [1, 20] range");
         BOOST_THROW_EXCEPTION(err);
     }
-    if (window_width_ > 100 || window_width_ < 4) {
-        QueryParserError err("`window_width` should be in [4, 100] range");
+    if (static_cast<size_t>(window_width_) > MutableSample::MAX_PAYLOAD_SIZE || window_width_ < 4) {
+        std::stringstream msg;
+        msg << "`window_width` should be in [4, " << MutableSample::MAX_PAYLOAD_SIZE
+            << "] range";
+        QueryParserError err(msg.str().c_str());
         BOOST_THROW_EXCEPTION(err);
     }
 }
@@ -41,27 +44,20 @@ void SAXNode::complete() {
     next_->complete();
 }
 
-bool SAXNode::put(const aku_Sample &sample) {
-    SAX::SAXWord word;
-    auto it = encoders_.find(sample.paramid);
+bool SAXNode::put(MutableSample &sample) {
+    auto key = sample.get_paramid();
+    auto it = encoders_.find(key);
     if (it == encoders_.end()) {
-        encoders_[sample.paramid] = SAX::SAXEncoder(alphabet_size_, window_width_);
-        it = encoders_.find(sample.paramid);
+        encoders_[key] = SAX::SAXEncoder(alphabet_size_, window_width_);
+        it = encoders_.find(key);
     }
-    size_t ssize = sizeof(aku_Sample) + window_width_;
-    void* ptr = alloca(ssize);
-    aku_Sample* psample = new (ptr) aku_Sample();
-    *psample = sample;
-    psample->payload.size = ssize;
-    psample->payload.type |= aku_PData::SAX_WORD;
-    if (disable_value_) {
-        psample->payload.type &= ~aku_PData::FLOAT_BIT;
-    }
-    if (it->second.encode(sample.payload.float64, psample->payload.data, window_width_)) {
+    double value = *sample[0];  // TODO: limit dimentions
+    sample.convert_to_sax_word(static_cast<u32>(window_width_));
+    if (it->second.encode(value, sample.get_payload(), static_cast<size_t>(window_width_))) {
         if (inverse_) {
-            std::reverse(psample->payload.data, psample->payload.data + window_width_);
+            std::reverse(sample.get_payload(), sample.get_payload() + window_width_);
         }
-        return next_->put(*psample);
+        return next_->put(sample);
     }
     return true;
 }

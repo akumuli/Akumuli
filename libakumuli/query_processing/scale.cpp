@@ -30,8 +30,7 @@ void Scale::complete() {
     next_->complete();
 }
 
-bool Scale::put(const aku_Sample& sample) {
-    MutableSample mut(&sample);
+bool Scale::put(MutableSample &mut) {
     auto size = std::min(mut.size(), static_cast<u32>(weights_.size()));
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
@@ -40,7 +39,7 @@ bool Scale::put(const aku_Sample& sample) {
             *value *= weight;
         }
     }
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void Scale::set_error(aku_Status status) {

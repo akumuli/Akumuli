@@ -21,8 +21,7 @@ void Absolute::complete() {
     next_->complete();
 }
 
-bool Absolute::put(const aku_Sample& sample) {
-    MutableSample mut(&sample);
+bool Absolute::put(MutableSample &mut) {
     auto size = mut.size();
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
@@ -30,7 +29,7 @@ bool Absolute::put(const aku_Sample& sample) {
             *value = std::abs(*value);
         }
     }
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void Absolute::set_error(aku_Status status) {

@@ -1274,8 +1274,8 @@ struct TerminalNode : QP::Node {
         cursor->complete();
     }
 
-    bool put(const aku_Sample& sample) {
-        return cursor->put(sample);
+    bool put(MutableSample& sample) {
+        return cursor->put(sample.payload_.sample);
     }
 
     void set_error(aku_Status status) {

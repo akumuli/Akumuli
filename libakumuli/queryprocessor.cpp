@@ -62,7 +62,8 @@ bool ScanQueryProcessor::start() {
 }
 
 bool ScanQueryProcessor::put(const aku_Sample &sample) {
-    return root_node_->put(sample);
+    MutableSample mut(&sample);
+    return root_node_->put(mut);
 }
 
 void ScanQueryProcessor::stop() {
@@ -87,7 +88,8 @@ bool MetadataQueryProcessor::start() {
         s.timestamp = 0;
         s.payload.type = aku_PData::PARAMID_BIT;
         s.payload.size = sizeof(aku_Sample);
-        if (!root_->put(s)) {
+        MutableSample mut(&s);
+        if (!root_->put(mut)) {
             root_->complete();
             return false;
         }

@@ -73,15 +73,14 @@ void EWMAPrediction::complete() {
     next_->complete();
 }
 
-bool EWMAPrediction::put(const aku_Sample &sample) {
-    MutableSample mut(&sample);
+bool EWMAPrediction::put(MutableSample &mut) {
     auto size = mut.size();
 
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         if (value) {
             // calculate new value
-            auto key = std::make_tuple(sample.paramid, ix);
+            auto key = std::make_tuple(mut.get_paramid(), ix);
             if (swind_.count(key) == 0) {
                 swind_[key] = EWMA(decay_);
             }
@@ -96,7 +95,7 @@ bool EWMAPrediction::put(const aku_Sample &sample) {
         }
     }
 
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void EWMAPrediction::set_error(aku_Status status) {

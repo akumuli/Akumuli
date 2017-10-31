@@ -23,8 +23,7 @@ void Sum::complete() {
     next_->complete();
 }
 
-bool Sum::put(const aku_Sample& sample) {
-    MutableSample mut(&sample);
+bool Sum::put(MutableSample &mut) {
     auto size = mut.size();
     double acc = 0.;
     for (u32 ix = 0; ix < size; ix++) {
@@ -44,7 +43,7 @@ bool Sum::put(const aku_Sample& sample) {
     mut.collapse();
     double* value = mut[0];
     *value = acc;
-    return mut.publish(next_.get());
+    return next_->put(mut);
 }
 
 void Sum::set_error(aku_Status status) {

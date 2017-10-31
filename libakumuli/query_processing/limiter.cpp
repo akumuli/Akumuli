@@ -15,7 +15,7 @@ void Limiter::complete() {
     next_->complete();
 }
 
-bool Limiter::put(const aku_Sample& sample) {
+bool Limiter::put(MutableSample &sample) {
     if (counter_ < offset_) {
         // continue iteration
         return true;
