@@ -794,7 +794,7 @@ def check_bad_query_handling():
     }
     for title, query in queries.iteritems():
         @api_test(title)
-	@retry(URLError, tries=3)
+	@retry(Exception, tries=3)
         def test():
             queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
             try:

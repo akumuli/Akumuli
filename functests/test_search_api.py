@@ -42,7 +42,7 @@ METRICS = [
 ALL_SERIES_NAMES = sorted([metric + ' ' + tagline for tagline in ALL_TAG_COMBINATIONS for metric in METRICS ])
 
 @api_test("suggest metric name")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_metric():
     """Test suggest query."""
     query = {
@@ -64,7 +64,7 @@ def test_suggest_metric():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest metric name by prefix")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_metric_prefix():
     """Test suggest query."""
     query = {
@@ -89,7 +89,7 @@ def test_suggest_metric_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest tag name")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_tag():
     """Test suggest query."""
     query = {
@@ -113,7 +113,7 @@ def test_suggest_tag():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest tag name by prefix")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_tag_prefix():
     """Test suggest query."""
     query = {
@@ -138,7 +138,7 @@ def test_suggest_tag_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest value")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_value():
     """Test suggest query."""
     query = {
@@ -163,7 +163,7 @@ def test_suggest_value():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest value by prefix")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_suggest_value_prefix():
     """Test suggest query."""
     query = {
@@ -189,7 +189,7 @@ def test_suggest_value_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("search all names")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_search_all_names():
     """Test search query."""
     query = {
@@ -211,7 +211,7 @@ def test_search_all_names():
         raise ValueError("Query results mismatch")
 
 @api_test("search names with metric")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_search_names_with_metric():
     """Test search query."""
     query = {
@@ -234,7 +234,7 @@ def test_search_names_with_metric():
         raise ValueError("Query results mismatch")
 
 @api_test("search names by tag")
-@retry(URLError, tries=3)
+@retry(Exception, tries=3)
 def test_search_names_with_tag():
     """Test search query."""
     query = {
