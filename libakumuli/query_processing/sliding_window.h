@@ -89,5 +89,26 @@ struct SMAPrediction : Node {
     virtual int get_requirements() const;
 };
 
+// -------------------------
+// Cumulative moving average
+// -------------------------
+
+struct CMAPrediction : Node {
+    std::unordered_map<std::tuple<aku_ParamId, u32>, std::pair<double, size_t>, KeyHash, KeyEqual> swind_;
+    std::shared_ptr<Node> next_;
+
+    CMAPrediction(std::shared_ptr<Node> next);
+
+    CMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next);
+
+    virtual void complete();
+
+    virtual bool put(MutableSample& mut);
+
+    virtual void set_error(aku_Status status);
+
+    virtual int get_requirements() const;
+};
+
 }
 }  // namespace

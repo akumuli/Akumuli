@@ -203,10 +203,58 @@ struct SMAPredictionError : SMAPrediction {
     }
 };
 
+// -------------------------
+// Cumulative moving average
+// -------------------------
+
+CMAPrediction::CMAPrediction(std::shared_ptr<Node> next)
+    : next_(next)
+{
+}
+
+CMAPrediction::CMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    : next_(next)
+{
+}
+
+void CMAPrediction::complete() {
+    next_->complete();
+}
+
+bool CMAPrediction::put(MutableSample& mut) {
+    auto size = mut.size();
+
+    for (u32 ix = 0; ix < size; ix++) {
+        double* value = mut[ix];
+        if (value) {
+            // calculate new value
+            auto key = std::make_tuple(mut.get_paramid(), ix);
+            double sum;
+            size_t cnt;
+            std::tie(sum, cnt) = swind_[key];
+            sum += *value;
+            cnt += 1;
+            swind_[key] = std::make_pair(sum + *value, cnt + 1);
+            *value = sum / cnt;
+        }
+    }
+    return next_->put(mut);
+}
+
+void CMAPrediction::set_error(aku_Status status) {
+    next_->set_error(status);
+}
+
+int CMAPrediction::get_requirements() const {
+    return TERMINAL;
+}
+
 static QueryParserToken<EWMAPredictionError> ewma_error_token("ewma-error");
 static QueryParserToken<EWMAPrediction> ewma_token("ewma");
 
 static QueryParserToken<SMAPredictionError> sma_error_token("sma-error");
 static QueryParserToken<SMAPrediction> sma_token("sma");
+
+static QueryParserToken<CMAPrediction> cma_token("cma");
 
 }}  // namespace
