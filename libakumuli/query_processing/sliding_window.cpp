@@ -113,8 +113,100 @@ struct EWMAPredictionError : EWMAPrediction {
     }
 };
 
-//! Register anomaly detector for use in queries
+
+// -------------------
+// SimpleMovingAverage
+// -------------------
+
+SMA::SMA()
+    : buffer_(1)
+    , sum_(0)
+{
+}
+
+SMA::SMA(size_t n)
+    : buffer_(n)
+    , sum_(0)
+{
+}
+
+
+void SMA::add(double value) {
+    // remove old element
+    if (!buffer_.empty()) {
+        double old = buffer_.front();
+        buffer_.pop_front();
+        sum_ -= old;
+    }
+    buffer_.push_back(value);
+    sum_ += value;
+}
+
+double SMA::get() const {
+    return sum_ / buffer_.size();
+}
+
+SMAPrediction::SMAPrediction(size_t window_width, bool calculate_delta, std::shared_ptr<Node> next)
+    : width_(window_width)
+    , delta_(calculate_delta)
+{
+}
+
+SMAPrediction::SMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    : delta_(false)
+{
+    width_ = ptree.get<double>("window-width");
+}
+
+void SMAPrediction::complete() {
+    next_->complete();
+}
+
+bool SMAPrediction::put(MutableSample& mut) {
+    auto size = mut.size();
+
+    for (u32 ix = 0; ix < size; ix++) {
+        double* value = mut[ix];
+        if (value) {
+            // calculate new value
+            auto key = std::make_tuple(mut.get_paramid(), ix);
+            if (swind_.count(key) == 0) {
+                swind_[key] = SMA(width_);
+            }
+            SMA& sma = swind_[key];
+            double exp = sma.get();
+            sma.add(*value);
+            if (delta_) {
+                *value -= exp;
+            } else {
+                *value  = exp;
+            }
+        }
+    }
+
+    return next_->put(mut);
+}
+
+void SMAPrediction::set_error(aku_Status status) {
+    next_->set_error(status);
+}
+
+int SMAPrediction::get_requirements() const {
+    return TERMINAL;
+}
+
+
+struct SMAPredictionError : SMAPrediction {
+    SMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+        : SMAPrediction(ptree.get<size_t>("window-width"), true, next)
+    {
+    }
+};
+
 static QueryParserToken<EWMAPredictionError> ewma_error_token("ewma-error");
 static QueryParserToken<EWMAPrediction> ewma_token("ewma");
+
+static QueryParserToken<SMAPredictionError> sma_error_token("sma-error");
+static QueryParserToken<SMAPrediction> sma_token("sma");
 
 }}  // namespace
