@@ -31,6 +31,7 @@ add_library(akumuli SHARED
     saxencoder.cpp
     query_processing/rate.cpp
     query_processing/sax.cpp
+    query_processing/top.cpp
     query_processing/scale.cpp
     query_processing/absolute.cpp
     query_processing/math.cpp
