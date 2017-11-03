@@ -25,6 +25,7 @@ static const char* g_error_messages[] = {
     "access denied",
     "operation not permitted",
     "resource is not available",
+    "high cardinality, lower cardinality required",
     "unknown error code"
 };
 

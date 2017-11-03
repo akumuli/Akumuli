@@ -168,8 +168,10 @@ typedef enum {
     AKU_ENOT_PERMITTED = 18,
     //! Resource is not available
     AKU_EUNAVAILABLE = 19,
+    //! Error code for queries that doesn't support high cardinality
+    AKU_EHIGH_CARDINALITY = 20,
     //! All error codes should be less then AKU_EMAX_ERROR
-    AKU_EMAX_ERROR = 20,
+    AKU_EMAX_ERROR = 21,
     // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
 

@@ -22,6 +22,7 @@ struct SAXNode : Node {
     int  alphabet_size_;
     bool disable_value_;
     bool inverse_;
+    char buffer_[MutableSample::MAX_PAYLOAD_SIZE];
 
     SAXNode(int alphabet_size, int window_width, bool disable_original_value,
             std::shared_ptr<Node> next);

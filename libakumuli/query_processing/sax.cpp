@@ -45,19 +45,30 @@ void SAXNode::complete() {
 }
 
 bool SAXNode::put(MutableSample &sample) {
+    if (sample.size() != 1) {
+        // Not supported, SAX works only with scalars
+        set_error(AKU_EHIGH_CARDINALITY);
+        return false;
+    }
     auto key = sample.get_paramid();
     auto it = encoders_.find(key);
     if (it == encoders_.end()) {
         encoders_[key] = SAX::SAXEncoder(alphabet_size_, window_width_);
         it = encoders_.find(key);
     }
-    double value = *sample[0];  // TODO: limit dimentions
-    sample.convert_to_sax_word(static_cast<u32>(window_width_));
-    if (it->second.encode(value, sample.get_payload(), static_cast<size_t>(window_width_))) {
-        if (inverse_) {
-            std::reverse(sample.get_payload(), sample.get_payload() + window_width_);
+    double* value = sample[0];
+    if (value) {
+        if (it->second.encode(*value, buffer_, static_cast<size_t>(window_width_))) {
+            sample.convert_to_sax_word(static_cast<u32>(window_width_));
+            memcpy(sample.get_payload(), buffer_, static_cast<size_t>(window_width_));
+            if (inverse_) {
+                std::reverse(sample.get_payload(), sample.get_payload() + window_width_);
+            }
+            return next_->put(sample);
         }
-        return next_->put(sample);
+    } else {
+        // Missing data is not supported
+        return false;
     }
     return true;
 }
