@@ -172,8 +172,10 @@ typedef enum {
     AKU_EHIGH_CARDINALITY = 20,
     //! Error code for queries that doesn't support irregular series
     AKU_EREGULLAR_EXPECTED = 21,
+    //! Function can't handle missing values
+    AKU_EMISSING_DATA_NOT_SUPPORTED = 22,
     //! All error codes should be less then AKU_EMAX_ERROR
-    AKU_EMAX_ERROR = 22,
+    AKU_EMAX_ERROR = 23,
     // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
 

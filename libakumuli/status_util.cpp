@@ -27,6 +27,7 @@ static const char* g_error_messages[] = {
     "resource is not available",
     "high cardinality, lower cardinality required",
     "regullar series expected",
+    "missing data not supported",
     "unknown error code"
 };
 

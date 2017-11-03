@@ -36,7 +36,7 @@ add_library(akumuli SHARED
     query_processing/math.cpp
     #query_processing/anomaly.cpp
     #query_processing/filterbyid.cpp
-    #query_processing/spacesaver.cpp
+    query_processing/spacesaver.cpp
     query_processing/limiter.cpp
     query_processing/sliding_window.cpp
     query_processing/queryparser.cpp

@@ -158,6 +158,8 @@ struct MutableSample {
 
     double* operator[] (u32 index);
 
+    const double* operator[] (u32 index) const;
+
     aku_Timestamp get_timestamp() const;
 
     aku_ParamId get_paramid() const;

@@ -13,8 +13,9 @@ struct SpaceSaver : Node {
     std::shared_ptr<Node> next_;
 
     struct Item {
-        double count;
-        double error;
+        double        count;
+        double        error;
+        aku_Timestamp time;
     };
 
     std::unordered_map<aku_ParamId, Item> counters_;
@@ -62,8 +63,9 @@ struct SpaceSaver : Node {
     }
 
     bool count() {
-        std::vector<aku_Sample> samples;
-        auto                    support = N * P;
+        typedef std::unique_ptr<MutableSample> SamplePtr;
+        std::vector<SamplePtr> samples;
+        auto                   support = N * P;
         for (auto it : counters_) {
             auto estimate = it.second.count - it.second.error;
             if (support < estimate) {
@@ -72,14 +74,18 @@ struct SpaceSaver : Node {
                 s.payload.type    = AKU_PAYLOAD_FLOAT;
                 s.payload.float64 = it.second.count;
                 s.payload.size    = sizeof(aku_Sample);
-                samples.push_back(s);
+                s.timestamp       = it.second.time;
+                SamplePtr mut;
+                mut.reset(new MutableSample(&s));
+                samples.push_back(std::move(mut));
             }
         }
-        std::sort(samples.begin(), samples.end(), [](const aku_Sample& lhs, const aku_Sample& rhs) {
-            return lhs.payload.float64 > rhs.payload.float64;
+        std::sort(samples.begin(), samples.end(), [](const SamplePtr& lhs, const SamplePtr& rhs) {
+            // Both values are guaranteed to be a scalars
+            return *(*lhs)[0] > *(*rhs)[0];
         });
         for (const auto& s : samples) {
-            if (!next_->put(s)) {
+            if (!next_->put(*s)) {
                 return false;
             }
         }
@@ -92,18 +98,25 @@ struct SpaceSaver : Node {
         next_->complete();
     }
 
-    virtual bool put(const aku_Sample& sample) {
-        if (sample.payload.type > aku_PData::MARGIN) {
-            return count();
+    virtual bool put(MutableSample& sample) {
+        // Require scalar
+        if ((sample.payload_.sample.payload.type & AKU_PAYLOAD_FLOAT) != AKU_PAYLOAD_FLOAT) {
+            // Query doesn't work with tuples
+            set_error(AKU_EHIGH_CARDINALITY);
+            return false;
         }
+        double* val = sample[0];
+        auto weight = 1.0;
+        auto id     = sample.get_paramid();
+        auto it     = counters_.find(id);
         if (weighted) {
-            if ((sample.payload.type & aku_PData::FLOAT_BIT) == 0) {
-                return true;
+            if (val) {
+                weight = *val;
+            } else {
+                set_error(AKU_EMISSING_DATA_NOT_SUPPORTED);
+                return false;
             }
         }
-        auto id     = sample.paramid;
-        auto weight = weighted ? sample.payload.float64 : 1.0;
-        auto it     = counters_.find(id);
         if (it == counters_.end()) {
             // new element
             double count = weight;
@@ -122,7 +135,7 @@ struct SpaceSaver : Node {
                 count += min;
                 error = min;
             }
-            counters_[id] = { count, error };
+            counters_[id] = { count, error, sample.get_timestamp() };
         } else {
             // increment
             it->second.count += weight;
@@ -135,5 +148,6 @@ struct SpaceSaver : Node {
 
     virtual int get_requirements() const { return EMPTY | TERMINAL; }
 };
+
 }
 }  // namespace

@@ -101,6 +101,26 @@ double* MutableSample::operator[] (u32 index) {
     return nullptr;
 }
 
+const double* MutableSample::operator[] (u32 index) const {
+    if (istuple_) {
+        const auto bit = static_cast<u32>(1 << index);
+        // If `index` is out of range this branch wouldn't be taken
+        // and nullptr will be returned.
+        if (bitmap_ & bit) {
+            // value is present
+            // count 1's before index
+            const auto mask = bit - 1;
+            const auto tail = mask & bitmap_;
+            const auto offset = count_ones(tail);
+            auto tuple = reinterpret_cast<const double*>(payload_.sample.payload.data);
+            return tuple + offset;
+        }
+    } else if (index == 0) {
+        return &payload_.sample.payload.float64;
+    }
+    return nullptr;
+}
+
 aku_Timestamp MutableSample::get_timestamp() const {
     return payload_.sample.timestamp;
 }

@@ -1,6 +1,15 @@
 Release notes
 =============
 
+Version 0.7.21
+--------------
+
+NEW FEATURES
+
+* Tranformation pipleline added to query processor
+* A bunch of new functions added to the pipeline
+* New endpoint added - /api/function-names
+
 Version 0.7.20
 --------------
 
