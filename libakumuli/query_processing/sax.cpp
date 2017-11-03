@@ -50,6 +50,11 @@ bool SAXNode::put(MutableSample &sample) {
         set_error(AKU_EHIGH_CARDINALITY);
         return false;
     }
+    if ((sample.payload_.sample.payload.type & aku_PData::REGULLAR) == 0) {
+        // Not supported, SAX require regullar data
+        set_error(AKU_EREGULLAR_EXPECTED);
+        return false;
+    }
     auto key = sample.get_paramid();
     auto it = encoders_.find(key);
     if (it == encoders_.end()) {

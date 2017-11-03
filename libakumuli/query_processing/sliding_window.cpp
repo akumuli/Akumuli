@@ -74,6 +74,11 @@ void EWMAPrediction::complete() {
 }
 
 bool EWMAPrediction::put(MutableSample &mut) {
+    if ((mut.payload_.sample.payload.type & aku_PData::REGULLAR) == 0) {
+        // Not supported, query require regullar data
+        set_error(AKU_EREGULLAR_EXPECTED);
+        return false;
+    }
     auto size = mut.size();
 
     for (u32 ix = 0; ix < size; ix++) {
@@ -163,8 +168,12 @@ void SMAPrediction::complete() {
 }
 
 bool SMAPrediction::put(MutableSample& mut) {
+    if ((mut.payload_.sample.payload.type & aku_PData::REGULLAR) == 0) {
+        // Not supported, query require regullar data
+        set_error(AKU_EREGULLAR_EXPECTED);
+        return false;
+    }
     auto size = mut.size();
-
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         if (value) {
