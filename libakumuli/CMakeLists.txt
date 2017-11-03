@@ -33,7 +33,7 @@ add_library(akumuli SHARED
     query_processing/sax.cpp
     query_processing/scale.cpp
     query_processing/absolute.cpp
-    query_processing/sum.cpp
+    query_processing/math.cpp
     #query_processing/anomaly.cpp
     #query_processing/filterbyid.cpp
     #query_processing/spacesaver.cpp
