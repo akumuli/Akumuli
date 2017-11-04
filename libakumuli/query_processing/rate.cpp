@@ -42,6 +42,7 @@ bool SimpleRate::put(MutableSample &mut) {
             const double nsec = 1000000000;
             double dX = (newX - oldX) / (newT - oldT) * nsec;
             *value = dX;
+            table_[key] = std::make_tuple(newT, newX);
         }
     }
     return next_->put(mut);
