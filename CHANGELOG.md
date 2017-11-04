@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.22
+--------------
+
+BUG FIXES
+
+* Rate calculation is fixed
+
 Version 0.7.21
 --------------
 
