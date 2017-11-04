@@ -59,21 +59,14 @@ typedef struct {
 
     //! Data element flags
     enum {
-        EMPTY          = 0,
-        URGENT         = 1 << 8,  /** urgent flag (anomaly or error) */
-        PARAMID_BIT    = 1,
-        TIMESTAMP_BIT  = 1 << 1,
+        REGULLAR       = 1 << 8,  /** indicates that the sample is a part of regullar time-series */
+        PARAMID_BIT    = 1,       /** indicates that the param id is set */
+        TIMESTAMP_BIT  = 1 << 1   /** indicates that the timestamp is set */,
         CUSTOM_TIMESTAMP
                        = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
-        FLOAT_BIT      = 1 << 4,
+        FLOAT_BIT      = 1 << 4,  /** scalar type */
         TUPLE_BIT      = 1 << 5,  /** tuple type */
-        ERROR_CLIPPING = 1 << 9,  /** indicates that some data was lost due to clipping
-                                            (extra payload stored in `data` was lost) */
         SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
-
-        MARGIN         = 1 << 13, /** shuld be used to detect margin (if (payload.type > MARGIN) ...) */
-        LO_MARGIN      = 1 << 14, /** backward direction margin */
-        HI_MARGIN      = 1 << 15, /** forward direction margin */
     };
     u16 type;
 
@@ -175,8 +168,14 @@ typedef enum {
     AKU_ENOT_PERMITTED = 18,
     //! Resource is not available
     AKU_EUNAVAILABLE = 19,
+    //! Error code for queries that doesn't support high cardinality
+    AKU_EHIGH_CARDINALITY = 20,
+    //! Error code for queries that doesn't support irregular series
+    AKU_EREGULLAR_EXPECTED = 21,
+    //! Function can't handle missing values
+    AKU_EMISSING_DATA_NOT_SUPPORTED = 22,
     //! All error codes should be less then AKU_EMAX_ERROR
-    AKU_EMAX_ERROR = 20,
+    AKU_EMAX_ERROR = 23,
     // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
 

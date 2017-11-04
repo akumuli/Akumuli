@@ -132,15 +132,42 @@ struct QueryParserError : std::runtime_error {
         : std::runtime_error(parser_message) {}
 };
 
-static const aku_Sample NO_DATA = { 0u, 0u, { 0.0, sizeof(aku_Sample), aku_PData::EMPTY } };
+struct Node;
 
-static const aku_Sample SAMPLING_LO_MARGIN = { 0u,
-                                               0u,
-                                               { 0.0, sizeof(aku_Sample), aku_PData::LO_MARGIN } };
+struct MutableSample {
+    static constexpr size_t MAX_PAYLOAD_SIZE = sizeof(double)*58;
+    static constexpr size_t MAX_SIZE = sizeof(aku_Sample) + MAX_PAYLOAD_SIZE;
+    union Payload {
+        aku_Sample sample;
+        char       raw[MAX_SIZE];
+    };
+    Payload        payload_;
+    u32            size_;
+    u32            bitmap_;
+    const bool     istuple_;
 
-static const aku_Sample SAMPLING_HI_MARGIN = { 0u,
-                                               0u,
-                                               { 0.0, sizeof(aku_Sample), aku_PData::HI_MARGIN } };
+    MutableSample(const aku_Sample* source);
+
+    u32 size() const;
+
+    /** Collapse tuple to single value, the value will be allocated
+      * and set to 0. This will be used by functions that produces a
+      * single value out of tuple (e.g. sum).
+      */
+    void collapse();
+
+    double* operator[] (u32 index);
+
+    const double* operator[] (u32 index) const;
+
+    aku_Timestamp get_timestamp() const;
+
+    aku_ParamId get_paramid() const;
+
+    void convert_to_sax_word(u32 width);
+
+    char* get_payload();
+};
 
 struct Node {
 
@@ -152,7 +179,7 @@ struct Node {
     /** Process value, return false to interrupt process.
       * Empty sample can be sent to flush all updates.
       */
-    virtual bool put(aku_Sample const& sample) = 0;
+    virtual bool put(MutableSample& sample) = 0;
 
     virtual void set_error(aku_Status status) = 0;
 
@@ -170,32 +197,44 @@ struct Node {
 };
 
 
+/**
+  * @brief Key hash that can be used in processing functions (aka Nodes)
+  * Most of the time the function state is accessed via u64:u32 tuple (id:index).
+  */
+struct KeyHash : public std::unary_function<std::tuple<aku_ParamId, u32>, std::size_t>
+{
+    typedef std::tuple<aku_ParamId, u32> Key;
+
+    static void hash_combine(std::size_t& seed, u32 v) {
+        seed ^= std::hash<u32>()(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    }
+
+    std::size_t operator()(Key value) const {
+        size_t seed = std::hash<aku_ParamId>()(std::get<0>(value));
+        hash_combine(seed, std::get<1>(value));
+        return seed;
+    }
+};
+
+/**
+  * @brief Key comparator that can be used in processing functions (aka Nodes)
+  * Most of the time the function state is accessed via u64:u32 tuple (id:index).
+  */
+struct KeyEqual : public std::binary_function<std::tuple<aku_ParamId, u32>, std::tuple<aku_ParamId, u32>, bool>
+{
+    typedef std::tuple<aku_ParamId, u32> Key;
+    bool operator()(const Key& lhs, const Key& rhs) const {
+        return lhs == rhs;
+    }
+};
+
+
 struct NodeException : std::runtime_error {
     NodeException(const char* msg)
         : std::runtime_error(msg) {}
 };
 
 
-
-/** Group-by time statement processor */
-struct GroupByTime {
-    aku_Timestamp step_;
-    bool          first_hit_;
-    aku_Timestamp lowerbound_;
-    aku_Timestamp upperbound_;
-
-    GroupByTime();
-
-    GroupByTime(aku_Timestamp step);
-
-    GroupByTime(const GroupByTime& other);
-
-    GroupByTime& operator=(const GroupByTime& other);
-
-    bool put(aku_Sample const& sample, Node& next);
-
-    bool empty() const;
-};
 
 //! Stream processor interface
 struct IStreamProcessor {
@@ -228,6 +267,8 @@ struct BaseQueryParserToken {
 
 //! Register QueryParserToken
 void add_queryparsertoken_to_registry(BaseQueryParserToken const* ptr);
+
+std::vector<std::string> list_query_registry();
 
 //! Create new node using token registry
 std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree,

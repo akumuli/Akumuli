@@ -4,6 +4,7 @@
 
 #include "operator.h"
 #include "merge.h"
+#include "../tuples.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -126,21 +127,6 @@ public:
      * @return status and number of elements in dest
      */
     std::tuple<aku_Status, size_t> read(u8* dest, size_t size);
-};
-
-
-
-struct TupleOutputUtils {
-    /** Get pointer to buffer and return pointer to sample and tuple data */
-    static std::tuple<aku_Sample*, double*> cast(u8* dest);
-
-    static double get_flags(std::vector<AggregationFunction> const& tup);
-
-    static double get(AggregationResult const& res, AggregationFunction afunc);
-
-    static void set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, AggregationResult const& res);
-
-    static size_t get_tuple_size(const std::vector<AggregationFunction>& tup);
 };
 
 struct SeriesOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {

@@ -1,20 +1,21 @@
 #pragma once
 
 #include <memory>
-
 #include "../queryprocessor_framework.h"
 
 namespace Akumuli {
 namespace QP {
 
-struct Limiter : Node {
+/** Returns absolute value
+  */
+struct Absolute : Node {
 
-    u64                   limit_;
-    u64                   offset_;
-    u64                   counter_;
+    std::vector<double> weights_;
     std::shared_ptr<Node> next_;
 
-    Limiter(u64 limit, u64 offset, std::shared_ptr<Node> next);
+    Absolute(std::shared_ptr<Node> next);
+
+    Absolute(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
 
     virtual void complete();
 
@@ -24,5 +25,6 @@ struct Limiter : Node {
 
     virtual int get_requirements() const;
 };
+
 }
 }  // namespace

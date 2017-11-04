@@ -605,7 +605,8 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
         "offset",
         "range",
         "where",
-        "group-aggregate"
+        "group-aggregate",
+        "apply"
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
@@ -1273,16 +1274,12 @@ struct TerminalNode : QP::Node {
         cursor->complete();
     }
 
-    bool put(const aku_Sample& sample) {
-        if (sample.payload.type != aku_PData::MARGIN) {
-            return cursor->put(sample);
-        }
-        return true;
+    bool put(MutableSample& sample) {
+        return cursor->put(sample.payload_.sample);
     }
 
     void set_error(aku_Status status) {
         cursor->set_error(status);
-        //throw std::runtime_error("search error detected");
     }
 
     int get_requirements() const {
@@ -1299,7 +1296,14 @@ std::tuple<aku_Status, std::shared_ptr<Node>>
         name = ptree.get<std::string>("name");
         return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, next));
     } catch (const boost::property_tree::ptree_error& e) {
+        Logger::msg(AKU_LOG_ERROR, std::string("Can't query json: ") + e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
+    } catch (const QueryParserError& e) {
         Logger::msg(AKU_LOG_ERROR, std::string("Can't parse query: ") + e.what());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
+    } catch (...) {
+        Logger::msg(AKU_LOG_ERROR, std::string("Unknown query parsing error: ") +
+                    boost::current_exception_diagnostic_information());
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr);
     }
 }
@@ -1308,14 +1312,30 @@ std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> QueryParser::parse_pr
     boost::property_tree::ptree const& ptree,
     InternalCursor* cursor)
 {
-    // TODO: all processing steps are bypassed now, this should be fixed
-    auto terminal = std::make_shared<TerminalNode>(cursor);
+    std::shared_ptr<Node> terminal = std::make_shared<TerminalNode>(cursor);
+    auto prev = terminal;
     std::vector<std::shared_ptr<Node>> result;
+
+    auto apply = ptree.get_child_optional("apply");
+    if (apply) {
+        for (auto it = apply->rbegin(); it != apply->rend(); it++) {
+            aku_Status status;
+            std::shared_ptr<Node> node;
+            std::tie(status, node) = make_sampler(it->second, prev);
+            if (status == AKU_SUCCESS) {
+                result.push_back(node);
+                prev = node;
+            } else {
+                return std::make_tuple(status, result);
+            }
+        }
+    }
 
     auto limoff = parse_limit_offset(ptree);
     if (limoff.first != 0 || limoff.second != 0) {
-        auto node = std::make_shared<QP::Limiter>(limoff.first, limoff.second, terminal);
+        auto node = std::make_shared<QP::Limiter>(limoff.first, limoff.second, prev);
         result.push_back(node);
+        prev = node;
     }
 
     result.push_back(terminal);

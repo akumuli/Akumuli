@@ -503,14 +503,12 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
     char* end = begin + buf_size;
     while(rdbuf_pos_ < rdbuf_top_) {
         const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(rdbuf_.data() + rdbuf_pos_);
-        if (sample->payload.type != aku_PData::EMPTY) {
-            char* next = formatter_->format(begin, end, *sample);
-            if (next == nullptr) {
-                // done
-                break;
-            }
-            begin = next;
+        char* next = formatter_->format(begin, end, *sample);
+        if (next == nullptr) {
+            // done
+            break;
         }
+        begin = next;
         assert(sample->payload.size);
         rdbuf_pos_ += sample->payload.size;
     }
@@ -549,6 +547,16 @@ std::string QueryProcessor::get_all_stats() {
     }
     std::runtime_error err("Database connection was closed");
     BOOST_THROW_EXCEPTION(err);
+}
+
+std::string QueryProcessor::get_resource(std::string name) {
+    size_t outbufsize = 0x1000;
+    char outbuf[outbufsize];
+    aku_Status status = aku_get_resource(name.c_str(), outbuf, &outbufsize);
+    if (status != AKU_SUCCESS) {
+        return "-Invalid resource name";
+    }
+    return std::string(outbuf, outbuf + outbufsize);
 }
 
 }  // namespace

@@ -1,4 +1,6 @@
 #include "queryprocessor_framework.h"
+#include "storage_engine/tuples.h"
+#include "util.h"
 #include <map>
 
 namespace Akumuli {
@@ -11,6 +13,14 @@ struct QueryParserRegistry {
         return inst;
     }
 };
+
+std::vector<std::string> list_query_registry() {
+    std::vector<std::string> names;
+    for (auto kv: QueryParserRegistry::get().registry) {
+        names.push_back(kv.first);
+    }
+    return names;
+}
 
 void add_queryparsertoken_to_registry(const BaseQueryParserToken *ptr) {
     QueryParserRegistry::get().registry[ptr->get_tag()] = ptr;
@@ -27,72 +37,113 @@ std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree c
     return it->second->create(ptree, next);
 }
 
-GroupByTime::GroupByTime()
-    : step_(0)
-    , first_hit_(true)
-    , lowerbound_(AKU_MIN_TIMESTAMP)
-    , upperbound_(AKU_MIN_TIMESTAMP)
+
+// -------------
+// MutableSample
+// -------------
+
+MutableSample::MutableSample(const aku_Sample* source)
+    : istuple_((source->payload.type & AKU_PAYLOAD_TUPLE) == AKU_PAYLOAD_TUPLE)
 {
-}
-
-GroupByTime::GroupByTime(aku_Timestamp step)
-    : step_(step)
-    , first_hit_(true)
-    , lowerbound_(AKU_MIN_TIMESTAMP)
-    , upperbound_(AKU_MIN_TIMESTAMP)
-{
-}
-
-GroupByTime::GroupByTime(const GroupByTime& other)
-    : step_(other.step_)
-    , first_hit_(other.first_hit_)
-    , lowerbound_(other.lowerbound_)
-    , upperbound_(other.upperbound_)
-{
-}
-
-GroupByTime& GroupByTime::operator = (const GroupByTime& other) {
-    step_ = other.step_;
-    first_hit_ = other.first_hit_;
-    lowerbound_ = other.lowerbound_;
-    upperbound_ = other.upperbound_;
-    return *this;
-}
-
-bool GroupByTime::put(aku_Sample const& sample, Node& next) {
-    if (step_ && sample.payload.type != aku_PData::EMPTY) {
-        aku_Timestamp ts = sample.timestamp;
-        if (AKU_UNLIKELY(first_hit_ == true)) {
-            first_hit_ = false;
-            aku_Timestamp aligned = ts / step_ * step_;
-            lowerbound_ = aligned;
-            upperbound_ = aligned + step_;
-        }
-        if (ts >= upperbound_) {
-            // Forward direction
-            aku_Sample empty = SAMPLING_HI_MARGIN;
-            empty.timestamp = upperbound_;
-            if (!next.put(empty)) {
-                return false;
-            }
-            lowerbound_ += step_;
-            upperbound_ += step_;
-        } else if (ts < lowerbound_) {
-            // Backward direction
-            aku_Sample empty = SAMPLING_LO_MARGIN;
-            empty.timestamp = upperbound_;
-            if (!next.put(empty)) {
-                return false;
-            }
-            lowerbound_ -= step_;
-            upperbound_ -= step_;
-        }
+    auto size = std::max(sizeof(aku_Sample), static_cast<size_t>(source->payload.size));
+    memcpy(payload_.raw, source, size);
+    if (!istuple_) {
+        size_ = 1;
+        bitmap_ = 1;
+    } else {
+        std::tie(size_, bitmap_) = TupleOutputUtils::get_size_and_bitmap(source->payload.float64);
     }
-    return next.put(sample);
 }
 
-bool GroupByTime::empty() const {
-    return step_ == 0;
+u32 MutableSample::size() const {
+    return size_;
+}
+
+void MutableSample::collapse() {
+    if (istuple_ == false || size_ == 1) {
+        // Nothing to do
+        return;
+    }
+    size_ = 1;
+    bitmap_ = 1;
+    payload_.sample.payload.size = sizeof(aku_Sample) + sizeof(double);
+    union {
+        double d;
+        u64 u;
+    } bits;
+    bits.u = 0x400000000000001ul;
+    payload_.sample.payload.float64 = bits.d;
+    double* first = reinterpret_cast<double*>(payload_.sample.payload.data);
+    *first = 0.0;
+}
+
+static int count_ones(u64 value) {
+    return value == 0 ? 0 : (64 - __builtin_clzll(value));
+}
+
+double* MutableSample::operator[] (u32 index) {
+    if (istuple_) {
+        const auto bit = static_cast<u32>(1 << index);
+        // If `index` is out of range this branch wouldn't be taken
+        // and nullptr will be returned.
+        if (bitmap_ & bit) {
+            // value is present
+            // count 1's before index
+            const auto mask = bit - 1;
+            const auto tail = mask & bitmap_;
+            const auto offset = count_ones(tail);
+            double* tuple = reinterpret_cast<double*>(payload_.sample.payload.data);
+            return tuple + offset;
+        }
+    } else if (index == 0) {
+        return &payload_.sample.payload.float64;
+    }
+    return nullptr;
+}
+
+const double* MutableSample::operator[] (u32 index) const {
+    if (istuple_) {
+        const auto bit = static_cast<u32>(1 << index);
+        // If `index` is out of range this branch wouldn't be taken
+        // and nullptr will be returned.
+        if (bitmap_ & bit) {
+            // value is present
+            // count 1's before index
+            const auto mask = bit - 1;
+            const auto tail = mask & bitmap_;
+            const auto offset = count_ones(tail);
+            auto tuple = reinterpret_cast<const double*>(payload_.sample.payload.data);
+            return tuple + offset;
+        }
+    } else if (index == 0) {
+        return &payload_.sample.payload.float64;
+    }
+    return nullptr;
+}
+
+aku_Timestamp MutableSample::get_timestamp() const {
+    return payload_.sample.timestamp;
+}
+
+aku_ParamId MutableSample::get_paramid() const {
+    return payload_.sample.paramid;
+}
+
+void MutableSample::convert_to_sax_word(u32 width) {
+    auto id = get_paramid();
+    auto ts = get_timestamp();
+    u32 used_size = width + static_cast<u32>(sizeof(aku_Sample));
+    std::fill(payload_.raw, payload_.raw + used_size, 0);
+    payload_.sample.paramid = id;
+    payload_.sample.timestamp = ts;
+    payload_.sample.payload.type = aku_PData::PARAMID_BIT|aku_PData::TIMESTAMP_BIT|aku_PData::SAX_WORD;
+    payload_.sample.payload.size = static_cast<u16>(used_size);
+    bitmap_ = 0;
+    size_ = width;
+}
+
+char* MutableSample::get_payload() {
+    return payload_.sample.payload.data;
 }
 
 }}  // namespace

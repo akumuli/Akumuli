@@ -135,11 +135,6 @@ struct LocalCursor : Cursor {
 
     virtual bool get_next_row(RowT& result) {
         if (advance()) {
-            if (sample_.payload.type == aku_PData::EMPTY) {
-                aku_cursor_close(cursor_);
-                cursor_ = nullptr;
-                return false;
-            }
             const int buffer_size = AKU_LIMITS_MAX_SNAME;
             char buffer[buffer_size];
             // Convert id

@@ -54,5 +54,6 @@ struct AnomalyDetectorUtil {
     create_approx_holt_winters(u32 N, u32 K, double threshold, double alpha, double beta,
                                double gamma, int period);
 };
+
 }
 }

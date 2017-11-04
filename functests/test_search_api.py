@@ -5,11 +5,12 @@ import socket
 import datetime
 import time
 import akumulid_test_tools as att
+from akumulid_test_tools import retry, on_exit, api_test
 import json
 try:
-    from urllib2 import urlopen, HTTPError
+    from urllib2 import urlopen, URLError
 except ImportError:
-    from urllib import urlopen, HTTPError
+    from urllib import urlopen, URLError
 import traceback
 import itertools
 import math
@@ -17,35 +18,6 @@ import math
 HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
-
-g_test_run = 1
-g_num_fail = 0
-
-def api_test(test_name):
-    def decorator(func):
-        def wrapper(*pos, **kv):
-            global g_test_run
-            global g_num_fail
-            n = g_test_run
-            g_test_run += 1
-            ts = datetime.datetime.now()
-            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
-            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
-            try:
-                func(*pos, **kv)
-                print("Test #{0} passed".format(n))
-            except ValueError as e:
-                print("Test #{0} failed: {1}".format(n, e))
-                g_num_fail += 1
-                traceback.print_exc()
-        return wrapper
-    return decorator
-
-def on_exit():
-    global g_num_fail
-    if g_num_fail != 0:
-        print("{0} tests failed".format(g_num_fail))
-        sys.exit(1)
 
 N_MSG = 1000
 
@@ -70,6 +42,7 @@ METRICS = [
 ALL_SERIES_NAMES = sorted([metric + ' ' + tagline for tagline in ALL_TAG_COMBINATIONS for metric in METRICS ])
 
 @api_test("suggest metric name")
+@retry(Exception, tries=3)
 def test_suggest_metric():
     """Test suggest query."""
     query = {
@@ -91,6 +64,7 @@ def test_suggest_metric():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest metric name by prefix")
+@retry(Exception, tries=3)
 def test_suggest_metric_prefix():
     """Test suggest query."""
     query = {
@@ -115,6 +89,7 @@ def test_suggest_metric_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest tag name")
+@retry(Exception, tries=3)
 def test_suggest_tag():
     """Test suggest query."""
     query = {
@@ -138,6 +113,7 @@ def test_suggest_tag():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest tag name by prefix")
+@retry(Exception, tries=3)
 def test_suggest_tag_prefix():
     """Test suggest query."""
     query = {
@@ -162,6 +138,7 @@ def test_suggest_tag_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest value")
+@retry(Exception, tries=3)
 def test_suggest_value():
     """Test suggest query."""
     query = {
@@ -186,6 +163,7 @@ def test_suggest_value():
         raise ValueError("Query results mismatch")
 
 @api_test("suggest value by prefix")
+@retry(Exception, tries=3)
 def test_suggest_value_prefix():
     """Test suggest query."""
     query = {
@@ -211,6 +189,7 @@ def test_suggest_value_prefix():
         raise ValueError("Query results mismatch")
 
 @api_test("search all names")
+@retry(Exception, tries=3)
 def test_search_all_names():
     """Test search query."""
     query = {
@@ -232,6 +211,7 @@ def test_search_all_names():
         raise ValueError("Query results mismatch")
 
 @api_test("search names with metric")
+@retry(Exception, tries=3)
 def test_search_names_with_metric():
     """Test search query."""
     query = {
@@ -254,6 +234,7 @@ def test_search_names_with_metric():
         raise ValueError("Query results mismatch")
 
 @api_test("search names by tag")
+@retry(Exception, tries=3)
 def test_search_names_with_tag():
     """Test search query."""
     query = {

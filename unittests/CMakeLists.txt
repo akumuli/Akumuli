@@ -198,13 +198,13 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/queryprocessor_framework.cpp
     ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/query_processing/anomaly.cpp
+    #../libakumuli/anomalydetector.cpp
+    #../libakumuli/hashfnfamily.cpp
+    #../libakumuli/query_processing/anomaly.cpp
     ../libakumuli/query_processing/sax.cpp
-    ../libakumuli/query_processing/paa.cpp
-    ../libakumuli/query_processing/filterbyid.cpp
-    ../libakumuli/query_processing/randomsamplingnode.cpp
+    ../libakumuli/query_processing/rate.cpp
+    ../libakumuli/query_processing/sliding_window.cpp
+    #../libakumuli/query_processing/filterbyid.cpp
     ../libakumuli/query_processing/limiter.cpp
 
 )
@@ -242,40 +242,6 @@ target_link_libraries(
 )
 
 add_test(seriesparser test_seriesparser)
-
-# Query processor tests
-add_executable(
-    test_queryprocessor
-    test_queryprocessor.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/queryprocessor_framework.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/index/seriesparser.cpp
-    ../libakumuli/index/stringpool.cpp
-    ../libakumuli/index/invertedindex.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/status_util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/datetime.cpp
-    # query_processing folder
-    ../libakumuli/query_processing/anomaly.cpp
-    ../libakumuli/query_processing/sax.cpp
-    ../libakumuli/query_processing/paa.cpp
-    ../libakumuli/query_processing/filterbyid.cpp
-    ../libakumuli/query_processing/randomsamplingnode.cpp
-    ../libakumuli/query_processing/limiter.cpp
-)
-
-target_link_libraries(
-    test_queryprocessor
-    pthread
-    ${Boost_LIBRARIES}
-    "${APR_LIBRARY}"
-)
-
-add_test(queryprocessor test_queryprocessor)
 
 # Datetime test
 add_executable(
