@@ -486,7 +486,10 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
 }
 
 /** Parse `where` statement, format:
-  * { "where": { "tag": [ "value1", "value2" ], ... }, ... }
+  * "where": { "tag": [ "value1", "value2" ], ... },
+  * or
+  * "where": [ { "tag1": "value1", "tag2": "value2" },
+  *            { "tag1": "value3", "tag2": "value4" } ]
   */
 static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost::property_tree::ptree const& ptree,
                                                                            std::vector<std::string> metrics,
@@ -502,6 +505,7 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
         }
         SeriesRetreiver retreiver(metrics);
         for (auto item: *where) {
+            // TODO: if item.first is empty than we're dealing with the 2nd form
             std::string tag = item.first;
             auto idslist = item.second;
             // Read idlist
@@ -672,6 +676,16 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
  * {
  *  "select": "metric",
  *  "where": { "tag": ["value1", "value2"], ... }
+ * }
+ * ```
+ *
+ * or
+ *
+ * ```
+ * {
+ *  "select": "metric",
+ *  "where": [ { "tag1": "value1", "tag2": "value2" },
+ *             { "tag1": "value3", "tag2": "value4" } ]
  * }
  * ```
  *
