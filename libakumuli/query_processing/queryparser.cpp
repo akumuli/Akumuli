@@ -54,12 +54,45 @@ aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> 
     return AKU_SUCCESS;
 }
 
+aku_Status SeriesRetreiver::add_series_name(std::string name) {
+    if (!metric_.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Metric already set");
+        return AKU_EBAD_ARG;
+    }
+    size_t size = name.size();
+    std::string canonical;
+    canonical.resize(size);
+    const char* keystr_begin, *keystr_end;
+    auto status = SeriesParser::to_canonical_form(name.data(), name.data() + size,
+                                                  &canonical[0], &canonical[0] + size,
+                                                  &keystr_begin, &keystr_end);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    series_.push_back(canonical);
+    return AKU_SUCCESS;
+}
+
 std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(SeriesMatcher const& matcher) const {
     std::vector<aku_ParamId> ids;
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
     if (metric_.empty()) {
         // Case 1, metric not set.
-        ids = matcher.get_all_ids();
+        if (!series_.empty()) {
+            // extract by name
+            for(const auto& name: series_) {
+                auto id = matcher.match(name.data(), name.data() + name.size());
+                if (id) {
+                    ids.push_back(id);
+                }
+            }
+            if (ids.empty()) {
+                return std::make_tuple(AKU_ENOT_FOUND, ids);
+            }
+        } else {
+            // get all ids
+            ids = matcher.get_all_ids();
+        }
     } else {
         // Case 2, metric is set
         auto first_metric = metric_.front();

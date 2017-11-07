@@ -816,9 +816,9 @@ void test_retreiver() {
         char buffer[0x100];
         const char* pkeys_begin;
         const char* pkeys_end;
-        aku_Status status = SeriesParser::to_normal_form(s.data(), s.data() + s.size(),
-                                                         buffer, buffer + 0x100,
-                                                         &pkeys_begin, &pkeys_end);
+        aku_Status status = SeriesParser::to_canonical_form(s.data(), s.data() + s.size(),
+                                                            buffer, buffer + 0x100,
+                                                            &pkeys_begin, &pkeys_end);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         auto id = m.add(buffer, pkeys_end);
         ids.push_back(id);
