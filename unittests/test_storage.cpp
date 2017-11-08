@@ -793,6 +793,54 @@ BOOST_AUTO_TEST_CASE(Test_storage_where_clause) {
     }
 }
 
+static void test_storage_where_clause2(aku_Timestamp begin, aku_Timestamp end) {
+    int nseries = 100;
+    std::vector<std::string> series_names;
+    std::vector<std::string> expected_series = {
+        "test key=10 zzz=0",
+        "test key=22 zzz=0",
+        "test key=42 zzz=0",
+        "test key=66 zzz=0"
+    };
+    for (int i = 0; i < nseries; i++) {
+        series_names.push_back("test key=" + std::to_string(i) + " zzz=0");
+    }
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
+
+    std::stringstream query;
+    query << "{";
+    query << "   \"select\": \"test\",\n";
+    query << "   \"where\": [\n";
+    query << "       { \"key\": 10, \"zzz\": 0 },\n";
+    query << "       { \"key\": 14             },\n";  // should be missing
+    query << "       { \"key\": 22, \"zzz\": 0 },\n";
+    query << "       { \"key\": 42, \"zzz\": 0 },\n";
+    query << "       { \"key\": 66, \"zzz\": 0 },\n";
+    query << "   ],\n";
+    query << "   \"range\": { \"from\": " << begin << ", \"to\": " << end << "},\n";
+    query << "}";
+
+    CursorMock cursor;
+    session->query(&cursor, query.str().c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    size_t expected_size = (end - begin)*expected_series.size();
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+    std::vector<aku_Timestamp> expected;
+    for (aku_Timestamp ts = begin; ts < end; ts++) {
+        expected.push_back(ts);
+    }
+    check_timestamps(cursor, expected, OrderBy::SERIES, expected_series);
+    check_paramids(*session, cursor, OrderBy::SERIES, expected_series, expected_size, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_where_form2) {
+    aku_Timestamp begin = 100, end = 200;
+    test_storage_where_clause2(begin, end);
+}
+
 // Test SeriesRetreiver
 
 void test_retreiver() {
