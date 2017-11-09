@@ -817,9 +817,10 @@ static void test_storage_where_clause2(aku_Timestamp begin, aku_Timestamp end) {
     query << "       { \"key\": 14             },\n";  // should be missing
     query << "       { \"key\": 22, \"zzz\": 0 },\n";
     query << "       { \"key\": 42, \"zzz\": 0 },\n";
-    query << "       { \"key\": 66, \"zzz\": 0 },\n";
+    query << "       { \"key\": 66, \"zzz\": 0 }\n";
     query << "   ],\n";
-    query << "   \"range\": { \"from\": " << begin << ", \"to\": " << end << "},\n";
+    query << "   \"order-by\": \"series\",\n";
+    query << "   \"range\": { \"from\": " << begin << ", \"to\": " << end << "}\n";
     query << "}";
 
     CursorMock cursor;

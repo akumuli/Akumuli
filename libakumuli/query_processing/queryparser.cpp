@@ -30,6 +30,10 @@ aku_Status SeriesRetreiver::add_tag(std::string name, std::string value) {
         Logger::msg(AKU_LOG_ERROR, "Metric not set");
         return AKU_EBAD_ARG;
     }
+    if (!series_.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Series already set");
+        return AKU_EBAD_ARG;
+    }
     if (tags_.count(name)) {
         // Duplicates not allowed
         Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
@@ -45,6 +49,10 @@ aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> 
         Logger::msg(AKU_LOG_ERROR, "Metric not set");
         return AKU_EBAD_ARG;
     }
+    if (!series_.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Series already set");
+        return AKU_EBAD_ARG;
+    }
     if (tags_.count(name)) {
         // Duplicates not allowed
         Logger::msg(AKU_LOG_ERROR, "Duplicate tag '" + name + "' found");
@@ -55,8 +63,8 @@ aku_Status SeriesRetreiver::add_tags(std::string name, std::vector<std::string> 
 }
 
 aku_Status SeriesRetreiver::add_series_name(std::string name) {
-    if (!metric_.empty()) {
-        Logger::msg(AKU_LOG_ERROR, "Metric already set");
+    if (!tags_.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Tags already set");
         return AKU_EBAD_ARG;
     }
     size_t size = name.size();
@@ -69,32 +77,30 @@ aku_Status SeriesRetreiver::add_series_name(std::string name) {
     if (status != AKU_SUCCESS) {
         return status;
     }
-    series_.push_back(canonical);
+    series_.push_back(std::string(canonical.data(), keystr_end));
     return AKU_SUCCESS;
 }
 
 std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(SeriesMatcher const& matcher) const {
     std::vector<aku_ParamId> ids;
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
-    if (metric_.empty()) {
-        // Case 1, metric not set.
-        if (!series_.empty()) {
-            // extract by name
-            for(const auto& name: series_) {
-                auto id = matcher.match(name.data(), name.data() + name.size());
-                if (id) {
-                    ids.push_back(id);
-                }
+    if (!series_.empty()) {
+        // Case 1, specific series names are set.
+        for(const auto& name: series_) {
+            auto id = matcher.match(name.data(), name.data() + name.size());
+            if (id) {
+                ids.push_back(id);
             }
-            if (ids.empty()) {
-                return std::make_tuple(AKU_ENOT_FOUND, ids);
-            }
-        } else {
-            // get all ids
-            ids = matcher.get_all_ids();
         }
+        if (ids.empty()) {
+            return std::make_tuple(AKU_ENOT_FOUND, ids);
+        }
+    } else if (metric_.empty()) {
+        // Case 2, metric not set.
+        // get all ids
+        ids = matcher.get_all_ids();
     } else {
-        // Case 2, metric is set
+        // Case 3, metric is set
         auto first_metric = metric_.front();
         IncludeMany2Many query(first_metric, tags_);
         auto search_results = matcher.search(query);
@@ -538,18 +544,30 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
         }
         SeriesRetreiver retreiver(metrics);
         for (auto item: *where) {
-            // TODO: if item.first is empty than we're dealing with the 2nd form
             std::string tag = item.first;
-            auto idslist = item.second;
-            // Read idlist
-            if (!idslist.empty()) {
-                std::vector<std::string> tag_values;
-                for (auto idnode: idslist) {
-                    tag_values.push_back(idnode.second.get_value<std::string>());
+            if (tag.empty()) {
+                for (const auto& m: metrics) {
+                    std::stringstream series;
+                    series << m << " ";
+                    for (auto tgv: item.second) {
+                        auto tagname = tgv.first;
+                        auto tagvalue = tgv.second.get_value<std::string>();
+                        series << tagname << "=" << tagvalue << " ";
+                    }
+                    retreiver.add_series_name(series.str());
                 }
-                retreiver.add_tags(tag, tag_values);
             } else {
-                retreiver.add_tag(tag, idslist.get_value<std::string>());
+                auto idslist = item.second;
+                // Read idlist
+                if (!idslist.empty()) {
+                    std::vector<std::string> tag_values;
+                    for (auto idnode: idslist) {
+                        tag_values.push_back(idnode.second.get_value<std::string>());
+                    }
+                    retreiver.add_tags(tag, tag_values);
+                } else {
+                    retreiver.add_tag(tag, idslist.get_value<std::string>());
+                }
             }
         }
         std::tie(status, output) = retreiver.extract_ids(matcher);
