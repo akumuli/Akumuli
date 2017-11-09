@@ -21,6 +21,7 @@ enum class QueryKind {
 class SeriesRetreiver {
     std::vector<std::string> metric_;
     std::map<std::string, std::vector<std::string>> tags_;
+    std::vector<std::string> series_;
 public:
     //! Matches all series names
     SeriesRetreiver();
@@ -33,6 +34,9 @@ public:
 
     //! Add tag name and set of possible values
     aku_Status add_tags(std::string name, std::vector<std::string> values);
+
+    //! Add full series name
+    aku_Status add_series_name(std::string name);
 
     //! Get results
     std::tuple<aku_Status, std::vector<aku_ParamId>> extract_ids(PlainSeriesMatcher const& matcher) const;

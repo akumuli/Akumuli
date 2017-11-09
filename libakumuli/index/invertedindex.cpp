@@ -832,7 +832,7 @@ std::tuple<aku_Status, StringT> Index::append(const char* begin, const char* end
     const char* tags_begin;
     const char* tags_end;
     char buffer[0x1000];
-    auto status = SeriesParser::to_normal_form(begin, end, buffer, buffer + 0x1000, &tags_begin, &tags_end);
+    auto status = SeriesParser::to_canonical_form(begin, end, buffer, buffer + 0x1000, &tags_begin, &tags_end);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, EMPTY_STRING);
     }

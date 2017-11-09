@@ -120,7 +120,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_0) {
     char out[40];
     const char* pbegin = nullptr;
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pbegin, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pbegin, &pend);
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_1) {
     auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -148,7 +148,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_2) {
     auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -158,7 +158,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_3) {
     auto len = strlen(series1);
     char out[27];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -168,7 +168,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_4) {
     char series1[len];
     char out[len];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + len, &pend, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_DATA);
 }
 
@@ -178,7 +178,7 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_5) {
     char series1[len];
     char out[10];
     const char* pend = nullptr;
-    int status = SeriesParser::to_normal_form(series1, series1 + len, out, out + 10, &pend, &pend);
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + 10, &pend, &pend);
     BOOST_REQUIRE_EQUAL(status, AKU_EBAD_ARG);
 }
 

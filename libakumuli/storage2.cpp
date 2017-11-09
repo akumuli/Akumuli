@@ -129,7 +129,7 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
     char buf[AKU_LIMITS_MAX_SNAME];
     char* ob = static_cast<char*>(buf);
     char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
-    aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
+    aku_Status status = SeriesParser::to_canonical_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
         return status;
     }
@@ -156,7 +156,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     char buf[AKU_LIMITS_MAX_SNAME];
     char* ob = static_cast<char*>(buf);
     char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
-    aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
+    aku_Status status = SeriesParser::to_canonical_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
         return -1*status;
     }

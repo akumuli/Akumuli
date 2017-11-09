@@ -17,6 +17,6 @@ int main(int argc, char** argv) {
         const char* keystr_end;
         const size_t size = AKU_LIMITS_MAX_SNAME + 1;
         char out[size];
-        SeriesParser::to_normal_form(line.data(), line.data() + line.size(), out, out + size, &keystr_begin, &keystr_end);
+        SeriesParser::to_canonical_form(line.data(), line.data() + line.size(), out, out + size, &keystr_begin, &keystr_end);
     }
 }

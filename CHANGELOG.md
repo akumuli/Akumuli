@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.23
+--------------
+
+NEW FEATURES
+
+* New form of 'where' clause added
+
 Version 0.7.22
 --------------
 
