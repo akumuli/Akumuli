@@ -29,57 +29,10 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-static void panic_on_error(apr_status_t status, const char* msg) {
-    if (status != APR_SUCCESS) {
-        char error_message[0x100];
-        apr_strerror(status, error_message, 0x100);
-        Logger::msg(AKU_LOG_ERROR, std::string(msg) + " " + error_message);
-        AKU_PANIC(msg);
-    }
-}
 
-static void _close_apr_file(apr_file_t* file) {
-    apr_file_close(file);
-}
-
-static AprPoolPtr _make_apr_pool() {
-    apr_pool_t* mem_pool = NULL;
-    apr_status_t status = apr_pool_create(&mem_pool, NULL);
-    panic_on_error(status, "Can't create APR pool");
-    AprPoolPtr pool(mem_pool, &apr_pool_destroy);
-    return std::move(pool);
-}
-
-static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
-    apr_file_t* pfile = nullptr;
-    apr_status_t status = apr_file_open(&pfile, file_name, APR_READ|APR_WRITE, APR_OS_DEFAULT, pool);
-    panic_on_error(status, "Can't open file");
-    AprFilePtr file(pfile, &_close_apr_file);
-    return std::move(file);
-}
-
-
-static size_t _get_file_size(apr_file_t* file) {
-    apr_finfo_t info;
-    auto status = apr_file_info_get(&info, APR_FINFO_SIZE, file);
-    panic_on_error(status, "Can't get file info");
-    return static_cast<size_t>(info.size);
-}
-
-/** This function creates file with specified size
-  */
-static void _create_file(const char* file_name, u64 size) {
-    Logger::msg(AKU_LOG_INFO, "Create " + std::string(file_name) + " size: " + std::to_string(size));
-    AprPoolPtr pool = _make_apr_pool();
-    apr_file_t* pfile = nullptr;
-    apr_status_t status = apr_file_open(&pfile, file_name, APR_TRUNCATE|APR_CREATE|APR_WRITE, APR_OS_DEFAULT, pool.get());
-    panic_on_error(status, "Can't create file");
-    AprFilePtr file(pfile, &_close_apr_file);
-    status = apr_file_trunc(file.get(), static_cast<apr_off_t>(size));
-    panic_on_error(status, "Can't truncate file");
-}
-
-//------------------------- MetaVolume ---------------------------------//
+//            //
+// MetaVolume //
+//            //
 
 struct VolumeRef {
     u32 version;
@@ -285,9 +238,9 @@ aku_Status MetaVolume::flush(u32 id) {
 //--------------------------- Volume -----------------------------------//
 
 Volume::Volume(const char* path, size_t write_pos)
-    : apr_pool_(_make_apr_pool())
-    , apr_file_handle_(_open_file(path, apr_pool_.get()))
-    , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
+    : apr_pool_(FileUtil::make_apr_pool())
+    , apr_file_handle_(FileUtil::open_file(path, apr_pool_.get()))
+    , file_size_(static_cast<u32>(FileUtil::get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
     , path_(path)
     , mmap_ptr_(nullptr)
@@ -318,7 +271,7 @@ void Volume::reset() {
 
 void Volume::create_new(const char* path, size_t capacity) {
     auto size = capacity * AKU_BLOCK_SIZE;
-    _create_file(path, size);
+    FileUtil::create_file(path, size);
 }
 
 std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
@@ -334,10 +287,10 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     }
     apr_off_t seek_off = write_pos_ * AKU_BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
-    panic_on_error(status, "Volume seek error");
+    FileUtil::panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
     status = apr_file_write_full(apr_file_handle_.get(), source, AKU_BLOCK_SIZE, &bytes_written);
-    panic_on_error(status, "Volume write error");
+    FileUtil::panic_on_error(status, "Volume write error");
     auto result = write_pos_++;
     return std::make_tuple(AKU_SUCCESS, result);
 }
@@ -355,10 +308,10 @@ aku_Status Volume::read_block(u32 ix, u8* dest) const {
     }
     apr_off_t offset = ix * AKU_BLOCK_SIZE;
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &offset);
-    panic_on_error(status, "Volume seek error");
+    FileUtil::panic_on_error(status, "Volume seek error");
     apr_size_t outsize = 0;
     status = apr_file_read_full(apr_file_handle_.get(), dest, AKU_BLOCK_SIZE, &outsize);
-    panic_on_error(status, "Volume read error");
+    FileUtil::panic_on_error(status, "Volume read error");
     return AKU_SUCCESS;
 }
 
@@ -377,7 +330,7 @@ std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {
 
 void Volume::flush() {
     apr_status_t status = apr_file_flush(apr_file_handle_.get());
-    panic_on_error(status, "Volume flush error");
+    FileUtil::panic_on_error(status, "Volume flush error");
 }
 
 u32 Volume::get_size() const {

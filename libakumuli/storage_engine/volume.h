@@ -30,6 +30,7 @@
 #include "akumuli.h"
 #include "util.h"
 #include "volumeregistry.h"
+#include "file_util.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -37,9 +38,6 @@ namespace StorageEngine {
 //! Address of the block inside volume (index of the block)
 typedef u32 BlockAddr;
 enum { AKU_BLOCK_SIZE = 4096 };
-
-typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
-typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
 
 
 /** Class that represents metadata volume.
