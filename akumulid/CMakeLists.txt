@@ -21,6 +21,7 @@ target_link_libraries(akumulid
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     ${LIBMICROHTTPD_LIBRARY}
+    pthread
 )
 
 include(CppcheckTargets)
@@ -47,8 +48,11 @@ set(CPACK_PACKAGE_VERSION_MAJOR "${APP_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${APP_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${APP_VERSION_PATCH}")
 
-
 set(CPACK_PACKAGE_FILE_NAME
 "akumuli_${APP_VERSION}-${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+
+# autogenerate dependency information
+set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS} libaprutil1 (>= 1.0.5), libaprutil1-dbd-sqlite3 (>= 1.5.0) ")
 
 include(CPack)

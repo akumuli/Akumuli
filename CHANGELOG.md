@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.24
+--------------
+
+BUG FIXES
+
+* Fix debian package dependencies
+
 Version 0.7.23
 --------------
 
