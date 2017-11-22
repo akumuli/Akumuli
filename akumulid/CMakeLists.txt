@@ -13,8 +13,6 @@ add_executable(akumulid
     signal_handler.cpp
 )
 
-message("APR-util: ${APRUTIL_LIBRARY}")
-
 target_link_libraries(akumulid
     akumuli
     "${SQLITE3_LIBRARY}"
