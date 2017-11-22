@@ -21,6 +21,7 @@ target_link_libraries(akumulid
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     ${LIBMICROHTTPD_LIBRARY}
+    pthread
 )
 
 include(CppcheckTargets)
