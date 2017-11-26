@@ -79,6 +79,9 @@ public:
     //! Make page available for writing
     aku_Status unprotect_all();
 
+    //! Add 'size' bytes to the end of the file.
+    aku_Status extent(u32 size);
+
 private:
     //! Map file into virtual address space
     apr_status_t map_file();
