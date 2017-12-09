@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.25
+--------------
+
+BUG FIXES
+
+* Fix idle CPU load problem
+
 Version 0.7.24
 --------------
 
