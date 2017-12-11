@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 
 #include <boost/thread/barrier.hpp>
@@ -36,9 +35,10 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
     std::shared_ptr<DbConnection>      db_;
     boost::barrier                     start_barrier_;  //< Barrier to start worker thread
     boost::barrier                     stop_barrier_;   //< Barrier to stop worker thread
-    std::atomic<int>                   stop_;
     const int                          port_;
     const int                          nworkers_;
+    int                                sockfd_;         //< UDP socket file descriptor
+    std::mutex                         mutex_;
 
     Logger logger_;
 
@@ -74,6 +74,8 @@ public:
       * @param pipeline pointer to ingestion pipeline
       */
     UdpServer(std::shared_ptr<DbConnection> pipeline, int nworkers, int port);
+
+    ~UdpServer();
 
     //! Start processing packets
     virtual void start(SignalHandler* sig, int id);
