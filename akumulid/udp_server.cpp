@@ -2,7 +2,9 @@
 
 #include <thread>
 
+#include <sys/socket.h>
 #include <netinet/ip.h>
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,19 +20,12 @@ UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
     : db_(db)
     , start_barrier_(static_cast<u32>(nworkers + 1))
     , stop_barrier_(static_cast<u32>(nworkers + 1))
+    , stop_{0}
     , port_(port)
     , nworkers_(nworkers)
     , sockfd_(-1)
     , logger_("UdpServer")
 {
-}
-
-UdpServer::~UdpServer() {
-    mutex_.lock();
-    if (sockfd_ != -1) {
-        close(sockfd_);
-    }
-    mutex_.unlock();
 }
 
 void UdpServer::start(SignalHandler *sig, int id) {
@@ -46,15 +41,39 @@ void UdpServer::start(SignalHandler *sig, int id) {
     start_barrier_.wait();
 }
 
+static void sendByteToLocalhost(int port) {
+    Logger logger("UdpServer");
+    int fd;
+    struct sockaddr_in addr;
+    const char* ip = "127.0.0.1";
+
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        // We can't send the message to the socket thus, we wouldn't be able
+        // to stop the program normally anyway.
+        logger.error() << "Can't create the socket";
+        std::terminate();
+    }
+
+    addr.sin_family = AF_INET;
+    inet_aton(ip, &addr.sin_addr);
+    addr.sin_port = htons(port);
+    char payload = 0;
+
+    if (sendto(fd, &payload, 1, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        // Same reasoning as previously
+        logger.error() << "Can't send the data through the socket";
+        std::terminate();
+    }
+}
 
 void UdpServer::stop() {
-    mutex_.lock();
-    if (sockfd_ != -1) {
-        close(sockfd_);
-    }
-    mutex_.unlock();
+    // Set the flag and then send the 1-byte payload to wake up the
+    // worker thread. The socket descriptor can be closed afterwards.
+    stop_.store(1, std::memory_order_relaxed);
+    sendByteToLocalhost(port_);
     stop_barrier_.wait();
     logger_.info() << "UDP server stopped";
+    close(sockfd_);
 }
 
 
@@ -64,7 +83,6 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         auto thread = pthread_self();
         pthread_setname_np(thread, "UDP-worker");
 #endif
-
     start_barrier_.wait();
 
     int retval;
@@ -76,9 +94,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         parser.start();
 
         // Create socket
-        mutex_.lock();
         sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
-        mutex_.unlock();
         if (sockfd_ == -1) {
             const char* msg = strerror(errno);
             std::stringstream fmt;
@@ -113,7 +129,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         auto iobuf = std::make_shared<IOBuf>();
 
         while(true) {
-            retval = recvmmsg(sockfd_, iobuf->msgs, NPACKETS, MSG_DONTWAIT, nullptr);
+            retval = recvmmsg(sockfd_, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             if (retval == -1) {
                 if (errno == EAGAIN || errno == EINTR) {
                     continue;
@@ -123,6 +139,9 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
                 fmt << "socket read error: " << msg;
                 std::runtime_error err(fmt.str());
                 BOOST_THROW_EXCEPTION(err);
+            }
+            if (stop_.load(std::memory_order_seq_cst)) {
+                break;
             }
 
             iobuf->pps++;
@@ -159,7 +178,6 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     }
 
     parser.close();
-
     stop_barrier_.wait();
 }
 
