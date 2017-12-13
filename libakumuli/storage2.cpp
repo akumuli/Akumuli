@@ -717,6 +717,9 @@ void Storage::start_sync_worker() {
     // if something needs to be synced.
     // This order guarantees that metadata storage always contains correct rescue points and
     // other metadata.
+    enum {
+        SYNC_REQUEST_TIMEOUT = 10000,
+    };
     auto sync_worker = [this]() {
         auto get_names = [this](std::vector<PlainSeriesMatcher::SeriesNameT>* names) {
             std::lock_guard<std::mutex> guard(lock_);
@@ -724,7 +727,7 @@ void Storage::start_sync_worker() {
         };
 
         while(done_.load() == 0) {
-            auto status = metadata_->wait_for_sync_request(1000);
+            auto status = metadata_->wait_for_sync_request(SYNC_REQUEST_TIMEOUT);
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
                 metadata_->sync_with_metadata_storage(get_names);
@@ -735,7 +738,6 @@ void Storage::start_sync_worker() {
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
-
 }
 
 void Storage::close() {

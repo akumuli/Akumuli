@@ -2,7 +2,9 @@
 
 #include <thread>
 
+#include <sys/socket.h>
 #include <netinet/ip.h>
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +12,6 @@
 #include <time.h>
 
 #include <boost/bind.hpp>
-#include <boost/scope_exit.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 
 namespace Akumuli {
@@ -22,10 +23,10 @@ UdpServer::UdpServer(std::shared_ptr<DbConnection> db, int nworkers, int port)
     , stop_{0}
     , port_(port)
     , nworkers_(nworkers)
+    , sockfd_(-1)
     , logger_("UdpServer")
 {
 }
-
 
 void UdpServer::start(SignalHandler *sig, int id) {
     auto self = shared_from_this();
@@ -40,11 +41,39 @@ void UdpServer::start(SignalHandler *sig, int id) {
     start_barrier_.wait();
 }
 
+static void sendByteToLocalhost(int port) {
+    Logger logger("UdpServer");
+    int fd;
+    struct sockaddr_in addr;
+    const char* ip = "127.0.0.1";
+
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        // We can't send the message to the socket thus, we wouldn't be able
+        // to stop the program normally anyway.
+        logger.error() << "Can't create the socket";
+        std::terminate();
+    }
+
+    addr.sin_family = AF_INET;
+    inet_aton(ip, &addr.sin_addr);
+    addr.sin_port = htons(port);
+    char payload = 0;
+
+    if (sendto(fd, &payload, 1, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        // Same reasoning as previously
+        logger.error() << "Can't send the data through the socket";
+        std::terminate();
+    }
+}
 
 void UdpServer::stop() {
+    // Set the flag and then send the 1-byte payload to wake up the
+    // worker thread. The socket descriptor can be closed afterwards.
     stop_.store(1, std::memory_order_relaxed);
+    sendByteToLocalhost(port_);
     stop_barrier_.wait();
     logger_.info() << "UDP server stopped";
+    close(sockfd_);
 }
 
 
@@ -54,10 +83,9 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         auto thread = pthread_self();
         pthread_setname_np(thread, "UDP-worker");
 #endif
-
     start_barrier_.wait();
 
-    int sockfd, retval;
+    int retval;
     sockaddr_in sa{};
 
     RESPProtocolParser parser(spout);
@@ -66,8 +94,8 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         parser.start();
 
         // Create socket
-        sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-        if (sockfd == -1) {
+        sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sockfd_ == -1) {
             const char* msg = strerror(errno);
             std::stringstream fmt;
             fmt << "can't create socket: " << msg;
@@ -75,27 +103,12 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
             BOOST_THROW_EXCEPTION(err);
         }
 
-        BOOST_SCOPE_EXIT_ALL(sockfd) {
-            close(sockfd);
-        };
-
         // Set socket options
         int optval = 1;
-        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
+        if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
             const char* msg = strerror(errno);
             std::stringstream fmt;
             fmt << "can't set socket options: " << msg;
-            std::runtime_error err(fmt.str());
-            BOOST_THROW_EXCEPTION(err);
-        }
-
-        timeval tval;
-        tval.tv_sec = 0;
-        tval.tv_usec = 1000;  // 1ms
-        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof(tval)) == -1) {
-            const char* msg = strerror(errno);
-            std::stringstream fmt;
-            fmt << "can't set socket timeout: " << msg;
             std::runtime_error err(fmt.str());
             BOOST_THROW_EXCEPTION(err);
         }
@@ -105,7 +118,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         sa.sin_addr.s_addr = htonl(INADDR_ANY);
         sa.sin_port = htons(port_);
 
-        if (bind(sockfd, (sockaddr *) &sa, sizeof(sa)) == -1) {
+        if (bind(sockfd_, (sockaddr *) &sa, sizeof(sa)) == -1) {
             const char* msg = strerror(errno);
             std::stringstream fmt;
             fmt << "can't bind socket: " << msg;
@@ -115,8 +128,8 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
 
         auto iobuf = std::make_shared<IOBuf>();
 
-        while(!stop_.load(std::memory_order_relaxed)) {
-            retval = recvmmsg(sockfd, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
+        while(true) {
+            retval = recvmmsg(sockfd_, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
             if (retval == -1) {
                 if (errno == EAGAIN || errno == EINTR) {
                     continue;
@@ -126,6 +139,9 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
                 fmt << "socket read error: " << msg;
                 std::runtime_error err(fmt.str());
                 BOOST_THROW_EXCEPTION(err);
+            }
+            if (stop_.load(std::memory_order_seq_cst)) {
+                break;
             }
 
             iobuf->pps++;
@@ -162,7 +178,6 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     }
 
     parser.close();
-
     stop_barrier_.wait();
 }
 

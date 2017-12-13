@@ -39,6 +39,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
     std::atomic<int>                   stop_;
     const int                          port_;
     const int                          nworkers_;
+    int                                sockfd_;         //< UDP socket file descriptor
 
     Logger logger_;
 
@@ -79,7 +80,7 @@ public:
     virtual void start(SignalHandler* sig, int id);
 
 private:
-    //! Stop processing packets
+    //! Stop processing packets, close the socket
     void stop();
 
     void worker(std::shared_ptr<DbSession> spout);
