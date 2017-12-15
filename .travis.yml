@@ -6,18 +6,22 @@ compiler: gcc
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
+  - secure: WjV1CB1dCx5Fg2LQEbuMoGjHXItOShgRFCxpNzXZpa5/bCfAeyQ8g9rGwqQTVBf5IrUjHjQ6JEbvAqc2SQjLZnJhxxhFdDVLLtEcDMDR214vMbM2TNUDDy0Rm9dy6yQgUorzVMOir+iljuATTAgg1BsQY516Kc7HBiHORSQeb3A=
+  - secure: RyG47docf8un5q6INGsPznk8fYuSa9dhsUSN5XbxXJFei9Q07TPDSkctHwrssEqZjzy/p5XyrejbRJGm3OnBjd2zwE2Fj4I+rC55Mn9MfeXushaYkMqAlcu4q16D19nIfhh7rZJLihm+Wv7ygRgctRZGSa3DXoNghmJf/bTHMTA=
 addons:
-  coverity_scan:
-    project:
-      name: akumuli/Akumuli
-      description: Time-series database
-    notification_email: 4lazin@gmail.com
-    build_command_prepend: ''
-    build_command: make -j2
-    branch_pattern: coverity_scan
+  artifacts:
+    provider: s3
+    s3_region: us-west-2
+    access_key_id: "$ARTIFACTS_KEY"
+    secret_access_key: "$ARTIFACTS_SECRET"
+    bucket: "$ARTIFACTS_BUCKET"
+    acl: public_read
+    paths:
+    - "$HOME/akumuli.log"
 before_install:
 - sudo apt-get update
-- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-program-options-dev libboost-regex-dev
+- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev
+  libboost-test-dev libboost-program-options-dev libboost-regex-dev
 - sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
 - sudo apt-get install -y liblog4cxx10-dev liblog4cxx10
 - sudo apt-get install -y libjemalloc-dev
@@ -32,7 +36,6 @@ script:
 - make -j4
 - ctest -VV
 - functests/storage_test /tmp
-# Run on non-expandable storage
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
 - python functests/test_data_ingestion.py akumulid/ TCP
@@ -48,7 +51,6 @@ script:
 - python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
 - python functests/test_search_api.py akumulid/
-# Run on expandable storage
 - python functests/akumulid_test_tools.py set_nvolumes 0
 - python functests/test_data_ingestion.py akumulid/ TCP
 - python functests/test_data_ingestion.py akumulid/ UDP
@@ -62,28 +64,22 @@ script:
 - python functests/test_join_query.py akumulid/
 - bash functests/roundtrip.sh
 - cpack
-
+# Build docker container
+- export TAG="test"
+- export REPO=akumuli/test
+- docker build -t $REPO:$TAG -f Dockerfile .
 deploy:
   provider: packagecloud
-  repository: "Akumuli"
-  username: "Lazin"
-  dist: "ubuntu/trusty"
+  repository: Akumuli
+  username: Lazin
+  dist: ubuntu/trusty
   package_glob: "./*.deb"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
-      branch: master
+    branch: master
   skip_cleanup: true
-
-after_failure:
-
-addons:
-  artifacts:
-    provider: s3
-    s3_region: "us-west-2"
-    access_key_id: $ARTIFACTS_KEY
-    secret_access_key: $ARTIFACTS_SECRET
-    bucket: $ARTIFACTS_BUCKET
-    acl: public_read
-    paths:
-      - $HOME/akumuli.log
+after_success:
+- docker login -u $DOCKER_USER -p $DOCKER_PASS
+- docker push $REPO:$TAG
+after_failure: 
