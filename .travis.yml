@@ -64,10 +64,11 @@ script:
 - python functests/test_join_query.py akumulid/
 - bash functests/roundtrip.sh
 - cpack
+- cp akumuli_*_amd64.deb ./docker
 # Build docker container
-- export TAG="test"
-- export REPO=akumuli/test
-- docker build -t $REPO:$TAG ./docker
+#- export TAG="test"
+#- export REPO=akumuli/test
+- docker build -t akumuli/test ./docker
 deploy:
   provider: packagecloud
   repository: Akumuli
@@ -81,5 +82,6 @@ deploy:
   skip_cleanup: true
 after_success:
 - docker login -u $DOCKER_USER -p $DOCKER_PASS
-- docker push $REPO:$TAG
+#- docker push $REPO:$TAG
+- docker push akumuli/test
 after_failure: 
