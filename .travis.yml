@@ -67,7 +67,7 @@ script:
 # Build docker container
 - export TAG="test"
 - export REPO=akumuli/test
-- docker build -t $REPO:$TAG -f Dockerfile .
+- docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
   repository: Akumuli
