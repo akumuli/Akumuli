@@ -71,3 +71,12 @@ add_subdirectory(fuzzers)
 
 enable_testing()
 add_subdirectory(unittests)
+
+file(COPY
+    docker/Dockerfile
+    docker/akumulid  
+    docker/prev.sh
+    docker/startup.sh
+    DESTINATION
+    ./docker
+)
