@@ -6,7 +6,7 @@ RUN apt-get -y install gdebi-core
 	
 
 COPY akumuli_*_amd64.deb /tmp/akumuli.deb
-RUN gdebi /tmp/akumuli.deb
+RUN gdebi -n /tmp/akumuli.deb
 
 EXPOSE 8282
 EXPOSE 8383/UDP
