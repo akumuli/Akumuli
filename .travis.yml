@@ -6,8 +6,6 @@ compiler: gcc
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
-  - secure: WjV1CB1dCx5Fg2LQEbuMoGjHXItOShgRFCxpNzXZpa5/bCfAeyQ8g9rGwqQTVBf5IrUjHjQ6JEbvAqc2SQjLZnJhxxhFdDVLLtEcDMDR214vMbM2TNUDDy0Rm9dy6yQgUorzVMOir+iljuATTAgg1BsQY516Kc7HBiHORSQeb3A=
-  - secure: RyG47docf8un5q6INGsPznk8fYuSa9dhsUSN5XbxXJFei9Q07TPDSkctHwrssEqZjzy/p5XyrejbRJGm3OnBjd2zwE2Fj4I+rC55Mn9MfeXushaYkMqAlcu4q16D19nIfhh7rZJLihm+Wv7ygRgctRZGSa3DXoNghmJf/bTHMTA=
 addons:
   artifacts:
     provider: s3
@@ -81,7 +79,7 @@ deploy:
     branch: master
   skip_cleanup: true
 after_success:
-- docker login -u $DOCKER_USER -p $DOCKER_PASS
+- docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
 #- docker push $REPO:$TAG
 - docker push akumuli/test
 after_failure: 
