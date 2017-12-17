@@ -4,79 +4,56 @@
 path=/Akumuli
 
 # Number of volumes used  to store data.  Each volume  is
-# 4Gb in size and  allocated beforehand. To change number
+# 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
-# configuration and restart daemon. Default 4
-nvolumes=2
+# configuration and restart daemon.
+nvolumes=4
 
-# Sliding window  width. Can  be specified in nanoseconds
-# (unit  of  measure  is  not  specified),  seconds  (s),
-# milliseconds (ms),  microseconds (us) or minutes (min).
-#
-# Examples:
-#
-# window=10s
-# window=500us
-# window=1000   (in this case sliding window will be 1000
-#                nanoseconds long)
-window=10s
-
-# Number of data  points stored in one  compressed chunk.
-# Akumuli stores data  in chunks.  If chunks is too large
-# decompression can be slow; in opposite case compression
-# can  be less  effective.  Good compression_threshold is
-# about 1000. In this case chunk size will be around 4Kb.
-compression_threshold=1000
-
-# Durability level can  be set  to  max  or  min.  In the
-# first case  durability will  be maximal but speed won't
-# be  optimal.  If durability is  set  to min write speed
-# will be better.
-durability=max
-
-# This parameter  can  be used to  emable huge  pages for
-# data volumes.  This can speed up searching  and writing
-# process a bit. Setting  this  option can't  do any harm
-# except performance loss in some circumstances.
-huge_tlb = 0
-
-# Max cache capacity in bytes.  Akumuli  caches  recently
-# used chunks  in memory. This  parameter can  be used to
-# define size of this cache (default value: 512Mb).
-max_cache_size=536870912
+# Size of the individual volume. You can use MB or GB suffix.
+# Default value is 4GB (if value is not set).
+volume_size=4GB
 
 
-# HTTP server config
+# HTTP API endpoint configuration
+
 [HTTP]
 # port number
 port=8181
 
+
 # TCP ingestion server config (delete to disable)
+
 [TCP]
 # port number
 port=8282
-# worker pool size
-pool_size=1
+# worker pool size (0 means that the size of the pool will be chosen automatically)
+pool_size=0
+
 
 # UDP ingestion server config (delete to disable)
+
 [UDP]
 # port number
 port=8383
 # worker pool size
 pool_size=1
 
+# OpenTSDB telnet-style data connection enabled (remove this section to disable).
+
+[OpenTSDB]
+# port number
+port=4242
+
+
+
 # Logging configuration
 # This is just a log4cxx configuration without any modifications
 
-#for enable file logging, please  change log4j.rootLogger=all, file, stdout
-log4j.rootLogger=all, stdout
+log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
-log4j.appender.file.filename=/tmp/akumuli.log
+log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %m%n
+log4j.appender.file.filename=/Akumuli/logs/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
-log4j.appender.stdout=org.apache.log4j.ConsoleAppender
-log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
-log4j.appender.stdout.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %l %m%n
 
