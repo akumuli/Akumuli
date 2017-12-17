@@ -7,11 +7,11 @@ path=/Akumuli
 # 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
-nvolumes=4
+nvolumes=__nvolumes__
 
 # Size of the individual volume. You can use MB or GB suffix.
 # Default value is 4GB (if value is not set).
-volume_size=4GB
+volume_size=__volume_size__
 
 
 # HTTP API endpoint configuration

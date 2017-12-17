@@ -15,6 +15,10 @@ EXPOSE 4242
 
 VOLUME /Akumuli
 
+# Environment
+ENV volume_size 4GB
+ENV nvolumes 4
+
 # Add Tini
 ENV TINI_VERSION v0.9.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
@@ -22,7 +26,8 @@ RUN chmod +x /tini
 
 ENTRYPOINT ["/tini", "--"]
 
-ADD akumulid /root/.akumulid
+ADD akumulid /root/akumulid_template
+RUN sed -e "s/__nvolumes__/$nvolumes/g" -e "s/__volume_size__/$volume_size/" /root/akumulid_template > /root/.akumulid
 ADD startup.sh /root/akumuli.sh
 
 CMD ["/root/akumuli.sh"]
