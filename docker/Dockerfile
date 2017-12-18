@@ -27,7 +27,6 @@ RUN chmod +x /tini
 ENTRYPOINT ["/tini", "--"]
 
 ADD akumulid /root/akumulid_template
-RUN sed -e "s/__nvolumes__/$nvolumes/g" -e "s/__volume_size__/$volume_size/" /root/akumulid_template > /root/.akumulid
 ADD startup.sh /root/akumuli.sh
 
 CMD ["/root/akumuli.sh"]
