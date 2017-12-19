@@ -1,42 +1,23 @@
- FROM ubuntu:14.04
- RUN apt-get update; \
-     apt-get -y upgrade
+FROM ubuntu:14.04
+RUN apt-get update; \
+    apt-get -y upgrade
 
- RUN apt-get install -y git \
-    libboost-dev \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libboost-filesystem-dev \
-    libboost-test-dev \
-    libboost-coroutine-dev \
-    libboost-context-dev \
-    libboost-program-options-dev \
-    libboost-regex-dev \
-    libapr1-dev \
-    libaprutil1-dev \
-    libapr1-dev \
-    libaprutil1-dev \
-    libaprutil1-dbd-sqlite3 \
-    libmicrohttpd-dev \
-    liblog4cxx10-dev \
-    liblog4cxx10 \
-    libjemalloc-dev \
-    libsqlite3-dev \
-    cmake \
-    build-essential
+RUN apt-get -y install gdebi-core
+	
 
-RUN git clone https://github.com/akumuli/Akumuli.git ; \
-    cd Akumuli; \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr .; \
-    make -j2 ; make install ; \
-    cd .. ; \
-    rm -R /Akumuli
+COPY akumuli_*_amd64.deb /tmp/akumuli.deb
+RUN gdebi -n /tmp/akumuli.deb
 
 EXPOSE 8282
 EXPOSE 8383/UDP
 EXPOSE 8181
+EXPOSE 4242
 
 VOLUME /Akumuli
+
+# Environment
+ENV volume_size 4GB
+ENV nvolumes 4
 
 # Add Tini
 ENV TINI_VERSION v0.9.0
@@ -45,7 +26,7 @@ RUN chmod +x /tini
 
 ENTRYPOINT ["/tini", "--"]
 
-ADD akumulid /root/.akumulid
+ADD akumulid /root/akumulid_template
 ADD startup.sh /root/akumuli.sh
 
 CMD ["/root/akumuli.sh"]
