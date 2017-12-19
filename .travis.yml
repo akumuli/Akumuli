@@ -64,9 +64,9 @@ script:
 - cpack
 - cp akumuli_*_amd64.deb ./docker
 # Build docker container
-#- export TAG="test"
-#- export REPO=akumuli/test
-- docker build -t akumuli/test ./docker
+- export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
+- export TAG=$TRAVIS_BRANCH
+- docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
   repository: Akumuli
@@ -80,6 +80,5 @@ deploy:
   skip_cleanup: true
 after_success:
 - docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
-#- docker push $REPO:$TAG
-- docker push akumuli/test
+- docker push $REPO:$TAG
 after_failure: 

@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.26
+--------------
+
+NEW FEATURES
+
+* Build Docker container on CI
+
 Version 0.7.25
 --------------
 
