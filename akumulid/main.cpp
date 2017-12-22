@@ -572,8 +572,9 @@ void panic_handler(const char * msg) {
 
 
 int main(int argc, char** argv) {
-
     try {
+        std::locale::global(std::locale("C"));
+
         aku_initialize(&panic_handler, &static_logger);
 
         // Init logger
