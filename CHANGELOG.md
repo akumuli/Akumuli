@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.27
+--------------
+
+BUG FIXES
+
+* Set up locale (fix #227)
+
 Version 0.7.26
 --------------
 
