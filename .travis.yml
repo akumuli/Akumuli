@@ -79,6 +79,8 @@ deploy:
     branch: master
   skip_cleanup: true
 after_success:
-- docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
-- docker push $REPO:$TAG
+- if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
+  docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
+  docker push $REPO:$TAG;
+  fi 
 after_failure: 
