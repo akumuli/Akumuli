@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.28
+--------------
+
+IMPROVEMENTS
+
+* Update prerequisites.sh
+
 Version 0.7.27
 --------------
 
