@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 2.8)
 set(PACKAGE_VERSION "1ubuntu1.0")
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "7")
-set(APP_VERSION_PATCH "29")
+set(APP_VERSION_PATCH "30")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
@@ -60,6 +60,8 @@ add_definitions(-std=c++1y -fvisibility=hidden)
 # json parser from boost::property_tree needs this badly
 add_definitions(-DBOOST_SPIRIT_THREADSAFE)
 add_definitions(-DBOOST_PHOENIX_THREADSAFE)
+
+include(GNUInstallDirs)
 
 include_directories(./include)
 

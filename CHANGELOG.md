@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.30
+--------------
+
+IMPROVEMENTS
+
+* Use CMake macros for install directories from GNUInstallDirs.
+
 Version 0.7.29
 --------------
 

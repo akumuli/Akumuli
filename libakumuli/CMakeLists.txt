@@ -54,8 +54,7 @@ install(
     TARGETS
         akumuli
     LIBRARY DESTINATION
-        #${CMAKE_INSTALL_PREFIX}/lib
-        /usr/lib
+        ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(
@@ -64,8 +63,7 @@ install(
 	  ../include/akumuli.h
 	  ../include/akumuli_def.h
     DESTINATION
-        #${CMAKE_INSTALL_PREFIX}/include
-        /usr/include
+        ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 set(CPACK_GENERATOR "DEB")
