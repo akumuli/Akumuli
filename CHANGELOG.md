@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.29
+--------------
+
+BUG FIXES
+
+* Add the missing header for GCC 7.2.x
+
 Version 0.7.28
 --------------
 
