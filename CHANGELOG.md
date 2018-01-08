@@ -1,12 +1,19 @@
 Release notes
 =============
 
+Version 0.7.31
+--------------
+
+BUG FIXES
+
+* Fix #235 (don't use -march=native)
+
 Version 0.7.30
 --------------
 
 IMPROVEMENTS
 
-* Use CMake macros for install directories from GNUInstallDirs.
+* Use CMake macros for install directories from GNUInstallDirs
 
 Version 0.7.29
 --------------
