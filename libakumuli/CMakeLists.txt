@@ -43,6 +43,14 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+# Shared object version: "major.minor.micro"
+# - micro updated every release when there is no API/ABI changes
+# - minor updated when there are additions in API/ABI
+# - major (ABI number) updated when there are changes in ABI (or removals)
+set_target_properties(akumuli PROPERTIES
+    SOVERSION "${APP_VERSION_MAJOR}"
+    VERSION   "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+
 include_directories(.)
 
 include(CppcheckTargets)

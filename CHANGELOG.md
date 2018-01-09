@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.32
+--------------
+
+IMPROVEMENTS
+
+* Specify version for shared object for easier ABI checking
+
 Version 0.7.31
 --------------
 
