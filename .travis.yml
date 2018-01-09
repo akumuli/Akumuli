@@ -29,7 +29,11 @@ before_install:
 before_script:
 - mkdir build
 - cd build
-- cmake .. -DCMAKE_BUILD_TYPE=Release
+- if [[ $TRAVIS_BRANCH == "generic" ]]; then
+  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
+  else
+  cmake .. -DCMAKE_BUILD_TYPE=Release;
+  fi
 script:
 - make -j4
 - ctest -VV
