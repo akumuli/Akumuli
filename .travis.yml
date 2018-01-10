@@ -4,8 +4,8 @@ language: python
 group: edge
 compiler: gcc
 env:
-  - GENERIC_BUILD=false
-  - GENERIC_BUILD=true
+- GENERIC_BUILD=false
+- GENERIC_BUILD=true
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
 addons:
