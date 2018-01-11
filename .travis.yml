@@ -72,7 +72,7 @@ script:
 - cp akumuli_*_amd64.deb ./docker
 # Build docker container
 - export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=$TRAVIS_BRANCH
+- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
 - docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
