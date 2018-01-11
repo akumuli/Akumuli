@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.34
+--------------
+
+IMPROVEMENTS
+
+* Provide generic and optimized images
+
 Version 0.7.33
 --------------
 
