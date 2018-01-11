@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.33
+--------------
+
+IMPROVEMENTS
+
+* Stop daemon using both SIGINT and SIGTERM
+
 Version 0.7.32
 --------------
 
