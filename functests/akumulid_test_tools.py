@@ -207,7 +207,7 @@ class Akumulid:
         self.__process.send_signal(subprocess.signal.SIGINT)
         
     def terminate(self):
-        self.__process.terminate()
+        self.__process.kill()
 
 class FakeAkumulid:
     """akumulid daemon instance"""
