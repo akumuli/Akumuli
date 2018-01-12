@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.36
+--------------
+
+BUG FIX
+
+* Fix packagecloud deploy
+
 Version 0.7.35
 --------------
 
