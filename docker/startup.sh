@@ -31,6 +31,5 @@ elif [ ! -r $DBDIR/db.akumuli ] ; then
     ${AKUMULID} --create || ERROR "Can't create database"
 fi
 
-${AKUMULID} || ERROR "Can't run akumuli"
-
+exec ${AKUMULID}
 
