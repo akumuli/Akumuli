@@ -6,6 +6,9 @@ compiler: gcc
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
+  matrix:
+  - GENERIC_BUILD=false
+  - GENERIC_BUILD=true
 addons:
   artifacts:
     provider: s3
@@ -29,7 +32,11 @@ before_install:
 before_script:
 - mkdir build
 - cd build
-- cmake .. -DCMAKE_BUILD_TYPE=Release
+- if [[ $GENERIC_BUILD == true ]]; then
+  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  else
+  cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  fi
 script:
 - make -j4
 - ctest -VV
@@ -65,7 +72,7 @@ script:
 - cp akumuli_*_amd64.deb ./docker
 # Build docker container
 - export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=$TRAVIS_BRANCH
+- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
 - docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
