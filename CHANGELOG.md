@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.34
+--------------
+
+BUG FIXES
+
+* Signals are not propagated to the akumulid server in docker container
+
 Version 0.7.33
 --------------
 
