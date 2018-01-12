@@ -1,12 +1,19 @@
 Release notes
 =============
 
-Version 0.7.34
+Version 0.7.35
 --------------
 
 IMPROVEMENTS
 
 * Provide generic and optimized images
+
+Version 0.7.34
+--------------
+
+BUG FIXES
+
+* Signals are not propagated to the akumulid server in docker container
 
 Version 0.7.33
 --------------
