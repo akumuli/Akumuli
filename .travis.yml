@@ -84,6 +84,7 @@ deploy:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
     branch: master
+    condition: $GENERIC_BUILD = "false"
   skip_cleanup: true
 after_success:
 - if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
