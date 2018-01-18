@@ -1,6 +1,10 @@
 project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
 
+include_directories(CRoaring/include)
+include_directories(CRoaring/cpp)
+add_subdirectory(CRoaring)
+
 set(PACKAGE_VERSION "1ubuntu1.0")
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "7")

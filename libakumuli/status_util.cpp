@@ -28,6 +28,7 @@ static const char* g_error_messages[] = {
     "high cardinality, lower cardinality required",
     "regullar series expected",
     "missing data not supported",
+    "I/O error",
     "unknown error code"
 };
 

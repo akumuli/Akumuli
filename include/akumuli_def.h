@@ -174,8 +174,10 @@ typedef enum {
     AKU_EREGULLAR_EXPECTED = 21,
     //! Function can't handle missing values
     AKU_EMISSING_DATA_NOT_SUPPORTED = 22,
+    //! I/O error
+    AKU_EIO = 23,
     //! All error codes should be less then AKU_EMAX_ERROR
-    AKU_EMAX_ERROR = 23,
+    AKU_EMAX_ERROR = 24,
     // NOTE: Update status_util.cpp and AKU_EMAX_ERROR to add new error code!
 } aku_Status;
 

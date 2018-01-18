@@ -21,6 +21,8 @@ target_link_libraries(akumulid
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
     ${LIBMICROHTTPD_LIBRARY}
+    roaring
+    lz4
     pthread
 )
 
