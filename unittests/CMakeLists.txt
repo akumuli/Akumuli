@@ -378,3 +378,27 @@ target_link_libraries(
 
 add_test(column_store test_column_store)
 
+# Test input log
+add_executable(
+    test_input_log
+    test_input_log.cpp
+    ../libakumuli/storage_engine/input_log.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/crc32c.cpp
+)
+
+target_compile_definitions(test_input_log PRIVATE AKU_UNIT_TEST_CONTEXT=1)
+
+target_link_libraries(
+    test_input_log
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    lz4
+    roaring
+    pthread
+)
+
+add_test(input_log test_input_log)
+
