@@ -78,6 +78,10 @@ public:
      */
     LZ4Volume(const char* file_name);
 
+    ~LZ4Volume();
+
+    void close();
+
     size_t file_size() const;
 
     aku_Status append(uint64_t id, uint64_t timestamp, double value);

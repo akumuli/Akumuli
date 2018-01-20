@@ -1,4 +1,5 @@
 #include "input_log.h"
+#include "log_iface.h"
 
 namespace Akumuli {
 
@@ -14,7 +15,7 @@ static void log_apr_error(apr_status_t status, const char* msg) {
     if (status != APR_SUCCESS) {
         char error_message[0x100];
         apr_strerror(status, error_message, 0x100);
-        throw std::runtime_error(std::string(msg) + " " + error_message);
+        Logger::msg(AKU_LOG_ERROR, std::string(msg) + " " + error_message);
     }
 }
 
@@ -170,8 +171,21 @@ LZ4Volume::LZ4Volume(const char* file_name)
     LZ4_setStreamDecode(&decode_stream_, NULL, 0);
 }
 
+LZ4Volume::~LZ4Volume() {
+    if (file_) {
+        close();
+    }
+}
+
 size_t LZ4Volume::file_size() const {
     return file_size_;
+}
+
+void LZ4Volume::close() {
+    if(!is_read_only_) {
+        write(pos_);
+    }
+    file_.reset();
 }
 
 aku_Status LZ4Volume::append(uint64_t id, uint64_t timestamp, double value) {
@@ -281,11 +295,6 @@ void InputLog::open_volumes() {
         volumes_.push_back(std::move(volume));
         volume_counter_++;
     }
-    // TODO: remove
-    std::cout << "Volumes order:" << std::endl;
-    for (const auto& vol: volumes_) {
-        std::cout << vol->get_path() << std::endl;
-    }
 }
 
 std::string InputLog::get_volume_name() {
@@ -297,8 +306,7 @@ std::string InputLog::get_volume_name() {
 
 void InputLog::add_volume(std::string path) {
     if (boost::filesystem::exists(path)) {
-        std::cerr << "Path " << path << " already exists" << std::endl;
-        throw std::runtime_error("File already exists");
+        Logger::msg(AKU_LOG_INFO, std::string("Path ") + path + " already exists");
     }
     std::unique_ptr<LZ4Volume> volume(new LZ4Volume(path.c_str(), volume_size_));
     volumes_.push_front(std::move(volume));
@@ -309,8 +317,7 @@ void InputLog::remove_last_volume() {
     auto volume = std::move(volumes_.back());
     volumes_.pop_back();
     volume->delete_file();
-    // TODO: use logging library
-    std::cout << "Remove volume " << volume->get_path() << std::endl;
+    Logger::msg(AKU_LOG_INFO, std::string("Remove volume ") + volume->get_path());
 }
 
 InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol)
@@ -340,9 +347,9 @@ void InputLog::reopen() {
 }
 
 void InputLog::delete_files() {
-    std::cout << "Delete all files" << std::endl;
+    Logger::msg(AKU_LOG_INFO, "Delete all volumes");
     for (auto& it: volumes_) {
-        std::cout << "Delete " << it->get_path() << std::endl;
+        Logger::msg(AKU_LOG_INFO, std::string("Delete ") + it->get_path());
         it->delete_file();
     }
 }
