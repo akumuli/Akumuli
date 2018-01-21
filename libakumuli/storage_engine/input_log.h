@@ -111,6 +111,7 @@ class InputLog {
     const size_t max_volumes_;
     const size_t volume_size_;
     std::vector<Path> available_volumes_;
+    const int id_;
 
     void find_volumes();
 
@@ -129,13 +130,13 @@ public:
      * @param nvol max number of volumes
      * @param svol individual volume size
      */
-    InputLog(const char* rootdir, size_t nvol, size_t svol);
+    InputLog(const char* rootdir, size_t nvol, size_t svol, int id);
 
     /**
      * @brief Recover information from input log
      * @param rootdir is a directory containing all volumes
      */
-    InputLog(const char* rootdir);
+    InputLog(const char* rootdir, int id);
 
     void reopen();
 
@@ -160,6 +161,32 @@ public:
     std::tuple<aku_Status, uint32_t> read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs);
 
     void rotate();
+};
+
+/** Wrapper for input log that implements microsharding.
+  * Each worker thread should have it's own InputLog instance.
+  * During recovery, the component should read data from all
+  * shards in parallel and merge it based on timestamp and id.
+  * This is needed for the case when client that sends particular
+  * metric reconnects and gets handled by the other worker thread.
+  */
+class ShardedInputLog {
+    std::vector<std::unique_ptr<InputLog>> streams_;
+    int concurrency_;
+public:
+    ShardedInputLog(int concurrency, const char* rootdir, size_t nvol, size_t svol);
+
+    InputLog& get_shard(int i);
+
+    /**
+     * @brief Read values in bulk (volume should be opened in read mode)
+     * @param buffer_size is a size of any input buffer (all should be of the same size)
+     * @param id is a pointer to buffer that should receive up to `buffer_size` ids
+     * @param ts is a pointer to buffer that should receive `buffer_size` timestamps
+     * @param xs is a pointer to buffer that should receive `buffer_size` values
+     * @return number of elements being read or 0 if EOF reached or negative value on error
+     */
+    std::tuple<aku_Status, uint32_t> read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs);
 };
 
 }  // namespace

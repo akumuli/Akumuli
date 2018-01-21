@@ -320,21 +320,23 @@ void InputLog::remove_last_volume() {
     Logger::msg(AKU_LOG_INFO, std::string("Remove volume ") + volume->get_path());
 }
 
-InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol)
+InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol, int id)
     : root_dir_(rootdir)
     , volume_counter_(0)
     , max_volumes_(nvol)
     , volume_size_(svol)
+    , id_(id)
 {
     std::string path = get_volume_name();
     add_volume(path);
 }
 
-InputLog::InputLog(const char* rootdir)
+InputLog::InputLog(const char* rootdir, int id)
     : root_dir_(rootdir)
     , volume_counter_(0)
     , max_volumes_(0)
     , volume_size_(0)
+    , id_(id)
 {
     find_volumes();
     open_volumes();
@@ -394,6 +396,36 @@ void InputLog::rotate() {
     }
     std::string path = get_volume_name();
     add_volume(path);
+}
+
+
+//                 //
+// ShardedInputLog //
+//                 //
+
+ShardedInputLog::ShardedInputLog(int concurrency,
+                                 const char* rootdir,
+                                 size_t nvol,
+                                 size_t svol)
+    : concurrency_(concurrency)
+{
+    for (int i = 0; i < concurrency_; i++) {
+        std::unique_ptr<InputLog> log;
+        log.reset(new InputLog(rootdir, nvol, svol, i));
+        streams_.push_back(std::move(log));
+    }
+}
+
+InputLog& ShardedInputLog::get_shard(int i) {
+    return *streams_.at(i);
+}
+
+std::tuple<aku_Status, uint32_t> ShardedInputLog::read_next(size_t buffer_size,
+                                                            uint64_t* id,
+                                                            uint64_t* ts,
+                                                            double* xs)
+{
+    throw "not implemented";
 }
 
 }  // namespace
