@@ -1,6 +1,9 @@
 #include "input_log.h"
 #include "log_iface.h"
 
+#include <regex>
+#include <boost/lexical_cast.hpp>
+
 namespace Akumuli {
 
 static void panic_on_error(apr_status_t status, const char* msg) {
@@ -54,10 +57,10 @@ static size_t _get_file_size(apr_file_t* file) {
     return static_cast<size_t>(info.size);
 }
 
-static std::tuple<aku_Status, size_t> _write_frame(AprFilePtr& file, uint32_t size, void* array) {
+static std::tuple<aku_Status, size_t> _write_frame(AprFilePtr& file, u32 size, void* array) {
     size_t outsize = 0;
     iovec io[2] = {
-        {&size, sizeof(uint32_t)},
+        {&size, sizeof(u32)},
         {array, size},
     };
     apr_status_t status = apr_file_writev_full(file.get(), io, 2, &outsize);
@@ -68,8 +71,8 @@ static std::tuple<aku_Status, size_t> _write_frame(AprFilePtr& file, uint32_t si
     return std::make_tuple(AKU_SUCCESS, outsize);
 }
 
-static std::tuple<aku_Status, size_t> _read_frame(AprFilePtr& file, uint32_t array_size, void* array) {
-    uint32_t size;
+static std::tuple<aku_Status, size_t> _read_frame(AprFilePtr& file, u32 array_size, void* array) {
+    u32 size;
     size_t bytes_read = 0;
     apr_status_t status = apr_file_read_full(file.get(), &size, sizeof(size), &bytes_read);
     if (status != APR_SUCCESS) {
@@ -109,7 +112,7 @@ aku_Status LZ4Volume::write(int i) {
     size_t size;
     aku_Status status;
     std::tie(status, size) = _write_frame(file_,
-                                          static_cast<uint32_t>(out_bytes),
+                                          static_cast<u32>(out_bytes),
                                           buffer_);
     if (status == AKU_SUCCESS) {
         file_size_ += size;
@@ -121,7 +124,7 @@ std::tuple<aku_Status, size_t> LZ4Volume::read(int i) {
     assert(is_read_only_);
     Frame& frame = frames_[i];
     // Read frame
-    uint32_t frame_size;
+    u32 frame_size;
     aku_Status status;
     std::tie(status, frame_size) = _read_frame(file_, sizeof(buffer_), buffer_);
     if (status != AKU_SUCCESS) {
@@ -134,9 +137,9 @@ std::tuple<aku_Status, size_t> LZ4Volume::read(int i) {
                                                  frame_size,
                                                  BLOCK_SIZE);
     if(out_bytes <= 0) {
-        return std::make_tuple(AKU_EIO, 0);  // TODO: use different code
+        return std::make_tuple(AKU_EBAD_DATA, 0);
     }
-    return std::make_tuple(AKU_SUCCESS, frame_size + sizeof(uint32_t));
+    return std::make_tuple(AKU_SUCCESS, frame_size + sizeof(u32));
 }
 
 LZ4Volume::LZ4Volume(const char* file_name, size_t volume_size)
@@ -188,7 +191,7 @@ void LZ4Volume::close() {
     file_.reset();
 }
 
-aku_Status LZ4Volume::append(uint64_t id, uint64_t timestamp, double value) {
+aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     bitmap_.add(id);
     Frame& frame = frames_[pos_];
     frame.part.ids[frame.part.size] = id;
@@ -209,7 +212,7 @@ aku_Status LZ4Volume::append(uint64_t id, uint64_t timestamp, double value) {
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, uint32_t> LZ4Volume::read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs) {
+std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u64* ts, double* xs) {
     if (elements_to_read_ == 0) {
         if (bytes_to_read_ <= 0) {
             // Volume is finished
@@ -257,6 +260,18 @@ const Roaring64Map& LZ4Volume::get_index() const {
 // InputLog //
 //          //
 
+static std::tuple<bool, u32, u32> parse_filename(const std::string& name) {
+    static const char* exp = "inputlog(\\d+)_(\\d+)\\.ils";
+    static const std::regex re(exp);
+    std::smatch smatch;
+    if (std::regex_search(name, smatch, re) && smatch.size() > 2) {
+        auto volume_id = boost::lexical_cast<u32>(smatch[1].str());
+        auto stream_id = boost::lexical_cast<u32>(smatch[2].str());
+        return std::make_tuple(true, volume_id, stream_id);
+    }
+    return std::make_tuple(false, 0, 0);
+}
+
 void InputLog::find_volumes() {
     if (!boost::filesystem::exists(root_dir_)) {
         throw std::runtime_error(root_dir_.string() + " doesn't exist");
@@ -264,29 +279,26 @@ void InputLog::find_volumes() {
     if (!boost::filesystem::is_directory(root_dir_)) {
         throw std::runtime_error(root_dir_.string() + " is not a directory");
     }
+    std::vector<std::tuple<u32, std::string>> volumes;
     for (auto it = boost::filesystem::directory_iterator(root_dir_);
          it != boost::filesystem::directory_iterator(); it++) {
         Path path = *it;
-        if (!boost::starts_with(path.filename().string(), "inputlog")) {
-            continue;
+        bool is_volume;
+        u32 volume_id;
+        u32 stream_id;
+        auto fn = path.filename().string();
+        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
+        if (is_volume && stream_id == stream_id_) {
+            volumes.push_back(std::make_pair(volume_id, fn));
         }
-        if (path.extension().string() != ".ils") {
-            continue;
-        }
-        available_volumes_.push_back(path);
     }
-    auto extract = [](Path path) {
-        std::string str = path.filename().string();
-        // remove 'inputlog' from the begining and '.ils' from the end
-        std::string num = str.substr(8, str.size() - 4);
-        return std::atol(num.c_str());
-    };
-    auto sort_fn = [extract](Path lhs, Path rhs) {
-        auto lnum = extract(lhs);
-        auto rnum = extract(rhs);
-        return lnum < rnum;
-    };
-    std::sort(available_volumes_.begin(), available_volumes_.end(), sort_fn);
+    std::sort(volumes.begin(), volumes.end());
+    for (const auto& tup: volumes) {
+        u32 volid;
+        std::string name;
+        std::tie(volid, name) = tup;
+        available_volumes_.push_back(name);
+    }
 }
 
 void InputLog::open_volumes() {
@@ -299,7 +311,7 @@ void InputLog::open_volumes() {
 
 std::string InputLog::get_volume_name() {
     std::stringstream filename;
-    filename << "inputlog" << volume_counter_ << ".ils";
+    filename << "inputlog" << volume_counter_ << "_" << stream_id_ << ".ils";
     Path path = root_dir_ / filename.str();
     return path.string();
 }
@@ -320,23 +332,23 @@ void InputLog::remove_last_volume() {
     Logger::msg(AKU_LOG_INFO, std::string("Remove volume ") + volume->get_path());
 }
 
-InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol, int id)
+InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol, u32 stream_id)
     : root_dir_(rootdir)
     , volume_counter_(0)
     , max_volumes_(nvol)
     , volume_size_(svol)
-    , id_(id)
+    , stream_id_(stream_id)
 {
     std::string path = get_volume_name();
     add_volume(path);
 }
 
-InputLog::InputLog(const char* rootdir, int id)
+InputLog::InputLog(const char* rootdir, u32 stream_id)
     : root_dir_(rootdir)
     , volume_counter_(0)
     , max_volumes_(0)
     , volume_size_(0)
-    , id_(id)
+    , stream_id_(stream_id)
 {
     find_volumes();
     open_volumes();
@@ -356,7 +368,7 @@ void InputLog::delete_files() {
     }
 }
 
-aku_Status InputLog::append(uint64_t id, uint64_t timestamp, double value, std::vector<uint64_t>* stale_ids) {
+aku_Status InputLog::append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids) {
     aku_Status result = volumes_.front()->append(id, timestamp, value);
     if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
         // Extract stale ids
@@ -375,13 +387,13 @@ aku_Status InputLog::append(uint64_t id, uint64_t timestamp, double value, std::
     return result;
 }
 
-std::tuple<aku_Status, uint32_t> InputLog::read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs) {
+std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64* ts, double* xs) {
     while(true) {
         if (volumes_.empty()) {
             return std::make_tuple(AKU_SUCCESS, 0);
         }
         aku_Status status;
-        uint32_t result;
+        u32 result;
         std::tie(status, result) = volumes_.front()->read_next(buffer_size, id, ts, xs);
         if (result != AKU_SUCCESS) {
             return std::make_tuple(status, result);
@@ -420,9 +432,9 @@ InputLog& ShardedInputLog::get_shard(int i) {
     return *streams_.at(i);
 }
 
-std::tuple<aku_Status, uint32_t> ShardedInputLog::read_next(size_t buffer_size,
-                                                            uint64_t* id,
-                                                            uint64_t* ts,
+std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size,
+                                                            u64* id,
+                                                            u64* ts,
                                                             double* xs)
 {
     throw "not implemented";

@@ -31,15 +31,15 @@ struct LZ4Volume {
     std::string path_;
     enum {
         BLOCK_SIZE = 0x2000,
-        FRAME_TUPLE_SIZE = sizeof(uint64_t)*3,
-        NUM_TUPLES = (BLOCK_SIZE - sizeof(uint32_t)) / FRAME_TUPLE_SIZE,
+        FRAME_TUPLE_SIZE = sizeof(u64)*3,
+        NUM_TUPLES = (BLOCK_SIZE - sizeof(u32)) / FRAME_TUPLE_SIZE,
     };
     union Frame {
         char block[BLOCK_SIZE];
         struct Partition {
-            uint32_t size;
-            uint64_t ids[NUM_TUPLES];
-            uint64_t timestamps[NUM_TUPLES];
+            u32 size;
+            u64 ids[NUM_TUPLES];
+            u64 timestamps[NUM_TUPLES];
             double values[NUM_TUPLES];
         } part;
     } frames_[2];
@@ -55,7 +55,7 @@ struct LZ4Volume {
     const size_t max_file_size_;
     Roaring64Map bitmap_;
     const bool is_read_only_;
-    int64_t bytes_to_read_;
+    i64 bytes_to_read_;
     int elements_to_read_;  // in current frame
 
     void clear(int i);
@@ -84,7 +84,7 @@ public:
 
     size_t file_size() const;
 
-    aku_Status append(uint64_t id, uint64_t timestamp, double value);
+    aku_Status append(u64 id, u64 timestamp, double value);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)
@@ -94,7 +94,7 @@ public:
      * @param xs is a pointer to buffer that should receive `buffer_size` values
      * @return number of elements being read or 0 if EOF reached or negative value on error
      */
-    std::tuple<aku_Status, uint32_t> read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
 
     const std::string get_path() const;
 
@@ -111,7 +111,7 @@ class InputLog {
     const size_t max_volumes_;
     const size_t volume_size_;
     std::vector<Path> available_volumes_;
-    const int id_;
+    const u32 stream_id_;
 
     void find_volumes();
 
@@ -129,14 +129,15 @@ public:
      * @param rootdir is a directory containing all volumes
      * @param nvol max number of volumes
      * @param svol individual volume size
+     * @param id is a stream id (for sharding)
      */
-    InputLog(const char* rootdir, size_t nvol, size_t svol, int id);
+    InputLog(const char* rootdir, size_t nvol, size_t svol, u32 stream_id);
 
     /**
      * @brief Recover information from input log
      * @param rootdir is a directory containing all volumes
      */
-    InputLog(const char* rootdir, int id);
+    InputLog(const char* rootdir, u32 stream_id);
 
     void reopen();
 
@@ -148,7 +149,7 @@ public:
       * Return true on oveflow. Parameter `stale_ids` will be filled with ids that will leave the
       * input log on next rotation. Rotation should be triggered manually.
       */
-    aku_Status append(uint64_t id, uint64_t timestamp, double value, std::vector<uint64_t>* stale_ids);
+    aku_Status append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)
@@ -158,7 +159,7 @@ public:
      * @param xs is a pointer to buffer that should receive `buffer_size` values
      * @return number of elements being read or 0 if EOF reached or negative value on error
      */
-    std::tuple<aku_Status, uint32_t> read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
 
     void rotate();
 };
@@ -186,7 +187,7 @@ public:
      * @param xs is a pointer to buffer that should receive `buffer_size` values
      * @return number of elements being read or 0 if EOF reached or negative value on error
      */
-    std::tuple<aku_Status, uint32_t> read_next(size_t buffer_size, uint64_t* id, uint64_t* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
 };
 
 }  // namespace

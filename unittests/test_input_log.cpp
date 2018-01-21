@@ -25,7 +25,7 @@ void test_logger(aku_LogLevel tag, const char* msg) {
 }
 
 bool volume_filename_is_ok(std::string name) {
-    static const char* exp = "inputlog\\d+\\.ils";
+    static const char* exp = "inputlog\\d+_\\d+\\.ils";
     static const std::regex regex(exp);
     return std::regex_match(name, regex);
 }
