@@ -1,15 +1,9 @@
 #pragma once
 
-#include <iostream>
 #include <string>
-#include <stdint.h>
-#include <memory.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <vector>
 #include <memory>
 #include <deque>
-#include <sstream>
 
 #include <lz4.h>
 #include <roaring64map.hh>
@@ -18,7 +12,6 @@
 #include <apr_general.h>
 
 #include <boost/filesystem.hpp>
-#include <boost/algorithm/string.hpp>
 
 #include "akumuli_def.h"
 
