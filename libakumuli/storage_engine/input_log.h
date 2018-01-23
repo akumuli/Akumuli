@@ -167,6 +167,25 @@ public:
 class ShardedInputLog {
     std::vector<std::unique_ptr<InputLog>> streams_;
     int concurrency_;
+
+    // Iteration
+
+    enum {
+        NUM_TUPLES = LZ4Volume::NUM_TUPLES,
+    };
+
+    struct Buffer {
+        u32        size;
+        u32        pos;
+        aku_Status status;
+        u64        ids[NUM_TUPLES];
+        u64        tss[NUM_TUPLES];
+        double     xss[NUM_TUPLES];
+    };
+    std::vector<Buffer> read_queue_;
+    bool read_started_;
+
+    void init_read_buffers();
 public:
     ShardedInputLog(int concurrency, const char* rootdir, size_t nvol, size_t svol);
 

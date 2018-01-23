@@ -432,11 +432,26 @@ InputLog& ShardedInputLog::get_shard(int i) {
     return *streams_.at(i);
 }
 
-std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size,
-                                                            u64* id,
-                                                            u64* ts,
-                                                            double* xs)
+void ShardedInputLog::init_read_buffers() {
+    assert(!read_started_);
+    read_queue_.resize(concurrency_);
+    for (size_t i = 0; i < read_queue_.size(); i++) {
+        auto& str = streams_.at(i);
+        auto  buf = &read_queue_.at(i);
+        std::tie(buf->status, buf->size) = str->read_next(NUM_TUPLES, buf->ids, buf->tss, buf->xss);
+        buf->pos = 0;
+    }
+    read_started_ = true;
+}
+
+std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
+                                                       u64*    id,
+                                                       u64*    ts,
+                                                       double* xs)
 {
+    if (!read_started_) {
+        init_read_buffers();
+    }
     throw "not implemented";
 }
 

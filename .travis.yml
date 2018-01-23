@@ -34,9 +34,9 @@ before_script:
 - mkdir build
 - cd build
 - if [[ $GENERIC_BUILD == true ]]; then
-  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
   else
-  cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  cmake .. -DCMAKE_BUILD_TYPE=Release;
   fi
 script:
 - make -j4
