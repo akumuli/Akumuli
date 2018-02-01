@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.37
+--------------
+
+BUG FIX
+
+* Fix UDP server memory corruption #243
+
 Version 0.7.36
 --------------
 
