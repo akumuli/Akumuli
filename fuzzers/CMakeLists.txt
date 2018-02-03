@@ -11,7 +11,6 @@ add_executable(afl_compression
     )
 
 target_link_libraries(afl_compression
-    pthread
     "${APR_LIBRARY}"
 )
 
@@ -30,7 +29,6 @@ add_executable(afl_series_name_parser
     )
 
 target_link_libraries(afl_series_name_parser
-    pthread
     "${Boost_LIBRARIES}"
     "${APR_LIBRARY}"
 )
@@ -45,7 +43,6 @@ add_executable(afl_timestamp_parser
     )
 
 target_link_libraries(afl_timestamp_parser
-    pthread
     "${Boost_LIBRARIES}"
 )
 
@@ -60,7 +57,6 @@ add_executable(afl_resp_parser
     )
 
 target_link_libraries(afl_resp_parser
-    pthread
     "${Boost_LIBRARIES}"
 )
 

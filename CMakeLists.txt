@@ -58,6 +58,7 @@ include_directories("${SQLITE3_INCLUDE_DIR}")
 include_directories("${LIBMICROHTTPD_INCLUDE_DIRS}")
 
 add_definitions(-std=c++1y -fvisibility=hidden)
+add_definitions(-pthread)
 
 # json parser from boost::property_tree needs this badly
 add_definitions(-DBOOST_SPIRIT_THREADSAFE)
