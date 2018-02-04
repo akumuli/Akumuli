@@ -43,6 +43,8 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+target_link_libraries(akumuli pthread)
+
 # Shared object version: "major.minor.micro"
 # - micro updated every release when there is no API/ABI changes
 # - minor updated when there are additions in API/ABI
