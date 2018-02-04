@@ -14,6 +14,7 @@ add_executable(
 )
 target_link_libraries(test_streams
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(streams test_streams)
 
@@ -29,6 +30,7 @@ add_executable(
 )
 target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(respstream test_respstream)
 
@@ -52,6 +54,7 @@ target_link_libraries(
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
+    pthread
 )
 add_test(protocol-parser test_protocolparser)
 
@@ -76,6 +79,7 @@ target_link_libraries(test_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(tcp-server test_tcp_server)
 
@@ -98,6 +102,7 @@ target_link_libraries(
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(querycursor test_querycursor)
 
@@ -125,6 +130,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(cursor test_cursor)
@@ -144,6 +150,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(util test_util)
@@ -162,6 +169,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(compression test_compression)
@@ -214,6 +222,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(storage test_storage)
@@ -233,6 +242,7 @@ add_executable(
 
 target_link_libraries(
     test_seriesparser
+    pthread
     ${Boost_LIBRARIES}
     "${APR_LIBRARY}"
 )
@@ -249,6 +259,7 @@ add_executable(
 target_link_libraries(
     test_datetime
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(datetime test_datetime)
@@ -263,6 +274,7 @@ add_executable(
 target_link_libraries(
     test_sax
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(SAX test_sax)
@@ -285,6 +297,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(blockstore test_blockstore)
@@ -316,6 +329,7 @@ target_link_libraries(
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
     "${SQLITE3_LIBRARY}"
+    pthread
 )
 
 add_test(nbtree test_nbtree)
@@ -353,6 +367,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(column_store test_column_store)
