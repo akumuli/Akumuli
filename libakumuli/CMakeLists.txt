@@ -43,7 +43,12 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
-target_link_libraries(akumuli pthread)
+target_link_libraries(akumuli
+    "${SQLITE3_LIBRARY}"
+    "${APR_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    ${Boost_LIBRARIES}
+    pthread)
 
 # Shared object version: "major.minor.micro"
 # - micro updated every release when there is no API/ABI changes

@@ -20,7 +20,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-pessimizing-move")
 add_compile_options(-Wno-delete-non-virtual-dtor)
 endif(!APPLE)
 
-set(CMAKE_CXX_FLAGS_DEBUG 
+set(CMAKE_CXX_FLAGS_DEBUG
     "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
 
 set(CMAKE_CXX_FLAGS_RELEASEGEN
