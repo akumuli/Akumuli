@@ -43,10 +43,14 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+add_library(apr_dbd_sqlite3 SHARED IMPORTED)
+set_target_properties(apr_dbd_sqlite3 PROPERTIES IMPORTED_LOCATION "/usr/lib/x86_64-linux-gnu/apr-util-1/apr_dbd_sqlite3.so")
+
 target_link_libraries(akumuli
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
+    apr_dbd_sqlite3
     ${Boost_LIBRARIES}
     pthread)
 
