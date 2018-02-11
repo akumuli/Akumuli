@@ -376,8 +376,6 @@ add_test(column_store test_column_store)
 add_executable(
     test_input_log
     test_input_log.cpp
-    ../libakumuli/storage_engine/roaring.c
-    ../libakumuli/storage_engine/lz4.c
     ../libakumuli/storage_engine/input_log.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
@@ -391,6 +389,8 @@ target_link_libraries(
     test_input_log
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    boundled_roaring
+    boundled_lz4
     pthread
 )
 

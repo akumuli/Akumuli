@@ -18,8 +18,6 @@ add_library(akumuli SHARED
     storage_engine/column_store.cpp
     storage_engine/input_log.cpp
     storage_engine/input_log.h
-    storage_engine/roaring.c
-    storage_engine/lz4.c
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp
@@ -47,11 +45,23 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+add_library(boundled_lz4 STATIC
+    storage_engine/lz4.c
+)
+set_property(TARGET boundled_lz4 PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+add_library(boundled_roaring STATIC
+    storage_engine/roaring.c
+)
+set_property(TARGET boundled_roaring PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(akumuli
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    boundled_lz4
+    boundled_roaring
     pthread)
 
 # Shared object version: "major.minor.micro"
