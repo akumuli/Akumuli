@@ -25,8 +25,7 @@ if [ "x$pkgman" = "xyum" -o "x$pkgman" = "xdnf" ]; then
                           sqlite sqlite-devel \
                           apr-devel apr-util-devel apr-util-sqlite \
                           libmicrohttpd-devel \
-                          jemalloc-devel \
-                          liblz4-devel
+                          jemalloc-devel
 else
 	if [ "x$pkgman" = "xapt" ]; then
 		echo 'The script will install packages using apt-get.' \
@@ -41,7 +40,6 @@ else
         sudo apt-get install -y libjemalloc-dev
         sudo apt-get install -y libsqlite3-dev
         sudo apt-get install -y libmicrohttpd-dev
-        sudo apt-get install -y liblz4-dev
 
 		echo 'Trying to install cmake'
 		sudo apt-get install -y cmake

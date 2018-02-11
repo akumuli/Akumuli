@@ -8,7 +8,6 @@ target_link_libraries(storage_test
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    lz4
     pthread
     )
 

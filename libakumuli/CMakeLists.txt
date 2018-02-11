@@ -19,6 +19,7 @@ add_library(akumuli SHARED
     storage_engine/input_log.cpp
     storage_engine/input_log.h
     storage_engine/roaring.c
+    storage_engine/lz4.c
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp

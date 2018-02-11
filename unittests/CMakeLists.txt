@@ -54,7 +54,6 @@ target_link_libraries(
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
-    lz4
     pthread
 )
 add_test(protocol-parser test_protocolparser)
@@ -80,7 +79,6 @@ target_link_libraries(test_tcp_server
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    lz4
     pthread
 )
 add_test(tcp-server test_tcp_server)
@@ -104,7 +102,6 @@ target_link_libraries(
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    lz4
     pthread
 )
 add_test(querycursor test_querycursor)
@@ -380,6 +377,7 @@ add_executable(
     test_input_log
     test_input_log.cpp
     ../libakumuli/storage_engine/roaring.c
+    ../libakumuli/storage_engine/lz4.c
     ../libakumuli/storage_engine/input_log.cpp
     ../libakumuli/util.cpp
     ../libakumuli/status_util.cpp
@@ -393,7 +391,6 @@ target_link_libraries(
     test_input_log
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    lz4
     pthread
 )
 

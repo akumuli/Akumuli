@@ -5,7 +5,6 @@
 #include <memory>
 #include <deque>
 
-#include <lz4.h>
 #include <apr.h>
 #include <apr_file_io.h>
 #include <apr_general.h>
@@ -14,6 +13,7 @@
 
 #include "akumuli_def.h"
 #include "roaring.hh"
+#include "lz4.h"
 
 namespace Akumuli {
 
