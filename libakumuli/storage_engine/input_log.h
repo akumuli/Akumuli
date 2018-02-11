@@ -6,7 +6,6 @@
 #include <deque>
 
 #include <lz4.h>
-#include <roaring64map.hh>
 #include <apr.h>
 #include <apr_file_io.h>
 #include <apr_general.h>
@@ -14,6 +13,7 @@
 #include <boost/filesystem.hpp>
 
 #include "akumuli_def.h"
+#include "roaring.hh"
 
 namespace Akumuli {
 
