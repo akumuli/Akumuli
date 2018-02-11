@@ -1,11 +1,6 @@
 project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
 
-# The apr_dbd_sqlite3.so is not linked by default. The apr_dbd library is loading it dynamically.
-# This causes troubles if libakumuli is loaded dynamically (dlopen). To prevent this this option
-# can be used.
-option(LINK_APR_DBD_SQLITE3 "Try to link apr_dbd_sqlite3 library" OFF)
-
 set(PACKAGE_VERSION "1ubuntu1.0")
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "7")
