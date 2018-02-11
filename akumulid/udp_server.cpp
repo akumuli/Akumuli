@@ -88,11 +88,7 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
     int retval;
     sockaddr_in sa{};
 
-    RESPProtocolParser parser(spout);
     try {
-
-        parser.start();
-
         // Create socket
         sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
         if (sockfd_ == -1) {
@@ -146,19 +142,19 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
 
             iobuf->pps++;
 
+            RESPProtocolParser parser(spout);
+            // Protocol parser should be created for each Udp packet
+            // group. Otherwise one bad packet can corrupt the state
+            // of the parser and it will be unable to process remaining
+            // packets and only restart will help.
+            // Also, it's not necessary to call parser.start() since
+            // it only writes to the log. This call here will polute the
+            // log file.
             for (int i = 0; i < retval; i++) {
                 // reset buffer to receive new message
                 iobuf->bps += iobuf->msgs[i].msg_len;
                 auto mlen = iobuf->msgs[i].msg_len;
                 iobuf->msgs[i].msg_len = 0;
-
-                // parse message content
-                PDU pdu = {
-                    std::shared_ptr<Byte>(iobuf, iobuf->bufs[i]),
-                    mlen,
-                    0u,
-                    0u,
-                };
 
                 auto buf = parser.get_next_buffer();
                 memcpy(buf, iobuf->bufs[i], mlen);
@@ -167,17 +163,18 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
                 } catch (StreamError const& err) {
                     // Catch protocol parsing errors here and continue processing data
                     logger_.error() << err.what();
+                    break;
                 }
             }
             if (retval != 0) {
                 iobuf = std::make_shared<IOBuf>();
             }
+            parser.close();
         }
     } catch(...) {
         logger_.error() << boost::current_exception_diagnostic_information();
     }
 
-    parser.close();
     stop_barrier_.wait();
 }
 

@@ -1,6 +1,20 @@
 Release notes
 =============
 
+Version 0.7.38
+--------------
+
+IMPROVEMENT
+
+* Allow libakumuli.so to be loaded by dlopen
+
+Version 0.7.37
+--------------
+
+BUG FIX
+
+* Fix UDP server memory corruption #243
+
 Version 0.7.36
 --------------
 

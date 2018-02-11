@@ -43,8 +43,8 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
 
     Logger logger_;
 
-    static const int MSS      = 2048 - 128;
-    static const int NPACKETS = 512;
+    static const int MSS      = 0x10000;  // 64K
+    static const int NPACKETS = 16;
 
     struct IOBuf {
         // Counters
@@ -54,7 +54,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
         // Packet recv structs
         mmsghdr msgs[NPACKETS];
         iovec   iovecs[NPACKETS];
-        char    bufs[NPACKETS][MSS];
+        char    bufs[NPACKETS][MSS];  // 1MB
 
         IOBuf() {
             memset(this, 0, sizeof(IOBuf));
@@ -66,7 +66,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
             }
         }
 
-    } __attribute__((aligned(64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
+    };
 
 public:
     /** C-tor.
