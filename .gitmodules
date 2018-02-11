@@ -1,7 +1,0 @@
-[submodule "libakumuli"]
-	path = libakumuli
-	url = https://github.com/akumuli/libakumuli.git
-[submodule "CRoaring"]
-	path = CRoaring
-	url = https://github.com/akumuli/CRoaring.git
-	branch = master
