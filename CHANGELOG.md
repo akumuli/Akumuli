@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.38
+--------------
+
+IMPROVEMENT
+
+* Allow libakumuli.so to be loaded by dlopen
+
 Version 0.7.37
 --------------
 
