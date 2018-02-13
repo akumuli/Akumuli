@@ -49,11 +49,13 @@ add_library(boundled_lz4 STATIC
     storage_engine/lz4.c
 )
 set_property(TARGET boundled_lz4 PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET boundled_lz4 PROPERTY C_STANDARD 99)
 
 add_library(boundled_roaring STATIC
     storage_engine/roaring.c
 )
 set_property(TARGET boundled_roaring PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET boundled_roaring PROPERTY C_STANDARD 99)
 
 target_link_libraries(akumuli
     "${SQLITE3_LIBRARY}"
