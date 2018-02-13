@@ -25,11 +25,13 @@ struct LZ4Volume {
     enum {
         BLOCK_SIZE = 0x2000,
         FRAME_TUPLE_SIZE = sizeof(u64)*3,
-        NUM_TUPLES = (BLOCK_SIZE - sizeof(u32)) / FRAME_TUPLE_SIZE,
+        NUM_TUPLES = (BLOCK_SIZE - 3*sizeof(u32)) / FRAME_TUPLE_SIZE,
     };
     union Frame {
         char block[BLOCK_SIZE];
         struct Partition {
+            u32 begin_timestamp;
+            u32 end_timestamp;
             u32 size;
             u64 ids[NUM_TUPLES];
             u64 timestamps[NUM_TUPLES];

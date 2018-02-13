@@ -3,6 +3,7 @@
 
 #include <regex>
 #include <boost/lexical_cast.hpp>
+#include <chrono>
 
 namespace Akumuli {
 
@@ -92,6 +93,12 @@ static std::tuple<aku_Status, size_t> _read_frame(AprFilePtr& file, u32 array_si
 // LZ4Volume //
 //           //
 
+static u32 now() {
+    auto now = std::chrono::steady_clock::now();
+    auto now_sec = std::chrono::time_point_cast<std::chrono::seconds>(now);
+    return now_sec.time_since_epoch().count();
+}
+
 void LZ4Volume::clear(int i) {
     memset(&frames_[i], 0, BLOCK_SIZE);
 }
@@ -99,6 +106,7 @@ void LZ4Volume::clear(int i) {
 aku_Status LZ4Volume::write(int i) {
     assert(!is_read_only_);
     Frame& frame = frames_[i];
+    frame.part.end_timestamp = now();
     // Do write
     int out_bytes = LZ4_compress_fast_continue(&stream_,
                                                frame.block,
@@ -194,6 +202,9 @@ void LZ4Volume::close() {
 aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     bitmap_.add(id);
     Frame& frame = frames_[pos_];
+    if (frame.part.size == 0) {
+        frame.part.begin_timestamp = now();
+    }
     frame.part.ids[frame.part.size] = id;
     frame.part.timestamps[frame.part.size] = timestamp;
     frame.part.values[frame.part.size] = value;
