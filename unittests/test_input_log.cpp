@@ -118,3 +118,45 @@ BOOST_AUTO_TEST_CASE(Test_input_rotation) {
         BOOST_REQUIRE(volume_filename_is_ok(name));
     }
 }
+
+
+BOOST_AUTO_TEST_CASE(Test_input_volume_read_next_frame) {
+    std::vector<std::tuple<u64, u64, double>> exp, act;
+    const char* filename = "./tmp_test_vol.ilog";
+    {
+        LZ4Volume volume(filename, 0x10000);
+        for (int i = 0; i < 10000; i++) {
+            double val = static_cast<double>(rand()) / RAND_MAX;
+            aku_Status status = volume.append(42, i, val);
+            exp.push_back(std::make_tuple(42, i, val));
+            if (status == AKU_EOVERFLOW) {
+                break;
+            }
+        }
+    }
+    {
+        LZ4Volume volume(filename);
+        while(true) {
+            aku_Status status;
+            const LZ4Volume::Frame* frame;
+            std::tie(status, frame) = volume.read_next_frame();
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            if (frame == nullptr) {
+                // Done iterating
+                break;
+            }
+            for(u32 i = 0; i < frame->part.size; i++) {
+                act.push_back(std::make_tuple(frame->part.ids[i],
+                                              frame->part.timestamps[i],
+                                              frame->part.values[i]));
+            }
+        }
+        volume.delete_file();
+    }
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    for (u32 i = 0; i < exp.size(); i++) {
+        BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+    }
+}

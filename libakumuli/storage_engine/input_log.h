@@ -91,6 +91,12 @@ public:
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
 
+    /**
+     * @brief Read next frame from the volume
+     * @return status and pointer to frame
+     */
+    std::tuple<aku_Status, const Frame*> read_next_frame();
+
     const std::string get_path() const;
 
     void delete_file();

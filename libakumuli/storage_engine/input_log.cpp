@@ -253,6 +253,25 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u6
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
 }
 
+std::tuple<aku_Status, const LZ4Volume::Frame*> LZ4Volume::read_next_frame() {
+    if (bytes_to_read_ <= 0) {
+        // Volume is finished
+        return std::make_tuple(AKU_SUCCESS, nullptr);
+    }
+    pos_ = (pos_ + 1) % 2;
+    clear(pos_);
+    size_t bytes_read;
+    aku_Status status;
+    std::tie(status, bytes_read) = read(pos_);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, nullptr);
+    }
+    bytes_to_read_    -= bytes_read;
+    elements_to_read_  = 0;  // assume all returned values are consumed
+    const Frame* frame = &frames_[pos_];
+    return std::make_tuple(AKU_SUCCESS, frame);
+}
+
 const std::string LZ4Volume::get_path() const {
     return path_;
 }
