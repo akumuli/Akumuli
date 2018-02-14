@@ -425,7 +425,22 @@ std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64
         aku_Status status;
         u32 result;
         std::tie(status, result) = volumes_.front()->read_next(buffer_size, id, ts, xs);
-        if (result != AKU_SUCCESS) {
+        if (result != 0) {
+            return std::make_tuple(status, result);
+        }
+        volumes_.pop_front();
+    }
+}
+
+std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
+    while(true) {
+        if (volumes_.empty()) {
+            return std::make_tuple(AKU_SUCCESS, nullptr);
+        }
+        aku_Status status;
+        const LZ4Volume::Frame* result;
+        std::tie(status, result) = volumes_.front()->read_next_frame();
+        if (result != nullptr || status != AKU_SUCCESS) {
             return std::make_tuple(status, result);
         }
         volumes_.pop_front();
