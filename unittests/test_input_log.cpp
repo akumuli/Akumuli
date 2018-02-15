@@ -147,11 +147,53 @@ BOOST_AUTO_TEST_CASE(Test_input_volume_read_next_frame) {
             }
             for(u32 i = 0; i < frame->part.size; i++) {
                 act.push_back(std::make_tuple(frame->part.ids[i],
-                                              frame->part.timestamps[i],
-                                              frame->part.values[i]));
+                                              frame->part.tss[i],
+                                              frame->part.xss[i]));
             }
         }
         volume.delete_file();
+    }
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    for (u32 i = 0; i < exp.size(); i++) {
+        BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
+    std::vector<std::tuple<u64, u64, double>> exp, act;
+    std::vector<u64> stale_ids;
+    {
+        InputLog ilog("./", 100, 4096, 0);
+        for (int i = 0; i < 10000; i++) {
+            double val = static_cast<double>(rand()) / RAND_MAX;
+            aku_Status status = ilog.append(42, i, val, &stale_ids);
+            exp.push_back(std::make_tuple(42, i, val));
+            if (status == AKU_EOVERFLOW) {
+                ilog.rotate();
+            }
+        }
+    }
+    BOOST_REQUIRE(stale_ids.empty());
+    {
+        InputLog ilog("./", 0);
+        while(true) {
+            aku_Status status;
+            const LZ4Volume::Frame* frame;
+            std::tie(status, frame) = ilog.read_next_frame();
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            if (frame == nullptr) {
+                break;
+            }
+            for(u32 i = 0; i < frame->part.size; i++) {
+                act.push_back(std::make_tuple(frame->part.ids[i],
+                                              frame->part.tss[i],
+                                              frame->part.xss[i]));
+            }
+        }
+        ilog.reopen();
+        ilog.delete_files();
     }
     BOOST_REQUIRE_EQUAL(exp.size(), act.size());
     for (u32 i = 0; i < exp.size(); i++) {

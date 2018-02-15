@@ -194,7 +194,10 @@ size_t LZ4Volume::file_size() const {
 
 void LZ4Volume::close() {
     if(!is_read_only_) {
-        write(pos_);
+        // Write unfinished frame if it contains any data.
+        if (frames_[pos_].part.size != 0) {
+            write(pos_);
+        }
     }
     file_.reset();
 }
@@ -206,8 +209,8 @@ aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
         frame.part.begin_timestamp = now();
     }
     frame.part.ids[frame.part.size] = id;
-    frame.part.timestamps[frame.part.size] = timestamp;
-    frame.part.values[frame.part.size] = value;
+    frame.part.tss[frame.part.size] = timestamp;
+    frame.part.xss[frame.part.size] = value;
     frame.part.size++;
     if (frame.part.size == NUM_TUPLES) {
         auto status = write(pos_);
@@ -246,8 +249,8 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u6
     for (size_t i = 0; i < nvalues; i++) {
         size_t ix = frmsize - elements_to_read_;
         id[i] = frame.part.ids[ix];
-        ts[i] = frame.part.timestamps[ix];
-        xs[i] = frame.part.values[ix];
+        ts[i] = frame.part.tss[ix];
+        xs[i] = frame.part.xss[ix];
         elements_to_read_--;
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
@@ -440,10 +443,14 @@ std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
         aku_Status status;
         const LZ4Volume::Frame* result;
         std::tie(status, result) = volumes_.front()->read_next_frame();
-        if (result != nullptr || status != AKU_SUCCESS) {
-            return std::make_tuple(status, result);
+        if (result == nullptr && status == AKU_SUCCESS) {
+            volumes_.pop_front();
+            continue;
         }
-        volumes_.pop_front();
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, nullptr);
+        }
+        return std::make_pair(AKU_SUCCESS, result);
     }
 }
 

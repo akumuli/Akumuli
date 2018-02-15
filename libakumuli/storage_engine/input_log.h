@@ -34,8 +34,8 @@ struct LZ4Volume {
             u32 end_timestamp;
             u32 size;
             u64 ids[NUM_TUPLES];
-            u64 timestamps[NUM_TUPLES];
-            double values[NUM_TUPLES];
+            u64 tss[NUM_TUPLES];
+            double xss[NUM_TUPLES];
         } part;
     } frames_[2];
 
