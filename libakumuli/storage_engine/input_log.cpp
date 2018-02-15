@@ -490,7 +490,7 @@ void ShardedInputLog::init_read_buffers() {
     for (size_t i = 0; i < read_queue_.size(); i++) {
         auto& str = streams_.at(i);
         auto  buf = &read_queue_.at(i);
-        std::tie(buf->status, buf->size) = str->read_next(NUM_TUPLES, buf->ids, buf->tss, buf->xss);
+        std::tie(buf->status, buf->frame) = str->read_next_frame();
         buf->pos = 0;
     }
     read_started_ = true;

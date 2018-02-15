@@ -187,14 +187,13 @@ class ShardedInputLog {
     enum {
         NUM_TUPLES = LZ4Volume::NUM_TUPLES,
     };
+    typedef LZ4Volume::Frame Frame;
 
     struct Buffer {
-        u32        size;
-        u32        pos;
-        aku_Status status;
-        u64        ids[NUM_TUPLES];
-        u64        tss[NUM_TUPLES];
-        double     xss[NUM_TUPLES];
+        u32          size;
+        u32          pos;
+        aku_Status   status;
+        const Frame* frame;
     };
     std::vector<Buffer> read_queue_;
     bool read_started_;
