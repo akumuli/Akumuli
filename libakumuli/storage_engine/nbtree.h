@@ -501,6 +501,14 @@ public:
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
     /**
+     * @brief search function
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin, aku_Timestamp end, const ValueFilter& filter) const;
+
+    /**
      * @brief aggregate all values in search interval
      * @param begin is a start of the search interval
      * @param end is a next after the last element of the search interval

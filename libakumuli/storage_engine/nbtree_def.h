@@ -73,4 +73,95 @@ struct SubtreeRef {
     u32 checksum;
 } __attribute__((packed));
 
+
+struct ValueFilter {
+    enum {
+        LT = 0,  //! Less than
+        LE = 1,  //! Less or equal
+        GT = 2,  //! Greater than
+        GE = 3,  //! Greater or equal
+        MAX_INDEX = 4,
+    };
+
+    int    mask;
+    double thresholds[4];
+
+    ValueFilter()
+        : thresholds{0, 0, 0, 0}
+    {
+    }
+
+    bool match(double value) const {
+        bool result = true;
+        if (mask & LT) {
+            result &= value <  thresholds[LT];
+        }
+        else if (mask & LE) {
+            result &= value <= thresholds[LE];
+        }
+        if (mask & GT) {
+            result &= value >  thresholds[GT];
+        }
+        else if (mask & GE) {
+            result &= value >= thresholds[GE];
+        }
+        return result;
+    }
+
+    bool match(const SubtreeRef& ref) const {
+        bool result = true;
+        if (mask & LT) {
+            result &= ref.min >= thresholds[LT];
+        }
+        else if (mask & LE) {
+            result &= ref.min >  thresholds[LE];
+        }
+        if (mask & GT) {
+            result &= ref.max <= thresholds[GT];
+        }
+        else if (mask & GE) {
+            result &= ref.max <  thresholds[GE];
+        }
+        return result;
+    }
+
+    ValueFilter& less_than(double value) {
+        mask          |= 1 << LT;
+        thresholds[LT] = value;
+        return *this;
+    }
+
+    ValueFilter& less_or_equal(double value) {
+        mask          |= 1 << LE;
+        thresholds[LE] = value;
+        return *this;
+    }
+
+    ValueFilter& greater_than(double value) {
+        mask          |= 1 << GT;
+        thresholds[GT] = value;
+        return *this;
+    }
+
+    ValueFilter& greater_or_equal(double value) {
+        mask          |= 1 << GE;
+        thresholds[GE] = value;
+        return *this;
+    }
+
+    // Check invariant
+    bool validate() const {
+        if (mask == 0) {
+            return false;
+        }
+        if ((mask & LT) && (mask & LE)) {
+            return false;
+        }
+        if ((mask & GT) && (mask & GE)) {
+            return false;
+        }
+        return true;
+    }
+};
+
 }} // namespace
