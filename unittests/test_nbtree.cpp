@@ -2065,3 +2065,77 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_22) {
     }
     test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 2, 34);
 }
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_1) {
+    ValueFilter filter;
+    filter.less_than(10)
+          .less_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate() == false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_2) {
+    ValueFilter filter;
+    filter.greater_than(10)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate() == false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_3) {
+    ValueFilter filter;
+    filter.less_than(100)
+          .greater_than(10);
+
+    BOOST_REQUIRE(filter.validate());
+    BOOST_REQUIRE(filter.match(50));
+    BOOST_REQUIRE(!filter.match(10));
+    BOOST_REQUIRE(!filter.match(100));
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_4) {
+    ValueFilter filter;
+    filter.less_or_equal(100)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate());
+    BOOST_REQUIRE(filter.match(50));
+    BOOST_REQUIRE(filter.match(10));
+    BOOST_REQUIRE(filter.match(100));
+    BOOST_REQUIRE(!filter.match(101));
+    BOOST_REQUIRE(!filter.match(9));
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_5) {
+    ValueFilter filter;
+    filter.less_than(100)
+          .greater_than(10);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 1;
+    ref.min = 0;
+
+    BOOST_REQUIRE(!filter.match(ref));
+
+    ref.max = 10;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.match(ref));
+
+    ref.max = 50;
+    ref.min = 20;
+
+    BOOST_REQUIRE(filter.match(ref));
+
+    ref.max = 120;
+    ref.min = 100;
+
+    BOOST_REQUIRE(filter.match(ref));
+
+    ref.max = 120;
+    ref.min = 110;
+
+    BOOST_REQUIRE(!filter.match(ref));
+}

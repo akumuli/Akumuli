@@ -87,42 +87,74 @@ struct ValueFilter {
     double thresholds[4];
 
     ValueFilter()
-        : thresholds{0, 0, 0, 0}
+        : mask(0)
+        , thresholds{0, 0, 0, 0}
     {
     }
 
     bool match(double value) const {
         bool result = true;
-        if (mask & LT) {
+        if (mask & (1 << LT)) {
             result &= value <  thresholds[LT];
         }
-        else if (mask & LE) {
+        else if (mask & (1 << LE)) {
             result &= value <= thresholds[LE];
         }
-        if (mask & GT) {
+        if (mask & (1 << GT)) {
             result &= value >  thresholds[GT];
         }
-        else if (mask & GE) {
+        else if (mask & (1 << GE)) {
             result &= value >= thresholds[GE];
         }
         return result;
     }
 
-    bool match(const SubtreeRef& ref) const {
-        bool result = true;
-        if (mask & LT) {
-            result &= ref.min >= thresholds[LT];
+    enum class MatchResult {
+        NO_MATCH,
+        FULL_MATCH,
+        PARTIAL_MATCH
+    };
+
+    MatchResult match(const SubtreeRef& ref) const {
+        int result = 0;
+        int ncheck = 0;
+        if (mask & (1 << LT)) {
+            ncheck++;
+            if (ref.max < thresholds[LT]) {
+                result += 2;
+            }
+            else if (ref.min < thresholds[LT]) {
+                result += 1;
+            }
         }
-        else if (mask & LE) {
-            result &= ref.min >  thresholds[LE];
+        else if (mask & (1 << LE)) {
+            ncheck++;
+            if (ref.max <= thresholds[LT]) {
+                result += 2;
+            }
+            else if (ref.min <= thresholds[LT]) {
+                result += 1;
+            }
         }
-        if (mask & GT) {
-            result &= ref.max <= thresholds[GT];
+        if (mask & (1 << GT)) {
+            ncheck++;
+            if (ref.min > thresholds[LT]) {
+                result += 2;
+            }
+            else if (ref.max > thresholds[LT]) {
+                result += 1;
+            }
         }
-        else if (mask & GE) {
-            result &= ref.max <  thresholds[GE];
+        else if (mask & (1 << GE)) {
+            ncheck++;
+            if (ref.min >= thresholds[LT]) {
+                result += 2;
+            }
+            else if (ref.max >= thresholds[LT]) {
+                result += 1;
+            }
         }
-        return result;
+        return MatchResult::NO_MATCH;
     }
 
     ValueFilter& less_than(double value) {
@@ -154,10 +186,10 @@ struct ValueFilter {
         if (mask == 0) {
             return false;
         }
-        if ((mask & LT) && (mask & LE)) {
+        if ((mask & (1 << LT)) && (mask & (1 << LE))) {
             return false;
         }
-        if ((mask & GT) && (mask & GE)) {
+        if ((mask & (1 << GT)) && (mask & (1 << GE))) {
             return false;
         }
         return true;
