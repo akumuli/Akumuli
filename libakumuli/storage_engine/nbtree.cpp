@@ -369,22 +369,22 @@ struct NBTreeLeafFilter : RealValuedOperator {
         std::vector<aku_Timestamp> tss;
         std::vector<double>        xss;
         status_ = node.read_all(&tss, &xss);
-        ssize_t from_ = 0, to_ = 0;  // TODO: rename
+        ssize_t from = 0, to = 0;
         if (status_ == AKU_SUCCESS) {
             if (begin_ < end_) {
                 // FWD direction
                 auto it_begin = std::lower_bound(tss.begin(), tss.end(), begin_);
                 if (it_begin != tss.end()) {
-                    from_ = std::distance(tss.begin(), it_begin);
+                    from = std::distance(tss.begin(), it_begin);
                 } else {
-                    from_ = 0;
+                    from = 0;
                     assert(tss.front() > begin_);
                 }
 
                 auto it_end = std::lower_bound(tss.begin(), tss.end(), end_);
-                to_ = std::distance(tss.begin(), it_end);
+                to = std::distance(tss.begin(), it_end);
 
-                for (size_t ix = from_; ix < to_; ix++){
+                for (ssize_t ix = from; ix < to; ix++){
                     if (filter_.match(xss[ix])) {
                         tsbuf_.push_back(tss[ix]);
                         xsbuf_.push_back(xss[ix]);
@@ -393,12 +393,12 @@ struct NBTreeLeafFilter : RealValuedOperator {
             } else {
                 // BWD direction
                 auto it_begin = std::upper_bound(tss.begin(), tss.end(), begin_);
-                from_ = std::distance(tss.begin(),it_begin);
+                from = std::distance(tss.begin(),it_begin);
 
                 auto it_end = std::upper_bound(tss.begin(), tss.end(), end_);
-                to_ = std::distance(tss.begin(), it_end);
+                to = std::distance(tss.begin(), it_end);
 
-                for (size_t ix = from_; ix >= to_; ix--){
+                for (ssize_t ix = from; ix >= to; ix--){
                     if (filter_.match(xss[ix])) {
                         tsbuf_.push_back(tss[ix]);
                         xsbuf_.push_back(xss[ix]);
@@ -409,8 +409,7 @@ struct NBTreeLeafFilter : RealValuedOperator {
     }
 
     size_t get_size() const {
-        assert(to_ >= from_);
-        return static_cast<size_t>(to_ - from_);
+        return static_cast<size_t>(tsbuf_.size());
     }
 
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
@@ -423,7 +422,7 @@ std::tuple<aku_Status, size_t> NBTreeLeafFilter::read(aku_Timestamp *destts, dou
     if (status_ != AKU_SUCCESS) {
         return std::make_tuple(status_, 0);
     }
-    ssize_t toread = tss.size() - pos_;
+    ssize_t toread = tsbuf_.size() - pos_;
     if (toread > sz) {
         toread = sz;
     }
@@ -2050,7 +2049,8 @@ std::unique_ptr<RealValuedOperator> NBTreeSuperblock::search(aku_Timestamp begin
 
 std::unique_ptr<RealValuedOperator> NBTreeSuperblock::filter(aku_Timestamp begin,
                                                              aku_Timestamp end,
-                                                             const ValueFilter& filter) const
+                                                             const ValueFilter& filter,
+                                                             std::shared_ptr<BlockStore> bstore) const
 {
     std::unique_ptr<RealValuedOperator> result;
     result.reset(new NBTreeSBlockFilter(bstore, *this, begin, end, filter));
@@ -3586,11 +3586,11 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begi
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->filter(begin, end));
+            iterators.push_back((*it)->filter(begin, end, filter));
         }
     } else {
         for (auto const& root: extents_) {
-            iterators.push_back(root->filter(begin, end));
+            iterators.push_back(root->filter(begin, end, filter));
         }
     }
     if (iterators.size() == 1) {

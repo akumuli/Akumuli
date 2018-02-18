@@ -318,7 +318,7 @@ public:
 
     std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
                                                aku_Timestamp end,
-                                               const ValueFilter& filter) const;
+                                               const ValueFilter& filter, std::shared_ptr<BlockStore> bstore) const;
 
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
@@ -408,7 +408,7 @@ struct NBTreeExtent {
      */
     virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
                                                        aku_Timestamp end,
-                                                       const ValueFilter& filter) const;
+                                                       const ValueFilter& filter) const = 0;
 
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
