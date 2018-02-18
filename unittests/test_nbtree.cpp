@@ -2117,25 +2117,69 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_5) {
     ref.max = 1;
     ref.min = 0;
 
-    BOOST_REQUIRE(!filter.match(ref));
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 10;
     ref.min = 0;
 
-    BOOST_REQUIRE(filter.match(ref));
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 20;
+    ref.min = 10;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
 
     ref.max = 50;
     ref.min = 20;
 
-    BOOST_REQUIRE(filter.match(ref));
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
 
     ref.max = 120;
     ref.min = 100;
 
-    BOOST_REQUIRE(filter.match(ref));
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 120;
     ref.min = 110;
 
-    BOOST_REQUIRE(!filter.match(ref));
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
+    ValueFilter filter;
+    filter.less_or_equal(100)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 1;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 10;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+
+    ref.max = 20;
+    ref.min = 10;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
+
+    ref.max = 50;
+    ref.min = 20;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 100;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 110;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 }

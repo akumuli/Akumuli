@@ -73,6 +73,11 @@ struct SubtreeRef {
     u32 checksum;
 } __attribute__((packed));
 
+enum class RangeOverlap {
+    NO_OVERLAP,
+    FULL_OVERLAP,
+    PARTIAL_OVERLAP
+};
 
 struct ValueFilter {
     enum {
@@ -109,52 +114,17 @@ struct ValueFilter {
         return result;
     }
 
-    enum class MatchResult {
-        NO_MATCH,
-        FULL_MATCH,
-        PARTIAL_MATCH
-    };
-
-    MatchResult match(const SubtreeRef& ref) const {
-        int result = 0;
-        int ncheck = 0;
-        if (mask & (1 << LT)) {
-            ncheck++;
-            if (ref.max < thresholds[LT]) {
-                result += 2;
-            }
-            else if (ref.min < thresholds[LT]) {
-                result += 1;
-            }
+    RangeOverlap getOverlap(const SubtreeRef& ref) const {
+        bool begin = match(ref.min);
+        bool end   = match(ref.max);
+        if (begin && end) {
+            return RangeOverlap::FULL_OVERLAP;
         }
-        else if (mask & (1 << LE)) {
-            ncheck++;
-            if (ref.max <= thresholds[LT]) {
-                result += 2;
-            }
-            else if (ref.min <= thresholds[LT]) {
-                result += 1;
-            }
+        else if (begin || end) {
+            return RangeOverlap::PARTIAL_OVERLAP;
+        } else {
+            return RangeOverlap::NO_OVERLAP;
         }
-        if (mask & (1 << GT)) {
-            ncheck++;
-            if (ref.min > thresholds[LT]) {
-                result += 2;
-            }
-            else if (ref.max > thresholds[LT]) {
-                result += 1;
-            }
-        }
-        else if (mask & (1 << GE)) {
-            ncheck++;
-            if (ref.min >= thresholds[LT]) {
-                result += 2;
-            }
-            else if (ref.max >= thresholds[LT]) {
-                result += 1;
-            }
-        }
-        return MatchResult::NO_MATCH;
     }
 
     ValueFilter& less_than(double value) {
