@@ -316,6 +316,10 @@ public:
 
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter) const;
+
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
                                                 std::shared_ptr<BlockStore> bstore) const;
