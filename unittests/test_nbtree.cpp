@@ -2184,7 +2184,7 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
     BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 }
 
-void test_nbtreeleaf_filter_operator_fwd(aku_Timestamp begin, aku_Timestamp end) {
+void test_nbtreeleaf_filter_operator(aku_Timestamp begin, aku_Timestamp end) {
     NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;
     std::vector<double> xss;
@@ -2199,13 +2199,25 @@ void test_nbtreeleaf_filter_operator_fwd(aku_Timestamp begin, aku_Timestamp end)
             break;
         }
         if (status == AKU_SUCCESS) {
-            if(val < 0 && ix >= begin && ix < end) {
-                xss.push_back(val);
-                tss.push_back(ix);
+            if (begin < end) {
+                if(val < 0 && ix >= begin && ix < end) {
+                    xss.push_back(val);
+                    tss.push_back(ix);
+                }
+            }
+            else {
+                if(val < 0 && ix <= begin && ix > end) {
+                    xss.push_back(val);
+                    tss.push_back(ix);
+                }
             }
             continue;
         }
         BOOST_FAIL(StatusUtil::c_str(status));
+    }
+    if (begin > end) {
+        std::reverse(xss.begin(), xss.end());
+        std::reverse(tss.begin(), tss.end());
     }
 
     ValueFilter filter;
@@ -2237,13 +2249,33 @@ void test_nbtreeleaf_filter_operator_fwd(aku_Timestamp begin, aku_Timestamp end)
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_0) {
-    test_nbtreeleaf_filter_operator_fwd(100, 200);
+    test_nbtreeleaf_filter_operator(10, 150);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_1) {
-    test_nbtreeleaf_filter_operator_fwd(200, 300);
+    test_nbtreeleaf_filter_operator(100, 200);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_2) {
-    test_nbtreeleaf_filter_operator_fwd(300, 1000);
+    test_nbtreeleaf_filter_operator(200, 300);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_3) {
+    test_nbtreeleaf_filter_operator(300, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_0) {
+    test_nbtreeleaf_filter_operator(150, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_1) {
+    test_nbtreeleaf_filter_operator(200, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_2) {
+    test_nbtreeleaf_filter_operator(300, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_3) {
+    test_nbtreeleaf_filter_operator(1000, 300);
 }

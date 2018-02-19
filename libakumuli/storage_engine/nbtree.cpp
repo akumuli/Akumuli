@@ -392,8 +392,13 @@ struct NBTreeLeafFilter : RealValuedOperator {
                 }
             } else {
                 // BWD direction
-                auto it_begin = std::upper_bound(tss.begin(), tss.end(), begin_);
-                from = std::distance(tss.begin(),it_begin);
+                auto it_begin = std::lower_bound(tss.begin(), tss.end(), begin_);
+                if (it_begin != tss.end()) {
+                    from = std::distance(tss.begin(), it_begin);
+                }
+                else {
+                    from = tss.size() - 1;
+                }
 
                 auto it_end = std::upper_bound(tss.begin(), tss.end(), end_);
                 to = std::distance(tss.begin(), it_end);
