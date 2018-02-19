@@ -2279,3 +2279,108 @@ BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_2) {
 BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_3) {
     test_nbtreeleaf_filter_operator(1000, 300);
 }
+
+void test_nbtree_superblock_filter(size_t commit_limit, bool inv_direction) {
+    // Build this tree structure.
+    aku_Timestamp begin = 1000;
+    aku_Timestamp end = begin;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    std::vector<double> xss;
+    std::vector<aku_Timestamp> tss;
+    extents->force_init();
+    RandomWalk rwalk1(+1E6, 0.1, 0.1);
+    RandomWalk rwalk2(-1E6, 0.1, 0.1);
+    while(ncommits < commit_limit) {
+        double value = end % 2 == 0
+                     ? rwalk1.next()
+                     : rwalk2.next();
+        aku_Timestamp ts = end++;
+        extents->append(ts, value);
+        if (value < 0) {
+            if (!inv_direction || end != begin) {
+                // Query in rev. direction won't return the
+                // first value since the end of the range is
+                // exclusive.
+                tss.push_back(ts);
+                xss.push_back(value);
+            }
+        }
+    }
+    if (inv_direction) {
+        std::reverse(tss.begin(), tss.end());
+        std::reverse(xss.begin(), xss.end());
+    }
+
+    // Check actual output
+    ValueFilter flt;
+    flt.less_than(0);
+    std::unique_ptr<RealValuedOperator> it;
+
+    if (inv_direction) {
+        it = std::move(extents->filter(end, begin, flt));
+    } else {
+        it = std::move(extents->filter(begin, end, flt));
+    }
+
+    std::vector<aku_Timestamp> actts;
+    std::vector<double> actxs;
+
+    while(true) {
+        aku_Status status;
+        size_t size = 1000;
+        std::vector<aku_Timestamp> destts(size, 0);
+        std::vector<double> destxs(size, 0);
+        std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+
+        if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        }
+
+        for(size_t i = 0; i < size; i++) {
+            actts.push_back(destts[i]);
+            actxs.push_back(destxs[i]);
+        }
+
+        if (status == AKU_ENO_DATA) {
+            break;
+        }
+    }
+
+    BOOST_REQUIRE_EQUAL(tss.size(), actts.size());
+    BOOST_REQUIRE_EQUAL(xss.size(), actxs.size());
+
+    for (size_t i = 0; i < tss.size(); i++) {
+        BOOST_REQUIRE_EQUAL(tss.at(i), actts.at(i));
+        BOOST_REQUIRE_EQUAL(xss.at(i), actxs.at(i));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_0) {
+    test_nbtree_superblock_filter(10, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_1) {
+    test_nbtree_superblock_filter(100, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_2) {
+    test_nbtree_superblock_filter(1000, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_0) {
+    test_nbtree_superblock_filter(10, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_1) {
+    test_nbtree_superblock_filter(100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_2) {
+    test_nbtree_superblock_filter(1000, true);
+}
