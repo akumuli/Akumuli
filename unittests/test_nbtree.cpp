@@ -2183,3 +2183,67 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
 
     BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 }
+
+void test_nbtreeleaf_filter_operator_fwd(aku_Timestamp begin, aku_Timestamp end) {
+    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
+    aku_Timestamp first_timestamp = 100;
+    std::vector<double> xss;
+    std::vector<double> tss;
+    RandomWalk rwalk1(100000.0, 2.0, 2.0);
+    RandomWalk rwalk2(-100000.0, 2.0, 2.0);
+    for (size_t ix = first_timestamp; true; ix++) {
+        double val = ix % 2 == 0 ? rwalk1.next()
+                                 : rwalk2.next();
+        aku_Status status = leaf.append(ix, val);
+        if (status == AKU_EOVERFLOW) {
+            break;
+        }
+        if (status == AKU_SUCCESS) {
+            if(val < 0 && ix >= begin && ix < end) {
+                xss.push_back(val);
+                tss.push_back(ix);
+            }
+            continue;
+        }
+        BOOST_FAIL(StatusUtil::c_str(status));
+    }
+
+    ValueFilter filter;
+    filter.less_than(0.0);
+    auto op = leaf.filter(begin, end, filter);
+
+    size_t sz = xss.size();
+    std::vector<double> actxss;
+    actxss.resize(sz);
+    std::vector<aku_Timestamp> acttss;
+    acttss.resize(sz);
+    aku_Status status;
+    size_t outsz;
+    std::tie(status, outsz) = op->read(acttss.data(), actxss.data(), sz);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+
+    BOOST_REQUIRE(xss.size() != 0);
+    BOOST_REQUIRE(xss.size() == actxss.size());
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(tss.begin(),
+                                    tss.end(),
+                                    acttss.begin(),
+                                    acttss.end());
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(xss.begin(),
+                                    xss.end(),
+                                    actxss.begin(),
+                                    actxss.end());
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_0) {
+    test_nbtreeleaf_filter_operator_fwd(100, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_1) {
+    test_nbtreeleaf_filter_operator_fwd(200, 300);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_2) {
+    test_nbtreeleaf_filter_operator_fwd(300, 1000);
+}
