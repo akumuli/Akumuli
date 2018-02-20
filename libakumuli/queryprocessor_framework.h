@@ -105,6 +105,21 @@ struct Selection {
     // "column1:column2:column3 tag1=val1 tag2=val2 .. tagn=valn
 };
 
+struct Filter {
+    enum {
+        GT = 1 << 0,
+        LT = 1 << 1,
+        GE = 1 << 2,
+        LE = 1 << 3,
+    };
+    bool enabled;
+    int    flags;
+    double    gt;
+    double    lt;
+    double    ge;
+    double    le;
+};
+
 //! Mapping from persistent series names to transient series names
 struct GroupBy {
     bool enabled;
@@ -121,6 +136,7 @@ enum class OrderBy {
 struct ReshapeRequest {
     Aggregation  agg;
     Selection select;
+    Filter    filter;
     GroupBy group_by;
     OrderBy order_by;
 };

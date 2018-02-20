@@ -79,6 +79,43 @@ struct ScanProcessingStep : ProcessingPrelude {
     }
 };
 
+
+struct FilterProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    ValueFilter filter_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    FilterProcessingStep(aku_Timestamp begin,
+                         aku_Timestamp end,
+                         const ValueFilter& flt,
+                         T&& t)
+        : begin_(begin)
+        , end_(end)
+        , filter_(flt)
+        , ids_(std::forward<T>(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.filter(ids_, begin_, end_, filter_, &scanlist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        if (scanlist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(scanlist_);
+        return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+};
+
 struct AggregateProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<AggregateOperator>> agglist_;
     aku_Timestamp begin_;
@@ -296,7 +333,6 @@ struct AggregateCombiner : MaterializationStep {
                                              std::move(agglist),
                                              fn_));
         return AKU_SUCCESS;
-
     }
 
     aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
@@ -478,7 +514,7 @@ struct TwoStepQueryPlan : IQueryPlan {
 static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for scan query
     // Tier1
-    // - List of range scan operators
+    // - List of range scan/filter operators
     // Tier2
     // - If group-by is enabled:
     //   - Transform ids and matcher (generate new names)
@@ -495,7 +531,31 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
-    t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, req.select.columns.at(0).ids));
+    if (req.filter.enabled) {
+        ValueFilter flt;
+        if (req.filter.flags&Filter::GT) {
+            flt.greater_than(req.filter.gt);
+        } else if (req.filter.flags&Filter::GE) {
+            flt.greater_or_equal(req.filter.ge);
+        }
+        if (req.filter.flags&Filter::LT) {
+            flt.less_than(req.filter.lt);
+        } else if (req.filter.flags&Filter::LE) {
+            flt.less_or_equal(req.filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        t1stage.reset(new FilterProcessingStep(req.select.begin,
+                                               req.select.end,
+                                               flt,
+                                               req.select.columns.at(0).ids));
+    } else {
+        t1stage.reset(new ScanProcessingStep  (req.select.begin,
+                                               req.select.end,
+                                               req.select.columns.at(0).ids));
+    }
 
     std::unique_ptr<MaterializationStep> t2stage;
     if (req.group_by.enabled) {
