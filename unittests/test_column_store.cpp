@@ -851,3 +851,181 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_2) {
 BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_3) {
     test_aggregate_and_group_by(1000, 11000);
 }
+
+static double fill_data2(std::shared_ptr<ColumnStore> cstore,
+                         std::unique_ptr<CStoreSession>& session,
+                         aku_ParamId id,
+                         aku_Timestamp begin,
+                         aku_Timestamp end)
+{
+    assert(begin < end);
+    cstore->create_new_column(id);
+    aku_Sample sample;
+    sample.paramid = id;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    std::vector<u64> rpoints;
+    double sum = 0;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        sample.payload.float64 = ix % 2 == 0 ? -0.1*ix : 0.1*ix;
+        sample.timestamp = ix;
+        session->write(sample, &rpoints);  // rescue points are ignored now
+        sum += sample.payload.float64;
+    }
+    return sum;
+}
+
+static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps, invtimestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::copy(timestamps.rbegin(),
+              timestamps.rend(),
+              std::back_inserter(invtimestamps));
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+    for (auto id: ids) {
+        fill_data2(cstore, session, id, begin, end);
+    }
+
+    // Read in series order in forward direction
+    auto read_ordered_by_series = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::SERIES;
+        req.filter.enabled = true;
+        req.filter.ge = 0.0;
+        req.filter.flags = Filter::GE;
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*timestamps.size()/2);
+        size_t niter = 0;
+        for(size_t i = 0; i < ids.size(); i++) {
+            for (size_t j = 1; j < timestamps.size(); j += 2) {
+                auto tx = timestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    // Read in time order in forward direction
+    auto read_ordered_by_time = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::TIME;
+        req.filter.enabled = true;
+        req.filter.ge = 0.0;
+        req.filter.flags = Filter::GE;
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*timestamps.size()/2);
+        size_t niter = 0;
+        for (size_t j = 1; j < timestamps.size(); j += 2) {
+            for(size_t i = 0; i < ids.size(); i++) {
+                auto tx = timestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    auto read_backward_ordered_by_series = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = end;
+        req.select.end = begin;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::SERIES;
+        req.filter.enabled = true;
+        req.filter.ge = 0.0;
+        req.filter.flags = Filter::GE;
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*invtimestamps.size()/2);
+        size_t niter = 0;
+        for(size_t i = 0; i < ids.size(); i++) {
+            for (size_t j = 0; j < invtimestamps.size(); j += 2) {
+                auto tx = invtimestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    // Read in time order in forward direction
+    auto read_backward_ordered_by_time = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = end;
+        req.select.end = begin;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::TIME;
+        req.filter.enabled = true;
+        req.filter.ge = 0.0;
+        req.filter.flags = Filter::GE;
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == invids.size()*invtimestamps.size()/2);
+        size_t niter = 0;
+        for (size_t j = 0; j < invtimestamps.size(); j += 2) {
+            for(size_t i = 0; i < invids.size(); i++) {
+                auto tx = invtimestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == invids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    read_ordered_by_series();
+    read_ordered_by_time();
+    read_backward_ordered_by_series();
+    read_backward_ordered_by_time();
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_0) {
+    test_column_store_filter_query(10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_1) {
+    test_column_store_filter_query(100, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_2) {
+    test_column_store_filter_query(1000, 100000);
+}
