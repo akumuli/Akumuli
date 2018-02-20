@@ -133,6 +133,17 @@ public:
         });
     }
 
+    aku_Status filter(std::vector<aku_ParamId> const& ids,
+                      aku_Timestamp begin,
+                      aku_Timestamp end,
+                      const ValueFilter& filter,
+                      std::vector<std::unique_ptr<RealValuedOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, filter](const NBTreeExtentsList& elist) {
+            return elist.filter(begin, end, filter);
+        });
+    }
+
     aku_Status aggregate(std::vector<aku_ParamId> const& ids,
                          aku_Timestamp begin,
                          aku_Timestamp end,
