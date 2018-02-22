@@ -905,9 +905,12 @@ static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp en
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        req.filter.enabled = true;
-        req.filter.ge = 0.0;
-        req.filter.flags = Filter::GE;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
 
         execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -935,9 +938,12 @@ static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp en
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
-        req.filter.enabled = true;
-        req.filter.ge = 0.0;
-        req.filter.flags = Filter::GE;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
 
         execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -964,9 +970,12 @@ static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp en
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::SERIES;
-        req.filter.enabled = true;
-        req.filter.ge = 0.0;
-        req.filter.flags = Filter::GE;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
 
         execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
@@ -994,9 +1003,12 @@ static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp en
             req.select.columns[0].ids.push_back(ids[i]);
         }
         req.order_by = OrderBy::TIME;
-        req.filter.enabled = true;
-        req.filter.ge = 0.0;
-        req.filter.flags = Filter::GE;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
 
         execute(cstore, &qproc, req);
         BOOST_REQUIRE(qproc.error == AKU_SUCCESS);

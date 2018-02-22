@@ -89,22 +89,6 @@ struct Column {
     std::vector<aku_ParamId> ids;
 };
 
-//! Set of ids returned by the query (defined by select and where clauses)
-struct Selection {
-    //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
-    std::vector<Column> columns;
-    aku_Timestamp begin;
-    aku_Timestamp end;
-
-    //! This matcher should be used by Join-statement
-    std::shared_ptr<PlainSeriesMatcher> matcher;
-
-    // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
-    // The samples will have ids from first column but textual representation should be different
-    // thus we need to use another matcher. Series names should have the following form:
-    // "column1:column2:column3 tag1=val1 tag2=val2 .. tagn=valn
-};
-
 struct Filter {
     enum {
         GT = 1 << 0,
@@ -118,6 +102,23 @@ struct Filter {
     double    lt;
     double    ge;
     double    le;
+};
+
+//! Set of ids returned by the query (defined by select and where clauses)
+struct Selection {
+    //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
+    std::vector<Column> columns;
+    std::vector<Filter> filters;
+    aku_Timestamp begin;
+    aku_Timestamp end;
+
+    //! This matcher should be used by Join-statement
+    std::shared_ptr<PlainSeriesMatcher> matcher;
+
+    // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
+    // The samples will have ids from first column but textual representation should be different
+    // thus we need to use another matcher. Series names should have the following form:
+    // "column1:column2:column3 tag1=val1 tag2=val2 .. tagn=valn
 };
 
 //! Mapping from persistent series names to transient series names
@@ -136,7 +137,6 @@ enum class OrderBy {
 struct ReshapeRequest {
     Aggregation  agg;
     Selection select;
-    Filter    filter;
     GroupBy group_by;
     OrderBy order_by;
 };

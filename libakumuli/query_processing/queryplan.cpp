@@ -531,17 +531,18 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
-    if (req.filter.enabled) {
+    if (req.select.filters.empty() == false) {
+        const Filter& filter = req.select.filters.at(0);
         ValueFilter flt;
-        if (req.filter.flags&Filter::GT) {
-            flt.greater_than(req.filter.gt);
-        } else if (req.filter.flags&Filter::GE) {
-            flt.greater_or_equal(req.filter.ge);
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
         }
-        if (req.filter.flags&Filter::LT) {
-            flt.less_than(req.filter.lt);
-        } else if (req.filter.flags&Filter::LE) {
-            flt.less_or_equal(req.filter.le);
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
         }
         if (!flt.validate()) {
             Logger::msg(AKU_LOG_ERROR, "Invalid filter");

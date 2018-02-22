@@ -5,8 +5,10 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+
 #include <set>
 #include <regex>
+#include <array>
 
 #include "datetime.h"
 #include "query_processing/limiter.h"
@@ -591,6 +593,85 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
 }
 
 
+/**
+ * @brief Parse filter clause
+ *
+ * Query form 1:
+ * "filter": { "metric_name": { "gt": 100 }}
+ * This format allows multiple metric names.
+ *
+ * Query form 2:
+ * "filter": { "gt": 100 }
+ * This is a shorthand for queries that return one single metric. Can only be used in this
+ * case since there is no ambiguity. The first form can be used with the join query.
+ *
+ * @param ptree is a query data
+ * @param metrics is a list of metrics extracted by the query
+ * @return filter value per metric
+ */
+static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_tree::ptree const& ptree,
+                                                                std::vector<std::string> metrics)
+{
+    aku_Status status = AKU_SUCCESS;
+    std::vector<Filter> result;
+    for (size_t ix = 0; ix < metrics.size(); ix++) {
+        // Initially everything is disabled
+        result.push_back({false});
+    }
+    auto filter = ptree.get_child_optional("filter");
+    bool found_at_least_one = false;
+    const char* names[] = { "gt", "lt", "ge", "le" };
+    int flags[] = { Filter::GT, Filter::LT, Filter::GE, Filter::LE };
+    const size_t nitems = 4;
+    if (filter) {
+        for (size_t ix = 0; ix < metrics.size(); ix++) {
+            // Form 1 query
+            auto child = filter->get_child_optional(metrics[ix]);
+            if (child) {
+                found_at_least_one = true;
+                for (size_t i = 0; i < nitems; i++) {
+                    auto item = child->get_child_optional(names[i]);
+                    if (item) {
+                        result[ix].flags |= flags[i];
+                        auto value = item->get_value<std::string>("");
+                        try {
+                            double* pval = &result[ix].gt;
+                            pval[i] = boost::lexical_cast<double>(value);
+                        } catch (boost::bad_lexical_cast const&) {
+                            Logger::msg(AKU_LOG_ERROR, metrics[ix] + " has bad filter value, can't parse floating point");
+                            found_at_least_one = false;
+                            status = AKU_EBAD_ARG;
+                            break;
+                        }
+                        result[ix].enabled = true;
+                    }
+                }
+            }
+        }
+        if (!found_at_least_one && metrics.size() == 1) {
+            // Form 2 query
+            for (size_t i = 0; i < nitems; i++) {
+                auto item = filter->get_child_optional(names[i]);
+                if (item) {
+                    result[0].flags |= flags[i];
+                    auto value = item->get_value<std::string>("");
+                    try {
+                        double* pval = &result[0].gt;
+                        pval[i] = boost::lexical_cast<double>(value);
+                    } catch (boost::bad_lexical_cast const&) {
+                        Logger::msg(AKU_LOG_ERROR, metrics[0] + " has bad filter value, can't parse floating point");
+                        found_at_least_one = false;
+                        status = AKU_EBAD_ARG;
+                        break;
+                    }
+                    result[0].enabled = true;
+                }
+            }
+        }
+    }
+    return std::make_tuple(status, result);
+}
+
 // ///////////////// //
 // QueryParser class //
 // ///////////////// //
@@ -661,7 +742,8 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
         "range",
         "where",
         "group-aggregate",
-        "apply"
+        "apply",
+        "filter",
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
@@ -1024,6 +1106,11 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+    }
+
+    std::tie(status, result.select.filters) = parse_filter(ptree, {metric});
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
     }
 
     return std::make_tuple(AKU_SUCCESS, result);
