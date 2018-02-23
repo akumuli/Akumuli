@@ -531,7 +531,8 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
-    if (req.select.filters.empty() == false) {
+    if (req.select.filters.empty() == false && req.select.filters.at(0).enabled) {
+        // Scan query can only have one filter
         const Filter& filter = req.select.filters.at(0);
         ValueFilter flt;
         if (filter.flags&Filter::GT) {
