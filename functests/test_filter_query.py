@@ -26,16 +26,8 @@ def make_query(metric, from_, to, lowerbound, upperbound, **query_params):
     query = att.make_select_query(metric, from_, to, **query_params)
     return query
 
-att.api_test("Test filter query forward")
-def test_filter_query_forward(column, dtstart, delta, thresholds, N):
-    """Read data in forward direction"""
-
-    begin = dtstart
-    end = dtstart + delta*(N + 1)
-
-    query_params = {
-        "output": { "format":  "csv" },
-    }
+def run_query(column, begin, end, thresholds, N, **query_params):
+    query_params["output"] = { "format":  "csv" }
 
     query = make_query(column, 
                        begin, 
@@ -78,6 +70,50 @@ def test_filter_query_forward(column, dtstart, delta, thresholds, N):
     if iterations == 0:
         raise ValueError("No data received")
 
+att.api_test("Test filter query forward")
+def test_filter_query_forward(column, dtstart, delta, thresholds, N):
+    """Read data in forward direction"""
+
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+
+    run_query(column, begin, end, thresholds, N)
+
+
+att.api_test("Test filter query backward")
+def test_filter_query_backward(column, dtstart, delta, thresholds, N):
+    """Read data in backward direction"""
+
+    end = dtstart
+    begin = dtstart + delta*(N + 1)
+
+    run_query(column, begin, end, thresholds, N)
+
+att.api_test("Test filter query forward, order by time")
+def test_filter_query_forward_by_time(column, dtstart, delta, thresholds, N):
+    """Read data in forward direction, order by time"""
+
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+
+    q = {
+        "order-by": "time"
+    }
+
+    run_query(column, begin, end, thresholds, N, **q)
+
+att.api_test("Test filter query backward, order by time")
+def test_filter_query_backward_by_time(column, dtstart, delta, thresholds, N):
+    """Read data in backward direction, order by time"""
+
+    end = dtstart
+    begin = dtstart + delta*(N + 1)
+
+    q = {
+        "order-by": "time"
+    }
+
+    run_query(column, begin, end, thresholds, N, **q)
 
 def main(path):
     akumulid = att.create_akumulid(path)
@@ -113,6 +149,9 @@ def main(path):
         time.sleep(5)  # wait untill all messagess will be processed
         
         test_filter_query_forward('col1', dt, delta, [-20, 20], nmsgs)
+        test_filter_query_backward('col1', dt, delta, [-20, 20], nmsgs)
+        test_filter_query_forward_by_time('col1', dt, delta, [-20, 20], nmsgs)
+        test_filter_query_backward_by_time('col1', dt, delta, [-20, 20], nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)
