@@ -532,6 +532,18 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
 
     std::unique_ptr<ProcessingPrelude> t1stage;
     if (req.select.filters.empty() == false && req.select.filters.at(0).enabled) {
+        // TODO: remove
+        {
+            std::stringstream fmt;
+            fmt << "Request object filter:" << std::endl
+                << "Enabled: " << req.select.filters.at(0).enabled << std::endl
+                << "GT: " << req.select.filters.at(0).gt << std::endl
+                << "GE: " << req.select.filters.at(0).ge << std::endl
+                << "LT: " << req.select.filters.at(0).lt << std::endl
+                << "LE: " << req.select.filters.at(0).le << std::endl;
+
+            Logger::msg(AKU_LOG_INFO, fmt.str());
+        }
         // Scan query can only have one filter
         const Filter& filter = req.select.filters.at(0);
         ValueFilter flt;

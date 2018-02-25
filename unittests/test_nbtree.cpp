@@ -2184,6 +2184,20 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
     BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
 }
 
+BOOST_AUTO_TEST_CASE(Test_value_filter_7) {
+    ValueFilter filter;
+    filter.less_or_equal(20)
+          .greater_or_equal(-20);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 100;
+    ref.min = -100;
+
+    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+}
+
 void test_nbtreeleaf_filter_operator(aku_Timestamp begin, aku_Timestamp end) {
     NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;

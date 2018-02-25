@@ -6,6 +6,7 @@
  */
 
 #include "akumuli_def.h"  // for basic types
+#include "util.h"
 #include "blockstore.h"   // for LogicAddr
 
 namespace Akumuli {
@@ -114,15 +115,66 @@ struct ValueFilter {
         return result;
     }
 
-    RangeOverlap getOverlap(const SubtreeRef& ref) const {
-        bool begin = match(ref.min);
-        bool end   = match(ref.max);
-        if (begin && end) {
-            return RangeOverlap::FULL_OVERLAP;
+    /**
+     * @brief Get rank
+     * Filter rank is 0 if it's empty.
+     * Filter rank is 1 if only one bound is set (lower or upper).
+     * Filter rank is 2 if both bounds are set.
+     * @return filter rank
+     */
+    int getRank() const {
+        return __builtin_popcount(mask);
+    }
+
+    /**
+     * Return true if the filter is ordered (lowerbound is less than upperbound).
+     * Onesided filter is always ordered.
+     */
+    bool isOrdered() const {
+        if (getRank() == 2) {
+            double hi = mask&(1 << LT) ? thresholds[LT]
+                                       : thresholds[LE];
+            double lo = mask&(1 << GT) ? thresholds[GT]
+                                       : thresholds[GE];
+            return lo < hi;
         }
-        else if (begin || end) {
-            return RangeOverlap::PARTIAL_OVERLAP;
+        return true;
+    }
+
+    RangeOverlap getOverlap(const SubtreeRef& ref) const {
+        if (getRank() < 2) {
+            bool begin = match(ref.min);
+            bool end   = match(ref.max);
+            if (begin && end) {
+                return RangeOverlap::FULL_OVERLAP;
+            }
+            else if (begin || end) {
+                return RangeOverlap::PARTIAL_OVERLAP;
+            } else {
+                return RangeOverlap::NO_OVERLAP;
+            }
         } else {
+            // Rank is two, use range overlap algorithm
+            double hi = mask&(1 << LT) ? thresholds[LT]
+                                       : thresholds[LE];
+            double lo = mask&(1 << GT) ? thresholds[GT]
+                                       : thresholds[GE];
+            double min = std::min(ref.min, lo);
+            double max = std::max(ref.max, hi);
+            double w1  = ref.max - ref.min;
+            double w2  = hi - lo;
+            bool inclusive = (mask&(1 << LE)) && (mask&(1 << GE));
+            bool overlap = inclusive ? max - min <= w1 + w2
+                                     : max - min <  w1 + w2;
+            if (overlap) {
+                // Overlap
+                bool begin = match(ref.min);
+                bool end   = match(ref.max);
+                if (begin && end) {
+                    return RangeOverlap::FULL_OVERLAP;
+                }
+                return RangeOverlap::PARTIAL_OVERLAP;
+            }
             return RangeOverlap::NO_OVERLAP;
         }
     }
@@ -151,7 +203,7 @@ struct ValueFilter {
         return *this;
     }
 
-    // Check invariant
+    //! Check filter invariant
     bool validate() const {
         if (mask == 0) {
             return false;
@@ -162,7 +214,7 @@ struct ValueFilter {
         if ((mask & (1 << GT)) && (mask & (1 << GE))) {
             return false;
         }
-        return true;
+        return isOrdered();
     }
 };
 
