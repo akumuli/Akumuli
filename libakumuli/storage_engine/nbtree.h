@@ -505,6 +505,8 @@ public:
       */
     NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
+    aku_ParamId get_id() const { return id_; }
+
     /** Append new subtree reference to extents list.
       * This operation can't fail and should be used only by NB-tree itself (from node-commit functions).
       * This property is not enforced by the typesystem.

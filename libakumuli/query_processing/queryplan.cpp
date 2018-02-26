@@ -84,23 +84,28 @@ struct FilterProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
     aku_Timestamp begin_;
     aku_Timestamp end_;
-    ValueFilter filter_;
+    std::map<aku_ParamId, ValueFilter> filters_;
     std::vector<aku_ParamId> ids_;
 
     template<class T>
     FilterProcessingStep(aku_Timestamp begin,
                          aku_Timestamp end,
-                         const ValueFilter& flt,
+                         const std::vector<ValueFilter>& flt,
                          T&& t)
         : begin_(begin)
         , end_(end)
-        , filter_(flt)
+        , filters_()
         , ids_(std::forward<T>(t))
     {
+        for (size_t ix = 0; ix < ids_.size(); ix++) {
+            aku_ParamId id = ids_[ix];
+            const ValueFilter& filter = flt[ix];
+            filters_.insert(std::make_pair(id, filter));
+        }
     }
 
     virtual aku_Status apply(const ColumnStore& cstore) {
-        return cstore.filter(ids_, begin_, end_, filter_, &scanlist_);
+        return cstore.filter(ids_, begin_, end_, filters_, &scanlist_);
     }
 
     virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
@@ -511,6 +516,69 @@ struct TwoStepQueryPlan : IQueryPlan {
 
 // ----------- Query plan builder ------------ //
 
+static bool filtering_enabled(const std::vector<Filter>& flt) {
+    bool enabled = false;
+    for (const auto& it: flt) {
+        enabled |= it.enabled;
+    }
+    return enabled;
+}
+
+static std::tuple<aku_Status, std::vector<ValueFilter>> convert_filters(const std::vector<Filter>& fltlist) {
+    std::vector<ValueFilter> result;
+    for (const auto& filter: fltlist) {
+        ValueFilter flt;
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
+        }
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        result.push_back(flt);
+    }
+    return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+}
+
+/**
+ * @brief Layout filters to match columns/ids of the query
+ * @param req is a reshape request
+ * @return vector of filters and status
+ */
+static std::tuple<aku_Status, std::vector<ValueFilter>> layout_filters(const ReshapeRequest& req) {
+    std::vector<ValueFilter> result;
+
+    aku_Status s;
+    std::vector<ValueFilter> flt;
+    std::tie(s, flt) = convert_filters(req.select.filters);
+    if (s != AKU_SUCCESS) {
+        // Bad filter in query
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    if (flt.empty()) {
+        // Bad filter in query
+        Logger::msg(AKU_LOG_ERROR, "Reshape request without filter supplied");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    // We should duplicate the filters to match the layout of queried data
+    for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
+        const auto& rowfilter = flt.at(ixcol);
+        for (size_t ixrow = 0; ixrow < req.select.columns.at(ixcol).ids.size(); ixrow++) {
+            result.push_back(rowfilter);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
 static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for scan query
     // Tier1
@@ -531,34 +599,12 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
-    if (req.select.filters.empty() == false && req.select.filters.at(0).enabled) {
-        // TODO: remove
-        {
-            std::stringstream fmt;
-            fmt << "Request object filter:" << std::endl
-                << "Enabled: " << req.select.filters.at(0).enabled << std::endl
-                << "GT: " << req.select.filters.at(0).gt << std::endl
-                << "GE: " << req.select.filters.at(0).ge << std::endl
-                << "LT: " << req.select.filters.at(0).lt << std::endl
-                << "LE: " << req.select.filters.at(0).le << std::endl;
-
-            Logger::msg(AKU_LOG_INFO, fmt.str());
-        }
+    if (filtering_enabled(req.select.filters)) {
         // Scan query can only have one filter
-        const Filter& filter = req.select.filters.at(0);
-        ValueFilter flt;
-        if (filter.flags&Filter::GT) {
-            flt.greater_than(filter.gt);
-        } else if (filter.flags&Filter::GE) {
-            flt.greater_or_equal(filter.ge);
-        }
-        if (filter.flags&Filter::LT) {
-            flt.less_than(filter.lt);
-        } else if (filter.flags&Filter::LE) {
-            flt.less_or_equal(filter.le);
-        }
-        if (!flt.validate()) {
-            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+        aku_Status s;
+        std::vector<ValueFilter> flt;
+        std::tie(s, flt) = layout_filters(req);
+        if (s != AKU_SUCCESS) {
             return std::make_tuple(AKU_EBAD_ARG, std::move(result));
         }
         t1stage.reset(new FilterProcessingStep(req.select.begin,
@@ -657,7 +703,21 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(Resha
             t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
         }
     }
-    t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
+    if (filtering_enabled(req.select.filters)) {
+        // Join query should have many filters (filter per metric)
+        aku_Status s;
+        std::vector<ValueFilter> flt;
+        std::tie(s, flt) = layout_filters(req);
+        if (s != AKU_SUCCESS) {
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        t1stage.reset(new FilterProcessingStep(req.select.begin,
+                                               req.select.end,
+                                               flt,
+                                               req.select.columns.at(0).ids));
+    } else {
+        t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
+    }
 
     std::unique_ptr<MaterializationStep> t2stage;
 

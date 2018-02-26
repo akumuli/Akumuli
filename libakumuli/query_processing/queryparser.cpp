@@ -1388,6 +1388,11 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     result.select.begin = ts_begin;
     result.select.end = ts_end;
 
+    std::tie(status, result.select.filters) = parse_filter(ptree, metrics);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
     size_t ncolumns = metrics.size();
     size_t nentries = ids.size() / ncolumns;
     if (ids.size() % ncolumns != 0) {
