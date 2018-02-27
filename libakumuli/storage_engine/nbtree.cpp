@@ -683,9 +683,9 @@ struct EmptyIterator : RealValuedOperator {
     }
 
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
-        return std::make_tuple(AKU_SUCCESS, 0);
-
+        return std::make_tuple(AKU_ENO_DATA, 0);
     }
+
     virtual Direction get_direction() {
         if (begin_ < end_) {
             return Direction::FORWARD;
@@ -738,30 +738,18 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
         switch (filter_.getOverlap(*blockref)) {
         case RangeOverlap::FULL_OVERLAP: {
             // Return normal leaf iterator because it's faster
-            {
-                // TODO: remove
-                Logger::msg(AKU_LOG_INFO, "Full overlap");
-            }
             NBTreeLeaf leaf(block);
             result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
             break;
         }
         case RangeOverlap::PARTIAL_OVERLAP: {
             // Return filtering leaf operator
-            {
-                // TODO: remove
-                Logger::msg(AKU_LOG_INFO, "Partial overlap");
-            }
             NBTreeLeaf leaf(block);
             result.reset(new NBTreeLeafFilter(begin_, end_, filter_, leaf));
             break;
         }
         case RangeOverlap::NO_OVERLAP: {
             // There is no data that can pass the filter so just return an empty iterator
-            {
-                // TODO: remove
-                Logger::msg(AKU_LOG_INFO, "No overlap");
-            }
             result.reset(new EmptyIterator(begin_, end_));
             break;
         }
@@ -2729,7 +2717,7 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
     std::vector<SubtreeRef> refs;
     aku_Status status = curr_->read_all(&refs);
     if (status != AKU_SUCCESS) {
-        // TODO: error message
+        Logger::msg(AKU_LOG_ERROR, std::string("Can't read data ") + StatusUtil::str(status));
         return;
     }
 
