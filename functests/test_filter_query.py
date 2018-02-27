@@ -115,6 +115,33 @@ def test_filter_query_backward_by_time(column, dtstart, delta, thresholds, N):
 
     run_query(column, begin, end, thresholds, N, **q)
 
+att.api_test("Test filter query no results")
+def test_filter_query_empty(column, dtstart, delta, N):
+    """Read data in forward direction"""
+
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+
+    query_params = {
+        "output" : { "format":  "csv" }
+    }
+
+    query = make_query(column, 
+                       begin, 
+                       end, 
+                       -2000, 
+                       -1000, 
+                       **query_params)
+
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+
+    body = json.dumps(query)
+    response = urlopen(queryurl, json.dumps(query))
+
+    for line in response:
+        raise ValueError("Unexpected value " + line)
+
+
 def main(path):
     akumulid = att.create_akumulid(path)
 
@@ -152,6 +179,7 @@ def main(path):
         test_filter_query_backward('col1', dt, delta, [-20, 20], nmsgs)
         test_filter_query_forward_by_time('col1', dt, delta, [-20, 20], nmsgs)
         test_filter_query_backward_by_time('col1', dt, delta, [-20, 20], nmsgs)
+        test_filter_query_empty('col1', dt, delta, nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)

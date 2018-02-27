@@ -544,7 +544,7 @@ static std::tuple<aku_Status, std::vector<ValueFilter>> convert_filters(const st
         }
         result.push_back(flt);
     }
-    return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
 /**
