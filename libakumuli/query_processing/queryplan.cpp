@@ -570,9 +570,9 @@ static std::tuple<aku_Status, std::vector<ValueFilter>> layout_filters(const Res
     }
 
     // We should duplicate the filters to match the layout of queried data
-    for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
-        const auto& rowfilter = flt.at(ixcol);
-        for (size_t ixrow = 0; ixrow < req.select.columns.at(ixcol).ids.size(); ixrow++) {
+    for (size_t ixrow = 0; ixrow < req.select.columns.at(0).ids.size(); ixrow++) {
+        for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
+            const auto& rowfilter = flt.at(ixcol);
             result.push_back(rowfilter);
         }
     }
@@ -714,7 +714,7 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(Resha
         t1stage.reset(new FilterProcessingStep(req.select.begin,
                                                req.select.end,
                                                flt,
-                                               req.select.columns.at(0).ids));
+                                               std::move(t1ids)));
     } else {
         t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
     }
