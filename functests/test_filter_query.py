@@ -141,21 +141,14 @@ def test_filter_query_empty(column, dtstart, delta, N):
     for line in response:
         raise ValueError("Unexpected value " + line)
 
-att.api_test("Test join query forward")
-def test_join_query_forward(columns, thresholds, dtstart, delta, N):
-    """Read data in forward direction"""
-    begin = dtstart
-    end = dtstart + delta*(N + 1)
-
+def run_join_query(columns, thresholds, begin, end, **query_params):
     flt = {}
     for ix, column in enumerate(columns):
         flt[column] = dict(gt=thresholds[ix][0],
                                      lt=thresholds[ix][1])
 
-    query_params = {
-        "output": { "format":  "csv" },
-        "filter": flt,
-    }
+    query_params["output"] = { "format":  "csv" }
+    query_params["filter"] = flt
 
     query = att.make_join_query(columns, begin, end, **query_params)
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
@@ -193,6 +186,36 @@ def test_join_query_forward(columns, thresholds, dtstart, delta, N):
     # Check that we received all values
     if iterations == 0:
         raise ValueError("No data returned")
+
+att.api_test("Test join query forward")
+def test_join_query_forward(columns, thresholds, dtstart, delta, N):
+    """Read data in forward direction"""
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    run_join_query(columns, thresholds, begin, end)
+
+att.api_test("Test join query backward")
+def test_join_query_backward(columns, thresholds, dtstart, delta, N):
+    """Read data in backward direction"""
+    end = dtstart
+    begin = dtstart + delta*(N + 1)
+    run_join_query(columns, thresholds, begin, end)
+
+att.api_test("Test join query forward, order by time")
+def test_join_query_forward_by_time(columns, thresholds, dtstart, delta, N):
+    """Read data in forward direction"""
+    begin = dtstart
+    end = dtstart + delta*(N + 1)
+    q = { "order-by": "time" }
+    run_join_query(columns, thresholds, begin, end, **q)
+
+att.api_test("Test join query backward, order by time")
+def test_join_query_backward_by_time(columns, thresholds, dtstart, delta, N):
+    """Read data in backward direction"""
+    end = dtstart
+    begin = dtstart + delta*(N + 1)
+    q = { "order-by": "time" }
+    run_join_query(columns, thresholds, begin, end, **q)
 
 def main(path):
     akumulid = att.create_akumulid(path)
@@ -235,6 +258,15 @@ def main(path):
         test_join_query_forward(['col1', 'col2'], 
                                 [[-20, 20], [40, 60]],
                                 dt, delta, nmsgs)
+        test_join_query_backward(['col1', 'col2'], 
+                                [[-20, 20], [40, 60]],
+                                dt, delta, nmsgs)
+        test_join_query_forward_by_time(['col1', 'col2'], 
+                                        [[-20, 20], [40, 60]],
+                                        dt, delta, nmsgs)
+        test_join_query_backward_by_time(['col1', 'col2'], 
+                                        [[-20, 20], [40, 60]],
+                                        dt, delta, nmsgs)
     except:
         traceback.print_exc()
         sys.exit(1)
