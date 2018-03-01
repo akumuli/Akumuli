@@ -1384,6 +1384,13 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggr
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
+// ///////////////////// //
+// NBTreeLeafGroupFilter //
+// ///////////////////// //
+
+class NBTreeLeafGroupFilter : public NBTreeSBlockIteratorBase<AggregationResult> {
+    ValueFilter filter_;
+};
 
 // //////////////////////////// //
 // NBTreeSBlockCandlesticksIter //
@@ -3650,6 +3657,13 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timest
     return concat;
 }
 
+std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate_filter(aku_Timestamp begin,
+                                                                             aku_Timestamp end,
+                                                                             aku_Timestamp step,
+                                                                             const AggregateFilter &filter) const
+{
+    throw "not implemented";
+}
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
     SharedLock lock(lock_);
