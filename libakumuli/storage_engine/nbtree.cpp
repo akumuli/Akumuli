@@ -309,6 +309,146 @@ RealValuedOperator::Direction NBTreeLeafIterator::get_direction() {
 }
 
 
+// ////////////////////// //
+// class NBTreeLeafFilter //
+// ////////////////////// //
+
+/** Filtering operator for the leaf node.
+  * Returns all data-points that match the ValueFilter
+  */
+struct NBTreeLeafFilter : RealValuedOperator {
+
+    //! Starting timestamp
+    aku_Timestamp              begin_;
+    //! Final timestamp
+    aku_Timestamp              end_;
+    //! Timestamps
+    std::vector<aku_Timestamp> tsbuf_;
+    //! Values
+    std::vector<double>        xsbuf_;
+    //! Status of the iterator initialization process
+    aku_Status                 status_;
+    //! ValueFilter
+    ValueFilter                filter_;
+    //! Read cursor position
+    size_t                     pos_;
+
+    NBTreeLeafFilter(aku_Status status)
+        : begin_()
+        , end_()
+        , status_(status)
+        , pos_()
+    {
+    }
+
+    NBTreeLeafFilter(aku_Timestamp begin,
+                     aku_Timestamp end,
+                     const ValueFilter& filter,
+                     const NBTreeLeaf& node,
+                     bool delay_init=false)
+        : begin_(begin)
+        , end_(end)
+        , status_(AKU_ENO_DATA)
+        , filter_(filter)
+        , pos_()
+    {
+        if (!delay_init) {
+            init(node);
+        }
+    }
+
+    void init(NBTreeLeaf const& node) {
+        aku_Timestamp min = std::min(begin_, end_);
+        aku_Timestamp max = std::max(begin_, end_);
+        aku_Timestamp nb, ne;
+        std::tie(nb, ne) = node.get_timestamps();
+        if (max < nb || ne < min) {
+            status_ = AKU_ENO_DATA;
+            return;
+        }
+        std::vector<aku_Timestamp> tss;
+        std::vector<double>        xss;
+        status_ = node.read_all(&tss, &xss);
+        ssize_t from = 0, to = 0;
+        if (status_ == AKU_SUCCESS) {
+            if (begin_ < end_) {
+                // FWD direction
+                auto it_begin = std::lower_bound(tss.begin(), tss.end(), begin_);
+                if (it_begin != tss.end()) {
+                    from = std::distance(tss.begin(), it_begin);
+                } else {
+                    from = 0;
+                    assert(tss.front() > begin_);
+                }
+
+                auto it_end = std::lower_bound(tss.begin(), tss.end(), end_);
+                to = std::distance(tss.begin(), it_end);
+
+                for (ssize_t ix = from; ix < to; ix++){
+                    if (filter_.match(xss[ix])) {
+                        tsbuf_.push_back(tss[ix]);
+                        xsbuf_.push_back(xss[ix]);
+                    }
+                }
+            } else {
+                // BWD direction
+                auto it_begin = std::lower_bound(tss.begin(), tss.end(), begin_);
+                if (it_begin != tss.end()) {
+                    from = std::distance(tss.begin(), it_begin);
+                }
+                else {
+                    from = tss.size() - 1;
+                }
+
+                auto it_end = std::upper_bound(tss.begin(), tss.end(), end_);
+                to = std::distance(tss.begin(), it_end);
+
+                for (ssize_t ix = from; ix >= to; ix--){
+                    if (filter_.match(xss[ix])) {
+                        tsbuf_.push_back(tss[ix]);
+                        xsbuf_.push_back(xss[ix]);
+                    }
+                }
+            }
+        }
+    }
+
+    size_t get_size() const {
+        return static_cast<size_t>(tsbuf_.size());
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size);
+    virtual Direction get_direction();
+};
+
+
+std::tuple<aku_Status, size_t> NBTreeLeafFilter::read(aku_Timestamp *destts, double *destval, size_t size) {
+    ssize_t sz = static_cast<ssize_t>(size);
+    if (status_ != AKU_SUCCESS) {
+        return std::make_tuple(status_, 0);
+    }
+    ssize_t toread = tsbuf_.size() - pos_;
+    if (toread > sz) {
+        toread = sz;
+    }
+    if (toread == 0) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    auto begin = pos_;
+    ssize_t end = pos_ + toread;
+    std::copy(tsbuf_.begin() + begin, tsbuf_.begin() + end, destts);
+    std::copy(xsbuf_.begin() + begin, xsbuf_.begin() + end, destval);
+    pos_ += toread;
+    return std::make_tuple(AKU_SUCCESS, toread);
+}
+
+RealValuedOperator::Direction NBTreeLeafFilter::get_direction() {
+    if (begin_ < end_) {
+        return Direction::FORWARD;
+    }
+    return Direction::BACKWARD;
+}
+
 
 // ///////////////////////// //
 //    Superblock Iterator    //
@@ -466,6 +606,10 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
 };
 
 
+// ////////////////////////// //
+// class NBTreeSBlockIterator //
+// ////////////////////////// //
+
 struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
 
     NBTreeSBlockIterator(std::shared_ptr<BlockStore> bstore, LogicAddr addr, aku_Timestamp begin, aku_Timestamp end)
@@ -500,6 +644,137 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
     virtual std::tuple<aku_Status, TIter> make_superblock_iterator(const SubtreeRef &ref) {
         TIter result;
         result.reset(new NBTreeSBlockIterator(bstore_, ref.addr, begin_, end_));
+        return std::make_tuple(AKU_SUCCESS, std::move(result));
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
+        if (!fsm_pos_ ) {
+            aku_Status status = AKU_SUCCESS;
+            status = init();
+            if (status != AKU_SUCCESS) {
+                return std::make_pair(status, 0ul);
+            }
+            fsm_pos_++;
+        }
+        return iter(destts, destval, size);
+    }
+};
+
+
+// /////////////////// //
+// class EmptyIterator //
+// /////////////////// //
+
+struct EmptyIterator : RealValuedOperator {
+
+    //! Starting timestamp
+    aku_Timestamp              begin_;
+    //! Final timestamp
+    aku_Timestamp              end_;
+
+    EmptyIterator(aku_Timestamp begin, aku_Timestamp end)
+        : begin_(begin)
+        , end_(end)
+    {
+    }
+
+    size_t get_size() const {
+        return 0;
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+
+    virtual Direction get_direction() {
+        if (begin_ < end_) {
+            return Direction::FORWARD;
+        }
+        return Direction::BACKWARD;
+    }
+};
+
+// //////////////////////// //
+// class NBTreeSBlockFilter //
+// //////////////////////// //
+
+
+struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
+
+    ValueFilter filter_;
+
+    NBTreeSBlockFilter(std::shared_ptr<BlockStore> bstore,
+                       LogicAddr addr,
+                       aku_Timestamp begin,
+                       aku_Timestamp end,
+                       const ValueFilter& filter)
+        : NBTreeSBlockIteratorBase<double>(bstore, addr, begin, end)
+        , filter_(filter)
+    {
+    }
+
+    NBTreeSBlockFilter(std::shared_ptr<BlockStore> bstore,
+                       NBTreeSuperblock const& sblock,
+                       aku_Timestamp begin,
+                       aku_Timestamp end,
+                       const ValueFilter& filter)
+        : NBTreeSBlockIteratorBase<double>(bstore, sblock, begin, end)
+        , filter_(filter)
+    {
+    }
+
+    //! Create leaf iterator (used by `get_next_iter` template method).
+    virtual std::tuple<aku_Status, TIter> make_leaf_iterator(const SubtreeRef &ref) {
+        assert(ref.type == NBTreeBlockType::LEAF);
+        aku_Status status;
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = read_and_check(bstore_, ref.addr);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, std::unique_ptr<RealValuedOperator>());
+        }
+        auto blockref = subtree_cast(block->get_cdata());
+        assert(blockref->type == ref.type);
+        std::unique_ptr<RealValuedOperator> result;
+        switch (filter_.getOverlap(*blockref)) {
+        case RangeOverlap::FULL_OVERLAP: {
+            // Return normal leaf iterator because it's faster
+            NBTreeLeaf leaf(block);
+            result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
+            break;
+        }
+        case RangeOverlap::PARTIAL_OVERLAP: {
+            // Return filtering leaf operator
+            NBTreeLeaf leaf(block);
+            result.reset(new NBTreeLeafFilter(begin_, end_, filter_, leaf));
+            break;
+        }
+        case RangeOverlap::NO_OVERLAP: {
+            // There is no data that can pass the filter so just return an empty iterator
+            result.reset(new EmptyIterator(begin_, end_));
+            break;
+        }
+        };
+        return std::make_tuple(AKU_SUCCESS, std::move(result));
+    }
+
+    //! Create superblock iterator (used by `get_next_iter` template method).
+    virtual std::tuple<aku_Status, TIter> make_superblock_iterator(const SubtreeRef &ref) {
+        auto overlap = filter_.getOverlap(ref);
+        TIter result;
+        switch(overlap) {
+        case RangeOverlap::FULL_OVERLAP:
+            // Return normal superblock iterator
+            result.reset(new NBTreeSBlockIterator(bstore_, ref.addr, begin_, end_));
+            break;
+        case RangeOverlap::PARTIAL_OVERLAP:
+            // Return filter
+            result.reset(new NBTreeSBlockFilter(bstore_, ref.addr, begin_, end_, filter_));
+            break;
+        case RangeOverlap::NO_OVERLAP:
+            // Return dummy
+            result.reset(new EmptyIterator(begin_, end_));
+            break;
+        }
         return std::make_tuple(AKU_SUCCESS, std::move(result));
     }
 
@@ -1399,6 +1674,15 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::range(aku_Timestamp begin, aku_T
     return std::move(it);
 }
 
+std::unique_ptr<RealValuedOperator> NBTreeLeaf::filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const
+{
+    std::unique_ptr<RealValuedOperator> it;
+    it.reset(new NBTreeLeafFilter(begin, end, filter, *this));
+    return std::move(it);
+}
+
 std::unique_ptr<AggregateOperator> NBTreeLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
     std::unique_ptr<AggregateOperator> it;
     it.reset(new NBTreeLeafAggregator(begin, end, *this));
@@ -1768,6 +2052,16 @@ std::unique_ptr<RealValuedOperator> NBTreeSuperblock::search(aku_Timestamp begin
     return std::move(result);
 }
 
+std::unique_ptr<RealValuedOperator> NBTreeSuperblock::filter(aku_Timestamp begin,
+                                                             aku_Timestamp end,
+                                                             const ValueFilter& filter,
+                                                             std::shared_ptr<BlockStore> bstore) const
+{
+    std::unique_ptr<RealValuedOperator> result;
+    result.reset(new NBTreeSBlockFilter(bstore, *this, begin, end, filter));
+    return std::move(result);
+}
+
 std::unique_ptr<AggregateOperator> NBTreeSuperblock::aggregate(aku_Timestamp begin,
                                                             aku_Timestamp end,
                                                             std::shared_ptr<BlockStore> bstore) const
@@ -2051,6 +2345,9 @@ struct NBTreeLeafExtent : NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const;
     virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
     virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
@@ -2231,6 +2528,13 @@ std::unique_ptr<RealValuedOperator> NBTreeLeafExtent::search(aku_Timestamp begin
     return std::move(leaf_->range(begin, end));
 }
 
+std::unique_ptr<RealValuedOperator> NBTreeLeafExtent::filter(aku_Timestamp begin,
+                                                             aku_Timestamp end,
+                                                             const ValueFilter& filter) const
+{
+    return std::move(leaf_->filter(begin, end, filter));
+}
+
 std::unique_ptr<AggregateOperator> NBTreeLeafExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
     return std::move(leaf_->aggregate(begin, end));
 }
@@ -2394,6 +2698,9 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const;
     virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
     virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
     virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
@@ -2410,7 +2717,7 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
     std::vector<SubtreeRef> refs;
     aku_Status status = curr_->read_all(&refs);
     if (status != AKU_SUCCESS) {
-        // TODO: error message
+        Logger::msg(AKU_LOG_ERROR, std::string("Can't read data ") + StatusUtil::str(status));
         return;
     }
 
@@ -2569,6 +2876,13 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
 
 std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
     return curr_->search(begin, end, bstore_);
+}
+
+std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::filter(aku_Timestamp begin,
+                                                               aku_Timestamp end,
+                                                               const ValueFilter& filter) const
+{
+    return curr_->filter(begin, end, filter, bstore_);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
@@ -3256,6 +3570,32 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begi
     } else {
         for (auto const& root: extents_) {
             iterators.push_back(root->search(begin, end));
+        }
+    }
+    if (iterators.size() == 1) {
+        return std::move(iterators.front());
+    }
+    std::unique_ptr<RealValuedOperator> concat;
+    concat.reset(new ChainOperator(std::move(iterators)));
+    return concat;
+}
+
+std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begin,
+                                                              aku_Timestamp end,
+                                                              const ValueFilter& filter) const
+{
+    SharedLock lock(lock_);
+    if (!initialized_) {
+        AKU_PANIC("NB+tree not imitialized");
+    }
+    std::vector<std::unique_ptr<RealValuedOperator>> iterators;
+    if (begin < end) {
+        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+            iterators.push_back((*it)->filter(begin, end, filter));
+        }
+    } else {
+        for (auto const& root: extents_) {
+            iterators.push_back(root->filter(begin, end, filter));
         }
     }
     if (iterators.size() == 1) {

@@ -195,6 +195,17 @@ public:
     //! Return iterator that outputs all values in time range that is stored in this leaf.
     std::unique_ptr<RealValuedOperator> range(aku_Timestamp begin, aku_Timestamp end) const;
 
+    /**
+     * @brief Return filtering operator
+     * @param begin is a beginning of the search range (inclusive)
+     * @param end is an end of the search range (exclusive)
+     * @param filter is a value filter
+     * @return pointer to operator (it can be invalid due to I/O error)
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter) const;
+
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
@@ -305,6 +316,10 @@ public:
 
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter, std::shared_ptr<BlockStore> bstore) const;
+
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
                                                 std::shared_ptr<BlockStore> bstore) const;
@@ -383,6 +398,17 @@ struct NBTreeExtent {
 
     //! Return iterator
     virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
+
+    /**
+     * @brief Return filtering operator
+     * @param begin is a beginning of the search range (inclusive)
+     * @param end is an end of the search range (exclusive)
+     * @param filter is a initialized value filter
+     * @return filtering operator
+     */
+    virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const = 0;
 
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
@@ -479,6 +505,8 @@ public:
       */
     NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
 
+    aku_ParamId get_id() const { return id_; }
+
     /** Append new subtree reference to extents list.
       * This operation can't fail and should be used only by NB-tree itself (from node-commit functions).
       * This property is not enforced by the typesystem.
@@ -499,6 +527,14 @@ public:
      * @return
      */
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+
+    /**
+     * @brief search function
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin, aku_Timestamp end, const ValueFilter& filter) const;
 
     /**
      * @brief aggregate all values in search interval

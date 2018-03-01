@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.39
+--------------
+
+IMPROVEMENT
+
+* Add filter query
+
 Version 0.7.38
 --------------
 
