@@ -153,15 +153,15 @@ struct ValueFilter {
      * Filter rank is 2 if both bounds are set.
      * @return filter rank
      */
-    int getRank() const;
+    int get_rank() const;
 
     /**
      * Return true if the filter is ordered (lowerbound is less than upperbound).
      * Onesided filter is always ordered.
      */
-    bool isOrdered() const;
+    bool is_ordered() const;
 
-    RangeOverlap getOverlap(const SubtreeRef& ref) const;
+    RangeOverlap get_overlap(const SubtreeRef& ref) const;
 
     ValueFilter& less_than(double value);
 
@@ -208,7 +208,7 @@ struct AggregateFilter {
      * @param filter is a filter that shuld be used for such aggregate
      * @return true if set, false otherwise
      */
-    bool setFilter(u32 op, const ValueFilter& filter);
+    bool set_filter(u32 op, const ValueFilter& filter);
 
     bool match(const AggregationResult& res, Mode mode) const;
 };

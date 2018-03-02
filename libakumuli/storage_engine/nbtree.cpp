@@ -735,7 +735,7 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
         auto blockref = subtree_cast(block->get_cdata());
         assert(blockref->type == ref.type);
         std::unique_ptr<RealValuedOperator> result;
-        switch (filter_.getOverlap(*blockref)) {
+        switch (filter_.get_overlap(*blockref)) {
         case RangeOverlap::FULL_OVERLAP: {
             // Return normal leaf iterator because it's faster
             NBTreeLeaf leaf(block);
@@ -759,7 +759,7 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
 
     //! Create superblock iterator (used by `get_next_iter` template method).
     virtual std::tuple<aku_Status, TIter> make_superblock_iterator(const SubtreeRef &ref) {
-        auto overlap = filter_.getOverlap(ref);
+        auto overlap = filter_.get_overlap(ref);
         TIter result;
         switch(overlap) {
         case RangeOverlap::FULL_OVERLAP:

@@ -122,12 +122,12 @@ bool ValueFilter::match(double value) const {
     return result;
 }
 
-int ValueFilter::getRank() const {
+int ValueFilter::get_rank() const {
     return __builtin_popcount(mask);
 }
 
-bool ValueFilter::isOrdered() const {
-    if (getRank() == 2) {
+bool ValueFilter::is_ordered() const {
+    if (get_rank() == 2) {
         double hi = mask&(1 << LT) ? thresholds[LT]
                                    : thresholds[LE];
         double lo = mask&(1 << GT) ? thresholds[GT]
@@ -137,8 +137,8 @@ bool ValueFilter::isOrdered() const {
     return true;
 }
 
-RangeOverlap ValueFilter::getOverlap(const SubtreeRef& ref) const {
-    if (getRank() < 2) {
+RangeOverlap ValueFilter::get_overlap(const SubtreeRef& ref) const {
+    if (get_rank() < 2) {
         bool begin = match(ref.min);
         bool end   = match(ref.max);
         if (begin && end) {
@@ -209,7 +209,7 @@ bool ValueFilter::validate() const {
     if ((mask & (1 << GT)) && (mask & (1 << GE))) {
         return false;
     }
-    return isOrdered();
+    return is_ordered();
 }
 
 // --------------- //
@@ -221,7 +221,7 @@ AggregateFilter::AggregateFilter()
 {
 }
 
-bool AggregateFilter::setFilter(u32 op, const ValueFilter& filter) {
+bool AggregateFilter::set_filter(u32 op, const ValueFilter& filter) {
     if (op < N) {
         filters[op] = filter;
         bitmap |= (1 << op);

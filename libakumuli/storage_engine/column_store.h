@@ -155,7 +155,7 @@ public:
                     return std::make_tuple(AKU_SUCCESS, elist.search(begin, end));
                 }
             }
-            Logger::msg(AKU_LOG_ERROR, std::string("Can't find logger for id ") + std::to_string(elist.get_id()));
+            Logger::msg(AKU_LOG_ERROR, std::string("Can't find filter for id ") + std::to_string(elist.get_id()));
             return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<RealValuedOperator>());
         });
     }
@@ -178,6 +178,27 @@ public:
     {
         return iterate(ids, dest, [begin, end, step](const NBTreeExtentsList& elist) {
             return std::make_tuple(AKU_SUCCESS, elist.group_aggregate(begin, end, step));
+        });
+    }
+
+    aku_Status group_aggfilter(std::vector<aku_ParamId> const& ids,
+                               aku_Timestamp begin,
+                               aku_Timestamp end,
+                               aku_Timestamp step,
+                               const std::map<aku_ParamId, AggregateFilter>& filters,
+                               std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, step, filters, ids](const NBTreeExtentsList& elist) {
+            auto flt = filters.find(elist.get_id());
+            if (flt != filters.end()) {
+                if (flt->second.bitmap != 0) {
+                    return std::make_tuple(AKU_SUCCESS, elist.group_aggregate_filter(begin, end, step, flt->second));
+                } else {
+                    return std::make_tuple(AKU_SUCCESS, elist.group_aggregate(begin, end, step));
+                }
+            }
+            Logger::msg(AKU_LOG_ERROR, std::string("Can't find filter for id ") + std::to_string(elist.get_id()));
+            return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<AggregateOperator>());
         });
     }
 };
