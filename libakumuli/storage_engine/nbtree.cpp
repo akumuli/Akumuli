@@ -1388,8 +1388,46 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggr
 // NBTreeLeafGroupFilter //
 // ///////////////////// //
 
-class NBTreeLeafGroupFilter : public NBTreeSBlockIteratorBase<AggregationResult> {
-    ValueFilter filter_;
+class NBTreeGroupAggregateFilter : public AggregateOperator {
+    AggregateFilter filter_;
+    std::unique_ptr<AggregateOperator> iter_;
+public:
+    NBTreeGroupAggregateFilter(const AggregateFilter& filter, std::unique_ptr<AggregateOperator>&& iter)
+        : filter_(filter)
+        , iter_(std::move(iter))
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+        // copy data to the buffer
+        size_t i = 0;
+        while (i < size) {
+            AggregationResult agg;
+            aku_Timestamp ts;
+            size_t outsz;
+            aku_Status status;
+            std::tie(status, outsz) = iter_->read(&ts, &agg, 1);
+            if (status == AKU_SUCCESS || status == AKU_ENO_DATA) {
+                if (filter_.match(agg, AggregateFilter::Mode::ANY)) {
+                    destts[i] = ts;
+                    destval[i] = agg;
+                    i++;
+                }
+                if (status == AKU_ENO_DATA) {
+                    // Stop iteration
+                    break;
+                }
+            } else {
+                // Error
+                return std::make_tuple(status, 0);
+            }
+        }
+        return std::make_tuple(AKU_SUCCESS, i);
+    }
+
+    virtual Direction get_direction() {
+        return iter_->get_direction();
+    }
 };
 
 // //////////////////////////// //
@@ -3662,7 +3700,10 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate_filter(aku
                                                                              aku_Timestamp step,
                                                                              const AggregateFilter &filter) const
 {
-    throw "not implemented";
+    auto iter = group_aggregate(begin, end, step);
+    std::unique_ptr<AggregateOperator> result;
+    result.reset(new NBTreeGroupAggregateFilter(filter, std::move(iter)));
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
