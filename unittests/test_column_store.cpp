@@ -1041,3 +1041,117 @@ BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_1) {
 BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_2) {
     test_column_store_filter_query(1000, 100000);
 }
+
+void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    for (auto id: col) {
+        fill_data2(cstore, session, id, begin, end);
+    }
+
+    auto test_series_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MIN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &mock, req);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+
+        u32 ix = 0;
+        for (size_t ixcol = 0; ixcol < col.size(); ixcol++) {
+            auto id = col.at(ixcol);
+            for (size_t ixtime = 1; ixtime < model_timestamps.size(); ixtime += 2) {
+                auto ts = model_timestamps.at(ixtime);
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double xs = mock.columns[0][ix];
+                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
+                BOOST_REQUIRE(xs >= 0.0);
+                ix++;
+            }
+        }
+        BOOST_REQUIRE(ix != 0);
+    };
+
+    auto test_time_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MIN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::TIME;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &mock, req);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        u32 ix = 0;
+        for (size_t ixtime = 1; ixtime < model_timestamps.size(); ixtime += 2) {
+            auto ts = model_timestamps.at(ixtime);
+            for (size_t ixcol = 0; ixcol < col.size(); ixcol++) {
+                auto id = col.at(ixcol);
+                BOOST_REQUIRE(mock.paramids.at(ix) == id);
+                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
+                double expected = ts*0.1;
+                double xs = mock.columns[0][ix];
+                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
+                BOOST_REQUIRE(xs >= 0.0);
+                ix++;
+            }
+        }
+        BOOST_REQUIRE(ix != 0);
+    };
+    test_series_order(10);
+    test_series_order(100);
+    test_time_order(10);
+    test_time_order(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_1) {
+    test_group_aggregate_filter(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_2) {
+    test_group_aggregate_filter(1000, 11000);
+}
