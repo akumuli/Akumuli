@@ -672,6 +672,7 @@ static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_
     return std::make_tuple(status, result);
 }
 
+
 // ///////////////// //
 // QueryParser class //
 // ///////////////// //
@@ -1274,6 +1275,24 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
     // Read timestamps
     aku_Timestamp ts_begin, ts_end;
     std::tie(status, ts_begin, ts_end) = parse_range_timestamp(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result);
+    }
+
+    // Parse filter query
+    std::vector<std::string> funcnames;
+    for (auto fn: gagg.func) {
+        auto fnname = Aggregation::to_string(fn);
+        funcnames.push_back(fnname);
+    }
+    std::tie(status, result.select.filters) = parse_filter(ptree, funcnames);
+    // Functions are used instead of metrics because group-aggregate query can produce
+    // more than one output, for instance:
+    // `"group-aggregate": { "metric": "foo", "step": "1s", "func": ["min", "max"] }` query
+    // will produce tuples with two components - min and max. User may want to filter by
+    // first component or by the second. In this case the filter statement may look like this:
+    // `"filter": { "max": { "gt": 100 } }` or `"filter": { "min": { "gt": 100 } }` or
+    // combination of both.
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
