@@ -1413,7 +1413,7 @@ public:
                     destval[i] = agg;
                     i++;
                 }
-                if (status == AKU_ENO_DATA) {
+                if (status == AKU_ENO_DATA || outsz == 0) {
                     // Stop iteration
                     break;
                 }

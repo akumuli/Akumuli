@@ -1066,7 +1066,7 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MIN };
+        req.agg.func = { AggregationFunction::MEAN };
         req.group_by.enabled = false;
         req.order_by = OrderBy::SERIES;
         req.select.begin = begin;
@@ -1082,22 +1082,22 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        BOOST_REQUIRE(mock.paramids.size() != 0);
 
-        u32 ix = 0;
-        for (size_t ixcol = 0; ixcol < col.size(); ixcol++) {
-            auto id = col.at(ixcol);
-            for (size_t ixtime = 1; ixtime < model_timestamps.size(); ixtime += 2) {
-                auto ts = model_timestamps.at(ixtime);
-                BOOST_REQUIRE(mock.paramids.at(ix) == id);
-                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
-                double expected = ts*0.1;
-                double xs = mock.columns[0][ix];
-                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
-                BOOST_REQUIRE(xs >= 0.0);
-                ix++;
+        size_t idix = 0;
+        aku_Timestamp prevts = begin;
+        for (size_t ix = 0; ix < mock.paramids.size(); ix++) {
+            auto id = mock.paramids.at(ix);
+            auto ts = mock.timestamps.at(ix);
+            auto xs = mock.columns[0].at(ix);
+            if (id != col.at(idix)) {
+                idix++;
+                prevts = begin;
             }
+            BOOST_REQUIRE_EQUAL(id, col.at(idix));
+            BOOST_REQUIRE(ts >= prevts);
+            BOOST_REQUIRE(xs >= 0.0);
         }
-        BOOST_REQUIRE(ix != 0);
     };
 
     auto test_time_order = [&](size_t step)
@@ -1110,7 +1110,7 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MIN };
+        req.agg.func = { AggregationFunction::MEAN };
         req.group_by.enabled = false;
         req.order_by = OrderBy::TIME;
         req.select.begin = begin;
@@ -1126,21 +1126,15 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         execute(cstore, &mock, req);
 
         BOOST_REQUIRE(mock.error == AKU_SUCCESS);
-        u32 ix = 0;
-        for (size_t ixtime = 1; ixtime < model_timestamps.size(); ixtime += 2) {
-            auto ts = model_timestamps.at(ixtime);
-            for (size_t ixcol = 0; ixcol < col.size(); ixcol++) {
-                auto id = col.at(ixcol);
-                BOOST_REQUIRE(mock.paramids.at(ix) == id);
-                BOOST_REQUIRE(mock.timestamps.at(ix) == ts);
-                double expected = ts*0.1;
-                double xs = mock.columns[0][ix];
-                BOOST_REQUIRE_CLOSE(expected, xs, 10E-10);
-                BOOST_REQUIRE(xs >= 0.0);
-                ix++;
-            }
+        BOOST_REQUIRE(mock.paramids.size() != 0);
+
+        aku_Timestamp prevts = begin;
+        for (size_t ix = 0; ix < mock.paramids.size(); ix++) {
+            auto ts = mock.timestamps.at(ix);
+            auto xs = mock.columns[0].at(ix);
+            BOOST_REQUIRE(ts >= prevts);
+            BOOST_REQUIRE(xs >= 0.0);
         }
-        BOOST_REQUIRE(ix != 0);
     };
     test_series_order(10);
     test_series_order(100);
