@@ -594,49 +594,56 @@ static std::tuple<aku_Status, std::vector<AggregateFilter>> convert_aggregate_fi
                                                                                       const std::vector<AggregationFunction>& funclst)
 {
     std::vector<AggregateFilter> result;
-    for (const auto& filter: fltlist) {
-        AggregateFilter aggflt;
-        for (AggregationFunction fun: funclst) {
-            ValueFilter flt;
-            if (filter.flags&Filter::GT) {
-                flt.greater_than(filter.gt);
-            } else if (filter.flags&Filter::GE) {
-                flt.greater_or_equal(filter.ge);
-            }
-            if (filter.flags&Filter::LT) {
-                flt.less_than(filter.lt);
-            } else if (filter.flags&Filter::LE) {
-                flt.less_or_equal(filter.le);
-            }
-            if (!flt.validate()) {
-                Logger::msg(AKU_LOG_ERROR, "Invalid filter");
-                return std::make_tuple(AKU_EBAD_ARG, std::move(result));
-            }
-            switch(fun) {
-            case AggregationFunction::MIN:
-                aggflt.set_filter(AggregateFilter::MIN, flt);
-                continue;
-            case AggregationFunction::MAX:
-                aggflt.set_filter(AggregateFilter::MAX, flt);
-                continue;
-            case AggregationFunction::MEAN:
-                aggflt.set_filter(AggregateFilter::AVG, flt);
-                continue;
-            case AggregationFunction::SUM:
-                Logger::msg(AKU_LOG_ERROR, "Aggregation function 'sum' can't be used with the filter");
-                break;
-            case AggregationFunction::CNT:
-                Logger::msg(AKU_LOG_ERROR, "Aggregation function 'cnt' can't be used with the filter");
-                break;
-            case AggregationFunction::MIN_TIMESTAMP:
-            case AggregationFunction::MAX_TIMESTAMP:
-                Logger::msg(AKU_LOG_ERROR, "Aggregation function 'MIN(MAX)_TIMESTAMP' can't be used with the filter");
-                break;
-            };
+    if (fltlist.size() != funclst.size()) {
+        Logger::msg(AKU_LOG_ERROR, "Number of filters doesn't match number of columns");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+    AggregateFilter aggflt;
+    for (size_t ix = 0; ix < fltlist.size(); ix++) {
+        const auto& filter = fltlist[ix];
+        if (!filter.enabled) {
+            continue;
+        }
+        AggregationFunction fun = funclst[ix];
+        ValueFilter flt;
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
+        }
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
             return std::make_tuple(AKU_EBAD_ARG, std::move(result));
         }
-        result.push_back(aggflt);
+        switch(fun) {
+        case AggregationFunction::MIN:
+            aggflt.set_filter(AggregateFilter::MIN, flt);
+            continue;
+        case AggregationFunction::MAX:
+            aggflt.set_filter(AggregateFilter::MAX, flt);
+            continue;
+        case AggregationFunction::MEAN:
+            aggflt.set_filter(AggregateFilter::AVG, flt);
+            continue;
+        case AggregationFunction::SUM:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'sum' can't be used with the filter");
+            break;
+        case AggregationFunction::CNT:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'cnt' can't be used with the filter");
+            break;
+        case AggregationFunction::MIN_TIMESTAMP:
+        case AggregationFunction::MAX_TIMESTAMP:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'MIN(MAX)_TIMESTAMP' can't be used with the filter");
+            break;
+        };
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
+    result.push_back(aggflt);
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 

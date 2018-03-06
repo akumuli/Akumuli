@@ -226,12 +226,13 @@ def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
     agg_funcs = ["min", "max", "count", "sum"]
     filterbody = { 
         "min": { "gt": -80, "lt": 0  }, 
-        "max": { "gt":   0, "lt": 80 } 
+        "max": { "gt": -20, "lt": 40 } 
         }
     query = att.make_group_aggregate_query(metric, begin, end, 
                                            agg_funcs, 
                                            "{0}ms".format(step), 
-                                           output=dict(format='csv', filter=filterbody))
+                                           output=dict(format='csv'),
+                                           filter=filterbody)
 
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
@@ -256,7 +257,7 @@ def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
             if min_value not in range(-80, 0):
                 raise ValueError("Unexpected min value")
 
-            if max_value not in range(0, 80):
+            if max_value not in range(-20, 40):
                 raise ValueError("Unexpected max value")
 
             iterations += 1
@@ -317,7 +318,7 @@ def main(path):
         test_join_query_backward_by_time(['col1', 'col2'], 
                                         [[-20, 20], [40, 60]],
                                         dt, delta, nmsgs)
-        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10)
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10000)
     except:
         traceback.print_exc()
         sys.exit(1)

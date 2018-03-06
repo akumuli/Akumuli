@@ -1408,7 +1408,7 @@ public:
             aku_Status status;
             std::tie(status, outsz) = iter_->read(&ts, &agg, 1);
             if (status == AKU_SUCCESS || status == AKU_ENO_DATA) {
-                if (filter_.match(agg, AggregateFilter::Mode::ANY)) {
+                if (filter_.match(agg, AggregateFilter::Mode::ALL)) {
                     destts[i] = ts;
                     destval[i] = agg;
                     i++;
