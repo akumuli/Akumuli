@@ -217,6 +217,27 @@ def test_join_query_backward_by_time(columns, thresholds, dtstart, delta, N):
     q = { "order-by": "time" }
     run_join_query(columns, thresholds, begin, end, **q)
 
+def group_aggregate_query(metric, begin, end, agg_funcs, step, **extra_args):
+    '''Query database, return series of tuples'''
+    query = att.make_group_aggregate_query(metric, begin, end, 
+                                           agg_funcs, 
+                                           "{0}ms".format(step), 
+                                           output=dict(format='csv'),
+                                           **extra_args)
+
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    tuple_len = len(agg_funcs)
+    for line in response:
+        columns = line.split(',')
+        tagline = columns[0].strip()
+        timestamp = att.parse_timestamp(columns[1].strip())
+        output = {"seris": tagline, "timestamp": timestamp}
+        for i in range(0, tuple_len):
+            value = float(columns[2 + i].strip())
+            output[agg_funcs[i]] = value
+        yield output
+
 @att.api_test("Test group aggregate all data")
 def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
     """Aggregate all data and check result"""
@@ -227,46 +248,31 @@ def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
     filterbody = { 
         "min": { "gt": -80, "lt": 0  }, 
         "max": { "gt": -20, "lt": 40 } 
-        }
-    query = att.make_group_aggregate_query(metric, begin, end, 
-                                           agg_funcs, 
-                                           "{0}ms".format(step), 
-                                           output=dict(format='csv'),
-                                           filter=filterbody)
+    }
 
-    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
-    response = urlopen(queryurl, json.dumps(query))
-    expected_tags = [
-        " tag1=A tag2=B",
-        " tag1=A tag2=C",
-        " tag1=A tag2=D",
-    ]
-    iterations = 0
-    for line in response:
-        try:
-            columns = line.split(',')
-            tagline = columns[0].strip()
-            tagline = tagline[tagline.index(" "):]
-            min_value = float(columns[2].strip())
-            max_value = float(columns[3].strip())
+    it = group_aggregate_query(metric, begin, end, agg_funcs, step)
 
-            if tagline not in expected_tags:
-                msg = "Unexpected tag value: {0}".format(tagline)
-                raise ValueError(msg)
+    def matches_filter(point):
+        for k, rule in filterbody.iteritems():
+            fval = point[k]
+            lowerbound = rule["gt"]
+            upperbound = rule["lt"]
+            if fval <= lowerbound or fval >= upperbound:
+                return False
+        return True
 
-            if min_value not in range(-80, 0):
-                raise ValueError("Unexpected min value")
+    expected = [x for x in it if matches_filter(x)]
+    actual = list(group_aggregate_query(metric, begin, end, agg_funcs, step, filter=filterbody))
 
-            if max_value not in range(-20, 40):
-                raise ValueError("Unexpected max value")
+    if len(expected) != len(actual):
+        raise ValueError("Expected length: {0}, actual length: {1}".format(
+            len(expected), len(actual)))
 
-            iterations += 1
-        except:
-            print("Error at line: {0}".format(line))
-            raise
-
-    if iterations == 0:
-        raise ValueError("Results incomplete")
+    for ix in range(0, len(expected)):
+        lhs = expected[ix]
+        rhs = actual[ix]
+        if lhs != rhs:
+            raise ValueError("Value at {0} is different".format(ix))
 
 def main(path):
     akumulid = att.create_akumulid(path)
@@ -318,7 +324,9 @@ def main(path):
         test_join_query_backward_by_time(['col1', 'col2'], 
                                         [[-20, 20], [40, 60]],
                                         dt, delta, nmsgs)
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 20000)
         test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10000)
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs,  5000)
     except:
         traceback.print_exc()
         sys.exit(1)
