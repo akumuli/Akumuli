@@ -176,14 +176,6 @@ struct ValueFilter {
 };
 
 struct AggregateFilter {
-    /*
-    double cnt;
-    double sum;
-    double min;
-    double max;
-    double first;
-    double last;
-    */
     enum {
         AVG,
         MIN,
@@ -200,6 +192,7 @@ struct AggregateFilter {
 
     ValueFilter filters[N];
     u32 bitmap;
+    Mode mode;
 
     AggregateFilter();
 
@@ -210,7 +203,7 @@ struct AggregateFilter {
      */
     bool set_filter(u32 op, const ValueFilter& filter);
 
-    bool match(const AggregationResult& res, Mode mode) const;
+    bool match(const AggregationResult& res) const;
 };
 
 }

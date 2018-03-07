@@ -230,7 +230,7 @@ bool AggregateFilter::set_filter(u32 op, const ValueFilter& filter) {
     return false;
 }
 
-bool AggregateFilter::match(const AggregationResult& res, AggregateFilter::Mode mode) const {
+bool AggregateFilter::match(const AggregationResult& res) const {
     bool result = mode == Mode::ALL;
     for (u32 bit = 0; bit < N; bit++) {
         u32 mask = 1 << bit;

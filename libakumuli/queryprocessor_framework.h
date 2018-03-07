@@ -114,7 +114,7 @@ struct Selection {
     //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
     std::vector<Column> columns;
     std::vector<Filter> filters;
-    FilterCombinationRule  rule;
+    FilterCombinationRule  filter_rule;
     aku_Timestamp         begin;
     aku_Timestamp           end;
 

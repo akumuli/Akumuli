@@ -239,7 +239,7 @@ def group_aggregate_query(metric, begin, end, agg_funcs, step, **extra_args):
         yield output
 
 @att.api_test("Test group aggregate all data")
-def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
+def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps, require):
     """Aggregate all data and check result"""
     begin = dtstart
     end = dtstart + delta*(N + 1)
@@ -247,13 +247,18 @@ def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
     agg_funcs = ["min", "max", "count", "sum"]
     filterbody = { 
         "min": { "gt": -80, "lt": 0  }, 
-        "max": { "gt": -20, "lt": 40 } 
+        "max": { "gt": -20, "lt": 40 },
+        "=": {
+            "require": require
+        }
     }
 
     it = group_aggregate_query(metric, begin, end, agg_funcs, step)
 
-    def matches_filter(point):
+    def matches_all_filters(point):
         for k, rule in filterbody.iteritems():
+            if k == "=":
+                continue
             fval = point[k]
             lowerbound = rule["gt"]
             upperbound = rule["lt"]
@@ -261,7 +266,25 @@ def test_group_aggregate_all_forward(metric, dtstart, delta, N, nsteps):
                 return False
         return True
 
-    expected = [x for x in it if matches_filter(x)]
+    def matches_any_filter(point):
+        for k, rule in filterbody.iteritems():
+            if k == "=":
+                continue
+            fval = point[k]
+            lowerbound = rule["gt"]
+            upperbound = rule["lt"]
+            if fval > lowerbound and fval < upperbound:
+                return True
+        return False
+
+    if require == "all":
+        comp = matches_all_filters
+    elif require == "any":
+        comp = matches_any_filter
+    else:
+        raise ValueError("Unknown 'require' parameter")
+
+    expected = [x for x in it if comp(x)]
     actual = list(group_aggregate_query(metric, begin, end, agg_funcs, step, filter=filterbody))
 
     if len(expected) != len(actual):
@@ -324,9 +347,12 @@ def main(path):
         test_join_query_backward_by_time(['col1', 'col2'], 
                                         [[-20, 20], [40, 60]],
                                         dt, delta, nmsgs)
-        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 20000)
-        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10000)
-        test_group_aggregate_all_forward('col1', dt, delta, nmsgs,  5000)
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 20000, "all")
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10000, "all")
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs,  5000, "all")
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 20000, "any")
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs, 10000, "any")
+        test_group_aggregate_all_forward('col1', dt, delta, nmsgs,  5000, "any")
     except:
         traceback.print_exc()
         sys.exit(1)

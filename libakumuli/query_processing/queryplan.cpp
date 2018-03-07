@@ -681,7 +681,9 @@ static std::tuple<aku_Status, std::vector<ValueFilter>> layout_filters(const Res
 
 static std::tuple<aku_Status, std::vector<AggregateFilter>> layout_aggregate_filters(const ReshapeRequest& req) {
     std::vector<AggregateFilter> result;
-
+    AggregateFilter::Mode common_mode = req.select.filter_rule == FilterCombinationRule::ALL
+                                      ? AggregateFilter::Mode::ALL
+                                      : AggregateFilter::Mode::ANY;
     aku_Status s;
     std::vector<AggregateFilter> flt;
     std::tie(s, flt) = convert_aggregate_filters(req.select.filters, req.agg.func);
@@ -699,8 +701,9 @@ static std::tuple<aku_Status, std::vector<AggregateFilter>> layout_aggregate_fil
     // We should duplicate the filters to match the layout of queried data
     for (size_t ixrow = 0; ixrow < req.select.columns.at(0).ids.size(); ixrow++) {
         for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
-            const auto& rowfilter = flt.at(ixcol);
-            result.push_back(rowfilter);
+            auto& colfilter = flt.at(ixcol);
+            colfilter.mode = common_mode;
+            result.push_back(colfilter);
         }
     }
     return std::make_tuple(AKU_SUCCESS, std::move(result));

@@ -654,14 +654,24 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
         }
         if (nfound > 1) {
             // Parse combiner
-            auto child = filter->get_child_optional("require");
+            auto child = filter->get_child_optional("=");
             if (child) {
-                auto value = child->get_value<std::string>("");
-                if (value == "all") {
-                    rule = FilterCombinationRule::ALL;
-                }
-                else if (value == "any") {
-                    rule = FilterCombinationRule::ANY;
+                for (auto sub: *child) {
+                    if (sub.first == "require") {
+                        auto value = sub.second.get_value<std::string>("");
+                        if (value == "all") {
+                            rule = FilterCombinationRule::ALL;
+                        }
+                        else if (value == "any") {
+                            rule = FilterCombinationRule::ANY;
+                        } else {
+                            Logger::msg(AKU_LOG_ERROR, std::string("Unknown filter combiner ") + value);
+                            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, rule);
+                        }
+                    } else {
+                        Logger::msg(AKU_LOG_ERROR, std::string("Unknown filter meta key ") + sub.first);
+                        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, rule);
+                    }
                 }
             }
         }
@@ -1126,7 +1136,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
-    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, {metric});
+    std::tie(status, result.select.filters, result.select.filter_rule) = parse_filter(ptree, {metric});
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -1302,7 +1312,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
         auto fnname = Aggregation::to_string(fn);
         funcnames.push_back(fnname);
     }
-    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, funcnames);
+    std::tie(status, result.select.filters, result.select.filter_rule) = parse_filter(ptree, funcnames);
     // Functions are used instead of metrics because group-aggregate query can produce
     // more than one output, for instance:
     // `"group-aggregate": { "metric": "foo", "step": "1s", "func": ["min", "max"] }` query
@@ -1424,7 +1434,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     result.select.begin = ts_begin;
     result.select.end = ts_end;
 
-    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, metrics);
+    std::tie(status, result.select.filters, result.select.filter_rule) = parse_filter(ptree, metrics);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
