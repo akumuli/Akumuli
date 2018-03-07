@@ -609,17 +609,19 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
  * @param metrics is a list of metrics extracted by the query
  * @return filter value per metric
  */
-static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_tree::ptree const& ptree,
-                                                                std::vector<std::string> metrics)
+static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
+    parse_filter(boost::property_tree::ptree const& ptree, std::vector<std::string> metrics)
 {
     aku_Status status = AKU_SUCCESS;
     std::vector<Filter> result;
+    FilterCombinationRule rule = FilterCombinationRule::ALL;  // Default value
     for (size_t ix = 0; ix < metrics.size(); ix++) {
         // Initially everything is disabled
         result.push_back({false});
     }
     auto filter = ptree.get_child_optional("filter");
     bool found_at_least_one = false;
+    int nfound = 0;
     const char* names[] = { "gt", "lt", "ge", "le" };
     int flags[] = { Filter::GT, Filter::LT, Filter::GE, Filter::LE };
     const size_t nitems = 4;
@@ -629,6 +631,7 @@ static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_
             auto child = filter->get_child_optional(metrics[ix]);
             if (child) {
                 found_at_least_one = true;
+                nfound++;
                 for (size_t i = 0; i < nitems; i++) {
                     auto item = child->get_child_optional(names[i]);
                     if (item) {
@@ -640,11 +643,25 @@ static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_
                         } catch (boost::bad_lexical_cast const&) {
                             Logger::msg(AKU_LOG_ERROR, metrics[ix] + " has bad filter value, can't parse floating point");
                             found_at_least_one = false;
+                            nfound = 0;
                             status = AKU_EBAD_ARG;
                             break;
                         }
                         result[ix].enabled = true;
                     }
+                }
+            }
+        }
+        if (nfound > 1) {
+            // Parse combiner
+            auto child = filter->get_child_optional("require");
+            if (child) {
+                auto value = child->get_value<std::string>("");
+                if (value == "all") {
+                    rule = FilterCombinationRule::ALL;
+                }
+                else if (value == "any") {
+                    rule = FilterCombinationRule::ANY;
                 }
             }
         }
@@ -669,7 +686,7 @@ static std::tuple<aku_Status, std::vector<Filter>> parse_filter(boost::property_
             }
         }
     }
-    return std::make_tuple(status, result);
+    return std::make_tuple(status, result, rule);
 }
 
 
@@ -1109,7 +1126,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
     }
 
-    std::tie(status, result.select.filters) = parse_filter(ptree, {metric});
+    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, {metric});
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
@@ -1285,7 +1302,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_group_aggregate_query(
         auto fnname = Aggregation::to_string(fn);
         funcnames.push_back(fnname);
     }
-    std::tie(status, result.select.filters) = parse_filter(ptree, funcnames);
+    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, funcnames);
     // Functions are used instead of metrics because group-aggregate query can produce
     // more than one output, for instance:
     // `"group-aggregate": { "metric": "foo", "step": "1s", "func": ["min", "max"] }` query
@@ -1407,7 +1424,7 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_join_query(boost::prop
     result.select.begin = ts_begin;
     result.select.end = ts_end;
 
-    std::tie(status, result.select.filters) = parse_filter(ptree, metrics);
+    std::tie(status, result.select.filters, result.select.rule) = parse_filter(ptree, metrics);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result);
     }
