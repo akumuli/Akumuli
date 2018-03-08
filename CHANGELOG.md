@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.40
+--------------
+
+IMPROVEMENT
+
+* Filter clause work with group-aggregate query
+
 Version 0.7.39
 --------------
 
