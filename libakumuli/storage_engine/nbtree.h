@@ -555,6 +555,19 @@ public:
      */
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
 
+    /**
+     * @brief Group values into buckets and return aggregate from each one of them
+     * @param begin start of the search interval
+     * @param end end of the search interval
+     * @param step bucket size
+     * @param filter is a value filter
+     * @return iterator
+     */
+    std::unique_ptr<AggregateOperator> group_aggregate_filter(aku_Timestamp begin,
+                                                              aku_Timestamp end,
+                                                              aku_Timestamp step,
+                                                              const AggregateFilter& filter) const;
+
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();
 

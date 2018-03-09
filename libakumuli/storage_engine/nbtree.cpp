@@ -735,7 +735,7 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
         auto blockref = subtree_cast(block->get_cdata());
         assert(blockref->type == ref.type);
         std::unique_ptr<RealValuedOperator> result;
-        switch (filter_.getOverlap(*blockref)) {
+        switch (filter_.get_overlap(*blockref)) {
         case RangeOverlap::FULL_OVERLAP: {
             // Return normal leaf iterator because it's faster
             NBTreeLeaf leaf(block);
@@ -759,7 +759,7 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
 
     //! Create superblock iterator (used by `get_next_iter` template method).
     virtual std::tuple<aku_Status, TIter> make_superblock_iterator(const SubtreeRef &ref) {
-        auto overlap = filter_.getOverlap(ref);
+        auto overlap = filter_.get_overlap(ref);
         TIter result;
         switch(overlap) {
         case RangeOverlap::FULL_OVERLAP:
@@ -1384,6 +1384,51 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggr
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
+// ///////////////////// //
+// NBTreeLeafGroupFilter //
+// ///////////////////// //
+
+class NBTreeGroupAggregateFilter : public AggregateOperator {
+    AggregateFilter filter_;
+    std::unique_ptr<AggregateOperator> iter_;
+public:
+    NBTreeGroupAggregateFilter(const AggregateFilter& filter, std::unique_ptr<AggregateOperator>&& iter)
+        : filter_(filter)
+        , iter_(std::move(iter))
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+        // copy data to the buffer
+        size_t i = 0;
+        while (i < size) {
+            AggregationResult agg;
+            aku_Timestamp ts;
+            size_t outsz;
+            aku_Status status;
+            std::tie(status, outsz) = iter_->read(&ts, &agg, 1);
+            if (status == AKU_SUCCESS || status == AKU_ENO_DATA) {
+                if (filter_.match(agg)) {
+                    destts[i] = ts;
+                    destval[i] = agg;
+                    i++;
+                }
+                if (status == AKU_ENO_DATA || outsz == 0) {
+                    // Stop iteration
+                    break;
+                }
+            } else {
+                // Error
+                return std::make_tuple(status, 0);
+            }
+        }
+        return std::make_tuple(AKU_SUCCESS, i);
+    }
+
+    virtual Direction get_direction() {
+        return iter_->get_direction();
+    }
+};
 
 // //////////////////////////// //
 // NBTreeSBlockCandlesticksIter //
@@ -3650,6 +3695,16 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timest
     return concat;
 }
 
+std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate_filter(aku_Timestamp begin,
+                                                                             aku_Timestamp end,
+                                                                             aku_Timestamp step,
+                                                                             const AggregateFilter &filter) const
+{
+    auto iter = group_aggregate(begin, end, step);
+    std::unique_ptr<AggregateOperator> result;
+    result.reset(new NBTreeGroupAggregateFilter(filter, std::move(iter)));
+    return result;
+}
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
     SharedLock lock(lock_);

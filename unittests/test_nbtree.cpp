@@ -2117,32 +2117,32 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_5) {
     ref.max = 1;
     ref.min = 0;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 10;
     ref.min = 0;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 20;
     ref.min = 10;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
 
     ref.max = 50;
     ref.min = 20;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
 
     ref.max = 120;
     ref.min = 100;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 120;
     ref.min = 110;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 }
 
 BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
@@ -2156,32 +2156,32 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
     ref.max = 1;
     ref.min = 0;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 
     ref.max = 10;
     ref.min = 0;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
 
     ref.max = 20;
     ref.min = 10;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
 
     ref.max = 50;
     ref.min = 20;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::FULL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
 
     ref.max = 120;
     ref.min = 100;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
 
     ref.max = 120;
     ref.min = 110;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::NO_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
 }
 
 BOOST_AUTO_TEST_CASE(Test_value_filter_7) {
@@ -2195,7 +2195,7 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_7) {
     ref.max = 100;
     ref.min = -100;
 
-    BOOST_REQUIRE(filter.getOverlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
 }
 
 void test_nbtreeleaf_filter_operator(aku_Timestamp begin, aku_Timestamp end) {
