@@ -3112,11 +3112,12 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     , rescue_points_(std::move(addresses))
     , initialized_(false)
     , write_count_(0ul)
-    // test
+#ifdef AKU_ENABLE_MUTATION_TESTING
     , rd_()
     , rand_gen_(rd_())
     , dist_(0, 1000)
     , threshold_(1)
+#endif
 {
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
@@ -3158,11 +3159,13 @@ std::vector<NBTreeExtent const*> NBTreeExtentsList::get_extents() const {
     return result;
 }
 
+#ifdef AKU_ENABLE_MUTATION_TESTING
 u32 NBTreeExtentsList::chose_random_node() {
     std::uniform_int_distribution<u32> rext(0, static_cast<u32>(extents_.size()-1));
     u32 ixnode = rext(rand_gen_);
     return ixnode;
 }
+#endif
 
 std::tuple<aku_Status, AggregationResult> NBTreeExtentsList::get_aggregates(u32 ixnode) const {
     auto it = extents_.at(ixnode)->aggregate(0, AKU_MAX_TIMESTAMP);
@@ -3181,6 +3184,7 @@ std::tuple<aku_Status, AggregationResult> NBTreeExtentsList::get_aggregates(u32 
     return std::make_tuple(AKU_SUCCESS, dest);
 }
 
+#ifdef AKU_ENABLE_MUTATION_TESTING
 LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
     AggregationResult dest;
     aku_Status status;
@@ -3202,6 +3206,7 @@ LogicAddr NBTreeExtentsList::split_random_node(u32 ixnode) {
     }
     return EMPTY_ADDR;
 }
+#endif
 
 void NBTreeExtentsList::check_rescue_points(u32 i) const {
     if (i == 0) {
