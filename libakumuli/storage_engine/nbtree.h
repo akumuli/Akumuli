@@ -483,14 +483,17 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     mutable RWLock lock_;
 
     // Testing
+#ifdef AKU_ENABLE_MUTATION_TESTING
     std::random_device              rd_;
     std::mt19937                    rand_gen_;
     std::uniform_int_distribution<> dist_;
     const int                       threshold_;
 
+
     LogicAddr split_random_node(u32 ix);
 
     u32 chose_random_node();
+#endif
 
     std::tuple<aku_Status, AggregationResult> get_aggregates(u32 ixnode) const;
 

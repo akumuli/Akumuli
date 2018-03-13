@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.41
+--------------
+
+BUG FIX
+
+* Fix crash on random-device initialization failure
+
 Version 0.7.40
 --------------
 
