@@ -113,11 +113,28 @@ Block::Block(LogicAddr addr, const u8* ptr)
 {
 }
 
+Block::Block(size_t size)
+    : data_(size, 0)
+    , addr_(EMPTY_ADDR)
+    , zptr_(nullptr)
+{
+}
+
 Block::Block()
     : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
     , addr_(EMPTY_ADDR)
     , zptr_(nullptr)
 {
+}
+
+size_t Block::grow() {
+    if (addr_ != EMPTY_ADDR) {
+        return static_cast<size_t>(AKU_BLOCK_SIZE);
+    }
+    size_t curr = data_.size();
+    size_t newsize = curr * 2;
+    data_.resize(newsize);
+    return newsize;
 }
 
 const u8* Block::get_data() const {

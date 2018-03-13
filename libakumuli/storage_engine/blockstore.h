@@ -228,6 +228,10 @@ public:
 
     Block();
 
+    Block(size_t size);
+
+    size_t grow();
+
     bool is_readonly() const;
 
     const u8* get_data() const;

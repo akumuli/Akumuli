@@ -1914,7 +1914,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
 // //////////////////////// //
 
 NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
-    : block_(std::make_shared<Block>())
+    : block_(std::make_shared<Block>(static_cast<size_t>(lvl > 2 ? 256 : AKU_BLOCK_SIZE)))
     , id_(id)
     , write_pos_(0)
     , fanout_index_(fanout)
@@ -2016,6 +2016,17 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
         return AKU_EBAD_DATA;
     }
     assert(p.count != 0);
+    // Adjust buffer size if needed
+    size_t oldsize = block_->get_size();
+    size_t require = (write_pos_ + 2)*sizeof(SubtreeRef);
+    if (oldsize < require) {
+        size_t newsize = block_->grow();
+        assert(newsize > oldsize);
+        assert(newsize >= require);
+        if (newsize < require) {
+            return AKU_EBAD_DATA;
+        }
+    }
     // Write data into buffer
     SubtreeRef* pref = subtree_cast(block_->get_data());
     auto it = pref + 1 + write_pos_;

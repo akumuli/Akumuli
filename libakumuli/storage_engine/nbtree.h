@@ -257,7 +257,6 @@ class NBTreeSuperblock {
     u16                    level_;
     LogicAddr              prev_;
     bool                   immutable_;
-
 public:
     //! Create new writable node.
     NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
