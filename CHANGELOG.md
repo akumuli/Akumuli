@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.42
+--------------
+
+BUG FIX
+
+* Fix UDP-server error handling
+
 Version 0.7.41
 --------------
 
