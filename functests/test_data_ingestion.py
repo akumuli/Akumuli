@@ -54,9 +54,11 @@ def main(path, protocol):
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 1000000
         print("Sending {0} messages through {1}...".format(nmsgs, protocol))
-        for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
+        for ix, it in enumerate(att.generate_messages(dt, delta, nmsgs, 'temp', tag='test')):
+            if protocol == 'UDP' and ix == 2:
+                msg = att.msg(dt, 0.1, 'temp', tag='test')
+                chan.send(msg)
             chan.send(it)
-
         # check stats
         httpport = 8181
         statsurl = "http://{0}:{1}/api/stats".format(host, httpport)

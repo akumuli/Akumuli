@@ -164,6 +164,10 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
                     // Catch protocol parsing errors here and continue processing data
                     logger_.error() << err.what();
                     break;
+                } catch (DatabaseError const& err) {
+                    // Late write detected.
+                    logger_.error() << err.what();
+                    break;
                 }
             }
             if (retval != 0) {
