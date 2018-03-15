@@ -1914,7 +1914,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
 // //////////////////////// //
 
 NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
-    : block_(std::make_shared<Block>(static_cast<size_t>(lvl > 2 ? 256 : AKU_BLOCK_SIZE)))
+    : block_(std::make_shared<Block>(256))
     , id_(id)
     , write_pos_(0)
     , fanout_index_(fanout)
@@ -1948,7 +1948,7 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
 }
 
 NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last)
-    : block_(std::make_shared<Block>())
+    : block_()
     , immutable_(false)
 {
     std::shared_ptr<Block> block = read_block_from_bstore(bstore, addr);
@@ -1964,7 +1964,9 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     }
     assert(prev_ != 0);
     // We can't use zero-copy here because `block` belongs to other node.
-    memcpy(block_->get_data(), block->get_cdata(), AKU_BLOCK_SIZE);
+    size_t bytes2copy = sizeof(SubtreeRef)*(ref->payload_size + 1);
+    block_ = std::make_shared<Block>(bytes2copy);
+    memcpy(block_->get_data(), block->get_cdata(), bytes2copy);
 }
 
 SubtreeRef const* NBTreeSuperblock::get_sblockmeta() const {
