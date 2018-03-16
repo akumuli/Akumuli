@@ -2061,6 +2061,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     backref->version = AKUMULI_VERSION;
     // add checksum
     backref->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), backref->payload_size);
+    if (block_->get_size() != AKU_BLOCK_SIZE) {
+        // block store expects 4K block
+        block_->grow(static_cast<size_t>(AKU_BLOCK_SIZE));
+    }
     return bstore->append_block(block_);
 }
 

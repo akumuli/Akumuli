@@ -137,6 +137,17 @@ size_t Block::grow() {
     return newsize;
 }
 
+void Block::grow(size_t size) {
+    if (addr_ != EMPTY_ADDR) {
+        AKU_PANIC("Block is already written");
+    }
+    if (data_.size() >= size) {
+        // It shouldn't be possible to decrease the size.
+        return;
+    }
+    data_.resize(size);
+}
+
 const u8* Block::get_data() const {
     return zptr_ ? zptr_ : data_.data();
 }

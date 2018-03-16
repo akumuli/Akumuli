@@ -232,6 +232,8 @@ public:
 
     size_t grow();
 
+    void grow(size_t size);
+
     bool is_readonly() const;
 
     const u8* get_data() const;

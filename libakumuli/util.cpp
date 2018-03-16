@@ -95,24 +95,21 @@ apr_status_t MemoryMappedFile::map_file() {
     status_ = apr_pool_create(&mem_pool_, NULL);
     if (status_ == APR_SUCCESS) {
         success_count++;
-        status_ = apr_file_open(&fp_, path_.c_str(), APR_WRITE|APR_READ, APR_OS_DEFAULT, mem_pool_);
+        status_ = apr_file_open(&fp_, path_.c_str(), APR_READ, APR_OS_DEFAULT, mem_pool_);
         if (status_ == APR_SUCCESS) {
             success_count++;
-            status_ = apr_file_lock(fp_, APR_FLOCK_EXCLUSIVE);
+            status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
             if (status_ == APR_SUCCESS) {
-                // No need to increment success_count, no cleanup needed for apr_file_lock
-                status_ = apr_file_info_get(&finfo_, APR_FINFO_SIZE, fp_);
-                if (status_ == APR_SUCCESS) {
-                    success_count++;
-                    apr_int32_t flags = APR_MMAP_WRITE | APR_MMAP_READ;
-                    if (enable_huge_tlb_) {
+                success_count++;
+                apr_int32_t flags = APR_MMAP_READ;
+                if (enable_huge_tlb_) {
 #if defined MAP_HUGETLB
-						flags |= MAP_HUGETLB;
+                    flags |= MAP_HUGETLB;
 #endif
-                    }
-                    status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
-                    if (status_ == APR_SUCCESS)
-                        success_count++; }}}}
+                }
+                status_ = apr_mmap_create(&mmap_, fp_, 0, finfo_.size, flags, mem_pool_);
+                if (status_ == APR_SUCCESS)
+                    success_count++; }}}
 
     if (status_ != APR_SUCCESS) {
         free_resources(success_count);
@@ -121,53 +118,6 @@ apr_status_t MemoryMappedFile::map_file() {
         Logger::msg(AKU_LOG_ERROR, err.str().c_str());
     }
     return status_;
-}
-
-void MemoryMappedFile::remap_file_destructive() {
-    using namespace std;
-    apr_off_t file_size = finfo_.size;
-    free_resources(4);
-    apr_pool_t* pool;
-    apr_file_t* file_ptr;
-    apr_status_t status;
-    int success_counter = 0;
-    status = apr_pool_create(&pool, NULL);
-    if (status == APR_SUCCESS) {
-        success_counter++;
-        status = apr_file_open(&file_ptr, path_.c_str(), APR_WRITE, APR_OS_DEFAULT, pool);
-        if (status == APR_SUCCESS) {
-            success_counter++;
-            status = apr_file_trunc(file_ptr, 0);
-            if (status == APR_SUCCESS) {
-                success_counter++;
-                status = apr_file_trunc(file_ptr, file_size);
-                if (status == APR_SUCCESS) {
-                    success_counter++;
-                }
-            }
-        }
-    }
-    switch(success_counter) {
-        case 4:
-        case 3:
-        case 2:
-            apr_file_close(file_ptr);
-        case 1:
-            apr_pool_destroy(pool);
-    };
-    if (status != APR_SUCCESS) {
-        stringstream err;
-        err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
-        Logger::msg(AKU_LOG_ERROR, err.str().c_str());
-        AKU_PANIC("can't remap file");
-    }
-    status = map_file();
-    if (status != APR_SUCCESS) {
-        stringstream err;
-        err << "Can't remap file " << path_ << " error " << apr_error_message(status) << " on step " << success_counter;
-        Logger::msg(AKU_LOG_ERROR, err.str().c_str());
-        AKU_PANIC("can't remap file");
-    }
 }
 
 bool MemoryMappedFile::is_bad() const {

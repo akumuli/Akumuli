@@ -302,10 +302,11 @@ Volume::Volume(const char* path, size_t write_pos)
         mmap_ptr_ = nullptr;
         return;
     }
-    mmap_->protect_all();
     mmap_ptr_ = static_cast<const u8*>(mmap_->get_pointer());
-    if (mmap_->get_size() != file_size_*AKU_BLOCK_SIZE) {
+    auto exp_file_size = static_cast<size_t>(file_size_)*AKU_BLOCK_SIZE;
+    if (mmap_->get_size() != exp_file_size) {
         Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error, fallback to `fopen`");
+        Logger::msg(AKU_LOG_ERROR, "Expected size: " + std::to_string(exp_file_size) + " actual size: " + std::to_string(mmap_->get_size()));
         mmap_ptr_ = nullptr;
         mmap_.reset();
     }

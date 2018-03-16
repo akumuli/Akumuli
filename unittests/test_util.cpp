@@ -106,17 +106,6 @@ BOOST_AUTO_TEST_CASE(TestMmap4)
         *end = 24;
     }
 
-    {
-        MemoryMappedFile mmap(tmp_file, false);
-        BOOST_REQUIRE(mmap.is_bad() == false);
-        BOOST_REQUIRE(mmap.get_size() == 100);
-        mmap.remap_file_destructive();
-        char* begin = (char*)mmap.get_pointer();
-        char* end = begin + 99;
-        BOOST_REQUIRE(*begin != 42);
-        BOOST_REQUIRE(*end != 24);
-    }
-
     delete_tmp_file(tmp_file);
 }
 
