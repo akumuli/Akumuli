@@ -22,6 +22,10 @@
 #include <string.h>
 #include <algorithm>
 
+// TODO: remove
+#include "log_iface.h"
+#include "status_util.h"
+
 
 namespace Akumuli {
 
@@ -31,6 +35,7 @@ namespace {
     enum {
         BUFFER_SIZE = 0x4000,
         QUEUE_MAX = 0x20,
+        CURSOR_READ_TIMEOUT = 10,
     };
 }
 
@@ -73,7 +78,7 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
             if (done_) {
                 return nbytes;
             }
-            cond_.wait_for(lock, std::chrono::milliseconds(1));
+            cond_.wait_for(lock, std::chrono::milliseconds(CURSOR_READ_TIMEOUT));
             continue;
         }
         auto front = queue_.front();
@@ -112,6 +117,7 @@ bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
 }
 
 void ConcurrentCursor::close() {
+    std::lock_guard<std::mutex> lock(mutex_);
     done_ = true;
     cond_.notify_all();
     if (thread_.joinable()) {

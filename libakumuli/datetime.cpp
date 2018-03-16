@@ -59,6 +59,10 @@ static int parse_n_digits(const char* p, int n, const char* error_message = "can
 
 aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
     u32 len = static_cast<u32>(std::strlen(iso_str));
+    if (len == 0) {
+        BadDateTimeFormat error("empty timestamp value");
+        BOOST_THROW_EXCEPTION(error);
+    }
     // Trim left
     while(!isdigit(*iso_str)) {
         iso_str++;
@@ -131,11 +135,16 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
             nanoseconds *= 10;
         }
     }
-
-    auto gregorian_date = boost::gregorian::date(year, month, date);
-    auto time = boost::posix_time::time_duration(hour, minute, second, nanoseconds);
-    auto pt = boost::posix_time::ptime(gregorian_date, time);
-    return DateTimeUtil::from_boost_ptime(pt);
+    try {
+        auto gregorian_date = boost::gregorian::date(year, month, date);
+        auto time = boost::posix_time::time_duration(hour, minute, second, nanoseconds);
+        auto pt = boost::posix_time::ptime(gregorian_date, time);
+        return DateTimeUtil::from_boost_ptime(pt);
+    } catch (std::out_of_range const& range_error) {
+        // Invalid date parameter
+        BadDateTimeFormat error(range_error.what());
+        BOOST_THROW_EXCEPTION(error);
+    }
 }
 
 int DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {

@@ -95,11 +95,13 @@ MetadataStorage::MetadataStorage(const char* db)
 
 void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names) {
     // Make temporary copies under the lock
-    std::vector<SeriesMatcher::SeriesNameT> newnames;
+    std::vector<PlainSeriesMatcher::SeriesNameT>           newnames;
     std::unordered_map<aku_ParamId, std::vector<u64>> rescue_points;
+    std::unordered_map<u32, VolumeDesc>               volume_records;
     {
         std::lock_guard<std::mutex> guard(sync_lock_);
         std::swap(rescue_points, pending_rescue_points_);
+        std::swap(volume_records, pending_volumes_);
     }
     pull_new_names(&newnames);
 
@@ -109,6 +111,10 @@ void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<
 
     // Save rescue points
     upsert_rescue_points(std::move(rescue_points));
+
+    // Save volume records
+    upsert_volume_records(std::move(volume_records));
+
     end_transaction();
 }
 
@@ -134,7 +140,12 @@ void MetadataStorage::create_tables() {
     query =
             "CREATE TABLE IF NOT EXISTS akumuli_volumes("
             "id INTEGER UNIQUE,"
-            "path TEXT UNIQUE"
+            "path TEXT UNIQUE,"
+            // Content of the metadata volume moved to sqlite
+            "version INTEGER,"
+            "nblocks INTEGER,"
+            "capacity INTEGER,"
+            "generation INTEGER"
             ");";
     execute_query(query);
 
@@ -171,45 +182,68 @@ void MetadataStorage::create_tables() {
     execute_query(query);
 }
 
-void MetadataStorage::init_config(const char* creation_datetime)
+void MetadataStorage::init_config(const char* db_name,
+                                  const char* creation_datetime,
+                                  const char* bstore_type)
 {
     // Create table and insert data into it
 
     std::stringstream insert;
     insert << "INSERT INTO akumuli_configuration (name, value, comment)" << std::endl;
-    insert << "\tSELECT 'creation_time' as name, '" << creation_datetime << "' as value, "
-           << "'Compression threshold value' as comment" << std::endl;
+    insert << "\tVALUES ('creation_datetime', '" << creation_datetime << "', " << "'DB creation time.'), "
+           << "('blockstore_type', '" << bstore_type << "', " << "'Type of block storage used.'),"
+          #ifdef AKU_VERSION
+           << "('storage_version', '" << AKU_VERSION << "', " << "'Akumuli version used to create the database.'),"
+          #endif
+           << "('db_name', '" << db_name << "', " << "'Name of DB instance.');"
+           << std::endl;
     std::string insert_query = insert.str();
     execute_query(insert_query);
 }
 
-void MetadataStorage::get_configs(std::string *creation_datetime)
+bool MetadataStorage::get_config_param(const std::string name, std::string* result)
 {
-    {   // Read creation time
-        std::string query = "SELECT value FROM akumuli_configuration WHERE name='creation_time'";
-        auto results = select_query(query.c_str());
-        if (results.size() != 1) {
-            AKU_PANIC("Invalid configuration (creation_time)");
-        }
-        auto tuple = results.at(0);
-        if (tuple.size() != 1) {
-            AKU_PANIC("Invalid configuration query (creation_time)");
-        }
-        // This value can be encoded as dobule by the sqlite engine
-        *creation_datetime = tuple.at(0);
+    // Read requested config
+    std::stringstream query;
+    query << "SELECT value FROM akumuli_configuration WHERE name='" << name << "'";
+    auto results = select_query(query.str().c_str());
+    if (results.size() != 1) {
+        Logger::msg(AKU_LOG_TRACE, "Can't find configuration parameter `" + name + "`");
+        return false;
     }
+    auto tuple = results.at(0);
+    if (tuple.size() != 1) {
+        AKU_PANIC("Invalid configuration query (" + name + ")");
+    }
+    // This value can be encoded as dobule by the sqlite engine
+    *result = tuple.at(0);
+    return true;
 }
 
 void MetadataStorage::init_volumes(std::vector<VolumeDesc> volumes) {
     std::stringstream query;
-    query << "INSERT INTO akumuli_volumes (id, path)" << std::endl;
+    query << "INSERT INTO akumuli_volumes (id, path, version, nblocks, capacity, generation)" << std::endl;
     bool first = true;
     for (auto desc: volumes) {
         if (first) {
-            query << "\tSELECT " << desc.first << " as id, '" << desc.second << "' as path" << std::endl;
+            query << "\tSELECT "
+                  << desc.id << " as id, '"
+                  << desc.path << "' as path, '"
+                  << desc.version << "' as version, "
+                  << desc.nblocks << " as nblocks, "
+                  << desc.capacity << " as capacity, "
+                  << desc.generation << " as generation"
+                  << std::endl;
             first = false;
         } else {
-            query << "\tUNION SELECT " << desc.first << ", '" << desc.second << "'" << std::endl;
+            query << "\tUNION SELECT "
+                  << desc.id << ", '"
+                  << desc.path << "', '"
+                  << desc.version << "', "
+                  << desc.nblocks << ", "
+                  << desc.capacity << ", "
+                  << desc.generation
+                  << std::endl;
         }
     }
     std::string full_query = query.str();
@@ -251,20 +285,37 @@ std::vector<MetadataStorage::UntypedTuple> MetadataStorage::select_query(const c
 
 std::vector<MetadataStorage::VolumeDesc> MetadataStorage::get_volumes() const {
     const char* query =
-            "SELECT id, path FROM akumuli_volumes;";
+            "SELECT id, path, version, nblocks, capacity, generation FROM akumuli_volumes;";
     std::vector<VolumeDesc> tuples;
     std::vector<UntypedTuple> untyped = select_query(query);
     // get rows
     auto ntuples = untyped.size();
     for (size_t i = 0; i < ntuples; i++) {
-        // get id
-        std::string idrepr = untyped.at(i).at(0);
-        int id = boost::lexical_cast<int>(idrepr);
-        // get path
-        std::string path = untyped.at(i).at(1);
-        tuples.push_back(std::make_pair(id, path));
+        VolumeDesc desc;
+        desc.id = boost::lexical_cast<u32>(untyped.at(i).at(0));
+        desc.path = untyped.at(i).at(1);
+        desc.version = boost::lexical_cast<u32>(untyped.at(i).at(2));
+        desc.nblocks = boost::lexical_cast<u32>(untyped.at(i).at(3));
+        desc.capacity = boost::lexical_cast<u32>(untyped.at(i).at(4));
+        desc.generation = boost::lexical_cast<u32>(untyped.at(i).at(5));
+        tuples.push_back(desc);
     }
     return tuples;
+}
+
+void MetadataStorage::add_volume(const VolumeDesc &vol) {
+    std::string query =
+             "INSERT INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+    query += "(" + std::to_string(vol.id) + ", \"" + vol.path + "\", "
+                 + std::to_string(vol.version) + ", "
+                 + std::to_string(vol.nblocks) + ", "
+                 + std::to_string(vol.capacity) + ", "
+                 + std::to_string(vol.generation) + ");";
+    Logger::msg(AKU_LOG_TRACE, "Execute query: " + query);
+    int rows = execute_query(query);
+    if (rows == 0) {
+        Logger::msg(AKU_LOG_ERROR, "Insert query failed: " + query + " - can't save the volume.");
+    }
 }
 
 struct LightweightString {
@@ -309,7 +360,7 @@ aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
     if (res == std::cv_status::timeout) {
         return AKU_ETIMEOUT;
     }
-    return pending_rescue_points_.empty() ? AKU_ERETRY : AKU_SUCCESS;
+    return (pending_rescue_points_.empty() && pending_volumes_.empty()) ? AKU_ERETRY : AKU_SUCCESS;
 }
 
 void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
@@ -318,12 +369,60 @@ void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
     sync_cvar_.notify_one();
 }
 
+void MetadataStorage::update_volume(const VolumeDesc& vol) {
+    std::lock_guard<std::mutex> guard(sync_lock_);
+    pending_volumes_[vol.id] = vol;
+    sync_cvar_.notify_one();
+}
+
+std::string MetadataStorage::get_dbname() {
+    std::string dbname;
+    bool success = get_config_param("db_name", &dbname);
+    if (!success) {
+        AKU_PANIC("Configuration parameter 'db_name' is missing");
+    }
+    return dbname;
+}
+
 void MetadataStorage::begin_transaction() {
     execute_query("BEGIN TRANSACTION;");
 }
 
 void MetadataStorage::end_transaction() {
-    execute_query("END TRANSACTION;");
+    execute_query("END TRANSACTION;");}
+
+void MetadataStorage::upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input) {
+    if (input.empty()) {
+        return;
+    }
+    std::stringstream query;
+    std::vector<VolumeDesc> items;
+    for (const auto& kv: input) {
+        items.push_back(kv.second);
+    }
+    while(!items.empty()) {
+        const size_t batchsize = 500;  // This limit is defined by SQLITE_MAX_COMPOUND_SELECT
+        const size_t newsize = items.size() > batchsize ? items.size() - batchsize : 0;
+        std::vector<VolumeDesc> batch(items.begin() + static_cast<ssize_t>(newsize), items.end());
+        items.resize(newsize);
+        query << "INSERT OR REPLACE INTO akumuli_volumes (id, path, version, nblocks, capacity, generation) VALUES ";
+        size_t ix = 0;
+        for (auto const& vol: batch) {
+            query << "(" << std::to_string(vol.id)         << ", '"
+                         << vol.path                       << "', "
+                         << std::to_string(vol.version)    << ", "
+                         << std::to_string(vol.nblocks)    << ", "
+                         << std::to_string(vol.capacity)   << ", "
+                         << std::to_string(vol.generation) << ")";
+            ix++;
+            if (ix == batch.size()) {
+                query << ";\n";
+            } else {
+                query << ",";
+            }
+        }
+    }
+    execute_query(query.str());
 }
 
 void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64>>&& input) {
@@ -364,6 +463,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
         }
     }
     execute_query(query.str());
+
 }
 
 void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {
@@ -424,7 +524,7 @@ boost::optional<u64> MetadataStorage::get_prev_largest_id() {
     }
 }
 
-aku_Status MetadataStorage::load_matcher_data(SeriesMatcher& matcher) {
+aku_Status MetadataStorage::load_matcher_data(SeriesMatcherBase& matcher) {
     auto query = "SELECT series_id || ' ' || keyslist, storage_id FROM akumuli_series;";
     try {
         auto results = select_query(query);

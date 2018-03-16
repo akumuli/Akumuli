@@ -48,6 +48,15 @@ struct DatabaseError : std::exception {
 };
 
 
+/** Protocol parser response.
+ */
+struct ProtocolParserResponse {
+    virtual ~ProtocolParserResponse() = default;
+    virtual bool is_available() const = 0;
+    virtual std::string get_body() const = 0;
+};
+
+
 //! Fwd
 struct DbSession;
 
@@ -111,7 +120,53 @@ public:
 };
 
 
-class ProtocolParser {
+struct NullResponse : ProtocolParserResponse {
+    virtual bool is_available() const {
+        return false;
+    }
+    virtual std::string get_body() const {
+        return std::string();
+    }
+};
+
+/**
+ * @brief RESP protocol parser
+ * Implements two complimentary protocols:
+ * - data point protocol
+ * - row protocol
+ *
+ * DATA POINT PROTOCOL is used to insert individual data points. First line of
+ * each PDU should contain a RESP string. This string is interpreted as a series name.
+ * The second line should contain a RESP string that contains ISO8601 formatted
+ * timestamp (only basic ISO8601 format supported). Alternatively, if the second line
+ * contains a RESP integer, it's interpreted as a timestamp (number of nanoseconds since
+ * epoch). The timestamp should be followed by the value. Value can be encoded using
+ * RESP string or RESP integer. If the value is encoded as a string, it's interpreted as
+ * a floating point number. If the value is an integer, the value is used as is.
+ * Example:
+ *     +balancers.memusage host=machine1 region=NW
+ *     +20141210T074343.999999999
+ *     :31
+ *
+ * ROW PROTOCOL is used to insert logically corelated data points using single PDU.
+ * 'Logically corelated' means one particular thing: all data points share the set of
+ * tags and a timestamp. First line of the PDU should contain a RESP string. This string
+ * is interpreted as a compound series name. The second line should contain a RESP string
+ * that contains ISO8601 formatted timestamp (only basic ISO8601 format supported).
+ * Alternatively, if the second line contains a RESP integer, it's interpreted as a timestamp
+ * (number of nanoseconds since epoch). The timestamp should be followed by the array of values.
+ * The array of value is encoded using RESP array.
+ * Example:
+ *     +cpu.real|cpu.user|cpu.sys host=machine1 region=NW
+ *     +20141210T074343
+ *     *3
+ *     +3.12
+ *     +8.11
+ *     +12.6
+ *
+ * Protocol data units of each protocol can be interleaved.
+ */
+class RESPProtocolParser {
     bool                               done_;
     ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
@@ -129,12 +184,91 @@ public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
     };
-    ProtocolParser(std::shared_ptr<DbSession> consumer);
+    RESPProtocolParser(std::shared_ptr<DbSession> consumer);
     void start();
-    void parse_next(Byte *buffer, u32 sz);
+    NullResponse parse_next(Byte *buffer, u32 sz);
     void close();
     Byte* get_next_buffer();
+
+    // Error representation
+    enum {
+        DB,
+        ERR,
+        PARSE,
+    };
+
+    /**
+     * @brief Return error representation in OpenTSDB telnet protocol
+     */
+    std::string error_repr(int kind, std::string const& err) const;
 };
 
+
+struct OpenTSDBResponse : ProtocolParserResponse {
+    bool is_set_;
+    const char* body_;
+
+    OpenTSDBResponse()
+        : is_set_(false)
+        , body_(nullptr)
+    {
+    }
+
+    OpenTSDBResponse(const char* body)
+        : is_set_(true)
+        , body_(body)
+    {
+    }
+
+    virtual bool is_available() const {
+        return is_set_;
+    }
+    virtual std::string get_body() const {
+        return body_;
+    }
+};
+
+/**
+ * @brief OpenTSDBProtocolParser class
+ *
+ * Implements OpenTSDB protocol. In this protocol PDU delimiter is a new line character.
+ * Each line contains exactly one command. This parser supports only 'put' command.
+ *
+ * Example:
+ *     put cpu.real 20141210T074343 3.12 host=machine1 region=NW
+ *     put cpu.user 20141210T074343 8.11 host=machine1 region=NW
+ *     put cpu.sys 20141210T074343 12.6 host=machine1 region=NW
+ */
+class OpenTSDBProtocolParser {
+    bool                               done_;
+    ReadBuffer                         rdbuf_;
+    std::shared_ptr<DbSession>         consumer_;
+    Logger                             logger_;
+
+    OpenTSDBResponse worker();
+public:
+    enum {
+        RDBUF_SIZE = 0x1000,  // 4KB
+    };
+
+    OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer);
+
+    void start();
+    OpenTSDBResponse parse_next(Byte *buffer, u32 sz);
+    void close();
+    Byte* get_next_buffer();
+
+    // Error representation
+    enum {
+        DB,
+        ERR,
+        PARSE,
+    };
+
+    /**
+     * @brief Return error representation in OpenTSDB telnet protocol
+     */
+    std::string error_repr(int kind, std::string const& err) const;
+};
 
 }  // namespace

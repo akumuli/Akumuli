@@ -10,10 +10,15 @@
 
 namespace Akumuli {
 
-struct ServerSettings {
+struct ProtocolSettings {
     std::string name;
     int         port;
-    int         nworkers;
+};
+
+struct ServerSettings {
+    std::string                   name;
+    std::vector<ProtocolSettings> protocols;
+    int                           nworkers;
 };
 
 
@@ -51,18 +56,27 @@ struct ReadOperation {
     virtual void close() = 0;
 };
 
+/**
+ * API endpoint from which the query originated from.
+ */
+enum class ApiEndpoint {
+    QUERY,
+    SUGGEST,
+    SEARCH,
+    UNKNOWN,
+};
 
 //! Interface that can be used to create read operations
 struct ReadOperationBuilder {
-    virtual ~ReadOperationBuilder()        = default;
-    virtual ReadOperation* create()        = 0;
-    virtual std::string    get_all_stats() = 0;
+    virtual ~ReadOperationBuilder()                        = default;
+    virtual ReadOperation* create(ApiEndpoint ep)          = 0;
+    virtual std::string    get_all_stats()                 = 0;
+    virtual std::string    get_resource(std::string name)  = 0;
 };
-
 
 //! Server interface
 struct Server {
-    virtual ~Server() = default;
+    virtual ~Server()                                      = default;
     virtual void start(SignalHandler* sig_handler, int id) = 0;
 };
 

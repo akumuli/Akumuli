@@ -31,8 +31,8 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_pipeline
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -53,8 +53,8 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_tcp_server
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -74,8 +74,8 @@ set_target_properties(perf_tcp_server PROPERTIES EXCLUDE_FROM_ALL 1)
 add_executable(
     perf_seriesmatcher
     perf_seriesmatcher.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/saxencoder.cpp
     ../libakumuli/anomalydetector.cpp
@@ -101,7 +101,7 @@ add_executable(
 
 target_link_libraries(
     perf_datetime_parsing
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_datetime_parsing PROPERTIES EXCLUDE_FROM_ALL 1)
@@ -121,8 +121,8 @@ add_executable(
     ../libakumuli/crc32c.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/datetime.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
 )
 
 target_link_libraries(
@@ -158,8 +158,8 @@ set_target_properties(perf_compression_throughput PROPERTIES EXCLUDE_FROM_ALL 1)
 add_executable(perf_ingestion perf_ingestion.cpp)
 
 target_link_libraries(perf_ingestion
-    jemalloc
     akumuli
+    "${JEMALLOC_LIBRARY}"
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -185,12 +185,12 @@ add_executable(
     perf_invertedindex
     perf_invertedindex.cpp
     perftest_tools.cpp
-    ../libakumuli/invertedindex.cpp
+    ../libakumuli/index/invertedindex.cpp
 )
 
 target_link_libraries(
     perf_invertedindex
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_invertedindex PROPERTIES EXCLUDE_FROM_ALL 1)
@@ -210,7 +210,7 @@ add_executable(
 
 target_link_libraries(
     perf_blockstore
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
@@ -234,7 +234,7 @@ add_executable(
 
 target_link_libraries(
     perf_nbtree
-    jemalloc
+    "${JEMALLOC_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}

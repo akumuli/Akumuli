@@ -17,6 +17,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/format.hpp>
 
 #include <apr_errno.h>
 
@@ -31,7 +32,7 @@ enum {
     AKU_TEST_DB_SIZE = 2*1024*1024,  // 2MB
 };
 
-static Logger logger("main", 10);
+static Logger logger("main");
 
 //! Default configuration for `akumulid`
 const char* DEFAULT_CONFIG = R"(# akumulid configuration file (generated automatically).
@@ -43,14 +44,14 @@ path=~/.akumuli
 # 4Gb in size by default and allocated beforehand. To change number
 # of  volumes  they  should  change  `nvolumes`  value in
 # configuration and restart daemon.
-nvolumes=4
+nvolumes=%1%
 
 # Size of the individual volume. You can use MB or GB suffix.
 # Default value is 4GB (if value is not set).
 volume_size=4GB
 
 
-# HTTP server config
+# HTTP API endpoint configuration
 
 [HTTP]
 # port number
@@ -62,8 +63,8 @@ port=8181
 [TCP]
 # port number
 port=8282
-# worker pool size
-pool_size=1
+# worker pool size (0 means that the size of the pool will be chosen automatically)
+pool_size=0
 
 
 # UDP ingestion server config (delete to disable)
@@ -74,13 +75,21 @@ port=8383
 # worker pool size
 pool_size=1
 
+# OpenTSDB telnet-style data connection enabled (remove this section to disable).
+
+[OpenTSDB]
+# port number
+port=4242
+
+
+
 # Logging configuration
 # This is just a log4cxx configuration without any modifications
 
 log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %c [%p] %m%n
+log4j.appender.file.layout.ConversionPattern=%%d{yyyy-MM-dd HH:mm:ss,SSS} %%c [%%p] %%m%%n
 log4j.appender.file.filename=/tmp/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
@@ -104,7 +113,21 @@ struct ConfigFile {
             BOOST_THROW_EXCEPTION(err);
         }
         std::ofstream stream(path.c_str());
-        stream << DEFAULT_CONFIG << std::endl;
+        int nvolumes = 4;
+        std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
+        stream << config << std::endl;
+        stream.close();
+    }
+
+    static void init_exp_config(boost::filesystem::path path) {
+        if (boost::filesystem::exists(path)) {
+            std::runtime_error err("configuration file already exists");
+            BOOST_THROW_EXCEPTION(err);
+        }
+        std::ofstream stream(path.c_str());
+        int nvolumes = 0;
+        std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
+        stream << config << std::endl;
         stream.close();
     }
 
@@ -189,7 +212,7 @@ struct ConfigFile {
     static ServerSettings get_http_server(PTree conf) {
         ServerSettings settings;
         settings.name = "HTTP";
-        settings.port = conf.get<int>("HTTP.port");
+        settings.protocols.push_back({ "HTTP", conf.get<int>("HTTP.port")});
         settings.nworkers = -1;
         return settings;
     }
@@ -197,7 +220,7 @@ struct ConfigFile {
     static ServerSettings get_udp_server(PTree conf) {
         ServerSettings settings;
         settings.name = "UDP";
-        settings.port = conf.get<int>("UDP.port");
+        settings.protocols.push_back({ "UDP", conf.get<int>("UDP.port")});
         settings.nworkers = conf.get<int>("UDP.pool_size");
         return settings;
     }
@@ -205,7 +228,10 @@ struct ConfigFile {
     static ServerSettings get_tcp_server(PTree conf) {
         ServerSettings settings;
         settings.name = "TCP";
-        settings.port = conf.get<int>("TCP.port");
+        settings.protocols.push_back({ "RESP", conf.get<int>("TCP.port")});
+        if (conf.count("OpenTSDB")) {
+            settings.protocols.push_back({ "OpenTSDB", conf.get<int>("OpenTSDB.port")});
+        }
         settings.nworkers = conf.get<int>("TCP.pool_size");
         return settings;
     }
@@ -239,6 +265,8 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
         akumulid --init
 
+        akumulid --init-expandable
+
         akumulid --create
 
         akumuild --delete
@@ -254,10 +282,15 @@ const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
         **init**
             create  configuration  file at `~/.akumulid`  filled with
-            default values and exit.
+            default values and exit
+
+        **init-expandable**
+            create  configuration  file at `~/.akumulid`  filled with
+            default values and exit (sets nvolumes to 0)
 
         **create**
-            generate database files in `~/.akumuli` folder
+            generate database files in `~/.akumuli` folder, use with
+            --allocate flag to actually allocate disk space
 
         **delete**
             delete database files in `~/.akumuli` folder
@@ -285,7 +318,7 @@ std::string cli_format(std::string dest) {
             pos = line.find(pattern, pos);
             if (pos != std::string::npos) {
                 // match
-                auto code = token_num % 2 ? NORM : open;
+                auto code = (token_num % 2) ? NORM : open;
                 line.replace(pos, strlen(pattern), code);
                 token_num++;
             }
@@ -318,7 +351,7 @@ void rich_print(const char* msg) {
 
 /** Logger f-n that shuld be used in libakumuli */
 static void static_logger(aku_LogLevel tag, const char * msg) {
-    static Logger logger = Logger("Main", 32);
+    static Logger logger = Logger("Main");
     switch(tag) {
     case AKU_LOG_ERROR:
         logger.error() << msg;
@@ -337,12 +370,13 @@ static void static_logger(aku_LogLevel tag, const char * msg) {
   */
 void create_db_files(const char* path,
                      i32 nvolumes,
-                     u64 volume_size)
+                     u64 volume_size,
+                     bool allocate)
 {
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (!boost::filesystem::exists(full_path)) {
         apr_status_t status = APR_SUCCESS;
-        status = aku_create_database_ex("db", path, path, nvolumes, volume_size);
+        status = aku_create_database_ex("db", path, path, nvolumes, volume_size, allocate);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -390,7 +424,18 @@ void cmd_run_server() {
             srvnames[srvid] = settings.name;
             srv->start(&sighandler, srvid);
             logger.info() << "Starting " << settings.name << " index " << srvid;
-            std::cout << cli_format("**OK** ") << settings.name << " server started, port: " << settings.port << std::endl;
+            if (settings.protocols.size() == 1) {
+                std::cout << cli_format("**OK** ") << settings.name
+                          << " server started, port: " << settings.protocols[0].port << std::endl;
+            } else {
+                std::cout << cli_format("**OK** ") << settings.name
+                          << " server started";
+                for (const auto& protocol: settings.protocols) {
+                    std::cout << ", " << protocol.name << " port: " << protocol.port;
+                    logger.info() << "Protocol: " << protocol.name << " port: " << protocol.port;
+                }
+                std::cout << std::endl;
+            }
             srvid++;
         }
         auto srvids = sighandler.wait();
@@ -403,7 +448,7 @@ void cmd_run_server() {
 
 /** Create database command.
   */
-void cmd_create_database(bool test_db=false) {
+void cmd_create_database(bool test_db=false, bool allocate=false) {
     auto config_path = ConfigFile::default_config_path();
 
     auto config      = ConfigFile::read_config_file(config_path);
@@ -415,7 +460,7 @@ void cmd_create_database(bool test_db=false) {
         volsize = AKU_TEST_DB_SIZE;
     }
 
-    create_db_files(path.c_str(), volumes, volsize);
+    create_db_files(path.c_str(), volumes, volsize, allocate);
 }
 
 void cmd_delete_database() {
@@ -527,8 +572,9 @@ void panic_handler(const char * msg) {
 
 
 int main(int argc, char** argv) {
-
     try {
+        std::locale::global(std::locale("C"));
+
         aku_initialize(&panic_handler, &static_logger);
 
         // Init logger
@@ -541,9 +587,11 @@ int main(int argc, char** argv) {
         cli_only_options.add_options()
                 ("help", "Produce help message")
                 ("create", "Create database")
+                ("allocate", "Preallocate disk space")
                 ("delete", "Delete database")
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
+                ("init-expandable", "Create configuration for expandable storage")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
                 ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
                 ;
@@ -553,7 +601,11 @@ int main(int argc, char** argv) {
         po::notify(vm);
 
         std::stringstream header;
+#ifndef AKU_VERSION
         header << "\n\nStarted\n\n";
+#else
+        header << "\n\nStarted v" << AKU_VERSION << "\n\n";
+#endif
         header << "Command line: ";
         for (int i = 0; i < argc; i++) {
             header << argv[i] << ' ';
@@ -575,8 +627,20 @@ int main(int argc, char** argv) {
             exit(EXIT_SUCCESS);
         }
 
+        if (vm.count("init-expandable")) {
+            ConfigFile::init_exp_config(path);
+
+            std::stringstream fmt;
+            fmt << "**OK** configuration file created at: `" << path << "`";
+            std::cout << cli_format(fmt.str()) << std::endl;
+            exit(EXIT_SUCCESS);
+        }
+
         if (vm.count("create")) {
-            cmd_create_database(false);
+            bool allocate = false;
+            if(vm.count("allocate"))
+                allocate = true;
+            cmd_create_database(false, allocate);
             exit(EXIT_SUCCESS);
         }
 

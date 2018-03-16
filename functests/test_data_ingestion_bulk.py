@@ -65,7 +65,10 @@ def main(path, protocol):
 
         # some space should be used
         volume0space = stats["volume_0"]["free_space"]
-        volume1space = stats["volume_1"]["free_space"]
+        if "volume_1" in stats:
+            volume1space = stats["volume_1"]["free_space"]
+        else:
+            volume1space = 0
         if volume0space == volume1space:
             print("Test #1 failed. Nothing was written to disk, /stats:")
             print(rawstats)

@@ -124,6 +124,85 @@ struct CursorImpl : aku_Cursor {
 };
 
 
+/**
+ * Cursor that returns results of the 'suggest' query
+ * used by Grafana.
+ */
+struct SuggestCursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
+    aku_Status status_;
+    std::string query_;
+
+    SuggestCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
+        : query_(query)
+    {
+        status_ = AKU_SUCCESS;
+        cursor_ = ConcurrentCursor::make(&StorageSession::suggest, storage, query_.data());
+    }
+
+    ~SuggestCursorImpl() {
+        cursor_->close();
+    }
+
+    bool is_done() const {
+        return cursor_->is_done();
+    }
+
+    bool is_error(aku_Status* out_error_code_or_null) const {
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
+    }
+
+    u32 read_values( void  *values
+                   , u32    values_size )
+    {
+        return cursor_->read(values, values_size);
+    }
+};
+
+/**
+ * Cursor that returns results of the 'search' query.
+ */
+struct SearchCursorImpl : aku_Cursor {
+    std::unique_ptr<ExternalCursor> cursor_;
+    aku_Status status_;
+    std::string query_;
+
+    SearchCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
+        : query_(query)
+    {
+        status_ = AKU_SUCCESS;
+        cursor_ = ConcurrentCursor::make(&StorageSession::search, storage, query_.data());
+    }
+
+    ~SearchCursorImpl() {
+        cursor_->close();
+    }
+
+    bool is_done() const {
+        return cursor_->is_done();
+    }
+
+    bool is_error(aku_Status* out_error_code_or_null) const {
+        if (status_ != AKU_SUCCESS) {
+            *out_error_code_or_null = status_;
+            return false;
+        }
+        return cursor_->is_error(out_error_code_or_null);
+    }
+
+    u32 read_values( void  *values
+                   , u32    values_size )
+    {
+        return cursor_->read(values, values_size);
+    }
+};
+
+
+
 class Session : public aku_Session {
     std::shared_ptr<StorageSession> session_;
 public:
@@ -151,6 +230,16 @@ public:
 
     CursorImpl* query(const char* q) {
         auto res = new CursorImpl(session_, q);
+        return res;
+    }
+
+    SuggestCursorImpl* suggest(const char* q) {
+        auto res = new SuggestCursorImpl(session_, q);
+        return res;
+    }
+
+    SearchCursorImpl* search(const char* q) {
+        auto res = new SearchCursorImpl(session_, q);
         return res;
     }
 };
@@ -208,22 +297,24 @@ public:
     }
 };
 
-aku_Status aku_create_database_ex( const char     *file_name
+aku_Status aku_create_database_ex( const char     *base_file_name
                                  , const char     *metadata_path
                                  , const char     *volumes_path
                                  , i32             num_volumes
-                                 , u64             page_size)
+                                 , u64             page_size
+                                 , bool            allocate)
 {
-    return Storage::new_database(file_name, metadata_path, volumes_path, num_volumes, page_size);
+    return Storage::new_database(base_file_name, metadata_path, volumes_path, num_volumes, page_size, allocate);
 }
 
-aku_Status aku_create_database( const char     *file_name
+aku_Status aku_create_database( const char     *base_file_name
                               , const char     *metadata_path
                               , const char     *volumes_path
-                              , i32             num_volumes)
+                              , i32             num_volumes
+                              , bool            allocate)
 {
     static const u64 vol_size = 4096ul*1024*1024; // pages (4GB total)
-    return aku_create_database_ex(file_name, metadata_path, volumes_path, num_volumes, vol_size);
+    return aku_create_database_ex(base_file_name, metadata_path, volumes_path, num_volumes, vol_size, allocate);
 }
 
 
@@ -300,6 +391,18 @@ aku_Cursor* aku_query(aku_Session* session, const char* query) {
     return static_cast<aku_Cursor*>(cursor);
 }
 
+aku_Cursor* aku_suggest(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->suggest(query);
+    return static_cast<aku_Cursor*>(cursor);
+}
+
+aku_Cursor* aku_search(aku_Session* session, const char* query) {
+    auto impl = reinterpret_cast<Session*>(session);
+    auto cursor = impl->search(query);
+    return static_cast<aku_Cursor*>(cursor);
+}
+
 void aku_cursor_close(aku_Cursor* pcursor) {
     auto impl = reinterpret_cast<CursorImpl*>(pcursor);
     delete impl;  // destructor calls `close` method
@@ -369,3 +472,21 @@ void aku_debug_print(aku_Database *db) {
     AKU_PANIC("Not implemented");
 }
 
+aku_Status aku_get_resource(const char* res_name, char* buf, size_t* bufsize) {
+    std::string res(res_name);
+    if (res != "function-names") {
+        return AKU_EBAD_ARG;
+    }
+    auto names = QP::list_query_registry();
+    std::string result;
+    for (auto name: names) {
+        result += name;
+        result += "\n";
+    }
+    if (result.size() > *bufsize) {
+        return AKU_EOVERFLOW;
+    }
+    std::copy(result.begin(), result.end(), buf);
+    *bufsize = result.size();
+    return AKU_SUCCESS;
+}

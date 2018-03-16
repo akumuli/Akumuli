@@ -1,4 +1,6 @@
 #include "status_util.h"
+#include <stdexcept>
+#include <boost/exception/all.hpp>
 
 namespace Akumuli {
 
@@ -23,6 +25,9 @@ static const char* g_error_messages[] = {
     "access denied",
     "operation not permitted",
     "resource is not available",
+    "high cardinality, lower cardinality required",
+    "regullar series expected",
+    "missing data not supported",
     "unknown error code"
 };
 
@@ -35,6 +40,12 @@ const char* StatusUtil::c_str(aku_Status error_code) {
 
 std::string StatusUtil::str(aku_Status status) {
     return c_str(status);
+}
+
+void StatusUtil::throw_on_error(aku_Status status) {
+    if (status != AKU_SUCCESS) {
+        BOOST_THROW_EXCEPTION(std::runtime_error(c_str(status)));
+    }
 }
 
 

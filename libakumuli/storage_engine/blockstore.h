@@ -16,6 +16,7 @@
  */
 
 #pragma once
+#include "volumeregistry.h"
 #include "volume.h"
 #include <random>
 #include <mutex>
@@ -65,6 +66,9 @@ struct BlockStoreStats {
 
 typedef std::map<std::string, BlockStoreStats> PerVolumeStats;
 
+/** Blockstore. Contains collection of volumes.
+ * Translates logic adresses into physical ones.
+ */
 
 struct BlockStore {
 
@@ -94,11 +98,8 @@ struct BlockStore {
     virtual PerVolumeStats get_volume_stats() const = 0;
 };
 
-/** Blockstore. Contains collection of volumes.
-  * Translates logic adresses into physical ones.
-  */
-class FixedSizeFileStorage : public BlockStore,
-                             public std::enable_shared_from_this<FixedSizeFileStorage> {
+class FileStorage : public BlockStore {
+protected:
     //! Metadata volume.
     std::unique_ptr<MetaVolume> meta_;
     //! Array of volumes.
@@ -117,37 +118,75 @@ class FixedSizeFileStorage : public BlockStore,
     std::vector<std::string> volume_names_;
 
     //! Secret c-tor.
-    FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths);
+    FileStorage(std::shared_ptr<VolumeRegistry> meta);
 
-    void advance_volume();
+    virtual void adjust_current_volume() = 0;
+    void handle_volume_transition();
 
 public:
-    /** Create BlockStore instance (can be created only on heap).
-      */
-    static std::shared_ptr<FixedSizeFileStorage> open(std::string              metapath,
-                                                      std::vector<std::string> volpaths);
-
-    static void create(std::string metapath, std::vector<std::tuple<u32, std::string>> vols);
-
-    /** Read block from blockstore
-      */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
+    static void create(std::vector<std::tuple<u32, std::string>> vols);
 
     /** Add block to blockstore.
-      * @param data Pointer to buffer.
-      * @return Status and block's logic address.
-      */
+     * @param data Pointer to buffer.
+     * @return Status and block's logic address.
+     */
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
 
     virtual void flush();
-
-    virtual bool exists(LogicAddr addr) const;
 
     virtual u32 checksum(u8 const* data, size_t size) const;
 
     virtual BlockStoreStats get_stats() const;
 
     virtual PerVolumeStats get_volume_stats() const;
+};
+
+class FixedSizeFileStorage : public FileStorage,
+                             public std::enable_shared_from_this<FixedSizeFileStorage> {
+    //! Secret c-tor.
+    FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta);
+
+protected:
+    virtual void adjust_current_volume();
+
+public:
+    /** Create BlockStore instance (can be created only on heap).
+      */
+    static std::shared_ptr<FixedSizeFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
+
+    virtual bool exists(LogicAddr addr) const;
+
+    /** Read block from blockstore
+      */
+    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
+};
+
+class ExpandableFileStorage : public FileStorage,
+                              public std::enable_shared_from_this<ExpandableFileStorage> {
+     std::string db_name_;
+
+     //! Secret c-tor.
+     ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta);
+
+     std::unique_ptr<Volume> create_new_volume(u32 id);
+protected:
+     virtual void adjust_current_volume();
+
+public:
+     /**
+      * Create BlockStore instance (can be created only on heap).
+      * @param db_name is a logical database name
+      * @param metapath is a place where the meta-page is located
+      * @param volpaths is a list of volume paths
+      * @param on_volume_advance is function object that gets called when new volume is created
+      */
+     static std::shared_ptr<ExpandableFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
+
+     virtual bool exists(LogicAddr addr) const;
+
+     /** Read block from blockstore
+      */
+     virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
 };
 
 
@@ -179,13 +218,21 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
 class Block {
     std::vector<u8>           data_;
     LogicAddr                 addr_;
+    const u8*                 zptr_;
 
 public:
     Block(LogicAddr addr, std::vector<u8>&& data);
 
+    //! This c-tor is used in zero-copy mechanism, ptr should outlive the Block object
+    Block(LogicAddr addr, const u8* ptr);
+
     Block();
 
+    bool is_readonly() const;
+
     const u8* get_data() const;
+
+    const u8* get_cdata() const;
 
     u8* get_data();
 

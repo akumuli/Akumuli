@@ -20,8 +20,11 @@
 #include "util.h"
 #include "status_util.h"
 #include "crc32c.h"
+#include "akumuli_version.h"
 
 #include <cassert>
+
+#include <boost/filesystem.hpp>
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -100,25 +103,42 @@ BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
 Block::Block(LogicAddr addr, std::vector<u8>&& data)
     : data_(std::move(data))
     , addr_(addr)
+    , zptr_(nullptr)
+{
+}
+
+Block::Block(LogicAddr addr, const u8* ptr)
+    : addr_(addr)
+    , zptr_(ptr)
 {
 }
 
 Block::Block()
     : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
     , addr_(EMPTY_ADDR)
+    , zptr_(nullptr)
 {
 }
 
 const u8* Block::get_data() const {
-    return data_.data();
+    return zptr_ ? zptr_ : data_.data();
+}
+
+const u8* Block::get_cdata() const {
+    return zptr_ ? zptr_ : data_.data();
+}
+
+bool Block::is_readonly() const {
+    return zptr_ != nullptr || addr_ != EMPTY_ADDR;
 }
 
 u8* Block::get_data() {
+    assert(is_readonly() == false);
     return data_.data();
 }
 
 size_t Block::get_size() const {
-    return data_.size();
+    return zptr_ ? AKU_BLOCK_SIZE : data_.size();
 }
 
 LogicAddr Block::get_addr() const {
@@ -129,15 +149,23 @@ void Block::set_addr(LogicAddr addr) {
     addr_ = addr;
 }
 
-FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std::string> volpaths)
-    : meta_(MetaVolume::open_existing(metapath.c_str()))
+
+FileStorage::FileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : meta_(MetaVolume::open_existing(meta))
     , current_volume_(0)
     , current_gen_(0)
     , total_size_(0)
-    , volume_names_(volpaths)
 {
-    for (u32 ix = 0ul; ix < volpaths.size(); ix++) {
-        auto volpath = volpaths.at(ix);
+    typedef VolumeRegistry::VolumeDesc TVol;
+    auto volumes = meta->get_volumes();
+    std::sort(volumes.begin(), volumes.end(), [](TVol const& a, TVol const& b) {
+        return a.id < b.id;
+    });
+    for (auto const& volrec: volumes) {
+        volume_names_.push_back(volrec.path);
+    }
+    for (u32 ix = 0ul; ix < volumes.size(); ix++) {
+        auto volpath = volumes.at(ix).path;
         u32 nblocks = 0;
         aku_Status status = AKU_SUCCESS;
         std::tie(status, nblocks) = meta_->get_nblocks(ix);
@@ -177,16 +205,7 @@ FixedSizeFileStorage::FixedSizeFileStorage(std::string metapath, std::vector<std
     }
 }
 
-std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::string metapath, std::vector<std::string> volpaths) {
-    if (volpaths.empty() || metapath.empty()) {
-        AKU_PANIC("Database file(s) doesn't exists!");
-    }
-    auto bs = new FixedSizeFileStorage(metapath, volpaths);
-    return std::shared_ptr<FixedSizeFileStorage>(bs);
-}
-
-void FixedSizeFileStorage::create(std::string metapath,
-                                  std::vector<std::tuple<u32, std::string>> vols)
+void FileStorage::create(std::vector<std::tuple<u32, std::string>> vols)
 {
     std::vector<u32> caps;
     for (auto cp: vols) {
@@ -196,71 +215,11 @@ void FixedSizeFileStorage::create(std::string metapath,
         Volume::create_new(path.c_str(), capacity);
         caps.push_back(capacity);
     }
-    MetaVolume::create_new(metapath.c_str(), caps.size(), caps.data());
 }
 
-static u32 extract_gen(LogicAddr addr) {
-    return addr >> 32;
-}
-
-static BlockAddr extract_vol(LogicAddr addr) {
-    return addr & 0xFFFFFFFF;
-}
-
-static LogicAddr make_logic(u32 gen, BlockAddr addr) {
-    return static_cast<u64>(gen) << 32 | addr;
-}
-
-bool FixedSizeFileStorage::exists(LogicAddr addr) const {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    auto gen = extract_gen(addr);
-    auto vol = extract_vol(addr);
-    auto volix = gen % static_cast<u32>(volumes_.size());
-    aku_Status status;
-    u32 actual_gen;
-    std::tie(status, actual_gen) = meta_->get_generation(volix);
-    if (status != AKU_SUCCESS) {
-        return false;
-    }
-    u32 nblocks;
-    std::tie(status, nblocks) = meta_->get_nblocks(volix);
-    if (status != AKU_SUCCESS) {
-        return false;
-    }
-    return actual_gen == gen && vol < nblocks;
-}
-
-std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    aku_Status status;
-    auto gen = extract_gen(addr);
-    auto vol = extract_vol(addr);
-    auto volix = gen % static_cast<u32>(volumes_.size());
-    u32 actual_gen;
-    u32 nblocks;
-    std::tie(status, actual_gen) = meta_->get_generation(volix);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    std::tie(status, nblocks) = meta_->get_nblocks(volix);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    if (actual_gen != gen || vol >= nblocks) {
-        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
-    }
-    std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
-    status = volumes_[volix]->read_block(vol, dest.data());
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, std::unique_ptr<Block>());
-    }
-    auto block = std::make_shared<Block>(addr, std::move(dest));
-    return std::make_tuple(status, std::move(block));
-}
-
-void FixedSizeFileStorage::advance_volume() {
+void FileStorage::handle_volume_transition() {
     Logger::msg(AKU_LOG_INFO, "Advance volume called, current gen:" + std::to_string(current_gen_));
-    current_volume_ = (current_volume_ + 1) % volumes_.size();
+    adjust_current_volume();
     aku_Status status;
     std::tie(status, current_gen_) = meta_->get_generation(current_volume_);
     if (status != AKU_SUCCESS) {
@@ -292,29 +251,41 @@ void FixedSizeFileStorage::advance_volume() {
     }
 }
 
-std::tuple<aku_Status, LogicAddr> FixedSizeFileStorage::append_block(std::shared_ptr<Block> data) {
+static u32 extract_gen(LogicAddr addr) {
+    return addr >> 32;
+}
+
+static BlockAddr extract_vol(LogicAddr addr) {
+    return addr & 0xFFFFFFFF;
+}
+
+static LogicAddr make_logic(u32 gen, BlockAddr addr) {
+    return static_cast<u64>(gen) << 32 | addr;
+}
+
+std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<Block> data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     BlockAddr block_addr;
     aku_Status status;
     std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data->get_data());
     if (status == AKU_EOVERFLOW) {
-        // Move to next generation
-        advance_volume();
-        std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, 0ull);
-        }
+      // transition to new/next volume
+      handle_volume_transition();
+      std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
+      if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, 0ull);
+      }
     }
     data->set_addr(block_addr);
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
-        AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
+      AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
     }
     dirty_[current_volume_]++;
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 
-void FixedSizeFileStorage::flush() {
+void FileStorage::flush() {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     /*
     for (size_t ix = 0; ix < dirty_.size(); ix++) {
@@ -330,7 +301,7 @@ void FixedSizeFileStorage::flush() {
     meta_->flush();
 }
 
-BlockStoreStats FixedSizeFileStorage::get_stats() const {
+BlockStoreStats FileStorage::get_stats() const {
     BlockStoreStats stats = {};
     stats.block_size = 4096;
     size_t nvol = meta_->get_nvolumes();
@@ -349,7 +320,7 @@ BlockStoreStats FixedSizeFileStorage::get_stats() const {
     return stats;
 }
 
-PerVolumeStats FixedSizeFileStorage::get_volume_stats() const {
+PerVolumeStats FileStorage::get_volume_stats() const {
     PerVolumeStats result;
     size_t nvol = meta_->get_nvolumes();
     for (u32 ix = 0; ix < nvol; ix++) {
@@ -377,8 +348,180 @@ static u32 crc32c(const u8* data, size_t size) {
     return impl(0, data, size);
 }
 
-u32 FixedSizeFileStorage::checksum(u8 const* data, size_t size) const {
+u32 FileStorage::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
+}
+
+// FixedSizeFileStorage
+
+FixedSizeFileStorage::FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : FileStorage::FileStorage(meta)
+{
+    // nothing specific needed except calling the parent constructor
+}
+
+std::shared_ptr<FixedSizeFileStorage> FixedSizeFileStorage::open(std::shared_ptr<VolumeRegistry> meta) {
+    auto bs = new FixedSizeFileStorage(meta);
+    return std::shared_ptr<FixedSizeFileStorage>(bs);
+}
+
+bool FixedSizeFileStorage::exists(LogicAddr addr) const {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    auto gen = extract_gen(addr);
+    auto vol = extract_vol(addr);
+    auto volix = gen % static_cast<u32>(volumes_.size());
+    aku_Status status;
+    u32 actual_gen;
+    std::tie(status, actual_gen) = meta_->get_generation(volix);
+    if (status != AKU_SUCCESS) {
+      return false;
+    }
+    u32 nblocks;
+    std::tie(status, nblocks) = meta_->get_nblocks(volix);
+    if (status != AKU_SUCCESS) {
+      return false;
+    }
+    return actual_gen == gen && vol < nblocks;
+}
+
+std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    aku_Status status;
+    auto gen = extract_gen(addr);
+    auto vol = extract_vol(addr);
+    auto volix = gen % static_cast<u32>(volumes_.size());
+    u32 actual_gen;
+    u32 nblocks;
+    std::tie(status, actual_gen) = meta_->get_generation(volix);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    std::tie(status, nblocks) = meta_->get_nblocks(volix);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    if (actual_gen != gen || vol >= nblocks) {
+        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
+    }
+    // Try to use zero-copy if possible
+    const u8* mptr;
+    std::tie(status, mptr) = volumes_[volix]->read_block_zero_copy(vol);
+    if (status == AKU_SUCCESS) {
+        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
+        return std::make_tuple(status, std::move(zblock));
+    } else if (status == AKU_EUNAVAILABLE) {
+        // Fallback to copying if not possible
+        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
+        status = volumes_[volix]->read_block(vol, dest.data());
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, std::unique_ptr<Block>());
+        }
+        auto block = std::make_shared<Block>(addr, std::move(dest));
+        return std::make_tuple(status, std::move(block));
+    }
+    return std::make_tuple(status, std::unique_ptr<Block>());
+}
+
+void FixedSizeFileStorage::adjust_current_volume() {
+    current_volume_ = (current_volume_ + 1) % volumes_.size();
+}
+
+// ExpandableFileStorage
+
+ExpandableFileStorage::ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta)
+    : FileStorage::FileStorage(meta)
+    , db_name_(meta->get_dbname())
+{
+}
+
+std::shared_ptr<ExpandableFileStorage> ExpandableFileStorage::open(std::shared_ptr<VolumeRegistry> meta)
+{
+    auto bs = new ExpandableFileStorage(meta);
+    return std::shared_ptr<ExpandableFileStorage>(bs);
+}
+
+bool ExpandableFileStorage::exists(LogicAddr addr) const {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    auto gen = extract_gen(addr);
+    auto vol = extract_vol(addr);
+    aku_Status status;
+    u32 actual_gen;
+    std::tie(status, actual_gen) = meta_->get_generation(gen);
+    if (status != AKU_SUCCESS) {
+      return false;
+    }
+    u32 nblocks;
+    std::tie(status, nblocks) = meta_->get_nblocks(gen);
+    if (status != AKU_SUCCESS) {
+      return false;
+    }
+    return actual_gen == gen && vol < nblocks;
+}
+
+std::tuple<aku_Status, std::shared_ptr<Block>> ExpandableFileStorage::read_block(LogicAddr addr) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    aku_Status status;
+    auto gen = extract_gen(addr);
+    auto vol = extract_vol(addr);
+    u32 actual_gen;
+    u32 nblocks;
+    std::tie(status, actual_gen) = meta_->get_generation(gen);
+    if (status != AKU_SUCCESS) {
+      return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    std::tie(status, nblocks) = meta_->get_nblocks(gen);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
+    }
+    if (actual_gen != gen || vol >= nblocks) {
+      return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
+    }
+    // Try to use zero-copy if possible
+    const u8* mptr;
+    std::tie(status, mptr) = volumes_[gen]->read_block_zero_copy(vol);
+    if (status == AKU_SUCCESS) {
+        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
+        return std::make_tuple(status, std::move(zblock));
+    } else if (status == AKU_EUNAVAILABLE) {
+        // Fallback to copying if not possible
+        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
+        status = volumes_[gen]->read_block(vol, dest.data());
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, std::unique_ptr<Block>());
+        }
+        auto block = std::make_shared<Block>(addr, std::move(dest));
+        return std::make_tuple(status, std::move(block));
+    }
+    return std::make_tuple(status, std::unique_ptr<Block>());
+}
+
+std::unique_ptr<Volume> ExpandableFileStorage::create_new_volume(u32 id) {
+    u32 prev_id = current_volume_ - 1;
+    boost::filesystem::path prev_path(volumes_[prev_id]->get_path());
+    auto pp = prev_path.parent_path();
+    std::string basename = std::string(db_name_) + "_" + std::to_string(id) + ".vol";
+    boost::filesystem::path new_path = pp / basename;
+    Volume::create_new(new_path.c_str(), volumes_[prev_id]->get_size());
+    return Volume::open_existing(new_path.c_str(), 0);
+}
+
+void ExpandableFileStorage::adjust_current_volume() {
+    current_volume_ = current_volume_ + 1;
+    if (current_volume_ >= volumes_.size()) {
+        // add new volume
+        auto vol = create_new_volume(current_volume_);
+
+        // update internal state of this class to be consistent
+        dirty_.push_back(0);
+        volume_names_.push_back(vol->get_path());
+        total_size_ += vol->get_size();
+
+        // update metadata
+        meta_->add_volume(current_volume_, vol->get_size(), vol->get_path());
+
+        // finally add new volume to our internal list of volumes
+        volumes_.push_back(std::move(vol));
+    }
 }
 
 //! Address space should be started from this address (otherwise some tests will pass no matter what).
@@ -415,7 +558,7 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
         return std::make_tuple(AKU_EBAD_ARG, block);
     }
     if (addr < removed_pos_) {
-        return std::make_tuple(AKU_EBAD_ARG, block);
+        return std::make_tuple(AKU_EUNAVAILABLE, block);
     }
     std::vector<u8> data;
     data.reserve(AKU_BLOCK_SIZE);

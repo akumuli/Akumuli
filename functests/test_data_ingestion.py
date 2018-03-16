@@ -54,9 +54,11 @@ def main(path, protocol):
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 1000000
         print("Sending {0} messages through {1}...".format(nmsgs, protocol))
-        for it in att.generate_messages(dt, delta, nmsgs, 'temp', tag='test'):
+        for ix, it in enumerate(att.generate_messages(dt, delta, nmsgs, 'temp', tag='test')):
+            if protocol == 'UDP' and ix == 2:
+                msg = att.msg(dt, 0.1, 'temp', tag='test')
+                chan.send(msg)
             chan.send(it)
-
         # check stats
         httpport = 8181
         statsurl = "http://{0}:{1}/api/stats".format(host, httpport)
@@ -65,7 +67,10 @@ def main(path, protocol):
 
         # some space should be used
         volume0space = stats["volume_0"]["free_space"]
-        volume1space = stats["volume_1"]["free_space"]
+        if "volume_1" in stats:
+            volume1space = stats["volume_1"]["free_space"]
+        else:
+            volume1space = 0
         if volume0space == volume1space:
             print("Test #1 failed. Nothing was written to disk, /stats:")
             print(rawstats)

@@ -1,14 +1,18 @@
+from __future__ import print_function
 import os
 import sys
 import subprocess
 import socket
 import datetime
 import random
+import traceback
 try:
     import ConfigParser as ini
 except ImportError:
     import configparser as ini
 import StringIO
+import time
+from functools import wraps
 
 
 def parse_timestamp(ts):
@@ -102,6 +106,15 @@ def generate_messages3(dt, delta, N, metric_name, tagslist):
             yield m
         dt = dt + delta
 
+def generate_messages4(dt, delta, N, metric_name, values, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        val = values[i % len(values)]
+        m = msg(dt, val, metric_name, **tags)
+        dt = dt + delta
+        yield m
+
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
@@ -194,6 +207,8 @@ class Akumulid:
         subprocess.call([cmd, "--delete"])
 
     def serve(self):
+        ts = datetime.datetime.now()
+        print("Akumulid launch time: " + ts.strftime("%Y-%m-%d %H:%M:%S,%f"))
         cmd = os.path.join(self.__path, "akumulid")
         self.__process = subprocess.Popen([cmd])
 
@@ -201,7 +216,7 @@ class Akumulid:
         self.__process.send_signal(subprocess.signal.SIGINT)
         
     def terminate(self):
-        self.__process.terminate()
+        self.__process.kill()
 
 class FakeAkumulid:
     """akumulid daemon instance"""
@@ -233,3 +248,137 @@ def create_akumulid(path):
         print("Path {0} doesn't exists".format(path))
         sys.exit(1)
     return Akumulid(path)
+
+def set_log_path(path):
+    key = 'log4j.appender.file.filename'
+    edit_config_file(key, path)
+
+def set_nvolumes(num):
+    key = 'nvolumes'
+    edit_config_file(key, str(num))
+
+def set_volume_size(size):
+    key = 'volume_size'
+    edit_config_file(key, size)
+
+def edit_config_file(key, value):
+    abspath = os.path.expanduser("~/.akumulid")
+    lines = []
+    success = False
+    with open(abspath, 'r') as configfile:
+        for line in configfile:
+            if line.startswith(key):
+                lines.append(key + '=' + value + '\n')
+                success = True
+            else:
+                lines.append(line)
+
+    if not success:
+        lines.append(key + '=' + value + '\n')
+
+    with open(abspath, 'w') as configfile:
+        for line in lines:
+            configfile.write(line)
+
+# Globals to count test runs
+g_test_run = 1
+g_num_fail = 0
+
+def api_test(test_name):
+    def decorator(func):
+        def wrapper(*pos, **kv):
+            global g_test_run
+            global g_num_fail
+            n = g_test_run
+            g_test_run += 1
+            ts = datetime.datetime.now()
+            ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+            print("Test #{0} - {1} / {2}".format(n, test_name, ts))
+            try:
+                func(*pos, **kv)
+                print("Test #{0} passed".format(n))
+            except ValueError as e:
+                print("Test #{0} failed: {1}".format(n, e))
+                g_num_fail += 1
+                traceback.print_exc()
+        return wrapper
+    return decorator
+
+def on_exit():
+    global g_num_fail
+    if g_num_fail != 0:
+        print("{0} tests failed".format(g_num_fail))
+        sys.exit(1)
+
+def retry(ExceptionToCheck, tries=4, delay=3, backoff=2, logger=None):
+    """Retry calling the decorated function using an exponential backoff.
+
+    http://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
+    original from: http://wiki.python.org/moin/PythonDecoratorLibrary#Retry
+
+    :param ExceptionToCheck: the exception to check. may be a tuple of
+        exceptions to check
+    :type ExceptionToCheck: Exception or tuple
+    :param tries: number of times to try (not retry) before giving up
+    :type tries: int
+    :param delay: initial delay between retries in seconds
+    :type delay: int
+    :param backoff: backoff multiplier e.g. value of 2 will double the delay
+        each retry
+    :type backoff: int
+    :param logger: logger to use. If None, print
+    :type logger: logging.Logger instance
+    """
+    def deco_retry(f):
+
+        @wraps(f)
+        def f_retry(*args, **kwargs):
+            mtries, mdelay = tries, delay
+            while mtries > 1:
+                try:
+                    return f(*args, **kwargs)
+                except ExceptionToCheck, e:
+                    msg = "%s, Retrying in %d seconds..." % (str(e), mdelay)
+                    if logger:
+                        logger.warning(msg)
+                    else:
+                        print(msg)
+                    time.sleep(mdelay)
+                    mtries -= 1
+                    mdelay *= backoff
+            return f(*args, **kwargs)
+
+        return f_retry  # true decorator
+
+    return deco_retry
+
+if __name__=='__main__':
+    if len(sys.argv) < 2:
+        print("Command required: commands available:\n" +
+              " set_log_path <path>\n")
+        sys.exit(1)
+    cmd = sys.argv[1]
+    if cmd == 'set_log_path':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_log_path <path>`")
+            sys.exit(1)
+        else:
+            path = sys.argv[2]
+            set_log_path(path)
+    elif cmd == 'set_nvolumes':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_nvolumes <num>`")
+            sys.exit(1)
+        else:
+            num = sys.argv[2]
+            set_nvolumes(num)
+    elif cmd == 'set_volume_size':
+        if len(sys.argv) < 3:
+            print("Invalid command, arg required - `set_volume_size <size>`")
+            sys.exit(1)
+        else:
+            size = sys.argv[2]
+            set_volume_size(size)
+    else:
+        print("Unknown command " + cmd)
+        sys.exit(1)

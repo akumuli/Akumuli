@@ -71,15 +71,19 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 
     MetadataStorage db(":memory:");
     std::vector<MetadataStorage::VolumeDesc> volumes = {
-        std::make_pair(0, "first"),
-        std::make_pair(1, "second"),
-        std::make_pair(2, "third"),
+        { 0, "first", 1, 2, 3, 4 },
+        { 1, "second", 5, 6, 7, 8 },
+        { 2, "third", 9, 10, 11, 12 },
     };
     db.init_volumes(volumes);
     auto actual = db.get_volumes();
-    for (int i = 0; i < 3; i++) {
-        BOOST_REQUIRE_EQUAL(volumes.at(i).first, actual.at(i).first);
-        BOOST_REQUIRE_EQUAL(volumes.at(i).second, actual.at(i).second);
+    for (size_t i = 0; i < 3; i++) {
+        BOOST_REQUIRE_EQUAL(volumes.at(i).id, actual.at(i).id);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).path, actual.at(i).path);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).capacity, actual.at(i).capacity);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).generation, actual.at(i).generation);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).nblocks, actual.at(i).nblocks);
+        BOOST_REQUIRE_EQUAL(volumes.at(i).version, actual.at(i).version);
     }
 }
 
@@ -87,10 +91,21 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
 
     MetadataStorage db(":memory:");
     const char* creation_datetime = "2015-02-03 00:00:00";  // Formatting not required
-    db.init_config(creation_datetime);
+    const char* bstore_type = "FixedSizeFileStorage";
+    const char* db_name = "db_test";
+    db.init_config(db_name, creation_datetime, bstore_type);
     std::string actual_dt;
-    db.get_configs(&actual_dt);
+    bool success = db.get_config_param("creation_datetime", &actual_dt);
+    BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(creation_datetime, actual_dt);
+    std::string actual_bstore_type;
+    success = db.get_config_param("blockstore_type", &actual_bstore_type);
+    BOOST_REQUIRE(success);
+    BOOST_REQUIRE_EQUAL(bstore_type, actual_bstore_type);
+    std::string actual_db_name;
+    success = db.get_config_param("db_name", &actual_db_name);
+    BOOST_REQUIRE(success);
+    BOOST_REQUIRE_EQUAL(db_name, actual_db_name);
 }
 
 BOOST_AUTO_TEST_CASE(Test_storage_add_series_1) {
@@ -449,6 +464,179 @@ BOOST_AUTO_TEST_CASE(Test_storage_metadata_query) {
     test_metadata_query();
 }
 
+// Test suggest
+
+static void test_suggest_metric_name() {
+    auto query = "{\"select\": \"metric-names\", \"starts-with\": \"test\" }";
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    std::set<std::string> expected_metric_names = {
+        "test.aaa",
+        "test.bbb",
+        "test.ccc",
+        "test.ddd",
+        "test.eee",
+    };
+    std::vector<std::string> series_names = {
+        "test.aaa key=0",
+        "test.aaa key=1",
+        "test.bbb key=2",
+        "test.bbb key=3",
+        "test.ccc key=4",
+        "test.ccc key=5",
+        "test.ddd key=6",
+        "test.ddd key=7",
+        "test.eee key=8",
+        "test.eee key=9",
+        "fff.test key=0",
+    };
+    for (auto name: series_names) {
+        aku_Sample s;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        s.timestamp = 111;
+        s.payload.type = AKU_PAYLOAD_FLOAT;
+        s.payload.float64 = 0.;
+        status = session->write(s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    CursorMock cursor;
+    session->suggest(&cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_metric_names.size());
+    for (auto sample: cursor.samples) {
+        const int buffer_size = AKU_LIMITS_MAX_SNAME;
+        char buffer[buffer_size];
+        auto len = session->get_series_name(sample.paramid, buffer, buffer_size);
+        if (len <= 0) {
+            BOOST_FAIL("no such id");
+        }
+        std::string name(buffer, buffer + len);
+        auto cnt = expected_metric_names.count(name);
+        BOOST_REQUIRE_EQUAL(cnt, 1);
+        // Ensure no duplicates
+        expected_metric_names.erase(expected_metric_names.find(name));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_suggest_query_1) {
+    test_suggest_metric_name();
+}
+
+static void test_suggest_tag_name() {
+    auto query = "{\"select\": \"tag-names\", \"metric\": \"test\", \"starts-with\": \"ba\" }";
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    std::set<std::string> expected_tag_names = {
+        "bar",
+        "baar",
+        "babr",
+        "badr",
+        "baer",
+    };
+    std::vector<std::string> series_names = {
+        "test foo=0 bar=0",
+        "test foo=1 bar=1",
+        "test foo=0 bar=0 baar=0",
+        "test foo=1 bar=1 babr=1",
+        "tost foo=0 bar=0 bacr=0",
+        "test foo=1 bar=1 badr=1",
+        "test foo=0 bar=0 baer=0",
+        "test foo=1 bar=1 baer=0",
+        "test foo=1 bar=1",
+        "test foo=0 bar=0",
+        "test foo=1 bar=1",
+    };
+    for (auto name: series_names) {
+        aku_Sample s;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        s.timestamp = 111;
+        s.payload.type = AKU_PAYLOAD_FLOAT;
+        s.payload.float64 = 0.;
+        status = session->write(s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    CursorMock cursor;
+    session->suggest(&cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_tag_names.size());
+    for (auto sample: cursor.samples) {
+        const int buffer_size = AKU_LIMITS_MAX_SNAME;
+        char buffer[buffer_size];
+        auto len = session->get_series_name(sample.paramid, buffer, buffer_size);
+        if (len <= 0) {
+            BOOST_FAIL("no such id");
+        }
+        std::string name(buffer, buffer + len);
+        auto cnt = expected_tag_names.count(name);
+        BOOST_REQUIRE_EQUAL(cnt, 1);
+        // Ensure no duplicates
+        expected_tag_names.erase(expected_tag_names.find(name));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_suggest_query_2) {
+    test_suggest_tag_name();
+}
+
+static void test_suggest_tag_values() {
+    auto query = "{\"select\": \"tag-values\", \"metric\": \"test\", \"tag\":\"foo\", \"starts-with\": \"ba\" }";
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    std::set<std::string> expected_tag_values = {
+        "bar",
+        "baar",
+        "bacr",
+        "baer",
+        "ba",
+    };
+    std::vector<std::string> series_names = {
+        "test key=00000 foo=bar",
+        "test key=00000 foo=buz",
+        "test key=00000 foo=baar",
+        "tost key=00000 foo=babr",
+        "test key=00000 foo=bacr",
+        "test key=00000 fuz=badr",
+        "test key=00000 foo=baer",
+        "test key=00000 foo=bin",
+        "test key=00000 foo=foo",
+        "test key=00000 foo=ba",
+        "test key=00001 foo=bar",
+    };
+    for (auto name: series_names) {
+        aku_Sample s;
+        auto status = session->init_series_id(name.data(), name.data() + name.size(), &s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        s.timestamp = 111;
+        s.payload.type = AKU_PAYLOAD_FLOAT;
+        s.payload.float64 = 0.;
+        status = session->write(s);
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    CursorMock cursor;
+    session->suggest(&cursor, query);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_tag_values.size());
+    for (auto sample: cursor.samples) {
+        const int buffer_size = AKU_LIMITS_MAX_SNAME;
+        char buffer[buffer_size];
+        auto len = session->get_series_name(sample.paramid, buffer, buffer_size);
+        if (len <= 0) {
+            BOOST_FAIL("no such id");
+        }
+        std::string name(buffer, buffer + len);
+        auto cnt = expected_tag_values.count(name);
+        BOOST_REQUIRE_EQUAL(cnt, 1);
+        // Ensure no duplicates
+        expected_tag_values.erase(expected_tag_values.find(name));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_suggest_query_3) {
+    test_suggest_tag_values();
+}
+
 // Group-by query
 
 static const aku_Timestamp gb_begin = 100;
@@ -605,6 +793,55 @@ BOOST_AUTO_TEST_CASE(Test_storage_where_clause) {
     }
 }
 
+static void test_storage_where_clause2(aku_Timestamp begin, aku_Timestamp end) {
+    int nseries = 100;
+    std::vector<std::string> series_names;
+    std::vector<std::string> expected_series = {
+        "test key=10 zzz=0",
+        "test key=22 zzz=0",
+        "test key=42 zzz=0",
+        "test key=66 zzz=0"
+    };
+    for (int i = 0; i < nseries; i++) {
+        series_names.push_back("test key=" + std::to_string(i) + " zzz=0");
+    }
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, std::min(begin, end), std::max(begin, end), series_names);
+
+    std::stringstream query;
+    query << "{";
+    query << "   \"select\": \"test\",\n";
+    query << "   \"where\": [\n";
+    query << "       { \"key\": 10, \"zzz\": 0 },\n";
+    query << "       { \"key\": 14             },\n";  // should be missing
+    query << "       { \"key\": 22, \"zzz\": 0 },\n";
+    query << "       { \"key\": 42, \"zzz\": 0 },\n";
+    query << "       { \"key\": 66, \"zzz\": 0 }\n";
+    query << "   ],\n";
+    query << "   \"order-by\": \"series\",\n";
+    query << "   \"range\": { \"from\": " << begin << ", \"to\": " << end << "}\n";
+    query << "}";
+
+    CursorMock cursor;
+    session->query(&cursor, query.str().c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    size_t expected_size = (end - begin)*expected_series.size();
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected_size);
+    std::vector<aku_Timestamp> expected;
+    for (aku_Timestamp ts = begin; ts < end; ts++) {
+        expected.push_back(ts);
+    }
+    check_timestamps(cursor, expected, OrderBy::SERIES, expected_series);
+    check_paramids(*session, cursor, OrderBy::SERIES, expected_series, expected_size, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_storage_where_form2) {
+    aku_Timestamp begin = 100, end = 200;
+    test_storage_where_clause2(begin, end);
+}
+
 // Test SeriesRetreiver
 
 void test_retreiver() {
@@ -623,14 +860,14 @@ void test_retreiver() {
         "bbb foo=4 bar=4 buz=5",
         "bbb foo=4 bar=4 buz=6",
     };
-    SeriesMatcher m;
+    PlainSeriesMatcher m;
     for (auto s: test_data) {
         char buffer[0x100];
         const char* pkeys_begin;
         const char* pkeys_end;
-        aku_Status status = SeriesParser::to_normal_form(s.data(), s.data() + s.size(),
-                                                         buffer, buffer + 0x100,
-                                                         &pkeys_begin, &pkeys_end);
+        aku_Status status = SeriesParser::to_canonical_form(s.data(), s.data() + s.size(),
+                                                            buffer, buffer + 0x100,
+                                                            &pkeys_begin, &pkeys_end);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         auto id = m.add(buffer, pkeys_end);
         ids.push_back(id);

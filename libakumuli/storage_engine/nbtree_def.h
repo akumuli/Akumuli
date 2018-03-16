@@ -6,13 +6,14 @@
  */
 
 #include "akumuli_def.h"  // for basic types
+#include "util.h"
 #include "blockstore.h"   // for LogicAddr
 
 namespace Akumuli {
 namespace StorageEngine {
 
 
-enum class NBTreeBlockType {
+enum class NBTreeBlockType : u16 {
     LEAF,   // data block
     INNER,  // super block
 };
@@ -20,6 +21,7 @@ enum class NBTreeBlockType {
 
 enum {
     AKU_NBTREE_FANOUT = 32,
+    AKU_NBTREE_MAX_FANOUT_INDEX = 31,
 };
 
 
@@ -58,16 +60,19 @@ struct SubtreeRef {
     double first;
     //! Last value in subtree
     double last;
-    //! Node version
-    u16 version;
+    //! Node type
+    NBTreeBlockType type;
     //! Node level in the tree
     u16 level;
     //! Payload size (real)
     u16 payload_size;
+    //! Node version
+    u16 version;
     //! Fan out index of the element (current)
     u16 fanout_index;
     //! Checksum of the block (not used for links to child nodes)
     u32 checksum;
 } __attribute__((packed));
+
 
 }} // namespace

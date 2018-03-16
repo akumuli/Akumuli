@@ -95,6 +95,8 @@ struct NBTreeCandlestickHint {
 };
 
 
+class NBTreeSuperblock;
+
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
   */
@@ -109,6 +111,9 @@ class NBTreeLeaf {
     u16 fanout_index_;
 
 public:
+    //! Empty tag to choose c-tor
+    struct CloneTag {};
+
     enum class LeafLoadMethod {
         FULL_PAGE_LOAD,
         ONLY_HEADER,
@@ -132,6 +137,12 @@ public:
       */
     NBTreeLeaf(std::shared_ptr<Block> bstore);
 
+    /**
+     * @brief Clone leaf node
+     * @param block is a pointer to block that contains leaf's data
+     */
+    NBTreeLeaf(std::shared_ptr<Block> block, CloneTag tag);
+
     /** Load from block store.
       * @param bstore Block store.
       * @param curr Address of the current leaf-node.
@@ -150,6 +161,15 @@ public:
 
     //! Get logic address of the previous node
     LogicAddr get_prev_addr() const;
+
+    //! Set prev addr (works only on mutable node)
+    void set_prev_addr(LogicAddr addr);
+
+    //! Set fanout index of the node
+    void set_node_fanout(u16 fanout);
+
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
 
     /** Read all elements from the leaf node.
       * @param timestamps Destination for timestamps.
@@ -175,6 +195,17 @@ public:
     //! Return iterator that outputs all values in time range that is stored in this leaf.
     std::unique_ptr<RealValuedOperator> range(aku_Timestamp begin, aku_Timestamp end) const;
 
+    /**
+     * @brief Return filtering operator
+     * @param begin is a beginning of the search range (inclusive)
+     * @param end is an end of the search range (exclusive)
+     * @param filter is a value filter
+     * @return pointer to operator (it can be invalid due to I/O error)
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter) const;
+
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
@@ -185,6 +216,34 @@ public:
 
     //! Group-aggregate query results iterator
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
+
+    // Node split experiment //
+
+    /**
+     * @brief Split the node into the specified top node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @param top_level is a top level node (the method will add links to this node
+     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
+     * @return status and address of the new topmost node (always EMPTY_ADDR)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_backrefs, u16 *fanout_index,
+                                                 NBTreeSuperblock* top_level);
+
+
+    /**
+     * @brief Split the node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @return status and address of the new topmost node
+     */
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                            aku_Timestamp pivot,
+                                            bool preserve_backrefs);
 };
 
 
@@ -223,6 +282,10 @@ public:
 
     aku_Status read_all(std::vector<SubtreeRef>* refs) const;
 
+    bool top(SubtreeRef* outref) const;
+
+    bool top(LogicAddr* outaddr) const;
+
     //! Get node's level
     u16 get_level() const;
 
@@ -239,10 +302,23 @@ public:
     //! Return addr of the previous node
     LogicAddr get_prev_addr() const;
 
+    //! Set previous addr for the node
+    void set_prev_addr(LogicAddr addr);
+
+    //! Change fanout index ouf the node
+    void set_node_fanout(u16 newfanout);
+
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
     //! Read timestamps
     std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
 
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter, std::shared_ptr<BlockStore> bstore) const;
 
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
                                                 aku_Timestamp end,
@@ -256,6 +332,34 @@ public:
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin,
                                                       aku_Timestamp end,
                                                       u64 step, std::shared_ptr<BlockStore> bstore) const;
+
+    // Node split experiment //
+    /**
+     * @brief Split the node (the results are copied to the provided node)
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
+     * @param root is a new root node (all content of this node will be copied there alongside the updated refs)
+     * @return status, address of the last child (if preserve_horizontal_links was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links,
+                                                 NBTreeSuperblock *root);
+
+    /**
+     * @brief Split the node
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
+     * @return status, address of the current node (or empty if root was used), address of the last child (if preserve_horizontal_links
+     *         was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links);
 };
 
 
@@ -263,6 +367,17 @@ public:
 struct NBTreeExtent {
 
     virtual ~NBTreeExtent() = default;
+
+    enum class ExtentStatus {
+        OK,
+        NEW,
+        KILLED_BY_RETENTION,
+    };
+
+    /**
+     * @brief Check node status
+     */
+    virtual ExtentStatus status() const = 0;
 
     /** Append new data to the root (doesn't work with superblocks)
       * If new root created - return address of the previous root, otherwise return EMPTY
@@ -284,6 +399,17 @@ struct NBTreeExtent {
     //! Return iterator
     virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const = 0;
 
+    /**
+     * @brief Return filtering operator
+     * @param begin is a beginning of the search range (inclusive)
+     * @param end is an end of the search range (exclusive)
+     * @param filter is a initialized value filter
+     * @return filtering operator
+     */
+    virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const = 0;
+
     //! Returns true if extent was modified after last commit and has some unsaved data.
     virtual bool is_dirty() const = 0;
 
@@ -297,10 +423,33 @@ struct NBTreeExtent {
 
     // Service functions //
 
-    virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat) const = 0;
+    virtual void debug_dump(std::ostream& stream,
+                            int base_indent,
+                            std::function<std::string(aku_Timestamp)> tsformat,
+                            u32 mask=0xFFFFFFFF) const = 0;
 
     //! Check extent's internal consitency
     static void check_extent(const NBTreeExtent *extent, std::shared_ptr<BlockStore> bstore, size_t level);
+
+    // Node split //
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp ts) = 0;
+
+    /**
+     * @brief Updates address of the previous element (used by split)
+     * @param addr is an address of the prev element for the newly created node
+     * @return error code
+     */
+    virtual aku_Status update_prev_addr(LogicAddr addr) = 0;
+
+    /**
+     * @brief  Update current fanout index of the extent.
+     * @note   Fanout of the extent is a position of the current extent in the next extent, this position can change
+     *         due to split procedure. If split in the i+1 extent resulted in higher occupancy the i-th extent should
+     *         get an increased fanout index.
+     * @param  fanout_index is a new fanout index
+     * @return status
+     */
+    virtual aku_Status update_fanout_index(u16 fanout_index) = 0;
 };
 
 
@@ -332,13 +481,34 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     void repair();
     void init();
     mutable RWLock lock_;
+
+    // Testing
+#ifdef AKU_ENABLE_MUTATION_TESTING
+    std::random_device              rd_;
+    std::mt19937                    rand_gen_;
+    std::uniform_int_distribution<> dist_;
+    const int                       threshold_;
+
+
+    LogicAddr split_random_node(u32 ix);
+
+    u32 chose_random_node();
+#endif
+
+    std::tuple<aku_Status, AggregationResult> get_aggregates(u32 ixnode) const;
+
+    void check_rescue_points(u32 i) const;
 public:
+
+    std::tuple<aku_Status, LogicAddr> _split(aku_Timestamp pivot);
 
     /** C-tor
       * @param addresses List of root addresses in blockstore or list of resque points.
       * @param bstore Block-store.
       */
     NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore);
+
+    aku_ParamId get_id() const { return id_; }
 
     /** Append new subtree reference to extents list.
       * This operation can't fail and should be used only by NB-tree itself (from node-commit functions).
@@ -362,6 +532,14 @@ public:
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
 
     /**
+     * @brief search function
+     * @param begin is a start of the search interval
+     * @param end is a next after the last element of the search interval
+     * @return
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin, aku_Timestamp end, const ValueFilter& filter) const;
+
+    /**
      * @brief aggregate all values in search interval
      * @param begin is a start of the search interval
      * @param end is a next after the last element of the search interval
@@ -379,6 +557,19 @@ public:
      * @return iterator
      */
     std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const;
+
+    /**
+     * @brief Group values into buckets and return aggregate from each one of them
+     * @param begin start of the search interval
+     * @param end end of the search interval
+     * @param step bucket size
+     * @param filter is a value filter
+     * @return iterator
+     */
+    std::unique_ptr<AggregateOperator> group_aggregate_filter(aku_Timestamp begin,
+                                                              aku_Timestamp end,
+                                                              aku_Timestamp step,
+                                                              const AggregateFilter& filter) const;
 
     //! Commit changes to btree and close (do not call blockstore.flush), return list of addresses.
     std::vector<LogicAddr> close();
@@ -414,6 +605,22 @@ public:
     //! Walk the tree from the root and print it to the stdout
     static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
 };
+
+/**
+ * @brief Initialize SubtreeRef by reading leaf node (addr field is not set)
+ * @param leaf is a non-empty leaf node
+ * @param out is an output parameter
+ * @return status
+ */
+aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
+
+/**
+ * @brief Initialize SubtreeRef by reading subtree (addr field is not set)
+ * @param leaf is a non-empty superblock
+ * @param out is an output parameter
+ * @return status
+ */
+aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref);
 
 }
 }  // namespaces

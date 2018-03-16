@@ -1,14 +1,718 @@
 #include "queryplan.h"
+#include "storage_engine/nbtree.h"
+#include "storage_engine/column_store.h"
+#include "storage_engine/operators/operator.h"
+#include "storage_engine/operators/scan.h"
+#include "storage_engine/operators/merge.h"
+#include "storage_engine/operators/aggregate.h"
+#include "storage_engine/operators/join.h"
+#include "log_iface.h"
+#include "status_util.h"
 
 namespace Akumuli {
 namespace QP {
 
-typedef std::vector<std::unique_ptr<QueryPlanStage>> StagesT;
+using namespace StorageEngine;
 
-static StagesT create_scan(ReshapeRequest const& req) {
+/**
+ * Tier-1 operator
+ */
+struct ProcessingPrelude {
+    virtual ~ProcessingPrelude() = default;
+    //! Compute processing step result (list of low level operators)
+    virtual aku_Status apply(const ColumnStore& cstore) = 0;
+    //! Get result of the processing step
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) = 0;
+    //! Get result of the processing step
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) = 0;
+};
+
+/**
+ * Tier-N operator (materializer)
+ */
+struct MaterializationStep {
+
+    virtual ~MaterializationStep() = default;
+
+    //! Compute processing step result (list of low level operators)
+    virtual aku_Status apply(ProcessingPrelude* prelude) = 0;
+
+    /**
+     * Get result of the processing step, this method should add cardinality() elements
+     * to the `dest` array.
+     */
+    virtual aku_Status extract_result(std::unique_ptr<ColumnMaterializer>* dest) = 0;
+};
+
+// -------------------------------- //
+//              Tier-1              //
+// -------------------------------- //
+
+struct ScanProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    ScanProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward<T>(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.scan(ids_, begin_, end_, &scanlist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        if (scanlist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(scanlist_);
+        return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+};
+
+
+struct FilterProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::map<aku_ParamId, ValueFilter> filters_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    FilterProcessingStep(aku_Timestamp begin,
+                         aku_Timestamp end,
+                         const std::vector<ValueFilter>& flt,
+                         T&& t)
+        : begin_(begin)
+        , end_(end)
+        , filters_()
+        , ids_(std::forward<T>(t))
+    {
+        for (size_t ix = 0; ix < ids_.size(); ix++) {
+            aku_ParamId id = ids_[ix];
+            const ValueFilter& filter = flt[ix];
+            filters_.insert(std::make_pair(id, filter));
+        }
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.filter(ids_, begin_, end_, filters_, &scanlist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        if (scanlist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(scanlist_);
+        return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+};
+
+struct AggregateProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<AggregateOperator>> agglist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    AggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward<T>(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.aggregate(ids_, begin_, end_, &agglist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        if (agglist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(agglist_);
+        return AKU_SUCCESS;
+    }
+};
+
+
+struct GroupAggregateProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<AggregateOperator>> agglist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    aku_Timestamp step_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    GroupAggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , step_(step)
+        , ids_(std::forward<T>(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.group_aggregate(ids_, begin_, end_, step_, &agglist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        if (agglist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(agglist_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct GroupAggregateFilterProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<AggregateOperator>> agglist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    aku_Timestamp step_;
+    std::vector<aku_ParamId> ids_;
+    std::map<aku_ParamId, AggregateFilter> filters_;
+
+    template<class T>
+    GroupAggregateFilterProcessingStep(aku_Timestamp begin,
+                                       aku_Timestamp end,
+                                       aku_Timestamp step,
+                                       const std::vector<AggregateFilter>& flt,
+                                       T&& t)
+        : begin_(begin)
+        , end_(end)
+        , step_(step)
+        , ids_(std::forward<T>(t))
+    {
+        for (size_t ix = 0; ix < ids_.size(); ix++) {
+            aku_ParamId id = ids_[ix];
+            const auto& filter = flt[ix];
+            filters_.insert(std::make_pair(id, filter));
+        }
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.group_aggfilter(ids_, begin_, end_, step_, filters_, &agglist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        if (agglist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(agglist_);
+        return AKU_SUCCESS;
+    }
+};
+
+
+// -------------------------------- //
+//              Tier-2              //
+// -------------------------------- //
+
+/**
+ * Merge several series (order by series).
+ * Used in scan query.
+ */
+template<OrderBy order>
+struct MergeBy : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    MergeBy(IdVec&& ids)
+        : ids_(std::forward<IdVec>(ids))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude* prelude) {
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        if (order == OrderBy::SERIES) {
+            mat_.reset(new MergeMaterializer<SeriesOrder>(std::move(ids_), std::move(iters)));
+        } else {
+            mat_.reset(new MergeMaterializer<TimeOrder>(std::move(ids_), std::move(iters)));
+        }
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct Chain : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Chain(IdVec&& vec)
+        : ids_(std::forward<IdVec>(vec))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new ChainMaterializer(std::move(ids_), std::move(iters)));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Aggregate materializer.
+ * Accepts the list of ids and the list of aggregate operators.
+ * Maps each id to the corresponding operators 1-1.
+ * All ids should be different.
+ */
+struct Aggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    AggregationFunction fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Aggregate(IdVec&& vec, AggregationFunction fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(fn)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new AggregateMaterializer(std::move(ids_), std::move(iters), fn_));
+        return AKU_SUCCESS;
+
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Combines the aggregate operators.
+ * Accepts list of ids (shouldn't be different) and list of aggregate
+ * operators. Maps each id to operator and then combines operators
+ * with the same id (used to implement aggregate + group-by).
+ */
+struct AggregateCombiner : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    AggregationFunction fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    AggregateCombiner(IdVec&& vec, AggregationFunction fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(fn)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        std::vector<std::unique_ptr<AggregateOperator>> agglist;
+        std::map<aku_ParamId, std::vector<std::unique_ptr<AggregateOperator>>> groupings;
+        for (size_t i = 0; i < ids_.size(); i++) {
+            auto id = ids_.at(i);
+            auto it = std::move(iters.at(i));
+            groupings[id].push_back(std::move(it));
+        }
+        std::vector<aku_ParamId> ids;
+        for (auto& kv: groupings) {
+            auto& vec = kv.second;
+            ids.push_back(kv.first);
+            std::unique_ptr<CombineAggregateOperator> it(new CombineAggregateOperator(std::move(vec)));
+            agglist.push_back(std::move(it));
+        }
+        mat_.reset(new AggregateMaterializer(std::move(ids),
+                                             std::move(agglist),
+                                             fn_));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Joins several operators into one.
+ * Number of joined operators is defined by the cardinality.
+ * Number of ids should be `cardinality` times smaller than number
+ * of operators because every `cardinality` operators are joined into
+ * one.
+ */
+struct Join : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    int cardinality_;
+    OrderBy order_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec>
+    Join(IdVec&& vec, int cardinality, OrderBy order, aku_Timestamp begin, aku_Timestamp end)
+        : ids_(std::forward<IdVec>(vec))
+        , cardinality_(cardinality)
+        , order_(order)
+        , begin_(begin)
+        , end_(end)
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        int inc = cardinality_;
+        std::vector<std::unique_ptr<RealValuedOperator>> scanlist;
+        auto status = prelude->extract_result(&scanlist);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        std::vector<std::unique_ptr<ColumnMaterializer>> iters;
+        for (size_t i = 0; i < ids_.size(); i++) {
+            // ids_ contain ids of the joined series that corresponds
+            // to the names in the series matcher
+            std::vector<std::unique_ptr<RealValuedOperator>> joined;
+            std::vector<aku_ParamId> ids;
+            for (int j = 0; j < inc; j++) {
+                // `inc` number of storage level operators correspond to one
+                // materializer
+                auto ix = i*inc + j;
+                joined.push_back(std::move(scanlist.at(ix)));
+                ids.push_back(ix);
+            }
+            std::unique_ptr<ColumnMaterializer> it;
+            it.reset(new JoinMaterializer(std::move(ids), std::move(joined), ids_.at(i)));
+            iters.push_back(std::move(it));
+        }
+        if (order_ == OrderBy::SERIES) {
+            mat_.reset(new JoinConcatMaterializer(std::move(iters)));
+        } else {
+            bool forward = begin_ < end_;
+            typedef MergeJoinMaterializer<MergeJoinUtil::OrderByTimestamp> Materializer;
+            mat_.reset(new Materializer(std::move(iters), forward));
+        }
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+/**
+ * Merges several group-aggregate operators by chaining
+ */
+struct SeriesOrderAggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec, class FnVec>
+    SeriesOrderAggregate(IdVec&& vec, FnVec&& fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(std::forward<FnVec>(fn))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new SeriesOrderAggregateMaterializer(std::move(ids_), std::move(iters), fn_));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct TimeOrderAggregate : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec, class FnVec>
+    TimeOrderAggregate(IdVec&& vec, FnVec&& fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(std::forward<FnVec>(fn))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        mat_.reset(new TimeOrderAggregateMaterializer(ids_, iters, fn_));
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
+struct TwoStepQueryPlan : IQueryPlan {
+    std::unique_ptr<ProcessingPrelude> prelude_;
+    std::unique_ptr<MaterializationStep> mater_;
+    std::unique_ptr<ColumnMaterializer> column_;
+
+    template<class T1, class T2>
+    TwoStepQueryPlan(T1&& t1, T2&& t2)
+        : prelude_(std::forward<T1>(t1))
+        , mater_(std::forward<T2>(t2))
+    {
+    }
+
+    aku_Status execute(const ColumnStore &cstore) {
+        auto status = prelude_->apply(cstore);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        status = mater_->apply(prelude_.get());
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        return mater_->extract_result(&column_);
+    }
+
+    std::tuple<aku_Status, size_t> read(u8 *dest, size_t size) {
+        if (!column_) {
+            AKU_PANIC("Successful execute step required");
+        }
+        return column_->read(dest, size);
+    }
+};
+
+// ----------- Query plan builder ------------ //
+
+static bool filtering_enabled(const std::vector<Filter>& flt) {
+    bool enabled = false;
+    for (const auto& it: flt) {
+        enabled |= it.enabled;
+    }
+    return enabled;
+}
+
+static std::tuple<aku_Status, std::vector<ValueFilter>> convert_filters(const std::vector<Filter>& fltlist) {
+    std::vector<ValueFilter> result;
+    for (const auto& filter: fltlist) {
+        ValueFilter flt;
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
+        }
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        result.push_back(flt);
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::vector<AggregateFilter>> convert_aggregate_filters(const std::vector<Filter>& fltlist,
+                                                                                      const std::vector<AggregationFunction>& funclst)
+{
+    std::vector<AggregateFilter> result;
+    if (fltlist.size() != funclst.size()) {
+        Logger::msg(AKU_LOG_ERROR, "Number of filters doesn't match number of columns");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+    AggregateFilter aggflt;
+    for (size_t ix = 0; ix < fltlist.size(); ix++) {
+        const auto& filter = fltlist[ix];
+        if (!filter.enabled) {
+            continue;
+        }
+        AggregationFunction fun = funclst[ix];
+        ValueFilter flt;
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
+        }
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        switch(fun) {
+        case AggregationFunction::MIN:
+            aggflt.set_filter(AggregateFilter::MIN, flt);
+            continue;
+        case AggregationFunction::MAX:
+            aggflt.set_filter(AggregateFilter::MAX, flt);
+            continue;
+        case AggregationFunction::MEAN:
+            aggflt.set_filter(AggregateFilter::AVG, flt);
+            continue;
+        case AggregationFunction::SUM:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'sum' can't be used with the filter");
+            break;
+        case AggregationFunction::CNT:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'cnt' can't be used with the filter");
+            break;
+        case AggregationFunction::MIN_TIMESTAMP:
+        case AggregationFunction::MAX_TIMESTAMP:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'MIN(MAX)_TIMESTAMP' can't be used with the filter");
+            break;
+        };
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+    result.push_back(aggflt);
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+/**
+ * @brief Layout filters to match columns/ids of the query
+ * @param req is a reshape request
+ * @return vector of filters and status
+ */
+static std::tuple<aku_Status, std::vector<ValueFilter>> layout_filters(const ReshapeRequest& req) {
+    std::vector<ValueFilter> result;
+
+    aku_Status s;
+    std::vector<ValueFilter> flt;
+    std::tie(s, flt) = convert_filters(req.select.filters);
+    if (s != AKU_SUCCESS) {
+        // Bad filter in query
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    if (flt.empty()) {
+        // Bad filter in query
+        Logger::msg(AKU_LOG_ERROR, "Reshape request without filter supplied");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    // We should duplicate the filters to match the layout of queried data
+    for (size_t ixrow = 0; ixrow < req.select.columns.at(0).ids.size(); ixrow++) {
+        for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
+            const auto& rowfilter = flt.at(ixcol);
+            result.push_back(rowfilter);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::vector<AggregateFilter>> layout_aggregate_filters(const ReshapeRequest& req) {
+    std::vector<AggregateFilter> result;
+    AggregateFilter::Mode common_mode = req.select.filter_rule == FilterCombinationRule::ALL
+                                      ? AggregateFilter::Mode::ALL
+                                      : AggregateFilter::Mode::ANY;
+    aku_Status s;
+    std::vector<AggregateFilter> flt;
+    std::tie(s, flt) = convert_aggregate_filters(req.select.filters, req.agg.func);
+    if (s != AKU_SUCCESS) {
+        // Bad filter in query
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    if (flt.empty()) {
+        // Bad filter in query
+        Logger::msg(AKU_LOG_ERROR, "Reshape request without filter supplied");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    // We should duplicate the filters to match the layout of queried data
+    for (size_t ixrow = 0; ixrow < req.select.columns.at(0).ids.size(); ixrow++) {
+        for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
+            auto& colfilter = flt.at(ixcol);
+            colfilter.mode = common_mode;
+            result.push_back(colfilter);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for scan query
     // Tier1
-    // - List of range scan operators
+    // - List of range scan/filter operators
     // Tier2
     // - If group-by is enabled:
     //   - Transform ids and matcher (generate new names)
@@ -18,26 +722,32 @@ static StagesT create_scan(ReshapeRequest const& req) {
     //   - If oreder-by is series add chain materialization step.
     //   - Otherwise add merge materializer.
 
-    StagesT result;
+    std::unique_ptr<IQueryPlan> result;
 
     if (req.agg.enabled || req.select.columns.size() != 1) {
-        AKU_PANIC("Invalid request");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
-    std::unique_ptr<QueryPlanStage> t1stage;
-    t1stage.reset(new QueryPlanStage());
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    if (filtering_enabled(req.select.filters)) {
+        // Scan query can only have one filter
+        aku_Status s;
+        std::vector<ValueFilter> flt;
+        std::tie(s, flt) = layout_filters(req);
+        if (s != AKU_SUCCESS) {
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        t1stage.reset(new FilterProcessingStep(req.select.begin,
+                                               req.select.end,
+                                               flt,
+                                               req.select.columns.at(0).ids));
+    } else {
+        t1stage.reset(new ScanProcessingStep  (req.select.begin,
+                                               req.select.end,
+                                               req.select.columns.at(0).ids));
+    }
 
-    aku_Timestamp begin   = req.select.begin;
-    aku_Timestamp end     = req.select.end;
-    const auto &tier1ids  = req.select.columns.at(0).ids;
-    t1stage->op_.tier1    = Tier1Operator::SCAN_RANGE;
-    t1stage->tier_        = 1;
-    t1stage->opt_ids_     = tier1ids;
-    t1stage->opt_matcher_ = req.select.matcher;
-    t1stage->time_range_  = std::make_pair(begin, end);
-
-    result.push_back(std::move(t1stage));
-
+    std::unique_ptr<MaterializationStep> t2stage;
     if (req.group_by.enabled) {
         std::vector<aku_ParamId> ids;
         for(auto id: req.select.columns.at(0).ids) {
@@ -46,38 +756,25 @@ static StagesT create_scan(ReshapeRequest const& req) {
                 ids.push_back(it->second);
             }
         }
-        std::unique_ptr<QueryPlanStage> t2stage;
-        t2stage.reset(new QueryPlanStage());
-        Tier2Operator op      = req.order_by == OrderBy::SERIES
-                              ? Tier2Operator::MERGE_SERIES_ORDER
-                              : Tier2Operator::MERGE_TIME_ORDER;
-        t2stage->op_.tier2    = op;
-        t2stage->tier_        = 2;
-        t2stage->opt_matcher_ = req.group_by.matcher;
-        t2stage->opt_ids_     = ids;
-        t2stage->time_range_  = std::make_pair(begin, end);
-
-        result.push_back(std::move(t2stage));
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new MergeBy<OrderBy::SERIES>(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME>(std::move(ids)));
+        }
     } else {
-
-        std::unique_ptr<QueryPlanStage> t2stage;
-        t2stage.reset(new QueryPlanStage());
-
-        Tier2Operator op      = req.order_by == OrderBy::SERIES
-                              ? Tier2Operator::CHAIN_SERIES
-                              : Tier2Operator::MERGE_TIME_ORDER;
-        t2stage->op_.tier2    = op;
-        t2stage->tier_        = 2;
-        t2stage->opt_ids_     = req.select.columns.at(0).ids;
-        t2stage->time_range_  = std::make_pair(begin, end);  // not needed here but anyway
-        t2stage->opt_matcher_ = req.select.matcher;
-
-        result.push_back(std::move(t2stage));
+        auto ids = req.select.columns.at(0).ids;
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new Chain(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME>(std::move(ids)));
+        }
     }
-    return result;
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-static StagesT create_aggregate(ReshapeRequest const& req) {
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> aggregate_query_plan(ReshapeRequest const& req) {
     // Hardwired query plan for aggregate query
     // Tier1
     // - List of aggregate operators
@@ -90,28 +787,19 @@ static StagesT create_aggregate(ReshapeRequest const& req) {
     //   - If oreder-by is series add chain materialization step.
     //   - Otherwise add merge materializer.
 
-    StagesT result;
+    std::unique_ptr<IQueryPlan> result;
 
-    if (req.order_by == OrderBy::TIME) {
-        AKU_PANIC("Invalid request");
+    if (req.order_by == OrderBy::TIME || req.agg.enabled == false ||
+        req.agg.func.size() != 1 || req.agg.step != 0)
+    {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
-    std::unique_ptr<QueryPlanStage> t1stage;
-    t1stage.reset(new QueryPlanStage());
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    t1stage.reset(new AggregateProcessingStep(req.select.begin, req.select.end, req.select.columns.at(0).ids));
 
-    aku_Timestamp begin   = req.select.begin;
-    aku_Timestamp end     = req.select.end;
-    const auto &tier1ids  = req.select.columns.at(0).ids;
-    t1stage->op_.tier1    = Tier1Operator::AGGREGATE_RANGE;
-    t1stage->tier_        = 1;
-    t1stage->opt_ids_     = tier1ids;
-    t1stage->opt_matcher_ = req.select.matcher;
-    t1stage->time_range_  = std::make_pair(begin, end);
-
-    result.push_back(std::move(t1stage));
-
+    std::unique_ptr<MaterializationStep> t2stage;
     if (req.group_by.enabled) {
-        // Stage2 - combine aggregate
         std::vector<aku_ParamId> ids;
         for(auto id: req.select.columns.at(0).ids) {
             auto it = req.group_by.transient_map.find(id);
@@ -119,103 +807,156 @@ static StagesT create_aggregate(ReshapeRequest const& req) {
                 ids.push_back(it->second);
             }
         }
-        std::unique_ptr<QueryPlanStage> t2stage;
-        t2stage.reset(new QueryPlanStage());
-        Tier2Operator op2     = Tier2Operator::AGGREGATE_COMBINE;
-        t2stage->op_.tier2    = op2;
-        t2stage->tier_        = 2;
-        t2stage->opt_matcher_ = req.group_by.matcher;
-        t2stage->opt_ids_     = ids;
-        t2stage->time_range_  = std::make_pair(begin, end);
-        t2stage->opt_func_    = req.agg.func;
-
-        result.push_back(std::move(t2stage));
+        t2stage.reset(new AggregateCombiner(std::move(ids), req.agg.func.front()));
     } else {
-        // Stage2 - materialize aggregate
-        std::unique_ptr<QueryPlanStage> t2stage;
-        t2stage.reset(new QueryPlanStage());
-
-        Tier2Operator op      = Tier2Operator::AGGREGATE;
-        t2stage->op_.tier2    = op;
-        t2stage->tier_        = 2;
-        t2stage->opt_ids_     = req.select.columns.at(0).ids;
-        t2stage->time_range_  = std::make_pair(begin, end);  // not needed here but anyway
-        t2stage->opt_matcher_ = req.select.matcher;
-        t2stage->opt_func_    = req.agg.func;
-
-        result.push_back(std::move(t2stage));
+        auto ids = req.select.columns.at(0).ids;
+        t2stage.reset(new Aggregate(std::move(ids), req.agg.func.front()));
     }
 
-    return result;
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-static StagesT create_join(ReshapeRequest const& req) {
-    StagesT result;
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(ReshapeRequest const& req) {
+    std::unique_ptr<IQueryPlan> result;
 
     // Group-by and aggregation is not supported currently
     if (req.agg.enabled || req.group_by.enabled || req.select.columns.size() < 2) {
-        AKU_PANIC("Invalid request");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
-    std::unique_ptr<QueryPlanStage> t1stage;
-    t1stage.reset(new QueryPlanStage());
+    std::unique_ptr<ProcessingPrelude> t1stage;
     std::vector<aku_ParamId> t1ids;
-
-    int cardinality       = static_cast<int>(req.select.columns.size());
+    int cardinality = static_cast<int>(req.select.columns.size());
     for (size_t i = 0; i < req.select.columns.at(0).ids.size(); i++) {
         for (int c = 0; c < cardinality; c++) {
             t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
         }
     }
-    aku_Timestamp begin   = req.select.begin;
-    aku_Timestamp end     = req.select.end;
-    t1stage->op_.tier1    = Tier1Operator::SCAN_RANGE;
-    t1stage->tier_        = 1;
-    t1stage->opt_ids_     = t1ids;
-    t1stage->opt_matcher_ = req.select.matcher;
-    t1stage->time_range_  = std::make_pair(begin, end);
-
-    result.push_back(std::move(t1stage));
-    if (req.group_by.enabled) {
-        // Not supported
-        AKU_PANIC("Group-by not supported");
+    if (filtering_enabled(req.select.filters)) {
+        // Join query should have many filters (filter per metric)
+        aku_Status s;
+        std::vector<ValueFilter> flt;
+        std::tie(s, flt) = layout_filters(req);
+        if (s != AKU_SUCCESS) {
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        t1stage.reset(new FilterProcessingStep(req.select.begin,
+                                               req.select.end,
+                                               flt,
+                                               std::move(t1ids)));
     } else {
-        // Stage2 - materialize aggregate
-        std::unique_ptr<QueryPlanStage> t2stage;
-        t2stage.reset(new QueryPlanStage());
-
-        Tier2Operator op      = req.order_by == OrderBy::SERIES ?
-                                Tier2Operator::MERGE_JOIN_SERIES_ORDER :
-                                Tier2Operator::MERGE_JOIN_TIME_ORDER;
-        t2stage->op_.tier2    = op;
-        t2stage->tier_        = 2;
-        t2stage->opt_join_cardinality_
-                              = cardinality;
-        t2stage->opt_ids_     = req.select.columns.at(0).ids;  // Join will use ids from the first row
-        t2stage->time_range_  = std::make_pair(begin, end);  // not needed here but anyway
-        t2stage->opt_matcher_ = req.select.matcher;
-
-        result.push_back(std::move(t2stage));
+        t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
     }
-    return result;
+
+    std::unique_ptr<MaterializationStep> t2stage;
+
+    if (req.group_by.enabled) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    } else {
+        t2stage.reset(new Join(req.select.columns.at(0).ids, cardinality, req.order_by, req.select.begin, req.select.end));
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-static StagesT create_plan(ReshapeRequest const& req) {
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> group_aggregate_query_plan(ReshapeRequest const& req) {
+    // Hardwired query plan for group aggregate query
+    // Tier1
+    // - List of group aggregate operators
+    // Tier2
+    // - If group-by is enabled:
+    //   - Transform ids and matcher (generate new names)
+    //   - Add merge materialization step (series or time order, depending on the
+    //     order-by clause.
+    // - Otherwise
+    //   - If oreder-by is series add chain materialization step.
+    //   - Otherwise add merge materializer.
+    std::unique_ptr<IQueryPlan> result;
+
+    if (!req.agg.enabled || req.agg.step == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    if (filtering_enabled(req.select.filters)) {
+        // Scan query can only have one filter
+        aku_Status s;
+        std::vector<AggregateFilter> flt;
+        std::tie(s, flt) = layout_aggregate_filters(req);
+        if (s != AKU_SUCCESS) {
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        t1stage.reset(new GroupAggregateFilterProcessingStep(req.select.begin,
+                                                             req.select.end,
+                                                             req.agg.step,
+                                                             flt,
+                                                             req.select.columns.at(0).ids));
+    }
+    else {
+        t1stage.reset(new GroupAggregateProcessingStep(req.select.begin,
+                                                       req.select.end,
+                                                       req.agg.step,
+                                                       req.select.columns.at(0).ids));
+    }
+
+    std::unique_ptr<MaterializationStep> t2stage;
+    if (req.order_by == OrderBy::SERIES) {
+        t2stage.reset(new SeriesOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+    } else {
+        t2stage.reset(new TimeOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> QueryPlanBuilder::create(const ReshapeRequest& req) {
     if (req.agg.enabled && req.agg.step == 0) {
         // Aggregate query
-        return create_aggregate(req);
+        return aggregate_query_plan(req);
+    } else if (req.agg.enabled && req.agg.step != 0) {
+        // Group aggregate query
+        return group_aggregate_query_plan(req);
     } else if (req.agg.enabled == false && req.select.columns.size() > 1) {
         // Join query
-        return create_join(req);
+        return join_query_plan(req);
     }
-    // Scan query
-    return create_scan(req);
+    return scan_query_plan(req);
 }
 
+void QueryPlanExecutor::execute(const StorageEngine::ColumnStore& cstore, std::unique_ptr<QP::IQueryPlan>&& iter, QP::IStreamProcessor& qproc) {
+    aku_Status status = iter->execute(cstore);
+    if (status != AKU_SUCCESS) {
+        Logger::msg(AKU_LOG_ERROR, "Query plan error" + StatusUtil::str(status));
+        qproc.set_error(status);
+        return;
+    }
+    const size_t dest_size = 0x1000;
+    std::vector<u8> dest;
+    dest.resize(dest_size);
+    while(status == AKU_SUCCESS) {
+        size_t size;
+        // This is OK because normal query (aggregate or select) will write fixed size samples with size = sizeof(aku_Sample).
+        //
+        std::tie(status, size) = iter->read(reinterpret_cast<u8*>(dest.data()), dest_size);
+        if (status != AKU_SUCCESS && (status != AKU_ENO_DATA && status != AKU_EUNAVAILABLE)) {
+            Logger::msg(AKU_LOG_ERROR, "Iteration error " + StatusUtil::str(status));
+            qproc.set_error(status);
+            return;
+        }
 
-QueryPlan::QueryPlan(ReshapeRequest const& req)
-    : stages_(create_plan(req))
-{
+        size_t pos = 0;
+        while(pos < size) {
+            aku_Sample const* sample = reinterpret_cast<aku_Sample const*>(dest.data() + pos);
+            if (!qproc.put(*sample)) {
+                Logger::msg(AKU_LOG_TRACE, "Iteration stopped by client");
+                return;
+            }
+            pos += sample->payload.size;
+        }
+    }
 }
 
 }} // namespaces

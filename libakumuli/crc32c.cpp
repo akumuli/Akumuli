@@ -52,14 +52,14 @@ static void crc32c_init_sw(void)
 
     for (n = 0; n < 256; n++) {
         crc = n;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-        crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
+        crc = (crc & 1) ? (crc >> 1) ^ POLY : crc >> 1;
         crc32c_table[0][n] = crc;
     }
     for (n = 0; n < 256; n++) {

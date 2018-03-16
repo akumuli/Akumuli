@@ -189,7 +189,7 @@ def test_join_query_forward_by_series(columns, dtstart, delta, N):
 
     # Check that we received all values
     if iterations != N:
-        raise ValueError("Expect {0} data points, get {1} data points".format(points_required, iterations))
+        raise ValueError("Expect {0} data points, get {1} data points".format(N, iterations))
     print("Test #3 - passed")
 
 

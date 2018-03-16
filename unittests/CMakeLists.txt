@@ -14,6 +14,7 @@ add_executable(
 )
 target_link_libraries(test_streams
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(streams test_streams)
 
@@ -29,6 +30,7 @@ add_executable(
 )
 target_link_libraries(test_respstream
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(respstream test_respstream)
 
@@ -52,6 +54,7 @@ target_link_libraries(
     sqlite3
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
+    pthread
 )
 add_test(protocol-parser test_protocolparser)
 
@@ -69,13 +72,14 @@ add_executable(
     ../akumulid/logger.cpp
 )
 target_link_libraries(test_tcp_server
-    jemalloc
     akumuli
-    sqlite3
+    "${JEMALLOC_LIBRARY}"
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(tcp-server test_tcp_server)
 
@@ -92,12 +96,13 @@ add_executable(
 target_link_libraries(
     test_querycursor
     akumuli
-    jemalloc
-    sqlite3
+    "${JEMALLOC_LIBRARY}"
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 add_test(querycursor test_querycursor)
 
@@ -115,6 +120,7 @@ add_executable(
     ../libakumuli/cursor.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/storage_engine/compression.cpp
 )
 
@@ -163,6 +169,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(compression test_compression)
@@ -176,8 +183,9 @@ add_executable(
     ../libakumuli/util.cpp
     ../libakumuli/datetime.cpp
     ../libakumuli/log_iface.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/crc32c.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/storage_engine/blockstore.cpp
@@ -196,25 +204,25 @@ add_executable(
     ../libakumuli/queryprocessor.cpp
     ../libakumuli/queryprocessor_framework.cpp
     ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/query_processing/anomaly.cpp
+    #../libakumuli/anomalydetector.cpp
+    #../libakumuli/hashfnfamily.cpp
+    #../libakumuli/query_processing/anomaly.cpp
     ../libakumuli/query_processing/sax.cpp
-    ../libakumuli/query_processing/paa.cpp
-    ../libakumuli/query_processing/filterbyid.cpp
-    ../libakumuli/query_processing/randomsamplingnode.cpp
+    ../libakumuli/query_processing/rate.cpp
+    ../libakumuli/query_processing/sliding_window.cpp
+    #../libakumuli/query_processing/filterbyid.cpp
     ../libakumuli/query_processing/limiter.cpp
 
 )
 
 target_link_libraries(
     test_storage
-    pthread
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(storage test_storage)
@@ -223,10 +231,12 @@ add_test(storage test_storage)
 add_executable(
     test_seriesparser
     test_parser.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
+    ../libakumuli/status_util.cpp
     ../libakumuli/datetime.cpp
 )
 
@@ -239,38 +249,6 @@ target_link_libraries(
 
 add_test(seriesparser test_seriesparser)
 
-# Query processor tests
-add_executable(
-    test_queryprocessor
-    test_queryprocessor.cpp
-    ../libakumuli/queryprocessor.cpp
-    ../libakumuli/queryprocessor_framework.cpp
-    ../libakumuli/saxencoder.cpp
-    ../libakumuli/anomalydetector.cpp
-    ../libakumuli/hashfnfamily.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
-    ../libakumuli/util.cpp
-    ../libakumuli/log_iface.cpp
-    ../libakumuli/datetime.cpp
-    # query_processing folder
-    ../libakumuli/query_processing/anomaly.cpp
-    ../libakumuli/query_processing/sax.cpp
-    ../libakumuli/query_processing/paa.cpp
-    ../libakumuli/query_processing/filterbyid.cpp
-    ../libakumuli/query_processing/randomsamplingnode.cpp
-    ../libakumuli/query_processing/limiter.cpp
-)
-
-target_link_libraries(
-    test_queryprocessor
-    pthread
-    ${Boost_LIBRARIES}
-    "${APR_LIBRARY}"
-)
-
-add_test(queryprocessor test_queryprocessor)
-
 # Datetime test
 add_executable(
     test_datetime
@@ -281,6 +259,7 @@ add_executable(
 target_link_libraries(
     test_datetime
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(datetime test_datetime)
@@ -295,6 +274,7 @@ add_executable(
 target_link_libraries(
     test_sax
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(SAX test_sax)
@@ -317,6 +297,7 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
 )
 
 add_test(blockstore test_blockstore)
@@ -347,6 +328,8 @@ target_link_libraries(
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    "${SQLITE3_LIBRARY}"
+    pthread
 )
 
 add_test(nbtree test_nbtree)
@@ -370,8 +353,9 @@ add_executable(
     ../libakumuli/status_util.cpp
     ../libakumuli/log_iface.cpp
     ../libakumuli/crc32c.cpp
-    ../libakumuli/seriesparser.cpp
-    ../libakumuli/stringpool.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/metadatastorage.cpp
 )
 

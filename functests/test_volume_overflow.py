@@ -79,7 +79,9 @@ def read_in_backward_direction(batch_size):
 
             if iterations % batch_size == 0:
                 if iterations % (batch_size*1000) == 0:
-                    print("Read {0}".format(iterations))
+                    ts = datetime.datetime.now()
+                    ts = ts.strftime("%Y-%m-%d %H:%M:%S,%f")
+                    print("Read {0} - {1}".format(iterations, ts))
 
             iterations += 1
         except:
@@ -114,12 +116,15 @@ def main(path):
             rawstats = urllib.urlopen(statsurl).read()
             stats = json.loads(rawstats)
             volume0space = stats["volume_0"]["free_space"]
-            volume1space = stats["volume_1"]["free_space"]
+            if "volume_1" in stats:
+                volume1space = stats["volume_1"]["free_space"]
+            else:
+                volume1space = 0
             return int(volume0space), int(volume1space)
 
         print("Sending messages...")
         _, prev_vol1 = get_free_space()
-        batch_size = 1000
+        batch_size = 10000
         for ix, it in enumerate(att.infinite_msg_stream(batch_size, 'temp', tag='test')):
             chan.send(it)
             if ix % 1000 == 0:
@@ -131,6 +136,14 @@ def main(path):
                 prev_vol1 = vol1
 
         # Read data back if backward direction (cached values should be included)
+        read_in_backward_direction(batch_size)
+
+        # Try to reopen and check once again
+        akumulid.stop()
+        time.sleep(5)
+        akumulid.serve()
+        time.sleep(5)
+
         read_in_backward_direction(batch_size)
     except:
         traceback.print_exc()

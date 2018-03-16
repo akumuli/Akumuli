@@ -15,12 +15,13 @@ add_executable(akumulid
 
 target_link_libraries(akumulid
     akumuli
-    sqlite3
+    "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
-    microhttpd
+    ${LIBMICROHTTPD_LIBRARY}
+    pthread
 )
 
 include(CppcheckTargets)
@@ -31,8 +32,7 @@ install(
     TARGETS
         akumulid
     RUNTIME DESTINATION
-        #${CMAKE_INSTALL_PREFIX}/bin
-        /usr/bin
+        ${CMAKE_INSTALL_BINDIR}
 )
 
 set(CPACK_GENERATOR "DEB")
@@ -47,8 +47,11 @@ set(CPACK_PACKAGE_VERSION_MAJOR "${APP_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${APP_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${APP_VERSION_PATCH}")
 
-
 set(CPACK_PACKAGE_FILE_NAME
 "akumuli_${APP_VERSION}-${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+
+# autogenerate dependency information
+set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS} libaprutil1 (>= 1.0.5), libaprutil1-dbd-sqlite3 (>= 1.5.0) ")
 
 include(CPack)

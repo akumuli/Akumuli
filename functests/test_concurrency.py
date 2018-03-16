@@ -52,12 +52,17 @@ def writer(dt, delta, N):
         raise
 
 def line2tup(seq):
-    for line in seq:
-        columns = line.split(',')
-        tagline = columns[0].strip()
-        timestamp = att.parse_timestamp(columns[1].strip())
-        value = float(columns[2].strip())
-        yield tagline, timestamp, value
+    for ix, line in enumerate(seq):
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            value = float(columns[2].strip())
+            yield tagline, timestamp, value
+        except:
+            print("Error in line: {0}".format(ix))
+            print(line)
+            raise
 
 def require_continuous(seq, fn):
     """Checks that supplied sequence is ordered in a right way

@@ -8,19 +8,13 @@
 namespace Akumuli {
 namespace Http {
 
-static Logger logger("http", 10);
+static Logger logger("http");
 
 //! Microhttpd callback functions
 namespace MHD {
 static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
     ReadOperation* cur = (ReadOperation*)data;
-    auto status = cur->get_error();
-    if (status) {
-        const char* error_msg = aku_error_message(status);
-        logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " error (in callback): " << error_msg;
-        return MHD_CONTENT_READER_END_OF_STREAM;
-    }
     size_t sz;
     bool is_done;
     std::tie(sz, is_done) = cur->read_some(buf, max);
@@ -43,6 +37,17 @@ static void free_callback(void *data) {
     delete cur;
 }
 
+static ApiEndpoint get_endpoint(const std::string& path) {
+    if (path == "/api/query") {
+        return ApiEndpoint::QUERY;
+    } else if (path == "/api/suggest") {
+        return ApiEndpoint::SUGGEST;
+    } else if (path == "/api/search") {
+        return ApiEndpoint::SEARCH;
+    }
+    return ApiEndpoint::UNKNOWN;
+}
+
 static int accept_connection(void           *cls,
                              MHD_Connection *connection,
                              const char     *url,
@@ -62,12 +67,12 @@ static int accept_connection(void           *cls,
         return ret;
     };
     if (strcmp(method, "POST") == 0) {
-        if (path == "/api/query") {
+        ApiEndpoint endpoint = get_endpoint(path);
+        if (endpoint != ApiEndpoint::UNKNOWN) {
             ReadOperationBuilder *queryproc = static_cast<ReadOperationBuilder*>(cls);
             ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
-
             if (cursor == nullptr) {
-                cursor = queryproc->create();
+                cursor = queryproc->create(endpoint);
                 *con_cls = cursor;
                 logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
                 return MHD_YES;
@@ -114,6 +119,16 @@ static int accept_connection(void           *cls,
         }
         if (path == "/api/stats") {
             std::string stats = queryproc->get_all_stats();
+            auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
+            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            if (ret == MHD_NO) {
+                return ret;
+            }
+            ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
+        } else if (path == "/api/function-names") {
+            std::string stats = queryproc->get_resource("function-names");
             auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
             int ret = MHD_add_response_header(response, "content-type", "application/json");
             if (ret == MHD_NO) {
@@ -169,6 +184,8 @@ void HttpServer::stop() {
     MHD_stop_daemon(daemon_);
 }
 
+static Logger s_logger_("http-server");
+
 struct HttpServerBuilder {
 
     HttpServerBuilder() {
@@ -178,7 +195,11 @@ struct HttpServerBuilder {
     std::shared_ptr<Server> operator () (std::shared_ptr<DbConnection>,
                                          std::shared_ptr<ReadOperationBuilder> qproc,
                                          const ServerSettings& settings) {
-        return std::make_shared<HttpServer>(settings.port, qproc);
+        if (settings.protocols.size() != 1) {
+            s_logger_.error() << "Can't initialize HTTP server, more than one protocol specified";
+            BOOST_THROW_EXCEPTION(std::runtime_error("invalid http-server settings"));
+        }
+        return std::make_shared<HttpServer>(settings.protocols.front().port, qproc);
     }
 };
 

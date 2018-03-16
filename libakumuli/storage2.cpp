@@ -20,9 +20,11 @@
 #include "util.h"
 #include "queryprocessor.h"
 #include "query_processing/queryparser.h"
+#include "query_processing/queryplan.h"
 #include "log_iface.h"
 #include "status_util.h"
 #include "datetime.h"
+#include "akumuli_version.h"
 
 #include <algorithm>
 #include <atomic>
@@ -34,6 +36,9 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
+
+#include <fcntl.h>
+#include <cstdlib>
 
 namespace Akumuli {
 
@@ -47,8 +52,11 @@ namespace Akumuli {
   * all the page file names and they order.
   * @return APR_EINIT on DB error.
   */
-static apr_status_t create_metadata_page( const char* file_name
-                                        , std::vector<std::string> const& page_file_names)
+static apr_status_t create_metadata_page(const char* db_name
+                                        , const char* file_name
+                                        , std::vector<std::string> const& page_file_names
+                                        , std::vector<u32> const& capacities
+                                        , const char* bstore_type )
 {
     using namespace std;
     try {
@@ -58,12 +66,20 @@ static apr_status_t create_metadata_page( const char* file_name
         char date_time[0x100];
         apr_rfc822_date(date_time, now);
 
-        storage->init_config(date_time);
+        storage->init_config(db_name, date_time, bstore_type);
 
         std::vector<MetadataStorage::VolumeDesc> desc;
-        int ix = 0;
+        u32 ix = 0;
         for(auto str: page_file_names) {
-            desc.push_back(std::make_pair(ix++, str));
+            MetadataStorage::VolumeDesc volume;
+            volume.path = str;
+            volume.generation = ix;
+            volume.capacity = capacities[ix];
+            volume.id = ix;
+            volume.nblocks = 0;
+            volume.version = AKUMULI_VERSION;
+            desc.push_back(volume);
+            ix++;
         }
         storage->init_volumes(desc);
 
@@ -113,7 +129,7 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
     char buf[AKU_LIMITS_MAX_SNAME];
     char* ob = static_cast<char*>(buf);
     char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
-    aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
+    aku_Status status = SeriesParser::to_canonical_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
         return status;
     }
@@ -140,7 +156,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     char buf[AKU_LIMITS_MAX_SNAME];
     char* ob = static_cast<char*>(buf);
     char* oe = static_cast<char*>(buf) + AKU_LIMITS_MAX_SNAME;
-    aku_Status status = SeriesParser::to_normal_form(begin, end, ob, oe, &ksbegin, &ksend);
+    aku_Status status = SeriesParser::to_canonical_form(begin, end, ob, oe, &ksbegin, &ksend);
     if (status != AKU_SUCCESS) {
         return -1*status;
     }
@@ -215,7 +231,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
 }
 
 int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size) {
-    SeriesMatcher::StringT name;
+    StringT name;
     if (matcher_substitute_) {
         // Use temporary matcher
         name = matcher_substitute_->id2str(id);
@@ -238,7 +254,15 @@ void StorageSession::query(InternalCursor* cur, const char* query) const {
     storage_->query(this, cur, query);
 }
 
-void StorageSession::set_series_matcher(std::shared_ptr<SeriesMatcher> matcher) const {
+void StorageSession::suggest(InternalCursor* cur, const char* query) const {
+    storage_->suggest(this, cur, query);
+}
+
+void StorageSession::search(InternalCursor* cur, const char* query) const {
+    storage_->search(this, cur, query);
+}
+
+void StorageSession::set_series_matcher(std::shared_ptr<PlainSeriesMatcher> matcher) const {
     matcher_substitute_ = matcher;
 }
 
@@ -273,17 +297,22 @@ Storage::Storage(const char* path)
     // first volume is a metavolume
     auto volumes = metadata_->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
-
-    bstore_ = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    std::string bstore_type = "FixedSizeFileStorage";
+    std::string db_name = "db";
+    metadata_->get_config_param("blockstore_type", &bstore_type);
+    metadata_->get_config_param("db_name", &db_name);
+    if (bstore_type == "FixedSizeFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as fxied size storage");
+        bstore_ = StorageEngine::FixedSizeFileStorage::open(metadata_);
+    } else if (bstore_type == "ExpandableFileStorage") {
+        Logger::msg(AKU_LOG_INFO, "Open as expandable storage");
+        bstore_ = StorageEngine::ExpandableFileStorage::open(metadata_);
+    } else {
+        Logger::msg(AKU_LOG_ERROR, "Unknown blockstore type (" + bstore_type + ")");
+        AKU_PANIC("Unknown blockstore type (" + bstore_type + ")");
+    }
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
     // Update series matcher
     boost::optional<u64> baseline = metadata_->get_prev_largest_id();
@@ -318,7 +347,7 @@ static std::string to_isostring(aku_Timestamp ts) {
 // Run through mappings and dump contents
 void dump_tree(std::ostream &stream,
                std::shared_ptr<StorageEngine::BlockStore> bstore,
-               SeriesMatcher const& matcher,
+               PlainSeriesMatcher const& matcher,
                aku_ParamId id,
                std::vector<StorageEngine::LogicAddr> rescue_points)
 {
@@ -416,8 +445,7 @@ void dump_tree(std::ostream &stream,
                 continue;
             }
             auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
-            u16 level = subtreeref->level;
-            if (level == 0) {
+            if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
                 NBTreeLeaf leaf(block);
                 SubtreeRef const* ref = leaf.get_leafmeta();
@@ -543,20 +571,13 @@ aku_Status Storage::generate_report(const char* path, const char *output) {
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
 
     // Load series matcher data
-    SeriesMatcher matcher;
+    PlainSeriesMatcher matcher;
     auto status = metadata->load_matcher_data(matcher);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
@@ -609,21 +630,14 @@ aku_Status Storage::generate_recovery_report(const char* path, const char *outpu
     // first volume is a metavolume
     auto volumes = metadata->get_volumes();
     for (auto vol: volumes) {
-        std::string path;
-        int index;
-        std::tie(index, path) = vol;
-        if (index == 0) {
-            metapath = path;
-        } else {
-            volpaths.push_back(path);
-        }
+        volpaths.push_back(vol.path);
     }
 
-    auto bstore = StorageEngine::FixedSizeFileStorage::open(metapath, volpaths);
+    auto bstore = StorageEngine::FixedSizeFileStorage::open(metadata);
     auto cstore = std::make_shared<StorageEngine::ColumnStore>(bstore);
 
     // Load series matcher data
-    SeriesMatcher matcher;
+    PlainSeriesMatcher matcher;
     auto status = metadata->load_matcher_data(matcher);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read series names");
@@ -703,14 +717,17 @@ void Storage::start_sync_worker() {
     // if something needs to be synced.
     // This order guarantees that metadata storage always contains correct rescue points and
     // other metadata.
+    enum {
+        SYNC_REQUEST_TIMEOUT = 10000,
+    };
     auto sync_worker = [this]() {
-        auto get_names = [this](std::vector<SeriesMatcher::SeriesNameT>* names) {
+        auto get_names = [this](std::vector<PlainSeriesMatcher::SeriesNameT>* names) {
             std::lock_guard<std::mutex> guard(lock_);
             global_matcher_.pull_new_names(names);
         };
 
         while(done_.load() == 0) {
-            auto status = metadata_->wait_for_sync_request(1000);
+            auto status = metadata_->wait_for_sync_request(SYNC_REQUEST_TIMEOUT);
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
                 metadata_->sync_with_metadata_storage(get_names);
@@ -721,7 +738,6 @@ void Storage::start_sync_worker() {
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
-
 }
 
 void Storage::close() {
@@ -754,7 +770,7 @@ std::shared_ptr<StorageSession> Storage::create_write_session() {
     return std::make_shared<StorageSession>(shared_from_this(), session);
 }
 
-aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, SeriesMatcher *local_matcher) {
+aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
     u64 id = 0;
     bool create_new = false;
     {
@@ -776,7 +792,7 @@ aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sampl
     return AKU_SUCCESS;
 }
 
-int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, SeriesMatcher *local_matcher) {
+int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher) {
     auto str = global_matcher_.id2str(id);
     if (str.first == nullptr) {
         return 0;
@@ -784,11 +800,52 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, S
     // copy value to local matcher
     local_matcher->_add(str.first, str.first + str.second, id);
     // copy the string to out buffer
-    if (str.second > static_cast<int>(buffer_size)) {
+    if (str.second > buffer_size) {
         return -1*str.second;
     }
     memcpy(buffer, str.first, static_cast<size_t>(str.second));
-    return str.second;
+    return static_cast<int>(str.second);
+}
+
+aku_Status Storage::parse_query(boost::property_tree::ptree const& ptree, QP::ReshapeRequest* req) const {
+    using namespace QP;
+    QueryKind kind;
+    aku_Status status;
+
+    std::tie(status, kind) = QueryParser::get_query_kind(ptree);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    switch (kind) {
+    case QueryKind::SELECT_META:
+        Logger::msg(AKU_LOG_ERROR, "Metadata query is not supported");
+        return AKU_EBAD_ARG;
+    case QueryKind::AGGREGATE:
+        std::tie(status, *req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::GROUP_AGGREGATE:
+        std::tie(status, *req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::SELECT:
+        std::tie(status, *req) = QueryParser::parse_select_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    case QueryKind::JOIN:
+        std::tie(status, *req) = QueryParser::parse_join_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        break;
+    };
+    return AKU_SUCCESS;
 }
 
 void Storage::query(StorageSession const* session, InternalCursor* cur, const char* query) const {
@@ -807,170 +864,128 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
         cur->set_error(status);
         return;
     }
-    switch (kind) {
-    case QueryKind::SELECT_META: {
-            std::vector<aku_ParamId> ids;
-            std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
-            if (proc->start()) {
-                proc->stop();
-            }
-        }
-        break;
-    case QueryKind::AGGREGATE: {
-            ReshapeRequest req;
-            std::tie(status, req) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-            if (req.group_by.enabled) {
-                session->set_series_matcher(req.group_by.matcher);
-            } else {
-                // Matcher can be substituted by previous call
-                session->clear_series_matcher();
-            }
+    std::shared_ptr<IStreamProcessor> proc;
+    ReshapeRequest req;
 
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
-            if (proc->start()) {
-                cstore_->query(req, *proc);
-                proc->stop();
-            }
+    if (kind == QueryKind::SELECT_META) {
+        std::vector<aku_ParamId> ids;
+        std::tie(status, ids) = QueryParser::parse_select_meta_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
         }
-        break;
-    case QueryKind::GROUP_AGGREGATE: {
-            ReshapeRequest req;
-            std::tie(status, req) = QueryParser::parse_group_aggregate_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            // Replace matcher with local one
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        proc = std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+        if (proc->start()) {
+            proc->stop();
+        }
+        return;
+    } else {
+        status = parse_query(ptree, &req);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        bool groupbytime = kind == QueryKind::GROUP_AGGREGATE;
+        proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
+        if (req.select.matcher) {
             session->set_series_matcher(req.select.matcher);
-
-            // Start scanning
-            GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
-            if (proc->start()) {
-                cstore_->group_aggregate_query(req, *proc);
-                proc->stop();
-            }
+        } else {
+            session->clear_series_matcher();
         }
-        break;
-    case QueryKind::SELECT: {
-            ReshapeRequest req;
-            std::tie(status, req) = QueryParser::parse_select_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-            if (req.group_by.enabled) {
-                session->set_series_matcher(req.group_by.matcher);
-            } else {
-                session->clear_series_matcher();
-            }
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
-            // Scan column store
-            if (proc->start()) {
-                cstore_->query(req, *proc);
-                proc->stop();
-            }
+        // Return error if no series was found
+        if (req.select.columns.empty()) {
+            cur->set_error(AKU_EQUERY_PARSING_ERROR);
+            return;
         }
-        break;
-    case QueryKind::JOIN: {
-            ReshapeRequest req;
-            std::tie(status, req) = QueryParser::parse_join_query(ptree, global_matcher_);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            std::vector<std::shared_ptr<Node>> nodes;
-            std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
-            if (status != AKU_SUCCESS) {
-                cur->set_error(status);
-                return;
-            }
-            // Replace matcher with local one
-            session->set_series_matcher(req.select.matcher);
-
-            // Start scanning
-            GroupByTime groupbytime;
-            std::shared_ptr<IStreamProcessor> proc = std::make_shared<ScanQueryProcessor>(nodes, groupbytime);
-
-            // Return error if no series was found
-            if (req.select.columns.empty()) {
-                cur->set_error(AKU_EQUERY_PARSING_ERROR);
-                return;
-            }
-            if (req.select.columns.at(0).ids.empty()) {
-                cur->set_error(AKU_ENOT_FOUND);
-                return;
-            }
-            if (proc->start()) {
-                cstore_->join_query(req, *proc);
-                proc->stop();
-            }
+        if (req.select.columns.at(0).ids.empty()) {
+            cur->set_error(AKU_ENOT_FOUND);
+            return;
         }
-        break;
-    };
+        std::unique_ptr<QP::IQueryPlan> query_plan;
+        std::tie(status, query_plan) = QP::QueryPlanBuilder::create(req);
+        if (status != AKU_SUCCESS) {
+            cur->set_error(status);
+            return;
+        }
+        // TODO: log query plan if required
+        if (proc->start()) {
+            QueryPlanExecutor executor;
+            executor.execute(*cstore_, std::move(query_plan), *proc);
+            proc->stop();
+        }
+    }
+}
+
+void Storage::suggest(StorageSession const* session, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    session->clear_series_matcher();
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<aku_ParamId> ids;
+    std::shared_ptr<PlainSeriesMatcher> substitute;
+    std::tie(status, substitute, ids) = QueryParser::parse_suggest_query(ptree, global_matcher_);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<std::shared_ptr<Node>> nodes;
+    std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    session->set_series_matcher(substitute);
+    std::shared_ptr<IStreamProcessor> proc =
+            std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+    if (proc->start()) {
+        proc->stop();
+    }
+}
+
+void Storage::search(StorageSession const* session, InternalCursor* cur, const char* query) const {
+    using namespace QP;
+    boost::property_tree::ptree ptree;
+    aku_Status status;
+    session->clear_series_matcher();
+    std::tie(status, ptree) = QueryParser::parse_json(query);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids) = QueryParser::parse_search_query(ptree, global_matcher_);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::vector<std::shared_ptr<Node>> nodes;
+    std::tie(status, nodes) = QueryParser::parse_processing_topology(ptree, cur);
+    if (status != AKU_SUCCESS) {
+        cur->set_error(status);
+        return;
+    }
+    std::shared_ptr<IStreamProcessor> proc =
+            std::make_shared<MetadataQueryProcessor>(nodes.front(), std::move(ids));
+    if (proc->start()) {
+        proc->stop();
+    }
 }
 
 void Storage::debug_print() const {
@@ -978,11 +993,12 @@ void Storage::debug_print() const {
     std::cout << "...not implemented" << std::endl;
 }
 
-aku_Status Storage::new_database( const char     *file_name
+aku_Status Storage::new_database( const char     *base_file_name
                                 , const char     *metadata_path
                                 , const char     *volumes_path
                                 , i32             num_volumes
-                                , u64             volume_size)
+                                , u64             volume_size
+                                , bool            allocate)
 {
     // Check for max volume size
     const u64 MAX_SIZE = 0x100000000 * 4096 - 1;  // 15TB
@@ -1001,7 +1017,7 @@ aku_Status Storage::new_database( const char     *file_name
     boost::filesystem::path metpath(metadata_path);
     volpath = boost::filesystem::absolute(volpath);
     metpath = boost::filesystem::absolute(metpath);
-    std::string sqlitebname = std::string(file_name) + ".akumuli";
+    std::string sqlitebname = std::string(base_file_name) + ".akumuli";
     boost::filesystem::path sqlitepath = metpath / sqlitebname;
 
     if (!boost::filesystem::exists(volpath)) {
@@ -1029,25 +1045,50 @@ aku_Status Storage::new_database( const char     *file_name
         return AKU_EBAD_ARG;
     }
 
+    i32 actual_nvols = (num_volumes == 0) ? 1 : num_volumes;
     std::vector<std::tuple<u32, std::string>> paths;
-    for (i32 i = 0; i < num_volumes; i++) {
-        std::string basename = std::string(file_name) + "_" + std::to_string(i) + ".vol";
+    for (i32 i = 0; i < actual_nvols; i++) {
+        std::string basename = std::string(base_file_name) + "_" + std::to_string(i) + ".vol";
         boost::filesystem::path p = volpath / basename;
         paths.push_back(std::make_tuple(volsize, p.string()));
     }
-    // Volumes meta-page
-    std::string basename = std::string(file_name) + ".metavol";
-    boost::filesystem::path volmpage = volpath / basename;
 
-    StorageEngine::FixedSizeFileStorage::create(volmpage.string(), paths);
+    StorageEngine::FileStorage::create(paths);
+
+    if (allocate) {
+        for (const auto& path: paths) {
+            const auto& p = std::get<1>(path);
+            int fd = open(p.c_str(), O_WRONLY);
+            if (fd < 0) {
+                boost::system::error_code error(errno, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "Can't open file '" + p + "' reason: " + error.message() + ". Skip.");
+                break;
+            }
+            int ret = posix_fallocate(fd, 0, std::get<0>(path));
+            ::close(fd);
+            if (ret == 0) {
+                Logger::msg(AKU_LOG_INFO, "Disk space for " + p + " preallocated");
+            } else {
+                boost::system::error_code error(ret, boost::system::system_category());
+                Logger::msg(AKU_LOG_ERROR, "posix_fallocate fail: " + error.message());
+            }
+        }
+    }
 
     // Create sqlite database for metadata
     std::vector<std::string> mpaths;
-    mpaths.push_back(volmpage.string());
+    std::vector<u32> msizes;
     for (auto p: paths) {
+        msizes.push_back(std::get<0>(p));
         mpaths.push_back(std::get<1>(p));
     }
-    create_metadata_page(sqlitepath.c_str(), mpaths);
+    if (num_volumes == 0) {
+        Logger::msg(AKU_LOG_INFO, "Creating expandable file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "ExpandableFileStorage");
+    } else {
+        Logger::msg(AKU_LOG_INFO, "Creating fixed file storage");
+        create_metadata_page(base_file_name, sqlitepath.c_str(), mpaths, msizes, "FixedSizeFileStorage");
+    }
     return AKU_SUCCESS;
 }
 
@@ -1061,19 +1102,14 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         // Bad database
         return AKU_EBAD_ARG;
     }
-    std::vector<std::string> volume_names(volumes.size() - 1, "");
-    // First volume is meta-page
-    std::string meta_file;
+    std::vector<std::string> volume_names(volumes.size(), "");
+
     for(auto it: volumes) {
-        if (it.first == 0) {
-            meta_file = it.second;
-        } else {
-            volume_names.at(static_cast<size_t>(it.first) - 1) = it.second;
-        }
+        volume_names.at(it.id) = it.path;
     }
     if (!force) {
         // Check whether or not database is empty
-        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta_file, volume_names);
+        auto fstore = StorageEngine::FixedSizeFileStorage::open(meta);
         auto stats = fstore->get_stats();
         if (stats.nblocks != 0) {
             // DB is not empty
@@ -1091,7 +1127,6 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
         }
         return AKU_SUCCESS;
     };
-    volume_names.push_back(meta_file);
     volume_names.push_back(file_name);
     std::vector<aku_Status> statuses;
     std::transform(volume_names.begin(), volume_names.end(), std::back_inserter(statuses), check_access);

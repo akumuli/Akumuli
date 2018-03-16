@@ -8,14 +8,7 @@
 
 namespace Akumuli {
 
-static Logger logger("query_results_pooler", 10);
-
-static int popcount(u64 value) {
-    u32 hi = static_cast<u32>(value);
-    u32 lo = static_cast<u32>(value >> 32);
-    int res = __builtin_popcount(hi) + __builtin_popcount(lo);
-    return res;
-}
+static Logger logger("query_results_pooler");
 
 static boost::property_tree::ptree from_json(std::string json) {
     //! C-string to streambuf adapter
@@ -151,15 +144,17 @@ struct CSVOutputFormatter : OutputFormatter {
                 double d;
             } bits;
             bits.d = sample.payload.float64;
-            int nelements = popcount(bits.u);
+            int nelements = bits.u >> 58;  // top 6 bits contains number of elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
+            int tup_ix = 0;
             for (int ix = 0; ix < nelements; ix++) {
                 if (bits.u & (1 << ix)) {
-                    if (ix == 0) {
-                        len = snprintf(begin, size, "%.17g", tuple[ix]);
+                    if (tup_ix == 0) {
+                        len = snprintf(begin, size, "%.17g", tuple[tup_ix]);
                     } else {
-                        len = snprintf(begin, size, ",%.17g", tuple[ix]);
+                        len = snprintf(begin, size, ",%.17g", tuple[tup_ix]);
                     }
+                    tup_ix++;
                 } else {
                     len = snprintf(begin, size, ",");
                 }
@@ -251,7 +246,6 @@ struct RESPOutputFormatter : OutputFormatter {
                 // Not enough space
                 return nullptr;
             }
-            len--;  // terminating '\0' character should be rewritten
             begin += len;
             size  -= len;
             // Add trailing \r\n to the end
@@ -320,10 +314,10 @@ struct RESPOutputFormatter : OutputFormatter {
                 double d;
             } bits;
             bits.d = sample.payload.float64;
-            int nelements_set = popcount(bits.u);
+            int nelements = bits.u >> 58;  // top 6 bits contains number of elements
 
             // Output RESP array, start with number of elements
-            len = snprintf(begin, size, "*%d\r\n", nelements_set);
+            len = snprintf(begin, size, "*%d\r\n", nelements);
             if (len == size || len < 0) {
                 return nullptr;
             }
@@ -332,9 +326,10 @@ struct RESPOutputFormatter : OutputFormatter {
 
             // Output array elements
             double const* tuple = reinterpret_cast<double const*>(sample.payload.data);
-            for (int ix = 0; ix < nelements_set; ix++) {
-                if (bits.d && (1 << ix)) {
-                    len = snprintf(begin, size, "+%.17g\r\n", tuple[ix]);
+            int tup_ix = 0;
+            for (int ix = 0; ix < nelements; ix++) {
+                if (bits.u & (1 << ix)) {
+                    len = snprintf(begin, size, "+%.17g\r\n", tuple[tup_ix++]);
                 } else {
                     // Empty tuple value encountered. RESP uses bulk string with length equal to -1
                     // to represent Null values.
@@ -368,10 +363,11 @@ struct RESPOutputFormatter : OutputFormatter {
     }
 };
 
-QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize)
+QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize, ApiEndpoint endpoint)
     : session_(session)
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
+    , endpoint_(endpoint)
 {
     try {
         rdbuf_.resize(readbufsize);
@@ -395,7 +391,7 @@ void QueryResultsPooler::throw_if_not_started() const {
 
 void QueryResultsPooler::start() {
     throw_if_started();
-    enum Format { RESP, CSV };  // TODO: add protobuf support
+    enum Format { RESP, CSV };
     bool use_iso_timestamps = true;
     Format output_format = RESP;
     boost::property_tree::ptree tree;
@@ -404,7 +400,7 @@ void QueryResultsPooler::start() {
     } catch (boost::property_tree::json_parser_error const& e) {
         logger.error() << "Bad JSON document received, error: " << e.what();
         // We need to pass invalid document further to generate proper error response
-        cursor_ = session_->search(query_text_);
+        _init_cursor();
         return;
     }
     auto output = tree.get_child_optional("output");
@@ -442,7 +438,23 @@ void QueryResultsPooler::start() {
         break;
     };
 
-    cursor_ = session_->search(query_text_);
+    _init_cursor();
+}
+
+void QueryResultsPooler::_init_cursor() {
+    switch (endpoint_) {
+    case ApiEndpoint::QUERY:
+        cursor_ = session_->query(query_text_);
+        break;
+    case ApiEndpoint::SUGGEST:
+        cursor_ = session_->suggest(query_text_);
+        break;
+    case ApiEndpoint::SEARCH:
+        cursor_ = session_->search(query_text_);
+        break;
+    default:
+        BOOST_THROW_EXCEPTION(std::runtime_error("Init-cursor failure, invalid endpoint"));
+    };
 }
 
 void QueryResultsPooler::append(const char *data, size_t data_size) {
@@ -459,15 +471,23 @@ aku_Status QueryResultsPooler::get_error() {
 }
 
 std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_size) {
+    aku_Status status = AKU_SUCCESS;
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
         if (cursor_->is_done()) {
+            // This can be the case if error occured
+            if (cursor_->is_error(&status)) {
+                // Some error occured, put error message to the outgoing buffer and return
+                int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
+                if (len > 0) {
+                    return std::make_tuple((size_t)len, true);
+                }
+            }
             return std::make_tuple(0u, true);
         }
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
         rdbuf_pos_ = 0u;
-        aku_Status status = AKU_SUCCESS;
         if (cursor_->is_error(&status)) {
             // Some error occured, put error message to the outgoing buffer and return
             int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
@@ -483,14 +503,12 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
     char* end = begin + buf_size;
     while(rdbuf_pos_ < rdbuf_top_) {
         const aku_Sample* sample = reinterpret_cast<const aku_Sample*>(rdbuf_.data() + rdbuf_pos_);
-        if (sample->payload.type != aku_PData::EMPTY) {
-            char* next = formatter_->format(begin, end, *sample);
-            if (next == nullptr) {
-                // done
-                break;
-            }
-            begin = next;
+        char* next = formatter_->format(begin, end, *sample);
+        if (next == nullptr) {
+            // done
+            break;
         }
+        begin = next;
         assert(sample->payload.size);
         rdbuf_pos_ += sample->payload.size;
     }
@@ -513,10 +531,10 @@ QueryProcessor::~QueryProcessor() {
     logger.info() << "QueryProcessor destructed";
 }
 
-ReadOperation *QueryProcessor::create() {
+ReadOperation *QueryProcessor::create(ApiEndpoint endpoint) {
     auto con = con_.lock();
     if (con) {
-        return new QueryResultsPooler(con->create_session(), rdbufsize_);
+        return new QueryResultsPooler(con->create_session(), rdbufsize_, endpoint);
     }
     std::runtime_error err("Database connection was closed");
     BOOST_THROW_EXCEPTION(err);
@@ -529,6 +547,16 @@ std::string QueryProcessor::get_all_stats() {
     }
     std::runtime_error err("Database connection was closed");
     BOOST_THROW_EXCEPTION(err);
+}
+
+std::string QueryProcessor::get_resource(std::string name) {
+    size_t outbufsize = 0x1000;
+    char outbuf[outbufsize];
+    aku_Status status = aku_get_resource(name.c_str(), outbuf, &outbufsize);
+    if (status != AKU_SUCCESS) {
+        return "-Invalid resource name";
+    }
+    return std::string(outbuf, outbuf + outbufsize);
 }
 
 }  // namespace

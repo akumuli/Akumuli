@@ -26,7 +26,8 @@
 #include <apr_dbd.h>
 
 #include "akumuli_def.h"
-#include "seriesparser.h"
+#include "index/seriesparser.h"
+#include "volumeregistry.h"
 
 namespace Akumuli {
 
@@ -47,14 +48,13 @@ struct AprHandleDeleter {
   * - Conviguration data
   * - Key to id mapping
   */
-struct MetadataStorage {
+struct MetadataStorage : VolumeRegistry {
     // Typedefs
     typedef std::unique_ptr<apr_pool_t, decltype(&delete_apr_pool)> PoolT;
     typedef const apr_dbd_driver_t* DriverT;
     typedef std::unique_ptr<apr_dbd_t, AprHandleDeleter> HandleT;
-    typedef std::pair<int, std::string>                  VolumeDesc;
     typedef apr_dbd_prepared_t* PreparedT;
-    typedef SeriesMatcher::SeriesNameT SeriesT;
+    typedef PlainSeriesMatcher::SeriesNameT SeriesT;
 
     // Members
     PoolT           pool_;
@@ -63,9 +63,10 @@ struct MetadataStorage {
     PreparedT       insert_;
 
     // Synchronization
-    std::mutex sync_lock_;
-    std::condition_variable sync_cvar_;
+    mutable std::mutex                                sync_lock_;
+    std::condition_variable                           sync_cvar_;
     std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
+    std::unordered_map<u32, VolumeDesc>               pending_volumes_;
 
     /** Create new or open existing db.
       * @throw std::runtime_error in a case of error
@@ -85,27 +86,48 @@ struct MetadataStorage {
       */
     void init_volumes(std::vector<VolumeDesc> volumes);
 
-    void init_config(const char* creation_datetime);
+    void init_config(const char* db_name,
+                     const char* creation_datetime,
+                     const char* bstore_type);
 
     // Retreival //
 
     /** Read list of volumes and their sequence numbers.
       * @throw std::runtime_error in a case of error
       */
-    std::vector<VolumeDesc> get_volumes() const;
+    virtual std::vector<VolumeDesc> get_volumes() const;
 
-    void get_configs(std::string* creation_datetime);
+    /**
+     * @brief Add NEW volume synchroniously
+     * @param vol is a volume description
+     */
+    virtual void add_volume(const VolumeDesc& vol);
+
+    /**
+     * @brief Get value of the configuration parameter
+     * @param param_name is a name of the configuration parameter
+     * @param value is a pointer that should receive configuration value
+     * @return true on succes, false otherwise
+     */
+    bool get_config_param(const std::string param_name, std::string* value);
 
     /** Read larges series id */
     boost::optional<u64> get_prev_largest_id();
 
-    aku_Status load_matcher_data(SeriesMatcher& matcher);
+    aku_Status load_matcher_data(SeriesMatcherBase &matcher);
 
     aku_Status load_rescue_points(std::unordered_map<u64, std::vector<u64>>& mapping);
 
     // Synchronization
 
     void add_rescue_point(aku_ParamId id, std::vector<u64>&& val);
+
+    /**
+     * @brief Add/update volume metadata asynchronously
+     * @param vol is a volume description
+     */
+    virtual void update_volume(const VolumeDesc& vol);
+    virtual std::string get_dbname();
 
     aku_Status wait_for_sync_request(int timeout_us);
 
@@ -127,6 +149,14 @@ struct MetadataStorage {
     /** Insert or update rescue provided points (generate sql query and execute it).
       */
     void upsert_rescue_points(std::unordered_map<aku_ParamId, std::vector<u64> > &&input);
+
+    /**
+     * @brief Update volume descriptors
+     * This function performs partial update (nblocks, capacity, generation) of the akumuli_volumes
+     * table.
+     * New volume should be added using the `add_volume` function.
+     */
+    void upsert_volume_records(std::unordered_map<u32, VolumeDesc>&& input);
 
 private:
 

@@ -5,11 +5,12 @@ import socket
 import datetime
 import time
 import akumulid_test_tools as att
+from akumulid_test_tools import retry, api_test, on_exit
 import json
 try:
-    from urllib2 import urlopen, HTTPError
+    from urllib2 import urlopen, HTTPError, URLError
 except ImportError:
-    from urllib import urlopen, HTTPError
+    from urllib import urlopen, HTTPError, URLError
 import traceback
 import itertools
 import math
@@ -18,33 +19,6 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-g_test_run = 1
-g_num_fail = 0
-
-
-def api_test(test_name):
-    def decorator(func):
-        def wrapper(*pos, **kv):
-            global g_test_run
-            global g_num_fail
-            n = g_test_run
-            g_test_run += 1
-            print("Test #{0} - {1}".format(n, test_name))
-            try:
-                func(*pos, **kv)
-                print("Test #{0} passed".format(n))
-            except ValueError as e:
-                print("Test #{0} failed: {1}".format(n, e))
-                g_num_fail += 1
-                traceback.print_exc()
-        return wrapper
-    return decorator
-
-def on_exit():
-    global g_num_fail
-    if g_num_fail != 0:
-        print("{0} tests failed".format(g_num_fail))
-        sys.exit(1)
 
 @api_test("read all data in backward direction")
 def test_read_all_in_backward_direction(dtstart, delta, N):
@@ -820,6 +794,7 @@ def check_bad_query_handling():
     }
     for title, query in queries.iteritems():
         @api_test(title)
+	@retry(Exception, tries=3)
         def test():
             queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
             try:
@@ -827,12 +802,16 @@ def check_bad_query_handling():
                 lines = []
                 for line in response:
                     lines.append(line)
-                if len(lines) != 1:
-                    print("Error: empty response expected, some data recieved. First 10 lines:")
+                if len(lines) > 1:
+                    print("Error: error message expected, some data recieved. First 10 lines:")
                     print("------------------------------")
                     for line in lines[:10]:
                         print(line.replace("\r", "\\r").replace("\n", "\\n"))
                     print("------------------------------")
+                    raise ValueError("Error expected")
+                elif len(lines) == 0:
+                    print("Error: error message expected, empty response received")
+                    raise ValueError("Error expected")
                 else:
                     if not lines[0].startswith("-query parsing error"):
                         raise ValueError("Invalid response")

@@ -29,8 +29,6 @@ namespace QP {
   */
 struct ScanQueryProcessor : IStreamProcessor {
 
-    //! Group-by-time statement
-    GroupByTime groupby_;
     //! Root of the processing topology
     std::shared_ptr<Node> root_node_;
     //! Final of the processing topology
@@ -39,8 +37,7 @@ struct ScanQueryProcessor : IStreamProcessor {
     /** Create new query processor.
       * @param root is a root of the processing topology
       */
-    ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes,
-                       GroupByTime groupby);
+    ScanQueryProcessor(std::vector<std::shared_ptr<Node>> nodes, bool group_by_time);
 
     bool start();
     //! Process value

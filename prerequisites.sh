@@ -7,24 +7,25 @@ if [ "x$distri" = "x" ]; then
 fi
 
 case $distri in
-	"rhel") pkgman='yum';;
+    "rhel") pkgman='yum';;
     "centos") pkgman='yum';;
-	"debian") pkgman='apt';;
+    "fedora") pkgman='dnf';;
+    "debian") pkgman='apt';;
     "ubuntu") pkgman='apt';;
-	"santiago") pkgman='yum';; #RHEL6
-	"tikanga") pkgman='yum';; #RHEL5
+    "santiago") pkgman='yum';; #RHEL6
+    "tikanga") pkgman='yum';; #RHEL5
 esac
 
 
-if [ "x$pkgman" = "xyum" ]; then
+if [ "x$pkgman" = "xyum" -o "x$pkgman" = "xdnf" ]; then
 	echo "Building for Centos/Fedora/RHEL"
-	sudo yum install cmake
-	sudo yum install boost boost-devel
-	sudo yum install log4cxx log4cxx-devel
-	sudo yum install sqlite sqlite-devel
-	sudo yum install apr-devel apr-util-devel apr-util-sqlite
-	sudo yum install libmicrohttpd-devel
-	sudo yum install jemalloc-devel
+	sudo $pkgman install -y cmake \
+                          boost boost-devel \
+                          log4cxx log4cxx-devel \
+                          sqlite sqlite-devel \
+                          apr-devel apr-util-devel apr-util-sqlite \
+                          libmicrohttpd-devel \
+                          jemalloc-devel
 else
 	if [ "x$pkgman" = "xapt" ]; then
 		echo 'The script will install packages using apt-get.' \

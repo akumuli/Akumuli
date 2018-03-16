@@ -4,6 +4,7 @@
 
 #include "operator.h"
 #include "merge.h"
+#include "../tuples.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -44,6 +45,7 @@ struct CombineAggregateOperator : AggregateOperator {
 struct CombineGroupAggregateOperator : AggregateOperator {
     typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
     typedef std::vector<AggregationResult> ReadBuffer;
+    const aku_Timestamp begin_;
     const u64           step_;
     IterVec             iter_;
     Direction           dir_;
@@ -67,8 +69,9 @@ struct CombineGroupAggregateOperator : AggregateOperator {
 
     //! C-tor. Create iterator from list of iterators.
     template<class TVec>
-    CombineGroupAggregateOperator(u64 step, TVec&& iter)
-        : step_(step)
+    CombineGroupAggregateOperator(aku_Timestamp begin, u64 step, TVec&& iter)
+        : begin_(begin)
+        , step_(step)
         , iter_(std::forward<TVec>(iter))
         , iter_index_(0)
         , rdpos_(0)
@@ -124,21 +127,6 @@ public:
      * @return status and number of elements in dest
      */
     std::tuple<aku_Status, size_t> read(u8* dest, size_t size);
-};
-
-
-
-struct TupleOutputUtils {
-    /** Get pointer to buffer and return pointer to sample and tuple data */
-    static std::tuple<aku_Sample*, double*> cast(u8* dest);
-
-    static double get_flags(std::vector<AggregationFunction> const& tup);
-
-    static double get(AggregationResult const& res, AggregationFunction afunc);
-
-    static void set_tuple(double* tuple, std::vector<AggregationFunction> const& comp, AggregationResult const& res);
-
-    static size_t get_tuple_size(const std::vector<AggregationFunction>& tup);
 };
 
 struct SeriesOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {

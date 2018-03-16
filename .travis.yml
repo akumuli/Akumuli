@@ -1,22 +1,28 @@
 sudo: required
 dist: trusty
 language: python
+group: edge
 compiler: gcc
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
+  matrix:
+  - GENERIC_BUILD=false
+  - GENERIC_BUILD=true
 addons:
-  coverity_scan:
-    project:
-      name: akumuli/Akumuli
-      description: Time-series database
-    notification_email: 4lazin@gmail.com
-    build_command_prepend: ''
-    build_command: make -j2
-    branch_pattern: coverity_scan
+  artifacts:
+    provider: s3
+    s3_region: us-west-2
+    access_key_id: "$ARTIFACTS_KEY"
+    secret_access_key: "$ARTIFACTS_SECRET"
+    bucket: "$ARTIFACTS_BUCKET"
+    acl: public_read
+    paths:
+    - "$HOME/akumuli.log"
 before_install:
 - sudo apt-get update
-- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-test-dev libboost-program-options-dev libboost-regex-dev
+- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev
+  libboost-test-dev libboost-program-options-dev libboost-regex-dev
 - sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
 - sudo apt-get install -y liblog4cxx10-dev liblog4cxx10
 - sudo apt-get install -y libjemalloc-dev
@@ -26,12 +32,17 @@ before_install:
 before_script:
 - mkdir build
 - cd build
-- cmake .. -DCMAKE_BUILD_TYPE=Release
+- if [[ $GENERIC_BUILD == true ]]; then
+  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  else
+  cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  fi
 script:
 - make -j4
 - ctest -VV
 - functests/storage_test /tmp
 - akumulid/akumulid --init
+- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
 - python functests/test_data_ingestion.py akumulid/ TCP
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
@@ -44,15 +55,41 @@ script:
 - python functests/test_concurrency.py akumulid/
 - python functests/test_ingestion_errors.py akumulid/
 - python functests/test_join_query.py akumulid/
+#- python functests/test_search_api.py akumulid/
+- python functests/akumulid_test_tools.py set_nvolumes 0
+- python functests/test_data_ingestion.py akumulid/ TCP
+- python functests/test_data_ingestion.py akumulid/ UDP
+- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+- python functests/test_query_language.py akumulid/
+- python functests/test_volume_overflow.py akumulid/
+- python functests/test_restart.py akumulid/
+- python functests/test_kill.py akumulid/
+- python functests/test_concurrency.py akumulid/
+- python functests/test_join_query.py akumulid/
+- python functests/test_filter_query.py akumulid/
+- bash functests/roundtrip.sh
 - cpack
+- cp akumuli_*_amd64.deb ./docker
+# Build docker container
+- export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
+- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
+- docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
-  repository: "Akumuli"
-  username: "Lazin"
-  dist: "ubuntu/trusty"
+  repository: Akumuli
+  username: Lazin
+  dist: ubuntu/trusty
   package_glob: "./*.deb"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
-      branch: master
+    branch: master
+    condition: $GENERIC_BUILD = "false"
   skip_cleanup: true
+after_success:
+- if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
+  docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
+  docker push $REPO:$TAG;
+  fi 
+after_failure: 

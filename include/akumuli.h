@@ -121,24 +121,24 @@ AKU_EXPORT void aku_console_logger(aku_LogLevel tag, const char* message);
 
 /**
  * @brief Creates storage for new database on the hard drive
- * @param file_name database file name
+ * @param base_file_name database file name (excl suffix)
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
  */
-AKU_EXPORT aku_Status aku_create_database(const char* file_name, const char* metadata_path,
-                                          const char* volumes_path, i32 num_volumes);
+AKU_EXPORT aku_Status aku_create_database(const char* base_file_name, const char* metadata_path,
+                                          const char* volumes_path, i32 num_volumes, bool allocate);
 
 /**
  * @brief Creates storage for new test database on the hard drive (smaller size then normal DB)
- * @param file_name database file name
+ * @param base_file_name database file name (excl suffix)
  * @param metadata_path path to metadata file
  * @param volumes_path path to volumes
  * @param num_volumes number of volumes to create
  */
-AKU_EXPORT aku_Status aku_create_database_ex(const char* file_name, const char* metadata_path,
+AKU_EXPORT aku_Status aku_create_database_ex(const char* base_file_name, const char* metadata_path,
                                              const char* volumes_path, i32 num_volumes,
-                                             u64 page_size);
+                                             u64 page_size, bool allocate);
 
 
 /** Remove all volumes.
@@ -237,11 +237,25 @@ AKU_EXPORT aku_Status aku_write(aku_Session* ist, const aku_Sample* sample);
 //---------
 
 /** @brief Query database
-  * @param db should point to opened database instance
+  * @param session should point to opened session instance
   * @param query should contain valid query
   * @return cursor instance
   */
 AKU_EXPORT aku_Cursor* aku_query(aku_Session* session, const char* query);
+
+/** @brief Suggest query
+  * @param sesson should point to opened session instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_suggest(aku_Session* session, const char* query);
+
+/** @brief Search query
+  * @param sesson should point to opened session instance
+  * @param query should contain valid query
+  * @return cursor instance
+  */
+AKU_EXPORT aku_Cursor* aku_search(aku_Session* session, const char* query);
 
 /**
  * @brief Close cursor
@@ -299,6 +313,10 @@ AKU_EXPORT void aku_global_storage_stats(aku_Database* db, aku_StorageStats* rcv
 AKU_EXPORT void aku_debug_print(aku_Database* db);
 
 AKU_EXPORT int aku_json_stats(aku_Database* db, char* buffer, size_t size);
+
+/** Get global resource value by name
+  */
+AKU_EXPORT aku_Status aku_get_resource(const char* res_name, char* buf, size_t* bufsize);
 
 AKU_EXPORT aku_Status aku_debug_report_dump(const char* path2db, const char* outfile);
 

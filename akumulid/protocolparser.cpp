@@ -151,19 +151,19 @@ void ReadBuffer::push(ReadBuffer::BufferT, u32 size) {
 
 // ProtocolParser class //
 
-ProtocolParser::ProtocolParser(std::shared_ptr<DbSession> consumer)
+RESPProtocolParser::RESPProtocolParser(std::shared_ptr<DbSession> consumer)
     : done_(false)
     , rdbuf_(RDBUF_SIZE)
     , consumer_(consumer)
-    , logger_("protocol-parser", 32)
+    , logger_("resp-protocol-parser")
 {
 }
 
-void ProtocolParser::start() {
+void RESPProtocolParser::start() {
     logger_.info() << "Starting protocol parser";
 }
 
-bool ProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
+bool RESPProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
     bool success = false;
     int bytes_read = 0;
     const size_t tsbuflen = 28;
@@ -202,7 +202,7 @@ bool ProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample) {
     return true;
 }
 
-int ProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
+int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
     bool success;
     int bytes_read;
     int rowwidth = -1;
@@ -244,7 +244,7 @@ int ProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues)
     return rowwidth;
 }
 
-bool ProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
+bool RESPProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
     const size_t buflen = 64;
     Byte buf[buflen];
     int bytes_read;
@@ -369,7 +369,7 @@ bool ProtocolParser::parse_values(RESPStream& stream, double* values, int nvalue
     return true;
 }
 
-void ProtocolParser::worker() {
+void RESPProtocolParser::worker() {
     // Buffer to read strings from
     u64 paramids[AKU_LIMITS_MAX_ROW_WIDTH];
     double values[AKU_LIMITS_MAX_ROW_WIDTH];
@@ -416,17 +416,361 @@ void ProtocolParser::worker() {
     }
 }
 
-void ProtocolParser::parse_next(Byte* buffer, u32 sz) {
+NullResponse RESPProtocolParser::parse_next(Byte* buffer, u32 sz) {
+    static NullResponse response;
     rdbuf_.push(buffer, sz);
     worker();
+    return response;
 }
 
-Byte* ProtocolParser::get_next_buffer() {
+Byte* RESPProtocolParser::get_next_buffer() {
     return rdbuf_.pull();
 }
 
-void ProtocolParser::close() {
+void RESPProtocolParser::close() {
     done_ = true;
+}
+
+std::string RESPProtocolParser::error_repr(int kind, std::string const& err) const {
+    switch (kind) {
+    case ERR:
+        return "-ERR " + err + "\r\n";
+    case DB:
+        return "-DB " + err + "\r\n";
+    case PARSE:
+        return "-PARSER " + err + "\r\n";
+    };
+    return "-UNKNOWN " + err + "\r\n";
+}
+
+
+//     OpenTSDB protocol      //
+
+OpenTSDBProtocolParser::OpenTSDBProtocolParser(std::shared_ptr<DbSession> consumer)
+    : done_(false)
+    , rdbuf_(RDBUF_SIZE)
+    , consumer_(consumer)
+    , logger_("opentsdb-protocol-parser")
+{
+}
+
+void OpenTSDBProtocolParser::start() {
+    logger_.info() << "Starting protocol parser";
+}
+
+OpenTSDBResponse OpenTSDBProtocolParser::parse_next(Byte* buffer, u32 sz) {
+    rdbuf_.push(buffer, sz);
+    return worker();
+}
+
+Byte* OpenTSDBProtocolParser::get_next_buffer() {
+    return rdbuf_.pull();
+}
+
+void OpenTSDBProtocolParser::close() {
+    done_ = true;
+}
+
+enum CMD_PREF_LEN {
+    PUT_LEN = 4,
+    ROLLUP_LEN = 6,
+    HISTOGRAM_LEN = 4,
+    STATS_LEN = 5,
+    VERSION_LEN = 7,
+    HELP_LEN = 4,
+    DROPCACHES_LEN = 10,
+};
+
+static bool is_put(const Byte* p) {
+    static const u32 asciiput = 0x20747570;
+    return *reinterpret_cast<const u32*>(p) == asciiput;
+}
+
+enum class OpenTSDBMessageType {
+    PUT,
+    ROLLUP,
+    HISTOGRAM,
+    STATS,
+    VERSION,
+    HELP,
+    DROPCACHES,
+    UNKNOWN,
+};
+
+static bool is_rollup(const Byte* p) {
+    return std::equal(p, p + ROLLUP_LEN, "rollup");
+}
+
+static bool is_histogram(const Byte* p) {
+    return std::equal(p, p + HISTOGRAM_LEN, "hist");
+}
+
+static bool is_stats(const Byte* p) {
+    return std::equal(p, p + STATS_LEN, "stats");
+}
+
+static bool is_version(const Byte* p) {
+    return std::equal(p, p + VERSION_LEN, "version");
+}
+
+static bool is_help(const Byte* p) {
+    return std::equal(p, p + HELP_LEN, "help");
+}
+
+static bool is_dropcaches(const Byte* p) {
+    return std::equal(p, p + DROPCACHES_LEN, "dropcaches");
+}
+
+static OpenTSDBMessageType message_dispatch(Byte* p, int len) {
+    // Fast path
+    if (len >= 4 && is_put(p)) {
+        return OpenTSDBMessageType::PUT;
+    } else if (len >= ROLLUP_LEN && is_rollup(p)) {
+        return OpenTSDBMessageType::ROLLUP;
+    } else if (len >= HISTOGRAM_LEN && is_histogram(p)) {
+        return OpenTSDBMessageType::HISTOGRAM;
+    } else if (len >= STATS_LEN && is_stats(p)) {
+        return OpenTSDBMessageType::STATS;
+    } else if (len >= VERSION_LEN && is_version(p)) {
+        return OpenTSDBMessageType::VERSION;
+    } else if (len >= HELP_LEN && is_help(p)) {
+        return OpenTSDBMessageType::HELP;
+    } else if (len >= DROPCACHES_LEN && is_dropcaches(p)) {
+        return OpenTSDBMessageType::DROPCACHES;
+    }
+    return OpenTSDBMessageType::UNKNOWN;
+}
+
+/**
+ * @brief Skip element of the space separated list
+ * @return new pointer, adjusted length, and number of trailing spaces
+ * @invariant quota >= ntrailing, ntrailing >= 1
+ */
+static std::tuple<Byte*, int, int> skip_element(Byte* buffer, int len) {
+    int quota = len;
+    Byte* p = buffer;
+    // Skip element
+    while(quota) {
+        Byte c = *p;
+        if (c == ' ' || c == '\n') {
+            break;
+        }
+        p++;
+        quota--;
+    }
+    // Skip space
+    int ntrailing = 0;
+    while(quota) {
+        Byte c = *p;
+        if (c != ' ' && c != '\n') {
+            break;
+        }
+        p++;
+        quota--;
+        ntrailing++;
+    }
+    return std::make_tuple(p, quota, ntrailing);
+}
+
+static aku_Timestamp from_unix_time(u64 ts) {
+    static const boost::posix_time::ptime EPOCH = boost::posix_time::from_time_t(0);
+    boost::posix_time::ptime t = boost::posix_time::from_time_t(static_cast<std::time_t>(ts));
+    boost::posix_time::time_duration duration = t - EPOCH;
+    auto ns = static_cast<aku_Timestamp>(duration.total_nanoseconds());
+    return ns;
+}
+
+OpenTSDBResponse OpenTSDBProtocolParser::worker() {
+    static OpenTSDBResponse result;
+    const size_t buffer_len = AKU_LIMITS_MAX_SNAME + 3 + 17 + 26;  // 3 space delimiters + 17 for value + 26 for timestampm
+    Byte buffer[buffer_len];
+    while(true) {
+        aku_Sample sample;
+        aku_Status status = AKU_SUCCESS;
+        int len = rdbuf_.read_line(buffer, buffer_len);
+        if (len <= 0) {
+            // Buffer don't have a full PDU
+            return result;
+        }
+        auto msgtype = message_dispatch(buffer, len);
+        switch(msgtype) {
+        case OpenTSDBMessageType::PUT:
+        {
+            // Convert 'put cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+            // to 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+
+            Byte* pend = buffer + len;
+            Byte* pbuf = buffer;
+            pbuf += 4;  // skip 'put '
+            len  -= 4;
+            while (*pbuf == ' ' && len > 0) {
+                pbuf++;
+                len--;
+            }  // Skip redundant space characters
+
+            // Convert 'cpu.real 20141210T074343 3.12 host=machine1 region=NW'
+            // to 'cpu.real host=machine1 region=NW 20141210T074343 3.12'
+            // using std::rotate:
+            //  std::rotate(a, b, pend)
+            //  where a = '20141210T074343 3.12 host=machine1 region=NW'
+            //    and b = 'host=machine1 region=NW'
+
+            // Skip metric name
+            Byte* a;
+            int quota = len;
+            int nspaces = 0;
+            std::tie(a, quota, nspaces) = skip_element(pbuf, quota);
+            if (a == pend) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 0)");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+            int metric_size = len - quota;
+
+            // Skip timestamp and value
+            Byte* b = a;
+            int timestamp_size = quota;
+            int timestamp_trailing = 0;
+            std::tie(b, quota, timestamp_trailing) = skip_element(b, quota);
+            timestamp_size -= quota;
+            if (b == pend) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 1)");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+            int value_size = quota;
+            int value_trailing = 0;
+            std::tie(b, quota, value_trailing) = skip_element(b, quota);
+            value_size -= quota;
+            if (b == pend) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: illegal argument: not enough arguments (need least 4, got 2)");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+            // This is the size of the timestamp and value combined
+            int name_size = quota + metric_size;
+            int tags_trailing = 0;
+            Byte const* c = b + quota - 1;
+            while (c > b) {
+                if (*c != ' ' && *c != '\n') {
+                    break;
+                }
+                c--;
+                tags_trailing++;
+            }
+
+            // Rotate
+            std::rotate(a, b, pend);
+
+            // Buffer contains only one data point
+            status = consumer_->series_to_param_id(pbuf, static_cast<u32>(name_size - tags_trailing), &sample);  // -1 because name_size includes space
+            if (status != AKU_SUCCESS) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid series name format");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+
+            pbuf += name_size;
+            // try to parse as Unix timestamp first
+            {
+                bool err = false;
+                Byte* endptr;
+                const int eix = timestamp_size - timestamp_trailing;
+                pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
+                auto result = strtoul(pbuf, &endptr, 10);
+                pbuf[eix] = ' ';
+                if (result == 0) {
+                    err = true;
+                }
+                if (result < 0xFFFFFFFF) {
+                    // If the Unix timestamp was sent, it will be less than 0xFFFFFFFF.
+                    // In this case we need to adjust the value.
+                    // If the value is larger than 0xFFFFFFFF, then the nanosecond timestamp
+                    // was passed. We don't need to do anything.
+                    // With this schema first 4.5 seconds of the nanosecond timestamp will be
+                    // treated as normal Unix timestamps.
+                    result = from_unix_time(result);
+                }
+                sample.timestamp = result;
+                if (err) {
+                    // This is an extension of the OpenTSDB telnet protocol. If value can't be
+                    // interpreted as a Unix timestamp or as a nanosecond timestamp, Akumuli
+                    // should try to parse it as a ISO-timestamp (because why not?).
+                    status = aku_parse_timestamp(pbuf, &sample);
+                    if (status == AKU_SUCCESS) {
+                        err = false;
+                    }
+                }
+                if (err) {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = rdbuf_.get_error_context("put: invalid timestamp format");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                }
+            }
+            pbuf += timestamp_size;
+
+            const int tix = value_size - value_trailing;
+            pbuf[tix] = '\0';  // Replace space with 0-terminator
+            char* endptr = nullptr;
+            pbuf[tix] = ' ';
+            double value = strtod(pbuf, &endptr);
+            if (endptr - pbuf != (value_size - value_trailing)) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("put: bad floating point value");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+
+            sample.payload.float64 = value;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+
+            // Put value
+            status = consumer_->write(sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_THROW_EXCEPTION(DatabaseError(status));
+            }
+
+            rdbuf_.consume();
+            break;
+        }
+        case OpenTSDBMessageType::STATS: {
+            // Fake response
+            // TODO: revamp akumuli stats
+            OpenTSDBResponse stats("akumuli.rpcs 1479600574 0 type=fake\n" );
+            return stats;
+        }
+        case OpenTSDBMessageType::VERSION: {
+            OpenTSDBResponse ver("net.opentsdb.tools BuildData built at revision a000000\n"
+                                 "Akumuli to TSD converter/n");
+            return ver;
+        }
+        case OpenTSDBMessageType::UNKNOWN: {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("unknown command: nosuchcommand.  Try `help'.");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        default:
+            // Just ignore the rest of the commands
+            continue;
+        };  // endswitch
+    }
+    return result;
+}
+
+std::string OpenTSDBProtocolParser::error_repr(int kind, std::string const& err) const {
+    switch (kind) {
+    case ERR:
+        return "error: " + err + "\n";
+    case DB:
+        return "database: " + err + "\n";
+    };
+    return err + "\n";
 }
 
 }

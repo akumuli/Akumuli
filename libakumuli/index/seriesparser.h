@@ -16,8 +16,8 @@
 
 #pragma once
 #include "akumuli_def.h"
-//#include "queryprocessor_framework.h"
-#include "stringpool.h"
+#include "index/stringpool.h"
+#include "index/invertedindex.h"
 
 #include <deque>
 #include <map>
@@ -33,21 +33,52 @@ namespace Akumuli {
 
 static const u64 AKU_STARTING_SERIES_ID = 1024;
 
+struct SeriesMatcherBase {
 
-/** Series matcher. Table that maps series names to series
-  * ids. Should be initialized on startup from sqlite table.
+    ~SeriesMatcherBase() = default;
+
+    /** Add new string to matcher.
+      */
+    virtual u64 add(const char* begin, const char* end) = 0;
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    virtual void _add(std::string series, u64 id) = 0;
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    virtual void _add(const char* begin, const char* end, u64 id) = 0;
+
+    /**
+      * Match string and return it's id. If string is new return 0.
+      */
+    virtual u64 match(const char* begin, const char* end) const = 0;
+
+    /**
+      * Convert id to string
+      */
+    virtual StringT id2str(u64 tokenid) const = 0;
+};
+
+/** Series index. Can be used to retreive series names and ids by tags.
+  * Implements inverted index with compression and other optimizations.
+  * It's more efficient than PlainSeriesMatcher but it's costly to have
+  * many instances in one application.
   */
-struct SeriesMatcher {
-    //! Pooled string
-    typedef StringTools::StringT StringT;
+struct SeriesMatcher : SeriesMatcherBase {
     //! Series name descriptor - pointer to string, length, series id.
     typedef std::tuple<const char*, int, u64> SeriesNameT;
 
     typedef StringTools::TableT TableT;
     typedef StringTools::InvT   InvT;
 
-    // Variables
-    StringPool               pool;       //! String pool that stores time-series
+    Index                    index;      //! Series name index and storage
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
     u64                      series_id;  //! Series ID counter
@@ -55,6 +86,74 @@ struct SeriesMatcher {
     mutable std::mutex       mutex;      //! Mutex for shared data
 
     SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
+
+    /** Add new string to matcher.
+      */
+    u64 add(const char* begin, const char* end);
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    void _add(std::string series, u64 id);
+
+    /** Add value to matcher. This function should be
+      * used only to load data to matcher. Internal
+      * `series_id` counter wouldn't be affected by this call, so
+      * it should be set up propertly in constructor.
+      */
+    void _add(const char* begin, const char* end, u64 id);
+
+    /**
+      * Match string and return it's id. If string is new return 0.
+      */
+    u64 match(const char* begin, const char* end) const;
+
+    /**
+      * Convert id to string
+      */
+    StringT id2str(u64 tokenid) const;
+
+    /** Push all new elements to the buffer.
+      * @param buffer is an output parameter that will receive new elements
+      */
+    void pull_new_names(std::vector<SeriesNameT>* buffer);
+
+    std::vector<u64> get_all_ids() const;
+
+    std::vector<SeriesNameT> search(IndexQueryNodeBase const& query) const;
+
+    std::vector<StringT> suggest_metric(std::string prefix) const;
+
+    std::vector<StringT> suggest_tags(std::string metric, std::string tag_prefix) const;
+
+    std::vector<StringT> suggest_tag_values(std::string metric, std::string tag, std::string value_prefix) const;
+};
+
+
+/** Series matcher. Table that maps series names to series
+  * ids.
+  * Implements simple forward index. Can be used to map ids
+  * to names and names to ids. Can search index using regular
+  * expressions.
+  */
+struct PlainSeriesMatcher : SeriesMatcherBase {
+    //! Series name descriptor - pointer to string, length, series id.
+    typedef std::tuple<const char*, int, u64> SeriesNameT;
+
+    typedef StringTools::TableT TableT;
+    typedef StringTools::InvT   InvT;
+
+    // Variables
+    LegacyStringPool         pool;       //! String pool that stores time-series
+    TableT                   table;      //! Series table (name to id mapping)
+    InvT                     inv_table;  //! Ids table (id to name mapping)
+    u64                      series_id;  //! Series ID counter
+    std::vector<SeriesNameT> names;      //! List of recently added names
+    mutable std::mutex       mutex;      //! Mutex for shared data
+
+    PlainSeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */
@@ -107,7 +206,7 @@ struct SeriesParser {
       * @param keystr_begin points to the begining of the key string (string with key-value pairs)
       * @return AKU_SUCCESS if everything is OK, error code otherwise
       */
-    static aku_Status to_normal_form(const char* begin, const char* end, char* out_begin,
+    static aku_Status to_canonical_form(const char* begin, const char* end, char* out_begin,
                                      char* out_end, const char** keystr_begin,
                                      const char** keystr_end);
 
@@ -120,28 +219,42 @@ struct SeriesParser {
 };
 
 
-/** Filter series using regex.
+/** Group-by processor. Maps set of global series names to
+  * some other set of local series ids.
   */
-struct RegexFilter {
+struct LegacyGroupByTag {
     std::string regex_;
-    std::unordered_set<aku_ParamId> ids_;
-    SeriesMatcher const& matcher_;
+    //! Mapping from global parameter ids to local parameter ids
+    std::unordered_map<aku_ParamId, aku_ParamId> ids_;
+    //! Shared series matcher
+    PlainSeriesMatcher const& matcher_;
+    //! Previous string pool offset
     StringPoolOffset offset_;
+    //! Previous string pool size
     size_t prev_size_;
+    //! List of tags of interest
+    std::vector<std::string> tags_;
+    //! Local string pool. All transient series names lives here.
+    PlainSeriesMatcher local_matcher_;
+    //! List of string already added string pool
+    StringTools::SetT snames_;
 
-    RegexFilter(std::string regex, SeriesMatcher const& matcher);
+    //! Main c-tor
+    LegacyGroupByTag(const PlainSeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
 
-    void refresh();
+    void refresh_();
 
-    std::vector<aku_ParamId> get_ids();
+    bool apply(aku_Sample* sample);
+
+    std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
 };
+
 
 
 /** Group-by processor. Maps set of global series names to
   * some other set of local series ids.
   */
 struct GroupByTag {
-    std::string regex_;
     //! Mapping from global parameter ids to local parameter ids
     std::unordered_map<aku_ParamId, aku_ParamId> ids_;
     //! Shared series matcher
@@ -150,10 +263,12 @@ struct GroupByTag {
     StringPoolOffset offset_;
     //! Previous string pool size
     size_t prev_size_;
+    //! Metric name
+    std::string metric_;
     //! List of tags of interest
     std::vector<std::string> tags_;
     //! Local string pool. All transient series names lives here.
-    SeriesMatcher local_matcher_;
+    PlainSeriesMatcher local_matcher_;
     //! List of string already added string pool
     StringTools::SetT snames_;
 
@@ -161,8 +276,6 @@ struct GroupByTag {
     GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
 
     void refresh_();
-
-    bool apply(aku_Sample* sample);
 
     std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
 };
