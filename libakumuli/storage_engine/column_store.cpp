@@ -44,7 +44,7 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
         } else {
             columns_[id] = std::move(tree);
         }
-        if (force_init) {
+        if (force_init || status == NBTreeExtentsList::RepairStatus::REPAIR) {
             columns_[id]->force_init();
         }
     }

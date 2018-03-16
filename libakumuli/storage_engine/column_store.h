@@ -46,7 +46,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-
 /** Columns store.
   * Serve as a central data repository for series metadata and all individual columns.
   * Each column is addressed by the series name. Data can be written in through WriteSession

@@ -1965,6 +1965,17 @@ NBTreeSuperblock::NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> b
     assert(prev_ != 0);
     // We can't use zero-copy here because `block` belongs to other node.
     size_t bytes2copy = sizeof(SubtreeRef)*(ref->payload_size + 1);
+    if (bytes2copy < 256) {
+        bytes2copy = 256;
+    } else if (bytes2copy < 512) {
+        bytes2copy = 512;
+    } else if (bytes2copy < 1024) {
+        bytes2copy = 1024;
+    } else if (bytes2copy < 2048) {
+        bytes2copy = 2048;
+    } else if (bytes2copy < AKU_BLOCK_SIZE) {
+        bytes2copy = AKU_BLOCK_SIZE;
+    }
     block_ = std::make_shared<Block>(bytes2copy);
     memcpy(block_->get_data(), block->get_cdata(), bytes2copy);
 }
