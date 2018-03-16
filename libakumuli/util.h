@@ -153,6 +153,11 @@ using SharedLock = LockGuard<RWLock, &RWLock::wrlock>;
 
 //! Compare two double values and return true if they are equal at bit-level (needed to supress CLang analyzer warnings).
 bool same_value(double a, double b);
+
+void get_app_config(aku_Configuration* dest);
+
+void set_app_config(const aku_Configuration& conf);
+
 }
 
 /** Panic macro.

@@ -95,6 +95,22 @@ typedef struct {
 // Utility functions
 //-------------------
 
+/** Configuration parameters.
+  * Parameter set should be kept minimal. Parameters should be
+  * simple switches that can be used to disable some features
+  * for specific environments.
+  */
+typedef struct {
+    u32 disable_mmap;
+    u32 disable_wal;
+} aku_Configuration;
+
+
+/**
+ * Set application configuration
+ */
+AKU_EXPORT void aku_set_configuration(const aku_Configuration* conf);
+
 /** This function must be called before any other library function.
   * @param optional_panic_handler Panic handler.
   * @param logger Logger callback function.

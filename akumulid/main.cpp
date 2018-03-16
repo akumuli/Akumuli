@@ -250,6 +250,11 @@ struct ConfigFile {
         }
         return result;
     }
+
+    static bool disable_mmap(PTree conf) {
+        bool res = conf.get<bool>("Settings.disable_mmap", false);
+        return res;
+    }
 };
 
 
@@ -406,6 +411,11 @@ void cmd_run_server() {
     auto path                   = ConfigFile::get_path(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
     auto full_path              = boost::filesystem::path(path) / "db.akumuli";
+    auto disable_mmap           = ConfigFile::disable_mmap(config);
+
+    aku_Configuration app_conf  = {};
+    app_conf.disable_mmap       = disable_mmap;
+    aku_set_configuration(&app_conf);
 
     if (!boost::filesystem::exists(full_path)) {
         std::stringstream fmt;

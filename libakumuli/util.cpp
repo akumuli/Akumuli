@@ -370,6 +370,18 @@ bool same_value(double a, double b) {
     return ba.u == bb.u;
 }
 
+static aku_Configuration g_config = {};
+static RWLock g_config_lock;
+
+void get_app_config(aku_Configuration* dest) {
+    SharedLock lock(g_config_lock);
+    *dest = g_config;
+}
+
+void set_app_config(const aku_Configuration& conf) {
+    UniqueLock lock(g_config_lock);
+    g_config = conf;
+}
 
 }
 

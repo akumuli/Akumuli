@@ -52,6 +52,10 @@ void aku_console_logger(aku_LogLevel tag, const char* msg) {
     std::cerr << ts << " | " << tagstr << " | " << msg << std::endl;
 }
 
+void aku_set_configuration(const aku_Configuration* conf) {
+    set_app_config(*conf);
+}
+
 void aku_initialize(aku_panic_handler_t optional_panic_handler, aku_logger_cb_t logger) {
     // initialize logger
     if (logger == nullptr) {

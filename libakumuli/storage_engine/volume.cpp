@@ -293,22 +293,26 @@ Volume::Volume(const char* path, size_t write_pos)
     , mmap_ptr_(nullptr)
 {
 #if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
-    // 64-bit architecture, we can use mmap for speed
-    mmap_.reset(new MemoryMappedFile(path, false));
-    if (mmap_->is_bad()) {
-        // Fallback on error
-        Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error: '" + mmap_->error_message() + "', fallback to `fopen`");
-        mmap_.reset();
-        mmap_ptr_ = nullptr;
-        return;
-    }
-    mmap_ptr_ = static_cast<const u8*>(mmap_->get_pointer());
-    auto exp_file_size = static_cast<size_t>(file_size_)*AKU_BLOCK_SIZE;
-    if (mmap_->get_size() != exp_file_size) {
-        Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error, fallback to `fopen`");
-        Logger::msg(AKU_LOG_ERROR, "Expected size: " + std::to_string(exp_file_size) + " actual size: " + std::to_string(mmap_->get_size()));
-        mmap_ptr_ = nullptr;
-        mmap_.reset();
+    aku_Configuration conf;
+    get_app_config(&conf);
+    if (conf.disable_mmap != 0) {
+        // 64-bit architecture, we can use mmap for speed
+        mmap_.reset(new MemoryMappedFile(path, false));
+        if (mmap_->is_bad()) {
+            // Fallback on error
+            Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error: '" + mmap_->error_message() + "', fallback to `fopen`");
+            mmap_.reset();
+            mmap_ptr_ = nullptr;
+            return;
+        }
+        mmap_ptr_ = static_cast<const u8*>(mmap_->get_pointer());
+        auto exp_file_size = static_cast<size_t>(file_size_)*AKU_BLOCK_SIZE;
+        if (mmap_->get_size() != exp_file_size) {
+            Logger::msg(AKU_LOG_ERROR, path_ + " memory mapping error, fallback to `fopen`");
+            Logger::msg(AKU_LOG_ERROR, "Expected size: " + std::to_string(exp_file_size) + " actual size: " + std::to_string(mmap_->get_size()));
+            mmap_ptr_ = nullptr;
+            mmap_.reset();
+        }
     }
 #endif
 }
