@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.43
+--------------
+
+IMPROVEMENT
+
+* Log to stdout/stderr from docker container
+
 Version 0.7.42
 --------------
 
