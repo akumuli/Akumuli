@@ -202,7 +202,7 @@ bool RESPProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample)
     return true;
 }
 
-bool RESPProtocolParser::cache_sname(aku_ParamId uid, const aku_ParamId* row, int nvalues) {
+bool RESPProtocolParser::update_dict(aku_ParamId uid, const aku_ParamId* row, int nvalues) {
     for (int i = 0; i < nvalues; i++) {
         if (idmap_.count(uid) != 0) {
             return false;
@@ -210,6 +210,19 @@ bool RESPProtocolParser::cache_sname(aku_ParamId uid, const aku_ParamId* row, in
         idmap_.insert(std::make_pair(uid, row[i]));
     }
     return true;
+}
+
+int RESPProtocolParser::read_dict(aku_ParamId uid, aku_ParamId* row, int nvalues) {
+    auto pair = idmap_.equal_range(uid);
+    int i = 0;
+    for (auto it = pair.first; it != pair.second; it++) {
+        if (i == nvalues) {
+            break;
+        }
+        row[i] = it->second;
+        i++;
+    }
+    return i;
 }
 
 bool RESPProtocolParser::parse_dict(RESPStream& stream) {
@@ -276,7 +289,7 @@ bool RESPProtocolParser::parse_dict(RESPStream& stream) {
                     rdbuf_.discard();
                     return false;
                 }
-                success = cache_sname(uid, ids, rowwidth);
+                success = update_dict(uid, ids, rowwidth);
             } else {
                 // Bad frame
                 std::string msg;
@@ -306,6 +319,7 @@ int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nval
     int rowwidth = -1;
     const int buffer_len = RESPStream::STRING_LENGTH_MAX;
     Byte buffer[buffer_len] = {};
+    aku_ParamId uid = 0;
     // read id
     auto next = stream.next_type();
     switch(next) {
@@ -327,6 +341,19 @@ int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nval
         }
         break;
     case RESPStream::INTEGER:
+        std::tie(success, uid) = stream.read_int();
+        if (!success) {
+            rdbuf_.discard();
+            return -1;
+        }
+        rowwidth = read_dict(uid, ids, nvalues);
+        if (rowwidth <= 0) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        break;
     case RESPStream::ARRAY:
     case RESPStream::BULK_STR:
     case RESPStream::ERROR:

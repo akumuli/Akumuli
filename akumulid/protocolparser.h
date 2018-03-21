@@ -192,7 +192,8 @@ class RESPProtocolParser {
      * @param nvalues is a size of the 'row' array
      * @return 'true' on success or 'false' on clash
      */
-    bool cache_sname(aku_ParamId uid, const aku_ParamId* row, int nvalues);
+    bool update_dict(aku_ParamId uid, const aku_ParamId* row, int nvalues);
+    int read_dict(aku_ParamId uid, aku_ParamId* row, int nvalues);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
