@@ -21,6 +21,7 @@
 #include <memory>
 #include <queue>
 #include <vector>
+#include <unordered_map>
 
 #include "logger.h"
 #include "resp.h"
@@ -167,19 +168,31 @@ struct NullResponse : ProtocolParserResponse {
  * Protocol data units of each protocol can be interleaved.
  */
 class RESPProtocolParser {
+    typedef std::unordered_multimap<aku_ParamId, aku_ParamId> SeriesIdMap;
     bool                               done_;
     ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
+    SeriesIdMap                        idmap_;
 
     //! Process frames from queue
     void worker();
+
     //! Generate error message
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
+    bool parse_dict(RESPStream& stream);
     bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
     bool parse_values(RESPStream& stream, double* values, int nvalues);
     int parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues);
+    /**
+     * @brief Cache series id mapping
+     * @param uid is a user supplied id
+     * @param row is an array of series ids
+     * @param nvalues is a size of the 'row' array
+     * @return 'true' on success or 'false' on clash
+     */
+    bool cache_sname(aku_ParamId uid, const aku_ParamId* row, int nvalues);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
