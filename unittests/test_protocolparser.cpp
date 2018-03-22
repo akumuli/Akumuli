@@ -183,7 +183,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
         parser.start();
         auto buf = parser.get_next_buffer();
         memcpy(buf, message, strlen(message));
-        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
     }
     {
         const char *message = "*2\r\n:1\r\n:2\r\n";
@@ -192,7 +192,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
         parser.start();
         auto buf = parser.get_next_buffer();
         memcpy(buf, message, strlen(message));
-        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
     }
     {
         const char *message = "*2\r\n+1\r\n+2\r\n";
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
         parser.start();
         auto buf = parser.get_next_buffer();
         memcpy(buf, message, strlen(message));
-        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
     }
 }
 
