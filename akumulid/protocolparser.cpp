@@ -233,84 +233,88 @@ bool RESPProtocolParser::parse_dict(RESPStream& stream) {
     int rowwidth = -1;
     const int buffer_len = RESPStream::STRING_LENGTH_MAX;
     Byte buffer[buffer_len] = {};
-    // read id
-    auto next = stream.next_type();
-    switch(next) {
-    case RESPStream::_AGAIN:
-        rdbuf_.discard();
-        return false;
-    case RESPStream::ARRAY: {
-        // User provided the dictionary
-        size_t arrsize;
-        std::tie(success, arrsize) = stream.read_array_size();
-        if (!success) {
+    while(true) {
+        // read id
+        auto next = stream.next_type();
+        switch(next) {
+        case RESPStream::_AGAIN:
             rdbuf_.discard();
             return false;
-        }
-        if (arrsize % 2 != 0) {
-            std::string msg;
-            size_t pos;
-            std::tie(msg, pos) = rdbuf_.get_error_context("number of elements in the dictionary should be even");
-            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-        }
-        for (size_t i = 0; i < arrsize; i +=2 ) {
-            next = stream.next_type();
-            if (next == RESPStream::_AGAIN) {
+        case RESPStream::ARRAY: {
+            // User provided the dictionary
+            size_t arrsize;
+            std::tie(success, arrsize) = stream.read_array_size();
+            if (!success) {
                 rdbuf_.discard();
                 return false;
-            } else if (next == RESPStream::STRING) {
-                std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
-                if (!success) {
+            }
+            if (arrsize % 2 != 0) {
+                std::string msg;
+                size_t pos;
+                std::tie(msg, pos) = rdbuf_.get_error_context("number of elements in the dictionary should be even");
+                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+            }
+            for (size_t i = 0; i < arrsize; i +=2 ) {
+                next = stream.next_type();
+                if (next == RESPStream::_AGAIN) {
                     rdbuf_.discard();
                     return false;
-                }
-                rowwidth = consumer_->name_to_param_id_list(buffer, buffer + bytes_read, ids, nvalues);
-                if (rowwidth <= 0) {
+                } else if (next == RESPStream::STRING) {
+                    std::tie(success, bytes_read) = stream.read_string(buffer, buffer_len);
+                    if (!success) {
+                        rdbuf_.discard();
+                        return false;
+                    }
+                    rowwidth = consumer_->name_to_param_id_list(buffer, buffer + bytes_read, ids, nvalues);
+                    if (rowwidth <= 0) {
+                        std::string msg;
+                        size_t pos;
+                        std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
+                        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                    }
+                } else {
+                    // Bad frame
                     std::string msg;
                     size_t pos;
-                    std::tie(msg, pos) = rdbuf_.get_error_context("invalid series name format");
+                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected series name format");
                     BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
-            } else {
-                // Bad frame
-                std::string msg;
-                size_t pos;
-                std::tie(msg, pos) = rdbuf_.get_error_context("unexpected series name format");
-                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
-            }
-            next = stream.next_type();
-            if (next == RESPStream::_AGAIN) {
-                rdbuf_.discard();
-                return false;
-            } else if (next == RESPStream::INTEGER) {
-                aku_ParamId uid;
-                std::tie(success, uid) = stream.read_int();
-                if (!success) {
+                next = stream.next_type();
+                if (next == RESPStream::_AGAIN) {
                     rdbuf_.discard();
                     return false;
+                } else if (next == RESPStream::INTEGER) {
+                    aku_ParamId uid;
+                    std::tie(success, uid) = stream.read_int();
+                    if (!success) {
+                        rdbuf_.discard();
+                        return false;
+                    }
+                    success = update_dict(uid, ids, rowwidth);
+                } else {
+                    // Bad frame
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected series name format");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
-                success = update_dict(uid, ids, rowwidth);
-            } else {
-                // Bad frame
-                std::string msg;
-                size_t pos;
-                std::tie(msg, pos) = rdbuf_.get_error_context("unexpected series name format");
-                BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
             }
+            rdbuf_.consume();
+            continue;
         }
-        break;
+        case RESPStream::BULK_STR:
+        case RESPStream::ERROR:
+        case RESPStream::INTEGER:
+        case RESPStream::STRING:
+        case RESPStream::_BAD:
+            // We should parse message stream until we met something different.
+            // The actual dictionary can be split into parts, so we shouldn't stop
+            // to expect dictionary elements until we will see any other element
+            // type (except array).
+            rdbuf_.discard();
+            return true;
+        };
     }
-    case RESPStream::BULK_STR:
-    case RESPStream::ERROR:
-    case RESPStream::INTEGER:
-    case RESPStream::STRING:
-    case RESPStream::_BAD:
-        // Message stream doesn't have a dictionary. Just discard all updates to the input stream
-        // object and keep going.
-        rdbuf_.discard();
-        break;
-    };
-    return true;
 }
 
 int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues) {
@@ -506,11 +510,12 @@ void RESPProtocolParser::worker() {
     RESPStream stream(&rdbuf_);
     // try to read dict
     while (true) {
-        bool done = parse_dict(stream);
+        bool ok = parse_dict(stream);
         // Dict may be incomplete yet. In this case the method will return false and we
         // will need to call it once again. When done it will return true. On error it will
         // throw ProtocolParserError exception (the same way as all other parse_stuff methods).
-        if (done) break;
+        if (ok) break;
+        else   return;
     }
     while(true) {
         bool success;
