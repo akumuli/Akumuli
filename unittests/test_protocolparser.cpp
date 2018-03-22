@@ -175,6 +175,35 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
 }
 
 
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
+    {
+        const char *message = "*1\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+    }
+    {
+        const char *message = "*2\r\n:1\r\n:2\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+    }
+    {
+        const char *message = "*2\r\n+1\r\n+2\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), RESPProtocolParser);
+    }
+}
 
 template<class Protocol, class Pred, class Mock>
 void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred, std::shared_ptr<Mock> cons) {
