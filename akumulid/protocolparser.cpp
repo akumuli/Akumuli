@@ -203,10 +203,10 @@ bool RESPProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample)
 }
 
 bool RESPProtocolParser::update_dict(aku_ParamId uid, const aku_ParamId* row, int nvalues) {
+    if (idmap_.count(uid) != 0) {
+        return false;
+    }
     for (int i = 0; i < nvalues; i++) {
-        if (idmap_.count(uid) != 0) {
-            return false;
-        }
         idmap_.insert(std::make_pair(uid, row[i]));
     }
     return true;
