@@ -1,12 +1,19 @@
 Release notes
 =============
 
-Version 0.7.43
+Version 0.7.44
 --------------
 
 IMPROVEMENT
 
 * Dictionary support in RESP protocol
+
+Version 0.7.43
+--------------
+
+IMPROVEMENT
+
+* Log to stdout/stderr from docker container
 
 Version 0.7.42
 --------------
