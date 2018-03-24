@@ -1,6 +1,146 @@
 Release notes
 =============
 
+Version 0.7.44
+--------------
+
+IMPROVEMENT
+
+* Dictionary support in RESP protocol
+
+Version 0.7.43
+--------------
+
+IMPROVEMENT
+
+* Log to stdout/stderr from docker container
+
+Version 0.7.42
+--------------
+
+BUG FIX
+
+* Fix UDP-server error handling
+
+Version 0.7.41
+--------------
+
+BUG FIX
+
+* Fix crash on random-device initialization failure
+
+Version 0.7.40
+--------------
+
+IMPROVEMENT
+
+* Filter clause work with group-aggregate query
+
+Version 0.7.39
+--------------
+
+IMPROVEMENT
+
+* Add filter query
+
+Version 0.7.38
+--------------
+
+IMPROVEMENT
+
+* Allow libakumuli.so to be loaded by dlopen
+
+Version 0.7.37
+--------------
+
+BUG FIX
+
+* Fix UDP server memory corruption #243
+
+Version 0.7.36
+--------------
+
+BUG FIX
+
+* Fix packagecloud deploy
+
+Version 0.7.35
+--------------
+
+IMPROVEMENTS
+
+* Provide generic and optimized images
+
+Version 0.7.34
+--------------
+
+BUG FIXES
+
+* Signals are not propagated to the akumulid server in docker container
+
+Version 0.7.33
+--------------
+
+IMPROVEMENTS
+
+* Stop daemon using both SIGINT and SIGTERM
+
+Version 0.7.32
+--------------
+
+IMPROVEMENTS
+
+* Specify version for shared object for easier ABI checking
+
+Version 0.7.31
+--------------
+
+BUG FIXES
+
+* Fix #235 (don't use -march=native)
+
+Version 0.7.30
+--------------
+
+IMPROVEMENTS
+
+* Use CMake macros for install directories from GNUInstallDirs
+
+Version 0.7.29
+--------------
+
+BUG FIXES
+
+* Add the missing header for GCC 7.2.x
+
+Version 0.7.28
+--------------
+
+IMPROVEMENTS
+
+* Update prerequisites.sh
+
+Version 0.7.27
+--------------
+
+BUG FIXES
+
+* Set up locale (fix #227)
+
+Version 0.7.26
+--------------
+
+NEW FEATURES
+
+* Build Docker container on CI
+
+Version 0.7.25
+--------------
+
+BUG FIXES
+
+* Fix idle CPU load problem
+
 Version 0.7.24
 --------------
 

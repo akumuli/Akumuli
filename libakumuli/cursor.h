@@ -28,6 +28,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <deque>
+#include <functional>
 
 
 #include "akumuli.h"

@@ -39,12 +39,14 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
     std::atomic<int>                   stop_;
     const int                          port_;
     const int                          nworkers_;
+    int                                sockfd_;         //< UDP socket file descriptor
 
     Logger logger_;
 
-    static const int MSS      = 2048 - 128;
+    static const int MSS      = 0x10000;
+    
 #ifndef __APPLE__
-    static const int NPACKETS = 512;
+    static const int NPACKETS = 16;
 #else
     static const int NPACKETS = 1;
     struct mmsghdr {
@@ -59,7 +61,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
         // Packet recv structs
         mmsghdr msgs[NPACKETS];
         iovec   iovecs[NPACKETS];
-        char    bufs[NPACKETS][MSS];
+        char    bufs[NPACKETS][MSS];  // 1MB
         IOBuf() {
             memset(this, 0, sizeof(IOBuf));
             for (int i = 0; i < NPACKETS; i++) {
@@ -70,7 +72,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
             }
         }
 
-    } __attribute__((aligned(64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
+    };
 
 
 public:
@@ -85,7 +87,7 @@ public:
     virtual void start(SignalHandler* sig, int id);
 
 private:
-    //! Stop processing packets
+    //! Stop processing packets, close the socket
     void stop();
 
     void worker(std::shared_ptr<DbSession> spout);

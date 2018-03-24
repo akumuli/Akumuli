@@ -37,6 +37,7 @@ namespace {
     enum {
         BUFFER_SIZE = 0x4000,
         QUEUE_MAX = 0x20,
+        CURSOR_READ_TIMEOUT = 10,
     };
 }
 
@@ -79,7 +80,7 @@ u32 ConcurrentCursor::read(void* buffer, u32 buffer_size) {
             if (done_) {
                 return nbytes;
             }
-            cond_.wait_for(lock, std::chrono::milliseconds(1));
+            cond_.wait_for(lock, std::chrono::milliseconds(CURSOR_READ_TIMEOUT));
             continue;
         }
         auto front = queue_.front();

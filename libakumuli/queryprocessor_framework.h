@@ -89,12 +89,34 @@ struct Column {
     std::vector<aku_ParamId> ids;
 };
 
+enum class FilterCombinationRule {
+    ALL,
+    ANY,
+};
+
+struct Filter {
+    enum {
+        GT = 1 << 0,
+        LT = 1 << 1,
+        GE = 1 << 2,
+        LE = 1 << 3,
+    };
+    bool enabled;
+    int    flags;
+    double    gt;
+    double    lt;
+    double    ge;
+    double    le;
+};
+
 //! Set of ids returned by the query (defined by select and where clauses)
 struct Selection {
     //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
     std::vector<Column> columns;
-    aku_Timestamp begin;
-    aku_Timestamp end;
+    std::vector<Filter> filters;
+    FilterCombinationRule  filter_rule;
+    aku_Timestamp         begin;
+    aku_Timestamp           end;
 
     //! This matcher should be used by Join-statement
     std::shared_ptr<PlainSeriesMatcher> matcher;

@@ -6,6 +6,7 @@
  */
 
 #include "akumuli_def.h"  // for basic types
+#include "util.h"
 #include "blockstore.h"   // for LogicAddr
 
 namespace Akumuli {
@@ -72,5 +73,6 @@ struct SubtreeRef {
     //! Checksum of the block (not used for links to child nodes)
     u32 checksum;
 } __attribute__((packed));
+
 
 }} // namespace

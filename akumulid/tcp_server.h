@@ -36,7 +36,7 @@ typedef boost::asio::io_service              IOServiceT;
 typedef boost::asio::ip::tcp::acceptor       AcceptorT;
 typedef boost::asio::ip::tcp::socket         SocketT;
 typedef boost::asio::ip::tcp::endpoint       EndpointT;
-typedef boost::asio::strand                  StrandT;
+typedef boost::asio::io_service::strand                  StrandT;
 typedef boost::asio::io_service::work        WorkT;
 typedef std::function<void(aku_Status, u64)> ErrorCallback;
 

@@ -12,7 +12,8 @@ WARNING() {
 AKUMULID=`which akumulid`
 
 if [ ! -r ~/.akumulid ] ; then
-    ERROR "ERROR: no config file found or not readable"
+    # First run, initialize configuration using the template
+    sed -e "s/__nvolumes__/$nvolumes/g" -e "s/__volume_size__/$volume_size/" /root/akumulid_template > /root/.akumulid
 fi
 
 DBDIR=`cat ~/.akumulid | grep 'path=' | awk -F= '{print $2}'`
@@ -30,6 +31,5 @@ elif [ ! -r $DBDIR/db.akumuli ] ; then
     ${AKUMULID} --create || ERROR "Can't create database"
 fi
 
-${AKUMULID} || ERROR "Can't run akumuli"
-
+exec ${AKUMULID}
 

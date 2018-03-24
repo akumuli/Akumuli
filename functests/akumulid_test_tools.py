@@ -106,6 +106,15 @@ def generate_messages3(dt, delta, N, metric_name, tagslist):
             yield m
         dt = dt + delta
 
+def generate_messages4(dt, delta, N, metric_name, values, **kwargs):
+    for i in xrange(0, N):
+        tags = dict([(key, val[i % len(val)] if type(val) is list else val)
+                     for key, val in kwargs.iteritems()])
+        val = values[i % len(values)]
+        m = msg(dt, val, metric_name, **tags)
+        dt = dt + delta
+        yield m
+
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
@@ -207,7 +216,7 @@ class Akumulid:
         self.__process.send_signal(subprocess.signal.SIGINT)
         
     def terminate(self):
-        self.__process.terminate()
+        self.__process.kill()
 
 class FakeAkumulid:
     """akumulid daemon instance"""
