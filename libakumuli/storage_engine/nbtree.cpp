@@ -21,6 +21,7 @@
 #include <vector>
 #include <sstream>
 #include <stack>
+#include <array>
 
 // App
 #include "nbtree.h"
@@ -2049,14 +2050,14 @@ struct NBTreeLeafExtent : NBTreeExtent {
 
     virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
-    virtual std::tuple<bool, LogicAddr> commit(bool final);
-    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
-    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
-    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
-    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
-    virtual bool is_dirty() const;
+    virtual std::tuple<bool, LogicAddr> commit(bool final) override;
+    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const override;
+    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const override;
+    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const override;
+    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const override;
+    virtual bool is_dirty() const override;
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const override;
-    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot) override;
 };
 
 
@@ -2346,7 +2347,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         }
     }
 
-    ExtentStatus status() const {
+    ExtentStatus status() const override {
         if (killed_) {
             return ExtentStatus::KILLED_BY_RETENTION;
         } else if (curr_->nelements() == 0) {
@@ -2390,7 +2391,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         return curr_->get_prev_addr();
     }
 
-    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) override;
     virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
     virtual std::tuple<bool, LogicAddr> commit(bool final);
     virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;

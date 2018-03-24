@@ -741,7 +741,8 @@ void SeriesNameTopology::add_name(StringT name) {
         auto tagit = tagtable.find(tag);
         if (tagit == tagtable.end()) {
             auto valtab = StringTools::create_set(1024);
-            tagtable[tag] = std::move(valtab);
+            //tagtable.insert({tag, valtab});
+            tagtable[tag] = valtab; std::move(valtab);
             tagit = tagtable.find(tag);
         }
         StringTools::SetT& valueset = tagit->second;
