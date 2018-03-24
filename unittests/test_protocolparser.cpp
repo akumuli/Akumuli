@@ -175,6 +175,35 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
 }
 
 
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
+    {
+        const char *message = "*1\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
+    }
+    {
+        const char *message = "*2\r\n:1\r\n:2\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
+    }
+    {
+        const char *message = "*2\r\n+1\r\n+2\r\n";
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        RESPProtocolParser parser(cons);
+        parser.start();
+        auto buf = parser.get_next_buffer();
+        memcpy(buf, message, strlen(message));
+        BOOST_REQUIRE_THROW(parser.parse_next(buf, strlen(message)), ProtocolParserError);
+    }
+}
 
 template<class Protocol, class Pred, class Mock>
 void find_framing_issues(const char* message, size_t msglen, size_t pivot1, size_t pivot2, Pred const& pred, std::shared_ptr<Mock> cons) {
@@ -302,6 +331,49 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_bulk) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_dict) {
+
+    const char *message =
+            // Dictionary
+            "*2\r\n+111\r\n:1\r\n"
+            "*2\r\n+222\r\n:2\r\n"
+            // The actual messages
+            ":1\r\n:42\r\n+200\r\n"
+            ":2\r\n:53\r\n+300\r\n"
+            ":1\r\n:43\r\n+201\r\n"
+            ":2\r\n:54\r\n+301\r\n"
+            ;
+
+    auto pred = [] (std::shared_ptr<ConsumerMock> cons) {
+
+        BOOST_REQUIRE_EQUAL(cons->param_.size(), 4);
+        // 0
+        BOOST_REQUIRE_EQUAL(cons->param_[0], 111);
+        BOOST_REQUIRE_EQUAL(cons->ts_[0], 42);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->data_[0], 200, 1e-9);
+        // 1
+        BOOST_REQUIRE_EQUAL(cons->param_[1], 222);
+        BOOST_REQUIRE_EQUAL(cons->ts_[1], 53);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->data_[1], 300, 1e-9);
+        // 2
+        BOOST_REQUIRE_EQUAL(cons->param_[2], 111);
+        BOOST_REQUIRE_EQUAL(cons->ts_[2], 43);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->data_[2], 201, 1e-9);
+        // 3
+        BOOST_REQUIRE_EQUAL(cons->param_[3], 222);
+        BOOST_REQUIRE_EQUAL(cons->ts_[3], 54);
+        BOOST_REQUIRE_CLOSE_FRACTION(cons->data_[3], 301, 1e-9);
+    };
+
+    size_t msglen = strlen(message);
+
+    for (int i = 0; i < 100; i++) {
+        size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
+    }
+}
 
 
 struct NameCheckingConsumer : DbSession {

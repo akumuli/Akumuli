@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.44
+--------------
+
+IMPROVEMENT
+
+* Dictionary support in RESP protocol
+
 Version 0.7.43
 --------------
 
