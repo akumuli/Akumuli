@@ -43,18 +43,23 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
     Logger logger_;
 
     static const int MSS      = 2048 - 128;
+#ifndef __APPLE__
     static const int NPACKETS = 512;
-
+#else
+    static const int NPACKETS = 1;
+    struct mmsghdr {
+        struct msghdr msg_hdr;  /* Message header */
+        unsigned int  msg_len;  /* Number of received bytes for header */
+    };
+#endif
     struct IOBuf {
         // Counters
         std::atomic<u64> pps;
         std::atomic<u64> bps;
-
         // Packet recv structs
         mmsghdr msgs[NPACKETS];
         iovec   iovecs[NPACKETS];
         char    bufs[NPACKETS][MSS];
-
         IOBuf() {
             memset(this, 0, sizeof(IOBuf));
             for (int i = 0; i < NPACKETS; i++) {
@@ -66,6 +71,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
         }
 
     } __attribute__((aligned(64)));  // Otherwise struct will be aligned by sizeof(bufs) and this is crazy expensive
+
 
 public:
     /** C-tor.
