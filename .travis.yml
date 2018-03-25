@@ -2,8 +2,6 @@ sudo: required
 
 dist: trusty
 
-language: python
-
 group: edge
 
 compiler: gcc
