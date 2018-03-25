@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 2.8)
 set(PACKAGE_VERSION "1ubuntu1.0")
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "7")
-set(APP_VERSION_PATCH "44")
+set(APP_VERSION_PATCH "45")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
@@ -25,7 +25,7 @@ endif(!APPLE)
 #set(CMAKE_CXX_FLAGS_DEBUG
 #    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall  -ggdb")
+    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Werror -Wall  -ggdb")
 
 set(CMAKE_CXX_FLAGS_RELEASEGEN
     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")

@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.45
+--------------
+
+IMPROVEMENT
+
+* Introduce OSX support
+
 Version 0.7.44
 --------------
 

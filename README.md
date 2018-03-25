@@ -5,10 +5,6 @@ README [![Build Status](https://travis-ci.org/akumuli/Akumuli.svg?branch=master)
 It can be used to capture, store and process time-series data in real-time. 
 The word "akumuli" can be translated from Esperanto as "accumulate".
 
-Note
-----
-This is my fork of akumuli with some OSX compatibility fixes
-
 Features
 -------
 
