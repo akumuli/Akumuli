@@ -11,15 +11,21 @@ matrix:
     - os: linux
       dist: trusty
       sudo: required
+      env:
+      - GENERIC_BUILD=false
+    - os: linux
+      dist: trusty
+      sudo: required
+      env:
+      - GENERIC_BUILD=true
     - os: osx
-      osx_image: xcode7.2
+      osx_image: xcode9.2
+      env:
+      - GENERIC_BUILD=false
 
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
-  matrix:
-  - GENERIC_BUILD=false
-  - GENERIC_BUILD=true
 
 addons:
   artifacts:
