@@ -20,6 +20,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -static-libasan")
 else(!APPLE)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-pessimizing-move")
 add_compile_options(-Wno-delete-non-virtual-dtor)
+add_compile_options(-Wno-deprecated)
 endif(!APPLE)
 
 #set(CMAKE_CXX_FLAGS_DEBUG
