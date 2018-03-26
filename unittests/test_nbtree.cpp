@@ -2337,9 +2337,9 @@ void test_nbtree_superblock_filter(size_t commit_limit, bool inv_direction) {
     std::unique_ptr<RealValuedOperator> it;
 
     if (inv_direction) {
-        it = std::move(extents->filter(end, begin, flt));
+        it = extents->filter(end, begin, flt);
     } else {
-        it = std::move(extents->filter(begin, end, flt));
+        it = extents->filter(begin, end, flt);
     }
 
     std::vector<aku_Timestamp> actts;

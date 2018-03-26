@@ -264,8 +264,8 @@ TcpAcceptor::TcpAcceptor(// Server parameters
                         std::vector<IOServiceT *> io, int port,
                         // Storage & pipeline
                         std::shared_ptr<DbConnection> connection , bool parallel)
-    : parallel_(parallel)
-    , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    //: parallel_(parallel)
+    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
     , protocol_(ProtocolSessionBuilder::create_resp_builder(true))
     , sessions_io_(io)
     , connection_(connection)
@@ -289,8 +289,8 @@ TcpAcceptor::TcpAcceptor(
         std::unique_ptr<ProtocolSessionBuilder> protocol,
         std::shared_ptr<DbConnection> connection,
         bool parallel)
-    : parallel_(parallel)
-    , acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    //: parallel_(parallel)
+    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
     , protocol_(std::move(protocol))
     , sessions_io_(io)
     , connection_(connection)

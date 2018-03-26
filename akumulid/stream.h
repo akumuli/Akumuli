@@ -111,12 +111,12 @@ public:
 
     // ByteStreamReader interface
 public:
-    virtual Byte get();
-    virtual Byte pick() const;
-    virtual bool is_eof();
-    virtual int read(Byte* buffer, size_t buffer_len);
-    virtual void close();
-    virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const;
+    virtual Byte get() override;
+    virtual Byte pick() const override;
+    virtual bool is_eof() override;
+    virtual int read(Byte* buffer, size_t buffer_len) override;
+    virtual void close() override;
+    virtual std::tuple<std::string, size_t> get_error_context(const char* error_message) const override;
     virtual void consume();
     virtual void discard();
     virtual int read_line(Byte* buffer, size_t quota) override;

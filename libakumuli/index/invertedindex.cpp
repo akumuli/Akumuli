@@ -313,7 +313,6 @@ CompressedPListConstIterator CompressedPList::end() const {
 
 CMSketch::CMSketch(u32 M)
     : N(3)
-    , M(M)
     , mask_(M-1)
     , bits_(static_cast<u32>(log2(static_cast<i64>(mask_))))
 {

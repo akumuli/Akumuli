@@ -106,7 +106,7 @@ struct ProtocolSessionBuilder {
 class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
     typedef std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilderT;
 
-    const bool                         parallel_;  //< Flag for TcpSession instances
+    //const bool                         parallel_;  //< Flag for TcpSession instances
     IOServiceT                           own_io_;  //< Acceptor's own io-service
     AcceptorT                          acceptor_;  //< Acceptor
     ProtocolSessionBuilderT            protocol_;  //< Protocol builder

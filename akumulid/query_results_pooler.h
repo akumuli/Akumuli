@@ -53,10 +53,10 @@ struct QueryProcessor : ReadOperationBuilder {
     QueryProcessor(std::weak_ptr<DbConnection> con, int rdbuf);
     ~QueryProcessor() override;
 
-    virtual ReadOperation* create(ApiEndpoint endpoint);
+    virtual ReadOperation* create(ApiEndpoint endpoint) override;
 
-    virtual std::string get_all_stats();
-    virtual std::string get_resource(std::string name);
+    virtual std::string get_all_stats() override;
+    virtual std::string get_resource(std::string name) override;
 };
 
 }  // namespace
