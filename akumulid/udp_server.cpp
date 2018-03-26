@@ -126,11 +126,11 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
 
         while(true) {
 
-#ifdef __APPLE__
-            retval = recvmsg(sockfd_, &iobuf->msgs[0].msg_hdr, MSG_WAITALL);
-#else
+//#ifdef __APPLE__
+//            retval = recvmsg(sockfd_, &iobuf->msgs[0].msg_hdr, MSG_WAITALL);
+//#else
             retval = recvmmsg(sockfd_, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
-#endif
+//#endif
             if (retval == -1) {
                 if (errno == EAGAIN || errno == EINTR) {
                     continue;

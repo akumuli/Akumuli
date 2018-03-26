@@ -45,15 +45,15 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
 
     static const int MSS      = 0x10000;
     
-#ifndef __APPLE__
+//#ifndef __APPLE__
     static const int NPACKETS = 16;
-#else
-    static const int NPACKETS = 1;
-    struct mmsghdr {
-        struct msghdr msg_hdr;  /* Message header */
-        unsigned int  msg_len;  /* Number of received bytes for header */
-    };
-#endif
+//#else
+//    static const int NPACKETS = 1;
+//    struct mmsghdr {
+//        struct msghdr msg_hdr;  /* Message header */
+//        unsigned int  msg_len;  /* Number of received bytes for header */
+//    };
+//#endif
     struct IOBuf {
         // Counters
         std::atomic<u64> pps;
