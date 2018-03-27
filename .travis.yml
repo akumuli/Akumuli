@@ -56,8 +56,8 @@ before_script:
 script:
 - make -j4
 - ctest -VV
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh runci_osx.sh; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sh runci_linux.sh; fi
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh functests/runci_osx.sh; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sh functests/runci_linux.sh; fi
 - cpack
 - cp akumuli_*_amd64.deb ./docker
 # Build docker container
