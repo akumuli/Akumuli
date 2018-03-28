@@ -54,16 +54,22 @@ before_script:
   fi
 
 script:
+# Build and test
 - make -j4
 - ctest -VV
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh functests/runci_osx.sh; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sh functests/runci_linux.sh; fi
-- cpack
-- cp akumuli_*_amd64.deb ./docker
-# Build docker container
-- export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
-- docker build -t $REPO:$TAG ./docker
+
+# Build deb package and docker image only on Linux
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+  # Build package
+  cpack
+  cp akumuli_*_amd64.deb ./docker
+  # Build docker container
+  export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
+  export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
+  docker build -t $REPO:$TAG ./docker
+  fi
 deploy:
   provider: packagecloud
   repository: Akumuli
