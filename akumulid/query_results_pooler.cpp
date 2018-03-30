@@ -2,6 +2,8 @@
 #include "logger.h"
 #include <cstdio>
 #include <thread>
+#include <inttypes.h>
+#include <stdint.h>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/exception/all.hpp>
@@ -53,7 +55,15 @@ struct CSVOutputFormatter : OutputFormatter {
             // Series name
             len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
-            if (len <= 0) { // Error, no such Id or not enough space
+            if (len == 0) { // Error, no such Id
+                len = snprintf(begin, size, "id=%" PRId64, sample.paramid);
+                if (len < 0 || len == size) {
+                    // Not enough space inside the buffer
+                    return nullptr;
+                }
+                len += 1;  // for terminating '\0' character
+            } else if (len < 0) {
+                // Not enough space
                 return nullptr;
             }
             begin += len;
@@ -81,7 +91,14 @@ struct CSVOutputFormatter : OutputFormatter {
             } else {
                 len = -1;
             }
-            if (len < 0) {
+            if (len == -1) {
+                // Invalid or custom timestamp, format as number
+                len = snprintf(begin, size, "ts=%" PRId64, sample.timestamp);
+                if (len < 0 || len == size) {
+                    // Not enough space inside the buffer
+                    return nullptr;
+                }
+            } else if (len < -1) {
                 return nullptr;
             }
             begin += len;
@@ -220,7 +237,15 @@ struct RESPOutputFormatter : OutputFormatter {
             // Series name
             len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
-            if (len <= 0) { // Error, no such Id or not enough space
+            if (len == 0) { // Error, no such Id
+                len = snprintf(begin, size, "id=%" PRId64, sample.paramid);
+                if (len < 0 || len == size) {
+                    // Not enough space inside the buffer
+                    return nullptr;
+                }
+                len += 1;  // for terminating '\0' character
+            } else if (len < 0) {
+                // Not enough space
                 return nullptr;
             }
             begin += len;
@@ -249,7 +274,13 @@ struct RESPOutputFormatter : OutputFormatter {
                 len = -1;
             }
             if (len == -1) {
-                // Invalid or custom timestamp
+                // Invalid or custom timestamp, format as number
+                len = snprintf(begin, size, "ts=%" PRId64, sample.timestamp);
+                if (len < 0 || len == size) {
+                    // Not enough space inside the buffer
+                    return nullptr;
+                }
+            } else if (len < -1) {
                 return nullptr;
             }
             begin += len;
