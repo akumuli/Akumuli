@@ -71,9 +71,10 @@ script:
 - bash functests/roundtrip.sh
 - cpack
 - cp akumuli_*_amd64.deb ./docker
+- VERSION=$(ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)_amd64\.deb/\1/p')
 # Build docker container
 - export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
+- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "$VERSION-skylake"; else echo "$VERSION-generic"; fi`
 - docker build -t $REPO:$TAG ./docker
 deploy:
   provider: packagecloud
