@@ -74,8 +74,8 @@ script:
 - VERSION=$(ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)_amd64\.deb/\1/p')
 # Build docker container
 - export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "$VERSION-skylake"; else echo "$VERSION-generic"; fi`
-- docker build -t $REPO:$TAG ./docker
+- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
+- docker build -t $REPO:$VERSION-$TAG ./docker
 deploy:
   provider: packagecloud
   repository: Akumuli
@@ -91,6 +91,6 @@ deploy:
 after_success:
 - if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
   docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
-  docker push $REPO:$TAG;
+  docker push $REPO:$VERSION-$TAG;
   fi 
 after_failure: 
