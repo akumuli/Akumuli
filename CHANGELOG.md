@@ -1,13 +1,21 @@
 Release notes
 =============
 
-Version 0.7.44
+Version 0.7.45
 --------------
 
 IMPROVEMENT
 
 * Minimize stdout logging in docker container
 * Docker image versioning
+
+
+Version 0.7.44
+--------------
+
+IMPROVEMENT
+
+* Dictionary support in RESP protocol
 
 Version 0.7.43
 --------------

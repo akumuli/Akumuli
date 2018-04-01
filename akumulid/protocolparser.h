@@ -21,6 +21,7 @@
 #include <memory>
 #include <queue>
 #include <vector>
+#include <unordered_map>
 
 #include "logger.h"
 #include "resp.h"
@@ -165,21 +166,79 @@ struct NullResponse : ProtocolParserResponse {
  *     +12.6
  *
  * Protocol data units of each protocol can be interleaved.
+ *
+ * DICTIONARY can be used to minimize the protocol footprint. User supplied dictionary maps
+ * actual series names to unique integer ids. These ids can be used instead of series names.
+ * Dictionary can be provided only before other messages in the session. A user that wants
+ * to use a dictionary should start transmission with the dictionary.
+ * The dictionary format is simple. It's composed of arrays (zero or more). Each array should
+ * contain a set of name-id pairs (so the total number of array elements should always be even).
+ * User provided id should be represented as integer.
+ * Example:
+ *     *4
+ *     +balancers.memusage host=machine1
+ *     :1
+ *     +balancers.memusage host=machine2
+ *     :2
+ *     :1
+ *     +20141210T074343
+ *     :31
+ *     :2
+ *     +20141210T074343
+ *     +12.01
+ *     :1
+ *     +20141210T074344
+ *     :32
+ *     :2
+ *     +20141210T074344
+ *     +12.02
+ *
+ * Here user provides the dictionary that contains two elements: `balancers.memusage host=machine1`
+ * and `balancers.memusage host=machine2`. In the following messages (starts on line 6) the ids of
+ * the seires are used instead of the actual series names (:1 and :2). Note that the id should be an
+ * integer.
+ *
+ * The same approach can be used with the RAW PROTOCOL variant:
+ *     *2
+ *     +cpu.real|cpu.user|cpu.sys host=machine1
+ *     :1
+ *     :1
+ *     +20141210T074343
+ *     *3
+ *     +3.12
+ *     +8.11
+ *     +12.6
+ *
+ * Note that the dictionary element can be a compound series name. The actual message starts on line
+ * #3.
  */
 class RESPProtocolParser {
+    typedef std::unordered_multimap<aku_ParamId, aku_ParamId> SeriesIdMap;
     bool                               done_;
     ReadBuffer                         rdbuf_;
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
+    SeriesIdMap                        idmap_;
 
     //! Process frames from queue
     void worker();
+
     //! Generate error message
     std::tuple<std::string, size_t> get_error_from_pdu(PDU const& pdu) const;
 
+    bool parse_dict(RESPStream& stream);
     bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
     bool parse_values(RESPStream& stream, double* values, int nvalues);
     int parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues);
+    /**
+     * @brief Cache series id mapping
+     * @param uid is a user supplied id
+     * @param row is an array of series ids
+     * @param nvalues is a size of the 'row' array
+     * @return 'true' on success or 'false' on clash
+     */
+    bool update_dict(aku_ParamId uid, const aku_ParamId* row, int nvalues);
+    int read_dict(aku_ParamId uid, aku_ParamId* row, int nvalues);
 public:
     enum {
         RDBUF_SIZE = 0x1000,  // 4KB
