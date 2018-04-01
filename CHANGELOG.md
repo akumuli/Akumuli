@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.45
+--------------
+
+IMPROVEMENT
+
+* Minimize stdout logging in docker container
+* Docker image versioning
+
 Version 0.7.44
 --------------
 

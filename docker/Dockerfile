@@ -18,6 +18,7 @@ VOLUME /Akumuli
 # Environment
 ENV volume_size 4GB
 ENV nvolumes 4
+ENV log_level INFO
 
 # Add Tini
 ENV TINI_VERSION v0.9.0
