@@ -39,39 +39,41 @@ before_script:
   fi
 script:
 - make -j4
-- ctest -VV
-- functests/storage_test /tmp
-- akumulid/akumulid --init
-- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- python functests/test_data_ingestion.py akumulid/ TCP
-- python functests/test_data_ingestion.py akumulid/ UDP
-- python functests/test_data_ingestion_bulk.py akumulid/ TCP
-- python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- python functests/test_query_language.py akumulid/
-- python functests/test_volume_overflow.py akumulid/
-- python functests/test_database_overflow.py akumulid/
-- python functests/test_restart.py akumulid/
-- python functests/test_kill.py akumulid/
-- python functests/test_concurrency.py akumulid/
-- python functests/test_ingestion_errors.py akumulid/
-- python functests/test_join_query.py akumulid/
-#- python functests/test_search_api.py akumulid/
-- python functests/akumulid_test_tools.py set_nvolumes 0
-- python functests/test_data_ingestion.py akumulid/ TCP
-- python functests/test_data_ingestion.py akumulid/ UDP
-- python functests/test_data_ingestion_bulk.py akumulid/ TCP
-- python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- python functests/test_query_language.py akumulid/
-- python functests/test_volume_overflow.py akumulid/
-- python functests/test_restart.py akumulid/
-- python functests/test_kill.py akumulid/
-- python functests/test_concurrency.py akumulid/
-- python functests/test_join_query.py akumulid/
-- python functests/test_filter_query.py akumulid/
-- bash functests/roundtrip.sh
+#- ctest -VV
+#- functests/storage_test /tmp
+#- akumulid/akumulid --init
+#- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
+#- python functests/test_data_ingestion.py akumulid/ TCP
+#- python functests/test_data_ingestion.py akumulid/ UDP
+#- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+#- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+#- python functests/test_query_language.py akumulid/
+#- python functests/test_volume_overflow.py akumulid/
+#- python functests/test_database_overflow.py akumulid/
+#- python functests/test_restart.py akumulid/
+#- python functests/test_kill.py akumulid/
+#- python functests/test_concurrency.py akumulid/
+#- python functests/test_ingestion_errors.py akumulid/
+#- python functests/test_join_query.py akumulid/
+##- python functests/test_search_api.py akumulid/
+#- python functests/akumulid_test_tools.py set_nvolumes 0
+#- python functests/test_data_ingestion.py akumulid/ TCP
+#- python functests/test_data_ingestion.py akumulid/ UDP
+#- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+#- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+#- python functests/test_query_language.py akumulid/
+#- python functests/test_volume_overflow.py akumulid/
+#- python functests/test_restart.py akumulid/
+#- python functests/test_kill.py akumulid/
+#- python functests/test_concurrency.py akumulid/
+#- python functests/test_join_query.py akumulid/
+#- python functests/test_filter_query.py akumulid/
+#- bash functests/roundtrip.sh
 - cpack
 - cp akumuli_*_amd64.deb ./docker
+- ls -lh
 - export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)_amd64\.deb/\1/p'`
+- echo $VERSION
 # Build docker container
 - export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
 - export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
