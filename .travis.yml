@@ -57,8 +57,6 @@ script:
 # Build and test
 - make -j4
 - ctest -VV
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh functests/runci_osx.sh; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sh functests/runci_linux.sh; fi
 - functests/storage_test /tmp
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
