@@ -59,6 +59,35 @@ script:
 - ctest -VV
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh functests/runci_osx.sh; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sh functests/runci_linux.sh; fi
+- functests/storage_test /tmp
+- akumulid/akumulid --init
+- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
+- python functests/test_data_ingestion.py akumulid/ TCP
+- python functests/test_data_ingestion.py akumulid/ UDP
+- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+- python functests/test_query_language.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_database_overflow.py akumulid/; fi
+- python functests/test_restart.py akumulid/
+- python functests/test_kill.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
+- python functests/test_ingestion_errors.py akumulid/
+- python functests/test_join_query.py akumulid/
+- python functests/test_filter_query.py akumulid/
+- python functests/akumulid_test_tools.py set_nvolumes 0
+- python functests/test_data_ingestion.py akumulid/ TCP
+- python functests/test_data_ingestion.py akumulid/ UDP
+- python functests/test_data_ingestion_bulk.py akumulid/ TCP
+- python functests/test_data_ingestion_bulk.py akumulid/ UDP
+- python functests/test_query_language.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
+- python functests/test_kill.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
+- python functests/test_join_query.py akumulid/
+- python functests/test_filter_query.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash functests/roundtrip.sh; fi
 
 # Build deb package and docker image only on Linux
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
@@ -67,7 +96,7 @@ script:
   export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
   export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`;
   export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
-  docker build -t $REPO:VERSION-$TAG ./docker;
+  docker build -t $REPO:$VERSION-$TAG ./docker;
   fi
 
 deploy:

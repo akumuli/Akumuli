@@ -11,8 +11,6 @@ target_link_libraries(storage_test
     )
 
 file(COPY
-    runci_linux.sh
-    runci_osx.sh
     akumulid_test_tools.py
     test_data_ingestion.py
     test_data_ingestion_bulk.py
