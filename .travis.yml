@@ -64,27 +64,27 @@ script:
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
 - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- python functests/test_query_language.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_database_overflow.py akumulid/; fi
-- python functests/test_restart.py akumulid/
-- python functests/test_kill.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
-- python functests/test_ingestion_errors.py akumulid/
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; python functests/test_join_query.py akumulid/; fi
-- python functests/test_filter_query.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_ingestion_errors.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
 - python functests/akumulid_test_tools.py set_nvolumes 0
 - python functests/test_data_ingestion.py akumulid/ TCP
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
 - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; python functests/test_query_language.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
-- python functests/test_kill.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
-- python functests/test_join_query.py akumulid/
-- python functests/test_filter_query.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash functests/roundtrip.sh; fi
 
 # Build deb package and docker image only on Linux
