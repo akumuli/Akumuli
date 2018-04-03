@@ -62,26 +62,26 @@ struct CursorMock : DbCursor {
 
 struct SessionMock : DbSession {
 
-    aku_Status write(const aku_Sample &sample) {
+    aku_Status write(const aku_Sample &sample) override {
         return AKU_SUCCESS;
     }
 
     void close() {
     }
 
-    std::shared_ptr<DbCursor> query(std::string query) {
+    std::shared_ptr<DbCursor> query(std::string query) override {
         return std::make_shared<CursorMock>();
     }
 
-    std::shared_ptr<DbCursor> suggest(std::string query) {
+    std::shared_ptr<DbCursor> suggest(std::string query) override {
         return std::make_shared<CursorMock>();
     }
 
-    std::shared_ptr<DbCursor> search(std::string query) {
+    std::shared_ptr<DbCursor> search(std::string query) override {
         return std::make_shared<CursorMock>();
     }
 
-    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) {
+    int param_id_to_series(aku_ParamId id, char *buffer, size_t buffer_size) override {
         std::string strid = std::to_string(id);
         if (strid.size() < buffer_size) {
             memcpy(buffer, strid.data(), strid.size());
@@ -94,7 +94,7 @@ struct SessionMock : DbSession {
         throw "not implemented";
     }
 
-    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) {
+    aku_Status series_to_param_id(const char *name, size_t size, aku_Sample *sample) override {
         throw "not implemented";
     }
 };

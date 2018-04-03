@@ -421,7 +421,6 @@ class CMSketch {
     typedef CompressedPList TVal;
     std::vector<std::vector<TVal>> table_;
     const u32 N;
-    const u32 M;
     const u32 mask_;
     const u32 bits_;
 

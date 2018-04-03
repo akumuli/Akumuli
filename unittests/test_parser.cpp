@@ -26,15 +26,15 @@ struct NodeMock : Node {
     // Bolt interface
 public:
 
-    int get_requirements() const { return TERMINAL; }
-    void complete() {}
-    void set_error(aku_Status status) {
+    int get_requirements() const override { return TERMINAL; }
+    void complete() override {}
+    void set_error(aku_Status status) override {
         BOOST_FAIL("set_error shouldn't be called");
     }
-    bool put(aku_Sample const& s) {
-        ids.push_back(s.paramid);
-        timestamps.push_back(s.timestamp);
-        values.push_back(s.payload.float64);
+    bool put(MutableSample& s) override {
+        ids.push_back(s.get_paramid());
+        timestamps.push_back(s.get_timestamp());
+        values.push_back(*s[0]);
         return true;
     }
 };

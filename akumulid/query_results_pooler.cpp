@@ -2,6 +2,8 @@
 #include "logger.h"
 #include <cstdio>
 #include <thread>
+#include <inttypes.h>
+#include <stdint.h>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/exception/all.hpp>
@@ -54,7 +56,7 @@ struct CSVOutputFormatter : OutputFormatter {
             len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
-                len = snprintf(begin, size, "id=%lu", sample.paramid);
+                len = snprintf(begin, size, "id=%" PRId64, sample.paramid);
                 if (len < 0 || len == size) {
                     // Not enough space inside the buffer
                     return nullptr;
@@ -91,7 +93,7 @@ struct CSVOutputFormatter : OutputFormatter {
             }
             if (len == -1) {
                 // Invalid or custom timestamp, format as number
-                len = snprintf(begin, size, "ts=%lu", sample.timestamp);
+                len = snprintf(begin, size, "ts=%" PRId64, sample.timestamp);
                 if (len < 0 || len == size) {
                     // Not enough space inside the buffer
                     return nullptr;
@@ -236,7 +238,7 @@ struct RESPOutputFormatter : OutputFormatter {
             len = session_->param_id_to_series(sample.paramid, begin, size);
             // '\0' character is counted in len
             if (len == 0) { // Error, no such Id
-                len = snprintf(begin, size, "id=%lu", sample.paramid);
+                len = snprintf(begin, size, "id=%" PRId64, sample.paramid);
                 if (len < 0 || len == size) {
                     // Not enough space inside the buffer
                     return nullptr;
@@ -273,7 +275,7 @@ struct RESPOutputFormatter : OutputFormatter {
             }
             if (len == -1) {
                 // Invalid or custom timestamp, format as number
-                len = snprintf(begin, size, "ts=%lu", sample.timestamp);
+                len = snprintf(begin, size, "ts=%" PRId64, sample.timestamp);
                 if (len < 0 || len == size) {
                     // Not enough space inside the buffer
                     return nullptr;

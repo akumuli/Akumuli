@@ -21,6 +21,7 @@
 #include <vector>
 #include <sstream>
 #include <stack>
+#include <array>
 
 // App
 #include "nbtree.h"
@@ -1716,7 +1717,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
 std::unique_ptr<RealValuedOperator> NBTreeLeaf::range(aku_Timestamp begin, aku_Timestamp end) const {
     std::unique_ptr<RealValuedOperator> it;
     it.reset(new NBTreeLeafIterator(begin, end, *this));
-    return std::move(it);
+    return it;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeLeaf::filter(aku_Timestamp begin,
@@ -1725,13 +1726,13 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::filter(aku_Timestamp begin,
 {
     std::unique_ptr<RealValuedOperator> it;
     it.reset(new NBTreeLeafFilter(begin, end, filter, *this));
-    return std::move(it);
+    return it;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
     std::unique_ptr<AggregateOperator> it;
     it.reset(new NBTreeLeafAggregator(begin, end, *this));
-    return std::move(it);
+    return it;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
@@ -1742,13 +1743,13 @@ std::unique_ptr<AggregateOperator> NBTreeLeaf::candlesticks(aku_Timestamp begin,
     std::unique_ptr<AggregateOperator> result;
     AggregateOperator::Direction dir = begin < end ? AggregateOperator::Direction::FORWARD : AggregateOperator::Direction::BACKWARD;
     result.reset(new ValueAggregator(subtree->end, agg, dir));
-    return std::move(result);
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeaf::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
     std::unique_ptr<AggregateOperator> it;
     it.reset(new NBTreeLeafGroupAggregator(begin, end, step, *this));
-    return std::move(it);
+    return it;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
@@ -1763,7 +1764,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
         // Backward direction - read data from this node at the beginning
         std::tie(b, e) = get_timestamps();
         if (!(e < min || max < b)) {
-            results.push_back(std::move(range(begin, end)));
+            results.push_back(range(begin, end));
         }
     }
     while (bstore->exists(addr)) {
@@ -1778,7 +1779,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
             continue;
         }
         // Save address of the current leaf and move to the next one.
-        results.push_back(std::move(leaf->range(begin, end)));
+        results.push_back(leaf->range(begin, end));
         addr = leaf->get_prev_addr();
     }
     if (begin < end) {
@@ -1786,7 +1787,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
         std::reverse(results.begin(), results.end());
         std::tie(b, e) = get_timestamps();
         if (!(e < min || max < b)) {
-            results.push_back(std::move(range(begin, end)));
+            results.push_back(range(begin, end));
         }
     }
     if (results.size() == 1) {
@@ -1794,7 +1795,7 @@ std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_
     }
     std::unique_ptr<RealValuedOperator> res_iter;
     res_iter.reset(new ChainOperator(std::move(results)));
-    return std::move(res_iter);
+    return res_iter;
 }
 
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockStore> bstore,
@@ -2094,7 +2095,7 @@ std::unique_ptr<RealValuedOperator> NBTreeSuperblock::search(aku_Timestamp begin
 {
     std::unique_ptr<RealValuedOperator> result;
     result.reset(new NBTreeSBlockIterator(bstore, *this, begin, end));
-    return std::move(result);
+    return result;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeSuperblock::filter(aku_Timestamp begin,
@@ -2104,7 +2105,7 @@ std::unique_ptr<RealValuedOperator> NBTreeSuperblock::filter(aku_Timestamp begin
 {
     std::unique_ptr<RealValuedOperator> result;
     result.reset(new NBTreeSBlockFilter(bstore, *this, begin, end, filter));
-    return std::move(result);
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSuperblock::aggregate(aku_Timestamp begin,
@@ -2113,7 +2114,7 @@ std::unique_ptr<AggregateOperator> NBTreeSuperblock::aggregate(aku_Timestamp beg
 {
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeSBlockAggregator(bstore, *this, begin, end));
-    return std::move(result);
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSuperblock::candlesticks(aku_Timestamp begin, aku_Timestamp end,
@@ -2122,7 +2123,7 @@ std::unique_ptr<AggregateOperator> NBTreeSuperblock::candlesticks(aku_Timestamp 
 {
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeSBlockCandlesticsIter(bstore, *this, begin, end, hint));
-    return std::move(result);
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSuperblock::group_aggregate(aku_Timestamp begin,
@@ -2132,7 +2133,7 @@ std::unique_ptr<AggregateOperator> NBTreeSuperblock::group_aggregate(aku_Timesta
 {
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeSBlockGroupAggregator(bstore, *this, begin, end, step));
-    return std::move(result);
+    return result;
 }
 
 std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::split_into(std::shared_ptr<BlockStore> bstore,
@@ -2338,7 +2339,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
         reset_leaf();
     }
 
-    virtual ExtentStatus status() const {
+    virtual ExtentStatus status() const override {
         // Leaf extent can be new and empty or new and filled with data
         if (leaf_->nelements() == 0) {
             return ExtentStatus::NEW;
@@ -2386,19 +2387,19 @@ struct NBTreeLeafExtent : NBTreeExtent {
         leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
     }
 
-    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
-    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
-    virtual std::tuple<bool, LogicAddr> commit(bool final);
-    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) override;
+    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl) override;
+    virtual std::tuple<bool, LogicAddr> commit(bool final) override;
+    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const override;
     virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
                                                        aku_Timestamp end,
-                                                       const ValueFilter& filter) const;
-    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
-    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
-    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
-    virtual bool is_dirty() const;
+                                                       const ValueFilter& filter) const override;
+    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const override;
+    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const override;
+    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const override;
+    virtual bool is_dirty() const override;
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const override;
-    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot) override;
 };
 
 
@@ -2570,26 +2571,26 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeLeafExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
-    return std::move(leaf_->range(begin, end));
+    return leaf_->range(begin, end);
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeLeafExtent::filter(aku_Timestamp begin,
                                                              aku_Timestamp end,
                                                              const ValueFilter& filter) const
 {
-    return std::move(leaf_->filter(begin, end, filter));
+    return leaf_->filter(begin, end, filter);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeafExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
-    return std::move(leaf_->aggregate(begin, end));
+    return leaf_->aggregate(begin, end);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeafExtent::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
-    return std::move(leaf_->candlesticks(begin, end, hint));
+    return leaf_->candlesticks(begin, end, hint);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeLeafExtent::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
-    return std::move(leaf_->group_aggregate(begin, end, step));
+    return leaf_->group_aggregate(begin, end, step);
 }
 
 bool NBTreeLeafExtent::is_dirty() const {
@@ -2695,7 +2696,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         }
     }
 
-    ExtentStatus status() const {
+    ExtentStatus status() const override {
         if (killed_) {
             return ExtentStatus::KILLED_BY_RETENTION;
         } else if (curr_->nelements() == 0) {
@@ -2739,19 +2740,19 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         return curr_->get_prev_addr();
     }
 
-    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value);
-    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl);
-    virtual std::tuple<bool, LogicAddr> commit(bool final);
-    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) override;
+    virtual std::tuple<bool, LogicAddr> append(const SubtreeRef &pl) override;
+    virtual std::tuple<bool, LogicAddr> commit(bool final) override;
+    virtual std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const override;
     virtual std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
                                                        aku_Timestamp end,
-                                                       const ValueFilter& filter) const;
-    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
-    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
-    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
-    virtual bool is_dirty() const;
+                                                       const ValueFilter& filter) const override;
+    virtual std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const override;
+    virtual std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const override;
+    virtual std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const override;
+    virtual bool is_dirty() const override;
     virtual void debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const override;
-    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot);
+    virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot) override;
 };
 
 void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {

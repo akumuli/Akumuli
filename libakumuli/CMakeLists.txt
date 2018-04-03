@@ -103,12 +103,12 @@ include(CPack)
 
 link_directories(${Boost_LIBRARY_DIRS})
 
-if(!APPLE)
-target_link_libraries(akumuli2
+#if(!APPLE)
+target_link_libraries(akumuli
     "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
 )
-endif(!APPLE)
+#endif(!APPLE)

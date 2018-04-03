@@ -76,6 +76,17 @@ void UdpServer::stop() {
     close(sockfd_);
 }
 
+#ifdef __APPLE__
+int UdpServer::recvmsg_(int fd, UdpServer::mmsghdr* hdr, unsigned, int) {
+    auto retval = recvmsg(fd, &hdr[0].msg_hdr, MSG_WAITALL);
+    if (retval >= 0) {
+        hdr[0].msg_len = static_cast<unsigned int>(retval);
+    } else {
+        return -1;
+    }
+    return 1;
+}
+#endif
 
 void UdpServer::worker(std::shared_ptr<DbSession> spout) {
 #ifdef __gnu_linux__
@@ -125,7 +136,12 @@ void UdpServer::worker(std::shared_ptr<DbSession> spout) {
         auto iobuf = std::make_shared<IOBuf>();
 
         while(true) {
+
+#ifdef __APPLE__
+            retval = recvmsg_(sockfd_, iobuf->msgs, NPACKETS, MSG_WAITALL);
+#else
             retval = recvmmsg(sockfd_, iobuf->msgs, NPACKETS, MSG_WAITFORONE, nullptr);
+#endif
             if (retval == -1) {
                 if (errno == EAGAIN || errno == EINTR) {
                     continue;

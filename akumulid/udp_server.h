@@ -43,19 +43,27 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
 
     Logger logger_;
 
-    static const int MSS      = 0x10000;  // 64K
+    static const int MSS      = 0x10000;
+    
+#ifndef __APPLE__
     static const int NPACKETS = 16;
+#else
+    static const int NPACKETS = 1;
+    struct mmsghdr {
+        struct msghdr msg_hdr;  /* Message header */
+        unsigned int  msg_len;  /* Number of received bytes for header */
+    };
 
+    static int recvmsg_(int fd, mmsghdr* hdr, unsigned, int);
+#endif
     struct IOBuf {
         // Counters
         std::atomic<u64> pps;
         std::atomic<u64> bps;
-
         // Packet recv structs
         mmsghdr msgs[NPACKETS];
         iovec   iovecs[NPACKETS];
         char    bufs[NPACKETS][MSS];  // 1MB
-
         IOBuf() {
             memset(this, 0, sizeof(IOBuf));
             for (int i = 0; i < NPACKETS; i++) {
@@ -67,6 +75,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
         }
 
     };
+
 
 public:
     /** C-tor.

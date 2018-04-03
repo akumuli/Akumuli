@@ -1,14 +1,32 @@
 sudo: required
+
 dist: trusty
-language: python
+
 group: edge
+
 compiler: gcc
+
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+      sudo: required
+      env:
+      - GENERIC_BUILD=false
+    - os: linux
+      dist: trusty
+      sudo: required
+      env:
+      - GENERIC_BUILD=true
+    - os: osx
+      osx_image: xcode9.2
+      env:
+      - GENERIC_BUILD=false
+
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
-  matrix:
-  - GENERIC_BUILD=false
-  - GENERIC_BUILD=true
+
 addons:
   artifacts:
     provider: s3
@@ -19,25 +37,24 @@ addons:
     acl: public_read
     paths:
     - "$HOME/akumuli.log"
+
 before_install:
-- sudo apt-get update
-- sudo apt-get install -y libboost-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev
-  libboost-test-dev libboost-program-options-dev libboost-regex-dev
-- sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
-- sudo apt-get install -y liblog4cxx10-dev liblog4cxx10
-- sudo apt-get install -y libjemalloc-dev
-- sudo apt-get install -y libsqlite3-dev
-- sudo apt-get install -y libmicrohttpd-dev
-- sudo apt-get install -y cmake
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then brew update;              fi
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh prerequisites-osx.sh;  fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update;      fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sh prerequisites.sh; fi
+
 before_script:
 - mkdir build
 - cd build
 - if [[ $GENERIC_BUILD == true ]]; then
-  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
   else
-  cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON;
+  cmake .. -DCMAKE_BUILD_TYPE=Release;
   fi
+
 script:
+# Build and test
 - make -j4
 - ctest -VV
 - functests/storage_test /tmp
@@ -47,35 +64,39 @@ script:
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
 - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- python functests/test_query_language.py akumulid/
-- python functests/test_volume_overflow.py akumulid/
-- python functests/test_database_overflow.py akumulid/
-- python functests/test_restart.py akumulid/
-- python functests/test_kill.py akumulid/
-- python functests/test_concurrency.py akumulid/
-- python functests/test_ingestion_errors.py akumulid/
-- python functests/test_join_query.py akumulid/
-#- python functests/test_search_api.py akumulid/
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_database_overflow.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_ingestion_errors.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
 - python functests/akumulid_test_tools.py set_nvolumes 0
 - python functests/test_data_ingestion.py akumulid/ TCP
 - python functests/test_data_ingestion.py akumulid/ UDP
 - python functests/test_data_ingestion_bulk.py akumulid/ TCP
 - python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- python functests/test_query_language.py akumulid/
-- python functests/test_volume_overflow.py akumulid/
-- python functests/test_restart.py akumulid/
-- python functests/test_kill.py akumulid/
-- python functests/test_concurrency.py akumulid/
-- python functests/test_join_query.py akumulid/
-- python functests/test_filter_query.py akumulid/
-- bash functests/roundtrip.sh
-- cpack
-- cp akumuli_*_amd64.deb ./docker
-- export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
-# Build docker container
-- export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH == "master" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`
-- export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`
-- docker build -t $REPO:$VERSION-$TAG ./docker
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash functests/roundtrip.sh; fi
+
+# Build deb package and docker image only on Linux
+- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+  cpack;
+  cp akumuli_*_amd64.deb ./docker;
+  export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
+  export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`;
+  export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
+  docker build -t $REPO:$VERSION-$TAG ./docker;
+  fi
+
 deploy:
   provider: packagecloud
   repository: Akumuli
@@ -85,11 +106,12 @@ deploy:
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
+    os: linux
     branch: master
     condition: $GENERIC_BUILD = "false"
   skip_cleanup: true
 after_success:
-- if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
+- if [[ $TRAVIS_PULL_REQUEST == "false" && "$TRAVIS_OS_NAME" == "linux" ]]; then
   docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
   docker push $REPO:$VERSION-$TAG;
   fi 

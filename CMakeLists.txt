@@ -9,6 +9,8 @@ set(APP_VERSION_PATCH "45")
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
 
+#add_definitions(-std=c++11 -Wall -Werror)
+
 set(CMAKE_MACOSX_RPATH 1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
@@ -18,12 +20,13 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -static-libasan")
 else(!APPLE)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-pessimizing-move")
 add_compile_options(-Wno-delete-non-virtual-dtor)
+add_compile_options(-Wno-deprecated)
 endif(!APPLE)
 
 #set(CMAKE_CXX_FLAGS_DEBUG
 #    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb")
+    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Werror -Wall  -ggdb")
 
 set(CMAKE_CXX_FLAGS_RELEASEGEN
     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")

@@ -37,7 +37,7 @@
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
 
-#include <fcntl.h>
+#include "fcntl_compat.h"
 #include <cstdlib>
 
 namespace Akumuli {
