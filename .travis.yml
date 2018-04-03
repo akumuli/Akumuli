@@ -12,15 +12,18 @@ matrix:
       dist: trusty
       sudo: required
       env:
+      - DEPLOY_PACKAGE=true
       - GENERIC_BUILD=false
     - os: linux
       dist: trusty
       sudo: required
       env:
+      - DEPLOY_PACKAGE=false
       - GENERIC_BUILD=true
     - os: osx
       osx_image: xcode9.2
       env:
+      - DEPLOY_PACKAGE=false
       - GENERIC_BUILD=false
 
 env:
@@ -106,9 +109,8 @@ deploy:
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
-    os: linux
-    branch: master
-    condition: $GENERIC_BUILD = "false"
+    #branch: master
+    condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 after_success:
 - if [[ $TRAVIS_PULL_REQUEST == "false" && "$TRAVIS_OS_NAME" == "linux" ]]; then

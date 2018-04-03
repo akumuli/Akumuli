@@ -4,6 +4,13 @@ Release notes
 Version 0.7.46
 --------------
 
+BUG FIX
+
+* Fix packagecloud deployment
+
+Version 0.7.46
+--------------
+
 IMPROVEMENT
 
 * Introduce OSX support
