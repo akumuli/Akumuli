@@ -15,6 +15,7 @@ matrix:
       compiler: gcc
       env:
       - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
@@ -26,6 +27,7 @@ matrix:
       compiler: gcc
       env:
       - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
       - GENERIC_BUILD=true
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
@@ -37,29 +39,18 @@ matrix:
       compiler: clang
       env:
       - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=true
-    # 32-bit build (GCC)
-    - os: linux
-      dist: trusty
-      sudo: required
-      compiler: gcc
-      env:
-      - DEPLOY_PACKAGE=false
-      - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - CFLAGS=-m32
-      - LDFLAGS=-m32
     # 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
       compiler: clang
       env:
       - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
@@ -98,14 +89,14 @@ before_script:
 script:
 # Build and test
 - make -j4
-- if [[ $UNIT_TEST == true]]; then ctest -VV; fi
-- if [[ $FUNC_TEST_BASE == true]]; then functests/storage_test /tmp; fi
+- if [[ $UNIT_TEST == true ]]; then ctest -VV; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then functests/storage_test /tmp; fi
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_database_overflow.py akumulid/; fi
@@ -116,10 +107,10 @@ script:
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
 - python functests/akumulid_test_tools.py set_nvolumes 0
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
@@ -130,7 +121,7 @@ script:
 - if [[ $FUNC_TEST_ADVANCED == true ]]; then bash functests/roundtrip.sh; fi
 
 # Build deb package and docker image only on Linux
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+- if [[ $DEPLOY_IMAGE == true ]]; then
   cpack;
   cp akumuli_*_amd64.deb ./docker;
   export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
@@ -152,7 +143,7 @@ deploy:
     condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 after_success:
-- if [[ $TRAVIS_PULL_REQUEST == "false" && "$TRAVIS_OS_NAME" == "linux" ]]; then
+- if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
   docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
   docker push $REPO:$VERSION-$TAG;
   fi 
