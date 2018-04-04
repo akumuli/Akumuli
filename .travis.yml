@@ -1,30 +1,69 @@
 sudo: required
 
+language: cpp
+
 dist: trusty
 
 group: edge
 
-compiler: gcc
-
 matrix:
   include:
+    # 64-bit skylake build (GCC)
     - os: linux
       dist: trusty
       sudo: required
+      compiler: gcc
       env:
       - DEPLOY_PACKAGE=true
       - GENERIC_BUILD=false
+      - UNIT_TEST=true
+      - FUNC_TEST_BASE=true
+      - FUNC_TEST_ADVANCED=true
+    # 64-bit generic build (GCC)
     - os: linux
       dist: trusty
       sudo: required
+      compiler: gcc
       env:
       - DEPLOY_PACKAGE=false
       - GENERIC_BUILD=true
-    - os: osx
-      osx_image: xcode9.2
+      - UNIT_TEST=true
+      - FUNC_TEST_BASE=true
+      - FUNC_TEST_ADVANCED=true
+    # 64-bit generic build (Clang)
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: clang
       env:
       - DEPLOY_PACKAGE=false
       - GENERIC_BUILD=false
+      - UNIT_TEST=true
+      - FUNC_TEST_BASE=true
+      - FUNC_TEST_ADVANCED=true
+    # 32-bit build (GCC)
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: gcc
+      env:
+      - DEPLOY_PACKAGE=false
+      - GENERIC_BUILD=false
+      - UNIT_TEST=true
+      - FUNC_TEST_BASE=true
+      - FUNC_TEST_ADVANCED=true
+      - CFLAGS=-m32
+      - LDFLAGS=-m32
+    # 64-bit OSX build (Clang)
+    - os: osx
+      osx_image: xcode9.2
+      compiler: clang
+      env:
+      - DEPLOY_PACKAGE=false
+      - GENERIC_BUILD=false
+      - UNIT_TEST=true
+      - FUNC_TEST_BASE=true
+      - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
 
 env:
   global:
@@ -59,36 +98,36 @@ before_script:
 script:
 # Build and test
 - make -j4
-- ctest -VV
-- functests/storage_test /tmp
+- if [[ $UNIT_TEST == true]]; then ctest -VV; fi
+- if [[ $FUNC_TEST_BASE == true]]; then functests/storage_test /tmp; fi
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- python functests/test_data_ingestion.py akumulid/ TCP
-- python functests/test_data_ingestion.py akumulid/ UDP
-- python functests/test_data_ingestion_bulk.py akumulid/ TCP
-- python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_database_overflow.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_ingestion_errors.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_database_overflow.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_ingestion_errors.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
 - python functests/akumulid_test_tools.py set_nvolumes 0
-- python functests/test_data_ingestion.py akumulid/ TCP
-- python functests/test_data_ingestion.py akumulid/ UDP
-- python functests/test_data_ingestion_bulk.py akumulid/ TCP
-- python functests/test_data_ingestion_bulk.py akumulid/ UDP
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then python functests/test_filter_query.py akumulid/; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash functests/roundtrip.sh; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
+- if [[ $FUNC_TEST_BASE == true]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
+- if [[ $FUNC_TEST_ADVANCED == true ]]; then bash functests/roundtrip.sh; fi
 
 # Build deb package and docker image only on Linux
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
