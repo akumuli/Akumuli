@@ -1,7 +1,7 @@
 Release notes
 =============
 
-Version 0.7.46
+Version 0.7.47
 --------------
 
 BUG FIX
