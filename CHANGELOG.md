@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.47
+--------------
+
+BUG FIX
+
+* Fix packagecloud deployment
+
 Version 0.7.46
 --------------
 
