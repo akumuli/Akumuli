@@ -32,18 +32,6 @@ matrix:
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=true
-    # 64-bit generic build (Clang)
-    - os: linux
-      dist: trusty
-      sudo: required
-      compiler: clang-3.8
-      env:
-      - DEPLOY_PACKAGE=false
-      - DEPLOY_IMAGE=false
-      - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
     # 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
