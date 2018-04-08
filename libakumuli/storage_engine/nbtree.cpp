@@ -3347,6 +3347,9 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     LogicAddr addr = EMPTY_ADDR;
     std::tie(parent_saved, addr) = extents_.front()->append(ts, value);
     if (addr != EMPTY_ADDR) {
+        // We need to clear the rescue point since the address is already
+        // persisted.
+        addr = parent_saved ? EMPTY_ADDR : addr;
         if (rescue_points_.size() > 0) {
             rescue_points_.at(0) = addr;
         } else {
@@ -3382,6 +3385,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     std::tie(parent_saved, addr) = root->append(pl);
     if (addr != EMPTY_ADDR) {
         // NOTE: `addr != EMPTY_ADDR` means that something was saved to disk (current node or parent node).
+        addr = parent_saved ? EMPTY_ADDR : addr;
         if (rescue_points_.size() > lvl) {
             rescue_points_.at(lvl) = addr;
         } else if (rescue_points_.size() == lvl) {
@@ -3536,58 +3540,75 @@ void NBTreeExtentsList::repair() {
         // Init `extents_` to make `append` functions work.
         create_empty_extents(shared_from_this(), bstore_, id_, rescue_points.size(), &extents_);
 
+        // BUG: found rescue point record that looks like this:
+        // storage_id  addr0       addr1       addr2       addr3       addr4       addr5       addr6       addr7
+        // ----------  ----------  ----------  ----------  ----------  ----------  ----------  ----------  ----------
+        // 12307       399363      363109
+        //
+        // With these configuration the recovery is possible but not attempted.
+        // The code expects it to have EMPTY_ADDR at addr2.
+
         int i = static_cast<int>(rescue_points.size());
-        while (i --> 0) {
-            std::vector<SubtreeRef> refs;
-            if (rescue_points.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
-                continue;
-            } else {
-                // Resestore this level from last saved leaf node.
-                auto curr_addr = rescue_points.at(static_cast<size_t>(i - 1));
-                // Recover all leaf/inner nodes in reverse order.
-                while(curr_addr != EMPTY_ADDR) {
-                    aku_Status status;
-                    std::shared_ptr<Block> block;
-                    std::tie(status, block) = read_and_check(bstore_, curr_addr);
-                    if (status != AKU_SUCCESS) {
-                        // The node was deleted because of retention process,
-                        // we should stop recovery process.
-                        break;
+        int num_empty = 0;
+        while (true) {
+            while (i --> 0) {
+                std::vector<SubtreeRef> refs;
+                if (rescue_points.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
+                    continue;
+                } else {
+                    num_empty++;
+                    // Resestore this level from last saved leaf node.
+                    auto curr_addr = rescue_points.at(static_cast<size_t>(i - 1));
+                    // Recover all leaf/inner nodes in reverse order.
+                    while(curr_addr != EMPTY_ADDR) {
+                        aku_Status status;
+                        std::shared_ptr<Block> block;
+                        std::tie(status, block) = read_and_check(bstore_, curr_addr);
+                        if (status != AKU_SUCCESS) {
+                            // The node was deleted because of retention process,
+                            // we should stop recovery process.
+                            break;
+                        }
+                        const SubtreeRef* curr_pref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
+                        if (curr_pref->type == NBTreeBlockType::LEAF) {
+                            NBTreeLeaf leaf(block);
+                            SubtreeRef ref = INIT_SUBTREE_REF;
+                            status = init_subtree_from_leaf(leaf, ref);
+                            if (status != AKU_SUCCESS) {
+                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
+                                                           std::to_string(curr_addr) + " error: " +
+                                                           StatusUtil::str(status));
+                            }
+                            ref.addr = curr_addr;
+                            curr_addr = leaf.get_prev_addr();
+                            refs.push_back(ref);
+                        } else {
+                            NBTreeSuperblock sblock(block);
+                            SubtreeRef ref = INIT_SUBTREE_REF;
+                            status = init_subtree_from_subtree(sblock, ref);
+                            if (status != AKU_SUCCESS) {
+                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +
+                                                           std::to_string(curr_addr) + " error: " +
+                                                           StatusUtil::str(status));
+                            }
+                            ref.addr = curr_addr;
+                            curr_addr = sblock.get_prev_addr();
+                            refs.push_back(ref);
+                        }
                     }
-                    const SubtreeRef* curr_pref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
-                    if (curr_pref->type == NBTreeBlockType::LEAF) {
-                        NBTreeLeaf leaf(block);
-                        SubtreeRef ref = INIT_SUBTREE_REF;
-                        status = init_subtree_from_leaf(leaf, ref);
-                        if (status != AKU_SUCCESS) {
-                            Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
-                                                       std::to_string(curr_addr) + " error: " +
-                                                       StatusUtil::str(status));
-                        }
-                        ref.addr = curr_addr;
-                        curr_addr = leaf.get_prev_addr();
-                        refs.push_back(ref);
-                    } else {
-                        NBTreeSuperblock sblock(block);
-                        SubtreeRef ref = INIT_SUBTREE_REF;
-                        status = init_subtree_from_subtree(sblock, ref);
-                        if (status != AKU_SUCCESS) {
-                            Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +
-                                                       std::to_string(curr_addr) + " error: " +
-                                                       StatusUtil::str(status));
-                        }
-                        ref.addr = curr_addr;
-                        curr_addr = sblock.get_prev_addr();
-                        refs.push_back(ref);
+                    if (i > 1) {
+                        rescue_points.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
                     }
                 }
-                if (i > 1) {
-                    rescue_points.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
+                // Insert all nodes in direct order
+                for(auto it = refs.rbegin(); it < refs.rend(); it++) {
+                    append(*it);  // There is no need to check return value.
                 }
             }
-            // Insert all nodes in direct order
-            for(auto it = refs.rbegin(); it < refs.rend(); it++) {
-                append(*it);  // There is no need to check return value.
+            if (num_empty == 0) {
+                rescue_points.push_back(EMPTY_ADDR);
+            } else {
+                break;
             }
         }
     }
