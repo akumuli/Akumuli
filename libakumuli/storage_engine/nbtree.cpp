@@ -3349,7 +3349,7 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     if (addr != EMPTY_ADDR) {
         // We need to clear the rescue point since the address is already
         // persisted.
-        addr = parent_saved ? EMPTY_ADDR : addr;
+        //addr = parent_saved ? EMPTY_ADDR : addr;
         if (rescue_points_.size() > 0) {
             rescue_points_.at(0) = addr;
         } else {
@@ -3385,7 +3385,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     std::tie(parent_saved, addr) = root->append(pl);
     if (addr != EMPTY_ADDR) {
         // NOTE: `addr != EMPTY_ADDR` means that something was saved to disk (current node or parent node).
-        addr = parent_saved ? EMPTY_ADDR : addr;
+        //addr = parent_saved ? EMPTY_ADDR : addr;
         if (rescue_points_.size() > lvl) {
             rescue_points_.at(lvl) = addr;
         } else if (rescue_points_.size() == lvl) {
@@ -3548,10 +3548,10 @@ void NBTreeExtentsList::repair() {
         // With these configuration the recovery is possible but not attempted.
         // The code expects it to have EMPTY_ADDR at addr2.
 
-        int i = static_cast<int>(rescue_points.size());
         int num_empty = 0;
         while (true) {
-            while (i --> 0) {
+            int i = static_cast<int>(rescue_points.size());
+            while (i --> 1) {
                 std::vector<SubtreeRef> refs;
                 if (rescue_points.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
                     continue;
@@ -3606,6 +3606,19 @@ void NBTreeExtentsList::repair() {
                 }
             }
             if (num_empty == 0) {
+                std::stringstream fmt;
+                fmt << "Restarting recovery! The rescure points are: ";
+                bool first = true;
+                for (auto p: rescue_points_) {
+                    if (first) {
+                        fmt << p;
+                        first = false;
+                    } else {
+                        fmt << ", " << p;
+                    }
+                }
+                Logger::msg(AKU_LOG_ERROR, fmt.str());
+                rescue_points = rescue_points_;
                 rescue_points.push_back(EMPTY_ADDR);
             } else {
                 break;
