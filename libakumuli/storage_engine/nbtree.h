@@ -479,6 +479,7 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
 
     void open();
     void repair();
+    void repairV2();
     void init();
     mutable RWLock lock_;
 

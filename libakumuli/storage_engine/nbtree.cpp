@@ -3526,6 +3526,35 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
     }
 }
 
+void NBTreeExtentsList::repairV2() {
+    // NOTE: lock doesn't needed for the same reason as in `open` method.
+    Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
+                              std::to_string(rescue_points_.back()));
+    create_empty_extents(shared_from_this(), bstore_, id_, rescue_points_.size(), &extents_);
+    std::stack<LogicAddr> stack;
+    // Follow rescue points in backward direction
+    for (auto addr: rescue_points_) {
+        stack.push(addr);
+    }
+    while (!stack.empty()) {
+        LogicAddr curr = stack.top();
+        stack.pop();
+        if (curr == EMPTY_ADDR) {
+            // TODO: Update the extent at corresponding level
+            continue;
+        }
+        aku_Status status;
+        std::shared_ptr<Block> block;
+        std::tie(status, block) = read_and_check(bstore_, curr);
+        if (status != AKU_SUCCESS) {
+            // The node was deleted because of retention process,
+            // we should stop recovery process
+            continue;  // with the next rescue point which may be newer
+        }
+        throw "not implemented";
+    }
+}
+
 void NBTreeExtentsList::repair() {
     // NOTE: lock doesn't needed for the same reason as in `open` method.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
