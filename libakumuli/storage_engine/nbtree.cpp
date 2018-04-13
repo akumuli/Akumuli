@@ -3526,7 +3526,7 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
     }
 }
 
-void NBTreeExtentsList::repairV2() {
+void NBTreeExtentsList::repair() {
     // NOTE: lock doesn't needed for the same reason as in `open` method.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
@@ -3540,6 +3540,9 @@ void NBTreeExtentsList::repairV2() {
             stack.pop();
         }
         stack.push(addr);
+        if (addr != EMPTY_ADDR) {  // EMPTY_ADDR is a largest address possible
+            prev_addr = addr;
+        }
     }
     std::vector<SubtreeRef> refs;
     refs.reserve(32);
@@ -3561,9 +3564,10 @@ void NBTreeExtentsList::repairV2() {
         std::shared_ptr<Block> block;
         std::tie(status, block) = read_and_check(bstore_, curr);
         if (status != AKU_SUCCESS) {
-            // The node was deleted because of retention process,
-            // we should stop recovery process
-            continue;  // with the next rescue point which may be newer
+            // Stop collecting data and force building of the current extent.
+            stack.push(EMPTY_ADDR);
+            // The node was deleted because of retention process we should
+            continue;  // with the next rescue point which may be newer.
         }
         const SubtreeRef* curr_pref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
         if (curr_pref->type == NBTreeBlockType::LEAF) {
@@ -3590,108 +3594,6 @@ void NBTreeExtentsList::repairV2() {
             ref.addr = curr;
             refs.push_back(ref);
             stack.push(sblock.get_prev_addr());  // get_prev_addr() can return EMPTY_ADDR
-        }
-    }
-}
-
-void NBTreeExtentsList::repair() {
-    repairV2(); return;
-    // NOTE: lock doesn't needed for the same reason as in `open` method.
-    Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
-                              std::to_string(rescue_points_.back()));
-    std::vector<LogicAddr> rescue_points(rescue_points_.begin(), rescue_points_.end());
-
-    // Construct roots using CoW
-    if (rescue_points.size() < 2) {
-        // All data was lost.
-        create_empty_extents(shared_from_this(), bstore_, id_, 1, &extents_);
-    } else {
-        // Init `extents_` to make `append` functions work.
-        create_empty_extents(shared_from_this(), bstore_, id_, rescue_points.size(), &extents_);
-
-        // BUG: found rescue point record that looks like this:
-        // storage_id  addr0       addr1       addr2       addr3       addr4       addr5       addr6       addr7
-        // ----------  ----------  ----------  ----------  ----------  ----------  ----------  ----------  ----------
-        // 12307       399363      363109
-        //
-        // With these configuration the recovery is possible but not attempted.
-        // The code expects it to have EMPTY_ADDR at addr2.
-
-        int num_empty = 0;
-        while (true) {
-            int i = static_cast<int>(rescue_points.size());
-            while (i --> 1) {
-                std::vector<SubtreeRef> refs;
-                if (rescue_points.at(static_cast<size_t>(i)) != EMPTY_ADDR) {
-                    continue;
-                } else {
-                    num_empty++;
-                    // Resestore this level from last saved leaf node.
-                    auto curr_addr = rescue_points.at(static_cast<size_t>(i - 1));
-                    // Recover all leaf/inner nodes in reverse order.
-                    while(curr_addr != EMPTY_ADDR) {
-                        aku_Status status;
-                        std::shared_ptr<Block> block;
-                        std::tie(status, block) = read_and_check(bstore_, curr_addr);
-                        if (status != AKU_SUCCESS) {
-                            // The node was deleted because of retention process,
-                            // we should stop recovery process.
-                            break;
-                        }
-                        const SubtreeRef* curr_pref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
-                        if (curr_pref->type == NBTreeBlockType::LEAF) {
-                            NBTreeLeaf leaf(block);
-                            SubtreeRef ref = INIT_SUBTREE_REF;
-                            status = init_subtree_from_leaf(leaf, ref);
-                            if (status != AKU_SUCCESS) {
-                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
-                                                           std::to_string(curr_addr) + " error: " +
-                                                           StatusUtil::str(status));
-                            }
-                            ref.addr = curr_addr;
-                            curr_addr = leaf.get_prev_addr();
-                            refs.push_back(ref);
-                        } else {
-                            NBTreeSuperblock sblock(block);
-                            SubtreeRef ref = INIT_SUBTREE_REF;
-                            status = init_subtree_from_subtree(sblock, ref);
-                            if (status != AKU_SUCCESS) {
-                                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +
-                                                           std::to_string(curr_addr) + " error: " +
-                                                           StatusUtil::str(status));
-                            }
-                            ref.addr = curr_addr;
-                            curr_addr = sblock.get_prev_addr();
-                            refs.push_back(ref);
-                        }
-                    }
-                    if (i > 1) {
-                        rescue_points.at(static_cast<size_t>(i - 1)) = EMPTY_ADDR;
-                    }
-                }
-                // Insert all nodes in direct order
-                for(auto it = refs.rbegin(); it < refs.rend(); it++) {
-                    append(*it);  // There is no need to check return value.
-                }
-            }
-            if (num_empty == 0) {
-                std::stringstream fmt;
-                fmt << "Restarting recovery! The rescure points are: ";
-                bool first = true;
-                for (auto p: rescue_points_) {
-                    if (first) {
-                        fmt << p;
-                        first = false;
-                    } else {
-                        fmt << ", " << p;
-                    }
-                }
-                Logger::msg(AKU_LOG_ERROR, fmt.str());
-                rescue_points = rescue_points_;
-                rescue_points.push_back(EMPTY_ADDR);
-            } else {
-                break;
-            }
         }
     }
 }
