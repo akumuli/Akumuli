@@ -3533,14 +3533,28 @@ void NBTreeExtentsList::repairV2() {
     create_empty_extents(shared_from_this(), bstore_, id_, rescue_points_.size(), &extents_);
     std::stack<LogicAddr> stack;
     // Follow rescue points in backward direction
+    LogicAddr prev_addr = 0;
     for (auto addr: rescue_points_) {
+        if (addr < prev_addr && !stack.empty()) {
+            // The previous node is included into the new one.
+            stack.pop();
+        }
         stack.push(addr);
     }
+    std::vector<SubtreeRef> refs;
+    refs.reserve(32);
     while (!stack.empty()) {
         LogicAddr curr = stack.top();
         stack.pop();
         if (curr == EMPTY_ADDR) {
-            // TODO: Update the extent at corresponding level
+            // Insert all nodes in direct order
+            for(auto it = refs.rbegin(); it < refs.rend(); it++) {
+                append(*it);  // There is no need to check return value.
+            }
+            refs.clear();
+            // Invariant: this part is guaranteed to be called for every level that have
+            // the data to recover. First child node of every extent will have `get_prev_addr()`
+            // return EMPTY_ADDR. This value will trigger this code.
             continue;
         }
         aku_Status status;
@@ -3551,11 +3565,37 @@ void NBTreeExtentsList::repairV2() {
             // we should stop recovery process
             continue;  // with the next rescue point which may be newer
         }
-        throw "not implemented";
+        const SubtreeRef* curr_pref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
+        if (curr_pref->type == NBTreeBlockType::LEAF) {
+            NBTreeLeaf leaf(block);
+            SubtreeRef ref = INIT_SUBTREE_REF;
+            status = init_subtree_from_leaf(leaf, ref);
+            if (status != AKU_SUCCESS) {
+                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize leaf node at " +
+                                           std::to_string(curr) + " error: " +
+                                           StatusUtil::str(status));
+            }
+            ref.addr = curr;
+            refs.push_back(ref);
+            stack.push(leaf.get_prev_addr());  // get_prev_addr() can return EMPTY_ADDR
+        } else {
+            NBTreeSuperblock sblock(block);
+            SubtreeRef ref = INIT_SUBTREE_REF;
+            status = init_subtree_from_subtree(sblock, ref);
+            if (status != AKU_SUCCESS) {
+                Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Can't summarize inner node at " +
+                                           std::to_string(curr) + " error: " +
+                                           StatusUtil::str(status));
+            }
+            ref.addr = curr;
+            refs.push_back(ref);
+            stack.push(sblock.get_prev_addr());  // get_prev_addr() can return EMPTY_ADDR
+        }
     }
 }
 
 void NBTreeExtentsList::repair() {
+    repairV2(); return;
     // NOTE: lock doesn't needed for the same reason as in `open` method.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
