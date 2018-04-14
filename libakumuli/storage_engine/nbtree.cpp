@@ -3533,16 +3533,8 @@ void NBTreeExtentsList::repair() {
     create_empty_extents(shared_from_this(), bstore_, id_, rescue_points_.size(), &extents_);
     std::stack<LogicAddr> stack;
     // Follow rescue points in backward direction
-    LogicAddr prev_addr = 0;
     for (auto addr: rescue_points_) {
-        if (addr < prev_addr && !stack.empty()) {
-            // The previous node is included into the new one.
-            stack.pop();
-        }
         stack.push(addr);
-        if (addr != EMPTY_ADDR) {  // EMPTY_ADDR is a largest address possible
-            prev_addr = addr;
-        }
     }
     std::vector<SubtreeRef> refs;
     refs.reserve(32);
