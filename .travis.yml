@@ -97,9 +97,9 @@ script:
 - if [[ $FUNC_TEST_BASE == true ]]; then functests/storage_test /tmp; fi
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/ 10000 10000; fi
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/ 10000 100000; fi
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/ 10000 1000000; fi
+- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/ 10000 1000; fi
+- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/  1000 10000; fi
+- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/  1000 100000; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi

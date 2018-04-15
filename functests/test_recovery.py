@@ -114,7 +114,9 @@ def run(numtags, nmsgs, path):
         dt = datetime.datetime.utcnow()
 
         print("Sending {0} messages through TCP...".format(nmsgs))
-        for it in att.generate_messages3(dt, delta, nmsgs, 'test', tags):
+        for ix, it in enumerate(att.generate_messages3(dt, delta, nmsgs, 'test', tags)):
+            if ix % 100000 == 0:
+                print(ix)
             chan.send(it)
 
         time.sleep(5)  # wait untill all messagess will be processed
