@@ -20,6 +20,7 @@ file(COPY
     test_database_overflow.py
     test_restart.py
     test_kill.py
+    test_retention.py
     test_concurrency.py
     test_ingestion_errors.py
     test_join_query.py
