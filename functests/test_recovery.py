@@ -127,21 +127,14 @@ def run(numtags, nmsgs, path):
         akumulid.stop()
         time.sleep(5)
 
-def main(path):
-    numtags = 10000
-    test_run_lengths = [
-        500000,
-        1000000,
-        10000000,
-    ]
-    for nmsg in test_run_lengths:
-        run(numtags, nmsg, path)
+def main(path, numtags, nmsg):
+    run(numtags, nmsg, path)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 4:
         print("Not enough arguments")
         sys.exit(1)
 
-    main(sys.argv[1])
+    main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))
 else:
     raise ImportError("This module shouldn't be imported")
