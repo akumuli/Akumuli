@@ -21,19 +21,6 @@ matrix:
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=true
       - FUNC_TEST_RECOVERY=false
-    # 64-bit skylake test build (GCC)
-    - os: linux
-      dist: trusty
-      sudo: required
-      compiler: gcc
-      env:
-      - DEPLOY_PACKAGE=false
-      - DEPLOY_IMAGE=false
-      - GENERIC_BUILD=false
-      - UNIT_TEST=false
-      - FUNC_TEST_BASE=false
-      - FUNC_TEST_ADVANCED=false
-      - FUNC_TEST_RECOVERY=true
     # 64-bit generic build (GCC)
     - os: linux
       dist: trusty
@@ -97,9 +84,6 @@ script:
 - if [[ $FUNC_TEST_BASE == true ]]; then functests/storage_test /tmp; fi
 - akumulid/akumulid --init
 - python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/ 10000 1000; fi
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/  1000 10000; fi
-- if [[ $FUNC_TEST_RECOVERY == true ]]; then python functests/test_recovery.py akumulid/  1000 100000; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
 - if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
