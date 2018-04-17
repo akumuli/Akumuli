@@ -388,12 +388,17 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         }
     }
 
+//    std::cout << "last_block: " << last_block << std::endl;
+//    std::cout << "nleafs: " << nleafs << std::endl;
+//    std::cout << "N_blocks: " << N_blocks << std::endl;
+//    std::cout << "Nitems (last timestamp): " << nitems << std::endl;
+
     addrlist = collection->get_roots();
 
-    //for (auto addr: addrlist) {
-    //    std::cout << "\n\nDbg print for " << addr << std::endl;
-    //    NBTreeExtentsList::debug_print(addr, bstore);
-    //}
+//    for (auto addr: addrlist) {
+//        std::cout << "\n\nDbg print for " << addr << std::endl;
+//        NBTreeExtentsList::debug_print(addr, bstore);
+//    }
 
     // delete roots collection
     collection.reset();

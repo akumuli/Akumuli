@@ -20,6 +20,7 @@ matrix:
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=true
+      - FUNC_TEST_RECOVERY=false
     # 64-bit generic build (GCC)
     - os: linux
       dist: trusty
@@ -32,6 +33,7 @@ matrix:
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=true
+      - FUNC_TEST_RECOVERY=false
     # 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
@@ -43,6 +45,7 @@ matrix:
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
       - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
+      - FUNC_TEST_RECOVERY=false
 
 env:
   global:

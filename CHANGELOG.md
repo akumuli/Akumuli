@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.48
+--------------
+
+BUG FIX
+
+* Fix recovery error
+* Use robust recovery algorithm implementation
+
 Version 0.7.47
 --------------
 

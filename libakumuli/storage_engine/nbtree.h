@@ -478,8 +478,11 @@ class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList>
     u64 write_count_;
 
     void open();
+
     void repair();
+
     void init();
+
     mutable RWLock lock_;
 
     // Testing
