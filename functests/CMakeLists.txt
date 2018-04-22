@@ -10,6 +10,10 @@ target_link_libraries(storage_test
     ${Boost_LIBRARIES}
     )
 
+add_executable(loadgen loadgen.cpp)
+
+target_link_libraries(loadgen ${Boost_LIBRARIES})
+
 file(COPY
     akumulid_test_tools.py
     test_data_ingestion.py
