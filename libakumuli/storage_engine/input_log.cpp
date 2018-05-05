@@ -516,6 +516,7 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     : concurrency_(concurrency)
     , read_only_(false)
     , read_started_(false)
+    , rootdir_(rootdir)
 {
     for (int i = 0; i < concurrency_; i++) {
         std::unique_ptr<InputLog> log;
@@ -552,6 +553,7 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     : concurrency_(concurrency)
     , read_only_(true)
     , read_started_(false)
+    , rootdir_(rootdir)
 {
     if (concurrency_ == 0) {
         aku_Status status;
@@ -676,6 +678,24 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
         }
     }
     return std::make_tuple(outstatus, outsize);
+}
+
+void ShardedInputLog::reopen() {
+    if (!read_only_) {
+        AKU_PANIC("Can't reopen write-only input log");
+    }
+    streams_.clear();
+    for (int i = 0; i < concurrency_; i++) {
+        std::unique_ptr<InputLog> log;
+        log.reset(new InputLog(rootdir_.c_str(), i));
+        streams_.push_back(std::move(log));
+    }
+}
+
+void ShardedInputLog::delete_files() {
+    for (auto& it: streams_) {
+        it->delete_files();
+    }
 }
 
 }  // namespace

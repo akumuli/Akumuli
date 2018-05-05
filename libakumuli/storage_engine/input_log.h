@@ -242,10 +242,10 @@ class ShardedInputLog {
         const Frame* frame;
     };
     std::vector<Buffer> read_queue_;
-    bool read_only_;
-    bool read_started_;
-    // Read position
-    int buffer_ix_;
+    bool read_only_;       //! Will be set to true if the log was opened in read-only mode
+    bool read_started_;    //! Will be set to true if the read operation is in progress
+    int buffer_ix_;        //! Read position
+    std::string rootdir_;  //! Root-dir for reopen method
 
     void init_read_buffers();
 public:
@@ -276,6 +276,18 @@ public:
      * @return number of elements being read or 0 if EOF reached
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
+
+    /**
+     * Reopen log if it was opened in read-only mode. This allows to read content once
+     * again or delete files.
+     */
+    void reopen();
+
+    /**
+     * Delete all log files.
+     * If the data was retreived no files will be deleted.
+     */
+    void delete_files();
 };
 
 }  // namespace

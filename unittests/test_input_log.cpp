@@ -244,6 +244,8 @@ void test_input_roundtrip_no_conflicts(int ccr) {
                 BOOST_ERROR("Read failed " + StatusUtil::str(status));
             }
         }
+        slog.reopen();
+        slog.delete_files();
     }
     BOOST_REQUIRE_EQUAL(exp.size(), act.size());
     for (u32 i = 0; i < exp.size(); i++) {
