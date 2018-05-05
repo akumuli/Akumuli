@@ -205,11 +205,11 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
+void test_input_roundtrip_no_conflicts(int ccr) {
     std::vector<std::tuple<u64, u64, double>> exp, act;
     std::vector<u64> stale_ids;
     {
-        ShardedInputLog slog(3, "./", 100, 4096);
+        ShardedInputLog slog(ccr, "./", 100, 4096);
         auto fill_data_in = [&](InputLog& ilog, aku_ParamId series) {
             for (int i = 0; i < 10000; i++) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
@@ -220,9 +220,9 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
                 }
             }
         };
-        fill_data_in(slog.get_shard(0), 111);
-        fill_data_in(slog.get_shard(1), 222);
-        fill_data_in(slog.get_shard(2), 333);
+        for (int i = 0; i < ccr; i++) {
+            fill_data_in(slog.get_shard(i), i*111);
+        }
     }
     {
         ShardedInputLog slog(0, "./");
@@ -257,4 +257,20 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
             BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
         }
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_1) {
+    test_input_roundtrip_no_conflicts(1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_2) {
+    test_input_roundtrip_no_conflicts(2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_3) {
+    test_input_roundtrip_no_conflicts(4);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_4) {
+    test_input_roundtrip_no_conflicts(8);
 }
