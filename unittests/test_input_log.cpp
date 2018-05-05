@@ -39,12 +39,13 @@ struct AprInitializer {
 };
 
 static AprInitializer initializer;
+static LogSequencer sequencer;
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip) {
     std::vector<std::tuple<u64, u64, double>> exp, act;
     std::vector<u64> stale_ids;
     {
-        InputLog ilog("./", 100, 4096, 0);
+        InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < 10000; i++) {
             double val = static_cast<double>(rand()) / RAND_MAX;
             aku_Status status = ilog.append(42, i, val, &stale_ids);
@@ -85,7 +86,7 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip) {
 
 BOOST_AUTO_TEST_CASE(Test_input_rotation) {
     u32 N = 10;
-    InputLog ilog("./", N, 4096, 0);
+    InputLog ilog(&sequencer, "./", N, 4096, 0);
 
     // This amount of data should saturate the log (random data is not
     // very compressable).
@@ -124,7 +125,7 @@ BOOST_AUTO_TEST_CASE(Test_input_volume_read_next_frame) {
     std::vector<std::tuple<u64, u64, double>> exp, act;
     const char* filename = "./tmp_test_vol.ilog";
     {
-        LZ4Volume volume(filename, 0x10000);
+        LZ4Volume volume(&sequencer, filename, 0x10000);
         for (int i = 0; i < 10000; i++) {
             double val = static_cast<double>(rand()) / RAND_MAX;
             aku_Status status = volume.append(42, i, val);
@@ -165,7 +166,7 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
     std::vector<std::tuple<u64, u64, double>> exp, act;
     std::vector<u64> stale_ids;
     {
-        InputLog ilog("./", 100, 4096, 0);
+        InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < 10000; i++) {
             double val = static_cast<double>(rand()) / RAND_MAX;
             aku_Status status = ilog.append(42, i, val, &stale_ids);

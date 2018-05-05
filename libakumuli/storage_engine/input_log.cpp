@@ -7,6 +7,17 @@
 
 namespace Akumuli {
 
+const static u16 V1_MAGIC = 0x1;
+
+LogSequencer::LogSequencer()
+    : counter_{0}
+{
+}
+
+u64 LogSequencer::next() {
+    return counter_++;
+}
+
 static void panic_on_error(apr_status_t status, const char* msg) {
     if (status != APR_SUCCESS) {
         char error_message[0x100];
@@ -93,12 +104,6 @@ static std::tuple<aku_Status, size_t> _read_frame(AprFilePtr& file, u32 array_si
 // LZ4Volume //
 //           //
 
-static u32 now() {
-    auto now = std::chrono::steady_clock::now();
-    auto now_sec = std::chrono::time_point_cast<std::chrono::seconds>(now);
-    return now_sec.time_since_epoch().count();
-}
-
 void LZ4Volume::clear(int i) {
     memset(&frames_[i], 0, BLOCK_SIZE);
 }
@@ -106,7 +111,8 @@ void LZ4Volume::clear(int i) {
 aku_Status LZ4Volume::write(int i) {
     assert(!is_read_only_);
     Frame& frame = frames_[i];
-    frame.part.end_timestamp = now();
+    frame.part.magic = V1_MAGIC;
+    frame.part.sequence_number = sequencer_->next();
     // Do write
     int out_bytes = LZ4_compress_fast_continue(&stream_,
                                                frame.block,
@@ -150,7 +156,7 @@ std::tuple<aku_Status, size_t> LZ4Volume::read(int i) {
     return std::make_tuple(AKU_SUCCESS, frame_size + sizeof(u32));
 }
 
-LZ4Volume::LZ4Volume(const char* file_name, size_t volume_size)
+LZ4Volume::LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volume_size)
     : path_(file_name)
     , pos_(0)
     , pool_(_make_apr_pool())
@@ -160,6 +166,7 @@ LZ4Volume::LZ4Volume(const char* file_name, size_t volume_size)
     , is_read_only_(false)
     , bytes_to_read_(0)
     , elements_to_read_(0)
+    , sequencer_(sequencer)
 {
     clear(0);
     clear(1);
@@ -205,9 +212,6 @@ void LZ4Volume::close() {
 aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     bitmap_.add(id);
     Frame& frame = frames_[pos_];
-    if (frame.part.size == 0) {
-        frame.part.begin_timestamp = now();
-    }
     frame.part.ids[frame.part.size] = id;
     frame.part.tss[frame.part.size] = timestamp;
     frame.part.xss[frame.part.size] = value;
@@ -353,7 +357,7 @@ void InputLog::add_volume(std::string path) {
     if (boost::filesystem::exists(path)) {
         Logger::msg(AKU_LOG_INFO, std::string("Path ") + path + " already exists");
     }
-    std::unique_ptr<LZ4Volume> volume(new LZ4Volume(path.c_str(), volume_size_));
+    std::unique_ptr<LZ4Volume> volume(new LZ4Volume(sequencer_, path.c_str(), volume_size_));
     volumes_.push_front(std::move(volume));
     volume_counter_++;
 }
@@ -365,12 +369,13 @@ void InputLog::remove_last_volume() {
     Logger::msg(AKU_LOG_INFO, std::string("Remove volume ") + volume->get_path());
 }
 
-InputLog::InputLog(const char* rootdir, size_t nvol, size_t svol, u32 stream_id)
+InputLog::InputLog(LogSequencer* sequencer, const char* rootdir, size_t nvol, size_t svol, u32 stream_id)
     : root_dir_(rootdir)
     , volume_counter_(0)
     , max_volumes_(nvol)
     , volume_size_(svol)
     , stream_id_(stream_id)
+    , sequencer_(sequencer)
 {
     std::string path = get_volume_name();
     add_volume(path);
@@ -382,6 +387,7 @@ InputLog::InputLog(const char* rootdir, u32 stream_id)
     , max_volumes_(0)
     , volume_size_(0)
     , stream_id_(stream_id)
+    , sequencer_(nullptr)
 {
     find_volumes();
     open_volumes();
@@ -475,7 +481,7 @@ ShardedInputLog::ShardedInputLog(int concurrency,
 {
     for (int i = 0; i < concurrency_; i++) {
         std::unique_ptr<InputLog> log;
-        log.reset(new InputLog(rootdir, nvol, svol, i));
+        log.reset(new InputLog(&sequencer_, rootdir, nvol, svol, i));
         streams_.push_back(std::move(log));
     }
 }
