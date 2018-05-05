@@ -139,6 +139,9 @@ public:
     void delete_file();
 
     const Roaring64Map& get_index() const;
+
+    //! Flush current frame to disk.
+    aku_Status flush();
 };
 
 class InputLog {
@@ -208,6 +211,10 @@ public:
     std::tuple<aku_Status, const LZ4Volume::Frame*> read_next_frame();
 
     void rotate();
+
+    /** Write current frame to disk if it has any data.
+     */
+    aku_Status flush(std::vector<u64>* stale_ids);
 };
 
 /** Wrapper for input log that implements microsharding.
@@ -240,7 +247,21 @@ class ShardedInputLog {
 
     void init_read_buffers();
 public:
+    /**
+     * @brief Create ShardedInputLog that can be used to write data
+     * @param concurrency is a concurrency level of the logger
+     * @param rootdir is a root directory of the logger
+     * @param nvol is a limit on number of volumes (per thread)
+     * @param svol is a limit on a size of the individual volume
+     */
     ShardedInputLog(int concurrency, const char* rootdir, size_t nvol, size_t svol);
+
+    /**
+     * @brief Create SharedInputLog that can be used to recover the data
+     * @param concurrency is a concurrency level of the logger
+     * @param rootdir is a filesystem path that will be used to search for a data
+     */
+    ShardedInputLog(int concurrency, const char* rootdir);
 
     InputLog& get_shard(int i);
 

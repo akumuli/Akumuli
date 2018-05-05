@@ -203,3 +203,26 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
         BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
     }
 }
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
+    std::vector<std::tuple<u64, u64, double>> exp, act;
+    std::vector<u64> stale_ids;
+    {
+        ShardedInputLog slog(2, "./", 100, 4096);
+        auto fill_data_in = [&](InputLog& ilog) {
+            for (int i = 0; i < 10000; i++) {
+                double val = static_cast<double>(rand()) / RAND_MAX;
+                aku_Status status = ilog.append(42, i, val, &stale_ids);
+                exp.push_back(std::make_tuple(42, i, val));
+                if (status == AKU_EOVERFLOW) {
+                    ilog.rotate();
+                }
+            }
+        };
+        fill_data_in(slog.get_shard(0));
+        fill_data_in(slog.get_shard(1));
+    }
+    {
+        ShardedInputLog slog(2, "./", 100, 4096);
+    }
+}

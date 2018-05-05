@@ -1,5 +1,6 @@
 #include "input_log.h"
 #include "log_iface.h"
+#include "status_util.h"
 
 #include <regex>
 #include <boost/lexical_cast.hpp>
@@ -292,6 +293,22 @@ const Roaring64Map& LZ4Volume::get_index() const {
     return bitmap_;
 }
 
+aku_Status LZ4Volume::flush() {
+    Frame& frame = frames_[pos_];
+    if (frame.part.size != 0) {
+        auto status = write(pos_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        pos_ = (pos_ + 1) % 2;
+        clear(pos_);
+        if(file_size_ >= max_file_size_) {
+            return AKU_EOVERFLOW;
+        }
+    }
+    return AKU_SUCCESS;
+}
+
 
 //          //
 // InputLog //
@@ -468,6 +485,24 @@ void InputLog::rotate() {
     add_volume(path);
 }
 
+aku_Status InputLog::flush(std::vector<u64>* stale_ids) {
+    aku_Status result = volumes_.front()->flush();
+    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
+        // Extract stale ids
+        assert(volumes_.size() > 0);
+        std::vector<const Roaring64Map*> remaining;
+        for (size_t i = 0; i < volumes_.size() - 1; i++) {
+            // move from newer to older volumes
+            remaining.push_back(&volumes_.at(i)->get_index());
+        }
+        Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
+        auto stale = volumes_.back()->get_index() - sum;
+        for (auto it = stale.begin(); it != stale.end(); it++) {
+            stale_ids->push_back(*it);
+        }
+    }
+    return result;
+}
 
 //                 //
 // ShardedInputLog //
@@ -482,6 +517,54 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     for (int i = 0; i < concurrency_; i++) {
         std::unique_ptr<InputLog> log;
         log.reset(new InputLog(&sequencer_, rootdir, nvol, svol, i));
+        streams_.push_back(std::move(log));
+    }
+}
+
+std::tuple<aku_Status, int> get_concurrency_level(const char* root_dir) {
+    // file name example: inputlog28_0.ils
+    if (!boost::filesystem::exists(root_dir)) {
+        return std::make_tuple(AKU_ENOT_FOUND, 0);
+    }
+    if (!boost::filesystem::is_directory(root_dir)) {
+        return std::make_tuple(AKU_ENOT_FOUND, 0);
+    }
+    std::vector<std::tuple<u32, std::string>> volumes;
+    u32 max_stream_id = 0;
+    for (auto it = boost::filesystem::directory_iterator(root_dir);
+         it != boost::filesystem::directory_iterator(); it++) {
+        boost::filesystem::path path = *it;
+        bool is_volume;
+        u32 volume_id;
+        u32 stream_id;
+        auto fn = path.filename().string();
+        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
+        max_stream_id = std::max(stream_id, max_stream_id);
+    }
+    return std::make_tuple(AKU_SUCCESS, static_cast<int>(max_stream_id + 1));  // stream ids are 0 based indexes
+}
+
+ShardedInputLog::ShardedInputLog(int concurrency,
+                                 const char* rootdir)
+    : concurrency_(concurrency)
+{
+    if (concurrency_ == 0) {
+        aku_Status status;
+        Logger::msg(AKU_LOG_INFO, "Trying to retreive previous concurrency level");
+        int newlevel;
+        std::tie(status, newlevel) = get_concurrency_level(rootdir);
+        if (status != AKU_SUCCESS) {
+            Logger::msg(AKU_LOG_ERROR, std::string("Can't retreive concurrency level of the input log: ") +
+                                                   StatusUtil::str(status));
+        } else {
+            Logger::msg(AKU_LOG_ERROR, std::string("Concurrency level of the input log is ") +
+                                                   std::to_string(newlevel));
+            concurrency_ = newlevel;
+        }
+    }
+    for (int i = 0; i < concurrency_; i++) {
+        std::unique_ptr<InputLog> log;
+        log.reset(new InputLog(rootdir, i));
         streams_.push_back(std::move(log));
     }
 }
