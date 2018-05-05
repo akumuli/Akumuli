@@ -1,6 +1,7 @@
 #include "input_log.h"
 #include "log_iface.h"
 #include "status_util.h"
+#include "util.h"
 
 #include <regex>
 #include <boost/lexical_cast.hpp>
@@ -461,7 +462,7 @@ std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64
 std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
     while(true) {
         if (volumes_.empty()) {
-            return std::make_tuple(AKU_SUCCESS, nullptr);
+            return std::make_tuple(AKU_ENO_DATA, nullptr);
         }
         aku_Status status;
         const LZ4Volume::Frame* result;
@@ -513,6 +514,8 @@ ShardedInputLog::ShardedInputLog(int concurrency,
                                  size_t nvol,
                                  size_t svol)
     : concurrency_(concurrency)
+    , read_only_(false)
+    , read_started_(false)
 {
     for (int i = 0; i < concurrency_; i++) {
         std::unique_ptr<InputLog> log;
@@ -547,6 +550,8 @@ std::tuple<aku_Status, int> get_concurrency_level(const char* root_dir) {
 ShardedInputLog::ShardedInputLog(int concurrency,
                                  const char* rootdir)
     : concurrency_(concurrency)
+    , read_only_(true)
+    , read_started_(false)
 {
     if (concurrency_ == 0) {
         aku_Status status;
@@ -570,10 +575,16 @@ ShardedInputLog::ShardedInputLog(int concurrency,
 }
 
 InputLog& ShardedInputLog::get_shard(int i) {
+    if (read_only_) {
+        AKU_PANIC("Can't write read-only input log");
+    }
     return *streams_.at(i);
 }
 
 void ShardedInputLog::init_read_buffers() {
+    if (!read_only_) {
+        AKU_PANIC("Can't read write-only input log");
+    }
     assert(!read_started_);
     read_queue_.resize(concurrency_);
     for (size_t i = 0; i < read_queue_.size(); i++) {
@@ -583,17 +594,88 @@ void ShardedInputLog::init_read_buffers() {
         buf->pos = 0;
     }
     read_started_ = true;
+    buffer_ix_ = -1;
 }
 
 std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
-                                                       u64*    id,
-                                                       u64*    ts,
-                                                       double* xs)
+                                                       u64*    idout,
+                                                       u64*    tsout,
+                                                       double* xsout)
 {
+    buffer_size = std::min(static_cast<size_t>(std::numeric_limits<u32>::max()), buffer_size);
     if (!read_started_) {
         init_read_buffers();
     }
-    throw "not implemented";
+    // Select next buffer with smallest sequence number
+    auto choose_next = [this]() {
+        size_t ixstart = 0;
+        for (;ixstart < read_queue_.size(); ixstart++) {
+            if (read_queue_.at(ixstart).status == AKU_SUCCESS &&
+                read_queue_.at(ixstart).frame->part.size != 0) {
+                break;
+            }
+        }
+        if (ixstart == read_queue_.size()) {
+            // Indicate that all buffers are bad.
+            return -1;
+        }
+        int res = ixstart;
+        for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
+            if (read_queue_.at(ix).status != AKU_SUCCESS &&
+                read_queue_.at(ix).frame->part.size != 0) {
+                // Current input log is done or errored, just skipping it.
+                continue;
+            }
+            if (read_queue_.at(ix).frame->part.sequence_number <
+                read_queue_.at(res).frame->part.sequence_number) {
+                res = ix;
+            }
+        }
+        return res;
+    };
+    // Refill used buffer
+    auto refill_buffer = [this](int ix) {
+        auto& str = streams_.at(ix);
+        auto  buf = &read_queue_.at(ix);
+        std::tie(buf->status, buf->frame) = str->read_next_frame();
+        buf->pos = 0;
+    };
+    if (buffer_ix_ < 0) {
+        // Chose buffer with smallest id. The value is initialized with negative value
+        // at start.
+        buffer_ix_ = choose_next();
+    }
+    size_t outsize = 0;
+    aku_Status outstatus = AKU_SUCCESS;
+    while(buffer_ix_ >= 0 && buffer_size > 0) {
+        // return values from the current buffer
+        Buffer& buffer = read_queue_.at(buffer_ix_);
+        if (buffer.pos < buffer.frame->part.size) {
+            u32 toread = std::min(buffer.frame->part.size - buffer.pos,
+                                  static_cast<u32>(buffer_size));
+            const aku_ParamId*   ids = buffer.frame->part.ids + buffer.pos;
+            const aku_Timestamp* tss = buffer.frame->part.tss + buffer.pos;
+            const double*        xss = buffer.frame->part.xss + buffer.pos;
+            std::copy(ids, ids + toread, idout);
+            std::copy(tss, tss + toread, tsout);
+            std::copy(xss, xss + toread, xsout);
+            buffer_size -= toread;  // Invariant: buffer_size will never overflow, it's always less than 'toread'
+            idout       += toread;
+            tsout       += toread;
+            xsout       += toread;
+            outsize     += toread;
+            buffer.pos  += toread;
+        } else {
+            refill_buffer(buffer_ix_);
+            buffer_ix_ = choose_next();
+            if (buffer_ix_ < 0) {
+                // No more data
+                outstatus = AKU_ENO_DATA;
+                break;
+            }
+        }
+    }
+    return std::make_tuple(outstatus, outsize);
 }
 
 }  // namespace

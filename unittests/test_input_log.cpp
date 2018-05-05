@@ -183,10 +183,11 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
             aku_Status status;
             const LZ4Volume::Frame* frame;
             std::tie(status, frame) = ilog.read_next_frame();
-            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             if (frame == nullptr) {
+                BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
                 break;
             }
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             for(u32 i = 0; i < frame->part.size; i++) {
                 act.push_back(std::make_tuple(frame->part.ids[i],
                                               frame->part.tss[i],
@@ -208,7 +209,7 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
     std::vector<std::tuple<u64, u64, double>> exp, act;
     std::vector<u64> stale_ids;
     {
-        ShardedInputLog slog(2, "./", 100, 4096);
+        ShardedInputLog slog(3, "./", 100, 4096);
         auto fill_data_in = [&](InputLog& ilog) {
             for (int i = 0; i < 10000; i++) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
@@ -221,8 +222,24 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
         };
         fill_data_in(slog.get_shard(0));
         fill_data_in(slog.get_shard(1));
+        fill_data_in(slog.get_shard(2));
     }
     {
-        ShardedInputLog slog(2, "./", 100, 4096);
+        ShardedInputLog slog(0, "./");
+        // Read by one
+        while(true) {
+            aku_ParamId id;
+            aku_Timestamp ts;
+            double xs;
+            aku_Status status;
+            u32 outsize;
+            std::tie(status, outsize) = slog.read_next(1, &id, &ts, &xs);
+            if (status == AKU_ENO_DATA || outsize == 0) {
+                // EOF
+                break;
+            } else if (status != AKU_SUCCESS) {
+                BOOST_ERROR("Read failed " + StatusUtil::str(status));
+            }
+        }
     }
 }

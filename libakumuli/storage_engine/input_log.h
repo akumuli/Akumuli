@@ -237,13 +237,15 @@ class ShardedInputLog {
     typedef LZ4Volume::Frame Frame;
 
     struct Buffer {
-        u32          size;
         u32          pos;
         aku_Status   status;
         const Frame* frame;
     };
     std::vector<Buffer> read_queue_;
+    bool read_only_;
     bool read_started_;
+    // Read position
+    int buffer_ix_;
 
     void init_read_buffers();
 public:
@@ -271,7 +273,7 @@ public:
      * @param id is a pointer to buffer that should receive up to `buffer_size` ids
      * @param ts is a pointer to buffer that should receive `buffer_size` timestamps
      * @param xs is a pointer to buffer that should receive `buffer_size` values
-     * @return number of elements being read or 0 if EOF reached or negative value on error
+     * @return number of elements being read or 0 if EOF reached
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
 };
