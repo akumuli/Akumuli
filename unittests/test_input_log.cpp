@@ -210,19 +210,19 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
     std::vector<u64> stale_ids;
     {
         ShardedInputLog slog(3, "./", 100, 4096);
-        auto fill_data_in = [&](InputLog& ilog) {
+        auto fill_data_in = [&](InputLog& ilog, aku_ParamId series) {
             for (int i = 0; i < 10000; i++) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
-                aku_Status status = ilog.append(42, i, val, &stale_ids);
-                exp.push_back(std::make_tuple(42, i, val));
+                aku_Status status = ilog.append(series, i, val, &stale_ids);
+                exp.push_back(std::make_tuple(series, i, val));
                 if (status == AKU_EOVERFLOW) {
                     ilog.rotate();
                 }
             }
         };
-        fill_data_in(slog.get_shard(0));
-        fill_data_in(slog.get_shard(1));
-        fill_data_in(slog.get_shard(2));
+        fill_data_in(slog.get_shard(0), 111);
+        fill_data_in(slog.get_shard(1), 222);
+        fill_data_in(slog.get_shard(2), 333);
     }
     {
         ShardedInputLog slog(0, "./");
@@ -234,12 +234,27 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts) {
             aku_Status status;
             u32 outsize;
             std::tie(status, outsize) = slog.read_next(1, &id, &ts, &xs);
-            if (status == AKU_ENO_DATA || outsize == 0) {
+            if (outsize == 1) {
+                act.push_back(std::make_tuple(id, ts, xs));
+            }
+            if (status == AKU_ENO_DATA) {
                 // EOF
                 break;
             } else if (status != AKU_SUCCESS) {
                 BOOST_ERROR("Read failed " + StatusUtil::str(status));
             }
+        }
+    }
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    for (u32 i = 0; i < exp.size(); i++) {
+        if (std::get<0>(exp.at(i)) != std::get<0>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
+        }
+        if (std::get<1>(exp.at(i)) != std::get<1>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
+        }
+        if (std::get<2>(exp.at(i)) != std::get<2>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
         }
     }
 }

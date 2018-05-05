@@ -621,7 +621,7 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
         }
         int res = ixstart;
         for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
-            if (read_queue_.at(ix).status != AKU_SUCCESS &&
+            if (read_queue_.at(ix).status != AKU_SUCCESS ||
                 read_queue_.at(ix).frame->part.size != 0) {
                 // Current input log is done or errored, just skipping it.
                 continue;
