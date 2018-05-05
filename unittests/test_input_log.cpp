@@ -352,3 +352,15 @@ void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_1) {
     test_input_roundtrip_with_conflicts(2, 1000);
 }
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_2) {
+    test_input_roundtrip_with_conflicts(2, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_3) {
+    test_input_roundtrip_with_conflicts(4, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
+    test_input_roundtrip_with_conflicts(4, 100);
+}
