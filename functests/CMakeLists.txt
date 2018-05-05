@@ -24,6 +24,7 @@ file(COPY
     test_concurrency.py
     test_ingestion_errors.py
     test_join_query.py
+    test_filter_query.py
     test_search_api.py
     roundtrip.sh
     DESTINATION

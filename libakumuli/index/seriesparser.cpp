@@ -397,7 +397,7 @@ aku_Status SeriesParser::to_canonical_form(const char* begin, const char* end,
         return AKU_EBAD_DATA;
     }
 
-    auto sort_pred = [tags, end](const char* lhs, const char* rhs) {
+    auto sort_pred = [end](const char* lhs, const char* rhs) {
         // lhs should be always less thenn rhs
         auto lenl = 0u;
         auto lenr = 0u;

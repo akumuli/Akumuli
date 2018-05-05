@@ -28,6 +28,7 @@
 // Stdlib
 #include <unordered_map>
 #include <mutex>
+#include <tuple>
 
 // Boost libraries
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -40,6 +41,7 @@
 #include "index/seriesparser.h"
 #include "storage_engine/nbtree.h"
 #include "queryprocessor_framework.h"
+#include "log_iface.h"
 
 namespace Akumuli {
 namespace StorageEngine {
@@ -114,7 +116,12 @@ public:
                 if (!it->second->is_initialized()) {
                     it->second->force_init();
                 }
-                std::unique_ptr<IterType> iter = fn(*it->second);
+                aku_Status s;
+                std::unique_ptr<IterType> iter;
+                std::tie(s, iter) = std::move(fn(*it->second));
+                if (s != AKU_SUCCESS) {
+                    return s;
+                }
                 dest->push_back(std::move(iter));
             } else {
                 return AKU_ENOT_FOUND;
@@ -129,7 +136,27 @@ public:
                     std::vector<std::unique_ptr<RealValuedOperator>>* dest) const
     {
         return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
-            return elist.search(begin, end);
+            return std::make_tuple(AKU_SUCCESS, elist.search(begin, end));
+        });
+    }
+
+    aku_Status filter(std::vector<aku_ParamId> const& ids,
+                      aku_Timestamp begin,
+                      aku_Timestamp end,
+                      const std::map<aku_ParamId, ValueFilter>& filters,
+                      std::vector<std::unique_ptr<RealValuedOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, filters, ids](const NBTreeExtentsList& elist) {
+            auto flt = filters.find(elist.get_id());
+            if (flt != filters.end()) {
+                if (flt->second.mask != 0) {
+                    return std::make_tuple(AKU_SUCCESS, elist.filter(begin, end, flt->second));
+                } else {
+                    return std::make_tuple(AKU_SUCCESS, elist.search(begin, end));
+                }
+            }
+            Logger::msg(AKU_LOG_ERROR, std::string("Can't find filter for id ") + std::to_string(elist.get_id()));
+            return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<RealValuedOperator>());
         });
     }
 
@@ -139,7 +166,7 @@ public:
                          std::vector<std::unique_ptr<AggregateOperator>>* dest) const
     {
         return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
-            return elist.aggregate(begin, end);
+            return std::make_tuple(AKU_SUCCESS, elist.aggregate(begin, end));
         });
     }
 
@@ -150,7 +177,28 @@ public:
                                std::vector<std::unique_ptr<AggregateOperator>>* dest) const
     {
         return iterate(ids, dest, [begin, end, step](const NBTreeExtentsList& elist) {
-            return elist.group_aggregate(begin, end, step);
+            return std::make_tuple(AKU_SUCCESS, elist.group_aggregate(begin, end, step));
+        });
+    }
+
+    aku_Status group_aggfilter(std::vector<aku_ParamId> const& ids,
+                               aku_Timestamp begin,
+                               aku_Timestamp end,
+                               aku_Timestamp step,
+                               const std::map<aku_ParamId, AggregateFilter>& filters,
+                               std::vector<std::unique_ptr<AggregateOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end, step, filters, ids](const NBTreeExtentsList& elist) {
+            auto flt = filters.find(elist.get_id());
+            if (flt != filters.end()) {
+                if (flt->second.bitmap != 0) {
+                    return std::make_tuple(AKU_SUCCESS, elist.group_aggregate_filter(begin, end, step, flt->second));
+                } else {
+                    return std::make_tuple(AKU_SUCCESS, elist.group_aggregate(begin, end, step));
+                }
+            }
+            Logger::msg(AKU_LOG_ERROR, std::string("Can't find filter for id ") + std::to_string(elist.get_id()));
+            return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<AggregateOperator>());
         });
     }
 };

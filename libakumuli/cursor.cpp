@@ -15,13 +15,15 @@
  *
  */
 
+#include <functional>
+
 #include "cursor.h"
 #include "search.h"
 
 #include <iostream>
 #include <string.h>
 #include <algorithm>
-
+#include <functional>
 // TODO: remove
 #include "log_iface.h"
 #include "status_util.h"

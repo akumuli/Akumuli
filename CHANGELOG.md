@@ -1,6 +1,78 @@
 Release notes
 =============
 
+Version 0.7.48
+--------------
+
+BUG FIX
+
+* Fix recovery error
+* Use robust recovery algorithm implementation
+
+Version 0.7.47
+--------------
+
+BUG FIX
+
+* Fix packagecloud deployment
+
+Version 0.7.46
+--------------
+
+IMPROVEMENT
+
+* Introduce OSX support
+
+Version 0.7.45
+--------------
+
+IMPROVEMENT
+
+* Minimize stdout logging in docker container
+* Docker image versioning
+
+Version 0.7.44
+--------------
+
+IMPROVEMENT
+
+* Dictionary support in RESP protocol
+
+Version 0.7.43
+--------------
+
+IMPROVEMENT
+
+* Log to stdout/stderr from docker container
+
+Version 0.7.42
+--------------
+
+BUG FIX
+
+* Fix UDP-server error handling
+
+Version 0.7.41
+--------------
+
+BUG FIX
+
+* Fix crash on random-device initialization failure
+
+Version 0.7.40
+--------------
+
+IMPROVEMENT
+
+* Filter clause work with group-aggregate query
+
+Version 0.7.39
+--------------
+
+IMPROVEMENT
+
+* Add filter query
+
 Version 0.7.38
 --------------
 

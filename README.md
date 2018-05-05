@@ -56,9 +56,9 @@ Features
 |Join & merge                   |-              |+              |
 |Join & group-aggregate         |-              |+              |
 |Join & group-aggregate & merge |-              |+              |
-|Filter by value                |-              |+              |
-|Filter & merge                 |-              |+              |
-|Filter & join                  |-              |+              |
+|Filter by value                |+              |+              |
+|Filter & group-aggregate       |+              |+              |
+|Filter & join                  |+              |+              |
 
 Gettings started
 ----------------

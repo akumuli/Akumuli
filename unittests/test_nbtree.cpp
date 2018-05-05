@@ -388,12 +388,17 @@ void test_storage_recovery(u32 N_blocks, u32 N_values) {
         }
     }
 
+//    std::cout << "last_block: " << last_block << std::endl;
+//    std::cout << "nleafs: " << nleafs << std::endl;
+//    std::cout << "N_blocks: " << N_blocks << std::endl;
+//    std::cout << "Nitems (last timestamp): " << nitems << std::endl;
+
     addrlist = collection->get_roots();
 
-    //for (auto addr: addrlist) {
-    //    std::cout << "\n\nDbg print for " << addr << std::endl;
-    //    NBTreeExtentsList::debug_print(addr, bstore);
-    //}
+//    for (auto addr: addrlist) {
+//        std::cout << "\n\nDbg print for " << addr << std::endl;
+//        NBTreeExtentsList::debug_print(addr, bstore);
+//    }
 
     // delete roots collection
     collection.reset();
@@ -2064,4 +2069,337 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_22) {
         tss[i] = { static_cast<aku_Timestamp>(i*10 + 1) };
     }
     test_node_split_algorithm_lvl2_split_twice(15, 17, tss, 2, 34);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_1) {
+    ValueFilter filter;
+    filter.less_than(10)
+          .less_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate() == false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_2) {
+    ValueFilter filter;
+    filter.greater_than(10)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate() == false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_3) {
+    ValueFilter filter;
+    filter.less_than(100)
+          .greater_than(10);
+
+    BOOST_REQUIRE(filter.validate());
+    BOOST_REQUIRE(filter.match(50));
+    BOOST_REQUIRE(!filter.match(10));
+    BOOST_REQUIRE(!filter.match(100));
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_4) {
+    ValueFilter filter;
+    filter.less_or_equal(100)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate());
+    BOOST_REQUIRE(filter.match(50));
+    BOOST_REQUIRE(filter.match(10));
+    BOOST_REQUIRE(filter.match(100));
+    BOOST_REQUIRE(!filter.match(101));
+    BOOST_REQUIRE(!filter.match(9));
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_5) {
+    ValueFilter filter;
+    filter.less_than(100)
+          .greater_than(10);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 1;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 10;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 20;
+    ref.min = 10;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+
+    ref.max = 50;
+    ref.min = 20;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 100;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 110;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_6) {
+    ValueFilter filter;
+    filter.less_or_equal(100)
+          .greater_or_equal(10);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 1;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+
+    ref.max = 10;
+    ref.min = 0;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+
+    ref.max = 20;
+    ref.min = 10;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
+
+    ref.max = 50;
+    ref.min = 20;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::FULL_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 100;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+
+    ref.max = 120;
+    ref.min = 110;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::NO_OVERLAP);
+}
+
+BOOST_AUTO_TEST_CASE(Test_value_filter_7) {
+    ValueFilter filter;
+    filter.less_or_equal(20)
+          .greater_or_equal(-20);
+
+    BOOST_REQUIRE(filter.validate());
+
+    SubtreeRef ref{};
+    ref.max = 100;
+    ref.min = -100;
+
+    BOOST_REQUIRE(filter.get_overlap(ref) == RangeOverlap::PARTIAL_OVERLAP);
+}
+
+void test_nbtreeleaf_filter_operator(aku_Timestamp begin, aku_Timestamp end) {
+    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
+    aku_Timestamp first_timestamp = 100;
+    std::vector<double> xss;
+    std::vector<double> tss;
+    RandomWalk rwalk1(100000.0, 2.0, 2.0);
+    RandomWalk rwalk2(-100000.0, 2.0, 2.0);
+    for (size_t ix = first_timestamp; true; ix++) {
+        double val = ix % 2 == 0 ? rwalk1.next()
+                                 : rwalk2.next();
+        aku_Status status = leaf.append(ix, val);
+        if (status == AKU_EOVERFLOW) {
+            break;
+        }
+        if (status == AKU_SUCCESS) {
+            if (begin < end) {
+                if(val < 0 && ix >= begin && ix < end) {
+                    xss.push_back(val);
+                    tss.push_back(ix);
+                }
+            }
+            else {
+                if(val < 0 && ix <= begin && ix > end) {
+                    xss.push_back(val);
+                    tss.push_back(ix);
+                }
+            }
+            continue;
+        }
+        BOOST_FAIL(StatusUtil::c_str(status));
+    }
+    if (begin > end) {
+        std::reverse(xss.begin(), xss.end());
+        std::reverse(tss.begin(), tss.end());
+    }
+
+    ValueFilter filter;
+    filter.less_than(0.0);
+    auto op = leaf.filter(begin, end, filter);
+
+    size_t sz = xss.size();
+    std::vector<double> actxss;
+    actxss.resize(sz);
+    std::vector<aku_Timestamp> acttss;
+    acttss.resize(sz);
+    aku_Status status;
+    size_t outsz;
+    std::tie(status, outsz) = op->read(acttss.data(), actxss.data(), sz);
+    BOOST_REQUIRE(status == AKU_SUCCESS);
+
+    BOOST_REQUIRE(xss.size() != 0);
+    BOOST_REQUIRE(xss.size() == actxss.size());
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(tss.begin(),
+                                    tss.end(),
+                                    acttss.begin(),
+                                    acttss.end());
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(xss.begin(),
+                                    xss.end(),
+                                    actxss.begin(),
+                                    actxss.end());
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_0) {
+    test_nbtreeleaf_filter_operator(10, 150);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_1) {
+    test_nbtreeleaf_filter_operator(100, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_2) {
+    test_nbtreeleaf_filter_operator(200, 300);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_fwd_3) {
+    test_nbtreeleaf_filter_operator(300, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_0) {
+    test_nbtreeleaf_filter_operator(150, 10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_1) {
+    test_nbtreeleaf_filter_operator(200, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_2) {
+    test_nbtreeleaf_filter_operator(300, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtreeleaf_filter_operator_bwd_3) {
+    test_nbtreeleaf_filter_operator(1000, 300);
+}
+
+void test_nbtree_superblock_filter(size_t commit_limit, bool inv_direction) {
+    // Build this tree structure.
+    aku_Timestamp begin = 1000;
+    aku_Timestamp end = begin;
+    size_t ncommits = 0;
+    auto commit_counter = [&ncommits](LogicAddr) {
+        ncommits++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    std::vector<LogicAddr> empty;
+    std::shared_ptr<NBTreeExtentsList> extents(new NBTreeExtentsList(42, empty, bstore));
+    std::vector<double> xss;
+    std::vector<aku_Timestamp> tss;
+    extents->force_init();
+    RandomWalk rwalk1(+1E6, 0.1, 0.1);
+    RandomWalk rwalk2(-1E6, 0.1, 0.1);
+    while(ncommits < commit_limit) {
+        double value = end % 2 == 0
+                     ? rwalk1.next()
+                     : rwalk2.next();
+        aku_Timestamp ts = end++;
+        extents->append(ts, value);
+        if (value < 0) {
+            if (!inv_direction || end != begin) {
+                // Query in rev. direction won't return the
+                // first value since the end of the range is
+                // exclusive.
+                tss.push_back(ts);
+                xss.push_back(value);
+            }
+        }
+    }
+    if (inv_direction) {
+        std::reverse(tss.begin(), tss.end());
+        std::reverse(xss.begin(), xss.end());
+    }
+
+    // Check actual output
+    ValueFilter flt;
+    flt.less_than(0);
+    std::unique_ptr<RealValuedOperator> it;
+
+    if (inv_direction) {
+        it = extents->filter(end, begin, flt);
+    } else {
+        it = extents->filter(begin, end, flt);
+    }
+
+    std::vector<aku_Timestamp> actts;
+    std::vector<double> actxs;
+
+    while(true) {
+        aku_Status status;
+        size_t size = 1000;
+        std::vector<aku_Timestamp> destts(size, 0);
+        std::vector<double> destxs(size, 0);
+        std::tie(status, size) = it->read(destts.data(), destxs.data(), size);
+
+        if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        }
+
+        for(size_t i = 0; i < size; i++) {
+            actts.push_back(destts[i]);
+            actxs.push_back(destxs[i]);
+        }
+
+        if (status == AKU_ENO_DATA) {
+            break;
+        }
+    }
+
+    BOOST_REQUIRE_EQUAL(tss.size(), actts.size());
+    BOOST_REQUIRE_EQUAL(xss.size(), actxs.size());
+
+    for (size_t i = 0; i < tss.size(); i++) {
+        BOOST_REQUIRE_EQUAL(tss.at(i), actts.at(i));
+        BOOST_REQUIRE_EQUAL(xss.at(i), actxs.at(i));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_0) {
+    test_nbtree_superblock_filter(10, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_1) {
+    test_nbtree_superblock_filter(100, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_fwd_2) {
+    test_nbtree_superblock_filter(1000, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_0) {
+    test_nbtree_superblock_filter(10, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_1) {
+    test_nbtree_superblock_filter(100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_2) {
+    test_nbtree_superblock_filter(1000, true);
 }

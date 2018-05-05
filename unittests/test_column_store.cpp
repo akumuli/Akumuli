@@ -851,3 +851,356 @@ BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_2) {
 BOOST_AUTO_TEST_CASE(Test_column_store_aggregate_group_by_3) {
     test_aggregate_and_group_by(1000, 11000);
 }
+
+static double fill_data2(std::shared_ptr<ColumnStore> cstore,
+                         std::unique_ptr<CStoreSession>& session,
+                         aku_ParamId id,
+                         aku_Timestamp begin,
+                         aku_Timestamp end)
+{
+    assert(begin < end);
+    cstore->create_new_column(id);
+    aku_Sample sample;
+    sample.paramid = id;
+    sample.payload.type = AKU_PAYLOAD_FLOAT;
+    std::vector<u64> rpoints;
+    double sum = 0;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        sample.payload.float64 = ix % 2 == 0 ? -0.1*ix : 0.1*ix;
+        sample.timestamp = ix;
+        session->write(sample, &rpoints);  // rescue points are ignored now
+        sum += sample.payload.float64;
+    }
+    return sum;
+}
+
+static void test_column_store_filter_query(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps, invtimestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::copy(timestamps.rbegin(),
+              timestamps.rend(),
+              std::back_inserter(invtimestamps));
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+    for (auto id: ids) {
+        fill_data2(cstore, session, id, begin, end);
+    }
+
+    // Read in series order in forward direction
+    auto read_ordered_by_series = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::SERIES;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*timestamps.size()/2);
+        size_t niter = 0;
+        for(size_t i = 0; i < ids.size(); i++) {
+            for (size_t j = 1; j < timestamps.size(); j += 2) {
+                auto tx = timestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    // Read in time order in forward direction
+    auto read_ordered_by_time = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::TIME;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*timestamps.size()/2);
+        size_t niter = 0;
+        for (size_t j = 1; j < timestamps.size(); j += 2) {
+            for(size_t i = 0; i < ids.size(); i++) {
+                auto tx = timestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    auto read_backward_ordered_by_series = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = end;
+        req.select.end = begin;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::SERIES;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == ids.size()*invtimestamps.size()/2);
+        size_t niter = 0;
+        for(size_t i = 0; i < ids.size(); i++) {
+            for (size_t j = 0; j < invtimestamps.size(); j += 2) {
+                auto tx = invtimestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == ids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    // Read in time order in forward direction
+    auto read_backward_ordered_by_time = [&]() {
+        QueryProcessorMock qproc;
+        ReshapeRequest req = {};
+        req.group_by.enabled = false;
+        req.select.begin = end;
+        req.select.end = begin;
+        req.select.columns.emplace_back();
+        for(size_t i = 0; i < ids.size(); i++) {
+            req.select.columns[0].ids.push_back(ids[i]);
+        }
+        req.order_by = OrderBy::TIME;
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &qproc, req);
+        BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+        BOOST_REQUIRE(qproc.samples.size() == invids.size()*invtimestamps.size()/2);
+        size_t niter = 0;
+        for (size_t j = 0; j < invtimestamps.size(); j += 2) {
+            for(size_t i = 0; i < invids.size(); i++) {
+                auto tx = invtimestamps[j];
+                BOOST_REQUIRE(qproc.samples.at(niter).paramid == invids[i]);
+                BOOST_REQUIRE(qproc.samples.at(niter).timestamp == tx);
+                niter++;
+            }
+        }
+    };
+
+    read_ordered_by_series();
+    read_ordered_by_time();
+    read_backward_ordered_by_series();
+    read_backward_ordered_by_time();
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_0) {
+    test_column_store_filter_query(10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_1) {
+    test_column_store_filter_query(100, 1000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_filter_query_2) {
+    test_column_store_filter_query(1000, 100000);
+}
+
+void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
+    auto cstore = create_cstore();
+    auto session = create_session(cstore);
+    std::vector<aku_ParamId> col = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    for (auto id: col) {
+        fill_data2(cstore, session, id, begin, end);
+    }
+
+    auto test_series_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MEAN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &mock, req);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        BOOST_REQUIRE(mock.paramids.size() != 0);
+
+        size_t idix = 0;
+        aku_Timestamp prevts = begin;
+        for (size_t ix = 0; ix < mock.paramids.size(); ix++) {
+            auto id = mock.paramids.at(ix);
+            auto ts = mock.timestamps.at(ix);
+            auto xs = mock.columns[0].at(ix);
+            if (id != col.at(idix)) {
+                idix++;
+                prevts = begin;
+            }
+            BOOST_REQUIRE_EQUAL(id, col.at(idix));
+            BOOST_REQUIRE(ts >= prevts);
+            BOOST_REQUIRE(xs >= 0.0);
+        }
+    };
+
+    auto test_time_order = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(1);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MEAN };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::TIME;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+
+        Filter filter;
+        filter.enabled = true;
+        filter.ge = 0.0;
+        filter.flags = Filter::GE;
+        req.select.filters.push_back(filter);
+
+        execute(cstore, &mock, req);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        BOOST_REQUIRE(mock.paramids.size() != 0);
+
+        aku_Timestamp prevts = begin;
+        for (size_t ix = 0; ix < mock.paramids.size(); ix++) {
+            auto ts = mock.timestamps.at(ix);
+            auto xs = mock.columns[0].at(ix);
+            BOOST_REQUIRE(ts >= prevts);
+            BOOST_REQUIRE(xs >= 0.0);
+        }
+    };
+
+    auto test_series_order2 = [&](size_t step)
+    {
+        std::vector<aku_Timestamp> model_timestamps;
+        for (size_t i = 0u; i < timestamps.size(); i += step) {
+            model_timestamps.push_back(timestamps.at(i));
+        }
+        TupleQueryProcessorMock mock(2);
+        ReshapeRequest req = {};
+        req.agg.enabled = true;
+        req.agg.step = step;
+        req.agg.func = { AggregationFunction::MIN, AggregationFunction::MAX };
+        req.group_by.enabled = false;
+        req.order_by = OrderBy::SERIES;
+        req.select.begin = begin;
+        req.select.end = end;
+        req.select.columns.push_back({col});
+
+        Filter f1{};
+        f1.enabled = true;
+        f1.lt = 0.0;
+        f1.flags = Filter::LT;
+        req.select.filters.push_back(f1);
+
+        Filter f2{};
+        f2.enabled = true;
+        f2.ge = 0.0;
+        f2.flags = Filter::GE;
+        req.select.filters.push_back(f2);
+
+        execute(cstore, &mock, req);
+
+        BOOST_REQUIRE(mock.error == AKU_SUCCESS);
+        BOOST_REQUIRE(mock.paramids.size() != 0);
+
+        size_t idix = 0;
+        aku_Timestamp prevts = begin;
+        for (size_t ix = 0; ix < mock.paramids.size(); ix++) {
+            auto id = mock.paramids.at(ix);
+            auto ts = mock.timestamps.at(ix);
+            auto x1 = mock.columns[0].at(ix);  // min
+            auto x2 = mock.columns[1].at(ix);  // max
+            if (id != col.at(idix)) {
+                idix++;
+                prevts = begin;
+            }
+            BOOST_REQUIRE_EQUAL(id, col.at(idix));
+            BOOST_REQUIRE(ts >= prevts);
+            BOOST_REQUIRE(x1 <  0.0);
+            BOOST_REQUIRE(x2 >= 0.0);
+        }
+    };
+
+    test_series_order(10);
+    test_series_order(100);
+    test_time_order(10);
+    test_time_order(100);
+    test_series_order2(10);
+    test_series_order2(100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_1) {
+    test_group_aggregate_filter(100, 1100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_2) {
+    test_group_aggregate_filter(1000, 11000);
+}

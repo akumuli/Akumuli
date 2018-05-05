@@ -118,8 +118,14 @@ struct StringTools {
                                decltype(&StringTools::equal)>
         TableT;
 
-    typedef std::unordered_set<StringT, decltype(&StringTools::hash), decltype(&StringTools::equal)>
-        SetT;
+    typedef std::unordered_set<StringT, decltype(&StringTools::hash), decltype(&StringTools::equal)> SetTBase;
+    struct SetT : public SetTBase
+    {
+        SetT(size_t size = 0) : SetTBase(0, StringTools::hash, StringTools::equal) {
+
+        }
+    };
+
 
     typedef std::unordered_map<StringT, SetT, decltype(&StringTools::hash), decltype(&StringTools::equal)> L2TableT;
 
