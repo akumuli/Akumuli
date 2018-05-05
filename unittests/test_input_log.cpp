@@ -276,3 +276,79 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_3) {
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_no_conflicts_4) {
     test_input_roundtrip_no_conflicts(8);
 }
+
+void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
+    // This test simulates simultaneous concurrent write. Each "thread"
+    // writes it's own series. Periodically the threads are switched
+    // and as result, every log should have all series.
+    std::vector<std::tuple<u64, u64, double>> exp, act;
+    std::vector<u64> stale_ids;
+    {
+        ShardedInputLog slog(ccr, "./", 100, 4096);
+        std::vector<InputLog*> ilogs;
+        std::vector<aku_ParamId> ids;
+        for (int i = 0; i < ccr; i++) {
+            ilogs.push_back(&slog.get_shard(i));
+            ids.push_back((i + 1)*1111);
+        }
+        int oldshift = 0;
+        for (int i = 0; i < 10000*ccr; i++) {
+            int shift = i / rowsize;
+            if (shift != oldshift) {
+                // Simulate disconnection
+                for (auto it: ilogs) {
+                    it->flush(&stale_ids);
+                }
+            }
+            oldshift = shift;
+            int logix = (i + shift) % ilogs.size();
+            double val = static_cast<double>(rand()) / RAND_MAX;
+            aku_ParamId id = ids.at(i % ids.size());
+            aku_Status status = ilogs.at(logix)->append(id, i, val, &stale_ids);
+            exp.push_back(std::make_tuple(i, id, val));
+            if (status == AKU_EOVERFLOW) {
+                ilogs.at(logix)->rotate();
+            }
+        }
+    }
+    {
+        ShardedInputLog slog(0, "./");
+        // Read by one
+        while(true) {
+            aku_ParamId id;
+            aku_Timestamp ts;
+            double xs;
+            aku_Status status;
+            u32 outsize;
+            std::tie(status, outsize) = slog.read_next(1, &id, &ts, &xs);
+            if (outsize == 1) {
+                act.push_back(std::make_tuple(ts, id, xs));
+            }
+            if (status == AKU_ENO_DATA) {
+                // EOF
+                break;
+            } else if (status != AKU_SUCCESS) {
+                BOOST_ERROR("Read failed " + StatusUtil::str(status));
+            }
+        }
+        slog.reopen();
+        slog.delete_files();
+    }
+    std::sort(act.begin(), act.end());
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    for (u32 i = 0; i < exp.size(); i++) {
+        if (std::get<0>(exp.at(i)) != std::get<0>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
+        }
+        if (std::get<1>(exp.at(i)) != std::get<1>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
+        }
+        if (std::get<2>(exp.at(i)) != std::get<2>(act.at(i))) {
+            BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_1) {
+    test_input_roundtrip_with_conflicts(2, 1000);
+}
