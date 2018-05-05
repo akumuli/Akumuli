@@ -517,12 +517,10 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     , read_only_(false)
     , read_started_(false)
     , rootdir_(rootdir)
+    , nvol_(nvol)
+    , svol_(svol)
 {
-    for (int i = 0; i < concurrency_; i++) {
-        std::unique_ptr<InputLog> log;
-        log.reset(new InputLog(&sequencer_, rootdir, nvol, svol, i));
-        streams_.push_back(std::move(log));
-    }
+    streams_.resize(concurrency_);
 }
 
 std::tuple<aku_Status, int> get_concurrency_level(const char* root_dir) {
@@ -554,6 +552,8 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     , read_only_(true)
     , read_started_(false)
     , rootdir_(rootdir)
+    , nvol_(0)
+    , svol_(0)
 {
     if (concurrency_ == 0) {
         aku_Status status;
@@ -579,6 +579,11 @@ ShardedInputLog::ShardedInputLog(int concurrency,
 InputLog& ShardedInputLog::get_shard(int i) {
     if (read_only_) {
         AKU_PANIC("Can't write read-only input log");
+    }
+    if (!streams_.at(i)) {
+        std::unique_ptr<InputLog> log;
+        log.reset(new InputLog(&sequencer_, rootdir_.c_str(), nvol_, svol_, static_cast<u32>(i)));
+        streams_.at(i) = std::move(log);
     }
     return *streams_.at(i);
 }

@@ -246,6 +246,8 @@ class ShardedInputLog {
     bool read_started_;    //! Will be set to true if the read operation is in progress
     int buffer_ix_;        //! Read position
     std::string rootdir_;  //! Root-dir for reopen method
+    size_t nvol_;          //! Number of volumes to create in write-only mode
+    size_t svol_;          //! Size of the volume in write-only mode
 
     void init_read_buffers();
 public:
