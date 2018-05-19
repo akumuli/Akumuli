@@ -461,6 +461,9 @@ enum class NBTreeAppendResult {
     FAIL_BAD_VALUE,
 };
 
+
+struct NBTreeSBlockSharedStorage;
+
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
   * @li store all roots of the NBTree
@@ -468,6 +471,7 @@ enum class NBTreeAppendResult {
   */
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
+    std::shared_ptr<NBTreeSBlockSharedStorage> shared_;
     std::deque<std::unique_ptr<NBTreeExtent>> extents_;
     const aku_ParamId id_;
     //! Last timestamp

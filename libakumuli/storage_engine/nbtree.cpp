@@ -2642,28 +2642,84 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
 //   NBTreeSBlockExtent   //
 // ////////////////////// //
 
+struct NBTreeSBlockSharedStorage {
+    std::vector<SubtreeRef> refs_;
+
+    void append(const SubtreeRef& ref) {
+        refs_.push_back(ref);
+    }
+
+    /**
+     * @brief find the ref
+     * @param level is a level of the extent
+     * @param fanout is a fanout index inside the extent
+     * @return return pointer to ref or nullptr if not found
+     */
+    const SubtreeRef* find(u16 level, u16 fanout) const {
+        auto it = std::find_if(refs_.begin(), refs_.end(), [level, fanout] (const SubtreeRef& cur) {
+            return cur.level == level && cur.fanout_index == fanout;
+        });
+        if (it == refs_.end()) {
+            return nullptr;
+        }
+        return &(*it);
+    }
+
+    aku_Status loadFrom(const NBTreeSuperblock& sblock) {
+        return sblock.read_all(&refs_);
+    }
+
+    aku_Status saveTo(NBTreeSuperblock* sblock) {
+        aku_Status status = AKU_SUCCESS;
+        for (const SubtreeRef& ref: refs_) {
+            status = sblock->append(ref);
+            if (status != AKU_SUCCESS) {
+                break;
+            }
+        }
+        return status;
+    }
+
+    int nelements(u16 level) const {
+        auto res = std::count_if(refs_.begin(), refs_.end(), [level](const SubtreeRef& cur) {
+            return cur.level == level;
+        });
+        return static_cast<int>(res);
+    }
+
+    void remove_level(u16 level) {
+        auto it = std::remove_if(refs_.begin(), refs_.end(), [level] (const SubtreeRef& cur) {
+            return cur.level == level;
+        });
+        refs_.erase(it, refs_.end());
+    }
+};
+
 struct NBTreeSBlockExtent : NBTreeExtent {
     std::shared_ptr<BlockStore> bstore_;
     std::weak_ptr<NBTreeExtentsList> roots_;
-    std::unique_ptr<NBTreeSuperblock> curr_;
+    NBTreeSBlockSharedStorage* share_;
     aku_ParamId id_;
     LogicAddr last_;
     u16 fanout_index_;
     u16 level_;
-    // padding
+    LogicAddr prev_addr_;
     u32 killed_;
 
     NBTreeSBlockExtent(std::shared_ptr<BlockStore> bstore,
+                       NBTreeSBlockSharedStorage* share,
                        std::shared_ptr<NBTreeExtentsList> roots,
                        aku_ParamId id,
                        LogicAddr addr,
                        u16 level)
         : bstore_(bstore)
         , roots_(roots)
+        , share_(share)
         , id_(id)
         , last_(EMPTY_ADDR)
         , fanout_index_(0)
         , level_(level)
+        , prev_addr_(EMPTY_ADDR)
         , killed_(0)
     {
         if (addr != EMPTY_ADDR) {
@@ -2689,17 +2745,16 @@ struct NBTreeSBlockExtent : NBTreeExtent {
         }
         if (addr != EMPTY_ADDR) {
             // CoW constructor should be used here.
-            curr_.reset(new NBTreeSuperblock(addr, bstore_, false));
-        } else {
-            // `addr` is not set. Node should be created from scratch.
-            curr_.reset(new NBTreeSuperblock(id, EMPTY_ADDR, 0, level));
+            NBTreeSuperblock sblock(addr, bstore_, false);
+            share_->loadFrom(sblock);
+            prev_addr_ = sblock.get_prev_addr();
         }
     }
 
     ExtentStatus status() const override {
         if (killed_) {
             return ExtentStatus::KILLED_BY_RETENTION;
-        } else if (curr_->nelements() == 0) {
+        } else if (share_->nelements(level_)) {
             // Node is new
             return ExtentStatus::NEW;
         }
@@ -2708,24 +2763,17 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     }
 
     virtual aku_Status update_prev_addr(LogicAddr addr) override {
-        if (curr_->get_addr() == EMPTY_ADDR) {
-            curr_->set_prev_addr(addr);
-            return AKU_SUCCESS;
-        }
-        return AKU_EACCESS;
+        prev_addr_ = addr;
+        return AKU_SUCCESS;
     }
 
     virtual aku_Status update_fanout_index(u16 fanout_index) override {
-        if (curr_->get_addr() == EMPTY_ADDR) {
-            curr_->set_node_fanout(fanout_index);
-            fanout_index_ = fanout_index;
-            return AKU_SUCCESS;
-        }
-        return AKU_EACCESS;
+        fanout_index_ = fanout_index;
+        return AKU_SUCCESS;
     }
 
     void reset_subtree() {
-        curr_.reset(new NBTreeSuperblock(id_, last_, fanout_index_, level_));
+        share_->remove_level(level_);
     }
 
     u16 get_fanout_index() const {
@@ -2737,7 +2785,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     }
 
     LogicAddr get_prev_addr() const {
-        return curr_->get_prev_addr();
+        return prev_addr_;
     }
 
     virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) override;
@@ -2756,12 +2804,18 @@ struct NBTreeSBlockExtent : NBTreeExtent {
 };
 
 void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {
-    SubtreeRef const* ref = curr_->get_sblockmeta();
+    //SubtreeRef const* ref = curr_->get_sblockmeta();
+    NBTreeSuperblock curr(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&curr);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore shared data");
+    }
+    SubtreeRef const* ref = curr.get_sblockmeta();
     stream << std::string(static_cast<size_t>(base_indent), '\t') <<  "<node>\n";
-    dump_subtree_ref(stream, ref, curr_->get_prev_addr(), base_indent + 1, curr_->get_addr(), tsformat, mask);
+    dump_subtree_ref(stream, ref, curr.get_prev_addr(), base_indent + 1, curr.get_addr(), tsformat, mask);
 
     std::vector<SubtreeRef> refs;
-    aku_Status status = curr_->read_all(&refs);
+    status = curr.read_all(&refs);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, std::string("Can't read data ") + StatusUtil::str(status));
         return;
@@ -2864,32 +2918,35 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(aku_Timestamp, double) {
 }
 
 std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(SubtreeRef const& pl) {
-    auto status = curr_->append(pl);
-    if (status == AKU_EOVERFLOW) {
+    share_->append(pl);
+    if (pl.fanout_index == 32) {
+        // Node with max fanout ratio was written
         LogicAddr addr;
         bool parent_saved;
         std::tie(parent_saved, addr) = commit(false);
-        append(pl);
         return std::make_tuple(parent_saved, addr);
     }
     return std::make_tuple(false, EMPTY_ADDR);
 }
 
 std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
-    // Invariant: after call to this method data from `curr_` should
-    // endup in block store, upper level root node should be updated
-    // and `curr_` variable should be reset.
-    // Otherwise: panic should be triggered.
+    // All values from the level should be written to disk. The upper
+    // level should be updated, and the level should be reset.
 
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
     LogicAddr addr;
-    aku_Status status;
-    std::tie(status, addr) = curr_->commit(bstore_);
+    std::tie(status, addr) = sblock.commit(bstore_);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Can't write superblock to block-store, " + StatusUtil::str(status));
     }
+
     // Gather stats and send them to upper-level node
     SubtreeRef payload = INIT_SUBTREE_REF;
-    status = init_subtree_from_subtree(*curr_, payload);
+    status = init_subtree_from_subtree(sblock, payload);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Can summarize current node - " + StatusUtil::str(status));
     }
@@ -2921,48 +2978,60 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
-    return curr_->search(begin, end, bstore_);
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
+    return sblock.search(begin, end, bstore_);
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::filter(aku_Timestamp begin,
                                                                aku_Timestamp end,
                                                                const ValueFilter& filter) const
 {
-    return curr_->filter(begin, end, filter, bstore_);
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
+    return sblock.filter(begin, end, filter, bstore_);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
-    return curr_->aggregate(begin, end, bstore_);
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
+    return sblock.aggregate(begin, end, bstore_);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
-    return curr_->candlesticks(begin, end, bstore_, hint);
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
+    return sblock.candlesticks(begin, end, bstore_, hint);
 }
 
 std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
-    return curr_->group_aggregate(begin, end, step, bstore_);
+    NBTreeSuperblock sblock(id_, prev_addr_, fanout_index_, level_);
+    aku_Status status = share_->saveTo(&sblock);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+    }
+    return sblock.group_aggregate(begin, end, step, bstore_);
 }
 
 bool NBTreeSBlockExtent::is_dirty() const {
-    if (curr_) {
-        return curr_->nelements() != 0;
-    }
-    return false;
+    return share_->nelements(level_) != 0;
 }
 
 std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
-    const auto empty_res = std::make_tuple(false, EMPTY_ADDR);
-    aku_Status status;
-    std::unique_ptr<NBTreeSuperblock> clone;
-    clone.reset(new NBTreeSuperblock(id_, curr_->get_prev_addr(), curr_->get_fanout(), curr_->get_level()));
-    LogicAddr last_child_addr;
-    std::tie(status, last_child_addr) = curr_->split_into(bstore_, pivot, true, clone.get());
-    // The addr variable should be empty, because we're using the clone
-    if (status != AKU_SUCCESS) {
-        return empty_res;
-    }
-    curr_.swap(clone);
-    return std::make_tuple(false, last_child_addr);
+    // TODO: fix
+    AKU_PANIC("Not Implemented");
 }
 
 
@@ -3096,8 +3165,9 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
     auto subtree = dynamic_cast<NBTreeSBlockExtent const*>(extent);
     if (subtree) {
         // Complex extent.
-        auto const* curr = subtree->curr_.get();
-        check_superblock_consistency(bstore, curr, static_cast<u16>(level - 1), true);
+        // TODO: fix
+        //auto const* curr = subtree->curr_.get();
+        //check_superblock_consistency(bstore, curr, static_cast<u16>(level - 1), true);
     }
 }
 
@@ -3108,6 +3178,7 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
 
 NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
+    , shared_(new NBTreeSBlockSharedStorage())
     , id_(id)
     , last_(0ull)
     , rescue_points_(std::move(addresses))
@@ -3371,8 +3442,12 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
         root = extents_[lvl].get();
     } else if (extents_.size() == lvl) {
         std::unique_ptr<NBTreeExtent> p;
-        p.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(),
-                                       id_, EMPTY_ADDR, lvl));
+        p.reset(new NBTreeSBlockExtent(bstore_,
+                                       shared_.get(),
+                                       shared_from_this(),
+                                       id_,
+                                       EMPTY_ADDR,
+                                       lvl));
         root = p.get();
         extents_.push_back(std::move(p));
         rescue_points_.push_back(EMPTY_ADDR);
@@ -3414,7 +3489,7 @@ void NBTreeExtentsList::open() {
         // when new root will be created during tree-open process).
         u16 root_level = 1;
         std::unique_ptr<NBTreeSBlockExtent> root_extent;
-        root_extent.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR, root_level));
+        root_extent.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, EMPTY_ADDR, root_level));
 
         // Read old leaf node. Add single element to the root.
         LogicAddr addr = rescue_points_.front();
@@ -3450,7 +3525,7 @@ void NBTreeExtentsList::open() {
         LogicAddr addr = rescue_points_.back();
         std::unique_ptr<NBTreeSBlockExtent> root;
         // CoW should be used here, otherwise tree height will increase after each reopen.
-        root.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(), id_, addr, static_cast<u16>(root_level)));
+        root.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, addr, static_cast<u16>(root_level)));
 
         // Initialize leaf using new leaf node!
         // TODO: leaf_prev = load_prev_leaf_addr(root);
@@ -3463,7 +3538,7 @@ void NBTreeExtentsList::open() {
             // TODO: leaf_prev = load_prev_inner_addr(root, i);
             LogicAddr inner_prev = EMPTY_ADDR;
             std::unique_ptr<NBTreeExtent> inner;
-            inner.reset(new NBTreeSBlockExtent(bstore_, shared_from_this(),
+            inner.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(),
                                                id_, inner_prev, static_cast<u16>(i)));
             extents_.push_back(std::move(inner));
         }
@@ -3505,6 +3580,7 @@ void NBTreeExtentsList::open() {
 }
 
 static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
+                                 NBTreeSBlockSharedStorage* shared,
                                  std::shared_ptr<BlockStore> bstore,
                                  aku_ParamId id,
                                  size_t nlevels,
@@ -3520,7 +3596,7 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
             // Create empty inner node
             std::unique_ptr<NBTreeSBlockExtent> inner;
             u16 level = static_cast<u16>(i);
-            inner.reset(new NBTreeSBlockExtent(bstore, self, id, EMPTY_ADDR, level));
+            inner.reset(new NBTreeSBlockExtent(bstore, shared, self, id, EMPTY_ADDR, level));
             extents->push_back(std::move(inner));
         }
     }
@@ -3530,7 +3606,7 @@ void NBTreeExtentsList::repair() {
     // NOTE: lock doesn't needed for the same reason as in `open` method.
     Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Trying to open tree, repair status - REPAIR, addr: " +
                               std::to_string(rescue_points_.back()));
-    create_empty_extents(shared_from_this(), bstore_, id_, rescue_points_.size(), &extents_);
+    create_empty_extents(shared_from_this(), shared_.get(), bstore_, id_, rescue_points_.size(), &extents_);
     std::stack<LogicAddr> stack;
     // Follow rescue points in backward direction
     for (auto addr: rescue_points_) {
