@@ -206,22 +206,25 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
 }
 
 void test_input_roundtrip_no_conflicts(int ccr) {
-    std::vector<std::tuple<u64, u64, double>> exp, act;
+    std::map<u64, std::vector<std::tuple<u64, double>>> exp, act;
     std::vector<u64> stale_ids;
+    std::vector<aku_ParamId> ids;
     {
         ShardedInputLog slog(ccr, "./", 100, 4096);
         auto fill_data_in = [&](InputLog& ilog, aku_ParamId series) {
             for (int i = 0; i < 10000; i++) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
                 aku_Status status = ilog.append(series, i, val, &stale_ids);
-                exp.push_back(std::make_tuple(series, i, val));
+                exp[series].push_back(std::make_tuple(i, val));
                 if (status == AKU_EOVERFLOW) {
                     ilog.rotate();
                 }
             }
         };
         for (int i = 0; i < ccr; i++) {
-            fill_data_in(slog.get_shard(i), i*111);
+            aku_ParamId id = (i + 1) * 111;
+            fill_data_in(slog.get_shard(i), id);
+            ids.push_back(id);
         }
     }
     {
@@ -235,7 +238,7 @@ void test_input_roundtrip_no_conflicts(int ccr) {
             u32 outsize;
             std::tie(status, outsize) = slog.read_next(1, &id, &ts, &xs);
             if (outsize == 1) {
-                act.push_back(std::make_tuple(id, ts, xs));
+                act[id].push_back(std::make_tuple(ts, xs));
             }
             if (status == AKU_ENO_DATA) {
                 // EOF
@@ -247,16 +250,17 @@ void test_input_roundtrip_no_conflicts(int ccr) {
         slog.reopen();
         slog.delete_files();
     }
-    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
-    for (u32 i = 0; i < exp.size(); i++) {
-        if (std::get<0>(exp.at(i)) != std::get<0>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
-        }
-        if (std::get<1>(exp.at(i)) != std::get<1>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
-        }
-        if (std::get<2>(exp.at(i)) != std::get<2>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+    for (auto id: ids) {
+        const std::vector<std::tuple<u64, double>>& expected = exp[id];
+        const std::vector<std::tuple<u64, double>>& actual = act[id];
+        BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+        for (u32 i = 0; i < exp.size(); i++) {
+            if (std::get<0>(expected.at(i)) != std::get<0>(actual.at(i))) {
+                BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), std::get<0>(actual.at(i)));
+            }
+            if (std::get<1>(expected.at(i)) != std::get<1>(actual.at(i))) {
+                BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), std::get<1>(actual.at(i)));
+            }
         }
     }
 }
@@ -281,12 +285,12 @@ void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
     // This test simulates simultaneous concurrent write. Each "thread"
     // writes it's own series. Periodically the threads are switched
     // and as result, every log should have all series.
-    std::vector<std::tuple<u64, u64, double>> exp, act;
+    std::map<u64, std::vector<std::tuple<u64, double>>> exp, act;
     std::vector<u64> stale_ids;
+    std::vector<aku_ParamId> ids;
     {
         ShardedInputLog slog(ccr, "./", 100, 4096);
         std::vector<InputLog*> ilogs;
-        std::vector<aku_ParamId> ids;
         for (int i = 0; i < ccr; i++) {
             ilogs.push_back(&slog.get_shard(i));
             ids.push_back((i + 1)*1111);
@@ -305,7 +309,7 @@ void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
             double val = static_cast<double>(rand()) / RAND_MAX;
             aku_ParamId id = ids.at(i % ids.size());
             aku_Status status = ilogs.at(logix)->append(id, i, val, &stale_ids);
-            exp.push_back(std::make_tuple(i, id, val));
+            exp[id].push_back(std::make_tuple(i, val));
             if (status == AKU_EOVERFLOW) {
                 ilogs.at(logix)->rotate();
             }
@@ -322,7 +326,7 @@ void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
             u32 outsize;
             std::tie(status, outsize) = slog.read_next(1, &id, &ts, &xs);
             if (outsize == 1) {
-                act.push_back(std::make_tuple(ts, id, xs));
+                act[id].push_back(std::make_tuple(ts, xs));
             }
             if (status == AKU_ENO_DATA) {
                 // EOF
@@ -334,17 +338,17 @@ void test_input_roundtrip_with_conflicts(int ccr, int rowsize) {
         slog.reopen();
         slog.delete_files();
     }
-    std::sort(act.begin(), act.end());
-    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
-    for (u32 i = 0; i < exp.size(); i++) {
-        if (std::get<0>(exp.at(i)) != std::get<0>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
-        }
-        if (std::get<1>(exp.at(i)) != std::get<1>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
-        }
-        if (std::get<2>(exp.at(i)) != std::get<2>(act.at(i))) {
-            BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+    for (auto id: ids) {
+        const std::vector<std::tuple<u64, double>>& expected = exp[id];
+        const std::vector<std::tuple<u64, double>>& actual = act[id];
+        BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+        for (u32 i = 0; i < exp.size(); i++) {
+            if (std::get<0>(expected.at(i)) != std::get<0>(actual.at(i))) {
+                BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), std::get<0>(actual.at(i)));
+            }
+            if (std::get<1>(expected.at(i)) != std::get<1>(actual.at(i))) {
+                BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), std::get<1>(actual.at(i)));
+            }
         }
     }
 }
