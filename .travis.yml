@@ -63,63 +63,15 @@ addons:
     - "$HOME/akumuli.log"
 
 before_install:
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then brew update;              fi
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh prerequisites-osx.sh;  fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update;      fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sh prerequisites.sh; fi
+- ./CI/before_install.sh
 
 before_script:
-- mkdir build
-- cd build
-- if [[ $GENERIC_BUILD == true ]]; then
-  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
-  else
-  cmake .. -DCMAKE_BUILD_TYPE=Release;
-  fi
+- ./CI/before_script.sh
 
 script:
 # Build and test
-- make -j4
-- if [[ $UNIT_TEST == true ]]; then ctest -VV; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then functests/storage_test /tmp; fi
-- akumulid/akumulid --init
-- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_database_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_ingestion_errors.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
-- python functests/akumulid_test_tools.py set_nvolumes 0
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then bash functests/roundtrip.sh; fi
+- source CI/script.sh
 
-# Build deb package and docker image only on Linux
-- if [[ $DEPLOY_IMAGE == true ]]; then
-  cpack;
-  cp akumuli_*_amd64.deb ./docker;
-  export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
-  export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`;
-  export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
-  docker build -t $REPO:$VERSION-$TAG ./docker;
-  fi
 
 deploy:
   provider: packagecloud

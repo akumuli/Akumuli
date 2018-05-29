@@ -9,4 +9,3 @@ cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
 else
 cmake .. -DCMAKE_BUILD_TYPE=Release;
 fi
-make -j4

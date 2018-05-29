@@ -2,7 +2,8 @@
 echo "Running tests for $TRAVIS_OS_NAME"
 echo "Work dir: $(pwd)"
 
-set -e
+echo "Running the build"
+make -j4
 
 echo "Running unit-tests"
 if [[ $UNIT_TEST == true ]]; then ctest -VV; fi
@@ -54,4 +55,14 @@ if [[ $FUNC_TEST_ADVANCED == true ]]; then
     python functests/test_join_query.py akumulid/
     python functests/test_filter_query.py akumulid/
     bash functests/roundtrip.sh
+fi
+
+# Build deb package and docker image only on Linux
+if [[ $DEPLOY_IMAGE == true ]]; then
+    cpack;
+    cp akumuli_*_amd64.deb ./docker;
+    export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
+    export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`;
+    export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
+    docker build -t $REPO:$VERSION-$TAG ./docker;
 fi
