@@ -3,6 +3,7 @@ echo "Running tests for $TRAVIS_OS_NAME"
 echo "Work dir: $(pwd)"
 
 echo "Running the build"
+cd build
 make -j4
 
 echo "Running unit-tests"

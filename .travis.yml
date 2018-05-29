@@ -70,7 +70,10 @@ before_script:
 
 script:
 # Build and test
-- source CI/script.sh
+- echo "About to run the CI script"
+- ls -lh
+- pwd
+- source ./CI/script.sh
 
 
 deploy:
