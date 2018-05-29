@@ -2,6 +2,8 @@
 echo "Running tests for $TRAVIS_OS_NAME"
 echo "Work dir: $(pwd)"
 
+set -e
+
 echo "Running the build"
 cd build
 make -j4
@@ -67,3 +69,4 @@ if [[ $DEPLOY_IMAGE == true ]]; then
     export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
     docker build -t $REPO:$VERSION-$TAG ./docker;
 fi
+
