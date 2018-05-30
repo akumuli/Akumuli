@@ -63,7 +63,7 @@ matrix:
       before_install:
       - docker pull ubuntu:16.04
       script:
-      - docker run --rm -ti -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ./CI/docker.sh
+      - docker run --rm -ti -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/docker.sh
 
 env:
   global:
