@@ -40,8 +40,6 @@ def main(path, protocol):
     akumulid.serve()
     time.sleep(5)
     try:
-        #TODO: revert
-        sys.exit(10)
         # fill data in
         host = '127.0.0.1'
         udpport = 8383
