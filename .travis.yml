@@ -69,7 +69,8 @@ before_script:
 - ./CI/before_script.sh
 
 script:
-# Build and test
+# Have to call this script this way since it
+# creates environment variables
 - source ./CI/script.sh
 
 
@@ -91,3 +92,4 @@ after_success:
   docker push $REPO:$VERSION-$TAG;
   fi 
 after_failure: 
+- echo "Build failed"
