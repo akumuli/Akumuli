@@ -26,7 +26,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run tests
-bash ./CI/test-$1.sh
+bash ../CI/test-$1.sh
 if [ $? -ne 0 ]; then
     exit 1
 fi

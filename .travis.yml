@@ -18,7 +18,7 @@ matrix:
       - DEPLOY_PACKAGE=true
       - GENERIC_BUILD=false
       script:
-      - bash ./CI/runci.sh ubuntu-16.04
+      - bash ./CI/runci.sh ubuntu-14.04
       - source ./CI/prepare-docker-image.sh
     # 64-bit generic build (GCC)
     #- os: linux
