@@ -53,17 +53,12 @@ matrix:
       services:
       - docker
       env:
-      - DEPLOY_PACKAGE=false
-      - DEPLOY_IMAGE=false
+      - DISTRIBUTION=ubuntu/xenial
       - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - FUNC_TEST_RECOVERY=false
       before_install:
       - docker pull ubuntu:16.04
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/docker.sh ubuntu-16.04
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
 
 env:
   global:
@@ -96,13 +91,12 @@ deploy:
   provider: packagecloud
   repository: Akumuli
   username: Lazin
-  dist: ubuntu/trusty
-  package_glob: "./*.deb"
+  dist: $DISTRIBUTION
+  package_glob: "./*.{deb,rpm}"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
     #branch: master
-    condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 after_success:
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
