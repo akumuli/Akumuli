@@ -9,18 +9,17 @@ group: edge
 matrix:
   include:
     # 64-bit skylake build (GCC)
-    #- os: linux
-    #  dist: trusty
-    #  sudo: required
-    #  compiler: gcc
-    #  env:
-    #  - DEPLOY_PACKAGE=true
-    #  - DEPLOY_IMAGE=true
-    #  - GENERIC_BUILD=false
-    #  - UNIT_TEST=true
-    #  - FUNC_TEST_BASE=true
-    #  - FUNC_TEST_ADVANCED=true
-    #  - FUNC_TEST_RECOVERY=false
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: gcc
+      env:
+      - DISTRIBUTION=ubuntu/trusty
+      - DEPLOY_PACKAGE=true
+      - GENERIC_BUILD=false
+      script:
+      - bash ./CI/runci.sh ubuntu-16.04
+      - source ./CI/prepare-docker-image.sh
     # 64-bit generic build (GCC)
     #- os: linux
     #  dist: trusty
@@ -54,6 +53,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=ubuntu/xenial
+      - DEPLOY_PACKAGE=true
       - GENERIC_BUILD=false
       before_install:
       - docker pull ubuntu:16.04
@@ -95,9 +95,11 @@ deploy:
   package_glob: "./*.{deb,rpm}"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
-  on:
+  #on:
     #branch: master
+    #condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
+
 after_success:
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
   docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
