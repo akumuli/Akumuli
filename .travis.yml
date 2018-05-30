@@ -9,43 +9,65 @@ group: edge
 matrix:
   include:
     # 64-bit skylake build (GCC)
-    - os: linux
-      dist: trusty
-      sudo: required
-      compiler: gcc
-      env:
-      - DEPLOY_PACKAGE=true
-      - DEPLOY_IMAGE=true
-      - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - FUNC_TEST_RECOVERY=false
+    #- os: linux
+    #  dist: trusty
+    #  sudo: required
+    #  compiler: gcc
+    #  env:
+    #  - DEPLOY_PACKAGE=true
+    #  - DEPLOY_IMAGE=true
+    #  - GENERIC_BUILD=false
+    #  - UNIT_TEST=true
+    #  - FUNC_TEST_BASE=true
+    #  - FUNC_TEST_ADVANCED=true
+    #  - FUNC_TEST_RECOVERY=false
     # 64-bit generic build (GCC)
+    #- os: linux
+    #  dist: trusty
+    #  sudo: required
+    #  compiler: gcc
+    #  env:
+    #  - DEPLOY_PACKAGE=false
+    #  - DEPLOY_IMAGE=false
+    #  - GENERIC_BUILD=true
+    #  - UNIT_TEST=true
+    #  - FUNC_TEST_BASE=true
+    #  - FUNC_TEST_ADVANCED=true
+    #  - FUNC_TEST_RECOVERY=false
+    # 64-bit OSX build (Clang)
+    #- os: osx
+    #  osx_image: xcode9.2
+    #  compiler: clang
+    #  env:
+    #  - DEPLOY_PACKAGE=false
+    #  - DEPLOY_IMAGE=false
+    #  - GENERIC_BUILD=false
+    #  - UNIT_TEST=true
+    #  - FUNC_TEST_BASE=true
+    #  - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
+    #  - FUNC_TEST_RECOVERY=false
+    # Ubuntu 16.04 build
     - os: linux
       dist: trusty
       sudo: required
-      compiler: gcc
-      env:
-      - DEPLOY_PACKAGE=false
-      - DEPLOY_IMAGE=false
-      - GENERIC_BUILD=true
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - FUNC_TEST_RECOVERY=false
-    # 64-bit OSX build (Clang)
-    - os: osx
-      osx_image: xcode9.2
-      compiler: clang
+      services:
+      - docker
       env:
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       - UNIT_TEST=true
       - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
+      - FUNC_TEST_ADVANCED=true
       - FUNC_TEST_RECOVERY=false
+      before_install:
+      - docker pull ubuntu:16.04
+      - docker run -i -t ubuntu:16.04 /bin/bash
+      - docker exec ubuntu:16.04 ./CI/before_install.sh
+      before_script:
+      - docker exec ubuntu:16.04 ./CI/before_script.sh
+      script:
+      - docker exec ubuntu:16.04 ./CI/script.sh
 
 env:
   global:
