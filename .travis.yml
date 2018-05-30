@@ -62,12 +62,8 @@ matrix:
       - FUNC_TEST_RECOVERY=false
       before_install:
       - docker pull ubuntu:16.04
-      - docker run -i -t ubuntu:16.04 /bin/bash
-      - docker exec ubuntu:16.04 ./CI/before_install.sh
-      before_script:
-      - docker exec ubuntu:16.04 ./CI/before_script.sh
       script:
-      - docker exec ubuntu:16.04 ./CI/script.sh
+      - docker run --rm -ti -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ./CI/docker.sh
 
 env:
   global:
