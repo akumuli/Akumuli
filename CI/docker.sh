@@ -4,7 +4,7 @@ echo "Running docker.sh script for $1"
 echo "Work dir: $(pwd)"
 
 apt-get update
-sh prerequisites-$1.sh
+sh ./CI/prerequisites-$1.sh
 
 mkdir build
 cd build
