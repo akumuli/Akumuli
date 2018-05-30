@@ -1,15 +1,15 @@
 #!/bin/bash
 
-echo "Running docker.sh script for $TRAVIS_OS_NAME"
-echo "Work dir: $(pwd)"
+echo "Running docker.sh script for $TRAVIS_OS_NAME" > docker.out
+echo "Work dir: $(pwd)" >> docker.out
 
-sudo apt-get update
-sudo sh prerequisites.sh
+sudo apt-get update >> docker.out 2>&1
+sudo sh prerequisites.sh >> docker.out 2>&1
 
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_BUILD_TYPE=Release >> docker.out 2>&1
 
-make -j4
+make -j4 >> docker.out 2>&1
 
-ctest -VV
+ctest -VV >> docker.out 2>&1
