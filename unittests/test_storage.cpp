@@ -88,8 +88,6 @@ BOOST_AUTO_TEST_CASE(Test_metadata_storage_volumes_config) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_metadata_storage_numeric_config) {
-    // TODO: revert
-    BOOST_REQUIRE(false);
 
     MetadataStorage db(":memory:");
     const char* creation_datetime = "2015-02-03 00:00:00";  // Formatting not required
