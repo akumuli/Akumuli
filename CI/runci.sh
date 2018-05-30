@@ -3,7 +3,6 @@
 echo "Running docker.sh script for $1"
 echo "Work dir: $(pwd)"
 
-apt-get update
 sh ./CI/prerequisites-$1.sh
 
 mkdir build
@@ -13,12 +12,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-make -j4
+make akumulid -j4
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
-#ctest -VV
+# Run tests
+#bash ./CI/test-$1.sh
 #if [ $? -ne 0 ]; then
 #    exit 1
 #fi
