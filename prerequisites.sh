@@ -31,7 +31,7 @@ else
                 echo 'The script will install packages using apt-get.'
 		     
 		echo 'Trying to install boost libraries'
-                apt-get install libboost-all-dev
+                apt-get install -y libboost-all-dev
 
 		echo 'Trying to install other libraries'
         apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
