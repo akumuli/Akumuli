@@ -64,17 +64,6 @@ matrix:
       - docker pull ubuntu:16.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/docker.sh ubuntu-16.04
-      deploy:
-        provider: packagecloud
-        repository: Akumuli
-        username: Lazin
-        dist: ubuntu/xenial
-        package_glob: "./*.deb"
-        token:
-          secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
-        on:
-          #branch: master
-        skip_cleanup: true
 
 env:
   global:
@@ -112,7 +101,7 @@ deploy:
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
-    branch: master
+    #branch: master
     condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 after_success:
