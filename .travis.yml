@@ -80,16 +80,16 @@ addons:
     paths:
     - "$HOME/akumuli.log"
 
-before_install:
-- ./CI/before_install.sh
+#before_install:
+#- ./CI/before_install.sh
 
-before_script:
-- ./CI/before_script.sh
+#before_script:
+#- ./CI/before_script.sh
 
-script:
+#script:
 # Have to call this script this way since it
 # creates environment variables
-- source ./CI/script.sh
+#- source ./CI/script.sh
 
 
 deploy:
