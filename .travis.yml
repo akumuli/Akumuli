@@ -76,7 +76,22 @@ matrix:
       before_install:
       - docker pull debian:stretch
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian
+    # Container based 64-bit Debian Jessie build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=debian/jessie
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull debian:jessie
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian
 
 env:
   global:
