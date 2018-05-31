@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Running tests for $1"
+echo "Running tests for Debian Stretch"
 echo "Work dir: $(pwd)"
 
 echo "Running unit-tests"
