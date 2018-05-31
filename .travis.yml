@@ -20,6 +20,9 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-14.04
       - source ./CI/prepare-docker-image.sh
+      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
+      - ls -lh ${TRAVIS_BUILD_DIR}
+      - ls -lh ${TRAVIS_BUILD_DIR}/build
     # VM-based 64-bit generic build (GCC)
     #- os: linux
     #  dist: trusty
@@ -59,6 +62,9 @@ matrix:
       - docker pull ubuntu:16.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
+      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
+      - ls -lh ${TRAVIS_BUILD_DIR}
+      - ls -lh ${TRAVIS_BUILD_DIR}/build
 
 env:
   global:
@@ -94,7 +100,7 @@ deploy:
   repository: Akumuli
   username: Lazin
   dist: $DISTRIBUTION
-  package_glob: "./*.{deb,rpm}"
+  package_glob: "${TRAVIS_BUILD_DIR}/build/*.{deb,rpm}"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
