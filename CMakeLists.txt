@@ -1,7 +1,6 @@
 project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
 
-set(PACKAGE_VERSION "1ubuntu1.0")
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "7")
 set(APP_VERSION_PATCH "49")
