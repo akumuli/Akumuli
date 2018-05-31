@@ -77,7 +77,7 @@ addons:
     bucket: "$ARTIFACTS_BUCKET"
     acl: public_read
     paths:
-    - "$HOME/akumuli.log"
+    - "${TRAVIS_BUILD_DIR}/akumuli.log"
 
 # Packagecloud deployment configuration
 deploy:
