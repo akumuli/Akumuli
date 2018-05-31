@@ -9,7 +9,7 @@ echo "Work dir: $(pwd)"
 
 # Deb package should be genereated by 'runci.sh' script
 cp akumuli_*_amd64.deb ./docker;
-export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
+export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1_amd64\.deb/\1/p'`
 if [[ $TRAVIS_PULL_REQUEST == "false" && $TRAVIS_BRANCH == "master" ]];  then
     # master branch build goes to main repo
     export REPO="akumuli/akumuli"
