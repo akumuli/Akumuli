@@ -46,7 +46,7 @@ matrix:
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       script:
-      - sudo bash ./CI/runci.sh osx
+      - bash ./CI/runci.sh osx
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty

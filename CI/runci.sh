@@ -49,9 +49,17 @@ fi
 
 # This step is not required by the VM build with ubuntu-14.04,
 # but with newer ubuntu 'cpack' call will fail without this step.
-make install
-if [ $? -ne 0 ]; then
-    exit 1
+# To fix this the 'make install' is performed only if the script
+# is executed by root user. The script is started as root in
+# container enviroment and as normal user in VM.
+if [[ $(id -u) -ne 0 ]]; then
+    echo "Running as a normal user, skipping 'make install' step"
+else
+    echo "Running as root, performing 'make install' step"
+    make install
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
 fi
 
 cpack
