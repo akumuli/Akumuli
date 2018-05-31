@@ -49,8 +49,7 @@ fi
 
 # This step is not required by the VM build with ubuntu-14.04,
 # but with newer ubuntu 'cpack' call will fail without this step.
-# Have to use 'sudo' for the VM build.
-sudo make install
+make install
 if [ $? -ne 0 ]; then
     exit 1
 fi

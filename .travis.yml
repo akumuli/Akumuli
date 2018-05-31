@@ -16,26 +16,33 @@ matrix:
       env:
       - DISTRIBUTION=ubuntu/trusty
       - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
       script:
       - bash ./CI/runci.sh ubuntu-14.04
-      - source ./CI/prepare-docker-image.sh
+      - sudo source ./CI/prepare-docker-image.sh
       - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
       - ls -lh ${TRAVIS_BUILD_DIR}
       - ls -lh ${TRAVIS_BUILD_DIR}/build
     # VM-based 64-bit generic build (GCC)
-    #- os: linux
-    #  dist: trusty
-    #  sudo: required
-    #  compiler: gcc
-    #  env:
-    #  - DEPLOY_PACKAGE=false
-    #  - DEPLOY_IMAGE=false
-    #  - GENERIC_BUILD=true
-    #  - UNIT_TEST=true
-    #  - FUNC_TEST_BASE=true
-    #  - FUNC_TEST_ADVANCED=true
-    #  - FUNC_TEST_RECOVERY=false
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: gcc
+      branches:
+        only:
+          - master
+      env:
+      - DISTRIBUTION=ubuntu/trusty
+      - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=true
+      - GENERIC_BUILD=true
+      script:
+      - bash ./CI/runci.sh ubuntu-14.04
+      - sudo source ./CI/prepare-docker-image.sh
+      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
+      - ls -lh ${TRAVIS_BUILD_DIR}
+      - ls -lh ${TRAVIS_BUILD_DIR}/build
     # VM-based 64-bit OSX build (Clang)
     #- os: osx
     #  osx_image: xcode9.2
@@ -57,6 +64,7 @@ matrix:
       env:
       - DISTRIBUTION=ubuntu/xenial
       - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
       - docker pull ubuntu:16.04
@@ -81,18 +89,6 @@ addons:
     acl: public_read
     paths:
     - "$HOME/akumuli.log"
-
-#before_install:
-#- ./CI/before_install.sh
-
-#before_script:
-#- ./CI/before_script.sh
-
-#script:
-# Have to call this script this way since it
-# creates environment variables
-#- source ./CI/script.sh
-
 
 # Packagecloud deployment configuration
 deploy:
