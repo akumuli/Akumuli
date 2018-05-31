@@ -19,7 +19,7 @@ fi
 
 echo "Set up disk constrained environment"
 akumulid/akumulid --init
-python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
+python functests/akumulid_test_tools.py set_log_path /opt/akumuli/akumuli.log
 
 echo "Running base integration tests"
 python functests/test_data_ingestion.py akumulid/ TCP

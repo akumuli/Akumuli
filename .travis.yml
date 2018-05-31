@@ -8,7 +8,7 @@ group: edge
 
 matrix:
   include:
-    # 64-bit skylake build (GCC)
+    # VM-based 64-bit skylake build (GCC)
     - os: linux
       dist: trusty
       sudo: required
@@ -20,7 +20,7 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-14.04
       - source ./CI/prepare-docker-image.sh
-    # 64-bit generic build (GCC)
+    # VM-based 64-bit generic build (GCC)
     #- os: linux
     #  dist: trusty
     #  sudo: required
@@ -33,7 +33,7 @@ matrix:
     #  - FUNC_TEST_BASE=true
     #  - FUNC_TEST_ADVANCED=true
     #  - FUNC_TEST_RECOVERY=false
-    # 64-bit OSX build (Clang)
+    # VM-based 64-bit OSX build (Clang)
     #- os: osx
     #  osx_image: xcode9.2
     #  compiler: clang
@@ -45,7 +45,7 @@ matrix:
     #  - FUNC_TEST_BASE=true
     #  - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
     #  - FUNC_TEST_RECOVERY=false
-    # Ubuntu 16.04 build
+    # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
       sudo: required
@@ -58,12 +58,13 @@ matrix:
       before_install:
       - docker pull ubuntu:16.04
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
 
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
 
+# Ship Akumuli logs to the S3 bucket
 addons:
   artifacts:
     provider: s3
@@ -87,6 +88,7 @@ addons:
 #- source ./CI/script.sh
 
 
+# Packagecloud deployment configuration
 deploy:
   provider: packagecloud
   repository: Akumuli
@@ -95,15 +97,17 @@ deploy:
   package_glob: "./*.{deb,rpm}"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
-  #on:
-    #branch: master
-    #condition: $DEPLOY_PACKAGE = "true"
+  on:
+    branch: build-matrix
+    condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 
 after_success:
+# Push docker image. Docker image should be created and the variables REPO,
+# VERSION, and TAG should exist.
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
-  docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
-  docker push $REPO:$VERSION-$TAG;
+      docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
+      docker push $REPO:$VERSION-$TAG;
   fi 
 after_failure: 
 - echo "Build failed"
