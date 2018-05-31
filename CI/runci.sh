@@ -42,10 +42,10 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run tests
-bash ../CI/test-$1.sh
-if [ $? -ne 0 ]; then
-    exit 1
-fi
+#bash ../CI/test-$1.sh
+#if [ $? -ne 0 ]; then
+#    exit 1
+#fi
 
 # This step is not required by the VM build with ubuntu-14.04,
 # but with newer ubuntu 'cpack' call will fail without this step.
@@ -63,8 +63,9 @@ else
 fi
 
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
-    echo "Running CPack"
-    cpack
+    GEN=`if [[ -f /etc/debian_version ]]; then echo "DEB"; else echo "RPM"; fi`
+    echo "Running CPack -G $GEN"
+    cpack -G DEB
     if [ $? -ne 0 ]; then
         exit 1
     fi
