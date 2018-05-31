@@ -21,7 +21,6 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-14.04
       - sudo source ./CI/prepare-docker-image.sh
-      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
       - ls -lh ${TRAVIS_BUILD_DIR}
       - ls -lh ${TRAVIS_BUILD_DIR}/build
     # VM-based 64-bit generic build (GCC)
@@ -40,7 +39,6 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-14.04
       - sudo source ./CI/prepare-docker-image.sh
-      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
       - ls -lh ${TRAVIS_BUILD_DIR}
       - ls -lh ${TRAVIS_BUILD_DIR}/build
     # VM-based 64-bit OSX build (Clang)
@@ -70,7 +68,6 @@ matrix:
       - docker pull ubuntu:16.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
-      - echo "Travis build dir: ${TRAVIS_BUILD_DIR}"
       - ls -lh ${TRAVIS_BUILD_DIR}
       - ls -lh ${TRAVIS_BUILD_DIR}/build
 
