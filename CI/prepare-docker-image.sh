@@ -2,6 +2,8 @@
 
 # This script should be sourced
 
+cd build
+
 echo "Prepare docker image"
 echo "Work dir: $(pwd)"
 
