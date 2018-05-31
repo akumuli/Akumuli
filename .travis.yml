@@ -19,8 +19,8 @@ matrix:
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
       script:
-      - sudo bash ./CI/runci.sh ubuntu-14.04
-      - sudo source ./CI/prepare-docker-image.sh
+      - bash ./CI/runci.sh ubuntu-14.04
+      - source ./CI/prepare-docker-image.sh
     # VM-based 64-bit generic build (GCC)
     - os: linux
       dist: trusty
@@ -35,8 +35,8 @@ matrix:
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=true
       script:
-      - sudo bash ./CI/runci.sh ubuntu-14.04
-      - sudo source ./CI/prepare-docker-image.sh
+      - bash ./CI/runci.sh ubuntu-14.04
+      - source ./CI/prepare-docker-image.sh
     # VM-based 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
