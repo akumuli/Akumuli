@@ -60,12 +60,32 @@ Features
 |Filter & group-aggregate       |+              |+              |
 |Filter & join                  |+              |+              |
 
-Gettings started
+Gettings Started
 ----------------
-* This project uses [Wiki](https://github.com/akumuli/Akumuli/wiki) for documentation
-* [Installation & build instructions](https://github.com/akumuli/Akumuli/wiki/Getting-started)
-* [Getting started guide](https://github.com/akumuli/Akumuli/wiki/Getting-started#first-steps)
-* [Data model](https://github.com/akumuli/Akumuli/wiki/Data-model)
+* You can find [documentation](https://akumuli.gitbook.io/docs) here
+* [Installation & build instructions](https://akumuli.gitbook.io/docs/getting-started)
+* [Getting started guide](https://akumuli.gitbook.io/docs/getting-started)
+* [Writing data](https://akumuli.gitbook.io/docs/writing-data)
 
+Supported Platforms
+-------------------
+
+Pre-built [Debian/RPM packages](https://packagecloud.io/Lazin/Akumuli) for the following platforms
+are available via packagecloud:
+
+* Ubuntu 14.04
+* Ubuntu 16.04
+* Debian Jessie
+* Debian Stretch
+* CentOS 7
+
+Docker image is availabe through [Docker Hub](https://hub.docker.com/r/akumuli/akumuli/tags/).
+
+Tools for monitoring
+--------------------
+
+Akumuli supports OpenTSDB telnet-style API for writing. This means that many collectors works with it
+without any trouble, for instance `netdata`, `collectd`, and `tcollector`. Grafana
+[datasource](https://github.com/akumuli/akumuli-datasource) plugin is availabe as well.
 
 [Google group](https://groups.google.com/forum/#!forum/akumuli)

@@ -42,9 +42,3 @@ if [ $? -ne 0 ]; then
     echo "Base test failed" >&2
     exit 1
 fi
-
-bash functests/roundtrip.sh
-if [ $? -ne 0 ]; then
-    echo "Roundtrip test failed" >&2
-    exit 1
-fi
