@@ -562,6 +562,12 @@ void query_metadata(Storage* storage, std::string metric, std::string where_clau
     }
 }
 
+void console_logger(aku_LogLevel tag, const char* msg) {
+    if (tag == AKU_LOG_ERROR) {
+        std::cerr << msg << std::endl;
+    }
+}
+
 int main(int argc, const char** argv) {
     int retcode = 0;
     try {
@@ -583,7 +589,7 @@ int main(int argc, const char** argv) {
             dir.pop_back();
         }
         std::cout << "Working directory: " << dir << std::endl;
-        aku_initialize(nullptr, nullptr);
+        aku_initialize(nullptr, &console_logger);
 
         u32 compression_threshold = 5;
         u64 windowsize = 1;
