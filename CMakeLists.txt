@@ -52,7 +52,8 @@ find_package(Log4Cxx REQUIRED)
 find_package(Sqlite3 REQUIRED)
 find_package(APR REQUIRED)
 find_package(Threads REQUIRED)
-find_package(JeMalloc REQUIRED)
+# this doesn't work with centos, disabled until solution will be found
+#find_package(JeMalloc REQUIRED)
 find_package(libmicrohttpd REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
