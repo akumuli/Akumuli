@@ -94,7 +94,7 @@ AkumuliConnection::~AkumuliConnection() {
     try {
         aku_close_database(db_);
     } catch (...) {
-        db_logger_.error() << boost::current_exception_diagnostic_information(true);
+        db_logger_.error() << boost::current_exception_diagnostic_information();
         std::terminate();
     }
 }
