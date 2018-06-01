@@ -99,7 +99,7 @@ matrix:
       services:
       - docker
       env:
-      - DISTRIBUTION=centos/centos7
+      - DISTRIBUTION=el/7
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
