@@ -65,7 +65,7 @@ fi
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
     GEN=`if [[ -f /etc/debian_version ]]; then echo "DEB"; else echo "RPM"; fi`
     echo "Running CPack -G $GEN"
-    cpack -G DEB
+    cpack -G $GEN
     if [ $? -ne 0 ]; then
         exit 1
     fi
