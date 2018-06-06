@@ -462,7 +462,7 @@ enum class NBTreeAppendResult {
 };
 
 
-struct NBTreeSBlockSharedStorage;
+struct ConsolidatedRefStorage;
 
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
@@ -471,7 +471,7 @@ struct NBTreeSBlockSharedStorage;
   */
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::shared_ptr<NBTreeSBlockSharedStorage> shared_;
+    std::shared_ptr<ConsolidatedRefStorage> shared_;
     std::deque<std::unique_ptr<NBTreeExtent>> extents_;
     const aku_ParamId id_;
     //! Last timestamp
@@ -611,6 +611,11 @@ public:
 
     //! Walk the tree from the root and print it to the stdout
     static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
+
+    /** Report memory usage. First component of the tuple is number of bytes used by leaf node, second
+     *  component is a number of bytes used by inner other nodes.
+     */
+    std::tuple<size_t, size_t> bytes_used() const;
 };
 
 /**

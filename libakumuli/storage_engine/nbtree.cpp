@@ -2642,10 +2642,15 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
 //   NBTreeSBlockExtent   //
 // ////////////////////// //
 
-struct NBTreeSBlockSharedStorage {
+struct ConsolidatedRefStorage {
     std::vector<SubtreeRef> refs_;
 
     void append(const SubtreeRef& ref) {
+        if (refs_.capacity() == refs_.size()) {
+            // Grow buffer in small steps to prevent fragmentation
+            const size_t grow_step = 4;
+            refs_.reserve(refs_.capacity() + grow_step);
+        }
         refs_.push_back(ref);
     }
 
@@ -2655,6 +2660,9 @@ struct NBTreeSBlockSharedStorage {
     }
 
     aku_Status loadFrom(const NBTreeSuperblock& sblock) {
+        if (sblock.nelements() > refs_.capacity() - refs_.size()) {
+            refs_.reserve(refs_.capacity() + sblock.nelements());
+        }
         return sblock.read_all(&refs_);
     }
 
@@ -2678,26 +2686,31 @@ struct NBTreeSBlockSharedStorage {
         return static_cast<int>(res);
     }
 
+    //! Remove layer and free space
     void remove_level(u16 level) {
-        auto it = std::remove_if(refs_.begin(), refs_.end(), [level] (const SubtreeRef& cur) {
-            return cur.level == level;
-        });
-        refs_.erase(it, refs_.end());
+        auto pred = [level] (const SubtreeRef& cur) {
+            return cur.level != level;
+        };
+        auto sz = std::count_if(refs_.begin(), refs_.end(), pred);
+        std::vector<SubtreeRef> newrefs;
+        newrefs.reserve(static_cast<size_t>(sz));
+        std::copy_if(refs_.begin(), refs_.end(), std::back_inserter(newrefs), pred);
+        std::swap(refs_, newrefs);
     }
 };
 
-struct NBTreeSBlockExtent : NBTreeExtent {
+struct ConsolidatedSBlockExtent : NBTreeExtent {
     std::shared_ptr<BlockStore> bstore_;
     std::weak_ptr<NBTreeExtentsList> roots_;
-    NBTreeSBlockSharedStorage* share_;
+    ConsolidatedRefStorage* share_;
     aku_ParamId id_;
     LogicAddr last_;
     u16 fanout_index_;
     u16 level_;
     u32 killed_;
 
-    NBTreeSBlockExtent(std::shared_ptr<BlockStore> bstore,
-                       NBTreeSBlockSharedStorage* share,
+    ConsolidatedSBlockExtent(std::shared_ptr<BlockStore> bstore,
+                       ConsolidatedRefStorage* share,
                        std::shared_ptr<NBTreeExtentsList> roots,
                        aku_ParamId id,
                        LogicAddr addr,
@@ -2792,7 +2805,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
     virtual std::tuple<bool, LogicAddr> split(aku_Timestamp pivot) override;
 };
 
-void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {
+void ConsolidatedSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::function<std::string(aku_Timestamp)> tsformat, u32 mask) const {
     //SubtreeRef const* ref = curr_->get_sblockmeta();
     NBTreeSuperblock curr(id_, last_, fanout_index_, level_);
     aku_Status status = share_->saveTo(&curr);
@@ -2902,11 +2915,11 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
     }
 }
 
-std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(aku_Timestamp, double) {
+std::tuple<bool, LogicAddr> ConsolidatedSBlockExtent::append(aku_Timestamp, double) {
     AKU_PANIC("Data should be added to the root 0");
 }
 
-std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(SubtreeRef const& pl) {
+std::tuple<bool, LogicAddr> ConsolidatedSBlockExtent::append(SubtreeRef const& pl) {
     if (share_->has_space(pl.level)) {
         share_->append(pl);
     } else {
@@ -2920,7 +2933,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::append(SubtreeRef const& pl) {
     return std::make_tuple(false, EMPTY_ADDR);
 }
 
-std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
+std::tuple<bool, LogicAddr> ConsolidatedSBlockExtent::commit(bool final) {
     // All values from the level should be written to disk. The upper
     // level should be updated, and the level should be reset.
 
@@ -2970,7 +2983,7 @@ std::tuple<bool, LogicAddr> NBTreeSBlockExtent::commit(bool final) {
     return std::make_tuple(parent_saved, addr);
 }
 
-std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
+std::unique_ptr<RealValuedOperator> ConsolidatedSBlockExtent::search(aku_Timestamp begin, aku_Timestamp end) const {
     NBTreeSuperblock sblock(id_, last_, fanout_index_, level_);
     aku_Status status = share_->saveTo(&sblock);
     if (status != AKU_SUCCESS) {
@@ -2979,7 +2992,7 @@ std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::search(aku_Timestamp beg
     return sblock.search(begin, end, bstore_);
 }
 
-std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::filter(aku_Timestamp begin,
+std::unique_ptr<RealValuedOperator> ConsolidatedSBlockExtent::filter(aku_Timestamp begin,
                                                                aku_Timestamp end,
                                                                const ValueFilter& filter) const
 {
@@ -2991,7 +3004,7 @@ std::unique_ptr<RealValuedOperator> NBTreeSBlockExtent::filter(aku_Timestamp beg
     return sblock.filter(begin, end, filter, bstore_);
 }
 
-std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
+std::unique_ptr<AggregateOperator> ConsolidatedSBlockExtent::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
     NBTreeSuperblock sblock(id_, last_, fanout_index_, level_);
     aku_Status status = share_->saveTo(&sblock);
     if (status != AKU_SUCCESS) {
@@ -3000,7 +3013,7 @@ std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::aggregate(aku_Timestamp b
     return sblock.aggregate(begin, end, bstore_);
 }
 
-std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
+std::unique_ptr<AggregateOperator> ConsolidatedSBlockExtent::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
     NBTreeSuperblock sblock(id_, last_, fanout_index_, level_);
     aku_Status status = share_->saveTo(&sblock);
     if (status != AKU_SUCCESS) {
@@ -3009,7 +3022,7 @@ std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::candlesticks(aku_Timestam
     return sblock.candlesticks(begin, end, bstore_, hint);
 }
 
-std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
+std::unique_ptr<AggregateOperator> ConsolidatedSBlockExtent::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
     NBTreeSuperblock sblock(id_, last_, fanout_index_, level_);
     aku_Status status = share_->saveTo(&sblock);
     if (status != AKU_SUCCESS) {
@@ -3018,11 +3031,11 @@ std::unique_ptr<AggregateOperator> NBTreeSBlockExtent::group_aggregate(aku_Times
     return sblock.group_aggregate(begin, end, step, bstore_);
 }
 
-bool NBTreeSBlockExtent::is_dirty() const {
+bool ConsolidatedSBlockExtent::is_dirty() const {
     return share_->nelements(level_ - 1) != 0;
 }
 
-std::tuple<bool, LogicAddr> NBTreeSBlockExtent::split(aku_Timestamp pivot) {
+std::tuple<bool, LogicAddr> ConsolidatedSBlockExtent::split(aku_Timestamp pivot) {
     // TODO: fix
     AKU_PANIC("Not Implemented");
 }
@@ -3155,12 +3168,15 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
         // Leaf node
         return;
     }
-    auto subtree = dynamic_cast<NBTreeSBlockExtent const*>(extent);
+    auto subtree = dynamic_cast<ConsolidatedSBlockExtent const*>(extent);
     if (subtree) {
         // Complex extent.
-        // TODO: fix
-        //auto const* curr = subtree->curr_.get();
-        //check_superblock_consistency(bstore, curr, static_cast<u16>(level - 1), true);
+        NBTreeSuperblock sblock(subtree->id_, subtree->get_prev_addr(), subtree->get_fanout_index(), subtree->get_level());
+        aku_Status status = subtree->share_->saveTo(&sblock);
+        if (status != AKU_SUCCESS) {
+            AKU_PANIC("Can't restore superblock from unstructured memstore, " + StatusUtil::str(status));
+        }
+        check_superblock_consistency(bstore, &sblock, static_cast<u16>(level - 1), true);
     }
 }
 
@@ -3171,7 +3187,7 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
 
 NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
-    , shared_(new NBTreeSBlockSharedStorage())
+    , shared_(new ConsolidatedRefStorage())
     , id_(id)
     , last_(0ull)
     , rescue_points_(std::move(addresses))
@@ -3187,6 +3203,20 @@ NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addr
     if (rescue_points_.size() >= std::numeric_limits<u16>::max()) {
         AKU_PANIC("Tree depth is too large");
     }
+}
+
+std::tuple<size_t, size_t> NBTreeExtentsList::bytes_used() const {
+    size_t c1 = 0, c2 = 0;
+    if (!extents_.empty()) {
+        auto leaf = dynamic_cast<NBTreeLeafExtent const*>(extents_.front().get());
+        if (leaf != nullptr) {
+            c1 = AKU_BLOCK_SIZE;
+        }
+        if (extents_.size() > 1) {
+            c2 = shared_->refs_.capacity() * sizeof(SubtreeRef);
+        }
+    }
+    return std::make_tuple(c1, c2);
 }
 
 void NBTreeExtentsList::force_init() {
@@ -3435,7 +3465,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
         root = extents_[lvl].get();
     } else if (extents_.size() == lvl) {
         std::unique_ptr<NBTreeExtent> p;
-        p.reset(new NBTreeSBlockExtent(bstore_,
+        p.reset(new ConsolidatedSBlockExtent(bstore_,
                                        shared_.get(),
                                        shared_from_this(),
                                        id_,
@@ -3481,8 +3511,8 @@ void NBTreeExtentsList::open() {
         // Create new root, because now we will create new root (this is the only case
         // when new root will be created during tree-open process).
         u16 root_level = 1;
-        std::unique_ptr<NBTreeSBlockExtent> root_extent;
-        root_extent.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, EMPTY_ADDR, root_level));
+        std::unique_ptr<ConsolidatedSBlockExtent> root_extent;
+        root_extent.reset(new ConsolidatedSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, EMPTY_ADDR, root_level));
 
         // Read old leaf node. Add single element to the root.
         LogicAddr addr = rescue_points_.front();
@@ -3516,9 +3546,9 @@ void NBTreeExtentsList::open() {
         // Initialize root node.
         auto root_level = rescue_points_.size() - 1;
         LogicAddr addr = rescue_points_.back();
-        std::unique_ptr<NBTreeSBlockExtent> root;
+        std::unique_ptr<ConsolidatedSBlockExtent> root;
         // CoW should be used here, otherwise tree height will increase after each reopen.
-        root.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, addr, static_cast<u16>(root_level)));
+        root.reset(new ConsolidatedSBlockExtent(bstore_, shared_.get(), shared_from_this(), id_, addr, static_cast<u16>(root_level)));
 
         // Initialize leaf using new leaf node!
         // TODO: leaf_prev = load_prev_leaf_addr(root);
@@ -3531,7 +3561,7 @@ void NBTreeExtentsList::open() {
             // TODO: leaf_prev = load_prev_inner_addr(root, i);
             LogicAddr inner_prev = EMPTY_ADDR;
             std::unique_ptr<NBTreeExtent> inner;
-            inner.reset(new NBTreeSBlockExtent(bstore_, shared_.get(), shared_from_this(),
+            inner.reset(new ConsolidatedSBlockExtent(bstore_, shared_.get(), shared_from_this(),
                                                id_, inner_prev, static_cast<u16>(i)));
             extents_.push_back(std::move(inner));
         }
@@ -3573,7 +3603,7 @@ void NBTreeExtentsList::open() {
 }
 
 static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
-                                 NBTreeSBlockSharedStorage* shared,
+                                 ConsolidatedRefStorage* shared,
                                  std::shared_ptr<BlockStore> bstore,
                                  aku_ParamId id,
                                  size_t nlevels,
@@ -3587,9 +3617,9 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
             extents->push_back(std::move(leaf));
         } else {
             // Create empty inner node
-            std::unique_ptr<NBTreeSBlockExtent> inner;
+            std::unique_ptr<ConsolidatedSBlockExtent> inner;
             u16 level = static_cast<u16>(i);
-            inner.reset(new NBTreeSBlockExtent(bstore, shared, self, id, EMPTY_ADDR, level));
+            inner.reset(new ConsolidatedSBlockExtent(bstore, shared, self, id, EMPTY_ADDR, level));
             extents->push_back(std::move(inner));
         }
     }

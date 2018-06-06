@@ -292,7 +292,7 @@ Volume::Volume(const char* path, size_t write_pos)
     , path_(path)
     , mmap_ptr_(nullptr)
 {
-#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
+#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFF0
     // 64-bit architecture, we can use mmap for speed
     mmap_.reset(new MemoryMappedFile(path, false));
     if (mmap_->is_bad()) {

@@ -177,6 +177,17 @@ std::vector<StringT> SeriesMatcher::suggest_tag_values(std::string metric, std::
     return results;
 }
 
+size_t SeriesMatcher::memory_use() const {
+    return index.memory_use();
+}
+
+size_t SeriesMatcher::index_memory_use() const {
+    return index.index_memory_use();
+}
+
+size_t SeriesMatcher::pool_memory_use() const {
+    return index.pool_memory_use();
+}
 //                          //
 //   LegacySeriesMatcher    //
 //                          //
