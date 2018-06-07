@@ -38,6 +38,70 @@ namespace StorageEngine {
 typedef u32 BlockAddr;
 enum { AKU_BLOCK_SIZE = 4096 };
 
+struct ShreddedBlock {
+    enum {
+        NCOMPONENTS = 4,
+        COMPONENT_SIZE = AKU_BLOCK_SIZE / NCOMPONENTS,
+    };
+
+    std::vector<u8>  data_[NCOMPONENTS];
+    int pos_;  //! write pos
+
+    ShreddedBlock();
+
+    /** Add component if block is less than NCOMPONENTS in size.
+     *  Return index of the component or -1 if block is full.
+     */
+    int add();
+
+    int space_left() const;
+
+    int size() const;
+
+    void put(u8 val);
+
+    bool safe_put(u8 val);
+
+    int get_write_pos() const;
+
+    void set_write_pos(int pos);
+
+    template<class POD>
+    void put(const POD* data) {
+        const u8* it = reinterpret_cast<u8*>(data);
+        for (u32 i = 0; i < sizeof(POD); i++) {
+            put(it[i]);
+        }
+    }
+
+    template<class POD>
+    POD* allocate() {
+        int c = pos_ / COMPONENT_SIZE;
+        int i = pos_ % COMPONENT_SIZE;
+        if (c >= NCOMPONENTS) {
+            return false;
+        }
+        if ((data_[c].size() - static_cast<u32>(i)) < sizeof(POD)) {
+            return false;
+        }
+        POD* result = data_[c].data() + i;
+        pos_ += sizeof(POD);
+        return result;
+    }
+
+    //-----
+
+    bool is_readonly() const;
+
+    const u8* get_data(int component) const;
+
+    const u8* get_cdata(int component) const;
+
+    u8* get_data(int component);
+
+    size_t get_size(int component) const;
+};
+
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
 
@@ -144,6 +208,8 @@ public:
 
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
     std::tuple<aku_Status, BlockAddr> append_block(const u8* source);
+
+    std::tuple<aku_Status, BlockAddr> append_block(const ShreddedBlock* source);
 
     //! Flush volume
     void flush();

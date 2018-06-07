@@ -29,6 +29,88 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+ShreddedBlock::ShreddedBlock()
+    : pos_(0)
+{
+    data_[0].resize(COMPONENT_SIZE);
+}
+
+bool ShreddedBlock::is_readonly() const {
+    return false;
+}
+
+int ShreddedBlock::add() {
+    for (int i = 0; i < NCOMPONENTS; i++) {
+        if (data_[i].size() == 0) {
+            data_[i].resize(COMPONENT_SIZE);
+            return i;
+        }
+    }
+    return -1;
+}
+
+int ShreddedBlock::space_left() const {
+    return AKU_BLOCK_SIZE - pos_;
+}
+
+int ShreddedBlock::size() const {
+    return pos_;
+}
+
+void ShreddedBlock::put(u8 val) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    data_[c][static_cast<size_t>(i)] = val;
+    pos_++;
+}
+
+bool ShreddedBlock::safe_put(u8 val) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        return false;
+    }
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    data_[c][static_cast<size_t>(i)] = val;
+    pos_++;
+    return true;
+}
+
+int ShreddedBlock::get_write_pos() const {
+    return pos_;
+}
+
+void ShreddedBlock::set_write_pos(int pos) {
+    int c = pos / COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        AKU_PANIC("Invalid shredded block write-position");
+    }
+    pos_ = pos;
+}
+
+//--
+
+const u8* ShreddedBlock::get_data(int component) const {
+    return data_[component].data();
+}
+
+const u8* ShreddedBlock::get_cdata(int component) const {
+    return data_[component].data();
+}
+
+u8* ShreddedBlock::get_data(int component) {
+    return data_[component].data();
+}
+
+size_t ShreddedBlock::get_size(int component) const {
+    return data_[component].size();
+}
+
 static void panic_on_error(apr_status_t status, const char* msg) {
     if (status != APR_SUCCESS) {
         char error_message[0x100];
@@ -329,18 +411,6 @@ std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
 
 //! Append block to file (source size should be 4 at least BLOCK_SIZE)
 std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
-//    if (write_pos_ >= file_size_) {
-//        return std::make_tuple(AKU_EOVERFLOW, 0u);
-//    }
-//    apr_off_t seek_off = write_pos_ * AKU_BLOCK_SIZE;
-//    apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
-//    panic_on_error(status, "Volume seek error");
-//    apr_size_t bytes_written = 0;
-//    status = apr_file_write_full(apr_file_handle_.get(), source, AKU_BLOCK_SIZE, &bytes_written);
-//    panic_on_error(status, "Volume write error");
-//    auto result = write_pos_++;
-//    return std::make_tuple(AKU_SUCCESS, result);
-    // TODO: remove
     if (write_pos_ >= file_size_) {
         return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
@@ -348,11 +418,26 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
     panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
+    status = apr_file_write_full(apr_file_handle_.get(), source, AKU_BLOCK_SIZE, &bytes_written);
+    panic_on_error(status, "Volume write error");
+    auto result = write_pos_++;
+    return std::make_tuple(AKU_SUCCESS, result);
+}
+
+std::tuple<aku_Status, BlockAddr> Volume::append_block(const ShreddedBlock *source) {
+    if (write_pos_ >= file_size_) {
+        return std::make_tuple(AKU_EOVERFLOW, 0u);
+    }
+    apr_off_t seek_off = write_pos_ * AKU_BLOCK_SIZE;
+    apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
+    panic_on_error(status, "Volume seek error");
+    apr_size_t bytes_written = 0;
+    auto csize = ShreddedBlock::COMPONENT_SIZE;
     const struct iovec vec[] = {
-        { const_cast<u8*>(source), 1024 },
-        { const_cast<u8*>(source) + 1024, 1024 },
-        { const_cast<u8*>(source) + 2048, 1024 },
-        { const_cast<u8*>(source) + 3072, 1024 }
+        { const_cast<u8*>(source->get_data(0)) + 0*csize, csize },
+        { const_cast<u8*>(source->get_data(1)) + 1*csize, csize },
+        { const_cast<u8*>(source->get_data(2)) + 2*csize, csize },
+        { const_cast<u8*>(source->get_data(3)) + 3*csize, csize }
     };
     status = apr_file_writev_full(apr_file_handle_.get(), vec, 4, &bytes_written);
     panic_on_error(status, "Volume write error");
