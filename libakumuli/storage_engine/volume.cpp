@@ -329,6 +329,18 @@ std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
 
 //! Append block to file (source size should be 4 at least BLOCK_SIZE)
 std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
+//    if (write_pos_ >= file_size_) {
+//        return std::make_tuple(AKU_EOVERFLOW, 0u);
+//    }
+//    apr_off_t seek_off = write_pos_ * AKU_BLOCK_SIZE;
+//    apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
+//    panic_on_error(status, "Volume seek error");
+//    apr_size_t bytes_written = 0;
+//    status = apr_file_write_full(apr_file_handle_.get(), source, AKU_BLOCK_SIZE, &bytes_written);
+//    panic_on_error(status, "Volume write error");
+//    auto result = write_pos_++;
+//    return std::make_tuple(AKU_SUCCESS, result);
+    // TODO: remove
     if (write_pos_ >= file_size_) {
         return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
@@ -336,7 +348,13 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
     panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
-    status = apr_file_write_full(apr_file_handle_.get(), source, AKU_BLOCK_SIZE, &bytes_written);
+    const struct iovec vec[] = {
+        { const_cast<u8*>(source), 1024 },
+        { const_cast<u8*>(source) + 1024, 1024 },
+        { const_cast<u8*>(source) + 2048, 1024 },
+        { const_cast<u8*>(source) + 3072, 1024 }
+    };
+    status = apr_file_writev_full(apr_file_handle_.get(), vec, 4, &bytes_written);
     panic_on_error(status, "Volume write error");
     auto result = write_pos_++;
     return std::make_tuple(AKU_SUCCESS, result);

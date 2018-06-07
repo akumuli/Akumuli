@@ -197,7 +197,7 @@ void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
 
     // Compress
     VByteStreamWriter wstream(block.data(), block.data() + block.size());
-    FcmStreamWriter writer(wstream);
+    FcmStreamWriter<> writer(wstream);
     if (psrc == nullptr) {
         double val = rwalk.generate();
         samples.push_back(val);

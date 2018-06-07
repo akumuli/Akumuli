@@ -1,6 +1,5 @@
 #include "compression.h"
 #include "util.h"
-#include "akumuli_version.h"
 
 #include <unordered_map>
 #include <algorithm>
@@ -55,57 +54,6 @@ void DfcmPredictor::update(u64 value) {
     last_value = value;
 }
 
-static const int PREDICTOR_N = 1 << 7;
-
-template<class StreamT>
-static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
-    int nbytes = (flag & 7) + 1;
-    int nshift = (64 - nbytes*8)*(flag >> 3);
-    diff >>= nshift;
-    switch(nbytes) {
-    case 8:
-        if (!wstream.put_raw(diff)) {
-            return false;
-        }
-        break;
-    case 7:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-        diff >>= 8;
-    case 6:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-        diff >>= 8;
-    case 5:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-        diff >>= 8;
-    case 4:
-        if (!wstream.put_raw(static_cast<u32>(diff & 0xFFFFFFFF))) {
-            return false;
-        }
-        diff >>= 32;
-        break;
-    case 3:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-        diff >>= 8;
-    case 2:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-        diff >>= 8;
-    case 1:
-        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
-            return false;
-        }
-    }
-    return true;
-}
 
 template<class StreamT>
 static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
@@ -125,155 +73,6 @@ static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
         // FcmStreamWriter & FcmStreamReader //
         // ///////////////////////////////// //
 
-FcmStreamWriter::FcmStreamWriter(VByteStreamWriter& stream)
-    : stream_(stream)
-    , predictor_(PREDICTOR_N)
-    , prev_diff_(0)
-    , prev_flag_(0)
-    , nelements_(0)
-{
-}
-
-
-bool FcmStreamWriter::tput(double const* values, size_t n) {
-    assert(n == 16);
-    u8  flags[16];
-    u64 diffs[16];
-    for (u32 i = 0; i < n; i++) {
-        std::tie(diffs[i], flags[i]) = encode(values[i]);
-    }
-    u64 sum_diff = 0;
-    for (u32 i = 0; i < n; i++) {
-        sum_diff |= diffs[i];
-    }
-    if (sum_diff == 0) {
-        // Shortcut
-        if (!stream_.put_raw((u8)0xFF)) {
-            return false;
-        }
-    } else {
-        for (size_t i = 0; i < n; i+=2) {
-            u64 prev_diff, curr_diff;
-            unsigned char prev_flag, curr_flag;
-            prev_diff = diffs[i];
-            curr_diff = diffs[i+1];
-            prev_flag = flags[i];
-            curr_flag = flags[i+1];
-            if (curr_flag == 0xF) {
-                curr_flag = 0;
-            }
-            if (prev_flag == 0xF) {
-                prev_flag = 0;
-            }
-            unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
-            if (!stream_.put_raw(flags)) {
-                return false;
-            }
-            if (!encode_value(stream_, prev_diff, prev_flag)) {
-                return false;
-            }
-            if (!encode_value(stream_, curr_diff, curr_flag)) {
-                return false;
-            }
-        }
-    }
-    return commit();
-}
-
-std::tuple<u64, unsigned char> FcmStreamWriter::encode(double value) {
-    union {
-        double real;
-        u64 bits;
-    } curr = {};
-    curr.real = value;
-    u64 predicted = predictor_.predict_next();
-    predictor_.update(curr.bits);
-    u64 diff = curr.bits ^ predicted;
-
-    // Number of trailing and leading zero-bytes
-    int leading_bytes = 8;
-    int trailing_bytes = 8;
-
-    if (diff != 0) {
-        trailing_bytes = __builtin_ctzl(diff) / 8;
-        leading_bytes = __builtin_clzl(diff) / 8;
-    } else {
-        // Fast path for 0-diff values.
-        // Flags 7 and 15 are interchangeable.
-        // If there is 0 trailing zero bytes and 0 leading bytes
-        // code will always generate flag 7 so we can use flag 17
-        // for something different (like 0 indication)
-        return std::make_tuple(0, 0xF);
-    }
-
-    int nbytes;
-    unsigned char flag;
-
-    if (trailing_bytes > leading_bytes) {
-        // this would be the case with low precision values
-        nbytes = 8 - trailing_bytes;
-        if (nbytes > 0) {
-            nbytes--;
-        }
-        // 4th bit indicates that only leading bytes are stored
-        flag = 8 | (nbytes&7);
-    } else {
-        nbytes = 8 - leading_bytes;
-        if (nbytes > 0) {
-            nbytes--;
-        }
-        // zeroed 4th bit indicates that only trailing bytes are stored
-        flag = nbytes&7;
-    }
-    return std::make_tuple(diff, flag);
-}
-
-bool FcmStreamWriter::put(double value) {
-    u64 diff;
-    unsigned char flag;
-    std::tie(diff, flag) = encode(value);
-    if (flag == 0xF) {
-        flag = 0;  // Just store one byte, space opt. is disabled
-    }
-    if (nelements_ % 2 == 0) {
-        prev_diff_ = diff;
-        prev_flag_ = flag;
-    } else {
-        // we're storing values by pairs to save space
-        unsigned char flags = (prev_flag_ << 4) | flag;
-        if (!stream_.put_raw(flags)) {
-            return false;
-        }
-        if (!encode_value(stream_, prev_diff_, prev_flag_)) {
-            return false;
-        }
-        if (!encode_value(stream_, diff, flag)) {
-            return false;
-        }
-    }
-    nelements_++;
-    return true;
-}
-
-size_t FcmStreamWriter::size() const { return stream_.size(); }
-
-bool FcmStreamWriter::commit() {
-    if (nelements_ % 2 != 0) {
-        // `input` contains odd number of values so we should use
-        // empty second value that will take one byte in output
-        unsigned char flags = prev_flag_ << 4;
-        if (!stream_.put_raw(flags)) {
-            return false;
-        }
-        if (!encode_value(stream_, prev_diff_, prev_flag_)) {
-            return false;
-        }
-        if (!encode_value(stream_, 0ull, 0)) {
-            return false;
-        }
-    }
-    return stream_.commit();
-}
 
 FcmStreamReader::FcmStreamReader(VByteStreamReader& stream)
     : stream_(stream)
@@ -518,6 +317,7 @@ aku_ParamId DataBlockReader::get_id() const {
 u16 DataBlockReader::version() const {
     return get_block_version(begin_);
 }
+
 
 }
 

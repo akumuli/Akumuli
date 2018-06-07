@@ -2648,7 +2648,7 @@ struct ConsolidatedRefStorage {
     void append(const SubtreeRef& ref) {
         if (refs_.capacity() == refs_.size()) {
             // Grow buffer in small steps to prevent fragmentation
-            const size_t grow_step = 4;
+            const size_t grow_step = 1;
             refs_.reserve(refs_.capacity() + grow_step);
         }
         refs_.push_back(ref);

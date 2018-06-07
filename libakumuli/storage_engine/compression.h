@@ -31,35 +31,13 @@
 #include <tuple>
 
 #include "akumuli.h"
+#include "akumuli_version.h"
 #include "util.h"
 
 namespace Akumuli {
 
 typedef std::vector<unsigned char> ByteVector;
 
-struct UncompressedChunk {
-    /** Index in `timestamps` and `paramids` arrays corresponds
-      * to individual row. Each element of the `values` array corresponds to
-      * specific column and row. Variable longest_row should contain
-      * longest row length inside the header.
-      */
-    std::vector<aku_Timestamp> timestamps;
-    std::vector<aku_ParamId>   paramids;
-    std::vector<double>        values;
-};
-
-struct ChunkWriter {
-
-    virtual ~ChunkWriter() = default;
-
-    /** Allocate space for new data. Return mem range or
-      * empty range in a case of error.
-      */
-    virtual aku_MemRange allocate() = 0;
-
-    //! Commit changes
-    virtual aku_Status commit(size_t bytes_written) = 0;
-};
 
 //! Base 128 encoded integer
 template <class TVal> class Base128Int {
@@ -124,6 +102,25 @@ public:
             }
         }
         return p;
+    }
+
+    /** Write base 128 encoded integer to the binary stream.
+      * @returns 'begin' on error, iterator to next free region otherwise
+      */
+    template<class BlockT>
+    bool put(BlockT* block) const {
+        TVal value = value_;
+        while (value != 0) {
+            TVal s = value & 0x7F;
+            value >>= 7;
+            if (value != 0) {
+                s |= 0x80;
+            }
+            if (!block->safe_put(s)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     //! turn into integer
@@ -450,6 +447,175 @@ struct VByteStreamWriter {
     }
 };
 
+template<class BlockT>
+struct VByteStreamWriterV2 {
+    BlockT*   block_;
+    // underlying memory region
+    u8*       end_;
+    u8*       pos_;
+    // tail elements
+    u32       cnt_;
+    u64       prev_;
+
+    VByteStreamWriterV2(BlockT* block)
+        : block_(block)
+        , cnt_(0)
+        , prev_(0)
+    {}
+
+    VByteStreamWriterV2(VByteStreamWriterV2& other)
+        : block_(other.block_)
+        , cnt_(0)
+        , prev_(0)
+    {}
+
+    bool empty() const { return cnt_ == 0; }
+
+    //! Perform combined write (TVal should be integer)
+    template<class TVal> bool encode(TVal fst, TVal snd) {
+        static_assert(sizeof(TVal) <= 8, "Value is to large");
+        int fstlen = 8*sizeof(TVal);
+        int sndlen = 8*sizeof(TVal);
+        if (fst) {
+            fstlen = __builtin_clzl(fst);
+        }
+        if (snd) {
+            sndlen = __builtin_clzl(snd);
+        }
+        int fstctrl = sizeof(TVal) - fstlen / 8;  // value should be in 0-8 range
+        int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
+        u8 ctrlword = static_cast<u8>(fstctrl | (sndctrl << 4));
+        // Check size
+        if (block_->space_left() < static_cast<size_t>(1 + fstctrl + sndctrl)) {
+            return false;
+        }
+        // Write ctrl world
+        block_->put(ctrlword);
+        for (int i = 0; i < fstctrl; i++) {
+            block_->put(static_cast<u8>(fst));
+            fst >>= 8;
+        }
+        for (int i = 0; i < sndctrl; i++) {
+            block_->put(static_cast<u8>(snd));
+            snd >>= 8;
+        }
+        return true;
+    }
+
+    /** This method is used by DeltaDelta coding.
+      */
+    template<class TVal> bool put_base128(TVal value) {
+        Base128Int<TVal> val(value);
+        while (true) {
+            if (!val.put(block_)) {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    bool shortcut() {
+        // put sentinel
+        if (block_->space_left() == 0) {
+            return false;
+        }
+        block_->put(0xFF);
+        return true;
+    }
+
+    /** Put value into stream (transactional).
+      */
+    template <class TVal> bool tput(TVal const* iter, size_t n) {
+        assert(n % 2 == 0);  // n expected to be eq 16
+        auto oldpos = block_->get_write_pos();
+        // Fast path for DeltaDelta encoding
+        bool take_shortcut = true;
+        for (u32 i = 0; i < n; i++) {
+            if (iter[i] != 0) {
+                take_shortcut = false;
+                break;
+            }
+        }
+        if (take_shortcut) {
+            return shortcut();
+        } else {
+            for (u32 i = 0; i < n; i+=2) {
+                if (!encode(iter[i], iter[i+1])) {
+                    // restore old pos_ value
+                    block_->set_write_pos(oldpos);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Put value into stream. This method should be used after
+      * tput. The idea is that user should write most of the data
+      * using `tput` method and then the rest of the data (less then
+      * chunksize elements) should be written using this one. If one
+      * call `put` before `tput` stream will be broken and unreadable.
+      */
+    template <class TVal> bool put(TVal value) {
+        cnt_++;
+        union {
+            TVal val;
+            u64 uint;
+        } prev;
+        if (cnt_ % 2 != 0) {
+            prev.val = value;
+            prev_ = prev.uint;
+        } else {
+            prev.uint = prev_;
+            return encode(prev.val, value);
+        }
+        return true;
+    }
+
+    template <class TVal> bool put_raw(TVal value) {
+        if (block_->space_left() < static_cast<i32>(sizeof(TVal))) {
+            return false;
+        }
+        block_->put(value);
+        return true;
+    }
+
+    //! Commit stream
+    bool commit() {
+        // write tail if needed
+        if (cnt_ % 2 == 1) {
+            int len = 64;
+            if (prev_) {
+                len = __builtin_clzl(prev_);
+            }
+            int ctrl = 8 - len / 8;  // value should be in 0-8 range
+            u8 ctrlword = static_cast<u8>(ctrl);
+            // Check size
+            if (block_->space_left() < static_cast<size_t>(1 + ctrl)) {
+                return false;
+            }
+            // Write ctrl world
+            block_->put(ctrlword);
+            for (int i = 0; i < ctrl; i++) {
+                block_->put(static_cast<u8>(prev_));
+                prev_ >>= 8;
+            }
+        }
+        return true;
+    }
+
+    size_t size() const { return block_->size(); }
+
+    size_t space_left() const { return block_->space_left(); }
+
+    /** Try to allocate space inside a stream in current position without
+      * compression (needed for size prefixes).
+      * @returns pointer to the value inside the stream or nullptr
+      */
+    template <class T> T* allocate() {
+        return block_->template allocate<T>();
+    }
+};
 
 //! Base128 decoder
 struct VByteStreamReader {
@@ -528,12 +694,13 @@ struct VByteStreamReader {
     const u8* pos() const { return pos_; }
 };
 
-template <size_t Step, typename TVal> struct DeltaDeltaStreamWriter {
-    VByteStreamWriter&   stream_;
+template <size_t Step, typename TVal, typename StreamT=VByteStreamWriter>
+struct DeltaDeltaStreamWriter {
+    StreamT&   stream_;
     TVal                 prev_;
     int                  put_calls_;
 
-    DeltaDeltaStreamWriter(VByteStreamWriter& stream)
+    DeltaDeltaStreamWriter(StreamT& stream)
         : stream_(stream)
         , prev_()
         , put_calls_(0) {}
@@ -661,25 +828,216 @@ struct Dfcm2Predictor {
 typedef DfcmPredictor PredictorT;
 //typedef SimplePredictor PredictorT;
 
+static const int PREDICTOR_N = 1 << 7;
+
+template<class StreamT>
+static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {
+    int nbytes = (flag & 7) + 1;
+    int nshift = (64 - nbytes*8)*(flag >> 3);
+    diff >>= nshift;
+    switch(nbytes) {
+    case 8:
+        if (!wstream.put_raw(diff)) {
+            return false;
+        }
+        break;
+    case 7:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+        diff >>= 8;
+    case 6:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+        diff >>= 8;
+    case 5:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+        diff >>= 8;
+    case 4:
+        if (!wstream.put_raw(static_cast<u32>(diff & 0xFFFFFFFF))) {
+            return false;
+        }
+        diff >>= 32;
+        break;
+    case 3:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+        diff >>= 8;
+    case 2:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+        diff >>= 8;
+    case 1:
+        if (!wstream.put_raw(static_cast<unsigned char>(diff & 0xFF))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 //! Double to FCM encoder
+template<class StreamT=VByteStreamWriter>
 struct FcmStreamWriter {
-    VByteStreamWriter&   stream_;
+    StreamT&             stream_;
     PredictorT           predictor_;
     u64                  prev_diff_;
     unsigned char        prev_flag_;
     int                  nelements_;
 
-    FcmStreamWriter(VByteStreamWriter& stream);
+    FcmStreamWriter(StreamT& stream)
+        : stream_(stream)
+        , predictor_(PREDICTOR_N)
+        , prev_diff_(0)
+        , prev_flag_(0)
+        , nelements_(0)
+    {
+    }
 
-    inline std::tuple<u64, unsigned char> encode(double value);
 
-    bool tput(double const* values, size_t n);
+    bool tput(double const* values, size_t n) {
+        assert(n == 16);
+        u8  flags[16];
+        u64 diffs[16];
+        for (u32 i = 0; i < n; i++) {
+            std::tie(diffs[i], flags[i]) = encode(values[i]);
+        }
+        u64 sum_diff = 0;
+        for (u32 i = 0; i < n; i++) {
+            sum_diff |= diffs[i];
+        }
+        if (sum_diff == 0) {
+            // Shortcut
+            if (!stream_.put_raw((u8)0xFF)) {
+                return false;
+            }
+        } else {
+            for (size_t i = 0; i < n; i+=2) {
+                u64 prev_diff, curr_diff;
+                unsigned char prev_flag, curr_flag;
+                prev_diff = diffs[i];
+                curr_diff = diffs[i+1];
+                prev_flag = flags[i];
+                curr_flag = flags[i+1];
+                if (curr_flag == 0xF) {
+                    curr_flag = 0;
+                }
+                if (prev_flag == 0xF) {
+                    prev_flag = 0;
+                }
+                unsigned char flags = static_cast<unsigned char>((prev_flag << 4) | curr_flag);
+                if (!stream_.put_raw(flags)) {
+                    return false;
+                }
+                if (!encode_value(stream_, prev_diff, prev_flag)) {
+                    return false;
+                }
+                if (!encode_value(stream_, curr_diff, curr_flag)) {
+                    return false;
+                }
+            }
+        }
+        return commit();
+    }
 
-    bool put(double value);
+    std::tuple<u64, unsigned char> encode(double value) {
+        union {
+            double real;
+            u64 bits;
+        } curr = {};
+        curr.real = value;
+        u64 predicted = predictor_.predict_next();
+        predictor_.update(curr.bits);
+        u64 diff = curr.bits ^ predicted;
 
-    size_t size() const;
+        // Number of trailing and leading zero-bytes
+        int leading_bytes = 8;
+        int trailing_bytes = 8;
 
-    bool commit();
+        if (diff != 0) {
+            trailing_bytes = __builtin_ctzl(diff) / 8;
+            leading_bytes = __builtin_clzl(diff) / 8;
+        } else {
+            // Fast path for 0-diff values.
+            // Flags 7 and 15 are interchangeable.
+            // If there is 0 trailing zero bytes and 0 leading bytes
+            // code will always generate flag 7 so we can use flag 17
+            // for something different (like 0 indication)
+            return std::make_tuple(0, 0xF);
+        }
+
+        int nbytes;
+        unsigned char flag;
+
+        if (trailing_bytes > leading_bytes) {
+            // this would be the case with low precision values
+            nbytes = 8 - trailing_bytes;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            // 4th bit indicates that only leading bytes are stored
+            flag = 8 | (nbytes&7);
+        } else {
+            nbytes = 8 - leading_bytes;
+            if (nbytes > 0) {
+                nbytes--;
+            }
+            // zeroed 4th bit indicates that only trailing bytes are stored
+            flag = nbytes&7;
+        }
+        return std::make_tuple(diff, flag);
+    }
+
+    bool put(double value) {
+        u64 diff;
+        unsigned char flag;
+        std::tie(diff, flag) = encode(value);
+        if (flag == 0xF) {
+            flag = 0;  // Just store one byte, space opt. is disabled
+        }
+        if (nelements_ % 2 == 0) {
+            prev_diff_ = diff;
+            prev_flag_ = flag;
+        } else {
+            // we're storing values by pairs to save space
+            unsigned char flags = (prev_flag_ << 4) | flag;
+            if (!stream_.put_raw(flags)) {
+                return false;
+            }
+            if (!encode_value(stream_, prev_diff_, prev_flag_)) {
+                return false;
+            }
+            if (!encode_value(stream_, diff, flag)) {
+                return false;
+            }
+        }
+        nelements_++;
+        return true;
+    }
+
+    size_t size() const { return stream_.size(); }
+
+    bool commit() {
+        if (nelements_ % 2 != 0) {
+            // `input` contains odd number of values so we should use
+            // empty second value that will take one byte in output
+            unsigned char flags = prev_flag_ << 4;
+            if (!stream_.put_raw(flags)) {
+                return false;
+            }
+            if (!encode_value(stream_, prev_diff_, prev_flag_)) {
+                return false;
+            }
+            if (!encode_value(stream_, 0ull, 0)) {
+                return false;
+            }
+        }
+        return stream_.commit();
+    }
 };
 
 //! FCM to double decoder
@@ -700,7 +1058,6 @@ struct FcmStreamReader {
 typedef DeltaDeltaStreamReader<16, u64> DeltaDeltaReader;
 typedef DeltaDeltaStreamWriter<16, u64> DeltaDeltaWriter;
 
-
 namespace StorageEngine {
 
 struct DataBlockWriter {
@@ -711,7 +1068,7 @@ struct DataBlockWriter {
     };
     VByteStreamWriter   stream_;
     DeltaDeltaWriter    ts_stream_;
-    FcmStreamWriter     val_stream_;
+    FcmStreamWriter<>   val_stream_;
     int                 write_index_;
     aku_Timestamp       ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
     double              val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
@@ -769,6 +1126,169 @@ struct DataBlockReader {
     aku_ParamId get_id() const;
 
     u16 version() const;
+};
+
+
+template<class BlockT>
+struct DataBlockWriterV2 {
+    enum {
+        CHUNK_SIZE  = 16,
+        CHUNK_MASK  = 15,
+        HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
+    };
+    typedef VByteStreamWriterV2<BlockT> StreamT;
+    typedef DeltaDeltaStreamWriter<16, u64, StreamT> DeltaDeltaWriterT;
+    StreamT                  stream_;
+    DeltaDeltaWriterT        ts_stream_;
+    FcmStreamWriter<StreamT> val_stream_;
+    int                      write_index_;
+    aku_Timestamp            ts_writebuf_[CHUNK_SIZE];   //! Write buffer for timestamps
+    double                   val_writebuf_[CHUNK_SIZE];  //! Write buffer for values
+    u16*                     nchunks_;
+    u16*                     ntail_;
+
+    //! Empty c-tor. Constructs unwritable object.
+    DataBlockWriterV2()
+        : stream_(nullptr)
+        , ts_stream_(stream_)
+        , val_stream_(stream_)
+        , write_index_(0)
+        , nchunks_(nullptr)
+        , ntail_(nullptr)
+    {
+    }
+
+    /** C-tor
+      * @param id Series id.
+      * @param size Block size.
+      * @param buf Pointer to buffer.
+      */
+    DataBlockWriterV2(aku_ParamId id, BlockT* block)
+        : stream_(block)
+        , ts_stream_(stream_)
+        , val_stream_(stream_)
+        , write_index_(0)
+    {
+        // offset 0
+        auto success = stream_.template put_raw<u16>(AKUMULI_VERSION);
+        // offset 2
+        nchunks_ = stream_.template allocate<u16>();
+        // offset 4
+        ntail_ = stream_.template allocate<u16>();
+        // offset 6
+        success = stream_.put_raw(id) && success;
+        if (!success || nchunks_ == nullptr || ntail_ == nullptr) {
+            AKU_PANIC("Buffer is too small (3)");
+        }
+        *ntail_ = 0;
+        *nchunks_ = 0;
+    }
+
+    /** Append value to block.
+      * @param ts Timestamp.
+      * @param value Value.
+      * @return AKU_EOVERFLOW when block is full or AKU_SUCCESS.
+      */
+    aku_Status put(aku_Timestamp ts, double value) {
+        if (room_for_chunk()) {
+            // Invariant 1: number of elements stored in write buffer (ts_writebuf_ val_writebuf_)
+            // equals `write_index_ % CHUNK_SIZE`.
+            ts_writebuf_[write_index_ & CHUNK_MASK] = ts;
+            val_writebuf_[write_index_ & CHUNK_MASK] = value;
+            write_index_++;
+            if ((write_index_ & CHUNK_MASK) == 0) {
+                // put timestamps
+                if (ts_stream_.tput(ts_writebuf_, CHUNK_SIZE)) {
+                    if (val_stream_.tput(val_writebuf_, CHUNK_SIZE)) {
+                        *nchunks_ += 1;
+                        return AKU_SUCCESS;
+                    }
+                }
+                // Content of the write buffer was lost, this can happen only if `room_for_chunk`
+                // function estimates required space incorrectly.
+                assert(false);
+                return AKU_EOVERFLOW;
+            }
+        } else {
+            // Put values to the end of the stream without compression.
+            // This can happen first only when write buffer is empty.
+            assert((write_index_ & CHUNK_MASK) == 0);
+            if (stream_.put_raw(ts)) {
+                if (stream_.put_raw(value)) {
+                    *ntail_ += 1;
+                    return AKU_SUCCESS;
+                }
+            }
+            return AKU_EOVERFLOW;
+        }
+        return AKU_SUCCESS;
+    }
+
+    size_t commit() {
+        // It should be possible to store up to one million chunks in one block,
+        // for 4K block size this is more then enough.
+        auto nchunks = write_index_ / CHUNK_SIZE;
+        auto buftail = write_index_ % CHUNK_SIZE;
+        // Invariant 2: if DataBlockWriter was closed after `put` method overflowed (return AKU_EOVERFLOW),
+        // then `ntail_` should be GE then zero and write buffer should be empty (write_index_ = multiple of CHUNK_SIZE).
+        // Otherwise, `ntail_` should be zero.
+        if (buftail) {
+            // Write buffer is not empty
+            if (*ntail_ != 0) {
+                // invariant is broken
+                AKU_PANIC("Write buffer is not empty but can't be flushed");
+            }
+            for (int ix = 0; ix < buftail; ix++) {
+                auto success = stream_.put_raw(ts_writebuf_[ix]);
+                success = stream_.put_raw(val_writebuf_[ix]) && success;
+                if (!success) {
+                    // Data loss. This should never happen at this point. If this error
+                    // occures then `room_for_chunk` estimates space requirements incorrectly.
+                    assert(false);
+                    break;
+                }
+                *ntail_ += 1;
+                write_index_--;
+            }
+        }
+        assert(nchunks <= 0xFFFF);
+        *nchunks_ = static_cast<u16>(nchunks);
+        return stream_.size();
+    }
+
+    //! Read tail elements (the ones not yet written to output stream)
+    void read_tail_elements(std::vector<aku_Timestamp>* timestamps,
+                            std::vector<double>*        values) const {
+        // Note: this method can be used to read values from
+        // write buffer. It sort of breaks incapsulation but
+        // we don't need  to maintain  another  write buffer
+        // anywhere else.
+        auto tailsize = write_index_ & CHUNK_MASK;
+        for (int i = 0; i < tailsize; i++) {
+            timestamps->push_back(ts_writebuf_[i]);
+            values->push_back(val_writebuf_[i]);
+        }
+    }
+
+    int get_write_index() const {
+        // Note: we need to be able to read this index to
+        // get rid of write index inside NBTreeLeaf.
+        if (!stream_.empty()) {
+            return *ntail_ + write_index_;
+        }
+        return 0;
+    }
+
+private:
+    //! Return true if there is enough free space to store `CHUNK_SIZE` compressed values
+    bool room_for_chunk() const {
+        static const size_t MARGIN = 10*16 + 9*16;  // worst case
+        auto free_space = stream_.space_left();
+        if (free_space < MARGIN) {
+            return false;
+        }
+        return true;
+    }
 };
 
 }  // namespace V2
