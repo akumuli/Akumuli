@@ -84,6 +84,8 @@ struct BlockStore {
       */
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data) = 0;
 
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<ShreddedBlock> data) = 0;
+
     //! Flush all pending changes.
     virtual void flush() = 0;
 
@@ -131,6 +133,8 @@ public:
      * @return Status and block's logic address.
      */
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
+
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<ShreddedBlock> data);
 
     virtual void flush();
 
@@ -205,6 +209,7 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
 
     virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<ShreddedBlock> data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
     virtual u32 checksum(u8 const* data, size_t size) const;

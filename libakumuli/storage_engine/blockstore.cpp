@@ -286,6 +286,27 @@ std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<Bloc
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 
+std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<ShreddedBlock> data) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    BlockAddr block_addr;
+    aku_Status status;
+    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data.get());
+    if (status == AKU_EOVERFLOW) {
+      // transition to new/next volume
+      handle_volume_transition();
+      std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data.get());
+      if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, 0ull);
+      }
+    }
+    status = meta_->set_nblocks(current_volume_, block_addr + 1);
+    if (status != AKU_SUCCESS) {
+      AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
+    }
+    dirty_[current_volume_]++;
+    return std::make_tuple(status, make_logic(current_gen_, block_addr));
+}
+
 void FileStorage::flush() {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     /*
@@ -580,6 +601,20 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> 
     auto addr = write_pos_++;
     addr += MEMSTORE_BASE;
     data->set_addr(addr);
+    return std::make_tuple(AKU_SUCCESS, addr);
+}
+
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<ShreddedBlock> data) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    for (int i = 0; i < ShreddedBlock::NCOMPONENTS; i++) {
+        const u8* p = data->get_cdata(i);
+        std::copy(p, p + ShreddedBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
+    }
+    if (append_callback_) {
+        append_callback_(write_pos_ + MEMSTORE_BASE);
+    }
+    auto addr = write_pos_++;
+    addr += MEMSTORE_BASE;
     return std::make_tuple(AKU_SUCCESS, addr);
 }
 
