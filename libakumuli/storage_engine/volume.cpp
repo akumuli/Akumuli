@@ -29,17 +29,17 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-ShreddedBlock::ShreddedBlock()
+IOVecBlock::IOVecBlock()
     : pos_(0)
 {
     data_[0].resize(COMPONENT_SIZE);
 }
 
-bool ShreddedBlock::is_readonly() const {
+bool IOVecBlock::is_readonly() const {
     return false;
 }
 
-int ShreddedBlock::add() {
+int IOVecBlock::add() {
     for (int i = 0; i < NCOMPONENTS; i++) {
         if (data_[i].size() == 0) {
             data_[i].resize(COMPONENT_SIZE);
@@ -49,15 +49,15 @@ int ShreddedBlock::add() {
     return -1;
 }
 
-int ShreddedBlock::space_left() const {
+int IOVecBlock::space_left() const {
     return AKU_BLOCK_SIZE - pos_;
 }
 
-int ShreddedBlock::size() const {
+int IOVecBlock::size() const {
     return pos_;
 }
 
-void ShreddedBlock::put(u8 val) {
+void IOVecBlock::put(u8 val) {
     int c = pos_ / COMPONENT_SIZE;
     int i = pos_ % COMPONENT_SIZE;
     if (data_[c].empty()) {
@@ -67,7 +67,7 @@ void ShreddedBlock::put(u8 val) {
     pos_++;
 }
 
-bool ShreddedBlock::safe_put(u8 val) {
+bool IOVecBlock::safe_put(u8 val) {
     int c = pos_ / COMPONENT_SIZE;
     int i = pos_ % COMPONENT_SIZE;
     if (c >= NCOMPONENTS) {
@@ -81,11 +81,11 @@ bool ShreddedBlock::safe_put(u8 val) {
     return true;
 }
 
-int ShreddedBlock::get_write_pos() const {
+int IOVecBlock::get_write_pos() const {
     return pos_;
 }
 
-void ShreddedBlock::set_write_pos(int pos) {
+void IOVecBlock::set_write_pos(int pos) {
     int c = pos / COMPONENT_SIZE;
     if (c >= NCOMPONENTS) {
         AKU_PANIC("Invalid shredded block write-position");
@@ -95,19 +95,19 @@ void ShreddedBlock::set_write_pos(int pos) {
 
 //--
 
-const u8* ShreddedBlock::get_data(int component) const {
+const u8* IOVecBlock::get_data(int component) const {
     return data_[component].data();
 }
 
-const u8* ShreddedBlock::get_cdata(int component) const {
+const u8* IOVecBlock::get_cdata(int component) const {
     return data_[component].data();
 }
 
-u8* ShreddedBlock::get_data(int component) {
+u8* IOVecBlock::get_data(int component) {
     return data_[component].data();
 }
 
-size_t ShreddedBlock::get_size(int component) const {
+size_t IOVecBlock::get_size(int component) const {
     return data_[component].size();
 }
 
@@ -424,7 +424,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
-std::tuple<aku_Status, BlockAddr> Volume::append_block(const ShreddedBlock *source) {
+std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source) {
     if (write_pos_ >= file_size_) {
         return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
@@ -432,7 +432,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const ShreddedBlock *sour
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
     panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
-    auto csize = ShreddedBlock::COMPONENT_SIZE;
+    auto csize = IOVecBlock::COMPONENT_SIZE;
     const struct iovec vec[] = {
         { const_cast<u8*>(source->get_data(0)) + 0*csize, csize },
         { const_cast<u8*>(source->get_data(1)) + 1*csize, csize },

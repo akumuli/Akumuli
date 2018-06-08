@@ -38,7 +38,7 @@ namespace StorageEngine {
 typedef u32 BlockAddr;
 enum { AKU_BLOCK_SIZE = 4096 };
 
-struct ShreddedBlock {
+struct IOVecBlock {
     enum {
         NCOMPONENTS = 4,
         COMPONENT_SIZE = AKU_BLOCK_SIZE / NCOMPONENTS,
@@ -47,7 +47,7 @@ struct ShreddedBlock {
     std::vector<u8>  data_[NCOMPONENTS];
     int pos_;  //! write pos
 
-    ShreddedBlock();
+    IOVecBlock();
 
     /** Add component if block is less than NCOMPONENTS in size.
      *  Return index of the component or -1 if block is full.
@@ -209,7 +209,7 @@ public:
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
     std::tuple<aku_Status, BlockAddr> append_block(const u8* source);
 
-    std::tuple<aku_Status, BlockAddr> append_block(const ShreddedBlock* source);
+    std::tuple<aku_Status, BlockAddr> append_block(const IOVecBlock* source);
 
     //! Flush volume
     void flush();

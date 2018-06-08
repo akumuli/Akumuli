@@ -286,7 +286,7 @@ std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<Bloc
     return std::make_tuple(status, make_logic(current_gen_, block_addr));
 }
 
-std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<ShreddedBlock> data) {
+std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<IOVecBlock> data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     BlockAddr block_addr;
     aku_Status status;
@@ -604,11 +604,11 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> 
     return std::make_tuple(AKU_SUCCESS, addr);
 }
 
-std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<ShreddedBlock> data) {
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBlock> data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    for (int i = 0; i < ShreddedBlock::NCOMPONENTS; i++) {
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
         const u8* p = data->get_cdata(i);
-        std::copy(p, p + ShreddedBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
+        std::copy(p, p + IOVecBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
     }
     if (append_callback_) {
         append_callback_(write_pos_ + MEMSTORE_BASE);
