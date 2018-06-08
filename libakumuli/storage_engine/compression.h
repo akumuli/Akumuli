@@ -486,7 +486,7 @@ struct VByteStreamWriterV2 {
         int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
         u8 ctrlword = static_cast<u8>(fstctrl | (sndctrl << 4));
         // Check size
-        if (block_->space_left() < static_cast<size_t>(1 + fstctrl + sndctrl)) {
+        if (block_->space_left() < (1 + fstctrl + sndctrl)) {
             return false;
         }
         // Write ctrl world
@@ -591,7 +591,7 @@ struct VByteStreamWriterV2 {
             int ctrl = 8 - len / 8;  // value should be in 0-8 range
             u8 ctrlword = static_cast<u8>(ctrl);
             // Check size
-            if (block_->space_left() < static_cast<size_t>(1 + ctrl)) {
+            if (block_->space_left() < (1 + ctrl)) {
                 return false;
             }
             // Write ctrl world
@@ -1163,12 +1163,15 @@ struct DataBlockWriterV2 {
       * @param size Block size.
       * @param buf Pointer to buffer.
       */
-    DataBlockWriterV2(aku_ParamId id, BlockT* block)
+    DataBlockWriterV2(BlockT* block)
         : stream_(block)
         , ts_stream_(stream_)
         , val_stream_(stream_)
         , write_index_(0)
     {
+    }
+
+    void init(aku_ParamId id) {
         // offset 0
         auto success = stream_.template put_raw<u16>(AKUMULI_VERSION);
         // offset 2

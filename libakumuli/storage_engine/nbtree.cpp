@@ -148,6 +148,20 @@ aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
     return AKU_SUCCESS;
 }
 
+//! Initialize object from leaf node
+static aku_Status init_subtree_from_leaf(const IOVecLeaf& leaf, SubtreeRef& out) {
+    if (leaf.nelements() == 0) {
+        return AKU_EBAD_ARG;
+    }
+    SubtreeRef const* meta = leaf.get_leafmeta();
+    out = *meta;
+    out.payload_size = 0;
+    out.checksum = 0;
+    out.addr = EMPTY_ADDR;  // Leaf metadta stores address of the previous node!
+    out.type = NBTreeBlockType::LEAF;
+    return AKU_SUCCESS;
+}
+
 aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref) {
     std::vector<SubtreeRef> refs;
     aku_Status status = node.read_all(&refs);
@@ -1909,6 +1923,319 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split(std::shared_ptr<BlockStore> 
     return std::make_tuple(AKU_SUCCESS, addr);
 }
 
+// ///////// //
+// IOVecLeaf //
+
+IOVecLeaf::IOVecLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
+    : prev_(prev)
+    , block_(std::make_shared<IOVecBlock>())
+    , writer_(block_.get())
+    , fanout_index_(fanout_index)
+{
+    // Check that invariant holds.
+    SubtreeRef* subtree = block_->allocate<SubtreeRef>();
+    if (subtree == nullptr) {
+        AKU_PANIC("Can't allocate space in IOVecBlock");
+    }
+    subtree->addr = prev;
+    subtree->level = 0;  // Leaf node
+    subtree->type = NBTreeBlockType::LEAF;
+    subtree->id = id;
+    subtree->version = AKUMULI_VERSION;
+    subtree->payload_size = 0;
+    subtree->fanout_index = fanout_index;
+    // values that should be updated by insert
+    subtree->begin = std::numeric_limits<aku_Timestamp>::max();
+    subtree->end = 0;
+    subtree->count = 0;
+    subtree->min = std::numeric_limits<double>::max();
+    subtree->max = std::numeric_limits<double>::min();
+    subtree->sum = 0;
+    subtree->min_time = std::numeric_limits<aku_Timestamp>::max();
+    subtree->max_time = std::numeric_limits<aku_Timestamp>::min();
+    subtree->first = .0;
+    subtree->last = .0;
+
+    // Initialize the writer
+    writer_.init(id);
+}
+
+
+IOVecLeaf::IOVecLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr)
+    : IOVecLeaf(read_block_from_bstore(bstore, curr))
+{
+}
+
+static std::shared_ptr<IOVecBlock> block2iovec(std::shared_ptr<Block> block) {
+    auto res = std::make_shared<IOVecBlock>();
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        res->add();
+        memcpy(res->get_data(i),
+               block->get_cdata() + IOVecBlock::COMPONENT_SIZE * i,
+               static_cast<size_t>(IOVecBlock::COMPONENT_SIZE));
+    }
+    return res;
+}
+
+static std::shared_ptr<Block> iovec2block(std::shared_ptr<IOVecBlock> iovec) {
+    auto res = std::make_shared<Block>();
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        if (iovec->get_size(i) != 0) {
+            memcpy(res->get_data() + i * IOVecBlock::COMPONENT_SIZE,
+                   iovec->get_cdata(i),
+                   static_cast<size_t>(IOVecBlock::COMPONENT_SIZE));
+        }
+    }
+    return res;
+}
+
+IOVecLeaf::IOVecLeaf(std::shared_ptr<Block> block)
+    : prev_(EMPTY_ADDR)
+    , block_(block2iovec(block))
+{
+    const SubtreeRef* subtree = subtree_cast(block_->get_cdata(0));
+    prev_ = subtree->addr;
+    fanout_index_ = subtree->fanout_index;
+}
+
+IOVecLeaf::IOVecLeaf(std::shared_ptr<Block> block, IOVecLeaf::CloneTag)
+    : prev_(EMPTY_ADDR)
+    , block_(block2iovec(block))
+    , writer_(block_.get())
+{
+    AKU_PANIC("Not supported");
+}
+
+size_t IOVecLeaf::_get_uncommitted_size() const {
+    return static_cast<size_t>(writer_.get_write_index());
+}
+
+SubtreeRef const* IOVecLeaf::get_leafmeta() const {
+    return subtree_cast(block_->get_cdata(0));
+}
+
+size_t IOVecLeaf::nelements() const {
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata(0));
+    return subtree->count;
+}
+
+u16 IOVecLeaf::get_fanout() const {
+    return fanout_index_;
+}
+
+aku_ParamId IOVecLeaf::get_id() const {
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata(0));
+    return subtree->id;
+}
+
+std::tuple<aku_Timestamp, aku_Timestamp> IOVecLeaf::get_timestamps() const {
+    SubtreeRef const* subtree = subtree_cast(block_->get_cdata(0));
+    return std::make_tuple(subtree->begin, subtree->end);
+}
+
+void IOVecLeaf::set_prev_addr(LogicAddr addr) {
+    prev_ = addr;
+    SubtreeRef* subtree = subtree_cast(block_->get_data(0));
+    subtree->addr = addr;
+}
+
+void IOVecLeaf::set_node_fanout(u16 fanout) {
+    assert(fanout <= AKU_NBTREE_FANOUT);
+    fanout_index_ = fanout;
+    SubtreeRef* subtree = subtree_cast(block_->get_data(0));
+    subtree->fanout_index = fanout;
+}
+
+LogicAddr IOVecLeaf::get_addr() const {
+    return block_->get_addr();
+}
+
+LogicAddr IOVecLeaf::get_prev_addr() const {
+    // Should be set correctly no metter how IOVecLeaf was created.
+    return prev_;
+}
+
+
+aku_Status IOVecLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
+                                std::vector<double>* values) const
+{
+    int windex = writer_.get_write_index();
+    auto block = iovec2block(block_);
+    DataBlockReader reader(block->get_cdata() + sizeof(SubtreeRef), block->get_size());
+    size_t sz = reader.nelements();
+    timestamps->reserve(sz);
+    values->reserve(sz);
+    for (size_t ix = 0; ix < sz; ix++) {
+        aku_Status status;
+        aku_Timestamp ts;
+        double value;
+        std::tie(status, ts, value) = reader.next();
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        timestamps->push_back(ts);
+        values->push_back(value);
+    }
+    // Read tail elements from `writer_`
+    if (windex != 0) {
+        writer_.read_tail_elements(timestamps, values);
+    }
+    return AKU_SUCCESS;
+}
+
+aku_Status IOVecLeaf::append(aku_Timestamp ts, double value) {
+    aku_Status status = writer_.put(ts, value);
+    if (status == AKU_SUCCESS) {
+        SubtreeRef* subtree = subtree_cast(block_->get_data(0));
+        subtree->end = ts;
+        subtree->last = value;
+        if (subtree->count == 0) {
+            subtree->begin = ts;
+            subtree->first = value;
+        }
+        subtree->count++;
+        subtree->sum += value;
+        if (subtree->max < value) {
+            subtree->max = value;
+            subtree->max_time = ts;
+        }
+        if (subtree->min > value) {
+            subtree->min = value;
+            subtree->min_time = ts;
+        }
+    }
+    return status;
+}
+
+std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> bstore) {
+    assert(nelements() != 0);
+    u16 size = static_cast<u16>(writer_.commit());
+    assert(size);
+    SubtreeRef* subtree = subtree_cast(block_->get_data(0));
+    subtree->payload_size = size;
+    if (prev_ != EMPTY_ADDR && fanout_index_ > 0) {
+        subtree->addr = prev_;
+    } else {
+        // addr = EMPTY indicates that there is
+        // no link to previous node.
+        subtree->addr  = EMPTY_ADDR;
+        // Invariant: fanout index should be 0 in this case.
+    }
+    subtree->version = AKUMULI_VERSION;
+    subtree->level = 0;
+    subtree->type  = NBTreeBlockType::LEAF;
+    subtree->fanout_index = fanout_index_;
+    // Compute checksum
+    // TODO: fix checksum
+    //subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
+    return bstore->append_block(block_);
+}
+
+
+std::unique_ptr<RealValuedOperator> IOVecLeaf::range(aku_Timestamp begin, aku_Timestamp end) const {
+    std::unique_ptr<RealValuedOperator> it;
+    // TODO: fix
+    it.reset(new EmptyIterator(begin, end));
+    return it;
+}
+
+std::unique_ptr<RealValuedOperator> IOVecLeaf::filter(aku_Timestamp begin,
+                                                       aku_Timestamp end,
+                                                       const ValueFilter& filter) const
+{
+    std::unique_ptr<RealValuedOperator> it;
+    // TODO: fix
+    it.reset(new EmptyIterator(begin, end));
+    return it;
+}
+
+std::unique_ptr<AggregateOperator> IOVecLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
+    AKU_PANIC("Not implemented");
+}
+
+std::unique_ptr<AggregateOperator> IOVecLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
+    AKU_PANIC("Not implemented");
+}
+
+std::unique_ptr<AggregateOperator> IOVecLeaf::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
+    AKU_PANIC("Not implemented");
+}
+
+std::unique_ptr<RealValuedOperator> IOVecLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
+    // Traverse tree from largest timestamp to smallest
+    aku_Timestamp min = std::min(begin, end);
+    aku_Timestamp max = std::max(begin, end);
+    LogicAddr addr = prev_;
+    aku_Timestamp b, e;
+    std::vector<std::unique_ptr<RealValuedOperator>> results;
+    // Stop when EMPTY is hit or cycle detected.
+    if (end <= begin) {
+        // Backward direction - read data from this node at the beginning
+        std::tie(b, e) = get_timestamps();
+        if (!(e < min || max < b)) {
+            results.push_back(range(begin, end));
+        }
+    }
+    while (bstore->exists(addr)) {
+        std::unique_ptr<IOVecLeaf> leaf;
+        leaf.reset(new IOVecLeaf(bstore, addr));
+        std::tie(b, e) = leaf->get_timestamps();
+        if (max < b) {
+            break;
+        }
+        if (min > e) {
+            addr = leaf->get_prev_addr();
+            continue;
+        }
+        // Save address of the current leaf and move to the next one.
+        results.push_back(leaf->range(begin, end));
+        addr = leaf->get_prev_addr();
+    }
+    if (begin < end) {
+        // Forward direction - reverce results and read data from this node at the end
+        std::reverse(results.begin(), results.end());
+        std::tie(b, e) = get_timestamps();
+        if (!(e < min || max < b)) {
+            results.push_back(range(begin, end));
+        }
+    }
+    if (results.size() == 1) {
+        return std::move(results.front());
+    }
+    std::unique_ptr<RealValuedOperator> res_iter;
+    res_iter.reset(new ChainOperator(std::move(results)));
+    return res_iter;
+}
+
+std::tuple<aku_Status, LogicAddr> IOVecLeaf::split_into(std::shared_ptr<BlockStore> bstore,
+                                                         aku_Timestamp pivot,
+                                                         bool preserve_backrefs,
+                                                         u16 *fanout_index,
+                                                         NBTreeSuperblock* top_level)
+{
+    AKU_PANIC("Not implemented");
+}
+
+std::tuple<aku_Status, LogicAddr> IOVecLeaf::split(std::shared_ptr<BlockStore> bstore,
+                                                    aku_Timestamp pivot,
+                                                    bool preserve_backrefs)
+{
+    // New superblock
+    NBTreeSuperblock sblock(get_id(), preserve_backrefs ? get_prev_addr() : EMPTY_ADDR, get_fanout(), 0);
+    aku_Status status;
+    LogicAddr  addr;
+    u16 fanout = 0;
+    std::tie(status, addr) = split_into(bstore, pivot, false, &fanout, &sblock);
+    if (status != AKU_SUCCESS || sblock.nelements() == 0) {
+        return std::make_tuple(status, EMPTY_ADDR);
+    }
+    std::tie(status, addr) = sblock.commit(bstore);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, EMPTY_ADDR);
+    }
+    return std::make_tuple(AKU_SUCCESS, addr);
+}
+
 
 // //////////////////////// //
 //     NBTreeSuperblock     //
@@ -2298,7 +2625,8 @@ struct NBTreeLeafExtent : NBTreeExtent {
     std::weak_ptr<NBTreeExtentsList> roots_;
     aku_ParamId id_;
     LogicAddr last_;
-    std::shared_ptr<NBTreeLeaf> leaf_;
+    //std::shared_ptr<NBTreeLeaf> leaf_;
+    std::shared_ptr<IOVecLeaf> leaf_;
     u16 fanout_index_;
     // padding
     u16 pad0_;
@@ -2384,7 +2712,8 @@ struct NBTreeLeafExtent : NBTreeExtent {
     }
 
     void reset_leaf() {
-        leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
+        //leaf_.reset(new NBTreeLeaf(id_, last_, fanout_index_));
+        leaf_.reset(new IOVecLeaf(id_, last_, fanout_index_));
     }
 
     virtual std::tuple<bool, LogicAddr> append(aku_Timestamp ts, double value) override;

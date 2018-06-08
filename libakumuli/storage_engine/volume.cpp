@@ -31,8 +31,16 @@ namespace StorageEngine {
 
 IOVecBlock::IOVecBlock()
     : pos_(0)
+    , addr_(EMPTY_ADDR)
 {
-    data_[0].resize(COMPONENT_SIZE);
+}
+
+void IOVecBlock::set_addr(LogicAddr addr) {
+    addr_ = addr;
+}
+
+LogicAddr IOVecBlock::get_addr() const {
+    return addr_;
 }
 
 bool IOVecBlock::is_readonly() const {

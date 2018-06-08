@@ -34,6 +34,12 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+//! Address of the block inside storage
+typedef u64 LogicAddr;
+
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
+
 //! Address of the block inside volume (index of the block)
 typedef u32 BlockAddr;
 enum { AKU_BLOCK_SIZE = 4096 };
@@ -46,6 +52,7 @@ struct IOVecBlock {
 
     std::vector<u8>  data_[NCOMPONENTS];
     int pos_;  //! write pos
+    LogicAddr addr_;
 
     IOVecBlock();
 
@@ -53,6 +60,10 @@ struct IOVecBlock {
      *  Return index of the component or -1 if block is full.
      */
     int add();
+
+    void set_addr(LogicAddr addr);
+
+    LogicAddr get_addr() const;
 
     int space_left() const;
 
@@ -79,12 +90,15 @@ struct IOVecBlock {
         int c = pos_ / COMPONENT_SIZE;
         int i = pos_ % COMPONENT_SIZE;
         if (c >= NCOMPONENTS) {
-            return false;
+            return nullptr;
+        }
+        if (data_[c].empty()) {
+            data_[c].resize(COMPONENT_SIZE);
         }
         if ((data_[c].size() - static_cast<u32>(i)) < sizeof(POD)) {
-            return false;
+            return nullptr;
         }
-        POD* result = data_[c].data() + i;
+        POD* result = reinterpret_cast<POD*>(data_[c].data() + i);
         pos_ += sizeof(POD);
         return result;
     }

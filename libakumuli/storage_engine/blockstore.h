@@ -26,11 +26,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-//! Address of the block inside storage
-typedef u64 LogicAddr;
-
-//! This value represents empty addr. It's too large to be used as a real block addr.
-static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 class Block;
 

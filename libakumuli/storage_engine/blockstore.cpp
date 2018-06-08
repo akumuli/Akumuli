@@ -299,6 +299,7 @@ std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<IOVe
         return std::make_tuple(status, 0ull);
       }
     }
+    data->set_addr(block_addr);
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
       AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
@@ -615,6 +616,7 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBl
     }
     auto addr = write_pos_++;
     addr += MEMSTORE_BASE;
+    data->set_addr(addr);
     return std::make_tuple(AKU_SUCCESS, addr);
 }
 
