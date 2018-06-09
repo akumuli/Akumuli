@@ -272,6 +272,8 @@ public:
     //! Only for testing and benchmarks
     size_t _get_uncommitted_size() const;
 
+    size_t bytes_used() const;
+
     /** Create empty leaf node.
       * @param id Series id.
       * @param link to block store.

@@ -116,6 +116,7 @@ u8* IOVecBlock::get_data(int component) {
 }
 
 size_t IOVecBlock::get_size(int component) const {
+    // Assume capacity() == size()
     return data_[component].size();
 }
 

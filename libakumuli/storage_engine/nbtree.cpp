@@ -2010,6 +2010,14 @@ size_t IOVecLeaf::_get_uncommitted_size() const {
     return static_cast<size_t>(writer_.get_write_index());
 }
 
+size_t IOVecLeaf::bytes_used() const {
+    size_t res = 0;
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        res += block_->get_size(i);
+    }
+    return res;
+}
+
 SubtreeRef const* IOVecLeaf::get_leafmeta() const {
     return subtree_cast(block_->get_cdata(0));
 }
@@ -2665,6 +2673,10 @@ struct NBTreeLeafExtent : NBTreeExtent {
             }
         }
         reset_leaf();
+    }
+
+    size_t bytes_used() const {
+        return leaf_->bytes_used();
     }
 
     virtual ExtentStatus status() const override {
@@ -3539,7 +3551,7 @@ std::tuple<size_t, size_t> NBTreeExtentsList::bytes_used() const {
     if (!extents_.empty()) {
         auto leaf = dynamic_cast<NBTreeLeafExtent const*>(extents_.front().get());
         if (leaf != nullptr) {
-            c1 = AKU_BLOCK_SIZE;
+            c1 = leaf->bytes_used();
         }
         if (extents_.size() > 1) {
             c2 = shared_->refs_.capacity() * sizeof(SubtreeRef);
