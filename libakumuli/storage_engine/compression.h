@@ -448,7 +448,7 @@ struct VByteStreamWriter {
 };
 
 template<class BlockT>
-struct VByteStreamWriterV2 {
+struct IOVecVByteStreamWriter {
     BlockT*   block_;
     // underlying memory region
     u8*       end_;
@@ -457,13 +457,13 @@ struct VByteStreamWriterV2 {
     u32       cnt_;
     u64       prev_;
 
-    VByteStreamWriterV2(BlockT* block)
+    IOVecVByteStreamWriter(BlockT* block)
         : block_(block)
         , cnt_(0)
         , prev_(0)
     {}
 
-    VByteStreamWriterV2(VByteStreamWriterV2& other)
+    IOVecVByteStreamWriter(IOVecVByteStreamWriter& other)
         : block_(other.block_)
         , cnt_(0)
         , prev_(0)
@@ -1129,14 +1129,21 @@ struct DataBlockReader {
 };
 
 
+/**
+ * Vectorized compressor.
+ * This class is intended to be used with vector I/O
+ * to save memory (the block can allocate memory in
+ * step and write everything at once using vectorized
+ * I/O).
+ */
 template<class BlockT>
-struct DataBlockWriterV2 {
+struct IOVecBlockWriter {
     enum {
         CHUNK_SIZE  = 16,
         CHUNK_MASK  = 15,
         HEADER_SIZE = 14,  // 2 (version) + 2 (nchunks) + 2 (tail size) + 8 (series id)
     };
-    typedef VByteStreamWriterV2<BlockT> StreamT;
+    typedef IOVecVByteStreamWriter<BlockT> StreamT;
     typedef DeltaDeltaStreamWriter<16, u64, StreamT> DeltaDeltaWriterT;
     StreamT                  stream_;
     DeltaDeltaWriterT        ts_stream_;
@@ -1148,7 +1155,7 @@ struct DataBlockWriterV2 {
     u16*                     ntail_;
 
     //! Empty c-tor. Constructs unwritable object.
-    DataBlockWriterV2()
+    IOVecBlockWriter()
         : stream_(nullptr)
         , ts_stream_(stream_)
         , val_stream_(stream_)
@@ -1163,7 +1170,7 @@ struct DataBlockWriterV2 {
       * @param size Block size.
       * @param buf Pointer to buffer.
       */
-    DataBlockWriterV2(BlockT* block)
+    IOVecBlockWriter(BlockT* block)
         : stream_(block)
         , ts_stream_(stream_)
         , val_stream_(stream_)

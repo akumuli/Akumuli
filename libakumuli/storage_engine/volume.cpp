@@ -30,7 +30,8 @@ namespace Akumuli {
 namespace StorageEngine {
 
 IOVecBlock::IOVecBlock()
-    : pos_(0)
+    : data_{}
+    , pos_(0)
     , addr_(EMPTY_ADDR)
 {
 }

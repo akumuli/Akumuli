@@ -160,6 +160,7 @@ add_executable(
     test_compression
     test_compression.cpp
     ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/util.cpp
     ../libakumuli/log_iface.cpp
 )

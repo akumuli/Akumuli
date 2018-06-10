@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "storage_engine/compression.h"
+#include "storage_engine/volume.h"
 
 
 using namespace Akumuli;
@@ -414,4 +415,106 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_18) {
 
 BOOST_AUTO_TEST_CASE(Test_block_compression_19) {
     test_block_compression(0, 0x111, true);
+}
+
+void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=false) {
+    RandomWalk rwalk(start, 1., .11);
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<double> values;
+    std::unique_ptr<StorageEngine::IOVecBlock> block;
+    block.reset(new StorageEngine::IOVecBlock());
+
+    if (regullar) {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        aku_Timestamp stp = static_cast<aku_Timestamp>(rand() % 1000);
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            its += stp;
+            timestamps.push_back(its);
+        }
+    } else {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            u32 skew = rand() % 100;
+            its += skew;
+            timestamps.push_back(its);
+        }
+    }
+
+    // compress
+
+    StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(block.get());
+    writer.init(42);
+
+    size_t actual_nelements = 0ull;
+    bool writer_overflow = false;
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            actual_nelements = ix;
+            writer_overflow = true;
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    if (!writer_overflow) {
+        actual_nelements = N;
+    }
+    size_t size_used = writer.commit();
+
+    // decompress using normal procedure
+    std::vector<u8> cblock;
+    cblock.reserve(4096);
+    for (int i = 0; i < StorageEngine::IOVecBlock::NCOMPONENTS; i++) {
+        const int sz = StorageEngine::IOVecBlock::COMPONENT_SIZE;
+        std::copy(block->get_cdata(i), block->get_cdata(i) + sz, std::back_inserter(cblock));
+    }
+    StorageEngine::DataBlockReader reader(cblock.data(), size_used);
+
+    std::vector<aku_Timestamp> out_timestamps;
+    std::vector<double> out_values;
+
+    // gen number of elements stored in block
+    u32 nelem = reader.nelements();
+    BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
+    BOOST_REQUIRE_NE(nelem, 0);
+
+    BOOST_REQUIRE_EQUAL(reader.get_id(), 42);
+    for (size_t ix = 0ull; ix < reader.nelements(); ix++) {
+        aku_Status status;
+        aku_Timestamp  ts;
+        double      value;
+        std::tie(status, ts, value) = reader.next();
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        out_timestamps.push_back(ts);
+        out_values.push_back(value);
+    }
+
+    // nelements() + 1 call should result in error
+    aku_Status status;
+    aku_Timestamp  ts;
+    double      value;
+    std::tie(status, ts, value) = reader.next();
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
+
+    for (size_t i = 0; i < nelem; i++) {
+        if (timestamps.at(i) != out_timestamps.at(i)) {
+            BOOST_FAIL("Bad timestamp at " << i << ", expected: " << timestamps.at(i) <<
+                       ", actual: " << out_timestamps.at(i));
+        }
+        if (values.at(i) != out_values.at(i)) {
+            BOOST_FAIL("Bad value at " << i << ", expected: " << values.at(i) <<
+                       ", actual: " << out_values.at(i));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_00) {
+    test_block_iovec_compression(0);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_01) {
+    test_block_iovec_compression(1E-100);
 }

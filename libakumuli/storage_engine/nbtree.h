@@ -256,7 +256,7 @@ class IOVecLeaf {
     //! Buffer for pending updates
     std::shared_ptr<IOVecBlock> block_;
     //! DataBlockWriter for pending `append` operations.
-    DataBlockWriterV2<IOVecBlock> writer_;
+    IOVecBlockWriter<IOVecBlock> writer_;
     //! Fanout index
     u16 fanout_index_;
 
