@@ -78,8 +78,8 @@ struct IOVecBlock {
     void set_write_pos(int pos);
 
     template<class POD>
-    void put(const POD* data) {
-        const u8* it = reinterpret_cast<u8*>(data);
+    void put(const POD& data) {
+        const u8* it = reinterpret_cast<const u8*>(&data);
         for (u32 i = 0; i < sizeof(POD); i++) {
             put(it[i]);
         }

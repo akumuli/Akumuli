@@ -463,6 +463,7 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
         actual_nelements = N;
     }
     size_t size_used = writer.commit();
+    AKU_UNUSED(size_used);
 
     // decompress using normal procedure
     std::vector<u8> cblock;
@@ -471,13 +472,13 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
         const int sz = StorageEngine::IOVecBlock::COMPONENT_SIZE;
         std::copy(block->get_cdata(i), block->get_cdata(i) + sz, std::back_inserter(cblock));
     }
-    StorageEngine::DataBlockReader reader(cblock.data(), size_used);
+    StorageEngine::DataBlockReader reader(cblock.data(), cblock.size());
 
     std::vector<aku_Timestamp> out_timestamps;
     std::vector<double> out_values;
 
     // gen number of elements stored in block
-    u32 nelem = reader.nelements();
+    auto nelem = reader.nelements();
     BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
     BOOST_REQUIRE_NE(nelem, 0);
 
