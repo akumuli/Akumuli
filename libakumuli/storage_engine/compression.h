@@ -110,7 +110,7 @@ public:
     template<class BlockT>
     bool put(BlockT* block) const {
         TVal value = value_;
-        while (value != 0) {
+        while (true) {
             TVal s = value & 0x7F;
             value >>= 7;
             if (value != 0) {
@@ -118,6 +118,9 @@ public:
             }
             if (!block->safe_put(s)) {
                 return false;
+            }
+            if (value == 0) {
+                break;
             }
         }
         return true;
