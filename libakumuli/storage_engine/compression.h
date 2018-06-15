@@ -77,6 +77,32 @@ public:
         return p;
     }
 
+    /** Read base 128 encoded integer from the binary stream
+      * FwdIter - forward iterator.
+      */
+    template<class IOVecBlock>
+    u32 get(const IOVecBlock* block, u32 begin) {
+        auto acc = TVal();
+        auto cnt = TVal();
+        auto p = begin;
+
+        while (true) {
+            if (p == block->size()) {
+                return begin;
+            }
+            u8 byte = block->get(p);
+            auto i = static_cast<u8>(byte & 0x7F);
+            acc |= TVal(i) << cnt;
+            p++;
+            if ((byte & 0x80) == 0) {
+                break;
+            }
+            cnt += 7;
+        }
+        value_ = acc;
+        return p;
+    }
+
     /** Write base 128 encoded integer to the binary stream.
       * @returns 'begin' on error, iterator to next free region otherwise
       */
@@ -453,9 +479,6 @@ struct VByteStreamWriter {
 template<class BlockT>
 struct IOVecVByteStreamWriter {
     BlockT*   block_;
-    // underlying memory region
-    u8*       end_;
-    u8*       pos_;
     // tail elements
     u32       cnt_;
     u64       prev_;
@@ -695,6 +718,84 @@ struct VByteStreamReader {
     size_t space_left() const { return static_cast<size_t>(end_ - pos_); }
 
     const u8* pos() const { return pos_; }
+};
+
+//! Base128 decoder
+template<class BlockT>
+struct IOVecStreamReader {
+    BlockT* block_;
+    u32     pos_;
+    u32     cnt_;
+    int     ctrl_;
+    int     scut_elements_;
+
+    enum {
+        CHUNK_SIZE = 16,
+    };
+
+    IOVecStreamReader(const BlockT* block)
+        : block_(block)
+        , pos_(0)
+        , cnt_(0)
+        , ctrl_(0)
+        , scut_elements_(0)
+    {}
+
+    template <class TVal>
+    TVal next() {
+        if (ctrl_ == 0xFF && scut_elements_) {
+            scut_elements_--;
+            cnt_++;
+            return 0;
+        }
+        int bytelen = 0;
+        if (cnt_++ % 2 == 0) {
+            // Read control byte
+            ctrl_ = read_raw<u8>();
+            bytelen = ctrl_ & 0xF;
+            if ((ctrl_ >> 4) == 0xF) {
+                scut_elements_ = CHUNK_SIZE-1;
+                return 0;
+            }
+        } else {
+            bytelen = ctrl_ >> 4;
+        }
+        TVal acc = {};
+        if (space_left() < static_cast<size_t>(bytelen)) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        for(int i = 0; i < bytelen*8; i += 8) {
+            TVal byte = block_->get(pos_);
+            acc |= (byte << i);
+            pos_++;
+        }
+        return acc;
+    }
+
+    template <class TVal> TVal next_base128() {
+        Base128Int<TVal> value;
+        auto p = value.get(block_, pos_);
+        if (p == pos_) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        pos_ = p;
+        return static_cast<TVal>(value);
+    }
+
+    //! Read uncompressed value from stream
+    template <class TVal> TVal read_raw() {
+        size_t sz = sizeof(TVal);
+        if (block_->size() - pos_ < sz) {
+            AKU_PANIC("can't read value, out of bounds");
+        }
+        auto val = block_->template get_raw<TVal>(pos_);
+        pos_ += sz;
+        return val;
+    }
+
+    size_t space_left() const { return block_->space_left(); }
+
+    const u32 pos() const { return pos_; }
 };
 
 template <size_t Step, typename TVal, typename StreamT=VByteStreamWriter>

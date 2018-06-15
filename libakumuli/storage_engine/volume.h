@@ -71,6 +71,8 @@ struct IOVecBlock {
 
     void put(u8 val);
 
+    u8 get(u32 offset) const;
+
     bool safe_put(u8 val);
 
     int get_write_pos() const;
@@ -83,6 +85,19 @@ struct IOVecBlock {
         for (u32 i = 0; i < sizeof(POD); i++) {
             put(it[i]);
         }
+    }
+
+    template<class POD>
+    POD get_raw(u32 offset) const {
+        const u32 sz = sizeof(POD);
+        union {
+            POD retval;
+            u8 bits[sz];
+        } raw;
+        for (u32 i = 0; i < sz; i++) {
+            raw.bits[i] = get(offset + i);
+        }
+        return raw.retval;
     }
 
     template<class POD>

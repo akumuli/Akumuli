@@ -76,6 +76,15 @@ void IOVecBlock::put(u8 val) {
     pos_++;
 }
 
+u8 IOVecBlock::get(u32 offset) const {
+    u32 c = offset / COMPONENT_SIZE;
+    u32 i = offset % COMPONENT_SIZE;
+    if (c >= NCOMPONENTS || data_[c].empty()) {
+        AKU_PANIC("IOVecBlock index out of range");
+    }
+    return data_[c].at(i);
+}
+
 bool IOVecBlock::safe_put(u8 val) {
     int c = pos_ / COMPONENT_SIZE;
     int i = pos_ % COMPONENT_SIZE;
