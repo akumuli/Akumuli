@@ -268,7 +268,7 @@ struct Base128StreamReader {
 /** VByte for DeltaDelta encoding.
   * Delta-RLE encoding used to work great for majority of time-series. But sometimes
   * it doesn't work because timestamps have some noise in low registers. E.g. timestamps
-  * have 1s period but each timestamp has nonzero amount of usec in it. In this case 
+  * have 1s period but each timestamp has nonzero amount of usec in it. In this case
   * Delta encoding will produce series of different values (probably about 4 bytes each).
   * Run length encoding will have trouble compressing it. Actually it will make output larger
   * then simple delta-encoding (but it will be smaller then input anyway). To solve this
@@ -277,7 +277,7 @@ struct Base128StreamReader {
   * This will make timestamps smaller (1-2 bytes instead of 3-4). But if series of timestamps
   * is regullar Delta-RLE will achive much better results. In this case DeltaDelta will
   * produce one value followed by series of zeroes [42, 0, 0, ... 0].
-  * 
+  *
   * This encoding was introduced to solve this problem. It combines values into pairs (x1, x2)
   * and writes them using one control byte. This is basically the same as LEB128 but with
   * all control bits moved to separate location. In this case each byte stores control byte or 8-bits
@@ -290,7 +290,7 @@ struct Base128StreamReader {
   * It also provides method to store leb128 encoded values to store min values for the DeltaDelta
   * encoder. When 16 values are encoded using DeltaDelta encoder it produce 17 values, min value and
   * 16 delta values. This first min value should be stored using leb128.
-  * 
+  *
   * To store effectively combination of signle value followed by the series of zeroes special shortcut
   * was introduced. In this case control word will be equall to 0xFF. If decoder encounters 0xFF control
   * world it returns 16 zeroes.
@@ -365,7 +365,7 @@ struct VByteStreamWriter {
         pos_ = p;
         return true;
     }
-    
+
     bool shortcut() {
         // put sentinel
         if (space_left() == 0) {
@@ -378,7 +378,7 @@ struct VByteStreamWriter {
     /** Put value into stream (transactional).
       */
     template <class TVal> bool tput(TVal const* iter, size_t n) {
-        assert(n % 2 == 0);  // n expected to be eq 16 
+        assert(n % 2 == 0);  // n expected to be eq 16
         auto oldpos = pos_;
         // Fast path for DeltaDelta encoding
         bool take_shortcut = true;
@@ -404,7 +404,7 @@ struct VByteStreamWriter {
 
     /** Put value into stream. This method should be used after
       * tput. The idea is that user should write most of the data
-      * using `tput` method and then the rest of the data (less then 
+      * using `tput` method and then the rest of the data (less then
       * chunksize elements) should be written using this one. If one
       * call `put` before `tput` stream will be broken and unreadable.
       */

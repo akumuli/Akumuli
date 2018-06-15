@@ -417,12 +417,99 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_19) {
     test_block_compression(0, 0x111, true);
 }
 
+struct CheckedBlock {
+    enum {
+        NCOMPONENTS = 4,
+        COMPONENT_SIZE = StorageEngine::AKU_BLOCK_SIZE / NCOMPONENTS,
+    };
+
+    std::vector<u8> provided_;
+    u32 pos_;
+    u8 pod_[1024]; //! all space is allocated here (and not checked)
+
+    CheckedBlock(const std::vector<u8>& p)
+        : provided_(p)
+        , pos_(0)
+    {
+    }
+
+    /** Add component if block is less than NCOMPONENTS in size.
+     *  Return index of the component or -1 if block is full.
+     */
+    int add() { return 0; }
+
+    void set_addr(u64) {}
+
+    u64 get_addr() const { return 0; }
+
+    int space_left() const { return static_cast<int>(StorageEngine::AKU_BLOCK_SIZE - pos_); }
+
+    int size() const { return StorageEngine::AKU_BLOCK_SIZE; }
+
+    void put(u8 val) {
+        if (val != provided_.at(pos_)) {
+            BOOST_REQUIRE_EQUAL(val, provided_.at(pos_));
+        }
+        pos_++;
+    }
+
+    bool safe_put(u8 val) {
+        if (val != provided_.at(pos_)) {
+            BOOST_REQUIRE_EQUAL(val, provided_.at(pos_));
+        }
+        pos_++;
+        return true;
+    }
+
+    int get_write_pos() const {
+        return static_cast<int>(pos_);
+    }
+
+    void set_write_pos(int pos) {
+        pos_ = static_cast<u32>(pos);
+    }
+
+    template<class POD>
+    void put(const POD& data) {
+        const u8* it = reinterpret_cast<const u8*>(&data);
+        for (u32 i = 0; i < sizeof(POD); i++) {
+            put(it[i]);
+        }
+    }
+
+    template<class POD>
+    POD* allocate() {
+        POD* result = reinterpret_cast<POD*>(pod_ + pos_);
+        pos_ += sizeof(POD);
+        return result;
+    }
+
+    bool is_readonly() const {
+        return false;
+    }
+
+    const u8* get_data(int) const {
+        return nullptr;
+    }
+
+    const u8* get_cdata(int) const {
+        return nullptr;
+    }
+
+    u8* get_data(int) {
+        return nullptr;
+    }
+
+    size_t get_size(int) const {
+        return 1024;
+    }
+
+};
+
 void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=false) {
     RandomWalk rwalk(start, 1., .11);
     std::vector<aku_Timestamp> timestamps;
     std::vector<double> values;
-    std::unique_ptr<StorageEngine::IOVecBlock> block;
-    block.reset(new StorageEngine::IOVecBlock());
 
     if (regullar) {
         aku_Timestamp its = static_cast<aku_Timestamp>(rand());
@@ -442,15 +529,34 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
         }
     }
 
-    // compress
+    // compress using normal block
+    std::vector<u8> dbdata;
+    dbdata.resize(4096);
+    StorageEngine::DataBlockWriter dbwriter(42, dbdata.data(), dbdata.size());
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status status = dbwriter.put(timestamps.at(ix), values.at(ix));
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
 
-    StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(block.get());
+    // compress
+    CheckedBlock chkblock(dbdata);
+    StorageEngine::IOVecBlockWriter<CheckedBlock> chkwriter(&chkblock);
+    chkwriter.init(42);
+
+    StorageEngine::IOVecBlock block;
+    StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(&block);
     writer.init(42);
 
     size_t actual_nelements = 0ull;
     bool writer_overflow = false;
     for (size_t ix = 0; ix < N; ix++) {
+        aku_Status chkstatus = chkwriter.put(timestamps.at(ix), values.at(ix));
         aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
+        BOOST_REQUIRE_EQUAL(chkstatus, status);
         if (status == AKU_EOVERFLOW) {
             // Block is full
             actual_nelements = ix;
@@ -470,7 +576,10 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
     cblock.reserve(4096);
     for (int i = 0; i < StorageEngine::IOVecBlock::NCOMPONENTS; i++) {
         const int sz = StorageEngine::IOVecBlock::COMPONENT_SIZE;
-        std::copy(block->get_cdata(i), block->get_cdata(i) + sz, std::back_inserter(cblock));
+        if(block.get_size(i) == 0) {
+            break;
+        }
+        std::copy(block.get_cdata(i), block.get_cdata(i) + sz, std::back_inserter(cblock));
     }
     StorageEngine::DataBlockReader reader(cblock.data(), cblock.size());
 
@@ -518,4 +627,76 @@ BOOST_AUTO_TEST_CASE(Test_iovec_compression_00) {
 
 BOOST_AUTO_TEST_CASE(Test_iovec_compression_01) {
     test_block_iovec_compression(1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_02) {
+    test_block_iovec_compression(1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_03) {
+    test_block_iovec_compression(-1E-100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_04) {
+    test_block_iovec_compression(-1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_05) {
+    test_block_iovec_compression(0, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_06) {
+    test_block_iovec_compression(0, 16);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_07) {
+    test_block_iovec_compression(0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_08) {
+    test_block_iovec_compression(0, 0x100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_09) {
+    test_block_iovec_compression(0, 0x111);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_10) {
+    test_block_iovec_compression(0, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_11) {
+    test_block_iovec_compression(1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_12) {
+    test_block_iovec_compression(1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_13) {
+    test_block_iovec_compression(-1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_14) {
+    test_block_iovec_compression(-1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_15) {
+    test_block_iovec_compression(0, 1, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_16) {
+    test_block_iovec_compression(0, 16, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_17) {
+    test_block_iovec_compression(0, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_18) {
+    test_block_iovec_compression(0, 0x100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_19) {
+    test_block_iovec_compression(0, 0x111, true);
 }
