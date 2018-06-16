@@ -36,6 +36,14 @@ IOVecBlock::IOVecBlock()
 {
 }
 
+IOVecBlock::IOVecBlock(bool)
+    : data_{}
+    , pos_(AKU_BLOCK_SIZE)
+    , addr_(EMPTY_ADDR)
+{
+    data_[0].resize(AKU_BLOCK_SIZE);
+}
+
 void IOVecBlock::set_addr(LogicAddr addr) {
     addr_ = addr;
 }
@@ -77,9 +85,16 @@ void IOVecBlock::put(u8 val) {
 }
 
 u8 IOVecBlock::get(u32 offset) const {
-    u32 c = offset / COMPONENT_SIZE;
-    u32 i = offset % COMPONENT_SIZE;
-    if (c >= NCOMPONENTS || data_[c].empty()) {
+    u32 c;
+    u32 i;
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        c = 0;
+        i = offset;
+    } else {
+        c = offset / COMPONENT_SIZE;
+        i = offset % COMPONENT_SIZE;
+    }
+    if (c >= NCOMPONENTS || i >= data_[c].size()) {
         AKU_PANIC("IOVecBlock index out of range");
     }
     return data_[c].at(i);
@@ -482,6 +497,18 @@ aku_Status Volume::read_block(u32 ix, u8* dest) const {
     status = apr_file_read_full(apr_file_handle_.get(), dest, AKU_BLOCK_SIZE, &outsize);
     panic_on_error(status, "Volume read error");
     return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> Volume::read_block(u32 ix) const {
+    std::unique_ptr<IOVecBlock> block;
+    block.reset(new IOVecBlock(true));
+    u8* data = block->get_data(0);
+    u32 size = block->get_size(0);
+    if (size != AKU_BLOCK_SIZE) {
+        return std::make_tuple(AKU_EBAD_DATA, std::move(block));
+    }
+    auto status = read_block(ix, data);
+    return std::make_tuple(status, std::move(block));
 }
 
 std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {

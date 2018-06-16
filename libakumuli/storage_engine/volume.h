@@ -54,7 +54,21 @@ struct IOVecBlock {
     int pos_;  //! write pos
     LogicAddr addr_;
 
+    /**
+     * @brief Create empty IOVecBlock
+     * All storage components wouldn't be allocated, pos_
+     * will be set to 0.
+     */
     IOVecBlock();
+
+    /**
+     * @brief Create allocated IOVecBlock
+     * AKU_BLOCK_SIZE bytes will be allocated for the first storage
+     * component, pos_ will be set to AKU_BLOCK_SIZE.
+     * The parameter value doesn't actually matter (used to distingwish between the c-tor's).
+     * The block is not writable. Methods `get` and `get_raw` will work.
+     */
+    IOVecBlock(bool);
 
     /** Add component if block is less than NCOMPONENTS in size.
      *  Return index of the component or -1 if block is full.
@@ -245,8 +259,11 @@ public:
 
     // Accessors
 
-    //! Read filxed size block from file
+    //! Read fixed size block from file
     aku_Status read_block(u32 ix, u8* dest) const;
+
+    //! Read fixed size block from file
+    std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> read_block(u32 ix) const;
 
     /**
      * @brief Read block without copying the data (only works if mmap available)
