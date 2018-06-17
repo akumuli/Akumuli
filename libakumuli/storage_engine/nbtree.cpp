@@ -2130,7 +2130,89 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::split_into(std::shared_ptr<BlockSto
                                                          u16 *fanout_index,
                                                          NBTreeSuperblock* top_level)
 {
-    AKU_PANIC("Not implemented");
+    /* When the method is called from NBTreeSuperblock::split method, the
+     * top_level node will be provided. Otherwise it will be null.
+     */
+    aku_Status status;
+    std::vector<double> xss;
+    std::vector<aku_Timestamp> tss;
+    status = read_all(&tss, &xss);
+    if (status != AKU_SUCCESS || tss.size() == 0) {
+        return std::make_tuple(status, EMPTY_ADDR);
+    }
+    // Make new superblock with two leafs
+    // Left hand side leaf node
+    u32 ixbase = 0;
+    IOVecLeaf lhs(get_id(), preserve_backrefs ? prev_ : EMPTY_ADDR, *fanout_index);
+    for (u32 i = 0; i < tss.size(); i++) {
+        if (tss[i] < pivot) {
+            status = lhs.append(tss[i], xss[i]);
+            if (status != AKU_SUCCESS) {
+                return std::make_tuple(status, EMPTY_ADDR);
+            }
+        } else {
+            ixbase = i;
+            break;
+        }
+    }
+    SubtreeRef lhs_ref;
+    if (ixbase == 0) {
+        // Special case, the lhs node is empty
+        lhs_ref.addr = EMPTY_ADDR;
+    } else {
+        LogicAddr lhs_addr;
+        std::tie(status, lhs_addr) = lhs.commit(bstore);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+        status = init_subtree_from_leaf(lhs, lhs_ref);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+        lhs_ref.addr = lhs_addr;
+        (*fanout_index)++;
+    }
+    // Right hand side leaf node, it can't be empty in any case
+    // because the leaf node is not empty.
+    auto prev = lhs_ref.addr == EMPTY_ADDR ? prev_ : lhs_ref.addr;
+    IOVecLeaf rhs(get_id(), prev, *fanout_index);
+    for (u32 i = ixbase; i < tss.size(); i++) {
+        status = rhs.append(tss[i], xss[i]);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+    }
+    SubtreeRef rhs_ref;
+    if (ixbase == tss.size()) {
+        // Special case, rhs is empty
+        rhs_ref.addr = EMPTY_ADDR;
+    } else {
+        LogicAddr rhs_addr;
+        std::tie(status, rhs_addr) = rhs.commit(bstore);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+        status = init_subtree_from_leaf(rhs, rhs_ref);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+        rhs_ref.addr = rhs_addr;
+        (*fanout_index)++;
+    }
+    // Superblock
+    if (lhs_ref.addr != EMPTY_ADDR) {
+        status = top_level->append(lhs_ref);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+    }
+    if (rhs_ref.addr != EMPTY_ADDR) {
+        status = top_level->append(rhs_ref);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, EMPTY_ADDR);
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, EMPTY_ADDR);
 }
 
 std::tuple<aku_Status, LogicAddr> IOVecLeaf::split(std::shared_ptr<BlockStore> bstore,
@@ -2542,7 +2624,6 @@ struct NBTreeLeafExtent : NBTreeExtent {
     std::weak_ptr<NBTreeExtentsList> roots_;
     aku_ParamId id_;
     LogicAddr last_;
-    //std::shared_ptr<NBTreeLeaf> leaf_;
     std::shared_ptr<IOVecLeaf> leaf_;
     u16 fanout_index_;
     // padding
