@@ -208,9 +208,6 @@ public:
 
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
-    //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
-    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
-
     //! Return iterator that returns candlesticks
     std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
 
@@ -346,9 +343,6 @@ public:
                                                const ValueFilter& filter) const;
 
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
-
-    //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
-    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
 
     //! Return iterator that returns candlesticks
     std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;

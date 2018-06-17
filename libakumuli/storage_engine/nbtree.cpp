@@ -258,7 +258,8 @@ struct NBTreeLeafIterator : RealValuedOperator {
     {
     }
 
-    NBTreeLeafIterator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node, bool delay_init=false)
+    template<class LeafT>
+    NBTreeLeafIterator(aku_Timestamp begin, aku_Timestamp end, LeafT const& node, bool delay_init=false)
         : begin_(begin)
         , end_(end)
         , from_()
@@ -270,7 +271,8 @@ struct NBTreeLeafIterator : RealValuedOperator {
         }
     }
 
-    void init(NBTreeLeaf const& node) {
+    template<class LeafT>
+    void init(LeafT const& node) {
         aku_Timestamp min = std::min(begin_, end_);
         aku_Timestamp max = std::max(begin_, end_);
         aku_Timestamp nb, ne;
@@ -375,10 +377,11 @@ struct NBTreeLeafFilter : RealValuedOperator {
     {
     }
 
+    template<class LeafT>
     NBTreeLeafFilter(aku_Timestamp begin,
                      aku_Timestamp end,
                      const ValueFilter& filter,
-                     const NBTreeLeaf& node,
+                     const LeafT& node,
                      bool delay_init=false)
         : begin_(begin)
         , end_(end)
@@ -391,7 +394,8 @@ struct NBTreeLeafFilter : RealValuedOperator {
         }
     }
 
-    void init(NBTreeLeaf const& node) {
+    template<class LeafT>
+    void init(LeafT const& node) {
         aku_Timestamp min = std::min(begin_, end_);
         aku_Timestamp max = std::max(begin_, end_);
         aku_Timestamp nb, ne;
@@ -1785,52 +1789,6 @@ std::unique_ptr<AggregateOperator> NBTreeLeaf::group_aggregate(aku_Timestamp beg
     return it;
 }
 
-std::unique_ptr<RealValuedOperator> NBTreeLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
-    // Traverse tree from largest timestamp to smallest
-    aku_Timestamp min = std::min(begin, end);
-    aku_Timestamp max = std::max(begin, end);
-    LogicAddr addr = prev_;
-    aku_Timestamp b, e;
-    std::vector<std::unique_ptr<RealValuedOperator>> results;
-    // Stop when EMPTY is hit or cycle detected.
-    if (end <= begin) {
-        // Backward direction - read data from this node at the beginning
-        std::tie(b, e) = get_timestamps();
-        if (!(e < min || max < b)) {
-            results.push_back(range(begin, end));
-        }
-    }
-    while (bstore->exists(addr)) {
-        std::unique_ptr<NBTreeLeaf> leaf;
-        leaf.reset(new NBTreeLeaf(bstore, addr));
-        std::tie(b, e) = leaf->get_timestamps();
-        if (max < b) {
-            break;
-        }
-        if (min > e) {
-            addr = leaf->get_prev_addr();
-            continue;
-        }
-        // Save address of the current leaf and move to the next one.
-        results.push_back(leaf->range(begin, end));
-        addr = leaf->get_prev_addr();
-    }
-    if (begin < end) {
-        // Forward direction - reverce results and read data from this node at the end
-        std::reverse(results.begin(), results.end());
-        std::tie(b, e) = get_timestamps();
-        if (!(e < min || max < b)) {
-            results.push_back(range(begin, end));
-        }
-    }
-    if (results.size() == 1) {
-        return std::move(results.front());
-    }
-    std::unique_ptr<RealValuedOperator> res_iter;
-    res_iter.reset(new ChainOperator(std::move(results)));
-    return res_iter;
-}
-
 std::tuple<aku_Status, LogicAddr> NBTreeLeaf::split_into(std::shared_ptr<BlockStore> bstore,
                                                          aku_Timestamp pivot,
                                                          bool preserve_backrefs,
@@ -2128,8 +2086,7 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> 
 
 std::unique_ptr<RealValuedOperator> IOVecLeaf::range(aku_Timestamp begin, aku_Timestamp end) const {
     std::unique_ptr<RealValuedOperator> it;
-    // TODO: fix
-    it.reset(new EmptyIterator(begin, end));
+    it.reset(new NBTreeLeafIterator(begin, end, *this));
     return it;
 }
 
@@ -2138,8 +2095,7 @@ std::unique_ptr<RealValuedOperator> IOVecLeaf::filter(aku_Timestamp begin,
                                                       const ValueFilter& filter) const
 {
     std::unique_ptr<RealValuedOperator> it;
-    // TODO: fix
-    it.reset(new EmptyIterator(begin, end));
+    it.reset(new NBTreeLeafFilter(begin, end, filter, *this));
     return it;
 }
 
@@ -2153,52 +2109,6 @@ std::unique_ptr<AggregateOperator> IOVecLeaf::candlesticks(aku_Timestamp begin, 
 
 std::unique_ptr<AggregateOperator> IOVecLeaf::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
     AKU_PANIC("Not implemented");
-}
-
-std::unique_ptr<RealValuedOperator> IOVecLeaf::search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const {
-    // Traverse tree from largest timestamp to smallest
-    aku_Timestamp min = std::min(begin, end);
-    aku_Timestamp max = std::max(begin, end);
-    LogicAddr addr = prev_;
-    aku_Timestamp b, e;
-    std::vector<std::unique_ptr<RealValuedOperator>> results;
-    // Stop when EMPTY is hit or cycle detected.
-    if (end <= begin) {
-        // Backward direction - read data from this node at the beginning
-        std::tie(b, e) = get_timestamps();
-        if (!(e < min || max < b)) {
-            results.push_back(range(begin, end));
-        }
-    }
-    while (bstore->exists(addr)) {
-        std::unique_ptr<IOVecLeaf> leaf;
-        leaf.reset(new IOVecLeaf(bstore, addr));
-        std::tie(b, e) = leaf->get_timestamps();
-        if (max < b) {
-            break;
-        }
-        if (min > e) {
-            addr = leaf->get_prev_addr();
-            continue;
-        }
-        // Save address of the current leaf and move to the next one.
-        results.push_back(leaf->range(begin, end));
-        addr = leaf->get_prev_addr();
-    }
-    if (begin < end) {
-        // Forward direction - reverce results and read data from this node at the end
-        std::reverse(results.begin(), results.end());
-        std::tie(b, e) = get_timestamps();
-        if (!(e < min || max < b)) {
-            results.push_back(range(begin, end));
-        }
-    }
-    if (results.size() == 1) {
-        return std::move(results.front());
-    }
-    std::unique_ptr<RealValuedOperator> res_iter;
-    res_iter.reset(new ChainOperator(std::move(results)));
-    return res_iter;
 }
 
 std::tuple<aku_Status, LogicAddr> IOVecLeaf::split_into(std::shared_ptr<BlockStore> bstore,
