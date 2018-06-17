@@ -261,13 +261,6 @@ class IOVecLeaf {
     u16 fanout_index_;
 
 public:
-    //! Empty tag to choose c-tor
-    struct CloneTag {};
-
-    enum class LeafLoadMethod {
-        FULL_PAGE_LOAD,
-        ONLY_HEADER,
-    };
 
     //! Only for testing and benchmarks
     size_t _get_uncommitted_size() const;
@@ -287,13 +280,7 @@ public:
       * @param load Load method.
       * @note This c-tor panics if block is invalid or doesn't exists.
       */
-    IOVecLeaf(std::shared_ptr<Block> bstore);
-
-    /**
-     * @brief Clone leaf node
-     * @param block is a pointer to block that contains leaf's data
-     */
-    IOVecLeaf(std::shared_ptr<Block> block, CloneTag tag);
+    IOVecLeaf(std::shared_ptr<IOVecBlock> bstore);
 
     /** Load from block store.
       * @param bstore Block store.

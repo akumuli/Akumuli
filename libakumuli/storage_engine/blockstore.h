@@ -92,6 +92,9 @@ struct BlockStore {
     //! Compute checksum of the input data.
     virtual u32 checksum(u8 const* begin, size_t size) const = 0;
 
+    //! Compute checksum of the iovec block
+    virtual u32 checksum(const IOVecBlock& block, size_t offset, size_t size) const = 0;
+
     virtual BlockStoreStats get_stats() const = 0;
 
     virtual PerVolumeStats get_volume_stats() const = 0;
@@ -136,6 +139,8 @@ public:
     virtual void flush();
 
     virtual u32 checksum(u8 const* data, size_t size) const;
+
+    virtual u32 checksum(const IOVecBlock& block, size_t offset, size_t size) const;
 
     virtual BlockStoreStats get_stats() const;
 
@@ -212,7 +217,8 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
-    virtual u32 checksum(u8 const* data, size_t size) const;
+    virtual u32 checksum(const IOVecBlock &block, size_t offset, size_t size) const;
+    virtual u32 checksum(const u8* data, size_t size) const;
     virtual BlockStoreStats get_stats() const;
     virtual PerVolumeStats get_volume_stats() const;
     void remove(size_t addr);

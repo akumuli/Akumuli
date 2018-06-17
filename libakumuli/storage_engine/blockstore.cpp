@@ -375,6 +375,21 @@ u32 FileStorage::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
 }
 
+u32 FileStorage::checksum(const IOVecBlock& block, size_t offset, size_t size) const {
+    static crc32c_impl_t impl = chose_crc32c_implementation();
+    u32 crc32 = 0;
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        if (block.get_size(i) < offset || block.get_size(i) == 0 || size == 0) {
+            break;
+        }
+        size_t sz = std::min(block.get_size(i) - offset, size);
+        crc32 = impl(crc32, block.get_cdata(i) + offset, sz);
+        size -= sz;
+        offset = 0;
+    }
+    return crc32;
+}
+
 // FixedSizeFileStorage
 
 FixedSizeFileStorage::FixedSizeFileStorage(std::shared_ptr<VolumeRegistry> meta)
@@ -625,6 +640,21 @@ void MemStore::remove(size_t addr) {
 
 u32 MemStore::checksum(u8 const* data, size_t size) const {
     return crc32c(data, size);
+}
+
+u32 MemStore::checksum(const IOVecBlock& block, size_t offset , size_t size) const {
+    static crc32c_impl_t impl = chose_crc32c_implementation();
+    u32 crc32 = 0;
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        if (block.get_size(i) < offset || block.get_size(i) == 0 || size == 0) {
+            break;
+        }
+        size_t sz = std::min(block.get_size(i) - offset, size);
+        crc32 = impl(crc32, block.get_cdata(i) + offset, sz);
+        size -= sz;
+        offset = 0;
+    }
+    return crc32;
 }
 
 std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {

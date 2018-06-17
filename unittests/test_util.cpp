@@ -139,3 +139,31 @@ BOOST_AUTO_TEST_CASE(test_crc32c_0) {
 
     BOOST_REQUIRE_EQUAL(hw, sw);
 }
+
+void test_crc32c_composability(CRC32C_hint hint) {
+    auto crc32impl = chose_crc32c_implementation(hint);
+    auto gen = []() {
+        return static_cast<u8>(rand());
+    };
+    std::vector<u8> data(4096, 0);
+    std::generate(data.begin(), data.end(), gen);
+
+    u32 crc = 0;
+    crc = crc32impl(crc, data.data(), 1024);
+    crc = crc32impl(crc, data.data() + 1024, 1024);
+    crc = crc32impl(crc, data.data() + 2048, 1024);
+    crc = crc32impl(crc, data.data() + 3072, 1024);
+
+    u32 expected_crc = 0;
+    expected_crc = crc32impl(expected_crc, data.data(), data.size());
+
+    BOOST_REQUIRE_EQUAL(expected_crc, crc);
+}
+
+BOOST_AUTO_TEST_CASE(test_crc32c_1) {
+    test_crc32c_composability(CRC32C_hint::FORCE_SW);
+}
+
+BOOST_AUTO_TEST_CASE(test_crc32c_2) {
+    test_crc32c_composability(CRC32C_hint::FORCE_HW);
+}

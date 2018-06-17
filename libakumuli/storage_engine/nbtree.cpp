@@ -133,6 +133,25 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
     return block;
 }
 
+//! Read block from blockstoroe with all the checks. Panic on error!
+static std::shared_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
+    aku_Status status;
+    std::unique_ptr<IOVecBlock> block;
+    std::tie(status, block) = bstore->read_iovec_block(curr);
+    if (status != AKU_SUCCESS) {
+        AKU_PANIC("Can't read block - " + StatusUtil::str(status));
+    }
+    // Check consistency (works with both inner and leaf nodes).
+    u8 const* data = block->get_cdata(0);
+    SubtreeRef const* subtree = subtree_cast(data);
+    u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    if (crc != subtree->checksum) {
+        std::stringstream fmt;
+        fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
+        AKU_PANIC(fmt.str());
+    }
+    return block;
+}
 
 //! Initialize object from leaf node
 aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
@@ -1962,48 +1981,17 @@ IOVecLeaf::IOVecLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
 
 
 IOVecLeaf::IOVecLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr)
-    : IOVecLeaf(read_block_from_bstore(bstore, curr))
+    : IOVecLeaf(read_iovec_block_from_bstore(bstore, curr))
 {
 }
 
-static std::shared_ptr<IOVecBlock> block2iovec(std::shared_ptr<Block> block) {
-    auto res = std::make_shared<IOVecBlock>();
-    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
-        res->add();
-        memcpy(res->get_data(i),
-               block->get_cdata() + IOVecBlock::COMPONENT_SIZE * i,
-               static_cast<size_t>(IOVecBlock::COMPONENT_SIZE));
-    }
-    return res;
-}
-
-static std::shared_ptr<Block> iovec2block(std::shared_ptr<IOVecBlock> iovec) {
-    auto res = std::make_shared<Block>();
-    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
-        if (iovec->get_size(i) != 0) {
-            memcpy(res->get_data() + i * IOVecBlock::COMPONENT_SIZE,
-                   iovec->get_cdata(i),
-                   static_cast<size_t>(IOVecBlock::COMPONENT_SIZE));
-        }
-    }
-    return res;
-}
-
-IOVecLeaf::IOVecLeaf(std::shared_ptr<Block> block)
+IOVecLeaf::IOVecLeaf(std::shared_ptr<IOVecBlock> block)
     : prev_(EMPTY_ADDR)
-    , block_(block2iovec(block))
+    , block_(block)
 {
     const SubtreeRef* subtree = subtree_cast(block_->get_cdata(0));
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
-}
-
-IOVecLeaf::IOVecLeaf(std::shared_ptr<Block> block, IOVecLeaf::CloneTag)
-    : prev_(EMPTY_ADDR)
-    , block_(block2iovec(block))
-    , writer_(block_.get())
-{
-    AKU_PANIC("Not supported");
 }
 
 size_t IOVecLeaf::_get_uncommitted_size() const {
@@ -2065,11 +2053,10 @@ LogicAddr IOVecLeaf::get_prev_addr() const {
 
 
 aku_Status IOVecLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
-                                std::vector<double>* values) const
+                               std::vector<double>* values) const
 {
     int windex = writer_.get_write_index();
-    auto block = iovec2block(block_);
-    DataBlockReader reader(block->get_cdata() + sizeof(SubtreeRef), block->get_size());
+    IOVecBlockReader<IOVecBlock> reader(block_.get());
     size_t sz = reader.nelements();
     timestamps->reserve(sz);
     values->reserve(sz);
@@ -2134,8 +2121,7 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> 
     subtree->type  = NBTreeBlockType::LEAF;
     subtree->fanout_index = fanout_index_;
     // Compute checksum
-    // TODO: fix checksum
-    //subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
+    subtree->checksum = bstore->checksum(*block_, sizeof(SubtreeRef), size);
     return bstore->append_block(block_);
 }
 
@@ -2148,8 +2134,8 @@ std::unique_ptr<RealValuedOperator> IOVecLeaf::range(aku_Timestamp begin, aku_Ti
 }
 
 std::unique_ptr<RealValuedOperator> IOVecLeaf::filter(aku_Timestamp begin,
-                                                       aku_Timestamp end,
-                                                       const ValueFilter& filter) const
+                                                      aku_Timestamp end,
+                                                      const ValueFilter& filter) const
 {
     std::unique_ptr<RealValuedOperator> it;
     // TODO: fix
