@@ -722,7 +722,7 @@ struct VByteStreamReader {
 
 //! Base128 decoder
 template<class BlockT>
-struct IOVecStreamReader {
+struct IOVecVByteStreamReader {
     BlockT* block_;
     u32     pos_;
     u32     cnt_;
@@ -733,13 +733,24 @@ struct IOVecStreamReader {
         CHUNK_SIZE = 16,
     };
 
-    IOVecStreamReader(const BlockT* block)
+    IOVecVByteStreamReader(const BlockT* block)
         : block_(block)
         , pos_(0)
         , cnt_(0)
         , ctrl_(0)
         , scut_elements_(0)
     {}
+
+    /**
+     * @brief Don't interpret next 'n' bytes
+     * @param n is a number of bytes to skip
+     * @return pointer to the begining of the skiped region
+     */
+    const u8* skip(u32 n) {
+        const u8* data = block_->get_cdata(0) + pos_;
+        pos_ += n;
+        return data;
+    }
 
     template <class TVal>
     TVal next() {
@@ -849,13 +860,14 @@ struct DeltaDeltaStreamWriter {
     bool commit() { return stream_.commit(); }
 };
 
-template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
-    VByteStreamReader&   stream_;
+template <size_t Step, typename TVal, typename StreamT=VByteStreamReader>
+struct DeltaDeltaStreamReader {
+    StreamT&             stream_;
     TVal                 prev_;
     TVal                 min_;
     int                  counter_;
 
-    DeltaDeltaStreamReader(VByteStreamReader& stream)
+    DeltaDeltaStreamReader(StreamT& stream)
         : stream_(stream)
         , prev_()
         , min_()
@@ -864,10 +876,10 @@ template <size_t Step, typename TVal> struct DeltaDeltaStreamReader {
     TVal next() {
         if (counter_ % Step == 0) {
             // read min
-            min_ = stream_.next_base128<TVal>();
+            min_ = stream_.template next_base128<TVal>();
         }
         counter_++;
-        TVal delta = stream_.next<TVal>();
+        TVal delta = stream_.template next<TVal>();
         TVal value = prev_ + delta + min_;
         prev_      = value;
         return value;
@@ -1402,6 +1414,100 @@ private:
             return false;
         }
         return true;
+    }
+};
+
+/*
+ * Compressor helper functions.
+ */
+namespace {
+
+    u16 get_block_version(const u8* pdata) {
+        u16 version = *reinterpret_cast<const u16*>(pdata);
+        return version;
+    }
+
+    u32 get_main_size(const u8* pdata) {
+        u16 main = *reinterpret_cast<const u16*>(pdata + 2);
+        return static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
+    }
+
+    u32 get_total_size(const u8* pdata) {
+        u16 main = *reinterpret_cast<const u16*>(pdata + 2);
+        u16 tail = *reinterpret_cast<const u16*>(pdata + 4);
+        return tail + static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
+    }
+
+    aku_ParamId get_block_id(const u8* pdata) {
+        aku_ParamId id = *reinterpret_cast<const aku_ParamId*>(pdata + 6);
+        return id;
+    }
+}  // end namespace
+
+/**
+ * Vectorized decompressor.
+ * This class is intended to be used with vector I/O
+ * blocks (used by corresponding compressor).
+ */
+template<class BlockT>
+struct IOVecBlockReader {
+    enum {
+        CHUNK_SIZE = 16,
+        CHUNK_MASK = 15,
+    };
+    typedef IOVecVByteStreamReader<BlockT> StreamT;
+    typedef DeltaDeltaStreamReader<16, u64, StreamT> DeltaDeltaReaderT;
+
+    StreamT             stream_;
+    DeltaDeltaReaderT   ts_stream_;
+    FcmStreamReader     val_stream_;
+    aku_Timestamp       read_buffer_[CHUNK_SIZE];
+    u32                 read_index_;
+    const u8*           begin_;
+
+    IOVecBlockReader(const BlockT* block)
+        : stream_(block)
+        , ts_stream_(stream_)
+        , val_stream_(stream_)
+        , read_buffer_{}
+        , read_index_(0)
+    {
+        begin_ = stream_->skip(DataBlockWriter::HEADER_SIZE);
+    }
+
+    std::tuple<aku_Status, aku_Timestamp, double> next() {
+        if (read_index_ < get_main_size(begin_)) {
+            auto chunk_index = read_index_++ & CHUNK_MASK;
+            if (chunk_index == 0) {
+                // read all timestamps
+                for (int i = 0; i < CHUNK_SIZE; i++) {
+                    read_buffer_[i] = ts_stream_.next();
+                }
+            }
+            double value = val_stream_.next();
+            return std::make_tuple(AKU_SUCCESS, read_buffer_[chunk_index], value);
+        } else {
+            // handle tail values
+            if (read_index_ < get_total_size(begin_)) {
+                read_index_++;
+                auto ts = stream_.template read_raw<aku_Timestamp>();
+                auto value = stream_.template read_raw<double>();
+                return std::make_tuple(AKU_SUCCESS, ts, value);
+            }
+        }
+        return std::make_tuple(AKU_ENO_DATA, 0ull, 0.0);
+    }
+
+    size_t nelements() const {
+        return get_total_size(begin_);
+    }
+
+    aku_ParamId get_id() const {
+        return get_block_id(begin_);
+    }
+
+    u16 version() const {
+        return get_block_version(begin_);
     }
 };
 

@@ -262,27 +262,6 @@ DataBlockReader::DataBlockReader(u8 const* buf, size_t bufsize)
     assert(bufsize > 13);
 }
 
-static u16 get_block_version(const u8* pdata) {
-    u16 version = *reinterpret_cast<const u16*>(pdata);
-    return version;
-}
-
-static u32 get_main_size(const u8* pdata) {
-    u16 main = *reinterpret_cast<const u16*>(pdata + 2);
-    return static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
-}
-
-static u32 get_total_size(const u8* pdata) {
-    u16 main = *reinterpret_cast<const u16*>(pdata + 2);
-    u16 tail = *reinterpret_cast<const u16*>(pdata + 4);
-    return tail + static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
-}
-
-static aku_ParamId get_block_id(const u8* pdata) {
-    aku_ParamId id = *reinterpret_cast<const aku_ParamId*>(pdata + 6);
-    return id;
-}
-
 std::tuple<aku_Status, aku_Timestamp, double> DataBlockReader::next() {
     if (read_index_ < get_main_size(begin_)) {
         auto chunk_index = read_index_++ & CHUNK_MASK;
