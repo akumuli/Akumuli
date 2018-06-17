@@ -87,7 +87,7 @@ public:
         auto p = begin;
 
         while (true) {
-            if (p == block->size()) {
+            if (p == static_cast<u32>(block->size())) {
                 return begin;
             }
             u8 byte = block->get(p);
@@ -723,11 +723,11 @@ struct VByteStreamReader {
 //! Base128 decoder
 template<class BlockT>
 struct IOVecVByteStreamReader {
-    BlockT* block_;
-    u32     pos_;
-    u32     cnt_;
-    int     ctrl_;
-    int     scut_elements_;
+    const BlockT* block_;
+    u32           pos_;
+    u32           cnt_;
+    int           ctrl_;
+    int           scut_elements_;
 
     enum {
         CHUNK_SIZE = 16,
@@ -1157,18 +1157,66 @@ struct FcmStreamWriter {
 };
 
 //! FCM to double decoder
+template<class StreamT=VByteStreamReader>
 struct FcmStreamReader {
-    VByteStreamReader&   stream_;
+    StreamT&             stream_;
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
     u32                  nzeroes_;
 
-    FcmStreamReader(VByteStreamReader& stream);
+    FcmStreamReader(StreamT& stream)
+        : stream_(stream)
+        , predictor_(PREDICTOR_N)
+        , flags_(0)
+        , iter_(0)
+        , nzeroes_(0)
+    {
+    }
 
-    double next();
+    static inline u64 decode_value(StreamT& rstream, unsigned char flag) {
+        u64 diff = 0ul;
+        int nbytes = (flag & 7) + 1;
+        for (int i = 0; i < nbytes; i++) {
+            u64 delta = rstream.template read_raw<unsigned char>();
+            diff |= delta << (i*8);
+        }
+        int shift_width = (64 - nbytes*8)*(flag >> 3);
+        diff <<= shift_width;
+        return diff;
+    }
 
-    const u8* pos() const;
+    double next() {
+        unsigned char flag = 0;
+        if (iter_++ % 2 == 0 && nzeroes_ == 0) {
+            flags_ = static_cast<u32>(stream_.template read_raw<u8>());
+            if (flags_ == 0xFF) {
+                // Shortcut
+                nzeroes_ = 16;
+            }
+            flag = static_cast<unsigned char>(flags_ >> 4);
+        } else {
+            flag = static_cast<unsigned char>(flags_ & 0xF);
+        }
+        u64 diff;
+        if (nzeroes_ == 0) {
+            diff = decode_value(stream_, flag);
+        } else {
+            diff = 0ull;
+            nzeroes_--;
+        }
+        union {
+            u64 bits;
+            double real;
+        } curr = {};
+        u64 predicted = predictor_.predict_next();
+        curr.bits = predicted ^ diff;
+        predictor_.update(curr.bits);
+        return curr.real;
+    }
+
+    const u8* pos() const { return stream_.pos(); }
+
 };
 
 typedef DeltaDeltaStreamReader<16, u64> DeltaDeltaReader;
@@ -1229,7 +1277,7 @@ struct DataBlockReader {
     const u8*           begin_;
     VByteStreamReader   stream_;
     DeltaDeltaReader    ts_stream_;
-    FcmStreamReader     val_stream_;
+    FcmStreamReader<>   val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
     u32                 read_index_;
 
@@ -1457,10 +1505,11 @@ struct IOVecBlockReader {
     };
     typedef IOVecVByteStreamReader<BlockT> StreamT;
     typedef DeltaDeltaStreamReader<16, u64, StreamT> DeltaDeltaReaderT;
+    typedef FcmStreamReader<StreamT> FcmStreamReaderT;
 
     StreamT             stream_;
     DeltaDeltaReaderT   ts_stream_;
-    FcmStreamReader     val_stream_;
+    FcmStreamReaderT    val_stream_;
     aku_Timestamp       read_buffer_[CHUNK_SIZE];
     u32                 read_index_;
     const u8*           begin_;
@@ -1472,7 +1521,7 @@ struct IOVecBlockReader {
         , read_buffer_{}
         , read_index_(0)
     {
-        begin_ = stream_->skip(DataBlockWriter::HEADER_SIZE);
+        begin_ = stream_.skip(DataBlockWriter::HEADER_SIZE);
     }
 
     std::tuple<aku_Status, aku_Timestamp, double> next() {

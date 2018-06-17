@@ -136,7 +136,7 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
 //! Read block from blockstoroe with all the checks. Panic on error!
 static std::shared_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
-    std::unique_ptr<IOVecBlock> block;
+    std::shared_ptr<IOVecBlock> block;
     std::tie(status, block) = bstore->read_iovec_block(curr);
     if (status != AKU_SUCCESS) {
         AKU_PANIC("Can't read block - " + StatusUtil::str(status));

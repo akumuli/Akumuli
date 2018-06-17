@@ -214,7 +214,7 @@ void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
 
     // Decompress
     VByteStreamReader rstream(block.data(), block.data() + block.size());
-    FcmStreamReader reader(rstream);
+    FcmStreamReader<> reader(rstream);
     for (size_t ix = 0; ix < samples.size(); ix++) {
         double val = reader.next();
         if (val != samples.at(ix)) {
