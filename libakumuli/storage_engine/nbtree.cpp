@@ -838,7 +838,8 @@ class NBTreeLeafAggregator : public AggregateOperator {
     bool enable_cached_metadata_;
     SubtreeRef metacache_;
 public:
-    NBTreeLeafAggregator(aku_Timestamp begin, aku_Timestamp end, NBTreeLeaf const& node)
+    template<class LeafT>
+    NBTreeLeafAggregator(aku_Timestamp begin, aku_Timestamp end, LeafT const& node)
         : iter_(begin, end, node, true)
         , enable_cached_metadata_(false)
         , metacache_(INIT_SUBTREE_REF)
@@ -1068,7 +1069,8 @@ class NBTreeLeafGroupAggregator : public AggregateOperator {
     aku_Timestamp end_;
     aku_Timestamp step_;
 public:
-    NBTreeLeafGroupAggregator(aku_Timestamp begin, aku_Timestamp end, u64 step, NBTreeLeaf const& node)
+    template<class LeafT>
+    NBTreeLeafGroupAggregator(aku_Timestamp begin, aku_Timestamp end, u64 step, LeafT const& node)
         : iter_(begin, end, node, true)
         , enable_cached_metadata_(false)
         , metacache_(INIT_SUBTREE_REF)
@@ -2100,15 +2102,26 @@ std::unique_ptr<RealValuedOperator> IOVecLeaf::filter(aku_Timestamp begin,
 }
 
 std::unique_ptr<AggregateOperator> IOVecLeaf::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
-    AKU_PANIC("Not implemented");
+    std::unique_ptr<AggregateOperator> it;
+    it.reset(new NBTreeLeafAggregator(begin, end, *this));
+    return it;
 }
 
 std::unique_ptr<AggregateOperator> IOVecLeaf::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
-    AKU_PANIC("Not implemented");
+    AKU_UNUSED(hint);
+    auto agg = INIT_AGGRES;
+    const SubtreeRef* subtree = subtree_cast(block_->get_cdata(0));
+    agg.copy_from(*subtree);
+    std::unique_ptr<AggregateOperator> result;
+    AggregateOperator::Direction dir = begin < end ? AggregateOperator::Direction::FORWARD : AggregateOperator::Direction::BACKWARD;
+    result.reset(new ValueAggregator(subtree->end, agg, dir));
+    return result;
 }
 
 std::unique_ptr<AggregateOperator> IOVecLeaf::group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const {
-    AKU_PANIC("Not implemented");
+    std::unique_ptr<AggregateOperator> it;
+    it.reset(new NBTreeLeafGroupAggregator(begin, end, step, *this));
+    return it;
 }
 
 std::tuple<aku_Status, LogicAddr> IOVecLeaf::split_into(std::shared_ptr<BlockStore> bstore,
