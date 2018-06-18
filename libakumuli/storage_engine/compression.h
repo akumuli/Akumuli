@@ -495,7 +495,7 @@ struct IOVecVByteStreamWriter {
         , prev_(0)
     {}
 
-    bool empty() const { return cnt_ == 0; }
+    bool empty() const { return block_->size() == 0; }
 
     //! Perform combined write (TVal should be integer)
     template<class TVal> bool encode(TVal fst, TVal snd) {
@@ -602,7 +602,7 @@ struct IOVecVByteStreamWriter {
         if (block_->space_left() < static_cast<i32>(sizeof(TVal))) {
             return false;
         }
-        block_->put(value);
+        block_->template put<TVal>(value);
         return true;
     }
 
