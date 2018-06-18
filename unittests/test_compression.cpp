@@ -581,8 +581,14 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
         }
         std::copy(block.get_cdata(i), block.get_cdata(i) + sz, std::back_inserter(cblock));
     }
+
+    // This iovec block contains data in once continous region
+    StorageEngine::IOVecBlock cont_block(true);
+    std::copy(cblock.begin(), cblock.end(), cont_block.get_data(0));
+
     StorageEngine::DataBlockReader reader(cblock.data(), cblock.size());
     StorageEngine::IOVecBlockReader<StorageEngine::IOVecBlock> iovecreader(&block);
+    StorageEngine::IOVecBlockReader<StorageEngine::IOVecBlock> iovecreader_cont(&cont_block);
 
     std::vector<aku_Timestamp> out_timestamps;
     std::vector<double> out_values;
@@ -591,10 +597,12 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
     auto nelem = reader.nelements();
     BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
     BOOST_REQUIRE_EQUAL(nelem, iovecreader.nelements());
+    BOOST_REQUIRE_EQUAL(nelem, iovecreader_cont.nelements());
     BOOST_REQUIRE_NE(nelem, 0);
 
     BOOST_REQUIRE_EQUAL(reader.get_id(), 42);
     BOOST_REQUIRE_EQUAL(iovecreader.get_id(), 42);
+    BOOST_REQUIRE_EQUAL(iovecreader_cont.get_id(), 42);
     for (size_t ix = 0ull; ix < reader.nelements(); ix++) {
         aku_Status status;
         aku_Timestamp  ts;
@@ -605,7 +613,12 @@ void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=
         out_values.push_back(value);
         aku_Timestamp  iovects;
         double      iovecvalue;
+        // Check io-vec block with four components
         std::tie(status, iovects, iovecvalue) = iovecreader.next();
+        BOOST_REQUIRE_EQUAL(value, iovecvalue);
+        BOOST_REQUIRE_EQUAL(ts, iovects);
+        // Check continous io-vec block
+        std::tie(status, iovects, iovecvalue) = iovecreader_cont.next();
         BOOST_REQUIRE_EQUAL(value, iovecvalue);
         BOOST_REQUIRE_EQUAL(ts, iovects);
     }
