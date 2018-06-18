@@ -804,7 +804,7 @@ struct IOVecVByteStreamReader {
         return val;
     }
 
-    size_t space_left() const { return block_->space_left(); }
+    size_t space_left() const { return block_->bytes_to_read(pos_); }
 
     const u32 pos() const { return pos_; }
 };

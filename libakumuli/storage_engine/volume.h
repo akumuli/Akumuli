@@ -81,6 +81,9 @@ struct IOVecBlock {
 
     int space_left() const;
 
+    //! Remaining bytes to read from offset to current write pos_
+    int bytes_to_read(u32 offset) const;
+
     int size() const;
 
     void put(u8 val);

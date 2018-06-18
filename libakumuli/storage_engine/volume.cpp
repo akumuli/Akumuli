@@ -70,6 +70,10 @@ int IOVecBlock::space_left() const {
     return AKU_BLOCK_SIZE - pos_;
 }
 
+int IOVecBlock::bytes_to_read(u32 offset) const {
+    return pos_ - offset;
+}
+
 int IOVecBlock::size() const {
     return pos_;
 }
