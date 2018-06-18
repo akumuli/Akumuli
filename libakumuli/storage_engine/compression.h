@@ -545,7 +545,7 @@ struct IOVecVByteStreamWriter {
         if (block_->space_left() == 0) {
             return false;
         }
-        block_->put(0xFF);
+        block_->put(static_cast<u8>(0xFF));
         return true;
     }
 
