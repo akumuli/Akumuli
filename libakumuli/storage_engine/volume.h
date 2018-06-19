@@ -117,6 +117,7 @@ struct IOVecBlock {
         return raw.retval;
     }
 
+    //! Allocate memory inside the stream (at the current write position)
     template<class POD>
     POD* allocate() {
         int c = pos_ / COMPONENT_SIZE;
@@ -134,6 +135,9 @@ struct IOVecBlock {
         pos_ += sizeof(POD);
         return result;
     }
+
+    //! Allocate memory inside the stream (at the current write position)
+    u8* allocate(u32 size);
 
     //-----
 

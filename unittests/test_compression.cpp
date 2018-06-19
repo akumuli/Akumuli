@@ -433,6 +433,12 @@ struct CheckedBlock {
     {
     }
 
+    u8* allocate(u32 size) {
+        u8* result = provided_.data() + pos_;
+        pos_ += size;
+        return result;
+    }
+
     /** Add component if block is less than NCOMPONENTS in size.
      *  Return index of the component or -1 if block is full.
      */

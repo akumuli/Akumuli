@@ -88,6 +88,23 @@ void IOVecBlock::put(u8 val) {
     pos_++;
 }
 
+u8* IOVecBlock::allocate(u32 size) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        return nullptr;
+    }
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    if ((data_[c].size() - static_cast<u32>(i)) < size) {
+        return nullptr;
+    }
+    u8* result = data_[c].data() + i;
+    pos_ += size;
+    return result;
+}
+
 u8 IOVecBlock::get(u32 offset) const {
     u32 c;
     u32 i;

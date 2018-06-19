@@ -2016,7 +2016,7 @@ aku_Status IOVecLeaf::read_all(std::vector<aku_Timestamp>* timestamps,
                                std::vector<double>* values) const
 {
     int windex = writer_.get_write_index();
-    IOVecBlockReader<IOVecBlock> reader(block_.get());
+    IOVecBlockReader<IOVecBlock> reader(block_.get(), static_cast<u32>(sizeof(SubtreeRef)));
     size_t sz = reader.nelements();
     timestamps->reserve(sz);
     values->reserve(sz);

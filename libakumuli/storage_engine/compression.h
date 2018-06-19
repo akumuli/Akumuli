@@ -495,6 +495,15 @@ struct IOVecVByteStreamWriter {
         , prev_(0)
     {}
 
+    /**
+     * @brief Don't interpret next 'n' bytes
+     * @param n is a number of bytes to skip
+     * @return pointer to the begining of the skiped region
+     */
+    u8* skip(u32 n) {
+        return block_->allocate(n);
+    }
+
     bool empty() const { return block_->size() == 0; }
 
     //! Perform combined write (TVal should be integer)
@@ -1334,12 +1343,15 @@ struct IOVecBlockWriter {
       * @param size Block size.
       * @param buf Pointer to buffer.
       */
-    IOVecBlockWriter(BlockT* block)
+    IOVecBlockWriter(BlockT* block, u32 offset = 0)
         : stream_(block)
         , ts_stream_(stream_)
         , val_stream_(stream_)
         , write_index_(0)
     {
+        if (offset > 0) {
+            stream_.skip(offset);
+        }
     }
 
     void init(aku_ParamId id) {
@@ -1514,13 +1526,16 @@ struct IOVecBlockReader {
     u32                 read_index_;
     const u8*           begin_;
 
-    IOVecBlockReader(const BlockT* block)
+    IOVecBlockReader(const BlockT* block, u32 offset = 0)
         : stream_(block)
         , ts_stream_(stream_)
         , val_stream_(stream_)
         , read_buffer_{}
         , read_index_(0)
     {
+        if (offset > 0) {
+            stream_.skip(offset);
+        }
         begin_ = stream_.skip(DataBlockWriter::HEADER_SIZE);
     }
 
