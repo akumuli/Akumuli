@@ -713,8 +713,12 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> 
 std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBlock> data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
-        const u8* p = data->get_cdata(i);
-        std::copy(p, p + IOVecBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
+        if (data->get_size(i) != 0) {
+            const u8* p = data->get_cdata(i);
+            std::copy(p, p + IOVecBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
+        } else {
+            std::fill_n(std::back_inserter(buffer_), AKU_BLOCK_SIZE, 0);
+        }
     }
     if (append_callback_) {
         append_callback_(write_pos_ + MEMSTORE_BASE);

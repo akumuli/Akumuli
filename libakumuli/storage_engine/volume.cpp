@@ -487,14 +487,18 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source)
     apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
     panic_on_error(status, "Volume seek error");
     apr_size_t bytes_written = 0;
-    auto csize = IOVecBlock::COMPONENT_SIZE;
-    const struct iovec vec[] = {
-        { const_cast<u8*>(source->get_data(0)) + 0*csize, csize },
-        { const_cast<u8*>(source->get_data(1)) + 1*csize, csize },
-        { const_cast<u8*>(source->get_data(2)) + 2*csize, csize },
-        { const_cast<u8*>(source->get_data(3)) + 3*csize, csize }
-    };
-    status = apr_file_writev_full(apr_file_handle_.get(), vec, 4, &bytes_written);
+    struct iovec vec[IOVecBlock::NCOMPONENTS] = {};
+    apr_size_t nvec = 0;
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        if (source->get_size(i) != 0) {
+            vec[i].iov_base = const_cast<u8*>(source->get_data(0));
+            vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
+            nvec++;
+        } else {
+            break;
+        }
+    }
+    status = apr_file_writev_full(apr_file_handle_.get(), vec, nvec, &bytes_written);
     panic_on_error(status, "Volume write error");
     auto result = write_pos_++;
     return std::make_tuple(AKU_SUCCESS, result);
