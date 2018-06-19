@@ -2064,7 +2064,7 @@ aku_Status IOVecLeaf::append(aku_Timestamp ts, double value) {
 
 std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> bstore) {
     assert(nelements() != 0);
-    u16 size = static_cast<u16>(writer_.commit());
+    u16 size = static_cast<u16>(writer_.commit()) - sizeof(SubtreeRef);
     assert(size);
     SubtreeRef* subtree = subtree_cast(block_->get_data(0));
     subtree->payload_size = size;
