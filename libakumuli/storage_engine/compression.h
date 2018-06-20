@@ -1482,23 +1482,23 @@ private:
  */
 namespace {
 
-    u16 get_block_version(const u8* pdata) {
+    inline u16 get_block_version(const u8* pdata) {
         u16 version = *reinterpret_cast<const u16*>(pdata);
         return version;
     }
 
-    u32 get_main_size(const u8* pdata) {
+    inline u32 get_main_size(const u8* pdata) {
         u16 main = *reinterpret_cast<const u16*>(pdata + 2);
         return static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
     }
 
-    u32 get_total_size(const u8* pdata) {
+    inline u32 get_total_size(const u8* pdata) {
         u16 main = *reinterpret_cast<const u16*>(pdata + 2);
         u16 tail = *reinterpret_cast<const u16*>(pdata + 4);
         return tail + static_cast<u32>(main) * DataBlockReader::CHUNK_SIZE;
     }
 
-    aku_ParamId get_block_id(const u8* pdata) {
+    inline aku_ParamId get_block_id(const u8* pdata) {
         aku_ParamId id = *reinterpret_cast<const aku_ParamId*>(pdata + 6);
         return id;
     }
