@@ -717,7 +717,7 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBl
             const u8* p = data->get_cdata(i);
             std::copy(p, p + IOVecBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
         } else {
-            std::fill_n(std::back_inserter(buffer_), AKU_BLOCK_SIZE, 0);
+            std::fill_n(std::back_inserter(buffer_), IOVecBlock::COMPONENT_SIZE, 0);
         }
     }
     if (append_callback_) {
