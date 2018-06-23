@@ -1,6 +1,20 @@
 Release notes
 =============
 
+Version 0.7.50
+--------------
+
+IMPROVEMENT
+
+* ARM support
+
+Version 0.7.49
+--------------
+
+IMPROVEMENT
+
+* Build packages for multiple platforms
+
 Version 0.7.48
 --------------
 
