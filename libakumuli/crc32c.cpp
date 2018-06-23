@@ -43,7 +43,6 @@
 // the issue. When Ubuntu 14.04 will be retired next line
 // should be uncommented and the macro should be removed.
 //#include <boost/predef.h>
-#define BOOST_ARCH_ARM BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__arm__) || defined(__arm64) || defined(__thumb__) || \
     defined(__TARGET_ARCH_ARM) || defined(__TARGET_ARCH_THUMB) || \
@@ -133,6 +132,7 @@ static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len)
     return static_cast<uint32_t>(crc) ^ 0xffffffff;
 }
 
+#ifndef BOOST_ARCH_ARM
 /* Multiply a matrix times a vector over the Galois field of two elements,
    GF(2).  Each element is a bit in an unsigned integer.  mat must have at
    least as many entries as the power of two for most significant one bit in
@@ -226,6 +226,11 @@ static inline uint32_t crc32c_shift(uint32_t zeros[][256], uint32_t crc)
            zeros[2][(crc >> 16) & 0xff] ^ zeros[3][crc >> 24];
 }
 
+/* Tables for hardware crc that shift a crc by LONG and SHORT zeros. */
+static pthread_once_t crc32c_once_hw = PTHREAD_ONCE_INIT;
+static uint32_t crc32c_long[4][256];
+static uint32_t crc32c_short[4][256];
+
 /* Block sizes for three-way parallel crc computation.  LONG and SHORT must
    both be powers of two.  The associated string constants must be set
    accordingly, for use in constructing the assembler instructions. */
@@ -236,11 +241,6 @@ static inline uint32_t crc32c_shift(uint32_t zeros[][256], uint32_t crc)
 #define SHORTx1 "256"
 #define SHORTx2 "512"
 
-/* Tables for hardware crc that shift a crc by LONG and SHORT zeros. */
-static pthread_once_t crc32c_once_hw = PTHREAD_ONCE_INIT;
-static uint32_t crc32c_long[4][256];
-static uint32_t crc32c_short[4][256];
-
 /* Initialize tables for shifting crcs. */
 static void crc32c_init_hw(void)
 {
@@ -249,7 +249,7 @@ static void crc32c_init_hw(void)
 }
 
 
-#ifndef BOOST_ARCH_ARM
+
 /* Compute CRC-32C using the Intel hardware instruction. */
 static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
 {
