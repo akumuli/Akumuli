@@ -30,8 +30,12 @@ set(CMAKE_CXX_FLAGS_DEBUG
 set(CMAKE_CXX_FLAGS_RELEASEGEN
     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")
 
-set(CMAKE_CXX_FLAGS_RELEASE 
-    "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3")
+message("arch: ${CMAKE_SYSTEM_PROCESSOR} ")
+if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+    # Use this flags only on amd64
+    set(CMAKE_CXX_FLAGS_RELEASE 
+        "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3")
+endif()
 
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)  

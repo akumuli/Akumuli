@@ -37,6 +37,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <boost/predef.h>
 
 /* CRC-32C (iSCSI) polynomial in reversed bit order. */
 #define POLY 0x82f63b78
@@ -220,6 +221,8 @@ static void crc32c_init_hw(void)
     crc32c_zeros(crc32c_short, SHORT);
 }
 
+
+#ifndef BOOST_ARCH_ARM
 /* Compute CRC-32C using the Intel hardware instruction. */
 static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
 {
@@ -323,10 +326,14 @@ static bool hardwared_crc32c_available() {
             : "%ebx", "%edx");
     return (ecx >> 20) & 1;
 }
+#endif
 
 namespace Akumuli {
 
 crc32c_impl_t chose_crc32c_implementation(CRC32C_hint hint) {
+#ifdef BOOST_ARCH_ARM
+    return &crc32c_sw;
+#else
     switch(hint) {
     case CRC32C_hint::FORCE_HW:
         return &crc32c_hw;
@@ -336,6 +343,7 @@ crc32c_impl_t chose_crc32c_implementation(CRC32C_hint hint) {
         return hardwared_crc32c_available() ? &crc32c_hw : &crc32c_sw;
     };
     return &crc32c_sw;
+#endif
 }
 
 }  // namespace
