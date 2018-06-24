@@ -8,18 +8,17 @@ set(APP_VERSION_PATCH "50")
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
 
-#add_definitions(-std=c++11 -Wall -Werror)
-#execute_process(COMMAND uname -m OUTPUT_VARIABLE CPACK_PACKAGE_ARCHITECTURE OUTPUT_STRIP_TRAILING_WHITESPACE)
 set(APP_ARCH "")
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
     set(APP_ARCH "x86_64")
 endif()
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
-    set(APP_ARCH "arm64")
+    set(APP_ARCH "aarch64")
 endif()
 if("${APP_ARCH}" STREQUAL "")
     error("Architecture not supported")
 endif()
+message("App architecture: ${APP_ARCH}")
 
 set(CMAKE_MACOSX_RPATH 1)
 
@@ -48,8 +47,7 @@ if("${APP_ARCH}" STREQUAL "x86_64")
 endif()
 
 if("${APP_ARCH}" STREQUAL "aarch64")
-    set(CMAKE_CXX_FLAGS_RELEASE
-        "${CMAKE_CXX_FLAGS_RELEASE} -DDISABLE_EMBEDDED_ASM")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF)
