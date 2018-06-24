@@ -9,6 +9,17 @@ set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}"
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
 
 #add_definitions(-std=c++11 -Wall -Werror)
+#execute_process(COMMAND uname -m OUTPUT_VARIABLE CPACK_PACKAGE_ARCHITECTURE OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(APP_ARCH "")
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+    set(APP_ARCH "x86_64")
+endif()
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+    set(APP_ARCH "arm64")
+endif()
+if("${APP_ARCH}" STREQUAL "")
+    error("Architecture not supported")
+endif()
 
 set(CMAKE_MACOSX_RPATH 1)
 
@@ -30,11 +41,15 @@ set(CMAKE_CXX_FLAGS_DEBUG
 set(CMAKE_CXX_FLAGS_RELEASEGEN
     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")
 
-message("arch: ${CMAKE_SYSTEM_PROCESSOR} ")
-if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+if("${APP_ARCH}" STREQUAL "x86_64")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
         "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3")
+endif()
+
+if("${APP_ARCH}" STREQUAL "aarch64")
+    set(CMAKE_CXX_FLAGS_RELEASE
+        "${CMAKE_CXX_FLAGS_RELEASE} -DDISABLE_EMBEDDED_ASM")
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF)

@@ -38,33 +38,6 @@
 #include <unistd.h>
 #include <pthread.h>
 
-// BOOST 1.54 is used on Ubuntu 14.04 but boost/predef.h
-// is available in 1.56 or higher. This was copied to fix
-// the issue. When Ubuntu 14.04 will be retired next line
-// should be uncommented and the macro should be removed.
-//#include <boost/predef.h>
-
-#if defined(__arm__) || defined(__arm64) || defined(__thumb__) || \
-    defined(__TARGET_ARCH_ARM) || defined(__TARGET_ARCH_THUMB) || \
-    defined(_M_ARM)
-#   undef BOOST_ARCH_ARM
-#   if !defined(BOOST_ARCH_ARM) && defined(__arm64)
-#       define BOOST_ARCH_ARM BOOST_VERSION_NUMBER(8,0,0)
-#   endif
-#   if !defined(BOOST_ARCH_ARM) && defined(__TARGET_ARCH_ARM)
-#       define BOOST_ARCH_ARM BOOST_VERSION_NUMBER(__TARGET_ARCH_ARM,0,0)
-#   endif
-#   if !defined(BOOST_ARCH_ARM) && defined(__TARGET_ARCH_THUMB)
-#       define BOOST_ARCH_ARM BOOST_VERSION_NUMBER(__TARGET_ARCH_THUMB,0,0)
-#   endif
-#   if !defined(BOOST_ARCH_ARM) && defined(_M_ARM)
-#       define BOOST_ARCH_ARM BOOST_VERSION_NUMBER(_M_ARM,0,0)
-#   endif
-#   if !defined(BOOST_ARCH_ARM)
-#       define BOOST_ARCH_ARM BOOST_VERSION_NUMBER_AVAILABLE
-#   endif
-#endif
-
 /* CRC-32C (iSCSI) polynomial in reversed bit order. */
 #define POLY 0x82f63b78
 
@@ -132,7 +105,7 @@ static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len)
     return static_cast<uint32_t>(crc) ^ 0xffffffff;
 }
 
-#ifndef BOOST_ARCH_ARM
+#ifndef DISABLE_EMBEDDED_ASM
 /* Multiply a matrix times a vector over the Galois field of two elements,
    GF(2).  Each element is a bit in an unsigned integer.  mat must have at
    least as many entries as the power of two for most significant one bit in
@@ -358,7 +331,7 @@ static bool hardwared_crc32c_available() {
 namespace Akumuli {
 
 crc32c_impl_t chose_crc32c_implementation(CRC32C_hint hint) {
-#ifdef BOOST_ARCH_ARM
+#ifdef DISABLE_EMBEDDED_ASM
     return &crc32c_sw;
 #else
     switch(hint) {
