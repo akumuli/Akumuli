@@ -1749,6 +1749,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
+    // TODO: remove
+    if (subtree->checksum == 0) {
+        AKU_PANIC("Invalid checksum");
+    }
     return bstore->append_block(block_);
 }
 
@@ -2082,6 +2086,26 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> 
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(*block_, sizeof(SubtreeRef), size);
+    // TODO: remove
+    if (subtree->checksum == 0) {
+        AKU_PANIC("Invalid checksum");
+    }
+    // TODO: remove
+    // verify checksum
+    std::vector<u8> block_copy;
+    block_copy.reserve(4096);
+    for (int i = 0; i < 4; i++) {
+        const u8* b = block_->get_cdata(i);
+        if (block_->get_size(i) != 1024) {
+            AKU_PANIC("Invalid IOVec block");
+        }
+        std::copy(b, b + 1024, std::back_inserter(block_copy));
+    }
+    auto checksum = bstore->checksum(block_copy.data() + sizeof(SubtreeRef), size);
+    if (checksum != subtree->checksum) {
+        AKU_PANIC("Invalid checksum generated");
+    }
+    //
     return bstore->append_block(block_);
 }
 
@@ -2375,6 +2399,10 @@ std::tuple<aku_Status, LogicAddr> NBTreeSuperblock::commit(std::shared_ptr<Block
     backref->version = AKUMULI_VERSION;
     // add checksum
     backref->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), backref->payload_size);
+    // TODO: remove
+    if (backref->checksum == 0) {
+        AKU_PANIC("Invalid checksum");
+    }
     return bstore->append_block(block_);
 }
 
