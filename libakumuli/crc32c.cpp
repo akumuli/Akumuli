@@ -105,6 +105,7 @@ static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len)
     return static_cast<uint32_t>(crc) ^ 0xffffffff;
 }
 
+#ifndef DISABLE_EMBEDDED_ASM
 /* Multiply a matrix times a vector over the Galois field of two elements,
    GF(2).  Each element is a bit in an unsigned integer.  mat must have at
    least as many entries as the power of two for most significant one bit in
@@ -198,6 +199,11 @@ static inline uint32_t crc32c_shift(uint32_t zeros[][256], uint32_t crc)
            zeros[2][(crc >> 16) & 0xff] ^ zeros[3][crc >> 24];
 }
 
+/* Tables for hardware crc that shift a crc by LONG and SHORT zeros. */
+static pthread_once_t crc32c_once_hw = PTHREAD_ONCE_INIT;
+static uint32_t crc32c_long[4][256];
+static uint32_t crc32c_short[4][256];
+
 /* Block sizes for three-way parallel crc computation.  LONG and SHORT must
    both be powers of two.  The associated string constants must be set
    accordingly, for use in constructing the assembler instructions. */
@@ -208,17 +214,14 @@ static inline uint32_t crc32c_shift(uint32_t zeros[][256], uint32_t crc)
 #define SHORTx1 "256"
 #define SHORTx2 "512"
 
-/* Tables for hardware crc that shift a crc by LONG and SHORT zeros. */
-static pthread_once_t crc32c_once_hw = PTHREAD_ONCE_INIT;
-static uint32_t crc32c_long[4][256];
-static uint32_t crc32c_short[4][256];
-
 /* Initialize tables for shifting crcs. */
 static void crc32c_init_hw(void)
 {
     crc32c_zeros(crc32c_long, LONG);
     crc32c_zeros(crc32c_short, SHORT);
 }
+
+
 
 /* Compute CRC-32C using the Intel hardware instruction. */
 static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
@@ -323,10 +326,14 @@ static bool hardwared_crc32c_available() {
             : "%ebx", "%edx");
     return (ecx >> 20) & 1;
 }
+#endif
 
 namespace Akumuli {
 
 crc32c_impl_t chose_crc32c_implementation(CRC32C_hint hint) {
+#ifdef DISABLE_EMBEDDED_ASM
+    return &crc32c_sw;
+#else
     switch(hint) {
     case CRC32C_hint::FORCE_HW:
         return &crc32c_hw;
@@ -336,6 +343,7 @@ crc32c_impl_t chose_crc32c_implementation(CRC32C_hint hint) {
         return hardwared_crc32c_available() ? &crc32c_hw : &crc32c_sw;
     };
     return &crc32c_sw;
+#endif
 }
 
 }  // namespace
