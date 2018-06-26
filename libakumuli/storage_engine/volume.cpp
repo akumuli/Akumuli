@@ -480,6 +480,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
 }
 
 std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source) {
+    static std::vector<u8> padding(IOVecBlock::COMPONENT_SIZE);
     if (write_pos_ >= file_size_) {
         return std::make_tuple(AKU_EOVERFLOW, 0u);
     }
@@ -493,10 +494,11 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source)
         if (source->get_size(i) != 0) {
             vec[i].iov_base = const_cast<u8*>(source->get_data(0));
             vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
-            nvec++;
         } else {
-            break;
+            vec[i].iov_base = const_cast<u8*>(padding.data());
+            vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
         }
+        nvec++;
     }
     status = apr_file_writev_full(apr_file_handle_.get(), vec, nvec, &bytes_written);
     panic_on_error(status, "Volume write error");
