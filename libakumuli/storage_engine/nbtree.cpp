@@ -103,6 +103,14 @@ static std::tuple<aku_Status, std::shared_ptr<Block>> read_and_check(std::shared
     u8 const* data = block->get_cdata();
     SubtreeRef const* subtree = subtree_cast(data);
     u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    // TODO: remove
+    std::cout << "crc(r): " << crc << ":" << subtree->payload_size << "@" << curr << std::endl;
+    if (curr == 5) {
+        std::cout << std::endl;
+        std::cout.write(reinterpret_cast<const char*>(data) + sizeof(SubtreeRef), subtree->payload_size);
+        std::cout << std::endl;
+    }
+    // end TODO
     if (crc != subtree->checksum) {
         std::stringstream fmt;
         fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
@@ -125,6 +133,9 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
     u8 const* data = block->get_cdata();
     SubtreeRef const* subtree = subtree_cast(data);
     u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    // TODO: remove
+    std::cout << "crc(r): " << crc << ":" << subtree->payload_size << "@" << curr << std::endl;
+    // end TODO
     if (crc != subtree->checksum) {
         std::stringstream fmt;
         fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
@@ -145,6 +156,9 @@ static std::shared_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<
     u8 const* data = block->get_cdata(0);
     SubtreeRef const* subtree = subtree_cast(data);
     u32 crc = bstore->checksum(data + sizeof(SubtreeRef), subtree->payload_size);
+    // TODO: remove
+    std::cout << "crc(R): " << crc << ":" << subtree->payload_size << "@" << curr << std::endl;
+    // end TODO
     if (crc != subtree->checksum) {
         std::stringstream fmt;
         fmt << "Invalid checksum (addr: " << curr << ", level: " << subtree->level << ")";
@@ -1750,10 +1764,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeLeaf::commit(std::shared_ptr<BlockStore>
     // Compute checksum
     subtree->checksum = bstore->checksum(block_->get_cdata() + sizeof(SubtreeRef), size);
     // TODO: remove
-    if (subtree->checksum == 0) {
-        AKU_PANIC("Invalid checksum");
-    }
-    return bstore->append_block(block_);
+    aku_Status stat;
+    LogicAddr addrout;
+    std::tie(stat, addrout) = bstore->append_block(block_);
+    std::cout << "crc(w): " << subtree->checksum << ":" << size << "@" << addrout << std::endl;
+    return std::tie(stat, addrout);
+    // end TODO
+    //return bstore->append_block(block_);
 }
 
 
@@ -2087,26 +2104,22 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> 
     // Compute checksum
     subtree->checksum = bstore->checksum(*block_, sizeof(SubtreeRef), size);
     // TODO: remove
-    if (subtree->checksum == 0) {
-        AKU_PANIC("Invalid checksum");
-    }
-    // TODO: remove
-    // verify checksum
-    std::vector<u8> block_copy;
-    block_copy.reserve(4096);
-    for (int i = 0; i < 4; i++) {
-        const u8* b = block_->get_cdata(i);
-        if (block_->get_size(i) != 1024) {
-            AKU_PANIC("Invalid IOVec block");
+    aku_Status stat;
+    LogicAddr addrout;
+    std::tie(stat, addrout) = bstore->append_block(block_);
+    std::cout << "crc(W): " << subtree->checksum << ":" << size << "@" << addrout << std::endl;
+    if (addrout == 5) {
+        std::vector<u8> buffer;
+        for (int i = 0; i < 4; i++) {
+            std::copy(block_->get_cdata(i), block_->get_cdata(i) + 1024, std::back_inserter(buffer));
         }
-        std::copy(b, b + 1024, std::back_inserter(block_copy));
+        std::cout << std::endl;
+        std::cout.write(reinterpret_cast<const char*>(buffer.data()) + sizeof(SubtreeRef), size);
+        std::cout << std::endl;
     }
-    auto checksum = bstore->checksum(block_copy.data() + sizeof(SubtreeRef), size);
-    if (checksum != subtree->checksum) {
-        AKU_PANIC("Invalid checksum generated");
-    }
-    //
-    return bstore->append_block(block_);
+    return std::tie(stat, addrout);
+    // end TODO
+    //return bstore->append_block(block_);
 }
 
 
