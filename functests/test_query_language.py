@@ -839,9 +839,7 @@ def main(path):
         chan = att.TCPChan(HOST, TCPPORT)
 
         # fill data in
-        # TODO: remove
-        dt = datetime.datetime(2018, 1, 2, 0, 0, 0)
-        #dt = datetime.datetime.utcnow().replace(second=0, microsecond=0)
+        dt = datetime.datetime.utcnow().replace(second=0, microsecond=0)
         delta = datetime.timedelta(milliseconds=1)
         nmsgs = 100000
         print("Sending {0} messages through TCP...".format(nmsgs))

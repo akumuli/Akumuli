@@ -492,7 +492,7 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source)
     apr_size_t nvec = 0;
     for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
         if (source->get_size(i) != 0) {
-            vec[i].iov_base = const_cast<u8*>(source->get_data(0));
+            vec[i].iov_base = const_cast<u8*>(source->get_data(i));
             vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
         } else {
             vec[i].iov_base = const_cast<u8*>(padding.data());
