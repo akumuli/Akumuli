@@ -67,83 +67,32 @@ struct ConsolidatedRefStorage {
     }
 };
 
-namespace {
-u8* encode_subtree_ref(u8* dest, size_t dest_size, const SubtreeRef& ref) {
-    auto end = dest + dest_size;
-    auto put_u64 = [&](u64 val) {
-        Base128Int<u64> enc(val);
-        return enc.put(dest, end);
-    };
+struct SubtreeRefCompressor {
 
-    auto put_double = [&](double x) {
-        // Put without compression
-        union {
-            double x;
-            u8 bits[8];
-        } value;
-        value.x = x;
-        if (end - dest > 8) {
-            memcpy(dest, value.bits, 8);
-            return dest + 8;
-        }
-        return dest;
-    };
+    /**
+     * @brief Encode SubtreeRef into binary format
+     * @param dest is a pointer to the destination buffer
+     * @param dest_size is a size of the destination buffer
+     * @param ref is a SubtreeRef struct to encode
+     * @return pointer to the first unmodified element on success, 'dest' on error
+     */
+    static u8* encode_subtree_ref(u8* dest, size_t dest_size, const SubtreeRef& ref);
 
-    // This macro checks output address and adjusts dest or returns
-    #define CHECK_BOUNDS(exp) { \
-        auto outp = exp; \
-        if (outp == dest) { \
-            return dest; \
-        } else { \
-            dest = outp; \
-        }\
-    }\
-
-    // Put values to stream
-    CHECK_BOUNDS(put_u64(ref.count));
-
-    CHECK_BOUNDS(put_u64(ref.begin));
-
-    auto dend = ref.end - ref.begin;
-    CHECK_BOUNDS(put_u64(dend));
-
-    CHECK_BOUNDS(put_u64(ref.addr));
-
-    CHECK_BOUNDS(put_double(ref.min));
-
-    auto dmin = ref.min_time - ref.begin;
-    CHECK_BOUNDS(put_u64(dmin));
-
-    CHECK_BOUNDS(put_double(ref.max));
-
-    auto dmax = ref.max_time - ref.begin;
-    CHECK_BOUNDS(put_u64(dmax));
-
-    CHECK_BOUNDS(put_double(ref.sum));
-
-    CHECK_BOUNDS(put_double(ref.first));
-
-    CHECK_BOUNDS(put_double(ref.last));
-
-    CHECK_BOUNDS(put_u64(static_cast<u64>(ref.type)));
-
-    CHECK_BOUNDS(put_u64(ref.level));
-
-    CHECK_BOUNDS(put_u64(ref.payload_size));
-
-    CHECK_BOUNDS(put_u64(ref.fanout_index));
-
-    CHECK_BOUNDS(put_u64(ref.checksum));
-
-    return dest;
-}
-}
+    /**
+     * @brief Decode SubtreeRef into binary format
+     * @param source is a pointer to the buffer with encoded data
+     * @param source_size is a size of the buffer
+     * @param ref is a pointer to SubtreeRef struct that should receive data
+     * @return pointer to the next element of buffer on success, 'source' on error
+     */
+    static const u8* decode_subtree_ref(const u8* source, size_t source_size, SubtreeRef* ref);
+};
 
 struct CompressedRefStorage {
     std::vector<u8> buffer_;
 
     void append(const SubtreeRef& ref) {
-        encode_subtree_ref(buffer_.data(), buffer_.size(), ref);
+        //SubtreeRefCompressor::encode_subtree_ref(buffer_.data(), buffer_.size(), ref);
         throw "not implemented";
     }
 };

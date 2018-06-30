@@ -373,3 +373,24 @@ target_link_libraries(
 
 add_test(column_store test_column_store)
 
+# Ref-store test
+add_executable(
+    test_ref_store
+    test_ref_store.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/ref_store.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/log_iface.cpp
+)
+
+target_link_libraries(
+    test_ref_store
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    pthread
+)
+
+add_test(ref_store test_ref_store)
+
