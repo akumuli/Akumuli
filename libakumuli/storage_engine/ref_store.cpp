@@ -37,7 +37,26 @@ u8* SubtreeRefCompressor::encode_subtree_ref(u8* dest, size_t dest_size, const S
         }\
     }\
 
-    // Put values to stream
+    /*
+     * Format description.
+     *
+     * Each record is var-length. It starts with 1-byte header
+     * that contain length of the record (so the record can be
+     * skipped without decoding). The header is followed by the
+     * `SubtreeRef::level` value which is encoded using the LEB128
+     * algorithm. Since the value is less then 10 it takes only
+     * 1-byte to store it. The value is located near the header
+     * of the record because it's the only value needed to filter
+     * records. Other fields of the `SubtreeRef` follows. The
+     * integers are encoded using LEB128 and double values are
+     * stored as-is. Version and id are not stored since it's the
+     * same for all records.
+     */
+
+    u8* length = begin++;
+
+    ENCODE_NEXT(put_u64(ref.level));
+
     ENCODE_NEXT(put_u64(ref.count));
 
     ENCODE_NEXT(put_u64(ref.begin));
@@ -65,8 +84,6 @@ u8* SubtreeRefCompressor::encode_subtree_ref(u8* dest, size_t dest_size, const S
 
     ENCODE_NEXT(put_u64(static_cast<u64>(ref.type)));
 
-    ENCODE_NEXT(put_u64(ref.level));
-
     // If type is a 'leaf' then the payload_size will contain a
     // size in bytes (close but less then 4096). Otherwise it
     // will contain a number of elements in the innter node that
@@ -82,6 +99,8 @@ u8* SubtreeRefCompressor::encode_subtree_ref(u8* dest, size_t dest_size, const S
     ENCODE_NEXT(put_u64(ref.checksum));
 
     #undef ENCODE_NEXT
+
+    *length = static_cast<u8>(begin - dest);
 
     return begin;
 }
@@ -129,6 +148,10 @@ const u8* SubtreeRefCompressor::decode_subtree_ref(const u8* source, size_t sour
         }\
     }
 
+    u8 length = *begin++;
+
+    DECODE_NEXT(ref->level, get_u16());
+
     DECODE_NEXT(ref->count, get_u64());
 
     DECODE_NEXT(ref->begin, get_u64());
@@ -159,8 +182,6 @@ const u8* SubtreeRefCompressor::decode_subtree_ref(const u8* source, size_t sour
 
     DECODE_NEXT(ref->type, get_u16());
 
-    DECODE_NEXT(ref->level, get_u16());
-
     DECODE_NEXT(ref->payload_size, get_u16());
     if (ref->type != NBTreeBlockType::INNER) {
         ref->payload_size = AKU_BLOCK_SIZE - ref->payload_size;
@@ -172,7 +193,67 @@ const u8* SubtreeRefCompressor::decode_subtree_ref(const u8* source, size_t sour
 
     #undef DECODE_NEXT
 
+    // Verify read
+    if (length != static_cast<u8>(begin - source)) {
+        return source;
+    }
+
     return begin;
+}
+
+//! Count space occupied by the records with level other than provided
+static size_t count_others(const u8* source, size_t source_size, u16 level)
+{
+    auto begin = source;
+    auto end = begin + source_size;
+    size_t size = 0;
+    while((begin + 1) < end) {
+        u8 length = *begin;
+        Base128Int<u16> level;
+        auto p = level.get(begin + 1, end);
+        if (p == begin || (begin + length) >= end) {
+            break;
+        }
+        if (level != level) {
+            size += length;
+        }
+        begin += length;
+    }
+    return size;
+}
+
+void SubtreeRefCompressor::filter(const u8* source,
+                                  size_t source_size,
+                                  u16 level2remove,
+                                  std::vector<u8> *out)
+{
+    size_t out_size = count_others(source, source_size, level2remove);
+    out->reserve(out_size);
+    auto begin = source;
+    auto end = begin + source_size;
+    while((begin + 1) < end) {
+        u8 length = *begin;
+        // Tap into message to see if it should be copied
+        Base128Int<u16> level;
+        auto p = level.get(begin + 1, end);
+        if (p == begin) {
+            break;
+        }
+        if ((begin + length) > end) {
+            AKU_PANIC("Memory corrupted");
+        }
+        if (level != level2remove) {
+            std::copy(begin, begin + length, std::back_inserter(*out));
+        }
+        begin += length;
+    }
+}
+
+
+CompressedRefStorage::CompressedRefStorage(aku_ParamId id, u16 version)
+    : id_(id)
+    , version_(version)
+{
 }
 
 }
