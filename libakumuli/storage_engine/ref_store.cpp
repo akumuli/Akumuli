@@ -266,20 +266,20 @@ static size_t count_others(const u8* source, size_t source_size, u16 level)
 size_t SubtreeRefCompressor::count(const u8* source, size_t source_size, u16 level) {
     auto begin = source;
     auto end = begin + source_size;
-    size_t size = 0;
+    size_t count = 0;
     while((begin + 1) < end) {
         u8 length = *begin;
-        Base128Int<u16> level;
-        auto p = level.get(begin + 1, end);
-        if (p == begin || (begin + length) >= end) {
+        Base128Int<u16> field;
+        auto p = field.get(begin + 1, end);
+        if (p == begin || (begin + length) > end) {
             break;
         }
-        if (level != level) {
-            size++;
+        if (field == level) {
+            count++;
         }
         begin += length;
     }
-    return size;
+    return count;
 
 }
 

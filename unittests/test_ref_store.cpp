@@ -246,9 +246,14 @@ BOOST_AUTO_TEST_CASE(Test_refstore_remove_level) {
 
 struct TreeMock {
     std::vector<SubtreeRef> refs_;
+    u16 level_;
 
     size_t nelements() const {
         return refs_.size();
+    }
+
+    u16 get_level() const {
+        return level_;
     }
 
     aku_Status append(const SubtreeRef& ref) {
@@ -298,9 +303,20 @@ BOOST_AUTO_TEST_CASE(Test_refstore_load_store) {
 
     TreeMock mock;
     mock.refs_ = refs;
+    mock.level_ = 1;
+
+    BOOST_REQUIRE(refstore.has_space(0));
+
+    u16 nelem = refstore.nelements(0);
+    BOOST_REQUIRE_EQUAL(nelem, 0);
 
     auto status = refstore.loadFrom(mock);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    BOOST_REQUIRE(!refstore.has_space(0));
+
+    nelem = refstore.nelements(0);
+    BOOST_REQUIRE_EQUAL(nelem, 32);
 
     u16 expected = 0;
     refstore.iter([&](const SubtreeRef& it) {
@@ -311,6 +327,7 @@ BOOST_AUTO_TEST_CASE(Test_refstore_load_store) {
     BOOST_REQUIRE(expected == 32);
 
     TreeMock refsout;
+    refsout.level_ = 1;
     status = refstore.saveTo(&refsout);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 

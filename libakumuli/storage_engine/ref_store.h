@@ -141,8 +141,11 @@ struct CompressedRefStorage {
     aku_Status saveTo(TreeT* sblock) {
         aku_Status status = AKU_SUCCESS;
         iter([sblock, &status](const SubtreeRef& ref) {
-            status = sblock->append(ref);
-            return status == AKU_SUCCESS;
+            if (ref.level == sblock->get_level() - 1) {
+                status = sblock->append(ref);
+                return status == AKU_SUCCESS;
+            }
+            return true;
         });
         return status;
     }
