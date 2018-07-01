@@ -84,6 +84,8 @@ struct CompressedRefStorage {
 
     CompressedRefStorage(aku_ParamId id, u16 version);
 
+    size_t bytes_used() const;
+
     template<class Func>
     void iter(const Func& func) const {
         if (buffer_.empty()) {

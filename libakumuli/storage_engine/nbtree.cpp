@@ -2978,7 +2978,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
 struct ConsolidatedSBlockExtent : NBTreeExtent {
     std::shared_ptr<BlockStore> bstore_;
     std::weak_ptr<NBTreeExtentsList> roots_;
-    ConsolidatedRefStorage* share_;
+    CompressedRefStorage* share_;
     aku_ParamId id_;
     LogicAddr last_;
     u16 fanout_index_;
@@ -2986,7 +2986,7 @@ struct ConsolidatedSBlockExtent : NBTreeExtent {
     u32 killed_;
 
     ConsolidatedSBlockExtent(std::shared_ptr<BlockStore> bstore,
-                       ConsolidatedRefStorage* share,
+                       CompressedRefStorage* share,
                        std::shared_ptr<NBTreeExtentsList> roots,
                        aku_ParamId id,
                        LogicAddr addr,
@@ -3463,7 +3463,7 @@ void NBTreeExtent::check_extent(NBTreeExtent const* extent, std::shared_ptr<Bloc
 
 NBTreeExtentsList::NBTreeExtentsList(aku_ParamId id, std::vector<LogicAddr> addresses, std::shared_ptr<BlockStore> bstore)
     : bstore_(bstore)
-    , shared_(new ConsolidatedRefStorage())
+    , shared_(new CompressedRefStorage(id, AKUMULI_VERSION))
     , id_(id)
     , last_(0ull)
     , rescue_points_(std::move(addresses))
@@ -3489,7 +3489,7 @@ std::tuple<size_t, size_t> NBTreeExtentsList::bytes_used() const {
             c1 = leaf->bytes_used();
         }
         if (extents_.size() > 1) {
-            c2 = shared_->refs_.capacity() * sizeof(SubtreeRef);
+            c2 = shared_->bytes_used();
         }
     }
     return std::make_tuple(c1, c2);
@@ -3879,7 +3879,7 @@ void NBTreeExtentsList::open() {
 }
 
 static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
-                                 ConsolidatedRefStorage* shared,
+                                 CompressedRefStorage* shared,
                                  std::shared_ptr<BlockStore> bstore,
                                  aku_ParamId id,
                                  size_t nlevels,

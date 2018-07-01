@@ -3,6 +3,7 @@
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE Main
 #include <boost/test/unit_test.hpp>
+#include <boost/test/test_tools.hpp>
 #include <vector>
 
 #include "storage_engine/compression.h"
@@ -11,6 +12,22 @@
 
 using namespace Akumuli;
 using namespace Akumuli::StorageEngine;
+
+std::ostream& operator << (std::ostream& o, const SubtreeRef& ref) {
+    o << "[fanout:" << ref.fanout_index << ",level" << ref.level << "]";
+    return o;
+}
+
+bool operator == (const SubtreeRef& lhs, const SubtreeRef& rhs) {
+    union {
+        SubtreeRef fields;
+        char binary[sizeof(SubtreeRef)];
+    } ulhs, urhs;
+    ulhs.fields = lhs;
+    urhs.fields = rhs;
+    return std::vector<char>(ulhs.binary, ulhs.binary + sizeof(SubtreeRef)) ==
+           std::vector<char>(urhs.binary, urhs.binary + sizeof(SubtreeRef));
+}
 
 BOOST_AUTO_TEST_CASE(Test_encoding_size) {
     u8 buffer[0x1000];
@@ -225,4 +242,80 @@ BOOST_AUTO_TEST_CASE(Test_refstore_remove_level) {
     });
 
     BOOST_REQUIRE(expected == 32);
+}
+
+struct TreeMock {
+    std::vector<SubtreeRef> refs_;
+
+    size_t nelements() const {
+        return refs_.size();
+    }
+
+    aku_Status append(const SubtreeRef& ref) {
+        refs_.push_back(ref);
+        return AKU_SUCCESS;
+    }
+
+    aku_Status read_all(std::vector<SubtreeRef>* refs) const {
+        std::copy(refs_.begin(), refs_.end(), std::back_inserter(*refs));
+        return AKU_SUCCESS;
+    }
+};
+
+
+BOOST_AUTO_TEST_CASE(Test_refstore_load_store) {
+    auto basets = 1530291866ul;
+    auto nano = 1000000ul;
+    SubtreeRef proto;
+    proto.addr = 0x11111;
+    proto.begin = basets * nano;
+    proto.end   = (basets + 60) * nano;
+    proto.count = 1000;
+    proto.checksum = 0;
+    proto.fanout_index = 0;
+    proto.first = 3.14159;
+    proto.id = 100000;
+    proto.last = 6.70318;
+    proto.level = 0;
+    proto.max = 92.112;
+    proto.min = 2.113;
+    proto.max_time = (basets + 10) * nano;
+    proto.min_time = (basets + 20) * nano;
+    proto.payload_size = 3998;
+    proto.sum = 284272.192841;
+    proto.type = NBTreeBlockType::LEAF;
+    proto.version = 1;
+
+
+    std::vector<SubtreeRef> refs;
+    // Add a bunch of values with varying fanout
+    for (u16 i = 0; i < 32; i++) {
+        proto.fanout_index = i;
+        refs.push_back(proto);
+    }
+
+    CompressedRefStorage refstore(proto.id, proto.version);
+
+    TreeMock mock;
+    mock.refs_ = refs;
+
+    auto status = refstore.loadFrom(mock);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    u16 expected = 0;
+    refstore.iter([&](const SubtreeRef& it) {
+        proto.fanout_index = expected++;
+        requre_equal(proto, it);
+        return true;
+    });
+    BOOST_REQUIRE(expected == 32);
+
+    TreeMock refsout;
+    status = refstore.saveTo(&refsout);
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    BOOST_REQUIRE_EQUAL(refs.size(), refsout.refs_.size());
+    for (size_t i = 0; i < refs.size(); i++) {
+        BOOST_REQUIRE(refs.at(i) == refsout.refs_.at(i));
+    }
 }

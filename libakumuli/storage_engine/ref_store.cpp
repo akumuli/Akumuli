@@ -334,5 +334,9 @@ int CompressedRefStorage::nelements(u16 level) const {
                                                         level));
 }
 
+size_t CompressedRefStorage::bytes_used() const {
+    return buffer_.capacity();
+}
+
 }
 }

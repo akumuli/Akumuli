@@ -595,7 +595,7 @@ enum class NBTreeAppendResult {
 };
 
 
-struct ConsolidatedRefStorage;
+struct CompressedRefStorage;
 
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
@@ -604,7 +604,7 @@ struct ConsolidatedRefStorage;
   */
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::shared_ptr<ConsolidatedRefStorage> shared_;
+    std::shared_ptr<CompressedRefStorage> shared_;
     std::deque<std::unique_ptr<NBTreeExtent>> extents_;
     const aku_ParamId id_;
     //! Last timestamp
