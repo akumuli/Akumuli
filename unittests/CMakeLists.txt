@@ -192,6 +192,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/ref_store.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/operators/operator.cpp
     ../libakumuli/storage_engine/operators/aggregate.cpp
@@ -310,6 +311,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/ref_store.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/operators/operator.cpp
     ../libakumuli/storage_engine/operators/aggregate.cpp
@@ -342,6 +344,7 @@ add_executable(
     ../libakumuli/storage_engine/blockstore.cpp
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/ref_store.cpp
     ../libakumuli/storage_engine/compression.cpp
     ../libakumuli/storage_engine/operators/operator.cpp
     ../libakumuli/storage_engine/operators/aggregate.cpp

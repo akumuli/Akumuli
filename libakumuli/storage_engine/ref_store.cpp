@@ -3,6 +3,47 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+
+// //////////////////////
+// ConsolidatedRefStorage
+// //////////////////////
+
+void ConsolidatedRefStorage::append(const SubtreeRef& ref) {
+    if (refs_.capacity() == refs_.size()) {
+        // Grow buffer in small steps to prevent fragmentation
+        const size_t grow_step = 1;
+        refs_.reserve(refs_.capacity() + grow_step);
+    }
+    refs_.push_back(ref);
+}
+
+bool ConsolidatedRefStorage::has_space(u16 level) const {
+    return nelements(level) < AKU_NBTREE_FANOUT;
+}
+
+int ConsolidatedRefStorage::nelements(u16 level) const {
+    auto res = std::count_if(refs_.begin(), refs_.end(), [level](const SubtreeRef& cur) {
+        return cur.level == level;
+    });
+    return static_cast<int>(res);
+}
+
+void ConsolidatedRefStorage::remove_level(u16 level) {
+    auto pred = [level] (const SubtreeRef& cur) {
+        return cur.level != level;
+    };
+    auto sz = std::count_if(refs_.begin(), refs_.end(), pred);
+    std::vector<SubtreeRef> newrefs;
+    newrefs.reserve(static_cast<size_t>(sz));
+    std::copy_if(refs_.begin(), refs_.end(), std::back_inserter(newrefs), pred);
+    std::swap(refs_, newrefs);
+}
+
+
+// ////////////////////
+// SubtreeRefCompressor
+// ////////////////////
+
 u8* SubtreeRefCompressor::encode_subtree_ref(u8* dest, size_t dest_size, const SubtreeRef& ref) {
     auto begin = dest;
     auto end   = dest + dest_size;
@@ -222,6 +263,26 @@ static size_t count_others(const u8* source, size_t source_size, u16 level)
     return size;
 }
 
+size_t SubtreeRefCompressor::count(const u8* source, size_t source_size, u16 level) {
+    auto begin = source;
+    auto end = begin + source_size;
+    size_t size = 0;
+    while((begin + 1) < end) {
+        u8 length = *begin;
+        Base128Int<u16> level;
+        auto p = level.get(begin + 1, end);
+        if (p == begin || (begin + length) >= end) {
+            break;
+        }
+        if (level != level) {
+            size++;
+        }
+        begin += length;
+    }
+    return size;
+
+}
+
 void SubtreeRefCompressor::filter(const u8* source,
                                   size_t source_size,
                                   u16 level2remove,
@@ -250,10 +311,27 @@ void SubtreeRefCompressor::filter(const u8* source,
 }
 
 
+// ////////////////////
+// CompressedRefStorage
+// ////////////////////
+
 CompressedRefStorage::CompressedRefStorage(aku_ParamId id, u16 version)
     : id_(id)
     , version_(version)
 {
+}
+
+bool CompressedRefStorage::has_space(u16 level) const {
+    return SubtreeRefCompressor::count(buffer_.data(),
+                                       buffer_.size(),
+                                       level)
+            < AKU_NBTREE_FANOUT;
+}
+
+int CompressedRefStorage::nelements(u16 level) const {
+    return static_cast<int>(SubtreeRefCompressor::count(buffer_.data(),
+                                                        buffer_.size(),
+                                                        level));
 }
 
 }

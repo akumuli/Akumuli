@@ -168,6 +168,7 @@ BOOST_AUTO_TEST_CASE(Test_refstore_iter) {
     refstore.iter([&](const SubtreeRef& it) {
         proto.fanout_index = expected++;
         requre_equal(proto, it);
+        return true;
     });
 
     BOOST_REQUIRE(expected == 32);
@@ -220,6 +221,7 @@ BOOST_AUTO_TEST_CASE(Test_refstore_remove_level) {
     refstore.iter([&](const SubtreeRef& it) {
         proto.fanout_index = expected++;
         requre_equal(proto, it);
+        return true;
     });
 
     BOOST_REQUIRE(expected == 32);

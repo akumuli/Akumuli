@@ -29,6 +29,7 @@
 #include "akumuli_version.h"
 #include "status_util.h"
 #include "log_iface.h"
+#include "ref_store.h"
 #include "operators/scan.h"
 #include "operators/aggregate.h"
 
@@ -2973,63 +2974,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
 // ////////////////////// //
 //   NBTreeSBlockExtent   //
 // ////////////////////// //
-
-struct ConsolidatedRefStorage {
-    std::vector<SubtreeRef> refs_;
-
-    void append(const SubtreeRef& ref) {
-        if (refs_.capacity() == refs_.size()) {
-            // Grow buffer in small steps to prevent fragmentation
-            const size_t grow_step = 1;
-            refs_.reserve(refs_.capacity() + grow_step);
-        }
-        refs_.push_back(ref);
-    }
-
-    //! Return true if buffer can accomodate the value
-    bool has_space(u16 level) const {
-        return nelements(level) < AKU_NBTREE_FANOUT;
-    }
-
-    aku_Status loadFrom(const NBTreeSuperblock& sblock) {
-        if (sblock.nelements() > refs_.capacity() - refs_.size()) {
-            refs_.reserve(refs_.capacity() + sblock.nelements());
-        }
-        return sblock.read_all(&refs_);
-    }
-
-    aku_Status saveTo(NBTreeSuperblock* sblock) {
-        aku_Status status = AKU_SUCCESS;
-        for (const SubtreeRef& ref: refs_) {
-            if (ref.level == sblock->get_level() - 1) {
-                status = sblock->append(ref);
-                if (status != AKU_SUCCESS) {
-                    break;
-                }
-            }
-        }
-        return status;
-    }
-
-    int nelements(u16 level) const {
-        auto res = std::count_if(refs_.begin(), refs_.end(), [level](const SubtreeRef& cur) {
-            return cur.level == level;
-        });
-        return static_cast<int>(res);
-    }
-
-    //! Remove layer and free space
-    void remove_level(u16 level) {
-        auto pred = [level] (const SubtreeRef& cur) {
-            return cur.level != level;
-        };
-        auto sz = std::count_if(refs_.begin(), refs_.end(), pred);
-        std::vector<SubtreeRef> newrefs;
-        newrefs.reserve(static_cast<size_t>(sz));
-        std::copy_if(refs_.begin(), refs_.end(), std::back_inserter(newrefs), pred);
-        std::swap(refs_, newrefs);
-    }
-};
 
 struct ConsolidatedSBlockExtent : NBTreeExtent {
     std::shared_ptr<BlockStore> bstore_;

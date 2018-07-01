@@ -8,25 +8,16 @@ namespace Akumuli {
 namespace StorageEngine {
 
 //! Naive implementation of the ref-storage
-template<class TreeT>
 struct ConsolidatedRefStorage {
 
     std::vector<SubtreeRef> refs_;
 
-    void append(const SubtreeRef& ref) {
-        if (refs_.capacity() == refs_.size()) {
-            // Grow buffer in small steps to prevent fragmentation
-            const size_t grow_step = 1;
-            refs_.reserve(refs_.capacity() + grow_step);
-        }
-        refs_.push_back(ref);
-    }
+    void append(const SubtreeRef& ref);
 
     //! Return true if buffer can accomodate the value
-    bool has_space(u16 level) const {
-        return nelements(level) < AKU_NBTREE_FANOUT;
-    }
+    bool has_space(u16 level) const;
 
+    template<class TreeT>
     aku_Status loadFrom(const TreeT& sblock) {
         if (sblock.nelements() > refs_.capacity() - refs_.size()) {
             refs_.reserve(refs_.capacity() + sblock.nelements());
@@ -34,6 +25,7 @@ struct ConsolidatedRefStorage {
         return sblock.read_all(&refs_);
     }
 
+    template<class TreeT>
     aku_Status saveTo(TreeT* sblock) {
         aku_Status status = AKU_SUCCESS;
         for (const SubtreeRef& ref: refs_) {
@@ -47,24 +39,10 @@ struct ConsolidatedRefStorage {
         return status;
     }
 
-    int nelements(u16 level) const {
-        auto res = std::count_if(refs_.begin(), refs_.end(), [level](const SubtreeRef& cur) {
-            return cur.level == level;
-        });
-        return static_cast<int>(res);
-    }
+    int nelements(u16 level) const;
 
     //! Remove layer and free space
-    void remove_level(u16 level) {
-        auto pred = [level] (const SubtreeRef& cur) {
-            return cur.level != level;
-        };
-        auto sz = std::count_if(refs_.begin(), refs_.end(), pred);
-        std::vector<SubtreeRef> newrefs;
-        newrefs.reserve(static_cast<size_t>(sz));
-        std::copy_if(refs_.begin(), refs_.end(), std::back_inserter(newrefs), pred);
-        std::swap(refs_, newrefs);
-    }
+    void remove_level(u16 level);
 };
 
 struct SubtreeRefCompressor {
@@ -95,6 +73,8 @@ struct SubtreeRefCompressor {
      * @param out is a vector that should receive the result
      */
     static void filter(const u8* source, size_t source_size, u16 level2remove, std::vector<u8> *out);
+
+    static size_t count(const u8* source, size_t source_size, u16 level);
 };
 
 struct CompressedRefStorage {
@@ -123,7 +103,10 @@ struct CompressedRefStorage {
             ref.version = version_;
             begin       = pout;
 
-            func(ref);
+            bool cont = func(ref);
+            if (!cont) {
+                break;
+            }
         }
     }
 
@@ -146,6 +129,33 @@ struct CompressedRefStorage {
         std::vector<u8> newbuf;
         SubtreeRefCompressor::filter(buffer_.data(), buffer_.size(), level, &newbuf);
         std::swap(buffer_, newbuf);
+    }
+
+    bool has_space(u16 level) const;
+    
+    int nelements(u16 level) const;
+    
+    template<class TreeT>
+    aku_Status saveTo(TreeT* sblock) {
+        aku_Status status = AKU_SUCCESS;
+        iter([sblock, &status](const SubtreeRef& ref) {
+            status = sblock->append(ref);
+            return status == AKU_SUCCESS;
+        });
+        return status;
+    }
+
+    template<class TreeT>
+    aku_Status loadFrom(const TreeT& sblock) {
+        std::vector<SubtreeRef> refs;
+        refs.reserve(sblock.nelements());
+        auto status = sblock.read_all(&refs);
+        if (status == AKU_SUCCESS) {
+            for (const auto& ref: refs) {
+                append(ref);
+            }
+        }
+        return status;
     }
 };
 
