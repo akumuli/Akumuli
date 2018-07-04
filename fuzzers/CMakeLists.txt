@@ -34,6 +34,23 @@ target_link_libraries(afl_compression_iovec
 
 set_target_properties(afl_compression_iovec PROPERTIES EXCLUDE_FROM_ALL 1)
 
+# Compression interop
+
+add_executable(afl_compression_interop
+    afl_compression_interop.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/log_iface.cpp
+    )
+
+target_link_libraries(afl_compression_interop
+    pthread
+    "${APR_LIBRARY}"
+)
+
+set_target_properties(afl_compression_interop PROPERTIES EXCLUDE_FROM_ALL 1)
+
 # Series name parser
 
 add_executable(afl_series_name_parser

@@ -9,6 +9,17 @@
 
 using namespace Akumuli;
 
+struct UncompressedChunk {
+    /** Index in `timestamps` and `paramids` arrays corresponds
+      * to individual row. Each element of the `values` array corresponds to
+      * specific column and row. Variable longest_row should contain
+      * longest row length inside the header.
+      */
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<aku_ParamId>   paramids;
+    std::vector<double>        values;
+};
+
 int main(int argc, char** argv) {
     if (argc == 1) {
         return 1;

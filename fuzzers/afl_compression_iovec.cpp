@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
 
     StorageEngine::IOVecBlock block;
     StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(&block, 0);
+    writer.init(42);
     u32 nelements = 0;
     for (u32 i = 0; i < header.timestamps.size(); i++) {
         aku_Status status = writer.put(header.timestamps.at(i), header.values.at(i));
