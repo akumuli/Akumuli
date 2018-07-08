@@ -286,14 +286,14 @@ bool is_meta_query(std::string name) {
     return false;
 }
 
-static std::tuple<aku_Status, std::string> parse_select_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("select");
     if (select && select->empty()) {
         // select query
         auto str = select->get_value<std::string>("");
-        return std::make_tuple(AKU_SUCCESS, str);
+        return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
     }
-    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "");
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select' field");
 }
 
 /** Parse `join` statement, format:
@@ -440,21 +440,23 @@ static std::tuple<aku_Status, GroupAggregate> parse_group_aggregate_stmt(boost::
 /** Parse `oreder-by` statement, format:
   * { "oreder-by": "series", ... }
   */
-static std::tuple<aku_Status, OrderBy> parse_orderby(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, OrderBy, ErrorMsg> parse_orderby(boost::property_tree::ptree const& ptree) {
     auto orderby = ptree.get_child_optional("order-by");
     if (orderby) {
         auto stringval = orderby->get_value<std::string>();
         if (stringval == "time") {
-            return std::make_tuple(AKU_SUCCESS, OrderBy::TIME);
+            return std::make_tuple(AKU_SUCCESS, OrderBy::TIME, ErrorMsg());
         } else if (stringval == "series") {
-            return std::make_tuple(AKU_SUCCESS, OrderBy::SERIES);
+            return std::make_tuple(AKU_SUCCESS, OrderBy::SERIES, ErrorMsg());
         } else {
             Logger::msg(AKU_LOG_ERROR, "Invalid 'order-by' statement");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, OrderBy::TIME);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                   OrderBy::TIME,
+                                   "Unexpected `order-by` field value `" + stringval + "`");
         }
     }
     // Default is order by time
-    return std::make_tuple(AKU_SUCCESS, OrderBy::TIME);
+    return std::make_tuple(AKU_SUCCESS, OrderBy::TIME, ErrorMsg());
 }
 
 /** Parse `group-by` statement, format:
@@ -462,7 +464,7 @@ static std::tuple<aku_Status, OrderBy> parse_orderby(boost::property_tree::ptree
  *  or
  *  { ..., "group-by": "tag1" }
  */
-static std::tuple<aku_Status, std::vector<std::string>> parse_groupby(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg> parse_groupby(boost::property_tree::ptree const& ptree) {
     std::vector<std::string> tags;
     auto groupby = ptree.get_child_optional("group-by");
     if (groupby) {
@@ -471,7 +473,9 @@ static std::tuple<aku_Status, std::vector<std::string>> parse_groupby(boost::pro
             if (val) {
                 tags.push_back(*val);
             } else {
-                return std::make_tuple(AKU_EQUERY_PARSING_ERROR, tags);
+                return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                       tags,
+                                       "Query object has ill-formed `group-by` field");
             }
         }
     }
@@ -494,11 +498,12 @@ static std::pair<u64, u64> parse_limit_offset(boost::property_tree::ptree const&
     return std::make_pair(limit, offset);
 }
 
-static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestamp(boost::property_tree::ptree const& ptree)
+static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_range_timestamp(boost::property_tree::ptree const& ptree)
 {
     aku_Timestamp begin = 0, end = 0;
     bool begin_set = false, end_set = false;
     auto range = ptree.get_child_optional("range");
+    std::stringstream fmt;
     if (range) {
         for(auto child: *range) {
             if (child.first == "from") {
@@ -508,6 +513,7 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
                     begin_set = true;
                 } catch (std::exception const& e) {
                     Logger::msg(AKU_LOG_ERROR, std::string("Can't parse begin timestmp, ") + e.what());
+                    fmt << "can't parse " << iso_string << " as begin timestamp, " << e.what();
                 }
             } else if (child.first == "to") {
                 auto iso_string = child.second.get_value<std::string>();
@@ -516,14 +522,18 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
                     end_set = true;
                 } catch (std::exception const& e) {
                     Logger::msg(AKU_LOG_ERROR, std::string("Can't parse end timestmp, ") + e.what());
+                    if (!begin_set) {
+                        fmt << ", ";
+                    }
+                    fmt << "can't parse " << iso_string << " as end timestamp, " << e.what();
                 }
             }
         }
     }
     if (!begin_set || !end_set) {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, begin, end);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, begin, end, "Range field error: " + fmt.str());
     }
-    return std::make_tuple(AKU_SUCCESS, begin, end);
+    return std::make_tuple(AKU_SUCCESS, begin, end, ErrorMsg());
 }
 
 /** Parse `where` statement, format:
@@ -532,9 +542,9 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp> parse_range_timestam
   * "where": [ { "tag1": "value1", "tag2": "value2" },
   *            { "tag1": "value3", "tag2": "value4" } ]
   */
-static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost::property_tree::ptree const& ptree,
-                                                                           std::vector<std::string> metrics,
-                                                                           SeriesMatcher const& matcher)
+static std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg> parse_where_clause(boost::property_tree::ptree const& ptree,
+                                                                                     std::vector<std::string> metrics,
+                                                                                     SeriesMatcher const& matcher)
 {
     aku_Status status = AKU_SUCCESS;
     std::vector<aku_ParamId> output;
@@ -542,7 +552,7 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
     if (where) {
         if (metrics.empty()) {
             Logger::msg(AKU_LOG_ERROR, "Metric is not set");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, output);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, output, "Invalid where clause, metric is not set");
         }
         SeriesRetreiver retreiver(metrics);
         for (auto item: *where) {
@@ -583,7 +593,7 @@ static std::tuple<aku_Status, std::vector<aku_ParamId>> parse_where_clause(boost
         SeriesRetreiver retreiver;
         std::tie(status, output) = retreiver.extract_ids(matcher);
     }
-    return std::make_tuple(status, output);
+    return std::make_tuple(status, output, ErrorMsg());
 }
 
 static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty_print = true) {
@@ -609,9 +619,10 @@ static std::string to_json(boost::property_tree::ptree const& ptree, bool pretty
  * @param metrics is a list of metrics extracted by the query
  * @return filter value per metric
  */
-static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
+static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule, ErrorMsg>
     parse_filter(boost::property_tree::ptree const& ptree, std::vector<std::string> metrics)
 {
+    std::stringstream error_fmt;
     aku_Status status = AKU_SUCCESS;
     std::vector<Filter> result;
     FilterCombinationRule rule = FilterCombinationRule::ALL;  // Default value
@@ -642,6 +653,8 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
                             pval[i] = boost::lexical_cast<double>(value);
                         } catch (boost::bad_lexical_cast const&) {
                             Logger::msg(AKU_LOG_ERROR, metrics[ix] + " has bad filter value, can't parse floating point");
+                            error_fmt << "Query object filter field: " << metrics[ix]
+                                      << " has bad value, can't parse floating point";
                             found_at_least_one = false;
                             nfound = 0;
                             status = AKU_EBAD_ARG;
@@ -666,7 +679,8 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
                             rule = FilterCombinationRule::ANY;
                         } else {
                             Logger::msg(AKU_LOG_ERROR, std::string("Unknown filter combiner ") + value);
-                            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, rule);
+                            error_fmt << "Query object filter field has unknown filter combiner " << value;
+                            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, rule, error_fmt.str());
                         }
                     } else {
                         Logger::msg(AKU_LOG_ERROR, std::string("Unknown filter meta key ") + sub.first);
@@ -696,7 +710,7 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
             }
         }
     }
-    return std::make_tuple(status, result, rule);
+    return std::make_tuple(status, result, rule, error_fmt.str());
 }
 
 
@@ -704,7 +718,7 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule>
 // QueryParser class //
 // ///////////////// //
 
-std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(const char* query) {
+std::tuple<aku_Status, boost::property_tree::ptree, ErrorMsg> QueryParser::parse_json(const char* query) {
     //! C-string to streambuf adapter
     struct MemStreambuf : std::streambuf {
         MemStreambuf(const char* buf) {
@@ -721,37 +735,41 @@ std::tuple<aku_Status, boost::property_tree::ptree> QueryParser::parse_json(cons
     } catch (boost::property_tree::json_parser_error const& e) {
         // Error, bad query
         Logger::msg(AKU_LOG_ERROR, e.what());
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree, e.what());
     }
-    return std::make_tuple(AKU_SUCCESS, ptree);
+    return std::make_tuple(AKU_SUCCESS, ptree, ErrorMsg());
 }
 
-std::tuple<aku_Status, QueryKind> QueryParser::get_query_kind(boost::property_tree::ptree const& ptree) {
+std::tuple<aku_Status, QueryKind, ErrorMsg> QueryParser::get_query_kind(boost::property_tree::ptree const& ptree) {
     aku_Status status;
     for (const auto& item: ptree) {
         if (item.first == "select") {
             std::string series;
+            ErrorMsg error;
             std::tie(status, series) = parse_select_stmt(ptree);
             if (status != AKU_SUCCESS) {
-                return std::make_tuple(status, QueryKind::SELECT);
+                return std::make_tuple(status, QueryKind::SELECT, error);
             } else if (is_meta_query(series)) {
                 // TODO: Depricated
-                return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META);
+                return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_META, ErrorMsg());
             } else {
-                return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT);
+                return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT, ErrorMsg());
             }
         } else if (item.first == "aggregate") {
-            return std::make_tuple(AKU_SUCCESS, QueryKind::AGGREGATE);
+            return std::make_tuple(AKU_SUCCESS, QueryKind::AGGREGATE, ErrorMsg());
         } else if (item.first == "join") {
-            return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN);
+            return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN, ErrorMsg());
         } else if (item.first == "group-aggregate") {
-            return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE);
+            return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE, ErrorMsg());
         }
     }
-    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, QueryKind::SELECT);
+    static const char* error_message = "Query object type is undefined. "
+                                       "One of the following fields should be added: "
+                                       "select, aggregate, join, group-aggregate";
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, QueryKind::SELECT, error_message);
 }
 
-aku_Status validate_query(boost::property_tree::ptree const& ptree) {
+std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree const& ptree) {
     static const std::vector<std::string> UNIQUE_STMTS = {
         "select",
         "aggregate",
@@ -778,41 +796,47 @@ aku_Status validate_query(boost::property_tree::ptree const& ptree) {
         std::string keyword = item.first;
         if (ALLOWED_STMTS.count(keyword) == 0) {
             Logger::msg(AKU_LOG_ERROR, "Unexpected `" + keyword + "` statement");
-            return AKU_EQUERY_PARSING_ERROR;
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                   "Query object contains unexpected field `" + keyword + "`");
         }
         if (keywords.count(keyword)) {
             Logger::msg(AKU_LOG_ERROR, "Duplicate `" + keyword + "` statement");
-            return AKU_EQUERY_PARSING_ERROR;
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                   "Query object contains duplicate field `" + keyword + "`");
         }
         for (auto kw: UNIQUE_STMTS) {
             if (keywords.count(kw)) {
                 Logger::msg(AKU_LOG_ERROR, "Statement `" + keyword + "` can't be used with `" + kw + "`");
-                return AKU_EQUERY_PARSING_ERROR;
+                return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                       "Field `" + keyworkd + "` can't be used with `" + kw + "`");
             }
         }
     }
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
 /** DEPRICATED! Select statement should look like this:
  * { "select": "meta:*", ...}
  */
-std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta_query(
+std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg> QueryParser::parse_select_meta_query(
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> ids;
-    aku_Status status = validate_query(ptree);
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_query(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
     std::string name;
-    std::tie(status, name) = parse_select_stmt(ptree);
+    std::tie(status, name, error) = parse_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
     if (!is_meta_query(name)) {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ids);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ids,
+                               "Invalid query object, \"select\": \"meta:names\" expected");
     }
 
     std::vector<std::string> metrics;
@@ -821,11 +845,11 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
         metrics.push_back(name);
     }
 
-    std::tie(status, ids) = parse_where_clause(ptree, metrics, matcher);
+    std::tie(status, ids, error) = parse_where_clause(ptree, metrics, matcher);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
-    return std::make_tuple(AKU_SUCCESS, ids);
+    return std::make_tuple(AKU_SUCCESS, ids, ErrorMsg);
 }
 
 
@@ -855,29 +879,31 @@ std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_select_meta
  * Limit/offset/output statements also supported.
  */
 
-std::tuple<aku_Status, std::vector<aku_ParamId> > QueryParser::parse_search_query(
-        boost::property_tree::ptree const& ptree,
-        SeriesMatcher const& matcher)
+std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg>
+    QueryParser::parse_search_query(boost::property_tree::ptree const& ptree,
+                                    SeriesMatcher const& matcher)
 {
     std::vector<aku_ParamId> ids;
-    aku_Status status = validate_query(ptree);
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_query(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
     std::string name;
-    std::tie(status, name) = parse_select_stmt(ptree);
+    std::tie(status, name, error) = parse_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
     std::vector<std::string> metrics;
     if (!name.empty()) {
         metrics.push_back(name);
     }
-    std::tie(status, ids) = parse_where_clause(ptree, metrics, matcher);
+    std::tie(status, ids, error) = parse_where_clause(ptree, metrics, matcher);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, ids);
+        return std::make_tuple(status, ids, error);
     }
-    return std::make_tuple(AKU_SUCCESS, ids);
+    return std::make_tuple(AKU_SUCCESS, ids, ErrorMsg());
 }
 
 /**
@@ -948,7 +974,7 @@ enum class SuggestQueryKind {
     SUGGEST_ERROR,
 };
 
-static aku_Status validate_suggest_query(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, ErrorMsg> validate_suggest_query(boost::property_tree::ptree const& ptree) {
     static const std::set<std::string> ALLOWED_STMTS = {
         "select",
         "metric",
@@ -960,33 +986,39 @@ static aku_Status validate_suggest_query(boost::property_tree::ptree const& ptre
         std::string keyword = item.first;
         if (ALLOWED_STMTS.count(keyword) == 0) {
             Logger::msg(AKU_LOG_ERROR, "Unexpected `" + keyword + "` statement");
-            return AKU_EQUERY_PARSING_ERROR;
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "Unexpected field `" + keyword + "` in query object");
         }
     }
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
-static std::tuple<SuggestQueryKind, aku_Status> get_suggest_query_type(boost::property_tree::ptree const& ptree) {
+static std::tuple<SuggestQueryKind, aku_Status, ErrorMsg> get_suggest_query_type(boost::property_tree::ptree const& ptree) {
     auto child = ptree.get_child_optional("select");
     if (!child) {
-        Logger::msg(AKU_LOG_ERROR, "Select statement not found");
-        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+        Logger::msg(AKU_LOG_ERROR, "Query object missing `select` field");
+        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR,
+                               AKU_EQUERY_PARSING_ERROR,
+                               "Query object missing `select` field");
     }
     auto value = child->get_value_optional<std::string>();
     if (!value) {
-        Logger::msg(AKU_LOG_ERROR, "Bad select statement, single value expected");
-        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+        Logger::msg(AKU_LOG_ERROR, "Query object has invalid `select` field, single value expected");
+        return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR,
+                               AKU_EQUERY_PARSING_ERROR,
+                               "Query object has invalid `select` field, single value expected");
     }
     auto strval = value.get();
     if (strval == "metric-names") {
-        return std::make_tuple(SuggestQueryKind::SUGGEST_METRIC_NAMES, AKU_SUCCESS);
+        return std::make_tuple(SuggestQueryKind::SUGGEST_METRIC_NAMES, AKU_SUCCESS, ErrorMsg());
     } else if (strval == "tag-names") {
-        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_NAMES, AKU_SUCCESS);
+        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_NAMES, AKU_SUCCESS, ErrorMsg());
     } else if (strval == "tag-values") {
-        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_VALUES, AKU_SUCCESS);
+        return std::make_tuple(SuggestQueryKind::SUGGEST_TAG_VALUES, AKU_SUCCESS, ErrorMsg());
     }
-    Logger::msg(AKU_LOG_ERROR, "Bad select statement, invalid target");
-    return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR, AKU_EQUERY_PARSING_ERROR);
+    Logger::msg(AKU_LOG_ERROR, "Query object has invalid `select` field, unknown target " + strval);
+    return std::make_tuple(SuggestQueryKind::SUGGEST_ERROR,
+                           AKU_EQUERY_PARSING_ERROR,
+                           "Query object has invalid `select` field, unknown target " + strval);
 }
 
 static std::string get_starts_with(boost::property_tree::ptree const& ptree) {
@@ -1015,17 +1047,19 @@ static std::tuple<aku_Status, std::string> get_property(std::string name, boost:
     return std::make_tuple(AKU_SUCCESS, strval);
 }
 
-std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_ParamId>>
+std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_ParamId>, ErrorMsg>
     QueryParser::parse_suggest_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher)
 {
     std::shared_ptr<PlainSeriesMatcher> substitute;
     std::vector<aku_ParamId> ids;
-    aku_Status status = validate_suggest_query(ptree);
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_suggest_query(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, substitute, ids);
+        return std::make_tuple(status, substitute, ids, error);
     }
     SuggestQueryKind kind;
-    std::tie(kind, status) = get_suggest_query_type(ptree);
+    std::tie(kind, status, error) = get_suggest_query_type(ptree);
     std::string starts_with = get_starts_with(ptree);
     std::vector<StringT> results;
     std::string metric_name;
@@ -1039,7 +1073,7 @@ std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_Para
         std::tie(status, metric_name) = get_property("metric", ptree);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, "Metric name expected");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids, "Metric name expected");
         }
         results = matcher.suggest_tags(metric_name, starts_with);
     break;
@@ -1047,17 +1081,17 @@ std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_Para
         std::tie(status, metric_name) = get_property("metric", ptree);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, "Metric name expected");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids, "Metric name expected");
         }
         std::tie(status, tag_name) = get_property("tag", ptree);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, "Tag name expected");
-            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids, "Tag name expected");
         }
         results = matcher.suggest_tag_values(metric_name, tag_name, starts_with);
     break;
     case SuggestQueryKind::SUGGEST_ERROR:
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, substitute, ids, error);
     };
 
     substitute.reset(new PlainSeriesMatcher());
@@ -1066,18 +1100,19 @@ std::tuple<aku_Status, std::shared_ptr<PlainSeriesMatcher>, std::vector<aku_Para
         ids.push_back(mid);
     }
 
-    return std::make_tuple(AKU_SUCCESS, substitute, ids);
+    return std::make_tuple(AKU_SUCCESS, substitute, ids, ErrorMsg());
 }
 
-std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
+std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query(
                                                     boost::property_tree::ptree const& ptree,
                                                     const SeriesMatcher &matcher)
 {
     ReshapeRequest result = {};
-
-    aku_Status status = validate_query(ptree);
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_query(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
 
     Logger::msg(AKU_LOG_INFO, "Parsing query:");
@@ -1085,16 +1120,16 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
 
     // Metric name
     std::string metric;
-    std::tie(status, metric) = parse_select_stmt(ptree);
+    std::tie(status, metric, error) = parse_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
 
     // Group-by statement
     std::vector<std::string> tags;
-    std::tie(status, tags) = parse_groupby(ptree);
+    std::tie(status, tags, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
@@ -1103,23 +1138,23 @@ std::tuple<aku_Status, ReshapeRequest> QueryParser::parse_select_query(
 
     // Order-by statment
     OrderBy order;
-    std::tie(status, order) = parse_orderby(ptree);
+    std::tie(status, order, error) = parse_orderby(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
 
     // Where statement
     std::vector<aku_ParamId> ids;
-    std::tie(status, ids) = parse_where_clause(ptree, {metric}, matcher);
+    std::tie(status, ids, error) = parse_where_clause(ptree, {metric}, matcher);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
 
     // Read timestamps
     aku_Timestamp ts_begin, ts_end;
-    std::tie(status, ts_begin, ts_end) = parse_range_timestamp(ptree);
+    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree);
     if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, error);
     }
 
     // Initialize request

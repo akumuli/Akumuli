@@ -964,9 +964,10 @@ void Storage::search(StorageSession const* session, InternalCursor* cur, const c
     boost::property_tree::ptree ptree;
     aku_Status status;
     session->clear_series_matcher();
-    std::tie(status, ptree) = QueryParser::parse_json(query);
+    std::string error_msg;
+    std::tie(status, ptree, error_msg) = QueryParser::parse_json(query);
     if (status != AKU_SUCCESS) {
-        cur->set_error(status);
+        cur->set_error(status, error_msg.data());
         return;
     }
     std::vector<aku_ParamId> ids;
