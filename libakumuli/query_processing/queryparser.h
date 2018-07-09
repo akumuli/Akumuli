@@ -83,13 +83,13 @@ struct QueryParser {
 
     /** Parse aggregate query and produce reshape request.
      */
-    static std::tuple<aku_Status, ReshapeRequest> parse_aggregate_query(
+    static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_aggregate_query(
             boost::property_tree::ptree const& ptree,
             SeriesMatcher const& matcher);
 
     /** Parse join query and create `reshape` request for column-store.
      */
-    static std::tuple<aku_Status, ReshapeRequest> parse_join_query(
+    static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_join_query(
             boost::property_tree::ptree const& ptree,
             SeriesMatcher const& matcher);
 
@@ -99,14 +99,14 @@ struct QueryParser {
      * @param matcher is a series matcher
      * @return status and request object
      */
-    static std::tuple<aku_Status, ReshapeRequest> parse_group_aggregate_query(boost::property_tree::ptree const& ptree,
+    static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_group_aggregate_query(boost::property_tree::ptree const& ptree,
                                                                               SeriesMatcher const& matcher);
 
     /** Parse stream processing pipeline.
       * @param ptree contains query
       * @returns vector of Nodes in proper order
       */
-    static std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>> parse_processing_topology(
+    static std::tuple<aku_Status, std::vector<std::shared_ptr<Node> >, ErrorMsg> parse_processing_topology(
             boost::property_tree::ptree const& ptree,
             InternalCursor* cursor);
 };
