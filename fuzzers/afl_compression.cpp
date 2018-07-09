@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <zlib.h>
 #include <cstring>
+#include <cmath>
 
 using namespace Akumuli;
 
@@ -76,6 +77,10 @@ int main(int argc, char** argv) {
             AKU_PANIC("Bad timestamp at: " + std::to_string(i));
         }
         if (tx != header.values.at(i)) {
+            if (std::isnan(tx) && std::isnan(header.values.at(i))) {
+                // nan != nan always returns true
+                continue;
+            }
             AKU_PANIC("Bad value at: " + std::to_string(i));
         }
     }
