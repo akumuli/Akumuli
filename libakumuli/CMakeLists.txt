@@ -45,6 +45,7 @@ add_library(akumuli SHARED
 )
 
 target_link_libraries(akumuli
+    jemalloc
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"

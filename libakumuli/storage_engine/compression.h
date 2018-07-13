@@ -919,11 +919,13 @@ struct FcmPredictor {
     void update(u64 value);
 };
 
+static const int PREDICTOR_N = 1 << 7;
+
 struct DfcmPredictor {
-    std::vector<u64> table;
-    u64              last_hash;
-    u64              last_value;
-    const u64        MASK_;
+    std::array<u64, PREDICTOR_N> table;
+    u64                          last_hash;
+    u64                          last_value;
+    const u64                    MASK_;
 
     //! C-tor. `table_size` should be a power of two.
     DfcmPredictor(int table_size);
@@ -933,27 +935,7 @@ struct DfcmPredictor {
     void update(u64 value);
 };
 
-// 2nd order DFCM predictor
-struct Dfcm2Predictor {
-    std::vector<u64> table1;
-    std::vector<u64> table2;
-    u64              last_hash;
-    u64              last_value1;
-    u64              last_value2;
-    const u64        MASK_;
-
-    //! C-tor. `table_size` should be a power of two.
-    Dfcm2Predictor(int table_size);
-
-    u64 predict_next() const;
-
-    void update(u64 value);
-};
-
 typedef DfcmPredictor PredictorT;
-//typedef SimplePredictor PredictorT;
-
-static const int PREDICTOR_N = 1 << 7;
 
 template<class StreamT>
 static inline bool encode_value(StreamT& wstream, u64 diff, unsigned char flag) {

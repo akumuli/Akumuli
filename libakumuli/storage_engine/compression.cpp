@@ -41,7 +41,6 @@ DfcmPredictor::DfcmPredictor(int table_size)
     , MASK_(static_cast<u64>(table_size - 1))
 {
    assert((table_size & MASK_) == 0);
-   table.resize(static_cast<u64>(table_size));
 }
 
 u64 DfcmPredictor::predict_next() const {

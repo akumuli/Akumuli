@@ -3883,7 +3883,7 @@ static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
                                  std::shared_ptr<BlockStore> bstore,
                                  aku_ParamId id,
                                  size_t nlevels,
-                                 std::deque<std::unique_ptr<NBTreeExtent>>* extents)
+                                 std::vector<std::unique_ptr<NBTreeExtent>>* extents)
 {
     for (size_t i = 0; i < nlevels; i++) {
         if (i == 0) {

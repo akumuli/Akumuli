@@ -605,7 +605,7 @@ struct CompressedRefStorage;
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
     std::shared_ptr<CompressedRefStorage> shared_;
-    std::deque<std::unique_ptr<NBTreeExtent>> extents_;
+    std::vector<std::unique_ptr<NBTreeExtent>> extents_;
     const aku_ParamId id_;
     //! Last timestamp
     aku_Timestamp last_;
