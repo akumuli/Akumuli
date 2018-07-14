@@ -29,6 +29,7 @@
 #include <stdexcept>
 #include <vector>
 #include <tuple>
+#include <array>
 
 #include "akumuli.h"
 #include "akumuli_version.h"
