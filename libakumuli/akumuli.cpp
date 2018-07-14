@@ -90,13 +90,11 @@ const char* aku_error_message(int error_code) {
 
 struct CursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
-    aku_Status status_;
     std::string query_;
 
     CursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_SUCCESS;
         cursor_ = ConcurrentCursor::make(&StorageSession::query, storage, query_.data());
     }
 
@@ -109,11 +107,11 @@ struct CursorImpl : aku_Cursor {
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        if (status_ != AKU_SUCCESS) {
-            *out_error_code_or_null = status_;
-            return false;
-        }
         return cursor_->is_error(out_error_code_or_null);
+    }
+
+    bool is_error(const char** error_msg, aku_Status* out_error_code_or_null) const {
+        return cursor_->is_error(error_msg, out_error_code_or_null);
     }
 
     u32 read_values( void  *values
@@ -130,13 +128,11 @@ struct CursorImpl : aku_Cursor {
  */
 struct SuggestCursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
-    aku_Status status_;
     std::string query_;
 
     SuggestCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_SUCCESS;
         cursor_ = ConcurrentCursor::make(&StorageSession::suggest, storage, query_.data());
     }
 
@@ -149,11 +145,11 @@ struct SuggestCursorImpl : aku_Cursor {
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        if (status_ != AKU_SUCCESS) {
-            *out_error_code_or_null = status_;
-            return false;
-        }
         return cursor_->is_error(out_error_code_or_null);
+    }
+
+    bool is_error(const char** error_message, aku_Status* out_error_code_or_null) const {
+        return cursor_->is_error(error_message, out_error_code_or_null);
     }
 
     u32 read_values( void  *values
@@ -168,13 +164,11 @@ struct SuggestCursorImpl : aku_Cursor {
  */
 struct SearchCursorImpl : aku_Cursor {
     std::unique_ptr<ExternalCursor> cursor_;
-    aku_Status status_;
     std::string query_;
 
     SearchCursorImpl(std::shared_ptr<StorageSession> storage, const char* query)
         : query_(query)
     {
-        status_ = AKU_SUCCESS;
         cursor_ = ConcurrentCursor::make(&StorageSession::search, storage, query_.data());
     }
 
@@ -187,11 +181,11 @@ struct SearchCursorImpl : aku_Cursor {
     }
 
     bool is_error(aku_Status* out_error_code_or_null) const {
-        if (status_ != AKU_SUCCESS) {
-            *out_error_code_or_null = status_;
-            return false;
-        }
         return cursor_->is_error(out_error_code_or_null);
+    }
+
+    bool is_error(const char** error_message, aku_Status* out_error_code_or_null) const {
+        return cursor_->is_error(error_message, out_error_code_or_null);
     }
 
     u32 read_values( void  *values
@@ -424,6 +418,11 @@ int aku_cursor_is_done(aku_Cursor* pcursor) {
 int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null) {
     auto impl = reinterpret_cast<CursorImpl*>(pcursor);
     return impl->is_error(out_error_code_or_null);
+}
+
+int aku_cursor_is_error_ex(aku_Cursor* pcursor, const char** error_message, aku_Status* out_error_code_or_null) {
+    auto impl = reinterpret_cast<CursorImpl*>(pcursor);
+    return impl->is_error(error_message, out_error_code_or_null);
 }
 
 int aku_timestamp_to_string(aku_Timestamp ts, char* buffer, size_t buffer_size) {
