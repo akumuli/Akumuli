@@ -36,7 +36,8 @@ void FcmPredictor::update(u64 value) {
 
 //! C-tor. `table_size` should be a power of two.
 DfcmPredictor::DfcmPredictor(int table_size)
-    : last_hash (0ul)
+    : table{}
+    , last_hash (0ul)
     , last_value(0ul)
     , MASK_(static_cast<u64>(table_size - 1))
 {
