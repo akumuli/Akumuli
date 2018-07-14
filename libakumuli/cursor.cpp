@@ -118,7 +118,7 @@ bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
     return done_ && error_code_ != AKU_SUCCESS;
 }
 
-bool ConcurrentCursor::is_error(const char* error_message, aku_Status* out_error_code_or_null) const {
+bool ConcurrentCursor::is_error(const char** error_message, aku_Status* out_error_code_or_null) const {
     std::lock_guard<std::mutex> lock(mutex_);
     *out_error_code_or_null = error_code_;
     *error_message = error_message_.data();

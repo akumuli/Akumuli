@@ -299,7 +299,9 @@ static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::pr
 /** Parse `join` statement, format:
   * { "join": [ "metric1", "metric2", ... ], ... }
   */
-static std::tuple<aku_Status, std::vector<std::string>> parse_join_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg>
+    parse_join_stmt(boost::property_tree::ptree const& ptree)
+{
     auto join = ptree.get_child_optional("join");
     // value is a list of metric names in proper order
     std::vector<std::string> result;
@@ -309,14 +311,14 @@ static std::tuple<aku_Status, std::vector<std::string>> parse_join_stmt(boost::p
             if (value) {
                 result.push_back(*value);
             } else {
-                return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+                return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Metric name expected");
             }
         }
     }
     if (result.empty()) {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Metric name should be set");
     }
-    return std::make_tuple(AKU_SUCCESS, result);
+    return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
 }
 
 /** Parse `aggregate` statement, format:
@@ -330,7 +332,7 @@ static std::tuple<aku_Status, std::string, std::string, ErrorMsg> parse_aggregat
             auto metric_name = kv.first;
             auto func = kv.second.get_value<std::string>("cnt");
             // Note: only one key-value is parsed at this time, this can be extended to tuples in the future
-            return std::make_tuple(AKU_SUCCESS, metric_name, func);
+            return std::make_tuple(AKU_SUCCESS, metric_name, func, ErrorMsg());
         }
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Query object has empty `aggregate` field");
     } else {
@@ -439,7 +441,7 @@ static std::tuple<aku_Status, GroupAggregate, ErrorMsg> parse_group_aggregate_st
     bool complete = components[0] && components[1] && components[2];
     std::stringstream fullerr;
     if (complete) {
-        return std::make_tuple(AKU_SUCCESS, result);
+        return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
     } else if (components[0] == false) {
         Logger::msg(AKU_LOG_ERROR, "Can't validate `group-aggregate` statement, `step` field required");
         fullerr << "Can't validate `group-aggregate` statement, `step` field required, " << error_fmt.str();
@@ -495,7 +497,7 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg> parse_groupby(
             }
         }
     }
-    return std::make_tuple(AKU_SUCCESS, tags);
+    return std::make_tuple(AKU_SUCCESS, tags, ErrorMsg());
 }
 
 /** Parse `limit` and `offset` statements, format:
@@ -718,7 +720,7 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule, ErrorM
                         pval[i] = boost::lexical_cast<double>(value);
                     } catch (boost::bad_lexical_cast const&) {
                         Logger::msg(AKU_LOG_ERROR, metrics[0] + " has bad filter value, can't parse floating point");
-                        error_fmt << "Query object filter field: " << metrics[ix]
+                        error_fmt << "Query object filter field: " << metrics[0]
                                   << " has bad value, can't parse floating point";
                         found_at_least_one = false;
                         status = AKU_EBAD_ARG;
@@ -765,7 +767,7 @@ std::tuple<aku_Status, QueryKind, ErrorMsg> QueryParser::get_query_kind(boost::p
         if (item.first == "select") {
             std::string series;
             ErrorMsg error;
-            std::tie(status, series) = parse_select_stmt(ptree);
+            std::tie(status, series, error) = parse_select_stmt(ptree);
             if (status != AKU_SUCCESS) {
                 return std::make_tuple(status, QueryKind::SELECT, error);
             } else if (is_meta_query(series)) {
@@ -827,7 +829,7 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
             if (keywords.count(kw)) {
                 Logger::msg(AKU_LOG_ERROR, "Statement `" + keyword + "` can't be used with `" + kw + "`");
                 return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
-                                       "Field `" + keyworkd + "` can't be used with `" + kw + "`");
+                                       "Field `" + keyword + "` can't be used with `" + kw + "`");
             }
         }
     }
@@ -868,7 +870,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg> QueryParser::parse_se
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids, error);
     }
-    return std::make_tuple(AKU_SUCCESS, ids, ErrorMsg);
+    return std::make_tuple(AKU_SUCCESS, ids, ErrorMsg());
 }
 
 
@@ -1240,7 +1242,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     auto orderby = ptree.get_child_optional("order-by");
     if (orderby) {
         Logger::msg(AKU_LOG_INFO, "Unexpected `order-by` statement found in `aggregate` query");
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                               result,
+                               "Unexpected `order-by` statement found in `aggregate` query");
     }
 
     // Where statement
@@ -1333,11 +1337,11 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
     if (gagg.func.empty()) {
         Logger::msg(AKU_LOG_ERROR, "Aggregation fuction is not set");
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, "Aggregation fuction is not set");
     }
     if (gagg.step == 0) {
         Logger::msg(AKU_LOG_ERROR, "Step can't be zero");
-        return std::make_tuple(status, result);
+        return std::make_tuple(status, result, "Step can't be zero");
     }
 
     // Group-by statement
@@ -1449,7 +1453,7 @@ static std::tuple<aku_Status, ErrorMsg> init_matcher_in_join_query(
         matcher->_add(str.str(), id);
     }
     req->select.matcher = matcher;
-    return std::tuple(AKU_SUCCESS, ErrorMsg());
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
 std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_join_query(
@@ -1565,15 +1569,13 @@ std::tuple<aku_Status, std::shared_ptr<Node>, ErrorMsg>
         name = ptree.get<std::string>("name");
         return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, next), ErrorMsg());
     } catch (const boost::property_tree::ptree_error& e) {
-        Logger::msg(AKU_LOG_ERROR, std::string("Can't query json: ") + e.what());
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
-                               nullptr,
-                               "Query object has invalid `apply` field " + e.what());
+        auto err = ErrorMsg("Query object has invalid `apply` field ") + e.what();
+        Logger::msg(AKU_LOG_ERROR, err);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr, err);
     } catch (const QueryParserError& e) {
-        Logger::msg(AKU_LOG_ERROR, std::string("Can't parse query: ") + e.what());
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
-                               nullptr,
-                               "Query object has invalid `apply` field " + e.what());
+        auto err = ErrorMsg("Query object has invalid `apply` field ") + e.what();
+        Logger::msg(AKU_LOG_ERROR, err);
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, nullptr, err);
     } catch (...) {
         Logger::msg(AKU_LOG_ERROR, std::string("Unknown query parsing error: ") +
                     boost::current_exception_diagnostic_information());

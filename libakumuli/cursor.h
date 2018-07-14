@@ -74,7 +74,6 @@ struct ConcurrentCursor : Cursor {
     virtual bool is_done() const;
 
     virtual bool is_error(aku_Status* out_error_code_or_null = nullptr) const;
-
     virtual bool is_error(const char** error_message, aku_Status* out_error_code_or_null) const;
 
     virtual void close();
