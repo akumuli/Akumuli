@@ -57,6 +57,12 @@ struct CursorMock : DbCursor {
         return false;
     }
 
+    bool is_error(const char** error_message, aku_Status *out_error_code) {
+        *out_error_code = AKU_SUCCESS;
+        *error_message  = "null";
+        return false;
+    }
+
     void close() {}
 };
 

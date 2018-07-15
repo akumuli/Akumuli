@@ -400,7 +400,7 @@ void QueryResultsPooler::start() {
     try {
         tree = from_json(query_text_);
     } catch (boost::property_tree::json_parser_error const& e) {
-        logger.error() << "Bad JSON document received, error: " << e.what();
+        logger.error() << "Bad JSON document received (line: " << e.line() << "), error: " << e.message();
         // We need to pass invalid document further to generate proper error response
         _init_cursor();
         return;
@@ -470,6 +470,13 @@ aku_Status QueryResultsPooler::get_error() {
         return err;
     }
     return AKU_SUCCESS;
+}
+
+const char* QueryResultsPooler::get_error_message() {
+    aku_Status err  = AKU_SUCCESS;
+    const char* msg = "";
+    cursor_->is_error(&msg, &err);
+    return msg;
 }
 
 std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_size) {

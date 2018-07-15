@@ -44,6 +44,9 @@ struct DbCursor {
     //! Check for error condition
     virtual bool is_error(aku_Status* out_error_code_or_null) = 0;
 
+    //! Check for error condition
+    virtual bool is_error(const char** error_message, aku_Status* out_error_code) = 0;
+
     //! Close cursor
     virtual void close() = 0;
 };

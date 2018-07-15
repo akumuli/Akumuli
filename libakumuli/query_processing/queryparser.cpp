@@ -521,6 +521,7 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_rang
     aku_Timestamp begin = 0, end = 0;
     bool begin_set = false, end_set = false;
     auto range = ptree.get_child_optional("range");
+    bool error = false;
     std::stringstream fmt;
     if (range) {
         for(auto child: *range) {
@@ -532,6 +533,7 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_rang
                 } catch (std::exception const& e) {
                     Logger::msg(AKU_LOG_ERROR, std::string("Can't parse begin timestmp, ") + e.what());
                     fmt << "can't parse " << iso_string << " as begin timestamp, " << e.what();
+                    error = true;
                 }
             } else if (child.first == "to") {
                 auto iso_string = child.second.get_value<std::string>();
@@ -544,12 +546,17 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_rang
                         fmt << ", ";
                     }
                     fmt << "can't parse " << iso_string << " as end timestamp, " << e.what();
+                    error = true;
                 }
             }
         }
     }
     if (!begin_set || !end_set) {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, begin, end, "Range field error: " + fmt.str());
+        if (error) {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, begin, end, "Range field error: " + fmt.str());
+        } else {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, begin, end, "Range field is not set");
+        }
     }
     return std::make_tuple(AKU_SUCCESS, begin, end, ErrorMsg());
 }
@@ -755,8 +762,10 @@ std::tuple<aku_Status, boost::property_tree::ptree, ErrorMsg> QueryParser::parse
         boost::property_tree::json_parser::read_json(stream, ptree);
     } catch (boost::property_tree::json_parser_error const& e) {
         // Error, bad query
-        Logger::msg(AKU_LOG_ERROR, e.what());
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree, e.what());
+        std::stringstream error;
+        error << "JSON parsing error at line " << std::to_string(e.line()) << ", " << e.message();
+        Logger::msg(AKU_LOG_ERROR, error.str());
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, ptree, error.str());
     }
     return std::make_tuple(AKU_SUCCESS, ptree, ErrorMsg());
 }

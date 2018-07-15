@@ -41,6 +41,8 @@ struct QueryResultsPooler : ReadOperation {
 
     virtual aku_Status get_error();
 
+    virtual const char* get_error_message();
+
     virtual std::tuple<size_t, bool> read_some(char* buf, size_t buf_size);
 
     virtual void close();
