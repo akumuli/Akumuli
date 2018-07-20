@@ -129,6 +129,13 @@ struct SeriesMatcher : SeriesMatcherBase {
     std::vector<StringT> suggest_tags(std::string metric, std::string tag_prefix) const;
 
     std::vector<StringT> suggest_tag_values(std::string metric, std::string tag, std::string value_prefix) const;
+
+    size_t memory_use() const;
+
+    size_t index_memory_use() const;
+
+    size_t pool_memory_use() const;
+
 };
 
 

@@ -33,6 +33,7 @@ def main(nmsgs):
     print("Starting date-time: {0}".format(dt.strftime("%Y%m%dT%H%M%S.%f")))
 
 if __name__ == '__main__':
+    print(' '.join(sys.argv))
     nmsgs = 1000000  # 1M is a default
     if len(sys.argv) == 2:
         nmsgs = int(sys.argv[1])

@@ -1,4 +1,5 @@
 #include "storage_engine/compression.h"
+#include "storage_engine/volume.h"
 #include "util.h"
 
 #include <fstream>
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <zlib.h>
 #include <cstring>
+#include <vector>
 #include <cmath>
 
 using namespace Akumuli;
@@ -48,10 +50,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    ByteVector buffer(4096, 0);
-    StorageEngine::DataBlockWriter writer(42, buffer.data(), static_cast<int>(buffer.size()));
+    StorageEngine::IOVecBlock block;
+    StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(&block, 0);
+    writer.init(42);
     u32 nelements = 0;
-    size_t commit_size = 0;
     for (u32 i = 0; i < header.timestamps.size(); i++) {
         aku_Status status = writer.put(header.timestamps.at(i), header.values.at(i));
         if (status == AKU_EOVERFLOW) {
@@ -61,8 +63,9 @@ int main(int argc, char** argv) {
             AKU_PANIC("Can't compress data: " + std::to_string(status));
         }
     }
-    commit_size = writer.commit();
+    auto commit_size = writer.commit();
 
+    ByteVector buffer(4096, 0);
     StorageEngine::DataBlockReader reader(buffer.data(), commit_size);
     // Only first `nelements` was written to `buffer`.
     for (u32 i = 0; i < nelements; i++) {

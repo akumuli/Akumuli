@@ -889,6 +889,7 @@ def main(path):
     on_exit()
 
 if __name__ == '__main__':
+    print(' '.join(sys.argv))
     if len(sys.argv) < 2:
         print("Not enough arguments")
         sys.exit(1)

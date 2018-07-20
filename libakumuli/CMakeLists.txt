@@ -16,6 +16,7 @@ add_library(akumuli SHARED
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
+    storage_engine/ref_store.cpp
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp
@@ -44,6 +45,7 @@ add_library(akumuli SHARED
 )
 
 target_link_libraries(akumuli
+    jemalloc
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"

@@ -52,6 +52,20 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
 }
 
 std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
+    // TODO: remove
+    size_t c1_mem = 0, c2_mem = 0;
+    for (auto it: columns_) {
+        if (it.second->is_initialized()) {
+            size_t c1, c2;
+            std::tie(c1, c2) = it.second->bytes_used();
+            c1_mem += c1;
+            c2_mem += c2;
+        }
+    }
+    Logger::msg(AKU_LOG_INFO, "Total memory usage: " + std::to_string(c1_mem + c2_mem));
+    Logger::msg(AKU_LOG_INFO, "Leaf node memory usage: " + std::to_string(c1_mem));
+    Logger::msg(AKU_LOG_INFO, "SBlock memory usage: " + std::to_string(c2_mem));
+    // end TODO remove
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
     std::lock_guard<std::mutex> tl(table_lock_);
     Logger::msg(AKU_LOG_INFO, "Column-store commit called");

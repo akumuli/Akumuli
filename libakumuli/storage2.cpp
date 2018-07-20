@@ -742,6 +742,9 @@ void Storage::start_sync_worker() {
 
 void Storage::close() {
     // Wait for all ingestion sessions to stop
+    // TODO: remove
+    Logger::msg(AKU_LOG_INFO, "Index memory usage: " + std::to_string(global_matcher_.memory_use()));
+    // END
     done_.store(1);
     metadata_->force_sync();
     close_barrier_.wait();
