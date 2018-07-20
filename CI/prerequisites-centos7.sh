@@ -1,6 +1,7 @@
 #!/bin/sh
 
 echo "Building for Centos/Fedora/RHEL"
+yum -y install epel-release
 yum update -y
 yum install -y gcc gcc-c++ make
 yum install -y rpm-build
