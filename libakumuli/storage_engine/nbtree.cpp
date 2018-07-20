@@ -3797,9 +3797,10 @@ void NBTreeExtentsList::open() {
         std::tie(status, leaf_block) = read_and_check(bstore_, addr);
         if (status != AKU_SUCCESS) {
             // Tree is old and should be removed, no data was left on the block device.
-            // FIXME: handle obsolete trees correctly!
-            Logger::msg(AKU_LOG_ERROR, std::to_string(id_) + " Obsolete tree handling not implemented");
-            initialized_ = false;
+            Logger::msg(AKU_LOG_INFO, std::to_string(id_) + " Dead tree detected");
+            std::unique_ptr<NBTreeExtent> leaf_extent(new NBTreeLeafExtent(bstore_, shared_from_this(), id_, EMPTY_ADDR));
+            extents_.push_back(std::move(leaf_extent));
+            initialized_ = true;
             return;
         }
         NBTreeLeaf leaf(leaf_block);  // fully loaded leaf
