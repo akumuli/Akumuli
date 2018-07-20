@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.7.52
+--------------
+
+BUG FIX
+
+* Fix obsolete tree handling
+
 Version 0.7.51
 --------------
 
