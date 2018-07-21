@@ -29,6 +29,7 @@
 #include <atomic>
 #include <deque>
 #include <functional>
+#include <boost/thread/barrier.hpp>
 
 
 #include "akumuli.h"
@@ -88,7 +89,13 @@ struct ConcurrentCursor : Cursor {
     void complete();
 
     template <class Fn_1arg_caller> void start(Fn_1arg_caller const& fn) {
-        thread_ = std::thread(fn);
+        boost::barrier barrier(2);
+        thread_ = std::thread([&]()
+        {
+            fn();
+            barrier.wait();
+        });
+        barrier.wait();
     }
 
     template <class Fn_1arg> static std::unique_ptr<ExternalCursor> make(Fn_1arg const& fn) {

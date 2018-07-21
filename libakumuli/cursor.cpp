@@ -24,9 +24,6 @@
 #include <string.h>
 #include <algorithm>
 #include <functional>
-// TODO: remove
-#include "log_iface.h"
-#include "status_util.h"
 
 
 namespace Akumuli {
@@ -148,6 +145,7 @@ void ConcurrentCursor::set_error(aku_Status error_code, const char* error_messag
     done_ = true;
     error_code_ = error_code;
     error_message_ = error_message;
+
     cond_.notify_all();
 }
 

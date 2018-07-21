@@ -19,6 +19,11 @@ static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     bool is_done;
     std::tie(sz, is_done) = cur->read_some(buf, max);
     if (is_done) {
+        auto err = cur->get_error();
+        if (err != AKU_SUCCESS) {
+            logger.info() << "Closed because of error " << cur->get_error_message();
+            return MHD_CONTENT_READER_END_WITH_ERROR;
+        }
         logger.info() << "Cursor " << reinterpret_cast<u64>(cur) << " done";
         return MHD_CONTENT_READER_END_OF_STREAM;
     } else {
