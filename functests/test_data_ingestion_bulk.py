@@ -84,6 +84,7 @@ def main(path, protocol):
         time.sleep(5)
 
 if __name__ == '__main__':
+    print(' '.join(sys.argv))
     if len(sys.argv) != 3:
         print("Not enough arguments")
         sys.exit(1)

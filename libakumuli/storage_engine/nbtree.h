@@ -208,8 +208,141 @@ public:
 
     std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
-    //! Search for values in a range (in this and connected leaf nodes). DEPRICATED
-    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+    //! Return iterator that returns candlesticks
+    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
+
+    // Node split experiment //
+
+    /**
+     * @brief Split the node into the specified top node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @param top_level is a top level node (the method will add links to this node
+     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
+     * @return status and address of the new topmost node (always EMPTY_ADDR)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_backrefs, u16 *fanout_index,
+                                                 NBTreeSuperblock* top_level);
+
+
+    /**
+     * @brief Split the node
+     * @param bstore is a pointer to blockstore
+     * @param pivot is a pivot point of the split
+     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
+     * @return status and address of the new topmost node
+     */
+    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                            aku_Timestamp pivot,
+                                            bool preserve_backrefs);
+};
+
+
+/** NBTree leaf node. Supports append operation.
+  * Can be commited to block store when full.
+  */
+class IOVecLeaf {
+    //! Root address
+    LogicAddr prev_;
+    //! Buffer for pending updates
+    std::shared_ptr<IOVecBlock> block_;
+    //! DataBlockWriter for pending `append` operations.
+    IOVecBlockWriter<IOVecBlock> writer_;
+    //! Fanout index
+    u16 fanout_index_;
+
+public:
+
+    //! Only for testing and benchmarks
+    size_t _get_uncommitted_size() const;
+
+    size_t bytes_used() const;
+
+    /** Create empty leaf node.
+      * @param id Series id.
+      * @param link to block store.
+      * @param prev Prev element of the tree.
+      * @param fanout_index Index inside current fanout
+      */
+    IOVecLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
+
+    /** Load from block store.
+      * @param block Leaf's serialized data.
+      * @param load Load method.
+      * @note This c-tor panics if block is invalid or doesn't exists.
+      */
+    IOVecLeaf(std::shared_ptr<IOVecBlock> bstore);
+
+    /** Load from block store.
+      * @param bstore Block store.
+      * @param curr Address of the current leaf-node.
+      * @param load Load method.
+      */
+    IOVecLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr);
+
+    //! Get leaf metadata.
+    SubtreeRef const* get_leafmeta() const;
+
+    //! Returns number of elements.
+    size_t nelements() const;
+
+    //! Read timestamps
+    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
+
+    //! Get logic address of the previous node
+    LogicAddr get_prev_addr() const;
+
+    //! Set prev addr (works only on mutable node)
+    void set_prev_addr(LogicAddr addr);
+
+    //! Set fanout index of the node
+    void set_node_fanout(u16 fanout);
+
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
+    /** Read all elements from the leaf node.
+      * @param timestamps Destination for timestamps.
+      * @param values Destination for values.
+      * @return status.
+      */
+    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
+
+    //! Append values to NBTree
+    aku_Status append(aku_Timestamp ts, double value);
+
+    /** Flush all pending changes to block store and close.
+      * Calling this function too often can result in unoptimal space usage.
+      */
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    //! Return node's fanout index
+    u16 get_fanout() const;
+
+    //! Return id of the tree
+    aku_ParamId get_id() const;
+
+    //! Return iterator that outputs all values in time range that is stored in this leaf.
+    std::unique_ptr<RealValuedOperator> range(aku_Timestamp begin, aku_Timestamp end) const;
+
+    /**
+     * @brief Return filtering operator
+     * @param begin is a beginning of the search range (inclusive)
+     * @param end is an end of the search range (exclusive)
+     * @param filter is a value filter
+     * @return pointer to operator (it can be invalid due to I/O error)
+     */
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter) const;
+
+    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
 
     //! Return iterator that returns candlesticks
     std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
@@ -461,6 +594,9 @@ enum class NBTreeAppendResult {
     FAIL_BAD_VALUE,
 };
 
+
+struct CompressedRefStorage;
+
 /** @brief This class represents set of roots of the NBTree.
   * It serves two purposes:
   * @li store all roots of the NBTree
@@ -468,7 +604,8 @@ enum class NBTreeAppendResult {
   */
 class NBTreeExtentsList : public std::enable_shared_from_this<NBTreeExtentsList> {
     std::shared_ptr<BlockStore> bstore_;
-    std::deque<std::unique_ptr<NBTreeExtent>> extents_;
+    std::shared_ptr<CompressedRefStorage> shared_;
+    std::vector<std::unique_ptr<NBTreeExtent>> extents_;
     const aku_ParamId id_;
     //! Last timestamp
     aku_Timestamp last_;
@@ -607,6 +744,11 @@ public:
 
     //! Walk the tree from the root and print it to the stdout
     static void debug_print(LogicAddr root, std::shared_ptr<BlockStore> bstore, size_t depth = 0);
+
+    /** Report memory usage. First component of the tuple is number of bytes used by leaf node, second
+     *  component is a number of bytes used by inner other nodes.
+     */
+    std::tuple<size_t, size_t> bytes_used() const;
 };
 
 /**

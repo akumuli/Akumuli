@@ -29,6 +29,143 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+IOVecBlock::IOVecBlock()
+    : data_{}
+    , pos_(0)
+    , addr_(EMPTY_ADDR)
+{
+}
+
+IOVecBlock::IOVecBlock(bool)
+    : data_{}
+    , pos_(AKU_BLOCK_SIZE)
+    , addr_(EMPTY_ADDR)
+{
+    data_[0].resize(AKU_BLOCK_SIZE);
+}
+
+void IOVecBlock::set_addr(LogicAddr addr) {
+    addr_ = addr;
+}
+
+LogicAddr IOVecBlock::get_addr() const {
+    return addr_;
+}
+
+bool IOVecBlock::is_readonly() const {
+    return false;
+}
+
+int IOVecBlock::add() {
+    for (int i = 0; i < NCOMPONENTS; i++) {
+        if (data_[i].size() == 0) {
+            data_[i].resize(COMPONENT_SIZE);
+            return i;
+        }
+    }
+    return -1;
+}
+
+int IOVecBlock::space_left() const {
+    return AKU_BLOCK_SIZE - pos_;
+}
+
+int IOVecBlock::bytes_to_read(u32 offset) const {
+    return pos_ - offset;
+}
+
+int IOVecBlock::size() const {
+    return pos_;
+}
+
+void IOVecBlock::put(u8 val) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    data_[c][static_cast<size_t>(i)] = val;
+    pos_++;
+}
+
+u8* IOVecBlock::allocate(u32 size) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        return nullptr;
+    }
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    if ((data_[c].size() - static_cast<u32>(i)) < size) {
+        return nullptr;
+    }
+    u8* result = data_[c].data() + i;
+    pos_ += size;
+    return result;
+}
+
+u8 IOVecBlock::get(u32 offset) const {
+    u32 c;
+    u32 i;
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        c = 0;
+        i = offset;
+    } else {
+        c = offset / COMPONENT_SIZE;
+        i = offset % COMPONENT_SIZE;
+    }
+    if (c >= NCOMPONENTS || i >= data_[c].size()) {
+        AKU_PANIC("IOVecBlock index out of range");
+    }
+    return data_[c].at(i);
+}
+
+bool IOVecBlock::safe_put(u8 val) {
+    int c = pos_ / COMPONENT_SIZE;
+    int i = pos_ % COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        return false;
+    }
+    if (data_[c].empty()) {
+        data_[c].resize(COMPONENT_SIZE);
+    }
+    data_[c][static_cast<size_t>(i)] = val;
+    pos_++;
+    return true;
+}
+
+int IOVecBlock::get_write_pos() const {
+    return pos_;
+}
+
+void IOVecBlock::set_write_pos(int pos) {
+    int c = pos / COMPONENT_SIZE;
+    if (c >= NCOMPONENTS) {
+        AKU_PANIC("Invalid shredded block write-position");
+    }
+    pos_ = pos;
+}
+
+//--
+
+const u8* IOVecBlock::get_data(int component) const {
+    return data_[component].data();
+}
+
+const u8* IOVecBlock::get_cdata(int component) const {
+    return data_[component].data();
+}
+
+u8* IOVecBlock::get_data(int component) {
+    return data_[component].data();
+}
+
+size_t IOVecBlock::get_size(int component) const {
+    // Assume capacity() == size()
+    return data_[component].size();
+}
+
 static void panic_on_error(apr_status_t status, const char* msg) {
     if (status != APR_SUCCESS) {
         char error_message[0x100];
@@ -292,7 +429,7 @@ Volume::Volume(const char* path, size_t write_pos)
     , path_(path)
     , mmap_ptr_(nullptr)
 {
-#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
+#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFF0
     // 64-bit architecture, we can use mmap for speed
     mmap_.reset(new MemoryMappedFile(path, false));
     if (mmap_->is_bad()) {
@@ -342,6 +479,33 @@ std::tuple<aku_Status, BlockAddr> Volume::append_block(const u8* source) {
     return std::make_tuple(AKU_SUCCESS, result);
 }
 
+std::tuple<aku_Status, BlockAddr> Volume::append_block(const IOVecBlock *source) {
+    static std::vector<u8> padding(IOVecBlock::COMPONENT_SIZE);
+    if (write_pos_ >= file_size_) {
+        return std::make_tuple(AKU_EOVERFLOW, 0u);
+    }
+    apr_off_t seek_off = write_pos_ * AKU_BLOCK_SIZE;
+    apr_status_t status = apr_file_seek(apr_file_handle_.get(), APR_SET, &seek_off);
+    panic_on_error(status, "Volume seek error");
+    apr_size_t bytes_written = 0;
+    struct iovec vec[IOVecBlock::NCOMPONENTS] = {};
+    apr_size_t nvec = 0;
+    for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
+        if (source->get_size(i) != 0) {
+            vec[i].iov_base = const_cast<u8*>(source->get_data(i));
+            vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
+        } else {
+            vec[i].iov_base = const_cast<u8*>(padding.data());
+            vec[i].iov_len  = IOVecBlock::COMPONENT_SIZE;
+        }
+        nvec++;
+    }
+    status = apr_file_writev_full(apr_file_handle_.get(), vec, nvec, &bytes_written);
+    panic_on_error(status, "Volume write error");
+    auto result = write_pos_++;
+    return std::make_tuple(AKU_SUCCESS, result);
+}
+
 //! Read filxed size block from file
 aku_Status Volume::read_block(u32 ix, u8* dest) const {
     if (ix >= write_pos_) {
@@ -360,6 +524,18 @@ aku_Status Volume::read_block(u32 ix, u8* dest) const {
     status = apr_file_read_full(apr_file_handle_.get(), dest, AKU_BLOCK_SIZE, &outsize);
     panic_on_error(status, "Volume read error");
     return AKU_SUCCESS;
+}
+
+std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> Volume::read_block(u32 ix) const {
+    std::unique_ptr<IOVecBlock> block;
+    block.reset(new IOVecBlock(true));
+    u8* data = block->get_data(0);
+    u32 size = block->get_size(0);
+    if (size != AKU_BLOCK_SIZE) {
+        return std::make_tuple(AKU_EBAD_DATA, std::move(block));
+    }
+    auto status = read_block(ix, data);
+    return std::make_tuple(status, std::move(block));
 }
 
 std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {

@@ -14,6 +14,7 @@ add_executable(akumulid
 )
 
 target_link_libraries(akumulid
+    jemalloc
     akumuli
     "${SQLITE3_LIBRARY}"
     "${LOG4CXX_LIBRARIES}"
