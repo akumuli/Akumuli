@@ -813,7 +813,7 @@ def check_bad_query_handling():
                     print("Error: error message expected, empty response received")
                     raise ValueError("Error expected")
                 else:
-                    if not lines[0].startswith("-query parsing error"):
+                    if not lines[0].startswith("-"):
                         raise ValueError("Invalid response")
             except HTTPError as e:
                 raise ValueError("Invalid response: " + str(e))
