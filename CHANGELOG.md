@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.53
+--------------
+
+IMPROVEMENT
+
+* Detailed error messages
+* Escape sequences in series names
+
 Version 0.7.52
 --------------
 
