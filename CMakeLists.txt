@@ -32,10 +32,10 @@ add_compile_options(-Wno-delete-non-virtual-dtor)
 add_compile_options(-Wno-deprecated)
 endif(!APPLE)
 
-#set(CMAKE_CXX_FLAGS_DEBUG
-#    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Werror -Wall  -ggdb")
+    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
+#set(CMAKE_CXX_FLAGS_DEBUG
+#    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Werror -Wall  -ggdb")
 
 set(CMAKE_CXX_FLAGS_RELEASEGEN
     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")

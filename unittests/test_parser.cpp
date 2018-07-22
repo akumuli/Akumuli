@@ -202,6 +202,63 @@ BOOST_AUTO_TEST_CASE(Test_seriesparser_6) {
     BOOST_REQUIRE_EQUAL(std::string("metric tag2=2 tag4=4"), std::string(result.first, result.first + result.second));
 }
 
+BOOST_AUTO_TEST_CASE(Test_seriesparser_7) {
+
+    const char* series1 = "cpu\\ user region=europe host=127.0.0.1";
+    auto len = strlen(series1);
+    char out[40];
+    const char* pbegin = nullptr;
+    const char* pend = nullptr;
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pbegin, &pend);
+
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    std::string expected = "cpu\\ user host=127.0.0.1 region=europe";
+    std::string actual = std::string(static_cast<const char*>(out), pend);
+    BOOST_REQUIRE_EQUAL(expected, actual);
+
+    std::string keystr = std::string(pbegin, pend);
+    BOOST_REQUIRE_EQUAL("host=127.0.0.1 region=europe", keystr);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_8) {
+
+    const char* series1 = "cpu region=us\\ east host=127.0.0.1\\ aka\\ localhost\\ ";
+    auto len = strlen(series1);
+    char out[140];
+    const char* pbegin = nullptr;
+    const char* pend = nullptr;
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pbegin, &pend);
+
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    std::string expected = "cpu host=127.0.0.1\\ aka\\ localhost\\  region=us\\ east";
+    std::string actual = std::string(static_cast<const char*>(out), pend);
+    BOOST_REQUIRE_EQUAL(expected, actual);
+
+    std::string keystr = std::string(pbegin, pend);
+    BOOST_REQUIRE_EQUAL("host=127.0.0.1\\ aka\\ localhost\\  region=us\\ east", keystr);
+}
+
+BOOST_AUTO_TEST_CASE(Test_seriesparser_9) {
+
+    const char* series1 = "\\ cpu\\user\\  \\ host\\ name=foo\\bar\\";
+    auto len = strlen(series1);
+    char out[0x140];
+    const char* pbegin = nullptr;
+    const char* pend = nullptr;
+    int status = SeriesParser::to_canonical_form(series1, series1 + len, out, out + len, &pbegin, &pend);
+
+    BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+
+    std::string expected = "\\ cpu\\user\\  \\ host\\ name=foo\\bar\\";
+    std::string actual = std::string(static_cast<const char*>(out), pend);
+    BOOST_REQUIRE_EQUAL(expected, actual);
+
+    std::string keystr = std::string(pbegin, pend);
+    BOOST_REQUIRE_EQUAL("\\ host\\ name=foo\\bar\\", keystr);
+}
+
 BOOST_AUTO_TEST_CASE(Test_index_0) {
     SeriesMatcher matcher(10ul);
     std::vector<std::string> names = {
