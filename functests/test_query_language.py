@@ -659,7 +659,7 @@ def check_error_message(dtstart, delta, N, query, errmsg):
     if len(lines) != 1:
         raise ValueError("Error message expected")
     if not lines[0].startswith(errmsg):
-        raise ValueError("Invalid error message")
+        raise ValueError("Invalid error message, expected: {0}, actual: {1}".format(errmsg, lines[0]))
 
 
 @api_test("select query error message")

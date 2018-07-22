@@ -489,6 +489,9 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
             // This can be the case if error occured
             if (error_produced_ == false && cursor_->is_error(&error_msg, &status)) {
                 // Some error occured, put error message to the outgoing buffer and return
+                if (std::strlen(error_msg) == 0) {
+                    error_msg = aku_error_message(status);
+                }
                 int len = snprintf(buf, buf_size, "-%s\r\n", error_msg);
                 if (len > 0) {
                     error_produced_ = true;
@@ -502,6 +505,9 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
         rdbuf_pos_ = 0u;
         if (cursor_->is_error(&error_msg, &status)) {
             // Some error occured, put error message to the outgoing buffer and return
+            if (std::strlen(error_msg) == 0) {
+                error_msg = aku_error_message(status);
+            }
             int len = snprintf(buf, buf_size, "-%s\r\n", error_msg);
             if (len > 0) {
                 error_produced_ = true;
