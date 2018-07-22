@@ -25,7 +25,8 @@ struct QueryResultsPooler : ReadOperation {
     int                 rdbuf_top_;  //! Last initialized item _index_ in `rdbuf_`
     static const size_t DEFAULT_RDBUF_SIZE_ = 1000u;
     static const size_t DEFAULT_ITEM_SIZE_  = sizeof(aku_Sample);
-    ApiEndpoint                      endpoint_;
+    ApiEndpoint         endpoint_;
+    bool                error_produced_;
 
     QueryResultsPooler(std::shared_ptr<DbSession> session, int readbufsize, ApiEndpoint endpoint);
 
