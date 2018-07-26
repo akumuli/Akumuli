@@ -29,6 +29,7 @@
 #include <atomic>
 #include <deque>
 #include <functional>
+#include <boost/thread/barrier.hpp>
 
 
 #include "akumuli.h"
@@ -63,6 +64,7 @@ struct ConcurrentCursor : Cursor {
     std::atomic_bool done_;
     std::deque<std::shared_ptr<BufferT>> queue_;
     aku_Status error_code_;
+    std::string error_message_;
 
     ConcurrentCursor();
 
@@ -73,12 +75,14 @@ struct ConcurrentCursor : Cursor {
     virtual bool is_done() const;
 
     virtual bool is_error(aku_Status* out_error_code_or_null = nullptr) const;
+    virtual bool is_error(const char** error_message, aku_Status* out_error_code_or_null) const;
 
     virtual void close();
 
     // Internal cursor implementation
 
     void set_error(aku_Status error_code);
+    void set_error(aku_Status error_code, const char* error_message);
 
     bool put(aku_Sample const& result);
 

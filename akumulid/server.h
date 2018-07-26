@@ -42,6 +42,12 @@ struct ReadOperation {
       */
     virtual aku_Status get_error() = 0;
 
+    /**
+     * Return error message (if any). Should be called only if previous call to get_error returned
+     * non-zero value.
+     */
+    virtual const char* get_error_message() = 0;
+
     /** Read some data from cursor. This method should be called only if `get_error` have returned
       * AKU_SUCCESS. If some error occured during read operation this method should throw.
       * Method returns tuple (num_elements, is_done). If there is no more results, method returns

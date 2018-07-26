@@ -370,6 +370,7 @@ QueryResultsPooler::QueryResultsPooler(std::shared_ptr<DbSession> session, int r
     , rdbuf_pos_(0)
     , rdbuf_top_(0)
     , endpoint_(endpoint)
+    , error_produced_(false)
 {
     try {
         rdbuf_.resize(readbufsize);
@@ -400,7 +401,7 @@ void QueryResultsPooler::start() {
     try {
         tree = from_json(query_text_);
     } catch (boost::property_tree::json_parser_error const& e) {
-        logger.error() << "Bad JSON document received, error: " << e.what();
+        logger.error() << "Bad JSON document received (line: " << e.line() << "), error: " << e.message();
         // We need to pass invalid document further to generate proper error response
         _init_cursor();
         return;
@@ -472,17 +473,29 @@ aku_Status QueryResultsPooler::get_error() {
     return AKU_SUCCESS;
 }
 
+const char* QueryResultsPooler::get_error_message() {
+    aku_Status err  = AKU_SUCCESS;
+    const char* msg = "";
+    cursor_->is_error(&msg, &err);
+    return msg;
+}
+
 std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_size) {
     aku_Status status = AKU_SUCCESS;
     throw_if_not_started();
     if (rdbuf_pos_ == rdbuf_top_) {
+        const char* error_msg = nullptr;
         if (cursor_->is_done()) {
             // This can be the case if error occured
-            if (cursor_->is_error(&status)) {
+            if (error_produced_ == false && cursor_->is_error(&error_msg, &status)) {
                 // Some error occured, put error message to the outgoing buffer and return
-                int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
+                if (std::strlen(error_msg) == 0) {
+                    error_msg = aku_error_message(status);
+                }
+                int len = snprintf(buf, buf_size, "-%s\r\n", error_msg);
                 if (len > 0) {
-                    return std::make_tuple((size_t)len, true);
+                    error_produced_ = true;
+                    return std::make_tuple((size_t)len, false);
                 }
             }
             return std::make_tuple(0u, true);
@@ -490,10 +503,14 @@ std::tuple<size_t, bool> QueryResultsPooler::read_some(char *buf, size_t buf_siz
         // read new data from DB
         rdbuf_top_ = cursor_->read(rdbuf_.data(), rdbuf_.size());
         rdbuf_pos_ = 0u;
-        if (cursor_->is_error(&status)) {
+        if (cursor_->is_error(&error_msg, &status)) {
             // Some error occured, put error message to the outgoing buffer and return
-            int len = snprintf(buf, buf_size, "-%s\r\n", aku_error_message(status));
+            if (std::strlen(error_msg) == 0) {
+                error_msg = aku_error_message(status);
+            }
+            int len = snprintf(buf, buf_size, "-%s\r\n", error_msg);
             if (len > 0) {
+                error_produced_ = true;
                 return std::make_tuple((size_t)len, false);
             }
             return std::make_tuple(0u, false);

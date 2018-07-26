@@ -659,7 +659,7 @@ def check_error_message(dtstart, delta, N, query, errmsg):
     if len(lines) != 1:
         raise ValueError("Error message expected")
     if not lines[0].startswith(errmsg):
-        raise ValueError("Invalid error message")
+        raise ValueError("Invalid error message, expected: {0}, actual: {1}".format(errmsg, lines[0]))
 
 
 @api_test("select query error message")
@@ -813,7 +813,7 @@ def check_bad_query_handling():
                     print("Error: error message expected, empty response received")
                     raise ValueError("Error expected")
                 else:
-                    if not lines[0].startswith("-query parsing error"):
+                    if not lines[0].startswith("-"):
                         raise ValueError("Invalid response")
             except HTTPError as e:
                 raise ValueError("Invalid response: " + str(e))

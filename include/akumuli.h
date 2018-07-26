@@ -277,6 +277,14 @@ AKU_EXPORT int aku_cursor_is_done(aku_Cursor* pcursor);
 //! Check cursor error state. Returns zero value if everything is OK, non zero value otherwise.
 AKU_EXPORT int aku_cursor_is_error(aku_Cursor* pcursor, aku_Status* out_error_code_or_null);
 
+/**
+ * Check cursor error state and error message.
+ * Returns zero value if everything is OK, non zero value otherwise.
+ */
+AKU_EXPORT int aku_cursor_is_error_ex(aku_Cursor*  pcursor,
+                                      const char** error_message,
+                                      aku_Status*  out_error_code_or_null);
+
 /** Convert timestamp to string if possible, return string length
   * @return 0 on bad string, -LEN if buffer is too small, LEN on success
   */

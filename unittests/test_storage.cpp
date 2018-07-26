@@ -235,6 +235,7 @@ struct CursorMock : InternalCursor {
     bool done;
     std::vector<aku_Sample> samples;
     aku_Status error;
+    std::string error_msg;
 
     CursorMock() {
         done = false;
@@ -262,6 +263,15 @@ struct CursorMock : InternalCursor {
         }
         done = true;
         error = error_code;
+    }
+
+    virtual void set_error(aku_Status error_code, const char* error_message) override {
+        if (done) {
+            BOOST_FAIL("Cursor invariant broken");
+        }
+        done = true;
+        error = error_code;
+        error_msg = error_message;
     }
 };
 
