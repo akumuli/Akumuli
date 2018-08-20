@@ -44,8 +44,21 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+add_library(
+    fse
+    huff0/debug.c
+    huff0/entropy_common.c
+    huff0/fse_compress.c
+    huff0/fse_decompress.c
+    huff0/fseU16.c
+    huff0/hist.c
+    huff0/huf_compress.c
+    huff0/huf_decompress.c
+)
+
 target_link_libraries(akumuli
     jemalloc
+    fse
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
