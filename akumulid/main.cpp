@@ -685,7 +685,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     } catch(...) {
         std::stringstream fmt;
-        fmt << "**FAILURE** " << boost::current_exception_diagnostic_information(true);
+        fmt << "**FAILURE** " << boost::current_exception_diagnostic_information();
         std::cerr << cli_format(fmt.str()) << std::endl;
         exit(EXIT_FAILURE);
     }

@@ -14,6 +14,9 @@ static Logger logger("http");
 namespace MHD {
 static ssize_t read_callback(void *data, u64 pos, char *buf, size_t max) {
     AKU_UNUSED(pos);
+    if (data == nullptr) {
+        return MHD_CONTENT_READER_END_WITH_ERROR;
+    }
     ReadOperation* cur = (ReadOperation*)data;
     size_t sz;
     bool is_done;
@@ -93,9 +96,9 @@ static int accept_connection(void           *cls,
             }
 
             // Check for error
-            auto err = cursor->get_error();
-            if (err != AKU_SUCCESS) {
-                const char* error_msg = aku_error_message(err);
+            auto err_code = cursor->get_error();
+            if (err_code != AKU_SUCCESS) {
+                const char* error_msg = cursor->get_error_message();
                 logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " error: " << error_msg;
                 return error_response(error_msg, MHD_HTTP_BAD_REQUEST);
             }

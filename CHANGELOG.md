@@ -1,6 +1,42 @@
 Release notes
 =============
 
+Version 0.7.53
+--------------
+
+IMPROVEMENT
+
+* Detailed error messages
+* Escape sequences in series names
+
+Version 0.7.52
+--------------
+
+BUG FIX
+
+* Fix obsolete tree handling
+
+Version 0.7.51
+--------------
+
+IMPROVEMENT
+
+* Improve memory efficiency
+
+Version 0.7.50
+--------------
+
+IMPROVEMENT
+
+* ARM support
+
+Version 0.7.49
+--------------
+
+IMPROVEMENT
+
+* Build packages for multiple platforms
+
 Version 0.7.48
 --------------
 

@@ -35,5 +35,6 @@ struct InternalCursor {
     virtual void complete() = 0;
     //! Set error and stop execution
     virtual void set_error(aku_Status error_code) = 0;
+    virtual void set_error(aku_Status error_code, const char* error_message) = 0;
 };
 }

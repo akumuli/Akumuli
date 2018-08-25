@@ -31,6 +31,10 @@ struct AkumuliCursor : DbCursor {
         return aku_cursor_is_error(cursor_, out_error_code_or_null);
     }
 
+    virtual bool is_error(const char** error_message, aku_Status *out_error_code) {
+        return aku_cursor_is_error_ex(cursor_, error_message, out_error_code);
+    }
+
     virtual void close() {
         aku_cursor_close(cursor_);
     }
@@ -94,7 +98,7 @@ AkumuliConnection::~AkumuliConnection() {
     try {
         aku_close_database(db_);
     } catch (...) {
-        db_logger_.error() << boost::current_exception_diagnostic_information(true);
+        db_logger_.error() << boost::current_exception_diagnostic_information();
         std::terminate();
     }
 }

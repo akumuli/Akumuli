@@ -177,6 +177,17 @@ std::vector<StringT> SeriesMatcher::suggest_tag_values(std::string metric, std::
     return results;
 }
 
+size_t SeriesMatcher::memory_use() const {
+    return index.memory_use();
+}
+
+size_t SeriesMatcher::index_memory_use() const {
+    return index.index_memory_use();
+}
+
+size_t SeriesMatcher::pool_memory_use() const {
+    return index.pool_memory_use();
+}
 //                          //
 //   LegacySeriesMatcher    //
 //                          //
@@ -306,14 +317,21 @@ static StringTools::StringT get_tag_name(const char* p, const char* end) {
     return {begin, p - begin};
 }
 
+static const char ESC_CHAR = '\\';
+
 static const char* copy_until(const char* begin, const char* end, const char pattern, char** out) {
+    const char* escape_char = *begin == ESC_CHAR ? begin : nullptr;
     char* it_out = *out;
     while(begin < end) {
         *it_out = *begin;
         it_out++;
         begin++;
         if (*begin == pattern) {
-            break;
+            if (std::prev(begin) != escape_char) {
+                break;
+            }
+        } else if (*begin == ESC_CHAR) {
+            escape_char = begin;
         }
     }
     *out = it_out;
@@ -322,9 +340,19 @@ static const char* copy_until(const char* begin, const char* end, const char pat
 
 //! Move pointer to the beginning of the next tag, return this pointer or end on error
 static const char* skip_tag(const char* begin, const char* end, bool *error) {
+    const char* escape_char = nullptr;
     // skip until '='
     const char* p = begin;
-    while(p < end && *p != '=' && *p != ' ' && *p != '\t') {
+    while(p < end) {
+        if (*p == '=') {
+            break;
+        } else if (*p == ' ') {
+            if (std::prev(p) != escape_char) {
+                break;
+            }
+        } else if (*p == ESC_CHAR) {
+            escape_char = p;
+        }
         p++;
     }
     if (p == begin || p == end || *p != '=') {
@@ -333,7 +361,14 @@ static const char* skip_tag(const char* begin, const char* end, bool *error) {
     }
     // skip until ' '
     const char* c = p;
-    while(c < end && *c != ' ') {
+    while(c < end) {
+        if (*c == ' ') {
+            if (std::prev(c) != escape_char) {
+                break;
+            }
+        } else if (*c == ESC_CHAR) {
+            escape_char = c;
+        }
         c++;
     }
     *error = c == p;

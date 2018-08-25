@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "storage_engine/compression.h"
+#include "storage_engine/volume.h"
 
 
 using namespace Akumuli;
@@ -145,69 +146,6 @@ BOOST_AUTO_TEST_CASE(Test_vbyte) {
     test_stream_read(reader);
 }
 
-BOOST_AUTO_TEST_CASE(Test_delta_rle) {
-
-    std::vector<unsigned char> data;
-    data.resize(1000);
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
-    test_stream_write(delta_writer);
-
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
-    test_stream_read(delta_reader);
-}
-
-BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_0) {
-    std::vector<unsigned char> data;
-    data.resize(10*1024);  // 10KB of storage
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
-
-    test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true);
-}
-
-BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_vbyte_1) {
-    std::vector<unsigned char> data;
-    data.resize(1*1024*1024);  // 1MB of storage
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    DeltaStreamWriter<RLEStreamWriter<u64>, u64> delta_writer(wstream);
-
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaStreamReader<RLEStreamReader<u64>, u64> delta_reader(rstream);
-
-    test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true);
-}
-
-BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_0) {
-    std::vector<unsigned char> data;
-    data.resize(10*1024);  // 10KB of storage
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    ZDeltaRLEWriter delta_writer(wstream);
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    ZDeltaRLEReader delta_reader(rstream);
-
-    test_stream_chunked_op<i64>(delta_writer, delta_reader, 100, false);
-}
-
-BOOST_AUTO_TEST_CASE(Test_chunked_delta_rle_zigzag_vbyte_1) {
-    std::vector<unsigned char> data;
-    data.resize(1*1024*1024);  // 1MB of storage
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    ZDeltaRLEWriter delta_writer(wstream);
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    ZDeltaRLEReader delta_reader(rstream);
-
-    test_stream_chunked_op<i64>(delta_writer, delta_reader, 10000, false);
-}
-
 BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
     std::vector<unsigned char> data;
     data.resize(4*1024);  // 4KB of storage
@@ -228,126 +166,6 @@ BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_0) {
 
         test_stream_chunked_op<u64>(delta_writer, delta_reader, 100, true, true);
     }
-}
-
-BOOST_AUTO_TEST_CASE(Test_chunked_delta_delta_vbyte_1) {
-    std::vector<unsigned char> data;
-    data.resize(1*1024*1024);  // 1MB of storage
-
-    {
-        VByteStreamWriter wstream(data.data(), data.data() + data.size());
-        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-        VByteStreamReader rstream(data.data(), data.data() + data.size());
-        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
-
-        test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, false);
-    }
-    {
-        VByteStreamWriter wstream(data.data(), data.data() + data.size());
-        DeltaDeltaStreamWriter<16, u64> delta_writer(wstream);
-        VByteStreamReader rstream(data.data(), data.data() + data.size());
-        DeltaDeltaStreamReader<16, u64> delta_reader(rstream);
-
-        test_stream_chunked_op<u64>(delta_writer, delta_reader, 10000, true, true);
-    }
-}
-
-BOOST_AUTO_TEST_CASE(Test_rle) {
-    std::vector<unsigned char> data;
-    data.resize(1000);
-
-    Base128StreamWriter wstream(data.data(), data.data() + data.size());
-    RLEStreamWriter<u64> rle_writer(wstream);
-
-    test_stream_write(rle_writer);
-
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    RLEStreamReader<u64> rle_reader(rstream);
-    test_stream_read(rle_reader);
-}
-
-BOOST_AUTO_TEST_CASE(Test_bad_offset_decoding)
-{
-    // this replicates real problem //
-    std::vector<u32> actual;
-    const u32 BASE_OFFSET = 3221191859u;
-    const u32 OFFSET_STEP = 8u;
-    u32 current = BASE_OFFSET;
-    for(int i = 0; i < 10000; i++) {
-        actual.push_back(current);
-        current -= OFFSET_STEP;
-    }
-
-    ByteVector data;
-    data.resize(100000);
-    Base128StreamWriter bstream(data.data(), data.data() + data.size());
-
-    DeltaRLEWriter wstream(bstream);
-    for (auto off: actual) {
-        wstream.put(off);
-    }
-    wstream.commit();
-
-    std::vector<u32> expected;
-    Base128StreamReader rstream(data.data(), data.data() + data.size());
-    DeltaRLEReader rlestream(rstream);
-    for (int i = 0; i < 10000; i++) {
-        expected.push_back((u32)rlestream.next());
-    }
-
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
-}
-
-void test_doubles_compression(std::vector<double> input) {
-    ByteVector buffer;
-    buffer.resize(input.size()*10);
-    Base128StreamWriter wstream(buffer.data(), buffer.data() + buffer.size());
-    size_t nblocks = CompressionUtil::compress_doubles(input, wstream);
-    std::vector<double> output;
-    output.resize(input.size());
-    Base128StreamReader rstream(buffer.data(), buffer.data() + buffer.size());
-    CompressionUtil::decompress_doubles(rstream, nblocks, &output);
-
-    BOOST_REQUIRE_EQUAL(input.size(), output.size());
-    for(auto i = 0u; i < input.size(); i++) {
-        auto actual = input.at(i);
-        auto expected = output.at(i);
-        BOOST_REQUIRE_EQUAL(actual, expected);
-    }
-}
-
-BOOST_AUTO_TEST_CASE(Test_doubles_compression_1_series) {
-    std::vector<double> input = {
-        100.1001,
-        100.0999,
-        100.0998,
-        100.0997,
-        100.0996,
-    };
-    test_doubles_compression(input);
-}
-
-BOOST_AUTO_TEST_CASE(Test_doubles_compression_2_series) {
-    std::vector<double> input = {
-        100.1001,
-        200.4999,
-        100.0999,
-        200.499,
-        100.0998,
-        200.49,
-        100.0997,
-        200.5,
-        100.0996,
-        200.5001,
-    };
-    test_doubles_compression(input);
-}
-
-BOOST_AUTO_TEST_CASE(Test_doubles_compression_3_series) {
-    std::vector<double> input(32, 0);
-    input.push_back(111.222);
-    input.push_back(333.444);
-    test_doubles_compression(input);
 }
 
 //! Generate time-series from random walk
@@ -380,7 +198,7 @@ void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
 
     // Compress
     VByteStreamWriter wstream(block.data(), block.data() + block.size());
-    FcmStreamWriter writer(wstream);
+    FcmStreamWriter<> writer(wstream);
     if (psrc == nullptr) {
         double val = rwalk.generate();
         samples.push_back(val);
@@ -396,7 +214,7 @@ void test_float_compression(double start, std::vector<double>* psrc=nullptr) {
 
     // Decompress
     VByteStreamReader rstream(block.data(), block.data() + block.size());
-    FcmStreamReader reader(rstream);
+    FcmStreamReader<> reader(rstream);
     for (size_t ix = 0; ix < samples.size(); ix++) {
         double val = reader.next();
         if (val != samples.at(ix)) {
@@ -599,106 +417,313 @@ BOOST_AUTO_TEST_CASE(Test_block_compression_19) {
     test_block_compression(0, 0x111, true);
 }
 
-void test_chunk_header_compression(double start) {
-
-    UncompressedChunk expected;
-
-    const int NROWS = 10000;  // number of rows in one series
-    const int NSER = 2;  // number of series
-    RandomWalk rwalk(start, 1., .11);
-
-    // Fill chunk header
-    for (int i = 0; i < NROWS; i++) {
-        expected.paramids.push_back(0);
-    }
-    for (int i = 0; i < NROWS; i++) {
-        expected.paramids.push_back(1);
-    }
-
-    for (int i = 0; i < NSER; i++) {
-        for (int j = 0; j < NROWS; j++) {
-            expected.timestamps.push_back(j);
-        }
-    }
-
-    expected.values.resize(NROWS*NSER);
-    for (int row = 0; row < NROWS*NSER; row++) {
-        double cell = rwalk.generate();
-        expected.values.at(row) = cell;
-    }
-
-    aku_Timestamp tsbegin = 0, tsend = 0;
-    u32 cardinality = 0;
-
-    struct Writer : ChunkWriter {
-        std::vector<unsigned char> buffer;
-
-        Writer(size_t size) {
-            buffer.resize(size);
-        }
-
-        virtual aku_MemRange allocate() {
-            return { (void*)buffer.data(), (u32)buffer.size() };
-        }
-
-        virtual aku_Status commit(size_t bytes_written) {
-            if (bytes_written > buffer.size()) {
-                return AKU_EOVERFLOW;
-            }
-            buffer.resize(bytes_written);
-            return AKU_SUCCESS;
-        }
+struct CheckedBlock {
+    enum {
+        NCOMPONENTS = 4,
+        COMPONENT_SIZE = StorageEngine::AKU_BLOCK_SIZE / NCOMPONENTS,
     };
 
-    // Original chunk size
-    size_t total_bytes = 0;
-    for (auto i = 0u; i < expected.paramids.size(); i++) {
-        total_bytes += sizeof(aku_ParamId) +
-                       sizeof(aku_Timestamp) +
-                       sizeof(double);
+    std::vector<u8> provided_;
+    u32 pos_;
+    u8 pod_[1024]; //! all space is allocated here (and not checked)
+
+    CheckedBlock(const std::vector<u8>& p)
+        : provided_(p)
+        , pos_(0)
+    {
     }
 
-    Writer writer(total_bytes);
+    u8* allocate(u32 size) {
+        u8* result = provided_.data() + pos_;
+        pos_ += size;
+        return result;
+    }
 
-    auto status = CompressionUtil::encode_chunk(&cardinality, &tsbegin, &tsend, &writer, expected);
-    BOOST_REQUIRE(status == AKU_SUCCESS);
+    /** Add component if block is less than NCOMPONENTS in size.
+     *  Return index of the component or -1 if block is full.
+     */
+    int add() { return 0; }
 
-    // Calculate compression ratio
-    size_t compressed_bytes = writer.buffer.size();
-    double compression_ratio = double(total_bytes)/double(compressed_bytes);
-    BOOST_REQUIRE(compression_ratio > 1.0);
+    void set_addr(u64) {}
 
-    UncompressedChunk actual;
-    const unsigned char* pbegin = writer.buffer.data();
-    const unsigned char* pend = writer.buffer.data() + writer.buffer.size();
-    status = CompressionUtil::decode_chunk(&actual, pbegin, pend, cardinality);
-    BOOST_REQUIRE(status == AKU_SUCCESS);
+    u64 get_addr() const { return 0; }
 
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.paramids.begin(), expected.paramids.end(),
-                                    actual.paramids.begin(), actual.paramids.end());
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(expected.timestamps.begin(), expected.timestamps.end(),
-                                    actual.timestamps.begin(), actual.timestamps.end());
-    for (int i = 0; i < NROWS*NSER; i++) {
-        BOOST_REQUIRE_EQUAL(expected.values.at(i), actual.values.at(i));
+    int space_left() const { return static_cast<int>(StorageEngine::AKU_BLOCK_SIZE - pos_); }
+
+    int size() const { return StorageEngine::AKU_BLOCK_SIZE; }
+
+    void put(u8 val) {
+        if (val != provided_.at(pos_)) {
+            BOOST_REQUIRE_EQUAL(val, provided_.at(pos_));
+        }
+        pos_++;
+    }
+
+    bool safe_put(u8 val) {
+        if (val != provided_.at(pos_)) {
+            BOOST_REQUIRE_EQUAL(val, provided_.at(pos_));
+        }
+        pos_++;
+        return true;
+    }
+
+    int get_write_pos() const {
+        return static_cast<int>(pos_);
+    }
+
+    void set_write_pos(int pos) {
+        pos_ = static_cast<u32>(pos);
+    }
+
+    template<class POD>
+    void put(const POD& data) {
+        const u8* it = reinterpret_cast<const u8*>(&data);
+        for (u32 i = 0; i < sizeof(POD); i++) {
+            put(it[i]);
+        }
+    }
+
+    template<class POD>
+    POD* allocate() {
+        POD* result = reinterpret_cast<POD*>(pod_ + pos_);
+        pos_ += sizeof(POD);
+        return result;
+    }
+
+    bool is_readonly() const {
+        return false;
+    }
+
+    const u8* get_data(int) const {
+        return nullptr;
+    }
+
+    const u8* get_cdata(int) const {
+        return nullptr;
+    }
+
+    u8* get_data(int) {
+        return nullptr;
+    }
+
+    size_t get_size(int) const {
+        return 1024;
+    }
+
+};
+
+void test_block_iovec_compression(double start, unsigned N=10000, bool regullar=false) {
+    RandomWalk rwalk(start, 1., .11);
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<double> values;
+
+    if (regullar) {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        aku_Timestamp stp = static_cast<aku_Timestamp>(rand() % 1000);
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            its += stp;
+            timestamps.push_back(its);
+        }
+    } else {
+        aku_Timestamp its = static_cast<aku_Timestamp>(rand());
+        for (unsigned i = 0; i < N; i++) {
+            values.push_back(rwalk.generate());
+            u32 skew = rand() % 100;
+            its += skew;
+            timestamps.push_back(its);
+        }
+    }
+
+    // compress using normal block
+    std::vector<u8> dbdata;
+    dbdata.resize(4096);
+    StorageEngine::DataBlockWriter dbwriter(42, dbdata.data(), dbdata.size());
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status status = dbwriter.put(timestamps.at(ix), values.at(ix));
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+
+    // compress
+    CheckedBlock chkblock(dbdata);
+    StorageEngine::IOVecBlockWriter<CheckedBlock> chkwriter(&chkblock);
+    chkwriter.init(42);
+
+    StorageEngine::IOVecBlock block;
+    StorageEngine::IOVecBlockWriter<StorageEngine::IOVecBlock> writer(&block);
+    writer.init(42);
+
+    size_t actual_nelements = 0ull;
+    bool writer_overflow = false;
+    for (size_t ix = 0; ix < N; ix++) {
+        aku_Status chkstatus = chkwriter.put(timestamps.at(ix), values.at(ix));
+        aku_Status status = writer.put(timestamps.at(ix), values.at(ix));
+        BOOST_REQUIRE_EQUAL(chkstatus, status);
+        if (status == AKU_EOVERFLOW) {
+            // Block is full
+            actual_nelements = ix;
+            writer_overflow = true;
+            break;
+        }
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+    }
+    if (!writer_overflow) {
+        actual_nelements = N;
+    }
+    size_t size_used = writer.commit();
+    AKU_UNUSED(size_used);
+
+    // decompress using normal procedure
+    std::vector<u8> cblock;
+    cblock.reserve(4096);
+    for (int i = 0; i < StorageEngine::IOVecBlock::NCOMPONENTS; i++) {
+        const int sz = StorageEngine::IOVecBlock::COMPONENT_SIZE;
+        if(block.get_size(i) == 0) {
+            break;
+        }
+        std::copy(block.get_cdata(i), block.get_cdata(i) + sz, std::back_inserter(cblock));
+    }
+
+    // This iovec block contains data in once continous region
+    StorageEngine::IOVecBlock cont_block(true);
+    std::copy(cblock.begin(), cblock.end(), cont_block.get_data(0));
+
+    StorageEngine::DataBlockReader reader(cblock.data(), cblock.size());
+    StorageEngine::IOVecBlockReader<StorageEngine::IOVecBlock> iovecreader(&block);
+    StorageEngine::IOVecBlockReader<StorageEngine::IOVecBlock> iovecreader_cont(&cont_block);
+
+    std::vector<aku_Timestamp> out_timestamps;
+    std::vector<double> out_values;
+
+    // gen number of elements stored in block
+    auto nelem = reader.nelements();
+    BOOST_REQUIRE_EQUAL(nelem, actual_nelements);
+    BOOST_REQUIRE_EQUAL(nelem, iovecreader.nelements());
+    BOOST_REQUIRE_EQUAL(nelem, iovecreader_cont.nelements());
+    BOOST_REQUIRE_NE(nelem, 0);
+
+    BOOST_REQUIRE_EQUAL(reader.get_id(), 42);
+    BOOST_REQUIRE_EQUAL(iovecreader.get_id(), 42);
+    BOOST_REQUIRE_EQUAL(iovecreader_cont.get_id(), 42);
+    for (size_t ix = 0ull; ix < reader.nelements(); ix++) {
+        aku_Status status;
+        aku_Timestamp  ts;
+        double      value;
+        std::tie(status, ts, value) = reader.next();
+        BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+        out_timestamps.push_back(ts);
+        out_values.push_back(value);
+        aku_Timestamp  iovects;
+        double      iovecvalue;
+        // Check io-vec block with four components
+        std::tie(status, iovects, iovecvalue) = iovecreader.next();
+        BOOST_REQUIRE_EQUAL(value, iovecvalue);
+        BOOST_REQUIRE_EQUAL(ts, iovects);
+        // Check continous io-vec block
+        std::tie(status, iovects, iovecvalue) = iovecreader_cont.next();
+        BOOST_REQUIRE_EQUAL(value, iovecvalue);
+        BOOST_REQUIRE_EQUAL(ts, iovects);
+    }
+
+    // nelements() + 1 call should result in error
+    aku_Status status;
+    aku_Timestamp  ts;
+    double      value;
+    std::tie(status, ts, value) = reader.next();
+    BOOST_REQUIRE_EQUAL(status, AKU_ENO_DATA);
+
+    for (size_t i = 0; i < nelem; i++) {
+        if (timestamps.at(i) != out_timestamps.at(i)) {
+            BOOST_FAIL("Bad timestamp at " << i << ", expected: " << timestamps.at(i) <<
+                       ", actual: " << out_timestamps.at(i));
+        }
+        if (values.at(i) != out_values.at(i)) {
+            BOOST_FAIL("Bad value at " << i << ", expected: " << values.at(i) <<
+                       ", actual: " << out_values.at(i));
+        }
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression_0) {
-    test_chunk_header_compression(0);
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_00) {
+    test_block_iovec_compression(0);
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression_1) {
-    test_chunk_header_compression(1E-100);
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_01) {
+    test_block_iovec_compression(1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression_2) {
-    test_chunk_header_compression(1E100);
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_02) {
+    test_block_iovec_compression(1E100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression_3) {
-    test_chunk_header_compression(-1E-100);
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_03) {
+    test_block_iovec_compression(-1E-100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_chunk_compression_4) {
-    test_chunk_header_compression(-1E100);
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_04) {
+    test_block_iovec_compression(-1E100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_05) {
+    test_block_iovec_compression(0, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_06) {
+    test_block_iovec_compression(0, 16);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_07) {
+    test_block_iovec_compression(0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_08) {
+    test_block_iovec_compression(0, 0x100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_09) {
+    test_block_iovec_compression(0, 0x111);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_10) {
+    test_block_iovec_compression(0, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_11) {
+    test_block_iovec_compression(1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_12) {
+    test_block_iovec_compression(1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_13) {
+    test_block_iovec_compression(-1E-100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_14) {
+    test_block_iovec_compression(-1E100, 10000, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_15) {
+    test_block_iovec_compression(0, 1, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_16) {
+    test_block_iovec_compression(0, 16, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_17) {
+    test_block_iovec_compression(0, 100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_18) {
+    test_block_iovec_compression(0, 0x100, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_iovec_compression_19) {
+    test_block_iovec_compression(0, 0x111, true);
 }

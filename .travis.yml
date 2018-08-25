@@ -8,33 +8,37 @@ group: edge
 
 matrix:
   include:
-    # 64-bit skylake build (GCC)
+    # VM-based 64-bit skylake build (GCC)
     - os: linux
       dist: trusty
       sudo: required
       compiler: gcc
       env:
+      - DISTRIBUTION=ubuntu/trusty
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - FUNC_TEST_RECOVERY=false
-    # 64-bit generic build (GCC)
+      script:
+      - bash ./CI/runci.sh ubuntu-14.04
+      - source ./CI/prepare-docker-image.sh
+    # VM-based 64-bit generic build (GCC)
     - os: linux
       dist: trusty
       sudo: required
       compiler: gcc
+      branches:
+        only:
+          - master
       env:
+      - DISTRIBUTION=ubuntu/trusty
       - DEPLOY_PACKAGE=false
-      - DEPLOY_IMAGE=false
+      - DEPLOY_IMAGE=true
       - GENERIC_BUILD=true
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=true
-      - FUNC_TEST_RECOVERY=false
-    # 64-bit OSX build (Clang)
+      script:
+      - bash ./CI/runci.sh ubuntu-14.04
+      - source ./CI/prepare-docker-image.sh
+      if: branch = master
+    # VM-based 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
       compiler: clang
@@ -42,15 +46,78 @@ matrix:
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
-      - UNIT_TEST=true
-      - FUNC_TEST_BASE=true
-      - FUNC_TEST_ADVANCED=false  # disable because OSX VM's are slow
-      - FUNC_TEST_RECOVERY=false
+      script:
+      - bash ./CI/runci.sh osx
+    # Container based 64-bit Xenial build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=ubuntu/xenial
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull ubuntu:16.04
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
+      if: branch = master
+    # Container based 64-bit Debian Stretch build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=debian/stretch
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull debian:stretch
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
+      if: branch = master
+    # Container based 64-bit Debian Jessie build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=debian/jessie
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull debian:jessie
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
+      if: branch = master
+    # Container based 64-bit CentOS 7 build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=el/7
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull centos:centos7
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
+      if: branch = master
 
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
 
+# Ship Akumuli logs to the S3 bucket
 addons:
   artifacts:
     provider: s3
@@ -60,82 +127,28 @@ addons:
     bucket: "$ARTIFACTS_BUCKET"
     acl: public_read
     paths:
-    - "$HOME/akumuli.log"
+    - "${TRAVIS_BUILD_DIR}/akumuli.log"
 
-before_install:
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then brew update;              fi
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]];   then sh prerequisites-osx.sh;  fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update;      fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sh prerequisites.sh; fi
-
-before_script:
-- mkdir build
-- cd build
-- if [[ $GENERIC_BUILD == true ]]; then
-  cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
-  else
-  cmake .. -DCMAKE_BUILD_TYPE=Release;
-  fi
-
-script:
-# Build and test
-- make -j4
-- if [[ $UNIT_TEST == true ]]; then ctest -VV; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then functests/storage_test /tmp; fi
-- akumulid/akumulid --init
-- python functests/akumulid_test_tools.py set_log_path $HOME/akumuli.log
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_database_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_ingestion_errors.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
-- python functests/akumulid_test_tools.py set_nvolumes 0
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ TCP; fi
-- if [[ $FUNC_TEST_BASE == true ]]; then python functests/test_data_ingestion_bulk.py akumulid/ UDP; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_query_language.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_volume_overflow.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_restart.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_kill.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_concurrency.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_join_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then python functests/test_filter_query.py akumulid/; fi
-- if [[ $FUNC_TEST_ADVANCED == true ]]; then bash functests/roundtrip.sh; fi
-
-# Build deb package and docker image only on Linux
-- if [[ $DEPLOY_IMAGE == true ]]; then
-  cpack;
-  cp akumuli_*_amd64.deb ./docker;
-  export VERSION=`ls akumuli_*_amd64.deb | sed -n 's/akumuli_\([0-9].[0-9].[0-9][0-9]\)-1ubuntu1.0_amd64\.deb/\1/p'`
-  export REPO=`if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then echo "akumuli/akumuli"; else echo "akumuli/test"; fi`;
-  export TAG=`if [[ $GENERIC_BUILD == "false" ]]; then echo "skylake"; else echo "generic"; fi`;
-  docker build -t $REPO:$VERSION-$TAG ./docker;
-  fi
-
+# Packagecloud deployment configuration
 deploy:
   provider: packagecloud
   repository: Akumuli
   username: Lazin
-  dist: ubuntu/trusty
-  package_glob: "./*.deb"
+  dist: $DISTRIBUTION
+  package_glob: "${TRAVIS_BUILD_DIR}/build/*.{deb,rpm}"
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
     branch: master
     condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
+
 after_success:
+# Push docker image. Docker image should be created and the variables REPO,
+# VERSION, and TAG should exist.
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
-  docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
-  docker push $REPO:$VERSION-$TAG;
+      docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
+      docker push $REPO:$VERSION-$TAG;
   fi 
 after_failure: 
+- echo "Build failed"

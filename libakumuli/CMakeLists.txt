@@ -17,6 +17,7 @@ add_library(akumuli SHARED
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
     storage_engine/input_log.cpp
+    storage_engine/ref_store.cpp
     storage_engine/input_log.h
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
@@ -67,6 +68,7 @@ target_link_libraries(akumuli
     pthread)
 
 target_link_libraries(akumuli
+    jemalloc
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -104,11 +106,28 @@ install(
         ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_NAME "akumuli")
-set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Evgeny Lazin")
-set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Time-series storage engine")
+set(CPACK_GENERATOR "RPM;DEB")
+
+set(CPACK_PACKAGE_NAME "akumuli")
+set(CPACK_PACKAGE_ARCHITECTURE "${APP_ARCH}")
+set(CPACK_PACKAGE_MAINTAINER "Evgeny Lazin")
+set(CPACK_PACKAGE_DESCRIPTION "Time-series database")
+
+set(CPACK_PACKAGE_VERSION "${APP_VERSION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${APP_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${APP_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${APP_VERSION_PATCH}")
+
+# RPM variables
+set(CPACK_RPM_PACKAGE_SUMMARY ${CPACK_PACKAGE_DESCRIPTION})
+set(CPACK_RPM_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+set(CPACK_RPM_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION})
+
+# DEB variables
+set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE ${CPACK_PACKAGE_ARCHITECTURE})
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER ${CPACK_PACKAGE_MAINTAINER})
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION})
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 
 set(CPACK_PACKAGE_VERSION "${APP_VERSION}")
@@ -117,7 +136,7 @@ set(CPACK_PACKAGE_VERSION_MINOR "${APP_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${APP_VERSION_PATCH}")
 
 set(CPACK_PACKAGE_FILE_NAME
-"akumuli_${APP_VERSION}-${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+"akumuli_${APP_VERSION}-1_${CPACK_PACKAGE_ARCHITECTURE}")
 
 # autogenerate dependency information
 set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)

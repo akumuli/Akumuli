@@ -353,6 +353,7 @@ def retry(ExceptionToCheck, tries=4, delay=3, backoff=2, logger=None):
     return deco_retry
 
 if __name__=='__main__':
+    print(' '.join(sys.argv))
     if len(sys.argv) < 2:
         print("Command required: commands available:\n" +
               " set_log_path <path>\n")

@@ -34,9 +34,123 @@
 namespace Akumuli {
 namespace StorageEngine {
 
+//! Address of the block inside storage
+typedef u64 LogicAddr;
+
+//! This value represents empty addr. It's too large to be used as a real block addr.
+static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
+
 //! Address of the block inside volume (index of the block)
 typedef u32 BlockAddr;
 enum { AKU_BLOCK_SIZE = 4096 };
+
+struct IOVecBlock {
+    enum {
+        NCOMPONENTS = 4,
+        COMPONENT_SIZE = AKU_BLOCK_SIZE / NCOMPONENTS,
+    };
+
+    std::vector<u8>  data_[NCOMPONENTS];
+    int pos_;  //! write pos
+    LogicAddr addr_;
+
+    /**
+     * @brief Create empty IOVecBlock
+     * All storage components wouldn't be allocated, pos_
+     * will be set to 0.
+     */
+    IOVecBlock();
+
+    /**
+     * @brief Create allocated IOVecBlock
+     * AKU_BLOCK_SIZE bytes will be allocated for the first storage
+     * component, pos_ will be set to AKU_BLOCK_SIZE.
+     * The parameter value doesn't actually matter (used to distingwish between the c-tor's).
+     * The block is not writable. Methods `get` and `get_raw` will work.
+     */
+    IOVecBlock(bool);
+
+    /** Add component if block is less than NCOMPONENTS in size.
+     *  Return index of the component or -1 if block is full.
+     */
+    int add();
+
+    void set_addr(LogicAddr addr);
+
+    LogicAddr get_addr() const;
+
+    int space_left() const;
+
+    //! Remaining bytes to read from offset to current write pos_
+    int bytes_to_read(u32 offset) const;
+
+    int size() const;
+
+    void put(u8 val);
+
+    u8 get(u32 offset) const;
+
+    bool safe_put(u8 val);
+
+    int get_write_pos() const;
+
+    void set_write_pos(int pos);
+
+    template<class POD>
+    void put(const POD& data) {
+        const u8* it = reinterpret_cast<const u8*>(&data);
+        for (u32 i = 0; i < sizeof(POD); i++) {
+            put(it[i]);
+        }
+    }
+
+    template<class POD>
+    POD get_raw(u32 offset) const {
+        const u32 sz = sizeof(POD);
+        union {
+            POD retval;
+            u8 bits[sz];
+        } raw;
+        for (u32 i = 0; i < sz; i++) {
+            raw.bits[i] = get(offset + i);
+        }
+        return raw.retval;
+    }
+
+    //! Allocate memory inside the stream (at the current write position)
+    template<class POD>
+    POD* allocate() {
+        int c = pos_ / COMPONENT_SIZE;
+        int i = pos_ % COMPONENT_SIZE;
+        if (c >= NCOMPONENTS) {
+            return nullptr;
+        }
+        if (data_[c].empty()) {
+            data_[c].resize(COMPONENT_SIZE);
+        }
+        if ((data_[c].size() - static_cast<u32>(i)) < sizeof(POD)) {
+            return nullptr;
+        }
+        POD* result = reinterpret_cast<POD*>(data_[c].data() + i);
+        pos_ += sizeof(POD);
+        return result;
+    }
+
+    //! Allocate memory inside the stream (at the current write position)
+    u8* allocate(u32 size);
+
+    //-----
+
+    bool is_readonly() const;
+
+    const u8* get_data(int component) const;
+
+    const u8* get_cdata(int component) const;
+
+    u8* get_data(int component);
+
+    size_t get_size(int component) const;
+};
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
@@ -145,13 +259,18 @@ public:
     //! Append block to file (source size should be 4 at least BLOCK_SIZE)
     std::tuple<aku_Status, BlockAddr> append_block(const u8* source);
 
+    std::tuple<aku_Status, BlockAddr> append_block(const IOVecBlock* source);
+
     //! Flush volume
     void flush();
 
     // Accessors
 
-    //! Read filxed size block from file
+    //! Read fixed size block from file
     aku_Status read_block(u32 ix, u8* dest) const;
+
+    //! Read fixed size block from file
+    std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> read_block(u32 ix) const;
 
     /**
      * @brief Read block without copying the data (only works if mmap available)

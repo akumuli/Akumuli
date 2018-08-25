@@ -6,8 +6,20 @@
 #include <algorithm>
 #include <zlib.h>
 #include <cstring>
+#include <cmath>
 
 using namespace Akumuli;
+
+struct UncompressedChunk {
+    /** Index in `timestamps` and `paramids` arrays corresponds
+      * to individual row. Each element of the `values` array corresponds to
+      * specific column and row. Variable longest_row should contain
+      * longest row length inside the header.
+      */
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<aku_ParamId>   paramids;
+    std::vector<double>        values;
+};
 
 int main(int argc, char** argv) {
     if (argc == 1) {
@@ -65,6 +77,10 @@ int main(int argc, char** argv) {
             AKU_PANIC("Bad timestamp at: " + std::to_string(i));
         }
         if (tx != header.values.at(i)) {
+            if (std::isnan(tx) && std::isnan(header.values.at(i))) {
+                // nan != nan always returns true
+                continue;
+            }
             AKU_PANIC("Bad value at: " + std::to_string(i));
         }
     }

@@ -24,9 +24,6 @@
 #include <string.h>
 #include <algorithm>
 #include <functional>
-// TODO: remove
-#include "log_iface.h"
-#include "status_util.h"
 
 
 namespace Akumuli {
@@ -118,6 +115,13 @@ bool ConcurrentCursor::is_error(aku_Status* out_error_code_or_null) const {
     return done_ && error_code_ != AKU_SUCCESS;
 }
 
+bool ConcurrentCursor::is_error(const char** error_message, aku_Status* out_error_code_or_null) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    *out_error_code_or_null = error_code_;
+    *error_message = error_message_.data();
+    return done_ && error_code_ != AKU_SUCCESS;
+}
+
 void ConcurrentCursor::close() {
     std::lock_guard<std::mutex> lock(mutex_);
     done_ = true;
@@ -133,6 +137,15 @@ void ConcurrentCursor::set_error(aku_Status error_code) {
     std::lock_guard<std::mutex> lock(mutex_);
     done_ = true;
     error_code_ = error_code;
+    cond_.notify_all();
+}
+
+void ConcurrentCursor::set_error(aku_Status error_code, const char* error_message) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    done_ = true;
+    error_code_ = error_code;
+    error_message_ = error_message;
+
     cond_.notify_all();
 }
 

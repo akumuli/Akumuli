@@ -26,11 +26,6 @@
 namespace Akumuli {
 namespace StorageEngine {
 
-//! Address of the block inside storage
-typedef u64 LogicAddr;
-
-//! This value represents empty addr. It's too large to be used as a real block addr.
-static const LogicAddr EMPTY_ADDR = std::numeric_limits<LogicAddr>::max();
 
 class Block;
 
@@ -78,11 +73,15 @@ struct BlockStore {
       */
     virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) = 0;
 
+    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr) = 0;
+
     /** Add block to blockstore.
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data) = 0;
+
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data) = 0;
 
     //! Flush all pending changes.
     virtual void flush() = 0;
@@ -92,6 +91,9 @@ struct BlockStore {
 
     //! Compute checksum of the input data.
     virtual u32 checksum(u8 const* begin, size_t size) const = 0;
+
+    //! Compute checksum of the iovec block
+    virtual u32 checksum(const IOVecBlock& block, size_t offset, size_t size) const = 0;
 
     virtual BlockStoreStats get_stats() const = 0;
 
@@ -132,9 +134,13 @@ public:
      */
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
 
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data);
+
     virtual void flush();
 
     virtual u32 checksum(u8 const* data, size_t size) const;
+
+    virtual u32 checksum(const IOVecBlock& block, size_t offset, size_t size) const;
 
     virtual BlockStoreStats get_stats() const;
 
@@ -159,34 +165,36 @@ public:
     /** Read block from blockstore
       */
     virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
 };
 
 class ExpandableFileStorage : public FileStorage,
                               public std::enable_shared_from_this<ExpandableFileStorage> {
-     std::string db_name_;
+    std::string db_name_;
 
-     //! Secret c-tor.
-     ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta);
+    //! Secret c-tor.
+    ExpandableFileStorage(std::shared_ptr<VolumeRegistry> meta);
 
-     std::unique_ptr<Volume> create_new_volume(u32 id);
+    std::unique_ptr<Volume> create_new_volume(u32 id);
 protected:
-     virtual void adjust_current_volume();
+    virtual void adjust_current_volume();
 
 public:
-     /**
-      * Create BlockStore instance (can be created only on heap).
-      * @param db_name is a logical database name
-      * @param metapath is a place where the meta-page is located
-      * @param volpaths is a list of volume paths
-      * @param on_volume_advance is function object that gets called when new volume is created
-      */
-     static std::shared_ptr<ExpandableFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
+    /**
+     * Create BlockStore instance (can be created only on heap).
+     * @param db_name is a logical database name
+     * @param metapath is a place where the meta-page is located
+     * @param volpaths is a list of volume paths
+     * @param on_volume_advance is function object that gets called when new volume is created
+     */
+    static std::shared_ptr<ExpandableFileStorage> open(std::shared_ptr<VolumeRegistry> meta);
 
-     virtual bool exists(LogicAddr addr) const;
+    virtual bool exists(LogicAddr addr) const;
 
-     /** Read block from blockstore
-      */
-     virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
+    /** Read block from blockstore
+     */
+    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
 };
 
 
@@ -204,10 +212,13 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     MemStore(std::function<void(LogicAddr)> append_cb);
 
     virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
     virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
-    virtual u32 checksum(u8 const* data, size_t size) const;
+    virtual u32 checksum(const IOVecBlock &block, size_t offset, size_t size) const;
+    virtual u32 checksum(const u8* data, size_t size) const;
     virtual BlockStoreStats get_stats() const;
     virtual PerVolumeStats get_volume_stats() const;
     void remove(size_t addr);
@@ -242,6 +253,7 @@ public:
 
     void set_addr(LogicAddr addr);
 };
+
 
 //! Should be used to create blockstore
 struct BlockStoreBuilder {
