@@ -414,8 +414,8 @@ target_link_libraries(
     test_input_log
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
-    boundled_roaring
-    boundled_lz4
+    roaring
+    lz4
     pthread
 )
 

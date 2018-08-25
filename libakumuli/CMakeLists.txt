@@ -46,26 +46,22 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
-add_library(boundled_lz4 STATIC
-    storage_engine/lz4.c
+add_library(lz4 STATIC
+    lz4/lz4.c
+    lz4/lz4frame.c
+    lz4/lz4hc.c
+    lz4/xxhash.c
 )
-set_property(TARGET boundled_lz4 PROPERTY POSITION_INDEPENDENT_CODE ON)
-set_property(TARGET boundled_lz4 PROPERTY C_STANDARD 99)
+target_include_directories(lz4 PUBLIC lz4)
+set_property(TARGET lz4 PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET lz4 PROPERTY C_STANDARD 99)
 
-add_library(boundled_roaring STATIC
-    storage_engine/roaring.c
+add_library(roaring STATIC
+    roaring/roaring.c
 )
-set_property(TARGET boundled_roaring PROPERTY POSITION_INDEPENDENT_CODE ON)
-set_property(TARGET boundled_roaring PROPERTY C_STANDARD 99)
-
-target_link_libraries(akumuli
-    "${SQLITE3_LIBRARY}"
-    "${APR_LIBRARY}"
-    "${APRUTIL_LIBRARY}"
-    ${Boost_LIBRARIES}
-    boundled_lz4
-    boundled_roaring
-    pthread)
+target_include_directories(roaring PUBLIC roaring)
+set_property(TARGET roaring PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET roaring PROPERTY C_STANDARD 99)
 
 target_link_libraries(akumuli
     jemalloc
@@ -73,6 +69,8 @@ target_link_libraries(akumuli
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    lz4
+    roaring
     pthread)
 
 # Shared object version: "major.minor.micro"
