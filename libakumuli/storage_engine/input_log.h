@@ -250,7 +250,16 @@ class ShardedInputLog {
     size_t svol_;          //! Size of the volume in write-only mode
 
     void init_read_buffers();
+
 public:
+
+    /**
+     * @brief Find log files in `rootdir`
+     * @param rootdir is a path to directory with log files
+     * @return 0 if no log files found, concurrency level otherwise
+     */
+    static std::tuple<aku_Status, int> find_logs(const char* rootdir);
+
     /**
      * @brief Create ShardedInputLog that can be used to write data
      * @param concurrency is a concurrency level of the logger

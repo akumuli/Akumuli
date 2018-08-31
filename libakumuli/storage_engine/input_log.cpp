@@ -703,4 +703,24 @@ void ShardedInputLog::delete_files() {
     }
 }
 
+std::tuple<aku_Status, int> ShardedInputLog::find_logs(const char* rootdir) {
+    if (!boost::filesystem::exists(rootdir)) {
+        return std::make_tuple(AKU_ENOT_FOUND, -1);
+    }
+    if (!boost::filesystem::is_directory(rootdir)) {
+        return std::make_tuple(AKU_ENOT_FOUND, -1);
+    }
+    u32 max_stream_id = -1;
+    for (auto it: boost::filesystem::directory_iterator(rootdir)) {
+        boost::filesystem::path path = it;
+        bool is_volume;
+        u32 volume_id;
+        u32 stream_id;
+        auto fn = path.filename().string();
+        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
+        max_stream_id = std::max(stream_id, max_stream_id);
+    }
+    return std::make_tuple(AKU_SUCCESS, static_cast<int>(max_stream_id + 1));
+}
+
 }  // namespace
