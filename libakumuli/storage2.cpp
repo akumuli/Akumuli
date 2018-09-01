@@ -139,9 +139,7 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     std::vector<u64> staleids;
     auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
     if (res == AKU_EOVERFLOW) {
-        for (auto id: staleids) {
-            Logger::msg(AKU_LOG_TRACE, "Id " + std::to_string(id) + " got stale");
-        }
+        storage_->close_specific_columns(staleids);
     }
     return AKU_SUCCESS;
 }
@@ -832,6 +830,21 @@ void Storage::close() {
     close_barrier_.wait();
     // Close column store
     auto mapping = cstore_->close();
+    if (!mapping.empty()) {
+        for (auto kv: mapping) {
+            u64 id;
+            std::vector<u64> vals;
+            std::tie(id, vals) = kv;
+            metadata_->add_rescue_point(id, std::move(vals));
+        }
+        // Save finall mapping (should contain all affected columns)
+        metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+    }
+    bstore_->flush();
+}
+
+void Storage::close_specific_columns(const std::vector<u64>& ids) {
+    auto mapping = cstore_->close(ids);
     if (!mapping.empty()) {
         for (auto kv: mapping) {
             u64 id;

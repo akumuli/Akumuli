@@ -165,6 +165,13 @@ public:
       */
     void close();
 
+    /**
+     * @brief Flush and close every column in the list
+     * @param ids list of column ids
+     * @return status
+     */
+    void close_specific_columns(const std::vector<u64>& ids);
+
     /** Create empty database from scratch.
       * @param base_file_name is database name (excl suffix)
       * @param metadata_path is a path to metadata storage

@@ -81,6 +81,13 @@ public:
 
     std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
 
+    /**
+     * @brief close specific columns
+     * @param ids is a list of column ids
+     * @return list of rescue points for every id
+     */
+    std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close(const std::vector<aku_ParamId>& ids);
+
     /** Create new column.
       * @return completion status
       */

@@ -79,6 +79,24 @@ std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnSto
     return result;
 }
 
+std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close(const std::vector<u64>& ids) {
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
+    Logger::msg(AKU_LOG_INFO, "Column-store close specific columns");
+    for (auto id: ids) {
+        std::lock_guard<std::mutex> tl(table_lock_);
+        auto it = columns_.find(id);
+        if (it == columns_.end()) {
+            continue;
+        }
+        if (it->second->is_initialized()) {
+            auto addrlist = it->second->close();
+            result[it->first] = addrlist;
+        }
+    }
+    Logger::msg(AKU_LOG_INFO, "Column-store close specific columns, operation completed");
+    return result;
+}
+
 aku_Status ColumnStore::create_new_column(aku_ParamId id) {
     std::vector<LogicAddr> empty;
     auto tree = std::make_shared<NBTreeExtentsList>(id, empty, blockstore_);
