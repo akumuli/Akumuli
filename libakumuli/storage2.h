@@ -61,6 +61,8 @@ public:
                    std::shared_ptr<StorageEngine::CStoreSession> session,
                    ShardedInputLog* log);
 
+    ~StorageSession();
+
     aku_Status write(aku_Sample const& sample);
 
     /** Match series name. If series with such name doesn't exists - create it.

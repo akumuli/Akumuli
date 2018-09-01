@@ -105,6 +105,16 @@ StorageSession::StorageSession(std::shared_ptr<Storage> storage,
 {
 }
 
+StorageSession::~StorageSession() {
+    if (ilog_) {
+        std::vector<u64> staleids;
+        auto res = ilog_->flush(&staleids);
+        if (res == AKU_EOVERFLOW) {
+            storage_->close_specific_columns(staleids);
+        }
+    }
+}
+
 boost::thread_specific_ptr<StorageSession::InputLogInstance> StorageSession::tls_;
 
 aku_Status StorageSession::write(aku_Sample const& sample) {
