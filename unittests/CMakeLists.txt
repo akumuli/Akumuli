@@ -200,6 +200,7 @@ add_executable(
     ../libakumuli/storage_engine/operators/join.cpp
     ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/storage_engine/input_log.cpp
     ../libakumuli/query_processing/queryparser.cpp
     ../libakumuli/query_processing/queryplan.cpp
     # query processor
@@ -219,6 +220,8 @@ add_executable(
 
 target_link_libraries(
     test_storage
+    roaring
+    lz4
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"

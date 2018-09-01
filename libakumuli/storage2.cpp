@@ -94,12 +94,18 @@ static apr_status_t create_metadata_page(const char* db_name
 
 //--------- StorageSession ----------
 
-StorageSession::StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session)
+StorageSession::StorageSession(std::shared_ptr<Storage> storage,
+                               std::shared_ptr<StorageEngine::CStoreSession> session,
+                               ShardedInputLog* log)
     : storage_(storage)
     , session_(session)
     , matcher_substitute_(nullptr)
+    , shlog_(log)
+    , ilog_(nullptr)
 {
 }
+
+boost::thread_specific_ptr<StorageSession::InputLogInstance> StorageSession::tls_;
 
 aku_Status StorageSession::write(aku_Sample const& sample) {
     using namespace StorageEngine;
@@ -107,10 +113,10 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     auto status = session_->write(sample, &rpoints);
     switch (status) {
     case NBTreeAppendResult::OK:
-        return AKU_SUCCESS;
+        break;
     case NBTreeAppendResult::OK_FLUSH_NEEDED:
         storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
-        return AKU_SUCCESS;
+        break;
     case NBTreeAppendResult::FAIL_BAD_ID:
         AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
     case NBTreeAppendResult::FAIL_LATE_WRITE:
@@ -118,6 +124,25 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     case NBTreeAppendResult::FAIL_BAD_VALUE:
         return AKU_EBAD_ARG;
     };
+    if (ilog_ == nullptr) {
+        if (tls_.get()) {
+            ilog_ = tls_->log_;
+        } else {
+            static std::atomic<int> id = {};
+            auto ptr = new InputLogInstance();
+            ptr->id_ = id++;
+            ptr->log_ = &shlog_->get_shard(id);
+            tls_.reset(ptr);
+            ilog_ = ptr->log_;
+        }
+    }
+    std::vector<u64> staleids;
+    auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
+    if (res == AKU_EOVERFLOW) {
+        for (auto id: staleids) {
+            Logger::msg(AKU_LOG_TRACE, "Id " + std::to_string(id) + " got stale");
+        }
+    }
     return AKU_SUCCESS;
 }
 
@@ -172,7 +197,6 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     }
 
     if (nmetric == 1) {
-        // Fast path
         // Match series name locally (on success use local information)
         // Otherwise - match using global registry. On success - add global information to
         //  the local matcher. On error - add series name to global registry and then to
@@ -285,13 +309,12 @@ Storage::Storage()
     start_sync_worker();
 }
 
-Storage::Storage(const char* path)
+Storage::Storage(const char* path, const aku_FineTuneParams &params)
     : done_{0}
     , close_barrier_(2)
 {
     metadata_.reset(new MetadataStorage(path));
 
-    std::string metapath;
     std::vector<std::string> volpaths;
 
     // first volume is a metavolume
@@ -333,6 +356,65 @@ Storage::Storage(const char* path)
     }
     cstore_->open_or_restore(mapping, true);
     start_sync_worker();
+
+    if (params.input_log_path) {
+        int ccr = 0;
+        std::tie(status, ccr) = ShardedInputLog::find_logs(params.input_log_path);
+        if (status == AKU_SUCCESS && ccr > 0) {
+            // Start recovery
+            auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
+            run_inputlog_recovery(ilog.get());
+        }
+    }
+
+    if (params.input_log_path) {
+        inputlog_.reset(new ShardedInputLog(params.input_log_concurrency,
+                                            params.input_log_path,
+                                            params.input_log_volume_numb,
+                                            params.input_log_volume_size));
+    }
+
+}
+
+void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
+    size_t nitems = 0x1000;
+    std::vector<aku_ParamId>    ids(nitems);
+    std::vector<aku_Timestamp>  tss(nitems);
+    std::vector<double>         xss(nitems);
+    Logger::msg(AKU_LOG_INFO, "Input log recovery started");
+    auto session = create_write_session();
+    bool stop = false;
+    while (stop) {
+        aku_Status status;
+        u32 outsize;
+        std::tie(status, outsize) = ilog->read_next(nitems, ids.data(), tss.data(), xss.data());
+        if (status == AKU_SUCCESS) {
+            for (u32 ix = 0; ix < outsize; ix++) {
+                aku_Sample sample;
+                sample.paramid          = ids[ix];
+                sample.timestamp        = tss[ix];
+                sample.payload.float64  = xss[ix];
+                sample.payload.size     = sizeof(aku_Sample);
+                sample.payload.type     = AKU_PAYLOAD_FLOAT;
+                status = session->write(sample);
+                if (status == AKU_EBAD_ARG) {
+                    Logger::msg(AKU_LOG_INFO, "Input log recovery failed");
+                    stop = true;
+                    break;
+                }
+            }
+        }
+        else if (status == AKU_ENO_DATA) {
+            Logger::msg(AKU_LOG_INFO, "Input log recovery completed");
+            stop = true;
+        }
+        else {
+            Logger::msg(AKU_LOG_ERROR, "Input log recovery error: " + StatusUtil::str(status));
+            stop = true;
+        }
+    }
+    ilog->reopen();
+    ilog->delete_files();
 }
 
 static std::string to_isostring(aku_Timestamp ts) {
@@ -769,8 +851,11 @@ void Storage::_update_rescue_points(aku_ParamId id, std::vector<StorageEngine::L
 }
 
 std::shared_ptr<StorageSession> Storage::create_write_session() {
-    std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(cstore_);
-    return std::make_shared<StorageSession>(shared_from_this(), session);
+    std::shared_ptr<StorageEngine::CStoreSession> session =
+            std::make_shared<StorageEngine::CStoreSession>(cstore_);
+    return std::make_shared<StorageSession>(shared_from_this(),
+                                            session,
+                                            inputlog_.get());
 }
 
 aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {

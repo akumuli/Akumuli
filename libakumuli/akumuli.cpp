@@ -247,12 +247,12 @@ class DatabaseImpl : public aku_Database
     std::shared_ptr<Storage> storage_;
 public:
     // private fields
-    DatabaseImpl(const char* path)
+    DatabaseImpl(const char* path, const aku_FineTuneParams& params)
     {
         if (path == std::string(":memory:")) {
             storage_ = std::make_shared<Storage>();
         } else {
-            storage_ = std::make_shared<Storage>(path);
+            storage_ = std::make_shared<Storage>(path, params);
         }
     }
 
@@ -260,8 +260,8 @@ public:
         storage_->close();
     }
 
-    static aku_Database* create(const char* path) {
-        DatabaseImpl* ptr = new DatabaseImpl(path);
+    static aku_Database* create(const char* path, const aku_FineTuneParams& params) {
+        DatabaseImpl* ptr = new DatabaseImpl(path, params);
         return static_cast<aku_Database*>(ptr);
     }
 
@@ -371,8 +371,7 @@ int aku_name_to_param_id_list(aku_Session* ist, const char* begin, const char* e
 }
 
 aku_Database* aku_open_database(const char* path, aku_FineTuneParams parameters) {
-    AKU_UNUSED(parameters);
-    return DatabaseImpl::create(path);
+    return DatabaseImpl::create(path, parameters);
 }
 
 void aku_close_database(aku_Database* db) {

@@ -256,11 +256,7 @@ void LocalStorage::open() {
         BOOST_THROW_EXCEPTION(err);
     }
     aku_FineTuneParams params = {};
-    params.durability = durability_;
-    params.enable_huge_tlb = enable_huge_tlb_ ? 1 : 0;
     params.logger = &aku_console_logger;
-    params.compression_threshold = compression_threshold_;
-    params.window_size = sliding_window_size_;
 
     std::string path = get_db_file_path();
     db_ = aku_open_database(path.c_str(), params);

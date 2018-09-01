@@ -31,10 +31,12 @@
 #include "storage_engine/blockstore.h"
 #include "storage_engine/nbtree.h"
 #include "storage_engine/column_store.h"
+#include "storage_engine/input_log.h"
 
 #include "internal_cursor.h"
 
 #include <boost/thread.hpp>
+#include <boost/thread/tss.hpp>
 
 namespace Akumuli {
 
@@ -46,8 +48,18 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
     mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
+    ShardedInputLog* shlog_;
+    InputLog* ilog_;
+
+    struct InputLogInstance {
+        int id_;
+        InputLog* log_;
+    };
+    static boost::thread_specific_ptr<InputLogInstance> tls_;
 public:
-    StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
+    StorageSession(std::shared_ptr<Storage> storage,
+                   std::shared_ptr<StorageEngine::CStoreSession> session,
+                   ShardedInputLog* log);
 
     aku_Status write(aku_Sample const& sample);
 
@@ -93,18 +105,24 @@ class Storage : public std::enable_shared_from_this<Storage> {
     mutable std::mutex lock_;
     SeriesMatcher global_matcher_;
     std::shared_ptr<MetadataStorage> metadata_;
+    std::shared_ptr<ShardedInputLog> inputlog_;
 
     void start_sync_worker();
 
     std::tuple<aku_Status, std::string> parse_query(const boost::property_tree::ptree &ptree,
                                                     QP::ReshapeRequest* req) const;
+
+    void run_inputlog_recovery(ShardedInputLog* ilog);
 public:
 
     // Create empty in-memory storage
     Storage();
 
-    // Open file-backed storage
-    Storage(const char* path);
+    /**
+     * @brief Open storage engine
+     * @param path is a path to main files
+     */
+    Storage(const char* path, const aku_FineTuneParams& params);
 
     /** C-tor for test */
     Storage(std::shared_ptr<MetadataStorage>            meta,

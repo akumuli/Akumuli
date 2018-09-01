@@ -48,25 +48,20 @@ typedef void (*aku_panic_handler_t)(const char* msg);
 /** Library configuration.
  */
 typedef struct {
-    //! Debug mode trigger
-    u32 debug_mode;
 
     //! Pointer to logging function, can be null
     aku_logger_cb_t logger;
 
-    //! 0 - huge tlbs disabled, other value - enabled
-    u32 enable_huge_tlb;
+    //! Max size of the input-log volume
+    u64 input_log_volume_size;
 
-    //! Consistency-speed tradeoff, 1 - max durability, 2 - tradeoff some durability for speed, 4 - max speed
-    u32 durability;
+    //! Number of volumes to keep
+    u64 input_log_volume_numb;
 
-    //! Number of data points that should be stored in one compressed chunk
-    u32 compression_threshold;
+    //! Input log max concurrency
+    u32 input_log_concurrency;
 
-    //! Windth of the sliding window
-    u64 window_size;
-
-    //! Cache size limit
-    u64 max_cache_size;
+    //! Path to input log root directory
+    const char* input_log_path;
 
 } aku_FineTuneParams;
