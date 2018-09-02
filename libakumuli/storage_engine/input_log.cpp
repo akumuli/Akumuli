@@ -711,8 +711,9 @@ std::tuple<aku_Status, int> ShardedInputLog::find_logs(const char* rootdir) {
         return std::make_tuple(AKU_ENOT_FOUND, -1);
     }
     u32 max_stream_id = -1;
-    for (auto it: boost::filesystem::directory_iterator(rootdir)) {
-        boost::filesystem::path path = it;
+    for (auto it = boost::filesystem::directory_iterator(rootdir);
+         it != boost::filesystem::directory_iterator(); it++) {
+        boost::filesystem::path path = *it;
         bool is_volume;
         u32 volume_id;
         u32 stream_id;
