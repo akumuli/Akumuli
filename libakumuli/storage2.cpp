@@ -376,6 +376,11 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     }
 
     if (params.input_log_path) {
+        Logger::msg(AKU_LOG_INFO, std::string("WAL enabled, path: ") +
+                                  params.input_log_path + ", nvolumes: " +
+                                  std::to_string(params.input_log_volume_numb) + ", volume-size: " +
+                                  std::to_string(params.input_log_volume_size));
+
         inputlog_.reset(new ShardedInputLog(params.input_log_concurrency,
                                             params.input_log_path,
                                             params.input_log_volume_numb,
@@ -389,7 +394,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     std::vector<aku_ParamId>    ids(nitems);
     std::vector<aku_Timestamp>  tss(nitems);
     std::vector<double>         xss(nitems);
-    Logger::msg(AKU_LOG_INFO, "Input log recovery started");
+    Logger::msg(AKU_LOG_INFO, "WAL recovery started");
     auto session = create_write_session();
     bool stop = false;
     while (stop) {
@@ -406,18 +411,18 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                 sample.payload.type     = AKU_PAYLOAD_FLOAT;
                 status = session->write(sample);
                 if (status == AKU_EBAD_ARG) {
-                    Logger::msg(AKU_LOG_INFO, "Input log recovery failed");
+                    Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
                     stop = true;
                     break;
                 }
             }
         }
         else if (status == AKU_ENO_DATA) {
-            Logger::msg(AKU_LOG_INFO, "Input log recovery completed");
+            Logger::msg(AKU_LOG_INFO, "WAL recovery completed");
             stop = true;
         }
         else {
-            Logger::msg(AKU_LOG_ERROR, "Input log recovery error: " + StatusUtil::str(status));
+            Logger::msg(AKU_LOG_ERROR, "WAL recovery error: " + StatusUtil::str(status));
             stop = true;
         }
     }

@@ -21,6 +21,11 @@ struct ServerSettings {
     int                           nworkers;
 };
 
+struct WALSettings {
+    std::string  path;
+    int          volume_size_bytes;
+    int          nvolumes;
+};
 
 /** Interface to query data.
   */

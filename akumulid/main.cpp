@@ -81,6 +81,19 @@ pool_size=1
 # port number
 port=4242
 
+# Write-Ahead-Log section (delete to disable)
+
+[WAL]
+# WAL location
+path=~/.akumuli/wal
+
+# Max volume size. Log records are added until file size
+# will exced configured value.
+volume_size=256MB
+
+# Number of log volumes to keep on disk per CPU core. E.g. with `volume_size` = 256MB
+# and `nvolumes` = 4 and 4 CPUs WAL will use 4GB at most (4*4*256MB).
+nvolumes=4
 
 
 # Logging configuration
@@ -171,9 +184,8 @@ struct ConfigFile {
         return conf.get<i32>("nvolumes");
     }
 
-    static u64 get_volume_size(PTree conf) {
+    static u64 get_memory_size(std::string strsize) {
         u64 result = 0;
-        auto strsize = conf.get<std::string>("volume_size", "4GB");
         try {
             result = boost::lexical_cast<u64>(strsize);
         } catch (boost::bad_lexical_cast const&) {
@@ -207,6 +219,20 @@ struct ConfigFile {
             result *= mul;
         }
         return result;
+
+    }
+
+    static u64 get_volume_size(PTree conf) {
+        auto strsize = conf.get<std::string>("volume_size", "4GB");
+        return get_memory_size(strsize);
+    }
+
+    static WALSettings get_wal_settings(PTree conf) {
+        WALSettings settings = {};
+        settings.path = conf.get<std::string>("WAL.path", "");
+        settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
+        settings.volume_size_bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
+        return settings;
     }
 
     static ServerSettings get_http_server(PTree conf) {
@@ -405,6 +431,7 @@ void cmd_run_server() {
     auto config                 = ConfigFile::read_config_file(config_path);
     auto path                   = ConfigFile::get_path(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
+    auto wal_config             = ConfigFile::get_wal_settings(config);
     auto full_path              = boost::filesystem::path(path) / "db.akumuli";
 
     if (!boost::filesystem::exists(full_path)) {
@@ -412,8 +439,17 @@ void cmd_run_server() {
         fmt << "**ERROR** database file doesn't exists at " << path;
         std::cout << cli_format(fmt.str()) << std::endl;
     } else {
-        auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
-        auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
+        aku_FineTuneParams params = {};
+        if (!wal_config.path.empty() && wal_config.nvolumes != 0 && wal_config.volume_size_bytes != 0) {
+            params.input_log_concurrency = 2048;  // This is a max value, the actual value is defined
+                                                  // by ingestion servers configuration.
+            params.input_log_path        = wal_config.path.data();
+            params.input_log_volume_numb = wal_config.nvolumes;
+            params.input_log_volume_size = wal_config.volume_size_bytes;
+        }
+
+        auto connection  = std::make_shared<AkumuliConnection>(full_path.c_str(), params);
+        auto qproc       = std::make_shared<QueryProcessor>(connection, 1000);
 
         SignalHandler sighandler;
         int srvid = 0;

@@ -85,11 +85,10 @@ int AkumuliSession::name_to_param_id_list(const char* begin, const char* end, ak
 
 // Connection //
 
-AkumuliConnection::AkumuliConnection(const char *path)
+AkumuliConnection::AkumuliConnection(const char *path, const aku_FineTuneParams& params)
     : dbpath_(path)
 {
     db_logger_.info() << "Open database at: " << path;
-    aku_FineTuneParams params = {};
     db_ = aku_open_database(dbpath_.c_str(), params);
 }
 

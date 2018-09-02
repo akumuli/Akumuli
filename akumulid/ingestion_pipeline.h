@@ -110,7 +110,7 @@ class AkumuliConnection : public DbConnection {
     aku_Database* db_;
 
 public:
-    AkumuliConnection(const char* path);
+    AkumuliConnection(const char* path, const aku_FineTuneParams &params);
 
     virtual ~AkumuliConnection() override;
 
