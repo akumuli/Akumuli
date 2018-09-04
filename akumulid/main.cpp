@@ -158,8 +158,7 @@ struct ConfigFile {
         return conf;
     }
 
-    static boost::filesystem::path get_path(PTree conf) {
-        std::string path = conf.get<std::string>("path");
+    static boost::filesystem::path expand_path(std::string path) {
         wordexp_t we;
         int err = wordexp(path.c_str(), &we, 0);
         if (err) {
@@ -178,6 +177,10 @@ struct ConfigFile {
         wordfree(&we);
         auto result = boost::filesystem::path(path);
         return result;
+    }
+
+    static boost::filesystem::path get_path(PTree conf) {
+        return expand_path(conf.get<std::string>("path"));
     }
 
     static i32 get_nvolumes(PTree conf) {
@@ -229,7 +232,11 @@ struct ConfigFile {
 
     static WALSettings get_wal_settings(PTree conf) {
         WALSettings settings = {};
-        settings.path = conf.get<std::string>("WAL.path", "");
+        auto path = expand_path(conf.get<std::string>("WAL.path", ""));
+        if (!boost::filesystem::exists(path)) {
+            throw std::runtime_error("WAL.path doesn't exist");
+        }
+        settings.path = path.string();
         settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
         settings.volume_size_bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
         return settings;

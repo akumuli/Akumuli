@@ -134,7 +134,7 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     case NBTreeAppendResult::FAIL_BAD_VALUE:
         return AKU_EBAD_ARG;
     };
-    if (ilog_ == nullptr) {
+    if (ilog_ == nullptr && shlog_ != nullptr) {
         if (tls_.get()) {
             ilog_ = tls_->log_;
         } else {
@@ -146,10 +146,15 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
             ilog_ = ptr->log_;
         }
     }
-    std::vector<u64> staleids;
-    auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
-    if (res == AKU_EOVERFLOW) {
-        storage_->close_specific_columns(staleids);
+    if (ilog_ != nullptr) {
+        std::vector<u64> staleids;
+        auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
+        if (res == AKU_EOVERFLOW) {
+            ilog_->rotate();
+            if (!staleids.empty()) {
+                storage_->close_specific_columns(staleids);
+            }
+        }
     }
     return AKU_SUCCESS;
 }
