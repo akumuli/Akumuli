@@ -896,6 +896,10 @@ void Storage::close() {
         metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }
     bstore_->flush();
+
+    // Delete WAL volumes
+    inputlog_->reopen();
+    inputlog_->delete_files();
 }
 
 void Storage::close_specific_columns(const std::vector<u64>& ids) {

@@ -65,7 +65,7 @@ struct LZ4Volume {
     // Input log frame.
     union Frame {
         char block[BLOCK_SIZE];
-        struct Partition {
+        struct DataEntry {
             u16 magic;
             u64 sequence_number;
             u32 size;
@@ -73,6 +73,13 @@ struct LZ4Volume {
             u64 tss[NUM_TUPLES];
             double xss[NUM_TUPLES];
         } part;
+        struct SNameEntry {
+            // \000 delimited array of new series names
+            char names[BLOCK_SIZE];
+        } sname;
+        struct RecoveryEntry {
+            u64 array[BLOCK_SIZE/sizeof(u64)];
+        } recovery;
     } frames_[2];
 
     char buffer_[LZ4_COMPRESSBOUND(BLOCK_SIZE)];
