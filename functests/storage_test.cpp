@@ -267,7 +267,7 @@ void LocalStorage::open() {
 
 void LocalStorage::delete_all() {
     std::string path = get_db_file_path();
-    auto status = aku_remove_database(path.c_str(), true);
+    auto status = aku_remove_database(path.c_str(), path.c_str(), true);
     throw_on_error(status);
 }
 

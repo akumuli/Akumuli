@@ -652,6 +652,9 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
         // Chose buffer with smallest id. The value is initialized with negative value
         // at start.
         buffer_ix_ = choose_next();
+        if (buffer_ix_ < 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
     }
     size_t outsize = 0;
     aku_Status outstatus = AKU_SUCCESS;

@@ -146,7 +146,7 @@ AKU_EXPORT aku_Status aku_create_database_ex(const char* base_file_name, const c
   * @param logger
   * @returns status
   */
-AKU_EXPORT aku_Status aku_remove_database(const char* file_name, bool force);
+AKU_EXPORT aku_Status aku_remove_database(const char* file_name, const char* wal_path, bool force);
 
 
 /** Open recenlty create storage.

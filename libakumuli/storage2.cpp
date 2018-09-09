@@ -36,6 +36,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/thread/barrier.hpp>
 
 #include "fcntl_compat.h"
 #include <cstdlib>
@@ -128,7 +129,7 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
         storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
         break;
     case NBTreeAppendResult::FAIL_BAD_ID:
-        AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
+        return AKU_ENOT_FOUND;
     case NBTreeAppendResult::FAIL_LATE_WRITE:
         return AKU_ELATE_WRITE;
     case NBTreeAppendResult::FAIL_BAD_VALUE:
@@ -367,7 +368,7 @@ Storage::Storage(const char* path)
         Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
         AKU_PANIC("Can't read rescue points");
     }
-    cstore_->open_or_restore(mapping, true);
+    cstore_->open_or_restore(mapping, false);
     start_sync_worker();
 }
 
@@ -405,6 +406,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     bool stop = false;
     u64 nsamples = 0;
     u64 nsegments = 0;
+    u64 nlost = 0;
     while (!stop) {
         aku_Status status;
         u32 outsize;
@@ -423,6 +425,9 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     stop = true;
                     break;
                 }
+                else if (status == AKU_EOVERFLOW || status == AKU_ENOT_FOUND) {
+                    nlost++;
+                }
                 else if (status == AKU_SUCCESS) {
                     nsamples++;
                 }
@@ -433,6 +438,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             Logger::msg(AKU_LOG_INFO, "WAL recovery completed");
             Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
             Logger::msg(AKU_LOG_INFO, std::to_string(nsamples) + " samples recovered");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nlost) + " samples lost");
             stop = true;
         }
         else {
@@ -440,6 +446,26 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             stop = true;
         }
     }
+    
+    // Close column store.
+    // Some columns were restored using the NBTree crash recovery algorithm
+    // and WAL replay. To delete old WAL volumes we have to close these columns.
+    // Another problem that is solved here is memory usage. WAL has a mechanism that is
+    // used to offload columns that was opened and didn't received any updates for a while.
+    // If all columns will be opened at start, this will be meaningless.
+    auto mapping = cstore_->close();
+    if (!mapping.empty()) {
+        for (auto kv: mapping) {
+            u64 id;
+            std::vector<u64> vals;
+            std::tie(id, vals) = kv;
+            metadata_->add_rescue_point(id, std::move(vals));
+        }
+        // Save finall mapping (should contain all affected columns)
+        metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+    }
+    bstore_->flush();
+
     ilog->reopen();
     ilog->delete_files();
 }
@@ -1229,7 +1255,7 @@ aku_Status Storage::new_database( const char     *base_file_name
     return AKU_SUCCESS;
 }
 
-aku_Status Storage::remove_storage(const char* file_name, bool force) {
+aku_Status Storage::remove_storage(const char* file_name, const char* wal_path, bool force) {
     if (!boost::filesystem::exists(file_name)) {
         return AKU_ENOT_FOUND;
     }
@@ -1285,6 +1311,14 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
     };
 
     std::for_each(volume_names.begin(), volume_names.end(), delete_file);
+
+    int card;
+    std::tie(status, card) = ShardedInputLog::find_logs(wal_path);
+    if (status == AKU_SUCCESS && card > 0) {
+        // Start recovery
+        auto ilog = std::make_shared<ShardedInputLog>(card, wal_path);
+        ilog->delete_files();
+    }
 
     return AKU_SUCCESS;
 }

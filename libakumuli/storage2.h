@@ -207,7 +207,7 @@ public:
       * @return AKU_SUCCESS on success or AKU_ENOT_PERMITTED if database contains data and `force` is false or
       *         AKU_EACCESS if database there is not enough priveleges to delete the files
       */
-    static aku_Status remove_storage(const char* file_name, bool force);
+    static aku_Status remove_storage(const char* file_name, const char *wal_path, bool force);
 
     boost::property_tree::ptree get_stats();
 };

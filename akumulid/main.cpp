@@ -511,12 +511,13 @@ void cmd_delete_database() {
 
     auto config     = ConfigFile::read_config_file(config_path);
     auto path       = ConfigFile::get_path(config);
+    auto wal_path   = ConfigFile::get_wal_settings(config).path;
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
         // TODO: don't delete database if it's not empty
         // FIXME: add command line argument --force to delete nonempty database
-        auto status = aku_remove_database(full_path.c_str(), true);
+        auto status = aku_remove_database(full_path.c_str(), wal_path.c_str(), true);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);

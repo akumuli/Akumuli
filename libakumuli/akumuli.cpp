@@ -219,7 +219,11 @@ public:
     }
 
     aku_Status add_sample(aku_Sample const& sample) {
-        return session_->write(sample);
+        aku_Status status = session_->write(sample);
+        if (status == AKU_ENOT_FOUND) {
+            AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
+        }
+        return status;
     }
 
     CursorImpl* query(const char* q) {
@@ -313,9 +317,9 @@ aku_Status aku_create_database( const char     *base_file_name
 }
 
 
-aku_Status aku_remove_database(const char* file_name, bool force) {
+aku_Status aku_remove_database(const char* file_name, const char* wal_path, bool force) {
 
-    return Storage::remove_storage(file_name, force);
+    return Storage::remove_storage(file_name, wal_path, force);
 }
 
 aku_Session* aku_create_session(aku_Database* db) {
