@@ -2344,7 +2344,6 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
     if (immutable_) {
         return AKU_EBAD_DATA;
     }
-    assert(p.count != 0);
     // Write data into buffer
     SubtreeRef* pref = subtree_cast(block_->get_data());
     auto it = pref + 1 + write_pos_;

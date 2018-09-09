@@ -322,7 +322,7 @@ Storage::Storage()
     start_sync_worker();
 }
 
-Storage::Storage(const char* path, const aku_FineTuneParams &params)
+Storage::Storage(const char* path)
     : done_{0}
     , close_barrier_(2)
 {
@@ -369,9 +369,12 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     }
     cstore_->open_or_restore(mapping, true);
     start_sync_worker();
+}
 
+void Storage::initialize_input_log(const aku_FineTuneParams &params) {
     if (params.input_log_path) {
         int ccr = 0;
+        aku_Status status;
         std::tie(status, ccr) = ShardedInputLog::find_logs(params.input_log_path);
         if (status == AKU_SUCCESS && ccr > 0) {
             // Start recovery
@@ -379,7 +382,6 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
             run_inputlog_recovery(ilog.get());
         }
     }
-
     if (params.input_log_path) {
         Logger::msg(AKU_LOG_INFO, std::string("WAL enabled, path: ") +
                                   params.input_log_path + ", nvolumes: " +
@@ -391,7 +393,6 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
                                             params.input_log_volume_numb,
                                             params.input_log_volume_size));
     }
-
 }
 
 void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
@@ -402,7 +403,9 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
     auto session = create_write_session();
     bool stop = false;
-    while (stop) {
+    u64 nsamples = 0;
+    u64 nsegments = 0;
+    while (!stop) {
         aku_Status status;
         u32 outsize;
         std::tie(status, outsize) = ilog->read_next(nitems, ids.data(), tss.data(), xss.data());
@@ -420,10 +423,16 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     stop = true;
                     break;
                 }
+                else if (status == AKU_SUCCESS) {
+                    nsamples++;
+                }
             }
+            nsegments++;
         }
         else if (status == AKU_ENO_DATA) {
             Logger::msg(AKU_LOG_INFO, "WAL recovery completed");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nsamples) + " samples recovered");
             stop = true;
         }
         else {
@@ -544,7 +553,7 @@ void dump_tree(std::ostream &stream,
                 stream << _tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
                 continue;
             }
-            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+            auto subtreeref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
             if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
                 NBTreeLeaf leaf(block);

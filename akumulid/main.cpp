@@ -85,7 +85,7 @@ port=4242
 
 [WAL]
 # WAL location
-path=~/.akumuli/wal
+path=~/.akumuli
 
 # Max volume size. Log records are added until file size
 # will exced configured value.

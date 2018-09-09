@@ -124,13 +124,16 @@ public:
      * @brief Open storage engine
      * @param path is a path to main files
      */
-    Storage(const char* path, const aku_FineTuneParams& params);
+    Storage(const char* path);
 
     /** C-tor for test */
     Storage(std::shared_ptr<MetadataStorage>            meta,
             std::shared_ptr<StorageEngine::BlockStore>  bstore,
             std::shared_ptr<StorageEngine::ColumnStore> cstore,
             bool                                        start_worker);
+
+    //! Perform input log recovery if needed and initialize input log
+    void initialize_input_log(const aku_FineTuneParams& params);
 
     //! Match series name. If series with such name doesn't exists - create it.
     aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
