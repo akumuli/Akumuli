@@ -3697,7 +3697,7 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
     UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
                              //       recursively (maybe even many times).
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        init();
     }
     if (ts < last_) {
         return NBTreeAppendResult::FAIL_LATE_WRITE;
@@ -3981,10 +3981,10 @@ void NBTreeExtentsList::init() {
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begin, aku_Timestamp end) const {
-    SharedLock lock(lock_);
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        const_cast<NBTreeExtentsList*>(this)->force_init();
     }
+    SharedLock lock(lock_);
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
@@ -4007,10 +4007,10 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begi
                                                               aku_Timestamp end,
                                                               const ValueFilter& filter) const
 {
-    SharedLock lock(lock_);
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        const_cast<NBTreeExtentsList*>(this)->force_init();
     }
+    SharedLock lock(lock_);
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
@@ -4030,10 +4030,10 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begi
 }
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::aggregate(aku_Timestamp begin, aku_Timestamp end) const {
-    SharedLock lock(lock_);
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        const_cast<NBTreeExtentsList*>(this)->force_init();
     }
+    SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
@@ -4054,10 +4054,10 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::aggregate(aku_Timestamp be
 }
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) const {
-    SharedLock lock(lock_);
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        const_cast<NBTreeExtentsList*>(this)->force_init();
     }
+    SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
@@ -4085,10 +4085,10 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate_filter(aku
 }
 
 std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const {
-    SharedLock lock(lock_);
     if (!initialized_) {
-        AKU_PANIC("NB+tree not imitialized");
+        const_cast<NBTreeExtentsList*>(this)->force_init();
     }
+    SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
     if (begin < end) {
         for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {

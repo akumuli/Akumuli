@@ -108,6 +108,7 @@ class Storage : public std::enable_shared_from_this<Storage> {
     SeriesMatcher global_matcher_;
     std::shared_ptr<MetadataStorage> metadata_;
     std::shared_ptr<ShardedInputLog> inputlog_;
+    std::string input_log_path_;
 
     void start_sync_worker();
 

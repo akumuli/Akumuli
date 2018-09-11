@@ -393,6 +393,8 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
                                             params.input_log_path,
                                             params.input_log_volume_numb,
                                             params.input_log_volume_size));
+
+        input_log_path_ = params.input_log_path;
     }
 }
 
@@ -898,8 +900,17 @@ void Storage::close() {
     bstore_->flush();
 
     // Delete WAL volumes
-    inputlog_->reopen();
-    inputlog_->delete_files();
+    inputlog_.reset();
+    if (!input_log_path_.empty()) {
+        int ccr = 0;
+        aku_Status status;
+        std::tie(status, ccr) = ShardedInputLog::find_logs(input_log_path_.c_str());
+        if (status == AKU_SUCCESS && ccr > 0) {
+            // Start recovery
+            auto ilog = std::make_shared<ShardedInputLog>(ccr, input_log_path_.c_str());
+            ilog->delete_files();
+        }
+    }
 }
 
 void Storage::close_specific_columns(const std::vector<u64>& ids) {
@@ -909,12 +920,9 @@ void Storage::close_specific_columns(const std::vector<u64>& ids) {
             u64 id;
             std::vector<u64> vals;
             std::tie(id, vals) = kv;
-            metadata_->add_rescue_point(id, std::move(vals));
+            _update_rescue_points(id, std::move(vals));
         }
-        // Save finall mapping (should contain all affected columns)
-        metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }
-    bstore_->flush();
 }
 
 

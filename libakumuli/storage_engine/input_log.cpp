@@ -723,7 +723,9 @@ std::tuple<aku_Status, int> ShardedInputLog::find_logs(const char* rootdir) {
         u32 stream_id;
         auto fn = path.filename().string();
         std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
-        max_stream_id = std::max(static_cast<i32>(stream_id), max_stream_id);
+        if (is_volume) {
+            max_stream_id = std::max(static_cast<i32>(stream_id), max_stream_id);
+        }
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(max_stream_id + 1));
 }
