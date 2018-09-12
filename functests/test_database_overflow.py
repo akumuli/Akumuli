@@ -124,6 +124,13 @@ def main(path):
 
         print("Sending messages...")
         prevspace = get_free_space()
+
+        dt = datetime.datetime.utcnow()
+        delta = datetime.timedelta(milliseconds=1)
+        for it in att.generate_messages(dt, delta, 200000, 'evicted', tag=["foo", "bar"]):
+            # Send messages to ensure that some data will be saved on disk
+            chan.send(it)
+
         batch_size = 1000
         for ix, it in enumerate(att.infinite_msg_stream(batch_size, 'temp', tag='test')):
             chan.send(it)
@@ -137,6 +144,22 @@ def main(path):
 
         # Read data back if backward direction (cached values should be included)
         read_in_backward_direction(batch_size)
+    except:
+        traceback.print_exc()
+        sys.exit(1)
+    finally:
+        print("Stopping server...")
+        akumulid.stop()
+        time.sleep(5)
+
+    try:
+        akumulid.serve()
+        time.sleep(5)
+
+        chan = TCPChan(host, tcpport)
+        for it in att.generate_messages(dt + datetime.timedelta(milliseconds=2000), delta, 2000, 'evicted', tag=["foo", "bar"]):
+            # Send next 2000 messages that belongs to evicted series
+            chan.send(it)
     except:
         traceback.print_exc()
         sys.exit(1)
