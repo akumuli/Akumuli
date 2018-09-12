@@ -157,7 +157,7 @@ def main(path):
         time.sleep(5)
 
         chan = TCPChan(host, tcpport)
-        for it in att.generate_messages(dt + datetime.timedelta(milliseconds=2000), delta, 2000, 'evicted', tag=["foo", "bar"]):
+        for it in att.generate_messages(dt + datetime.timedelta(milliseconds=200000), delta, 2000, 'evicted', tag=["foo", "bar"]):
             # Send next 2000 messages that belongs to evicted series
             chan.send(it)
     except:
