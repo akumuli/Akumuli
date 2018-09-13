@@ -22,7 +22,6 @@
 #include <sstream>
 #include <stack>
 #include <array>
-#include <fstream>
 
 // App
 #include "nbtree.h"
@@ -2242,7 +2241,7 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::split(std::shared_ptr<BlockStore> b
 // //////////////////////// //
 
 NBTreeSuperblock::NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
-    : block_(std::make_shared<Block>())
+    : block_(std::make_shared<Block>(AKU_BLOCK_SIZE/4))
     , id_(id)
     , write_pos_(0)
     , fanout_index_(fanout)
@@ -2344,6 +2343,19 @@ aku_Status NBTreeSuperblock::append(const SubtreeRef &p) {
         return AKU_EBAD_DATA;
     }
     assert(p.count != 0);
+    // Grow block. This loop is expected to do at most one iteration.
+    while (block_->get_size() < (1 + write_pos_)*sizeof(SubtreeRef)) {
+        u32 shardsize = AKU_BLOCK_SIZE / 4;
+        if (block_->get_size() <= shardsize) {
+            block_->resize(shardsize * 2);
+        }
+        else if (block_->get_size() <= shardsize * 2) {
+            block_->resize(shardsize * 3);
+        }
+        else if (block_->get_size() <= shardsize * 3) {
+            block_->resize(shardsize * 4);
+        }
+    }
     // Write data into buffer
     SubtreeRef* pref = subtree_cast(block_->get_data());
     auto it = pref + 1 + write_pos_;

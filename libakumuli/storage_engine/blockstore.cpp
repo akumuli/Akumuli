@@ -120,6 +120,19 @@ Block::Block()
 {
 }
 
+Block::Block(size_t size)
+    : data_(static_cast<size_t>(size), 0)
+    , addr_(EMPTY_ADDR)
+    , zptr_(nullptr)
+{
+    assert(size <= AKU_BLOCK_SIZE);
+}
+
+void Block::resize(size_t newsz) {
+    assert(newsz >= size);
+    data_.resize(newsz);
+}
+
 const u8* Block::get_data() const {
     return zptr_ ? zptr_ : data_.data();
 }

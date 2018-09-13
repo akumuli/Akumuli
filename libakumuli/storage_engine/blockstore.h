@@ -239,6 +239,10 @@ public:
 
     Block();
 
+    explicit Block(size_t size);
+
+    void resize(size_t newsz);
+
     bool is_readonly() const;
 
     const u8* get_data() const;
