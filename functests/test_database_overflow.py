@@ -30,7 +30,7 @@ class TCPChan:
     def send(self, data):
         self.__sock.send(data)
 
-def read_in_backward_direction(batch_size):
+def read_in_backward_direction(batch_size): 
     """Read all data in backward direction.
     All data should be received as expected.
     Some data should be lost at the begining.
@@ -97,6 +97,25 @@ def read_in_backward_direction(batch_size):
 
     print("Test passed")
 
+
+def require_empty_response(metric_name):
+    """Read all data in backward direction.
+    No data should be returned, otherwise the error will be generated.
+    """
+    begin = datetime.datetime(year=2100, month=1, day=1)
+    end = datetime.datetime(year=1970, month=1, day=1)
+    query = att.makequery(metric_name, begin, end, output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(host, httpport)
+    response = urllib.urlopen(queryurl, json.dumps(query))
+
+    iterations = 0
+    print("Test #2 - read evicted")
+    for line in response:
+        raise ValueError("Unexpected value returned: " + line)
+
+    print("Test passed")
+
+
 def main(path):
     akumulid = att.create_akumulid(path)
     # delete database
@@ -105,9 +124,30 @@ def main(path):
     akumulid.create_test_database()
     # start ./akumulid server
     print("Starting server...")
-    akumulid.serve()
-    time.sleep(5)
+
+    dt = datetime.datetime.utcnow()
+    delta = datetime.timedelta(milliseconds=1)
     try:
+        akumulid.serve()
+        time.sleep(5)
+        
+        chan = TCPChan(host, tcpport)
+
+        # This data will be evicted from the database
+        for it in att.generate_messages(dt, delta, 2000, 'evicted', tag=["foo", "bar"]):
+            chan.send(it)
+    except:
+        traceback.print_exc()
+        sys.exit(1)
+    finally:
+        print("Stopping server...")
+        akumulid.stop()
+        time.sleep(5)
+
+    try:
+        akumulid.serve()
+        time.sleep(5)
+
         # fill data in
         statsurl = "http://{0}:{1}/api/stats".format(host, httpport)
         chan = TCPChan(host, tcpport)
@@ -124,12 +164,6 @@ def main(path):
 
         print("Sending messages...")
         prevspace = get_free_space()
-
-        dt = datetime.datetime.utcnow()
-        delta = datetime.timedelta(milliseconds=1)
-        for it in att.generate_messages(dt, delta, 200000, 'evicted', tag=["foo", "bar"]):
-            # Send messages to ensure that some data will be saved on disk
-            chan.send(it)
 
         batch_size = 1000
         for ix, it in enumerate(att.infinite_msg_stream(batch_size, 'temp', tag='test')):
@@ -156,8 +190,10 @@ def main(path):
         akumulid.serve()
         time.sleep(5)
 
+        require_empty_response('evicted')
+
         chan = TCPChan(host, tcpport)
-        for it in att.generate_messages(dt + datetime.timedelta(milliseconds=200000), delta, 2000, 'evicted', tag=["foo", "bar"]):
+        for it in att.generate_messages(dt + datetime.timedelta(milliseconds=2000), delta, 2000, 'evicted', tag=["foo", "bar"]):
             # Send next 2000 messages that belongs to evicted series
             chan.send(it)
     except:
