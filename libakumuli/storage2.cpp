@@ -129,6 +129,7 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
         storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
         break;
     case NBTreeAppendResult::FAIL_BAD_ID:
+        Logger::msg(AKU_LOG_ERROR, "Invalid session cache, id = " + std::to_string(sample.paramid));
         return AKU_ENOT_FOUND;
     case NBTreeAppendResult::FAIL_LATE_WRITE:
         return AKU_ELATE_WRITE;
