@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.54
+--------------
+
+BUG FIX
+
+* Disable superblock compression
+* Fix recovery with lost metadata
+
 Version 0.7.53
 --------------
 
