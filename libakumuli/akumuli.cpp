@@ -219,11 +219,7 @@ public:
     }
 
     aku_Status add_sample(aku_Sample const& sample) {
-        aku_Status status = session_->write(sample);
-        if (status == AKU_ENOT_FOUND) {
-            AKU_PANIC("Invalid session cache, id = " + std::to_string(sample.paramid));
-        }
-        return status;
+        return session_->write(sample);
     }
 
     CursorImpl* query(const char* q) {
