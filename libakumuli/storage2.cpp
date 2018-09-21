@@ -383,8 +383,6 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
             auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
             run_inputlog_recovery(ilog.get());
         }
-    }
-    if (params.input_log_path) {
         Logger::msg(AKU_LOG_INFO, std::string("WAL enabled, path: ") +
                                   params.input_log_path + ", nvolumes: " +
                                   std::to_string(params.input_log_volume_numb) + ", volume-size: " +
