@@ -2,6 +2,7 @@
 #include "log_iface.h"
 #include "status_util.h"
 #include "util.h"
+#include "roaring.hh"
 
 #include <regex>
 #include <boost/lexical_cast.hpp>
@@ -182,6 +183,7 @@ LZ4Volume::LZ4Volume(const char* file_name)
     , file_(_open_file_ro(file_name, pool_.get()))
     , file_size_(_get_file_size(file_.get()))
     , max_file_size_(0)
+    , bitmap_(std::make_shared<Roaring64Map>())
     , is_read_only_(true)
     , bytes_to_read_(file_size_)
     , elements_to_read_(0)
@@ -212,7 +214,7 @@ void LZ4Volume::close() {
 }
 
 aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
-    bitmap_.add(id);
+    bitmap_->add(id);
     Frame& frame = frames_[pos_];
     frame.part.ids[frame.part.size] = id;
     frame.part.tss[frame.part.size] = timestamp;
@@ -291,7 +293,7 @@ void LZ4Volume::delete_file() {
 }
 
 const Roaring64Map& LZ4Volume::get_index() const {
-    return bitmap_;
+    return *bitmap_;
 }
 
 aku_Status LZ4Volume::flush() {

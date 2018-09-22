@@ -24,7 +24,11 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
-aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping, bool force_init) {
+aku_Status ColumnStore::open_or_restore(
+        std::unordered_map<aku_ParamId,
+        std::vector<StorageEngine::LogicAddr>> const& mapping,
+        bool force_init)
+{
     for (auto it: mapping) {
         aku_ParamId id = it.first;
         std::vector<LogicAddr> const& rescue_points = it.second;
@@ -48,6 +52,10 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
             // Repair is performed on initialization. We don't want to postprone this process
             // since it will introduce runtime penalties.
             columns_[id]->force_init();
+            if (force_init == false) {
+                // Close the tree until it will be acessed first
+                columns_[id]->close();
+            }
         }
     }
     return AKU_SUCCESS;

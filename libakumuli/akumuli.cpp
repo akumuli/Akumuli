@@ -252,7 +252,7 @@ public:
         if (path == std::string(":memory:")) {
             storage_ = std::make_shared<Storage>();
         } else {
-            storage_ = std::make_shared<Storage>(path);
+            storage_ = std::make_shared<Storage>(path, params);
             storage_->initialize_input_log(params);
         }
     }

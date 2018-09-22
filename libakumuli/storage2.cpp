@@ -324,7 +324,7 @@ Storage::Storage()
     start_sync_worker();
 }
 
-Storage::Storage(const char* path)
+Storage::Storage(const char* path, const aku_FineTuneParams &params)
     : done_{0}
     , close_barrier_(2)
 {
@@ -369,7 +369,19 @@ Storage::Storage(const char* path)
         Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
         AKU_PANIC("Can't read rescue points");
     }
-    cstore_->open_or_restore(mapping, false);
+    // There are two possible configurations 1) WAL is disabled 2) WAL is enabled
+    // If WAL is disabled, Akumuli should work as usual. This means that we have
+    // to call 'force_init' for every tree. This will use maximum amount of memory
+    // but will increase performance in many cases, because we wan't need to read
+    // anything from disk before writing. In this mode every nbtree instance is
+    // always loaded into memory.
+    // If WAL is enabled we don't need to call 'force_init' because in this case
+    // every nbtree instance is not loaded into memory until something have to be
+    // written into it. In this case it gets loaded into memory. When the data that
+    // belongs to this nbtee instance gets evicted from WAL we will have to close
+    // the tree (and write it's content to disk). It can slow down things a bit
+    // but the data will be safe.
+    cstore_->open_or_restore(mapping, params.input_log_path == nullptr);
     start_sync_worker();
 }
 

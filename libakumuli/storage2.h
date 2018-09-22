@@ -125,7 +125,8 @@ public:
      * @brief Open storage engine
      * @param path is a path to main files
      */
-    Storage(const char* path);
+    Storage(const char*                                 path,
+            const aku_FineTuneParams&                   params);
 
     /** C-tor for test */
     Storage(std::shared_ptr<MetadataStorage>            meta,

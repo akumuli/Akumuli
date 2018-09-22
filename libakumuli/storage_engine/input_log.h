@@ -13,8 +13,11 @@
 #include <boost/filesystem.hpp>
 
 #include "akumuli_def.h"
-#include "roaring.hh"
 #include "lz4.h"
+
+
+// Fwd declaration
+class Roaring64Map;
 
 namespace Akumuli {
 
@@ -91,7 +94,7 @@ struct LZ4Volume {
     AprFilePtr file_;
     size_t file_size_;
     const size_t max_file_size_;
-    Roaring64Map bitmap_;
+    std::shared_ptr<Roaring64Map> bitmap_;
     const bool is_read_only_;
     i64 bytes_to_read_;
     int elements_to_read_;  // in current frame
