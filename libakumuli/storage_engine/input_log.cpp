@@ -166,6 +166,7 @@ LZ4Volume::LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volu
     , file_(_open_file(file_name, pool_.get()))
     , file_size_(0)
     , max_file_size_(volume_size)
+    , bitmap_(std::make_shared<Roaring64Map>())
     , is_read_only_(false)
     , bytes_to_read_(0)
     , elements_to_read_(0)
