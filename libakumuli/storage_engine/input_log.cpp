@@ -4,7 +4,7 @@
 #include "util.h"
 #include "roaring.hh"
 
-#include <regex>
+#include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 #include <chrono>
 
@@ -319,12 +319,14 @@ aku_Status LZ4Volume::flush() {
 
 static std::tuple<bool, u32, u32> parse_filename(const std::string& name) {
     static const char* exp = "inputlog(\\d+)_(\\d+)\\.ils";
-    static const std::regex re(exp);
-    std::smatch smatch;
-    if (std::regex_search(name, smatch, re) && smatch.size() > 2) {
-        auto volume_id = boost::lexical_cast<u32>(smatch[1].str());
-        auto stream_id = boost::lexical_cast<u32>(smatch[2].str());
-        return std::make_tuple(true, volume_id, stream_id);
+    static const boost::regex re(exp);
+    boost::smatch smatch;
+    if (boost::regex_search(name, smatch, re) && smatch.size() > 2) {
+        try {
+            auto volume_id = boost::lexical_cast<u32>(smatch[1].str());
+            auto stream_id = boost::lexical_cast<u32>(smatch[2].str());
+            return std::make_tuple(true, volume_id, stream_id);
+        } catch (const boost::bad_lexical_cast&) {}
     }
     return std::make_tuple(false, 0, 0);
 }
