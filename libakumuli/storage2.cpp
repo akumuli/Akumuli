@@ -25,6 +25,7 @@
 #include "status_util.h"
 #include "datetime.h"
 #include "akumuli_version.h"
+#include "roaring.hh"
 
 #include <algorithm>
 #include <atomic>
@@ -414,8 +415,8 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     std::vector<aku_ParamId>    ids(nitems);
     std::vector<aku_Timestamp>  tss(nitems);
     std::vector<double>         xss(nitems);
+    Roaring64Map updated_ids;
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
-    auto session = create_write_session();
     bool stop = false;
     u64 nsamples = 0;
     u64 nsegments = 0;
@@ -432,18 +433,33 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                 sample.payload.float64  = xss[ix];
                 sample.payload.size     = sizeof(aku_Sample);
                 sample.payload.type     = AKU_PAYLOAD_FLOAT;
-                status = session->write(sample);
-                if (status == AKU_EBAD_ARG) {
+                auto result = cstore_->recovery_write(sample,
+                                                      updated_ids.contains(sample.paramid));
+                    // In a normal situation, Akumuli allows duplicates (data-points
+                    // with the same timestamp). But during recovery, this leads to
+                    // the following problem. Recovery procedure will replay the log
+                    // and try to add every value registered by it. The last value
+                    // stored inside the NB+tree instance will be added second time
+                    // by the replay. To prevent it this code disables the ability
+                    // to add duplicates until the first value will be successfully
+                    // added to the NB+tree instance. The progress is tracked
+                    // per-series using the bitmap (updated_ids).
+                switch(result) {
+                case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
                     Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
                     stop = true;
                     break;
-                }
-                else if (status == AKU_EOVERFLOW || status == AKU_ENOT_FOUND) {
+                case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
                     nlost++;
-                }
-                else if (status == AKU_SUCCESS) {
+                    break;
+                case StorageEngine::NBTreeAppendResult::OK_FLUSH_NEEDED:
+                case StorageEngine::NBTreeAppendResult::OK:
+                    updated_ids.add(sample.paramid);
                     nsamples++;
-                }
+                    break;
+                default:
+                    break;
+                };
             }
             nsegments++;
         }

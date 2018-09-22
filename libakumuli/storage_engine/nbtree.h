@@ -658,7 +658,7 @@ public:
       * This operation can fail if value is out of order.
       * On success result is OK or OK_FLUSH_NEEDED (if rescue points list was changed).
       */
-    NBTreeAppendResult append(aku_Timestamp ts, double value);
+    NBTreeAppendResult append(aku_Timestamp ts, double value, bool allow_duplicate_timestamps=true);
 
     /**
      * @brief search function
@@ -747,6 +747,7 @@ public:
      */
     std::tuple<size_t, size_t> bytes_used() const;
 };
+
 
 /**
  * @brief Initialize SubtreeRef by reading leaf node (addr field is not set)

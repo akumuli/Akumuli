@@ -3668,13 +3668,13 @@ std::tuple<aku_Status, LogicAddr> NBTreeExtentsList::_split(aku_Timestamp pivot)
     return std::make_tuple(status, paddr);
 }
 
-NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value) {
+NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value, bool allow_duplicate_timestamps) {
     UniqueLock lock(lock_);  // NOTE: NBTreeExtentsList::append(subtree) can be called from here
                              //       recursively (maybe even many times).
     if (!initialized_) {
         init();
     }
-    if (ts < last_) {
+    if (allow_duplicate_timestamps ? ts < last_ : ts <= last_) {
         return NBTreeAppendResult::FAIL_LATE_WRITE;
     }
     last_ = ts;

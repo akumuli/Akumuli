@@ -100,6 +100,13 @@ public:
     NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
 
+    /**
+     * @brief Write sample to data-store during crash recovery
+     * @param sample to write
+     * @return write status
+     */
+    NBTreeAppendResult recovery_write(aku_Sample const& sample, bool allow_duplicates);
+
     size_t _get_uncommitted_memory() const;
 
     //! For debug reports

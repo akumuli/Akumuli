@@ -156,6 +156,17 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     return NBTreeAppendResult::FAIL_BAD_ID;
 }
 
+NBTreeAppendResult ColumnStore::recovery_write(aku_Sample const& sample, bool allow_duplicates)
+{
+    std::lock_guard<std::mutex> lock(table_lock_);
+    aku_ParamId id = sample.paramid;
+    auto it = columns_.find(id);
+    if (it != columns_.end()) {
+        auto tree = it->second;
+        return tree->append(sample.timestamp, sample.payload.float64, allow_duplicates);
+    }
+    return NBTreeAppendResult::FAIL_BAD_ID;
+}
 
 // ////////////////////// //
 //      WriteSession      //
