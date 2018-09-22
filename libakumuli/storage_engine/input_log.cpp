@@ -46,7 +46,7 @@ static AprPoolPtr _make_apr_pool() {
     apr_status_t status = apr_pool_create(&mem_pool, NULL);
     panic_on_error(status, "Can't create APR pool");
     AprPoolPtr pool(mem_pool, &apr_pool_destroy);
-    return std::move(pool);
+    return pool;
 }
 
 static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
@@ -54,7 +54,7 @@ static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
     apr_status_t status = apr_file_open(&pfile, file_name, APR_WRITE|APR_BINARY|APR_CREATE, APR_OS_DEFAULT, pool);
     panic_on_error(status, "Can't open file");
     AprFilePtr file(pfile, &_close_apr_file);
-    return std::move(file);
+    return file;
 }
 
 static AprFilePtr _open_file_ro(const char* file_name, apr_pool_t* pool) {
@@ -62,7 +62,7 @@ static AprFilePtr _open_file_ro(const char* file_name, apr_pool_t* pool) {
     apr_status_t status = apr_file_open(&pfile, file_name, APR_READ|APR_BINARY, APR_OS_DEFAULT, pool);
     panic_on_error(status, "Can't open file");
     AprFilePtr file(pfile, &_close_apr_file);
-    return std::move(file);
+    return file;
 }
 
 static size_t _get_file_size(apr_file_t* file) {
