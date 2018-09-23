@@ -25,7 +25,6 @@
 #include "status_util.h"
 #include "datetime.h"
 #include "akumuli_version.h"
-#include "roaring.hh"
 
 #include <algorithm>
 #include <atomic>
@@ -415,7 +414,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     std::vector<aku_ParamId>    ids(nitems);
     std::vector<aku_Timestamp>  tss(nitems);
     std::vector<double>         xss(nitems);
-    Roaring64Map updated_ids;
+    std::unordered_set<aku_ParamId> updated_ids;
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
     bool stop = false;
     u64 nsamples = 0;
@@ -434,7 +433,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                 sample.payload.size     = sizeof(aku_Sample);
                 sample.payload.type     = AKU_PAYLOAD_FLOAT;
                 auto result = cstore_->recovery_write(sample,
-                                                      updated_ids.contains(sample.paramid));
+                                                      updated_ids.count(sample.paramid));
                     // In a normal situation, Akumuli allows duplicates (data-points
                     // with the same timestamp). But during recovery, this leads to
                     // the following problem. Recovery procedure will replay the log
@@ -443,7 +442,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     // by the replay. To prevent it this code disables the ability
                     // to add duplicates until the first value will be successfully
                     // added to the NB+tree instance. The progress is tracked
-                    // per-series using the bitmap (updated_ids).
+                    // per-series using the map (updated_ids).
                 switch(result) {
                 case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
                     Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
@@ -454,7 +453,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     break;
                 case StorageEngine::NBTreeAppendResult::OK_FLUSH_NEEDED:
                 case StorageEngine::NBTreeAppendResult::OK:
-                    updated_ids.add(sample.paramid);
+                    updated_ids.insert(sample.paramid);
                     nsamples++;
                     break;
                 default:
