@@ -214,20 +214,106 @@ void LZ4Volume::close() {
     file_.reset();
 }
 
-aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
-    bitmap_->add(id);
+
+aku_Status LZ4Volume::flush_current_frame(FrameType type) {
+    auto status = write(pos_);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    pos_ = (pos_ + 1) % 2;
+    clear(pos_);
     Frame& frame = frames_[pos_];
+    frame.frame_type = type;
+    return AKU_SUCCESS;
+}
+
+aku_Status LZ4Volume::require_frame_type(FrameType type) {
+    Frame& frame = frames_[pos_];
+    if (frame.frame_type == FrameType::EMPTY) {
+        frame.frame_type = type;
+    }
+    else if (frame.frame_type != type) {
+        flush_current_frame(type);
+    }
+    return AKU_SUCCESS;
+}
+
+aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
+    Frame& frame = frames_[pos_];
+    auto status = require_frame_type(FrameType::DATA_ENTRY);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    bitmap_->add(id);
     frame.part.ids[frame.part.size] = id;
     frame.part.tss[frame.part.size] = timestamp;
     frame.part.xss[frame.part.size] = value;
     frame.part.size++;
     if (frame.part.size == NUM_TUPLES) {
-        auto status = write(pos_);
+        status = write(pos_);
         if (status != AKU_SUCCESS) {
             return status;
         }
         pos_ = (pos_ + 1) % 2;
         clear(pos_);
+    }
+    if(file_size_ >= max_file_size_) {
+        return AKU_EOVERFLOW;
+    }
+    return AKU_SUCCESS;
+}
+
+aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
+    auto status = require_frame_type(FrameType::DATA_ENTRY);
+    if (status != AKU_SUCCESS) {
+        return status;
+    }
+    Frame* frame = &frames_[pos_];
+    auto nseries = frame->sname.nseries;
+
+    // Get write offset and space left
+    auto get_space_and_offset = [](const Frame& f) {
+        union {
+            u64 value;
+            struct {
+                u32 lo;
+                u32 hi;
+            } components;
+        } bits;
+        u32 write_offset = 0;
+        u32 space_left   = static_cast<u32>(sizeof(f.sname.names) - sizeof(u64) * 2);
+        if (f.sname.nseries != 0) {
+            auto ix = -1 * (f.sname.nseries - 1);
+            bits.value = f.sname.vector[ix * 2];
+            write_offset = bits.components.hi + bits.components.lo;
+            space_left  -= write_offset + ix * sizeof(u64) * 2;
+        }
+        return std::make_tuple(write_offset, space_left);
+    };
+    u32 write_offset;
+    u32 space_left;
+    std::tie(write_offset, space_left) = get_space_and_offset(*frame);
+    if (len > space_left) {
+        status = flush_current_frame(FrameType::SNAME_ENTRY);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        frame = &frames_[pos_];
+    }
+    // Do the actual write
+    auto dest = frame->sname.names + write_offset;
+    memcpy(dest, sname, len);
+    auto ix = nseries * -2;
+    frame->sname.vector[ix] = len | (static_cast<u64>(write_offset) << 32);
+    frame->sname.vector[ix - 1] = id;
+    frame->sname.nseries++;
+    std::tie(write_offset, space_left) = get_space_and_offset(*frame);
+    static const u32 SIZE_THRESHOLD = 64;
+    if (space_left < SIZE_THRESHOLD) {
+        status = flush_current_frame(FrameType::SNAME_ENTRY);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
     }
     if(file_size_ >= max_file_size_) {
         return AKU_EOVERFLOW;

@@ -56,19 +56,31 @@ struct LogSequencer {
     u64 next();
 };
 
+#define AKU_PACKED __attribute__((__packed__))
+
 /** LZ4 compressed volume for single-threaded use.
  */
 struct LZ4Volume {
     std::string path_;
+
     enum {
         BLOCK_SIZE = 0x2000,
         FRAME_TUPLE_SIZE = sizeof(u64)*3,
         NUM_TUPLES = (BLOCK_SIZE - 3*sizeof(u32)) / FRAME_TUPLE_SIZE,
     };
-    // Input log frame.
+
+    enum class FrameType : u8 {
+        EMPTY = 0,
+        DATA_ENTRY = 1,
+        SNAME_ENTRY = 2,
+        RECOVERY_ENTRY = 4,
+    };
+
     union Frame {
+        FrameType frame_type;
         char block[BLOCK_SIZE];
         struct DataEntry {
+            FrameType frame_type;
             u16 magic;
             u64 sequence_number;
             u32 size;
@@ -77,10 +89,13 @@ struct LZ4Volume {
             double xss[NUM_TUPLES];
         } part;
         struct SNameEntry {
-            // \000 delimited array of new series names
-            char names[BLOCK_SIZE];
+            FrameType frame_type;
+            u16 nseries;
+            char names[BLOCK_SIZE - sizeof(FrameType) - sizeof(u16)];
+            u64 vector[0];
         } sname;
         struct RecoveryEntry {
+            FrameType frame_type;
             u64 array[BLOCK_SIZE/sizeof(u64)];
         } recovery;
     } frames_[2];
@@ -106,6 +121,19 @@ struct LZ4Volume {
 
     std::tuple<aku_Status, size_t> read(int i);
 
+    /** Check if the current frame is of required type.
+      * If this is the case the method will do nothing
+      * and return AKU_SUCCESS. If the current frame has
+      * different type the method will flush it. If the
+      * frame is empty it will be initialized for the
+      * specific type.
+      */
+    aku_Status require_frame_type(FrameType type);
+
+    /** Writes current frame to log. Set type of the
+      * next frame to 'type'.
+      */
+    aku_Status flush_current_frame(FrameType type);
 public:
     /**
      * @brief Create empty volume
@@ -127,6 +155,8 @@ public:
     size_t file_size() const;
 
     aku_Status append(u64 id, u64 timestamp, double value);
+
+    aku_Status append(u64 id, const char* sname, u32 len);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)
@@ -153,6 +183,8 @@ public:
     //! Flush current frame to disk.
     aku_Status flush();
 };
+
+#undef AKU_PACKED
 
 class InputLog {
     typedef boost::filesystem::path Path;
