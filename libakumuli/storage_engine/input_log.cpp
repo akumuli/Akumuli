@@ -223,16 +223,16 @@ aku_Status LZ4Volume::flush_current_frame(FrameType type) {
     pos_ = (pos_ + 1) % 2;
     clear(pos_);
     Frame& frame = frames_[pos_];
-    frame.frame_type = type;
+    frame.header.frame_type = type;
     return AKU_SUCCESS;
 }
 
 aku_Status LZ4Volume::require_frame_type(FrameType type) {
     Frame& frame = frames_[pos_];
-    if (frame.frame_type == FrameType::EMPTY) {
-        frame.frame_type = type;
+    if (frame.header.frame_type == FrameType::EMPTY) {
+        frame.header.frame_type = type;
     }
-    else if (frame.frame_type != type) {
+    else if (frame.header.frame_type != type) {
         flush_current_frame(type);
     }
     return AKU_SUCCESS;
@@ -269,7 +269,7 @@ aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
         return status;
     }
     Frame* frame = &frames_[pos_];
-    auto nseries = frame->sname.nseries;
+    auto nseries = frame->sname.size;
 
     // Get write offset and space left
     auto get_space_and_offset = [](const Frame& f) {
@@ -282,8 +282,8 @@ aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
         } bits;
         u32 write_offset = 0;
         u32 space_left   = static_cast<u32>(sizeof(f.sname.names) - sizeof(u64) * 2);
-        if (f.sname.nseries != 0) {
-            auto ix = -1 * (f.sname.nseries - 1);
+        if (f.sname.size != 0) {
+            auto ix = -1 * (f.sname.size - 1);
             bits.value = f.sname.vector[ix * 2];
             write_offset = bits.components.hi + bits.components.lo;
             space_left  -= write_offset + ix * sizeof(u64) * 2;
@@ -306,7 +306,7 @@ aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
     auto ix = nseries * -2;
     frame->sname.vector[ix] = len | (static_cast<u64>(write_offset) << 32);
     frame->sname.vector[ix - 1] = id;
-    frame->sname.nseries++;
+    frame->sname.size++;
     std::tie(write_offset, space_left) = get_space_and_offset(*frame);
     static const u32 SIZE_THRESHOLD = 64;
     if (space_left < SIZE_THRESHOLD) {
@@ -349,6 +349,42 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u6
         elements_to_read_--;
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
+}
+
+std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow* rows) {
+    if (elements_to_read_ == 0) {
+        if (bytes_to_read_ <= 0) {
+            // Volume is finished
+            return std::make_tuple(AKU_SUCCESS, 0);
+        }
+        pos_ = (pos_ + 1) % 2;
+        clear(pos_);
+        size_t bytes_read;
+        aku_Status status;
+        std::tie(status, bytes_read) = read(pos_);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, 0);
+        }
+        bytes_to_read_   -= bytes_read;
+        elements_to_read_ = frames_[pos_].part.size;
+    }
+    Frame& frame = frames_[pos_];
+    size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
+    size_t frmsize = frame.part.size;
+    for (size_t i = 0; i < nvalues; i++) {
+        size_t ix = frmsize - elements_to_read_;
+        if (frame.header.frame_type == FrameType::DATA_ENTRY) {
+            InputLogDataPoint data_point = {
+                frame.part.tss[ix],
+                frame.part.xss[ix]
+            };
+            rows[i].id = frame.part.ids[ix];
+            rows[i].payload = data_point;
+        }
+        elements_to_read_--;
+    }
+    return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
+
 }
 
 std::tuple<aku_Status, const LZ4Volume::Frame*> LZ4Volume::read_next_frame() {
@@ -551,6 +587,21 @@ std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64
     }
 }
 
+std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, InputLogRow* rows) {
+    while(true) {
+        if (volumes_.empty()) {
+            return std::make_tuple(AKU_SUCCESS, 0);
+        }
+        aku_Status status;
+        u32 result;
+        std::tie(status, result) = volumes_.front()->read_next(buffer_size, rows);
+        if (result != 0) {
+            return std::make_tuple(status, result);
+        }
+        volumes_.pop_front();
+    }
+}
+
 std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
     while(true) {
         if (volumes_.empty()) {
@@ -696,6 +747,40 @@ void ShardedInputLog::init_read_buffers() {
     buffer_ix_ = -1;
 }
 
+int ShardedInputLog::choose_next() {
+    size_t ixstart = 0;
+    for (;ixstart < read_queue_.size(); ixstart++) {
+        if (read_queue_.at(ixstart).status == AKU_SUCCESS &&
+            read_queue_.at(ixstart).frame->part.size != 0) {
+            break;
+        }
+    }
+    if (ixstart == read_queue_.size()) {
+        // Indicate that all buffers are bad.
+        return -1;
+    }
+    int res = ixstart;
+    for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
+        if (read_queue_.at(ix).status != AKU_SUCCESS ||
+            read_queue_.at(ix).frame->part.size == 0) {
+            // Current input log is done or errored, just skip it.
+            continue;
+        }
+        if (read_queue_.at(ix).frame->part.sequence_number <
+            read_queue_.at(res).frame->part.sequence_number) {
+            res = ix;
+        }
+    }
+    return res;
+}
+
+void ShardedInputLog::refill_buffer(int ix) {
+    auto& str = streams_.at(ix);
+    auto  buf = &read_queue_.at(ix);
+    std::tie(buf->status, buf->frame) = str->read_next_frame();
+    buf->pos = 0;
+}
+
 std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
                                                        u64*    idout,
                                                        u64*    tsout,
@@ -705,40 +790,6 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
     if (!read_started_) {
         init_read_buffers();
     }
-    // Select next buffer with smallest sequence number
-    auto choose_next = [this]() {
-        size_t ixstart = 0;
-        for (;ixstart < read_queue_.size(); ixstart++) {
-            if (read_queue_.at(ixstart).status == AKU_SUCCESS &&
-                read_queue_.at(ixstart).frame->part.size != 0) {
-                break;
-            }
-        }
-        if (ixstart == read_queue_.size()) {
-            // Indicate that all buffers are bad.
-            return -1;
-        }
-        int res = ixstart;
-        for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
-            if (read_queue_.at(ix).status != AKU_SUCCESS ||
-                read_queue_.at(ix).frame->part.size == 0) {
-                // Current input log is done or errored, just skip it.
-                continue;
-            }
-            if (read_queue_.at(ix).frame->part.sequence_number <
-                read_queue_.at(res).frame->part.sequence_number) {
-                res = ix;
-            }
-        }
-        return res;
-    };
-    // Refill used buffer
-    auto refill_buffer = [this](int ix) {
-        auto& str = streams_.at(ix);
-        auto  buf = &read_queue_.at(ix);
-        std::tie(buf->status, buf->frame) = str->read_next_frame();
-        buf->pos = 0;
-    };
     if (buffer_ix_ < 0) {
         // Chose buffer with smallest id. The value is initialized with negative value
         // at start.
@@ -767,6 +818,49 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
             xsout       += toread;
             outsize     += toread;
             buffer.pos  += toread;
+        } else {
+            refill_buffer(buffer_ix_);
+            buffer_ix_ = choose_next();
+            if (buffer_ix_ < 0) {
+                // No more data
+                outstatus = AKU_ENO_DATA;
+                break;
+            }
+        }
+    }
+    return std::make_tuple(outstatus, outsize);
+}
+
+std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, InputLogRow* rows) {
+    buffer_size = std::min(static_cast<size_t>(std::numeric_limits<u32>::max()), buffer_size);
+    if (!read_started_) {
+        init_read_buffers();
+    }
+    if (buffer_ix_ < 0) {
+        // Chose buffer with smallest id. The value is initialized with negative value
+        // at start.
+        buffer_ix_ = choose_next();
+        if (buffer_ix_ < 0) {
+            return std::make_tuple(AKU_ENO_DATA, 0);
+        }
+    }
+    size_t outsize = 0;
+    aku_Status outstatus = AKU_SUCCESS;
+    while(buffer_ix_ >= 0 && buffer_size > 0) {
+        // return values from the current buffer
+        Buffer& buffer = read_queue_.at(buffer_ix_);
+        if (buffer.pos < buffer.frame->header.size) {
+            switch (buffer.frame->header.frame_type) {
+            case LZ4Volume::FrameType::DATA_ENTRY:
+                break;
+            case LZ4Volume::FrameType::SNAME_ENTRY:
+                break;
+            case LZ4Volume::FrameType::RECOVERY_ENTRY:
+                break;
+            case LZ4Volume::FrameType::EMPTY:
+                break;
+            }
+            throw "not implemented";
         } else {
             refill_buffer(buffer_ix_);
             buffer_ix_ = choose_next();

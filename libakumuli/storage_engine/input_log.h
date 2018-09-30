@@ -11,6 +11,7 @@
 #include <apr_general.h>
 
 #include <boost/filesystem.hpp>
+#include <boost/variant.hpp>
 
 #include "akumuli_def.h"
 #include "lz4.h"
@@ -23,6 +24,28 @@ namespace Akumuli {
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
 typedef std::unique_ptr<apr_file_t, void (*)(apr_file_t*)> AprFilePtr;
+
+
+struct InputLogDataPoint {
+    u64 timestamp;
+    double value;
+};
+
+struct InputLogSeriesName {
+    std::string value;
+};
+
+struct InputLogRecoveryInfo {
+    std::vector<u64> data;
+};
+
+struct InputLogRow {
+    boost::variant<InputLogDataPoint,
+                   InputLogSeriesName,
+                   InputLogRecoveryInfo>
+                payload;
+    u64         id;
+};
 
 /**
   Sequencing.
@@ -76,27 +99,27 @@ struct LZ4Volume {
         RECOVERY_ENTRY = 4,
     };
 
-    union Frame {
+    struct FrameHeader {
         FrameType frame_type;
+        u16 magic;
+        u64 sequence_number;
+        u32 size;
+    };
+
+    union Frame {
         char block[BLOCK_SIZE];
-        struct DataEntry {
-            FrameType frame_type;
-            u16 magic;
-            u64 sequence_number;
-            u32 size;
+        FrameHeader header;
+        struct DataEntry : FrameHeader {
             u64 ids[NUM_TUPLES];
             u64 tss[NUM_TUPLES];
             double xss[NUM_TUPLES];
         } part;
-        struct SNameEntry {
-            FrameType frame_type;
-            u16 nseries;
-            char names[BLOCK_SIZE - sizeof(FrameType) - sizeof(u16)];
+        struct SNameEntry : FrameHeader {
+            char names[BLOCK_SIZE - sizeof(FrameHeader)];
             u64 vector[0];
         } sname;
-        struct RecoveryEntry {
-            FrameType frame_type;
-            u64 array[BLOCK_SIZE/sizeof(u64)];
+        struct RecoveryEntry : FrameHeader {
+            // TBD
         } recovery;
     } frames_[2];
 
@@ -167,6 +190,7 @@ public:
      * @return number of elements being read or 0 if EOF reached or negative value on error
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, InputLogRow* rows);
 
     /**
      * @brief Read next frame from the volume
@@ -245,6 +269,7 @@ public:
      * @return number of elements being read or 0 if EOF reached or negative value on error
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, InputLogRow* rows);
 
     /**
      * @brief Read next frame from the volume
@@ -293,6 +318,11 @@ class ShardedInputLog {
 
     void init_read_buffers();
 
+    //! Select next buffer with smallest sequence number
+    int choose_next();
+
+    //! Refill used buffer
+    void refill_buffer(int ix);
 public:
 
     /**
@@ -329,6 +359,7 @@ public:
      * @return number of elements being read or 0 if EOF reached
      */
     std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
+    std::tuple<aku_Status, u32> read_next(size_t buffer_size, InputLogRow* rows);
 
     /**
      * Reopen log if it was opened in read-only mode. This allows to read content once
