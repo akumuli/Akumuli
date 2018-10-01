@@ -43,8 +43,8 @@ static AprInitializer initializer;
 static LogSequencer sequencer;
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip) {
-    std::vector<std::tuple<u64, u64, double>> exp, act;
     std::vector<u64> stale_ids;
+    std::vector<std::tuple<u64, u64, double>> exp, act;
     {
         InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < 10000; i++) {
@@ -60,15 +60,15 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip) {
     {
         InputLog ilog("./", 0);
         while(true) {
-            u64 ids[1024];
-            u64 tss[1024];
-            double xss[1024];
+            InputLogRow buffer[1024];
             aku_Status status;
             u32 outsz;
-            std::tie(status, outsz) = ilog.read_next(1024, ids, tss, xss);
+            std::tie(status, outsz) = ilog.read_next(1024, buffer);
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             for(u32 i = 0; i < outsz; i++) {
-                act.push_back(std::make_tuple(ids[i], tss[i], xss[i]));
+                auto id = buffer[i].id;
+                auto payload = boost::get<InputLogDataPoint>(buffer[i].payload);
+                act.push_back(std::make_tuple(id, payload.timestamp, payload.value));
             }
             if (outsz == 0) {
                 break;
