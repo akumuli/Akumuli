@@ -851,16 +851,34 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
         Buffer& buffer = read_queue_.at(buffer_ix_);
         if (buffer.pos < buffer.frame->header.size) {
             switch (buffer.frame->header.frame_type) {
-            case LZ4Volume::FrameType::DATA_ENTRY:
-                break;
-            case LZ4Volume::FrameType::SNAME_ENTRY:
-                break;
-            case LZ4Volume::FrameType::RECOVERY_ENTRY:
-                break;
-            case LZ4Volume::FrameType::EMPTY:
-                break;
+            case LZ4Volume::FrameType::DATA_ENTRY: {
+                u32 toread = std::min(buffer.frame->part.size - buffer.pos,
+                                      static_cast<u32>(buffer_size));
+                const aku_ParamId*   ids = buffer.frame->part.ids + buffer.pos;
+                const aku_Timestamp* tss = buffer.frame->part.tss + buffer.pos;
+                const double*        xss = buffer.frame->part.xss + buffer.pos;
+                for (u32 ix = 0; ix < toread; ix++) {
+                    rows[ix].id = ids[ix];
+                    InputLogDataPoint payload = {
+                        tss[ix],
+                        xss[ix],
+                    };
+                    rows[ix].payload = payload;
+                }
+                buffer_size -= toread;  // Invariant: buffer_size will never overflow, it's always less than 'toread'
+                rows        += toread;
+                buffer.pos  += toread;
+            } break;
+            case LZ4Volume::FrameType::SNAME_ENTRY: {
+                throw "not implemented";
+            } break;
+            case LZ4Volume::FrameType::RECOVERY_ENTRY: {
+                throw "not implemented";
+            } break;
+            case LZ4Volume::FrameType::EMPTY: {
+                throw "not implemented";
+            } break;
             }
-            throw "not implemented";
         } else {
             refill_buffer(buffer_ix_);
             buffer_ix_ = choose_next();
