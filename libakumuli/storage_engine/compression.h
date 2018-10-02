@@ -1014,14 +1014,82 @@ struct FcmStreamWriter {
         for (u32 i = 0; i < n; i++) {
             std::tie(diffs[i], flags[i]) = encode(values[i]);
         }
-        u64 sum_diff = 0;
+        int trailing_bits_min = 64;
+        int trailing_bits_max = 0;
+        int leading_bits_min  = 64;
+        int leading_bits_max  = 0;
         for (u32 i = 0; i < n; i++) {
-            sum_diff |= diffs[i];
+            auto diff = diffs[i];
+            if (diff) {
+                int trailing_bits = __builtin_ctzl(diff);
+                int leading_bits  = __builtin_clzl(diff);
+                trailing_bits_min = std::min(trailing_bits_min, trailing_bits);
+                trailing_bits_max = std::max(trailing_bits_max, trailing_bits);
+                leading_bits_min  = std::min(leading_bits_min,  leading_bits);
+                leading_bits_max  = std::max(leading_bits_max,  leading_bits);
+            }
         }
-        if (sum_diff == 0) {
+        auto pack = [this](u64* input, int size, int n) {
+            // Extreamly slow bitpacking routine from SO (to experiment with)
+            u64 inmask = 0;
+            int obit = 0;
+            int nout = 0;
+            u8 pout = 0;
+
+            for(int i = 0; i < size; i++) {
+                inmask = 1ull << (n - 1);
+                for(int k = 0; k < n; k++) {
+                    if(obit > 7) {
+                        obit = 0;
+                        if (!stream_.put_raw(static_cast<u8>(pout))) {
+                            return false;
+                        }
+                        pout = 0;
+                    }
+                    pout |= (((input[i] & inmask) >> (n - k - 1)) << (7 - obit));
+                    inmask >>= 1;
+                    obit++;
+                    nout++;
+                }
+            }
+            return true;
+        };
+        int shortcut = 0;
+        if (trailing_bits_min > leading_bits_min) {
+            if (trailing_bits_max - trailing_bits_min < 12) {
+                shortcut = 1;
+            }
+        } else {
+            if (leading_bits_max - leading_bits_min < 12) {
+                shortcut = 2;
+            }
+        }
+        if (shortcut) {
             // Shortcut
             if (!stream_.put_raw((u8)0xFF)) {
                 return false;
+            }
+            if (shortcut == 1) {
+                // compress trailing
+                int n = 64 - trailing_bits_min;
+                for (int i = 0; i < 16; i++) {
+                    diffs[i] >>= trailing_bits_min;
+                }
+                if (!stream_.put_raw(static_cast<u8>(n))) {
+                    return false;
+                }
+                if (!pack(diffs, 16, n)) {
+                    return false;
+                }
+            } else {
+                // compress leading
+                int n = 64 - leading_bits_min;
+                if (!stream_.put_raw(static_cast<u8>(n))) {
+                    return false;
+                }
+                if (!pack(diffs, 16, n)) {
+                    return false;
+                }
             }
         } else {
             for (size_t i = 0; i < n; i+=2) {
