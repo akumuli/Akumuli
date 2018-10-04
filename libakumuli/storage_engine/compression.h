@@ -1011,23 +1011,15 @@ struct FcmStreamWriter {
         assert(n == 16);
         u8  flags[16];
         u64 diffs[16];
-        for (u32 i = 0; i < n; i++) {
-            std::tie(diffs[i], flags[i]) = encode(values[i]);
-        }
         int trailing_bits_min = 64;
-        int trailing_bits_max = 0;
         int leading_bits_min  = 64;
-        int leading_bits_max  = 0;
+        int size_estimate = 8;
         for (u32 i = 0; i < n; i++) {
-            auto diff = diffs[i];
-            if (diff) {
-                int trailing_bits = __builtin_ctzl(diff);
-                int leading_bits  = __builtin_clzl(diff);
-                trailing_bits_min = std::min(trailing_bits_min, trailing_bits);
-                trailing_bits_max = std::max(trailing_bits_max, trailing_bits);
-                leading_bits_min  = std::min(leading_bits_min,  leading_bits);
-                leading_bits_max  = std::max(leading_bits_max,  leading_bits);
-            }
+            int leading_bits, trailing_bits;
+            std::tie(diffs[i], flags[i], leading_bits, trailing_bits) = encode(values[i]);
+            trailing_bits_min = std::min(trailing_bits_min, trailing_bits);
+            leading_bits_min  = std::min(leading_bits_min,  leading_bits);
+            size_estimate += (flags[i] & 0x7) + 1;
         }
         auto pack = [this](u64* input, int size, int n) {
             // Extreamly slow bitpacking routine from SO (to experiment with)
@@ -1056,11 +1048,13 @@ struct FcmStreamWriter {
         };
         int shortcut = 0;
         if (trailing_bits_min > leading_bits_min) {
-            if (trailing_bits_max - trailing_bits_min < 12) {
+            int bytes_total = ((64 - trailing_bits_min) * 16 + 7) / 8 + 2;
+            if (bytes_total < size_estimate) {
                 shortcut = 1;
             }
         } else {
-            if (leading_bits_max - leading_bits_min < 12) {
+            int bytes_total = ((64 - leading_bits_min) * 16 + 7) / 8 + 2;
+            if (bytes_total < size_estimate) {
                 shortcut = 2;
             }
         }
@@ -1120,7 +1114,7 @@ struct FcmStreamWriter {
         return commit();
     }
 
-    std::tuple<u64, unsigned char> encode(double value) {
+    std::tuple<u64, unsigned char, int, int> encode(double value) {
         union {
             double real;
             u64 bits;
@@ -1130,21 +1124,21 @@ struct FcmStreamWriter {
         predictor_.update(curr.bits);
         u64 diff = curr.bits ^ predicted;
 
-        // Number of trailing and leading zero-bytes
-        int leading_bytes = 8;
-        int trailing_bytes = 8;
 
-        if (diff != 0) {
-            trailing_bytes = __builtin_ctzl(diff) / 8;
-            leading_bytes = __builtin_clzl(diff) / 8;
-        } else {
+        if (diff == 0) {
             // Fast path for 0-diff values.
             // Flags 7 and 15 are interchangeable.
             // If there is 0 trailing zero bytes and 0 leading bytes
             // code will always generate flag 7 so we can use flag 17
             // for something different (like 0 indication)
-            return std::make_tuple(0, 0xF);
+            return std::make_tuple(0, 0xF, 64, 64);
         }
+
+        // Number of trailing and leading zero-bytes
+        int trailing_bits  = __builtin_ctzl(diff);
+        int leading_bits   = __builtin_clzl(diff);
+        int trailing_bytes = leading_bits / 8;
+        int leading_bytes  = trailing_bits / 8;
 
         int nbytes;
         unsigned char flag;
@@ -1165,13 +1159,14 @@ struct FcmStreamWriter {
             // zeroed 4th bit indicates that only trailing bytes are stored
             flag = nbytes&7;
         }
-        return std::make_tuple(diff, flag);
+        return std::make_tuple(diff, flag, leading_bits, trailing_bits);
     }
 
     bool put(double value) {
         u64 diff;
         unsigned char flag;
-        std::tie(diff, flag) = encode(value);
+        int leading, trailing;
+        std::tie(diff, flag, leading, trailing) = encode(value);
         if (flag == 0xF) {
             flag = 0;  // Just store one byte, space opt. is disabled
         }
