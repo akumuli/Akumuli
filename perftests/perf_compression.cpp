@@ -164,7 +164,7 @@ TestRunResults run_tests(fs::path path) {
 
     // Compress using zlib
 
-    const size_t COMPRESSED_SIZE = store_stats.nblocks*store_stats.block_size + uncommitted;
+    const size_t COMPRESSED_SIZE = store_stats.nblocks*(store_stats.block_size-sizeof(Akumuli::StorageEngine::SubtreeRef)) + uncommitted;
     const float BYTES_PER_EL = float(COMPRESSED_SIZE)/header.paramids.size();
     const float COMPRESSION_RATIO = float(UNCOMPRESSED_SIZE)/COMPRESSED_SIZE;
 
