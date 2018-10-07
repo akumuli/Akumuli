@@ -10,12 +10,19 @@
 #include <zlib.h>
 #include <cstring>
 #include <map>
+#include <algorithm>
 
 #include <boost/filesystem.hpp>
 
 namespace fs = boost::filesystem;
 
 using namespace Akumuli;
+
+struct UncompressedChunk {
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<aku_ParamId>   paramids;
+    std::vector<double>        values;
+};
 
 //! Generate time-series from random walk
 struct RandomWalk {
@@ -49,28 +56,55 @@ UncompressedChunk read_data(fs::path path) {
     std::string line;
     aku_ParamId base_pid = 1;
     std::map<std::string, aku_ParamId> pid_map;
+    size_t ix = 0;
+    bool two_col_mode = false;
     while(std::getline(in, line)) {
         std::istringstream lstr(line);
-        std::string series, timestamp, value;
-        std::getline(lstr, series, ',');
-        std::getline(lstr, timestamp, ',');
-        std::getline(lstr, value, ',');
-
-        aku_ParamId id;
-        auto pid_it = pid_map.find(series);
-        if (pid_it == pid_map.end()) {
-            pid_map[series] = base_pid;
-            id = base_pid;
-            base_pid++;
-        } else {
-            id = pid_it->second;
+        if (ix == 0) {
+            if (line == "Timestamp,Value") {
+                two_col_mode = true;
+                ix++;
+                continue;
+            }
+            else if (line == "Timestamp,Value,Metric,Entity,instance") {
+                break;
+            }
         }
-        res.paramids.push_back(id);
+        if (two_col_mode) {
+            std::string timestamp, value;
+            std::getline(lstr, timestamp, ',');
+            std::getline(lstr, value, ',');
 
-        res.timestamps.push_back(DateTimeUtil::from_iso_string(timestamp.c_str()));
+            aku_ParamId id = 111222;
+            res.paramids.push_back(id);
+            // The expected format is 2015-12-10 11:16:54, convert it first
+            timestamp.at(10) = 'T';
+            timestamp.erase(std::remove(timestamp.begin(), timestamp.end(), ':'), timestamp.end());
+            timestamp.erase(std::remove(timestamp.begin(), timestamp.end(), '-'), timestamp.end());
 
-        res.values.push_back(std::stod(value));
+            res.timestamps.push_back(DateTimeUtil::from_iso_string(timestamp.c_str()));
+            res.values.push_back(std::stod(value));
+        }
+        else {
+            std::string series, timestamp, value;
+            std::getline(lstr, series, ',');
+            std::getline(lstr, timestamp, ',');
+            std::getline(lstr, value, ',');
 
+            aku_ParamId id;
+            auto pid_it = pid_map.find(series);
+            if (pid_it == pid_map.end()) {
+                pid_map[series] = base_pid;
+                id = base_pid;
+                base_pid++;
+            } else {
+                id = pid_it->second;
+            }
+            res.paramids.push_back(id);
+            res.timestamps.push_back(DateTimeUtil::from_iso_string(timestamp.c_str()));
+            res.values.push_back(std::stod(value));
+        }
+        ix++;
     }
     return res;
 }
@@ -130,7 +164,7 @@ TestRunResults run_tests(fs::path path) {
 
     // Compress using zlib
 
-    const size_t COMPRESSED_SIZE = store_stats.nblocks*store_stats.block_size + uncommitted;
+    const size_t COMPRESSED_SIZE = store_stats.nblocks*(store_stats.block_size-sizeof(Akumuli::StorageEngine::SubtreeRef)) + uncommitted;
     const float BYTES_PER_EL = float(COMPRESSED_SIZE)/header.paramids.size();
     const float COMPRESSION_RATIO = float(UNCOMPRESSED_SIZE)/COMPRESSED_SIZE;
 

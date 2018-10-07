@@ -116,6 +116,12 @@ add_executable(
     ../libakumuli/storage_engine/volume.cpp
     ../libakumuli/storage_engine/column_store.cpp
     ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/index/invertedindex.cpp
     ../libakumuli/status_util.cpp
     ../libakumuli/util.cpp
     ../libakumuli/crc32c.cpp
