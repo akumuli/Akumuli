@@ -1006,6 +1006,33 @@ struct FcmStreamWriter {
     {
     }
 
+    bool pack(const u64* input, int size, int n) {
+        u8 bits = 0;
+        int ixbits = 0;
+        for (int i = 0; i < size; i++) {
+            u64 word = input[i];
+            for (int ixword = 0; ixword < n; ixword++) {
+                if (word & 1) {
+                    bits |= (1 << ixbits);
+                }
+                ixbits++;
+                word >>= 1;
+                if (ixbits == 8) {
+                    if (!stream_.put_raw(static_cast<u8>(bits))) {
+                        return false;
+                    }
+                    ixbits = 0;
+                    bits = 0;
+                }
+            }
+        }
+        if (ixbits != 0 && n != 0) {
+            if (!stream_.put_raw(static_cast<u8>(bits))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool tput(double const* values, size_t n) {
         assert(n == 16);
@@ -1021,31 +1048,6 @@ struct FcmStreamWriter {
             leading_bits_min  = std::min(leading_bits_min,  leading_bits);
             size_estimate += (flags[i] & 0x7) + 1;
         }
-        auto pack = [this](u64* input, int size, int n) {
-            // Extreamly slow bitpacking routine from SO (to experiment with)
-            u64 inmask = 0;
-            int obit = 0;
-            int nout = 0;
-            u8 pout = 0;
-
-            for(int i = 0; i < size; i++) {
-                inmask = 1ull << (n - 1);
-                for(int k = 0; k < n; k++) {
-                    if(obit > 7) {
-                        obit = 0;
-                        if (!stream_.put_raw(static_cast<u8>(pout))) {
-                            return false;
-                        }
-                        pout = 0;
-                    }
-                    pout |= (((input[i] & inmask) >> (n - k - 1)) << (7 - obit));
-                    inmask >>= 1;
-                    obit++;
-                    nout++;
-                }
-            }
-            return true;
-        };
         int shortcut = 0;
         if (trailing_bits_min > leading_bits_min) {
             int bytes_total = ((64 - trailing_bits_min) * 16 + 7) / 8 + 2;
@@ -1069,7 +1071,7 @@ struct FcmStreamWriter {
                 for (int i = 0; i < 16; i++) {
                     diffs[i] >>= trailing_bits_min;
                 }
-                if (!stream_.put_raw(static_cast<u8>(n))) {
+                if (!stream_.put_raw(static_cast<u8>(n) | 0x80)) {
                     return false;
                 }
                 if (!pack(diffs, 16, n)) {
@@ -1137,8 +1139,8 @@ struct FcmStreamWriter {
         // Number of trailing and leading zero-bytes
         int trailing_bits  = __builtin_ctzl(diff);
         int leading_bits   = __builtin_clzl(diff);
-        int trailing_bytes = leading_bits / 8;
-        int leading_bytes  = trailing_bits / 8;
+        int trailing_bytes = trailing_bits / 8;
+        int leading_bytes  = leading_bits / 8;
 
         int nbytes;
         unsigned char flag;
@@ -1218,14 +1220,15 @@ struct FcmStreamReader {
     PredictorT           predictor_;
     u32                  flags_;
     u32                  iter_;
-    u32                  nzeroes_;
+    u32                  ndiffs_;
+    u64                  diffs_[16];
 
     FcmStreamReader(StreamT& stream)
         : stream_(stream)
         , predictor_(PREDICTOR_N)
         , flags_(0)
         , iter_(0)
-        , nzeroes_(0)
+        , ndiffs_(0)
     {
     }
 
@@ -1241,24 +1244,54 @@ struct FcmStreamReader {
         return diff;
     }
 
+    void unpack(u64* output, int size, int n) {
+        u8 bits = 0;
+        int bitindex = 8;
+        for (auto ixout = 0; ixout < size; ixout++) {
+            u64 current = 0;
+            for (int ixbit = 0; ixbit < n; ixbit++) {
+                if (bitindex == 8) {
+                    bitindex = 0;
+                    bits = stream_.template read_raw<u8>();
+                }
+                if (bits & 1) {
+                    current |= 1ull << ixbit;
+                }
+                bits >>= 1;
+                bitindex++;
+            }
+            output[ixout] = current;
+        }
+    }
+
     double next() {
         unsigned char flag = 0;
-        if (iter_++ % 2 == 0 && nzeroes_ == 0) {
+        if (iter_++ % 2 == 0 && ndiffs_ == 0) {
             flags_ = static_cast<u32>(stream_.template read_raw<u8>());
             if (flags_ == 0xFF) {
                 // Shortcut
-                nzeroes_ = 16;
+                ndiffs_ = 16;
+                u8 code_word = static_cast<int>(stream_.template read_raw<u8>());
+                int bit_width = static_cast<int>(code_word) & 0x7F;
+                unpack(diffs_, 16, bit_width);
+                if (code_word & 0x80) {
+                    int shift_width = 64  - bit_width;
+                    for (int i = 0; i < 16; i++) {
+                        diffs_[i] <<= shift_width;
+                    }
+                }
             }
             flag = static_cast<unsigned char>(flags_ >> 4);
-        } else {
+        }
+        else {
             flag = static_cast<unsigned char>(flags_ & 0xF);
         }
         u64 diff;
-        if (nzeroes_ == 0) {
+        if (ndiffs_ == 0) {
             diff = decode_value(stream_, flag);
         } else {
-            diff = 0ull;
-            nzeroes_--;
+            diff = diffs_[16 - ndiffs_];
+            ndiffs_--;
         }
         union {
             u64 bits;

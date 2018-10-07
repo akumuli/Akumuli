@@ -330,9 +330,16 @@ void test_block_compression(double start, unsigned N=10000, bool regullar=false)
             BOOST_FAIL("Bad timestamp at " << i << ", expected: " << timestamps.at(i) <<
                        ", actual: " << out_timestamps.at(i));
         }
-        if (values.at(i) != out_values.at(i)) {
-            BOOST_FAIL("Bad value at " << i << ", expected: " << values.at(i) <<
-                       ", actual: " << out_values.at(i));
+
+        union {
+            double x;
+            u64 u;
+        } out, val;
+        out.x = out_values.at(i);
+        val.x = values.at(i);
+        if (val.u != out.u) {
+            BOOST_FAIL("Bad value at " << i << ", expected: " << val.x <<
+                       ", actual: " << out.x);
         }
     }
 }
