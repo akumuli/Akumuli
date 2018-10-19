@@ -1893,7 +1893,6 @@ struct FcmStreamReader {
         return diff;
     }
 
-
     template <typename T>
     void _unpackN(u64* input, int shift) {
         for (int i = 0; i < 16; i++) {
@@ -1917,8 +1916,8 @@ struct FcmStreamReader {
     }
 
     void _unpack3(u64* output, int shift) {
-        u32 bits0  = stream_.template read_raw<u32>();
-        u16 bits1  = stream_.template read_raw<u16>();
+        u64 bits0  = stream_.template read_raw<u32>();
+        u64 bits1  = stream_.template read_raw<u16>();
         output[0]  |= ((bits0 & 7)) << shift;
         output[1]  |= ((bits0 & (7u <<  3)) >> 3)  << shift;
         output[2]  |= ((bits0 & (7u <<  6)) >> 6)  << shift;
@@ -1991,7 +1990,7 @@ struct FcmStreamReader {
         output[7]  |= ((bits0 & (0x3Full << 42)) >> 42) << shift;
         output[8]  |= ((bits0 & (0x3Full << 48)) >> 48) << shift;
         output[9]  |= ((bits0 & (0x3Full << 54)) >> 54) << shift;
-        output[10] |= (((bits0 & (0xFull << 60)) >> 60) | (bits1 & 0x3) << 2) << shift;
+        output[10] |= (((bits0 & (0xFull << 60)) >> 60) | (bits1 & 0x3) << 4) << shift;
         output[11] |= ((bits1 & (0x3Full <<  2)) >>  2) << shift;
         output[12] |= ((bits1 & (0x3Full <<  8)) >>  8) << shift;
         output[13] |= ((bits1 & (0x3Full << 14)) >> 14) << shift;
@@ -2020,6 +2019,7 @@ struct FcmStreamReader {
         output[14] |= ((bits2 & (0x7Full <<  2)) >>  2) << shift;
         output[15] |= ((bits2 & (0x7Full <<  9)) >>  9) << shift;
     }
+
 
     void unpack(u64* output, int n) {
         switch(n) {
@@ -2318,6 +2318,7 @@ struct FcmStreamReader {
                 ndiffs_ = 16;
                 u8 code_word = static_cast<int>(stream_.template read_raw<u8>());
                 int bit_width = static_cast<int>(code_word) & 0x7F;
+                std::fill_n(diffs_, 16, 0);
                 unpack(diffs_, bit_width);
                 if (code_word & 0x80) {
                     int shift_width = 64  - bit_width;
