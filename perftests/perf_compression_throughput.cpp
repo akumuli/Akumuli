@@ -9,6 +9,12 @@
 
 using namespace Akumuli;
 
+struct UncompressedChunk {
+    std::vector<aku_Timestamp> timestamps;
+    std::vector<aku_ParamId>   paramids;
+    std::vector<double>        values;
+};
+
 //! Generate time-series from random walk
 struct RandomWalk {
     std::random_device                  randdev;
