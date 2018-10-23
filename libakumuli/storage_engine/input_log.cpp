@@ -553,21 +553,33 @@ void InputLog::delete_files() {
     }
 }
 
+void InputLog::detect_stale_ids(std::vector<u64>* stale_ids) {
+    // Extract stale ids
+    assert(volumes_.size() > 0);
+    std::vector<const Roaring64Map*> remaining;
+    for (size_t i = 0; i < volumes_.size() - 1; i++) {
+        // move from newer to older volumes
+        remaining.push_back(&volumes_.at(i)->get_index());
+    }
+    Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
+    auto stale = volumes_.back()->get_index() - sum;
+    for (auto it = stale.begin(); it != stale.end(); it++) {
+        stale_ids->push_back(*it);
+    }
+}
+
 aku_Status InputLog::append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids) {
     aku_Status result = volumes_.front()->append(id, timestamp, value);
     if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
-        // Extract stale ids
-        assert(volumes_.size() > 0);
-        std::vector<const Roaring64Map*> remaining;
-        for (size_t i = 0; i < volumes_.size() - 1; i++) {
-            // move from newer to older volumes
-            remaining.push_back(&volumes_.at(i)->get_index());
-        }
-        Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
-        auto stale = volumes_.back()->get_index() - sum;
-        for (auto it = stale.begin(); it != stale.end(); it++) {
-            stale_ids->push_back(*it);
-        }
+        detect_stale_ids(stale_ids);
+    }
+    return result;
+}
+
+aku_Status InputLog::append(u64 id, const char* sname, u32 len, std::vector<u64>* stale_ids) {
+    aku_Status result = volumes_.front()->append(id, sname, len);
+    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
+        detect_stale_ids(stale_ids);
     }
     return result;
 }

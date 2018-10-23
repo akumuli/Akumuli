@@ -369,3 +369,46 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_3) {
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
     test_input_roundtrip_with_conflicts(4, 100);
 }
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
+    std::vector<u64> stale_ids;
+    std::vector<std::tuple<u64, u64, double>> exp, act;
+    {
+        InputLog ilog(&sequencer, "./", 100, 4096, 0);
+        for (int i = 0; i < 10000; i++) {
+            double val = static_cast<double>(rand()) / RAND_MAX;
+            aku_Status status = ilog.append(42, i, val, &stale_ids);
+            exp.push_back(std::make_tuple(42, i, val));
+            if (status == AKU_EOVERFLOW) {
+                ilog.rotate();
+            }
+        }
+    }
+    BOOST_REQUIRE(stale_ids.empty());
+    {
+        InputLog ilog("./", 0);
+        while(true) {
+            InputLogRow buffer[1024];
+            aku_Status status;
+            u32 outsz;
+            std::tie(status, outsz) = ilog.read_next(1024, buffer);
+            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            for(u32 i = 0; i < outsz; i++) {
+                auto id = buffer[i].id;
+                auto payload = boost::get<InputLogDataPoint>(buffer[i].payload);
+                act.push_back(std::make_tuple(id, payload.timestamp, payload.value));
+            }
+            if (outsz == 0) {
+                break;
+            }
+        }
+        ilog.reopen();
+        ilog.delete_files();
+    }
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    for (u32 i = 0; i < exp.size(); i++) {
+        BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
+        BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+    }
+}

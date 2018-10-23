@@ -231,6 +231,7 @@ class InputLog {
 
     void remove_last_volume();
 
+    void detect_stale_ids(std::vector<u64> *stale_ids);
 public:
     /**
      * @brief Create writeable input log
@@ -259,6 +260,8 @@ public:
       * input log on next rotation. Rotation should be triggered manually.
       */
     aku_Status append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids);
+
+    aku_Status append(u64 id, const char* sname, u32 len, std::vector<u64> *stale_ids);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)
