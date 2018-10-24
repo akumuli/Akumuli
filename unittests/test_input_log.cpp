@@ -372,18 +372,49 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
     std::vector<u64> stale_ids;
-    std::vector<std::tuple<u64, u64, double>> exp, act;
+    typedef std::tuple<u64, u64, double> DataPoint;
+    typedef std::tuple<u64, std::string> SeriesName;
+    typedef boost::variant<DataPoint, SeriesName> InputValue;
+    std::vector<InputValue> exp, act;
     {
         InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < 10000; i++) {
-            double val = static_cast<double>(rand()) / RAND_MAX;
-            aku_Status status = ilog.append(42, i, val, &stale_ids);
-            exp.push_back(std::make_tuple(42, i, val));
+            int variant = rand() % 100;
+            aku_Status status = AKU_SUCCESS;
+            if (variant > 5) {
+                double val = static_cast<double>(rand()) / RAND_MAX;
+                DataPoint point = std::make_tuple(42, i, val);
+                status = ilog.append(std::get<0>(point),
+                                     std::get<1>(point),
+                                     std::get<2>(point),
+                                     &stale_ids);
+                exp.push_back(point);
+            } else {
+                std::string text = "foo bar=" + std::to_string(rand() % 1000);
+                SeriesName sname = std::make_tuple(42, text);
+                status = ilog.append(42, text.data(), text.length(), &stale_ids);
+                exp.push_back(sname);
+            }
             if (status == AKU_EOVERFLOW) {
                 ilog.rotate();
             }
         }
     }
+    struct Redirect : boost::static_visitor<> {
+        std::vector<InputValue>* output;
+        u64 id;
+        void operator () (const InputLogDataPoint& val) {
+            DataPoint tup = std::make_tuple(id, val.timestamp, val.value);
+            output->push_back(tup);
+        }
+        void operator () (const InputLogSeriesName& val) {
+            SeriesName tup = std::make_tuple(id, val.value);
+            output->push_back(tup);
+        }
+        void operator () (const InputLogRecoveryInfo&) {
+            BOOST_FAIL("Unexpected recovery info");
+        }
+    };
     BOOST_REQUIRE(stale_ids.empty());
     {
         InputLog ilog("./", 0);
@@ -395,8 +426,10 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
             for(u32 i = 0; i < outsz; i++) {
                 auto id = buffer[i].id;
-                auto payload = boost::get<InputLogDataPoint>(buffer[i].payload);
-                act.push_back(std::make_tuple(id, payload.timestamp, payload.value));
+                Redirect redir;
+                redir.output = &act;
+                redir.id = id;
+                buffer[i].payload.apply_visitor(redir);
             }
             if (outsz == 0) {
                 break;
@@ -405,10 +438,27 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
         ilog.reopen();
         ilog.delete_files();
     }
+    struct Visitor : boost::static_visitor<> {
+        InputValue expected;
+
+        void operator () (const DataPoint& dp) {
+            if (dp != boost::get<DataPoint>(expected)) {
+                BOOST_FAIL("Unexpected data point");
+            }
+        }
+        void operator () (const SeriesName& sn) {
+            if (sn != boost::get<SeriesName>(expected)) {
+                BOOST_FAIL("Unexpected series name");
+            }
+        }
+        void operator () (const InputLogRecoveryInfo&) {
+            BOOST_FAIL("Unexpected recovery info");
+        }
+    };
     BOOST_REQUIRE_EQUAL(exp.size(), act.size());
     for (u32 i = 0; i < exp.size(); i++) {
-        BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
-        BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
-        BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
+        Visitor visitor;
+        visitor.expected = exp.at(i);
+        act.at(i).apply_visitor(visitor);
     }
 }
