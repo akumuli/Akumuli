@@ -86,12 +86,6 @@ struct LogSequencer {
 struct LZ4Volume {
     std::string path_;
 
-    enum {
-        BLOCK_SIZE = 0x2000,
-        FRAME_TUPLE_SIZE = sizeof(u64)*3,
-        NUM_TUPLES = (BLOCK_SIZE - 3*sizeof(u32)) / FRAME_TUPLE_SIZE,
-    };
-
     enum class FrameType : u8 {
         EMPTY = 0,
         DATA_ENTRY = 1,
@@ -104,6 +98,12 @@ struct LZ4Volume {
         u16 magic;
         u64 sequence_number;
         u32 size;
+    };
+
+    enum {
+        BLOCK_SIZE = 0x2000,
+        FRAME_TUPLE_SIZE = sizeof(u64)*3,
+        NUM_TUPLES = (BLOCK_SIZE - sizeof(FrameHeader)) / FRAME_TUPLE_SIZE,
     };
 
     union Frame {
@@ -122,6 +122,11 @@ struct LZ4Volume {
             // TBD
         } recovery;
     } frames_[2];
+
+    static_assert(sizeof(Frame) == BLOCK_SIZE, "Frame is missaligned");
+    static_assert(sizeof(Frame::DataEntry) <= BLOCK_SIZE, "Frame::DataEntry is missaligned");
+    static_assert(BLOCK_SIZE - sizeof(Frame::DataEntry) < FRAME_TUPLE_SIZE, "Frame::DataEntry is too small");
+    static_assert(sizeof(Frame::SNameEntry) == BLOCK_SIZE, "Frame::SNameEntry is missaligned");
 
     char buffer_[LZ4_COMPRESSBOUND(BLOCK_SIZE)];
 

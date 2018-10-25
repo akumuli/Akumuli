@@ -263,53 +263,88 @@ aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     return AKU_SUCCESS;
 }
 
+struct MutableSNameEntry : LZ4Volume::Frame::SNameEntry {
+    union Bits {
+        u64 value;
+        struct {
+            u32 len;
+            u32 off;
+        } components;
+    };
+
+    /** Get write offset and free space left for the value.
+      */
+    std::tuple<u32, u32> get_space_and_offset() {
+        Bits bits;
+        // The write_offset and space_left values for the first added element
+        u32 write_offset = 0;
+        u32 space_left   = static_cast<u32>(sizeof(*this) - sizeof(u64)*2);
+
+        if (size > 0) {
+            auto index = static_cast<int>(size) - 1;
+            bits.value = vector[-1 - index*2];
+            write_offset = bits.components.off + bits.components.len;
+            space_left  -= write_offset + index*sizeof(u64)*2;
+        }
+        return std::make_tuple(write_offset, space_left);
+    }
+
+    /** Return true if the value of size len can be written
+      * into the frame (there is enough space).
+      */
+    bool can_write(u32 len) {
+        u32 write_offset;
+        u32 space_left;
+        std::tie(write_offset, space_left) = get_space_and_offset();
+        return len <= space_left;
+    }
+
+
+    std::tuple<u64, std::string> read(int ix) const {
+        Bits bits;
+        bits.value = vector[-1 - ix*2];
+        u64 id = vector[-2 - ix*2];
+        std::string result(names + bits.components.off, names + bits.components.off + bits.components.len);
+        return std::make_tuple(id, result);
+    }
+
+    /** Append new value to the frame.
+      * Invariant: `can_write(len) == true`.
+      */
+    void append(u64 id, const char* sname, u32 len) {
+        u32 write_offset;
+        u32 space_left;
+        std::tie(write_offset, space_left) = get_space_and_offset();
+        auto dest = names + write_offset;
+        memcpy(dest, sname, len);
+        int ix = size * -2;
+        Bits bits;
+        bits.components.len = len;
+        bits.components.off = write_offset;
+        vector[ix - 1] = bits.value;
+        vector[ix - 2] = id;
+        size++;
+    }
+};
+
 aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
-    auto status = require_frame_type(FrameType::DATA_ENTRY);
+    auto status = require_frame_type(FrameType::SNAME_ENTRY);
     if (status != AKU_SUCCESS) {
         return status;
     }
-    Frame* frame = &frames_[pos_];
-    auto nseries = frame->sname.size;
-
-    // Get write offset and space left
-    auto get_space_and_offset = [](const Frame& f) {
-        union {
-            u64 value;
-            struct {
-                u32 lo;
-                u32 hi;
-            } components;
-        } bits;
-        u32 write_offset = 0;
-        u32 space_left   = static_cast<u32>(sizeof(f.sname.names) - sizeof(u64) * 2);
-        if (f.sname.size != 0) {
-            auto ix = -1 * (f.sname.size - 1);
-            bits.value = f.sname.vector[ix * 2];
-            write_offset = bits.components.hi + bits.components.lo;
-            space_left  -= write_offset + ix * sizeof(u64) * 2;
-        }
-        return std::make_tuple(write_offset, space_left);
-    };
-    u32 write_offset;
-    u32 space_left;
-    std::tie(write_offset, space_left) = get_space_and_offset(*frame);
-    if (len > space_left) {
+    MutableSNameEntry* frame = reinterpret_cast<MutableSNameEntry*>(&frames_[pos_].sname);
+    if (!frame->can_write(len)) {
         status = flush_current_frame(FrameType::SNAME_ENTRY);
         if (status != AKU_SUCCESS) {
             return status;
         }
-        frame = &frames_[pos_];
+        frame = reinterpret_cast<MutableSNameEntry*>(&frames_[pos_].sname);
     }
-    // Do the actual write
-    auto dest = frame->sname.names + write_offset;
-    memcpy(dest, sname, len);
-    auto ix = nseries * -2;
-    frame->sname.vector[ix] = len | (static_cast<u64>(write_offset) << 32);
-    frame->sname.vector[ix - 1] = id;
-    frame->sname.size++;
-    std::tie(write_offset, space_left) = get_space_and_offset(*frame);
+    // Invariant: len bytes can be writen into the frame
+    frame->append(id, sname, len);
+
     static const u32 SIZE_THRESHOLD = 64;
-    if (space_left < SIZE_THRESHOLD) {
+    if (!frame->can_write(SIZE_THRESHOLD)) {
         status = flush_current_frame(FrameType::SNAME_ENTRY);
         if (status != AKU_SUCCESS) {
             return status;
@@ -380,6 +415,16 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             };
             rows[i].id = frame.part.ids[ix];
             rows[i].payload = data_point;
+        }
+        else if (frame.header.frame_type == FrameType::SNAME_ENTRY) {
+            auto entry = reinterpret_cast<const MutableSNameEntry*>(&frame.sname);
+            InputLogSeriesName sname;
+            assert(ix < frame.header.size);
+            std::tie(rows[i].id, sname.value) = entry->read(ix);
+            rows[i].payload = sname;
+        }
+        else {
+            return std::make_tuple(AKU_EBAD_DATA, 0);
         }
         elements_to_read_--;
     }

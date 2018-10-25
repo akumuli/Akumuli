@@ -379,9 +379,9 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
     {
         InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < 10000; i++) {
-            int variant = rand() % 100;
+            //int variant = rand() % 100;
             aku_Status status = AKU_SUCCESS;
-            if (variant > 5) {
+            if (false) {//variant > 5) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
                 DataPoint point = std::make_tuple(42, i, val);
                 status = ilog.append(std::get<0>(point),
