@@ -233,18 +233,18 @@ aku_Status LZ4Volume::require_frame_type(FrameType type) {
         frame.header.frame_type = type;
     }
     else if (frame.header.frame_type != type) {
-        flush_current_frame(type);
+        return flush_current_frame(type);
     }
     return AKU_SUCCESS;
 }
 
 aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
-    Frame& frame = frames_[pos_];
     auto status = require_frame_type(FrameType::DATA_ENTRY);
     if (status != AKU_SUCCESS) {
         return status;
     }
     bitmap_->add(id);
+    Frame& frame = frames_[pos_];
     frame.part.ids[frame.part.size] = id;
     frame.part.tss[frame.part.size] = timestamp;
     frame.part.xss[frame.part.size] = value;
@@ -406,30 +406,33 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
     Frame& frame = frames_[pos_];
     size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
     size_t frmsize = frame.part.size;
-    for (size_t i = 0; i < nvalues; i++) {
-        size_t ix = frmsize - elements_to_read_;
-        if (frame.header.frame_type == FrameType::DATA_ENTRY) {
+    if (frame.header.frame_type == FrameType::DATA_ENTRY) {
+        for (size_t i = 0; i < nvalues; i++) {
+            size_t ix = frmsize - elements_to_read_;
             InputLogDataPoint data_point = {
                 frame.part.tss[ix],
                 frame.part.xss[ix]
             };
             rows[i].id = frame.part.ids[ix];
             rows[i].payload = data_point;
+            elements_to_read_--;
         }
-        else if (frame.header.frame_type == FrameType::SNAME_ENTRY) {
-            auto entry = reinterpret_cast<const MutableSNameEntry*>(&frame.sname);
+    }
+    else if (frame.header.frame_type == FrameType::SNAME_ENTRY) {
+        auto entry = reinterpret_cast<const MutableSNameEntry*>(&frame.sname);
+        for (size_t i = 0; i < nvalues; i++) {
+            size_t ix = frmsize - elements_to_read_;
             InputLogSeriesName sname;
             assert(ix < frame.header.size);
             std::tie(rows[i].id, sname.value) = entry->read(ix);
             rows[i].payload = sname;
+            elements_to_read_--;
         }
-        else {
-            return std::make_tuple(AKU_EBAD_DATA, 0);
-        }
-        elements_to_read_--;
+    }
+    else {
+        return std::make_tuple(AKU_EBAD_DATA, 0);
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
-
 }
 
 std::tuple<aku_Status, const LZ4Volume::Frame*> LZ4Volume::read_next_frame() {
