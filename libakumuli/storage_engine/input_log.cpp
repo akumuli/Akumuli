@@ -114,8 +114,8 @@ void LZ4Volume::clear(int i) {
 aku_Status LZ4Volume::write(int i) {
     assert(!is_read_only_);
     Frame& frame = frames_[i];
-    frame.part.magic = V1_MAGIC;
-    frame.part.sequence_number = sequencer_->next();
+    frame.data_points.magic = V1_MAGIC;
+    frame.data_points.sequence_number = sequencer_->next();
     // Do write
     int out_bytes = LZ4_compress_fast_continue(&stream_,
                                                frame.block,
@@ -207,7 +207,7 @@ size_t LZ4Volume::file_size() const {
 void LZ4Volume::close() {
     if(!is_read_only_) {
         // Write unfinished frame if it contains any data.
-        if (frames_[pos_].part.size != 0) {
+        if (frames_[pos_].data_points.size != 0) {
             write(pos_);
         }
     }
@@ -245,11 +245,11 @@ aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     }
     bitmap_->add(id);
     Frame& frame = frames_[pos_];
-    frame.part.ids[frame.part.size] = id;
-    frame.part.tss[frame.part.size] = timestamp;
-    frame.part.xss[frame.part.size] = value;
-    frame.part.size++;
-    if (frame.part.size == NUM_TUPLES) {
+    frame.data_points.ids[frame.data_points.size] = id;
+    frame.data_points.tss[frame.data_points.size] = timestamp;
+    frame.data_points.xss[frame.data_points.size] = value;
+    frame.data_points.size++;
+    if (frame.data_points.size == NUM_TUPLES) {
         status = write(pos_);
         if (status != AKU_SUCCESS) {
             return status;
@@ -263,7 +263,7 @@ aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
     return AKU_SUCCESS;
 }
 
-struct MutableSNameEntry : LZ4Volume::Frame::SNameEntry {
+struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
     union Bits {
         u64 value;
         struct {
@@ -304,7 +304,7 @@ struct MutableSNameEntry : LZ4Volume::Frame::SNameEntry {
         Bits bits;
         bits.value = vector[-1 - ix*2];
         u64 id = vector[-2 - ix*2];
-        std::string result(names + bits.components.off, names + bits.components.off + bits.components.len);
+        std::string result(data + bits.components.off, data + bits.components.off + bits.components.len);
         return std::make_tuple(id, result);
     }
 
@@ -315,7 +315,7 @@ struct MutableSNameEntry : LZ4Volume::Frame::SNameEntry {
         u32 write_offset;
         u32 space_left;
         std::tie(write_offset, space_left) = get_space_and_offset();
-        auto dest = names + write_offset;
+        auto dest = data + write_offset;
         memcpy(dest, sname, len);
         int ix = size * -2;
         Bits bits;
@@ -327,25 +327,26 @@ struct MutableSNameEntry : LZ4Volume::Frame::SNameEntry {
     }
 };
 
-aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
-    auto status = require_frame_type(FrameType::SNAME_ENTRY);
+aku_Status LZ4Volume::append_blob(FrameType type, u64 id, const char* payload, u32 len) {
+    auto status = require_frame_type(type);
     if (status != AKU_SUCCESS) {
         return status;
     }
-    MutableSNameEntry* frame = reinterpret_cast<MutableSNameEntry*>(&frames_[pos_].sname);
+    MutableEntry* frame = reinterpret_cast<MutableEntry*>(&frames_[pos_].payload);
     if (!frame->can_write(len)) {
-        status = flush_current_frame(FrameType::SNAME_ENTRY);
+        status = flush_current_frame(type);
         if (status != AKU_SUCCESS) {
             return status;
         }
-        frame = reinterpret_cast<MutableSNameEntry*>(&frames_[pos_].sname);
+        frame = reinterpret_cast<MutableEntry*>(&frames_[pos_].payload);
     }
+
     // Invariant: len bytes can be writen into the frame
-    frame->append(id, sname, len);
+    frame->append(id, payload, len);
 
     static const u32 SIZE_THRESHOLD = 64;
     if (!frame->can_write(SIZE_THRESHOLD)) {
-        status = flush_current_frame(FrameType::SNAME_ENTRY);
+        status = flush_current_frame(type);
         if (status != AKU_SUCCESS) {
             return status;
         }
@@ -354,6 +355,17 @@ aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
         return AKU_EOVERFLOW;
     }
     return AKU_SUCCESS;
+}
+
+aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
+    return append_blob(FrameType::SNAME_ENTRY, id, sname, len);
+}
+
+aku_Status LZ4Volume::append(u64 id, const u64* recovery_array, u32 len) {
+    return append_blob(FrameType::RECOVERY_ENTRY,
+                       id,
+                       reinterpret_cast<const char*>(recovery_array),
+                       len*sizeof(u64));
 }
 
 std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u64* ts, double* xs) {
@@ -371,16 +383,16 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u6
             return std::make_tuple(status, 0);
         }
         bytes_to_read_   -= bytes_read;
-        elements_to_read_ = frames_[pos_].part.size;
+        elements_to_read_ = frames_[pos_].data_points.size;
     }
     Frame& frame = frames_[pos_];
     size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
-    size_t frmsize = frame.part.size;
+    size_t frmsize = frame.data_points.size;
     for (size_t i = 0; i < nvalues; i++) {
         size_t ix = frmsize - elements_to_read_;
-        id[i] = frame.part.ids[ix];
-        ts[i] = frame.part.tss[ix];
-        xs[i] = frame.part.xss[ix];
+        id[i] = frame.data_points.ids[ix];
+        ts[i] = frame.data_points.tss[ix];
+        xs[i] = frame.data_points.xss[ix];
         elements_to_read_--;
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(nvalues));
@@ -401,25 +413,25 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             return std::make_tuple(status, 0);
         }
         bytes_to_read_   -= bytes_read;
-        elements_to_read_ = frames_[pos_].part.size;
+        elements_to_read_ = frames_[pos_].data_points.size;
     }
     Frame& frame = frames_[pos_];
     size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
-    size_t frmsize = frame.part.size;
+    size_t frmsize = frame.data_points.size;
     if (frame.header.frame_type == FrameType::DATA_ENTRY) {
         for (size_t i = 0; i < nvalues; i++) {
             size_t ix = frmsize - elements_to_read_;
             InputLogDataPoint data_point = {
-                frame.part.tss[ix],
-                frame.part.xss[ix]
+                frame.data_points.tss[ix],
+                frame.data_points.xss[ix]
             };
-            rows[i].id = frame.part.ids[ix];
+            rows[i].id = frame.data_points.ids[ix];
             rows[i].payload = data_point;
             elements_to_read_--;
         }
     }
     else if (frame.header.frame_type == FrameType::SNAME_ENTRY) {
-        auto entry = reinterpret_cast<const MutableSNameEntry*>(&frame.sname);
+        auto entry = reinterpret_cast<const MutableEntry*>(&frame.payload);
         for (size_t i = 0; i < nvalues; i++) {
             size_t ix = frmsize - elements_to_read_;
             InputLogSeriesName sname;
@@ -469,7 +481,7 @@ const Roaring64Map& LZ4Volume::get_index() const {
 
 aku_Status LZ4Volume::flush() {
     Frame& frame = frames_[pos_];
-    if (frame.part.size != 0) {
+    if (frame.data_points.size != 0) {
         auto status = write(pos_);
         if (status != AKU_SUCCESS) {
             return status;
@@ -811,7 +823,7 @@ int ShardedInputLog::choose_next() {
     size_t ixstart = 0;
     for (;ixstart < read_queue_.size(); ixstart++) {
         if (read_queue_.at(ixstart).status == AKU_SUCCESS &&
-            read_queue_.at(ixstart).frame->part.size != 0) {
+            read_queue_.at(ixstart).frame->data_points.size != 0) {
             break;
         }
     }
@@ -822,12 +834,12 @@ int ShardedInputLog::choose_next() {
     int res = ixstart;
     for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
         if (read_queue_.at(ix).status != AKU_SUCCESS ||
-            read_queue_.at(ix).frame->part.size == 0) {
+            read_queue_.at(ix).frame->data_points.size == 0) {
             // Current input log is done or errored, just skip it.
             continue;
         }
-        if (read_queue_.at(ix).frame->part.sequence_number <
-            read_queue_.at(res).frame->part.sequence_number) {
+        if (read_queue_.at(ix).frame->data_points.sequence_number <
+            read_queue_.at(res).frame->data_points.sequence_number) {
             res = ix;
         }
     }
@@ -863,12 +875,12 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
     while(buffer_ix_ >= 0 && buffer_size > 0) {
         // return values from the current buffer
         Buffer& buffer = read_queue_.at(buffer_ix_);
-        if (buffer.pos < buffer.frame->part.size) {
-            u32 toread = std::min(buffer.frame->part.size - buffer.pos,
+        if (buffer.pos < buffer.frame->data_points.size) {
+            u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
                                   static_cast<u32>(buffer_size));
-            const aku_ParamId*   ids = buffer.frame->part.ids + buffer.pos;
-            const aku_Timestamp* tss = buffer.frame->part.tss + buffer.pos;
-            const double*        xss = buffer.frame->part.xss + buffer.pos;
+            const aku_ParamId*   ids = buffer.frame->data_points.ids + buffer.pos;
+            const aku_Timestamp* tss = buffer.frame->data_points.tss + buffer.pos;
+            const double*        xss = buffer.frame->data_points.xss + buffer.pos;
             std::copy(ids, ids + toread, idout);
             std::copy(tss, tss + toread, tsout);
             std::copy(xss, xss + toread, xsout);
@@ -912,11 +924,11 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
         if (buffer.pos < buffer.frame->header.size) {
             switch (buffer.frame->header.frame_type) {
             case LZ4Volume::FrameType::DATA_ENTRY: {
-                u32 toread = std::min(buffer.frame->part.size - buffer.pos,
+                u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
                                       static_cast<u32>(buffer_size));
-                const aku_ParamId*   ids = buffer.frame->part.ids + buffer.pos;
-                const aku_Timestamp* tss = buffer.frame->part.tss + buffer.pos;
-                const double*        xss = buffer.frame->part.xss + buffer.pos;
+                const aku_ParamId*   ids = buffer.frame->data_points.ids + buffer.pos;
+                const aku_Timestamp* tss = buffer.frame->data_points.tss + buffer.pos;
+                const double*        xss = buffer.frame->data_points.xss + buffer.pos;
                 for (u32 ix = 0; ix < toread; ix++) {
                     rows[ix].id = ids[ix];
                     InputLogDataPoint payload = {

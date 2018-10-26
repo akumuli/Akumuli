@@ -147,10 +147,10 @@ BOOST_AUTO_TEST_CASE(Test_input_volume_read_next_frame) {
                 // Done iterating
                 break;
             }
-            for(u32 i = 0; i < frame->part.size; i++) {
-                act.push_back(std::make_tuple(frame->part.ids[i],
-                                              frame->part.tss[i],
-                                              frame->part.xss[i]));
+            for(u32 i = 0; i < frame->data_points.size; i++) {
+                act.push_back(std::make_tuple(frame->data_points.ids[i],
+                                              frame->data_points.tss[i],
+                                              frame->data_points.xss[i]));
             }
         }
         volume.delete_file();
@@ -189,10 +189,10 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_frames) {
                 break;
             }
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-            for(u32 i = 0; i < frame->part.size; i++) {
-                act.push_back(std::make_tuple(frame->part.ids[i],
-                                              frame->part.tss[i],
-                                              frame->part.xss[i]));
+            for(u32 i = 0; i < frame->data_points.size; i++) {
+                act.push_back(std::make_tuple(frame->data_points.ids[i],
+                                              frame->data_points.tss[i],
+                                              frame->data_points.xss[i]));
             }
         }
         ilog.reopen();
@@ -457,7 +457,7 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
             BOOST_FAIL("Unexpected recovery info at " + std::to_string(ix));
         }
     };
-    //BOOST_REQUIRE_EQUAL(exp.size(), act.size());
+    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
     for (u32 i = 0; i < exp.size(); i++) {
         Visitor visitor;
         visitor.expected = exp.at(i);

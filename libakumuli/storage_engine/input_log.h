@@ -101,9 +101,9 @@ struct LZ4Volume {
     };
 
     enum {
-        BLOCK_SIZE = 0x2000,
-        FRAME_TUPLE_SIZE = sizeof(u64)*3,
-        NUM_TUPLES = (BLOCK_SIZE - sizeof(FrameHeader)) / FRAME_TUPLE_SIZE,
+        BLOCK_SIZE          = 0x2000,
+        FRAME_TUPLE_SIZE    = sizeof(u64)*3,
+        NUM_TUPLES          = (BLOCK_SIZE - sizeof(FrameHeader)) / FRAME_TUPLE_SIZE,
     };
 
     union Frame {
@@ -113,20 +113,19 @@ struct LZ4Volume {
             u64 ids[NUM_TUPLES];
             u64 tss[NUM_TUPLES];
             double xss[NUM_TUPLES];
-        } part;
-        struct SNameEntry : FrameHeader {
-            char names[BLOCK_SIZE - sizeof(FrameHeader)];
+        } data_points;
+        // This structure is used to implement storage for series names
+        // and recovery arrays.
+        struct FlexibleEntry : FrameHeader {
+            char data[BLOCK_SIZE - sizeof(FrameHeader)];
             u64 vector[0];
-        } sname;
-        struct RecoveryEntry : FrameHeader {
-            // TBD
-        } recovery;
+        } payload;
     } frames_[2];
 
     static_assert(sizeof(Frame) == BLOCK_SIZE, "Frame is missaligned");
     static_assert(sizeof(Frame::DataEntry) <= BLOCK_SIZE, "Frame::DataEntry is missaligned");
     static_assert(BLOCK_SIZE - sizeof(Frame::DataEntry) < FRAME_TUPLE_SIZE, "Frame::DataEntry is too small");
-    static_assert(sizeof(Frame::SNameEntry) == BLOCK_SIZE, "Frame::SNameEntry is missaligned");
+    static_assert(sizeof(Frame::FlexibleEntry) == BLOCK_SIZE, "Frame::FlexibleEntry is missaligned");
 
     char buffer_[LZ4_COMPRESSBOUND(BLOCK_SIZE)];
 
@@ -162,6 +161,9 @@ struct LZ4Volume {
       * next frame to 'type'.
       */
     aku_Status flush_current_frame(FrameType type);
+
+    /** Implementation for recovery and sname frames */
+    aku_Status append_blob(FrameType type, u64 id, const char* payload, u32 len);
 public:
     /**
      * @brief Create empty volume
@@ -183,8 +185,8 @@ public:
     size_t file_size() const;
 
     aku_Status append(u64 id, u64 timestamp, double value);
-
     aku_Status append(u64 id, const char* sname, u32 len);
+    aku_Status append(u64 id, const u64* recovery_array, u32 len);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)
