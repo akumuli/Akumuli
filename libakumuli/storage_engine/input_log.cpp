@@ -299,12 +299,20 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         return len <= space_left;
     }
 
-
-    std::tuple<u64, std::string> read(int ix) const {
+    std::tuple<u64, std::string> read_string(int ix) const {
         Bits bits;
         bits.value = vector[-1 - ix*2];
         u64 id = vector[-2 - ix*2];
         std::string result(data + bits.components.off, data + bits.components.off + bits.components.len);
+        return std::make_tuple(id, result);
+    }
+
+    std::tuple<u64, std::vector<u64>> read_array(int ix) const {
+        Bits bits;
+        bits.value = vector[-1 - ix*2];
+        u64 id = vector[-2 - ix*2];
+        std::vector<u64> result(reinterpret_cast<const u64*>(data + bits.components.off),
+                                reinterpret_cast<const u64*>(data + bits.components.off + bits.components.len));
         return std::make_tuple(id, result);
     }
 
@@ -436,8 +444,19 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             size_t ix = frmsize - elements_to_read_;
             InputLogSeriesName sname;
             assert(ix < frame.header.size);
-            std::tie(rows[i].id, sname.value) = entry->read(ix);
+            std::tie(rows[i].id, sname.value) = entry->read_string(ix);
             rows[i].payload = sname;
+            elements_to_read_--;
+        }
+    }
+    else if (frame.header.frame_type == FrameType::RECOVERY_ENTRY) {
+        auto entry = reinterpret_cast<const MutableEntry*>(&frame.payload);
+        for (size_t i = 0; i < nvalues; i++) {
+            size_t ix = frmsize - elements_to_read_;
+            InputLogRecoveryInfo recovery;
+            assert(ix < frame.header.size);
+            std::tie(rows[i].id, recovery.data) = entry->read_array(ix);
+            rows[i].payload = recovery;
             elements_to_read_--;
         }
     }
