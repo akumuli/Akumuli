@@ -370,7 +370,8 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
     test_input_roundtrip_with_conflicts(4, 100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
+void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
+    assert(sname_freq <= dpoint_freq);
     std::vector<u64> stale_ids;
     typedef std::tuple<u64, u64, double> DataPoint;
     typedef std::tuple<u64, std::string> SeriesName;
@@ -378,10 +379,10 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
     std::vector<InputValue> exp, act;
     {
         InputLog ilog(&sequencer, "./", 100, 4096, 0);
-        for (int i = 0; i < 10000; i++) {
-            int variant = rand() % 100;
+        for (int i = 0; i < N; i++) {
+            int variant = rand() % dpoint_freq;
             aku_Status status = AKU_SUCCESS;
-            if (variant > 5) {
+            if (variant > sname_freq) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
                 DataPoint point = std::make_tuple(42, i, val);
                 status = ilog.append(std::get<0>(point),
@@ -463,4 +464,17 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype) {
         visitor.ix = i;
         act.at(i).apply_visitor(visitor);
     }
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_0) {
+    // Only sname values
+    test_input_roundtrip_vartype(10000, 100, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_1) {
+    test_input_roundtrip_vartype(10000, 0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_2) {
+    test_input_roundtrip_vartype(10000, 5, 100);
 }
