@@ -370,19 +370,22 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
     test_input_roundtrip_with_conflicts(4, 100);
 }
 
-void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
+void test_input_roundtrip_vartype(int N, int sname_freq, int recovery_freq, int dpoint_freq) {
     assert(sname_freq <= dpoint_freq);
+    assert(recovery_freq <= dpoint_freq);
+    assert(sname_freq <= recovery_freq);
     std::vector<u64> stale_ids;
     typedef std::tuple<u64, u64, double> DataPoint;
     typedef std::tuple<u64, std::string> SeriesName;
-    typedef boost::variant<DataPoint, SeriesName> InputValue;
+    typedef std::tuple<u64, std::vector<u64>> RescuePoint;
+    typedef boost::variant<DataPoint, SeriesName, RescuePoint> InputValue;
     std::vector<InputValue> exp, act;
     {
         InputLog ilog(&sequencer, "./", 100, 4096, 0);
         for (int i = 0; i < N; i++) {
             int variant = rand() % dpoint_freq;
             aku_Status status = AKU_SUCCESS;
-            if (variant > sname_freq) {
+            if (variant >= std::max(sname_freq, recovery_freq)) {
                 double val = static_cast<double>(rand()) / RAND_MAX;
                 DataPoint point = std::make_tuple(42, i, val);
                 status = ilog.append(std::get<0>(point),
@@ -390,11 +393,18 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
                                      std::get<2>(point),
                                      &stale_ids);
                 exp.push_back(point);
-            } else {
+            }
+            else if (variant < sname_freq) {
                 std::string text = "foo bar=" + std::to_string(rand() % 1000);
                 SeriesName sname = std::make_tuple(42, text);
                 status = ilog.append(42, text.data(), text.length(), &stale_ids);
                 exp.push_back(sname);
+            }
+            else {
+                std::vector<u64> val = { static_cast<u64>(rand()) };
+                RescuePoint point = std::make_tuple(42, val);
+                status = ilog.append(42, val.data(), val.size(), &stale_ids);
+                exp.push_back(point);
             }
             if (status == AKU_EOVERFLOW) {
                 ilog.rotate();
@@ -412,8 +422,9 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
             SeriesName tup = std::make_tuple(id, val.value);
             output->push_back(tup);
         }
-        void operator () (const InputLogRecoveryInfo&) {
-            BOOST_FAIL("Unexpected recovery info");
+        void operator () (const InputLogRecoveryInfo& val) {
+            RescuePoint tup = std::make_tuple(id, val.data);
+            output->push_back(tup);
         }
     };
     BOOST_REQUIRE(stale_ids.empty());
@@ -453,8 +464,10 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
                 BOOST_FAIL("Unexpected series name at " + std::to_string(ix));
             }
         }
-        void operator () (const InputLogRecoveryInfo&) {
-            BOOST_FAIL("Unexpected recovery info at " + std::to_string(ix));
+        void operator () (const RescuePoint& re) {
+            if (re != boost::get<RescuePoint>(expected)) {
+                BOOST_FAIL("Unexpected rescue point at " + std::to_string(ix));
+            }
         }
     };
     BOOST_REQUIRE_EQUAL(exp.size(), act.size());
@@ -468,13 +481,25 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int dpoint_freq) {
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_0) {
     // Only sname values
-    test_input_roundtrip_vartype(10000, 100, 100);
+    test_input_roundtrip_vartype(10000, 100, 100, 100);
 }
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_1) {
-    test_input_roundtrip_vartype(10000, 0, 100);
+    test_input_roundtrip_vartype(10000, 0, 0, 100);
 }
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_2) {
-    test_input_roundtrip_vartype(10000, 5, 100);
+    test_input_roundtrip_vartype(10000, 5, 5, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_3) {
+    test_input_roundtrip_vartype(10000, 5, 10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_4) {
+    test_input_roundtrip_vartype(10000, 10, 30, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_5) {
+    test_input_roundtrip_vartype(10000, 0, 100, 100);
 }

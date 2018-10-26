@@ -267,8 +267,8 @@ public:
       * input log on next rotation. Rotation should be triggered manually.
       */
     aku_Status append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids);
-
     aku_Status append(u64 id, const char* sname, u32 len, std::vector<u64> *stale_ids);
+    aku_Status append(u64 id, const u64* rescue_points, u32 len, std::vector<u64> *stale_ids);
 
     /**
      * @brief Read values in bulk (volume should be opened in read mode)

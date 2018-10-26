@@ -663,6 +663,14 @@ aku_Status InputLog::append(u64 id, const char* sname, u32 len, std::vector<u64>
     return result;
 }
 
+aku_Status InputLog::append(u64 id, const u64 *rescue_points, u32 len, std::vector<u64>* stale_ids) {
+    aku_Status result = volumes_.front()->append(id, rescue_points, len);
+    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
+        detect_stale_ids(stale_ids);
+    }
+    return result;
+}
+
 std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64* ts, double* xs) {
     while(true) {
         if (volumes_.empty()) {
