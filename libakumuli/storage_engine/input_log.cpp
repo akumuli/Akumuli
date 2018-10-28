@@ -967,16 +967,44 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
                 buffer_size -= toread;  // Invariant: buffer_size will never overflow, it's always less than 'toread'
                 rows        += toread;
                 buffer.pos  += toread;
+                outsize     += toread;
             } break;
             case LZ4Volume::FrameType::SNAME_ENTRY: {
-                throw "not implemented";
+                u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
+                                      static_cast<u32>(buffer_size));
+                auto frame = reinterpret_cast<const MutableEntry*>(&buffer.frame->payload);
+                for (u32 ix = 0; ix < toread; ix++) {
+                    std::string sname ;
+                    std::tie(rows[ix].id, sname) = frame->read_string(buffer.pos + ix);
+                    InputLogSeriesName payload = {
+                        sname
+                    };
+                    rows[ix].payload = payload;
+                }
+                buffer_size -= toread;
+                rows        += toread;
+                buffer.pos  += toread;
+                outsize     += toread;
             } break;
             case LZ4Volume::FrameType::RECOVERY_ENTRY: {
-                throw "not implemented";
+                u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
+                                      static_cast<u32>(buffer_size));
+                auto frame = reinterpret_cast<const MutableEntry*>(&buffer.frame->payload);
+                for (u32 ix = 0; ix < toread; ix++) {
+                    std::vector<u64> rescue_points;
+                    std::tie(rows[ix].id, rescue_points) = frame->read_array(buffer.pos + ix);
+                    InputLogRecoveryInfo payload = {
+                        rescue_points
+                    };
+                    rows[ix].payload = payload;
+                }
+                buffer_size -= toread;
+                rows        += toread;
+                buffer.pos  += toread;
+                outsize     += toread;
             } break;
-            case LZ4Volume::FrameType::EMPTY: {
-                throw "not implemented";
-            } break;
+            case LZ4Volume::FrameType::EMPTY:
+                return std::make_tuple(AKU_EBAD_DATA, 0);
             }
         } else {
             refill_buffer(buffer_ix_);

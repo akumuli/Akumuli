@@ -503,3 +503,183 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_4) {
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_5) {
     test_input_roundtrip_vartype(10000, 0, 100, 100);
 }
+
+void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int sname_freq, int recovery_freq, int dpoint_freq) {
+    // This test simulates simultaneous concurrent write. Each "thread"
+    // writes it's own series and metadata. Periodically the threads are switched
+    // and as result, every log should have all series.
+
+    assert(sname_freq <= dpoint_freq);
+    assert(recovery_freq <= dpoint_freq);
+    assert(sname_freq <= recovery_freq);
+    typedef std::tuple<u64, double> DataPoint;
+    typedef std::string             SeriesName;
+    typedef std::vector<u64>        RescuePoint;
+    typedef boost::variant<DataPoint, SeriesName, RescuePoint> InputValue;
+    std::map<u64, std::vector<InputValue>> exp, act;
+    std::vector<u64> stale_ids;
+    std::vector<aku_ParamId> ids;
+    {
+        ShardedInputLog slog(ccr, "./", 200, 4096);
+        std::vector<InputLog*> ilogs;
+        for (int i = 0; i < ccr; i++) {
+            ilogs.push_back(&slog.get_shard(i));
+            ids.push_back((i + 1)*1111);
+        }
+        int oldshift = 0;
+        for (int i = 0; i < 10000*ccr; i++) {
+            int shift = i / rowsize;
+            if (shift != oldshift) {
+                // Simulate disconnection
+                for (auto it: ilogs) {
+                    it->flush(&stale_ids);
+                }
+            }
+            oldshift = shift;
+            int logix = (i + shift) % ilogs.size();
+            aku_ParamId id = ids.at(i % ids.size());
+            int variant = rand() % dpoint_freq;
+            aku_Status status = AKU_SUCCESS;
+            if (variant >= std::max(sname_freq, recovery_freq)) {
+                double val = static_cast<double>(rand()) / RAND_MAX;
+                DataPoint point = std::make_tuple(i, val);
+                status = ilogs.at(logix)->append(id, std::get<0>(point), std::get<1>(point), &stale_ids);
+                exp[id].push_back(point);
+            }
+            else if (variant < sname_freq) {
+                SeriesName sname = "foo bar=" + std::to_string(rand() % 1000);
+                status = ilogs.at(logix)->append(id, sname.data(), sname.length(), &stale_ids);
+                exp[id].push_back(sname);
+            }
+            else {
+                RescuePoint point = { static_cast<u64>(rand()) };
+                status = ilogs.at(logix)->append(id, point.data(), point.size(), &stale_ids);
+                exp[id].push_back(point);
+            }
+            if (status == AKU_EOVERFLOW) {
+                ilogs.at(logix)->rotate();
+            }
+        }
+    }
+    {
+        struct Redirect : boost::static_visitor<> {
+            std::map<u64, std::vector<InputValue>>* output;
+            u64 id;
+
+            void operator () (const InputLogDataPoint& val) {
+                DataPoint tup = std::make_tuple(val.timestamp, val.value);
+                (*output)[id].push_back(tup);
+            }
+            void operator () (const InputLogSeriesName& val) {
+                (*output)[id].push_back(val.value);
+            }
+            void operator () (const InputLogRecoveryInfo& val) {
+                (*output)[id].push_back(val.data);
+            }
+        };
+        ShardedInputLog slog(0, "./");
+        // Read by one
+        while(true) {
+            InputLogRow row;
+            aku_Status status;
+            u32 outsize;
+            std::tie(status, outsize) = slog.read_next(1, &row);
+            if (outsize == 1) {
+                Redirect visitor;
+                visitor.id = row.id;
+                visitor.output = &act;
+                row.payload.apply_visitor(visitor);
+            }
+            if (status == AKU_ENO_DATA) {
+                // EOF
+                break;
+            } else if (status != AKU_SUCCESS) {
+                BOOST_ERROR("Read failed " + StatusUtil::str(status));
+            }
+        }
+        slog.reopen();
+        slog.delete_files();
+    }
+    struct Visitor : boost::static_visitor<> {
+        InputValue expected;
+        u32 ix;
+
+        void operator () (const DataPoint& dp) {
+            DataPoint exp = boost::get<DataPoint>(expected);
+            if (dp != exp) {
+                BOOST_FAIL("Unexpected point at " + std::to_string(ix));
+            }
+        }
+        void operator () (const SeriesName& sn) {
+            SeriesName exp = boost::get<SeriesName>(expected);
+            if (sn != exp) {
+                BOOST_FAIL("Unexpected series name at " + std::to_string(ix) +
+                           ", expected: " + exp + ", actual: " + sn);
+            }
+        }
+        void operator () (const RescuePoint& re) {
+            if (re != boost::get<RescuePoint>(expected)) {
+                BOOST_FAIL("Unexpected rescue point at " + std::to_string(ix));
+            }
+        }
+    };
+    for (auto id: ids) {
+        const std::vector<InputValue>& expected = exp[id];
+        const std::vector<InputValue>& actual   = act[id];
+        BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+        for (u32 i = 0; i < exp.size(); i++) {
+            Visitor visitor;
+            visitor.expected = expected.at(i);
+            visitor.ix = i;
+            actual.at(i).apply_visitor(visitor);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_0) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 100, 100, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_1) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 100, 100, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_2) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 0, 0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_3) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 0, 0, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_4) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 5, 5, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_5) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 5, 5, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_6) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 5, 10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_7) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 5, 10, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_8) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 10, 30, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_9) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 10, 30, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_10) {
+    test_input_roundtrip_with_conflicts_and_vartype(2, 100, 0, 100, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_11) {
+    test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 0, 100, 100);
+}
