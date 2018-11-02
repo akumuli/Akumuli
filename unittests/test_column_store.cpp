@@ -1204,3 +1204,113 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_1) {
 BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_2) {
     test_group_aggregate_filter(1000, 11000);
 }
+
+
+void test_open_or_restore(aku_Timestamp begin, aku_Timestamp end, bool graceful_shutdown, bool force_init) {
+    u32 append_count = 0;
+    u32 read_count = 0;
+    auto bstore = BlockStoreBuilder::create_memstore([&append_count](LogicAddr) { append_count++; },
+                                                     [&read_count](LogicAddr) { read_count++; });
+    std::shared_ptr<ColumnStore> cstore;
+    cstore.reset(new ColumnStore(bstore));
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+
+    for (auto id: ids) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    auto checkpoint = bstore->get_write_pos();
+    session.reset();
+    auto mapping = cstore->close();
+
+    // Reopen
+    if (!graceful_shutdown) {
+        bstore->reset_write_pos(checkpoint);
+    }
+    u32 nwrites = append_count;
+    u32 nreads = read_count;
+    cstore.reset(new ColumnStore(bstore));
+    cstore->open_or_restore(mapping, force_init);
+
+    if (force_init || graceful_shutdown == false) {
+        BOOST_REQUIRE(nreads < read_count);
+    }
+    if (graceful_shutdown == false) {
+        BOOST_REQUIRE(nwrites < append_count);
+    }
+    if (force_init == false && graceful_shutdown == true) {
+        BOOST_REQUIRE(nreads == read_count);
+        BOOST_REQUIRE(nwrites == append_count);
+    }
+
+    session = create_session(cstore);
+    nwrites = append_count;
+    nreads = read_count;
+    for (auto id: ids) {
+        fill_data_in(cstore, session, id, end, end + 1);
+    }
+    if (force_init) {
+        BOOST_REQUIRE(nreads == read_count);
+        BOOST_REQUIRE(nwrites == append_count);
+    } else {
+        BOOST_REQUIRE(nreads != read_count);
+        BOOST_REQUIRE(nwrites == append_count);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_1) {
+    test_open_or_restore(100, 200, true, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_2) {
+    test_open_or_restore(1000, 2000, true, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_3) {
+    test_open_or_restore(1000, 11000, true, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_4) {
+    test_open_or_restore(100, 200, true, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_5) {
+    test_open_or_restore(1000, 2000, true, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_6) {
+    test_open_or_restore(1000, 11000, true, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_7) {
+    test_open_or_restore(100, 200, false, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_8) {
+    test_open_or_restore(1000, 2000, false, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_9) {
+    test_open_or_restore(1000, 11000, false, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_10) {
+    test_open_or_restore(100, 200, false, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_11) {
+    test_open_or_restore(1000, 2000, false, true);
+}
+
+BOOST_AUTO_TEST_CASE(Test_column_store_open_12) {
+    test_open_or_restore(1000, 11000, false, true);
+}

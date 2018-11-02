@@ -634,6 +634,15 @@ MemStore::MemStore(std::function<void(LogicAddr)> append_cb)
 {
 }
 
+MemStore::MemStore(std::function<void(LogicAddr)> append_cb,
+                   std::function<void(LogicAddr)> read_cb)
+    : append_callback_(append_cb)
+    , read_callback_(read_cb)
+    , write_pos_(0)
+    , removed_pos_(0)
+{
+}
+
 void MemStore::remove(size_t addr) {
     removed_pos_ = addr;
 }
@@ -674,6 +683,9 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     auto end = begin + AKU_BLOCK_SIZE;
     std::copy(begin, end, std::back_inserter(data));
     block.reset(new Block(addr + MEMSTORE_BASE, std::move(data)));
+    if (read_callback_) {
+        read_callback_(addr);
+    }
     return std::make_tuple(AKU_SUCCESS, block);
 }
 
@@ -694,6 +706,9 @@ std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> MemStore::read_iovec_block(L
     u8* dest = block->get_data(0);
     assert(block->get_size(0) == AKU_BLOCK_SIZE);
     std::copy(begin, end, dest);
+    if (read_callback_) {
+        read_callback_(addr);
+    }
     return std::make_tuple(AKU_SUCCESS, std::move(block));
 }
 
@@ -757,12 +772,29 @@ bool MemStore::exists(LogicAddr addr) const {
     return addr < write_pos_;
 }
 
-std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore() {
+u32 MemStore::get_write_pos() {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    return write_pos_;
+}
+
+u32 MemStore::reset_write_pos(u32 pos) {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    auto tmp = write_pos_;
+    write_pos_ = pos;
+    return tmp;
+}
+
+std::shared_ptr<MemStore> BlockStoreBuilder::create_memstore() {
     return std::make_shared<MemStore>();
 }
 
-std::shared_ptr<BlockStore> BlockStoreBuilder::create_memstore(std::function<void(LogicAddr)> append_cb) {
+std::shared_ptr<MemStore> BlockStoreBuilder::create_memstore(std::function<void(LogicAddr)> append_cb) {
     return std::make_shared<MemStore>(append_cb);
+}
+
+std::shared_ptr<MemStore> BlockStoreBuilder::create_memstore(std::function<void(LogicAddr)> append_cb,
+                                                               std::function<void(LogicAddr)> read_cb) {
+    return std::make_shared<MemStore>(append_cb, read_cb);
 }
 
 }}  // namespace
