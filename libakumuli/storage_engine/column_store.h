@@ -61,8 +61,6 @@ class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     PlainSeriesMatcher global_matcher_;
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
-    //! Mutex for metadata storage and rescue points list
-    mutable std::mutex metadata_lock_;
     //! Mutex for table_ hashmap (shrink and resize)
     mutable std::mutex table_lock_;
     //! Syncronization for watcher thread

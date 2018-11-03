@@ -3728,6 +3728,7 @@ bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     }
     bool parent_saved = false;
     LogicAddr addr = EMPTY_ADDR;
+    write_count_++;
     std::tie(parent_saved, addr) = root->append(pl);
     if (addr != EMPTY_ADDR) {
         // NOTE: `addr != EMPTY_ADDR` means that something was saved to disk (current node or parent node).

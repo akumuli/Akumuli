@@ -54,7 +54,8 @@ aku_Status ColumnStore::open_or_restore(
             columns_[id]->force_init();
             if (force_init == false) {
                 // Close the tree until it will be acessed first
-                columns_[id]->close();
+                auto rplist = columns_[id]->close();
+                rescue_points_[id] = std::move(rplist);
             }
         }
     }
