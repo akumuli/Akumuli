@@ -1205,7 +1205,6 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_filter_query_2) {
     test_group_aggregate_filter(1000, 11000);
 }
 
-
 void test_open_or_restore(aku_Timestamp begin, aku_Timestamp end, bool graceful_shutdown, bool force_init) {
     u32 append_count = 0;
     u32 read_count = 0;
@@ -1331,3 +1330,80 @@ BOOST_AUTO_TEST_CASE(Test_column_store_repair_4) {
 BOOST_AUTO_TEST_CASE(Test_column_store_repair_5) {
     test_open_or_restore(1000, 11000, false, true);
 }
+
+/**
+ * @brief Veryfy that the column is safe to read and write after recovery in wal mode
+ * @param begin
+ * @param end
+ */
+void test_restored_column_safety(aku_Timestamp begin, aku_Timestamp end) {
+    auto bstore = BlockStoreBuilder::create_memstore();
+    std::shared_ptr<ColumnStore> cstore;
+    cstore.reset(new ColumnStore(bstore));
+    auto session = create_session(cstore);
+    std::vector<aku_Timestamp> timestamps;
+    for (aku_Timestamp ix = begin; ix < end; ix++) {
+        timestamps.push_back(ix);
+    }
+    std::vector<aku_ParamId> ids = {
+        10,11,12,13,14,15,16,17,18,19
+    };
+    std::vector<aku_ParamId> invids;
+    std::copy(ids.rbegin(), ids.rend(), std::back_inserter(invids));
+
+    for (auto id: ids) {
+        fill_data_in(cstore, session, id, begin, end);
+    }
+
+    session.reset();
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
+    // Emulate failure
+    auto nbtree_list = cstore->_get_columns();
+    for (auto& kv: nbtree_list) {
+        std::shared_ptr<NBTreeExtentsList> nbtree = kv.second;
+        auto rpoints = nbtree->get_roots();
+        mapping[kv.first] = std::move(rpoints);
+    }
+    cstore.reset(new ColumnStore(bstore));
+
+    // Restore database
+    cstore->open_or_restore(mapping, false);
+
+    auto usize = cstore->_get_uncommitted_memory();
+    BOOST_REQUIRE_EQUAL(usize, 0);
+
+    // Read half of series
+    QueryProcessorMock qproc;
+    ReshapeRequest req = {};
+    req.group_by.enabled = false;
+    req.select.begin = begin;
+    req.select.end = end;
+    req.select.columns.emplace_back();
+    for(size_t i = 0; i < ids.size()/2; i++) {
+        req.select.columns[0].ids.push_back(ids[i]);
+    }
+    req.order_by = OrderBy::SERIES;
+    execute(cstore, &qproc, req);
+
+    BOOST_REQUIRE(qproc.error == AKU_SUCCESS);
+
+    // Try to update the rest series
+    session = create_session(cstore);
+    for(size_t i = ids.size()/2; i < ids.size(); i++) {
+        auto id = ids.at(i);
+        fill_data_in(cstore, session, id, end, end + 1);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_restored_column_safety_0) {
+    test_restored_column_safety(100, 200);
+}
+
+BOOST_AUTO_TEST_CASE(Test_restored_column_safety_1) {
+    test_restored_column_safety(1000, 2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_restored_column_safety_2) {
+    test_restored_column_safety(1000, 11000);
+}
+
