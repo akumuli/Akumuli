@@ -822,12 +822,13 @@ InputLog& ShardedInputLog::get_shard(int i) {
     if (read_only_) {
         AKU_PANIC("Can't write read-only input log");
     }
-    if (!streams_.at(i)) {
+    auto ix = i % streams_.size();
+    if (!streams_.at(ix)) {
         std::unique_ptr<InputLog> log;
-        log.reset(new InputLog(&sequencer_, rootdir_.c_str(), nvol_, svol_, static_cast<u32>(i)));
-        streams_.at(i) = std::move(log);
+        log.reset(new InputLog(&sequencer_, rootdir_.c_str(), nvol_, svol_, static_cast<u32>(ix)));
+        streams_.at(ix) = std::move(log);
     }
-    return *streams_.at(i);
+    return *streams_.at(ix);
 }
 
 void ShardedInputLog::init_read_buffers() {

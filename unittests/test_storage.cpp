@@ -59,11 +59,11 @@ std::shared_ptr<ColumnStore> create_cstore() {
     return cstore;
 }
 
-std::shared_ptr<Storage> create_storage() {
+std::shared_ptr<Storage> create_storage(bool start_worker=false) {
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
     auto cstore = create_cstore();
-    auto store = std::make_shared<Storage>(meta, bstore, cstore, false);
+    auto store = std::make_shared<Storage>(meta, bstore, cstore, start_worker);
     return store;
 }
 
@@ -1004,3 +1004,47 @@ BOOST_AUTO_TEST_CASE(Test_series_add_5) {
 
 // Test reopen
 
+void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) {
+    BOOST_REQUIRE(cardinality);
+    std::vector<std::string> series_names;
+    for (int i = 0; i < cardinality; i++) {
+        series_names.push_back(
+            "test tag=" + std::to_string(i));
+    }
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    auto cstore = create_cstore();
+    auto store = std::make_shared<Storage>(meta, bstore, cstore, true);
+    aku_FineTuneParams params;
+    params.input_log_concurrency = 1;
+    params.input_log_path = "./";
+    params.input_log_volume_numb = 32;
+    params.input_log_volume_size = 1024*1024*24;
+    store->initialize_input_log(params);
+    auto session = store->create_write_session();
+
+    fill_data(session, begin, end, series_names);
+    session.reset();  // This should flush current WAL frame
+
+    store->_kill();
+    store = std::make_shared<Storage>(meta, bstore, cstore, false);
+    store->initialize_input_log(params);
+    session = store->create_write_session();
+
+    CursorMock cursor;
+    auto query = make_scan_query(begin, end, OrderBy::SERIES);
+    session->query(&cursor, query.c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    auto expected_size = (end - begin)*series_names.size();
+    std::vector<aku_Timestamp> expected;
+    for (aku_Timestamp ts = begin; ts < end; ts++) {
+        expected.push_back(ts);
+    }
+    check_timestamps(cursor, expected, OrderBy::SERIES, series_names);
+    check_paramids(*session, cursor, OrderBy::SERIES, series_names, expected_size, false);
+}
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_0) {
+    test_wal_recovery(100, 1000, 2000);
+}

@@ -56,6 +56,8 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
         InputLog* log_;
     };
     static boost::thread_specific_ptr<InputLogInstance> tls_;
+
+    InputLog* get_input_log();
 public:
     StorageSession(std::shared_ptr<Storage> storage,
                    std::shared_ptr<StorageEngine::CStoreSession> session,
@@ -138,7 +140,7 @@ public:
     void initialize_input_log(const aku_FineTuneParams& params);
 
     //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
+    std::tuple<aku_Status, bool> init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
 
     int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher);
 
@@ -212,6 +214,10 @@ public:
     static aku_Status remove_storage(const char* file_name, const char *wal_path, bool force);
 
     boost::property_tree::ptree get_stats();
+
+    /** Destroy object without preserving consistency
+     */
+    void _kill();
 };
 
 }

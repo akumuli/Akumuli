@@ -118,24 +118,7 @@ StorageSession::~StorageSession() {
 
 boost::thread_specific_ptr<StorageSession::InputLogInstance> StorageSession::tls_;
 
-aku_Status StorageSession::write(aku_Sample const& sample) {
-    using namespace StorageEngine;
-    std::vector<u64> rpoints;
-    auto status = session_->write(sample, &rpoints);
-    switch (status) {
-    case NBTreeAppendResult::OK:
-        break;
-    case NBTreeAppendResult::OK_FLUSH_NEEDED:
-        storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
-        break;
-    case NBTreeAppendResult::FAIL_BAD_ID:
-        Logger::msg(AKU_LOG_ERROR, "Invalid session cache, id = " + std::to_string(sample.paramid));
-        return AKU_ENOT_FOUND;
-    case NBTreeAppendResult::FAIL_LATE_WRITE:
-        return AKU_ELATE_WRITE;
-    case NBTreeAppendResult::FAIL_BAD_VALUE:
-        return AKU_EBAD_ARG;
-    };
+InputLog* StorageSession::get_input_log() {
     if (ilog_ == nullptr && shlog_ != nullptr) {
         if (tls_.get()) {
             ilog_ = tls_->log_;
@@ -148,13 +131,52 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
             ilog_ = ptr->log_;
         }
     }
-    if (ilog_ != nullptr) {
+    return ilog_;
+}
+
+aku_Status StorageSession::write(aku_Sample const& sample) {
+    using namespace StorageEngine;
+    std::vector<u64> rpoints;
+    auto ilog = get_input_log();
+    auto status = session_->write(sample, &rpoints);
+    switch (status) {
+    case NBTreeAppendResult::OK:
+        break;
+    case NBTreeAppendResult::OK_FLUSH_NEEDED:
+        if (ilog != nullptr) {
+            // Copy rpoints here because it will be needed later to add new entry
+            // into the input-log.
+            auto rpoints_copy = rpoints;
+            storage_-> _update_rescue_points(sample.paramid, std::move(rpoints_copy));
+        } else {
+            storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
+        }
+        break;
+    case NBTreeAppendResult::FAIL_BAD_ID:
+        Logger::msg(AKU_LOG_ERROR, "Invalid session cache, id = " + std::to_string(sample.paramid));
+        return AKU_ENOT_FOUND;
+    case NBTreeAppendResult::FAIL_LATE_WRITE:
+        return AKU_ELATE_WRITE;
+    case NBTreeAppendResult::FAIL_BAD_VALUE:
+        return AKU_EBAD_ARG;
+    };
+    if (ilog != nullptr) {
         std::vector<u64> staleids;
-        auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
+        auto res = ilog->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
         if (res == AKU_EOVERFLOW) {
-            ilog_->rotate();
+            ilog->rotate();
             if (!staleids.empty()) {
                 storage_->close_specific_columns(staleids);
+                staleids.clear();
+            }
+        }
+        if (status == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+            auto res = ilog->append(sample.paramid, rpoints.data(), rpoints.size(), &staleids);
+            if (res == AKU_EOVERFLOW) {
+                ilog->rotate();
+                if (!staleids.empty()) {
+                    storage_->close_specific_columns(staleids);
+                }
             }
         }
     }
@@ -180,7 +202,25 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
     u64 id = local_matcher_.match(ob, ksend);
     if (!id) {
         // go to global registery
-        status = storage_->init_series_id(ob, ksend, sample, &local_matcher_);
+        bool create_new = false;
+        std::tie(status, create_new) = storage_->init_series_id(ob, ksend, sample, &local_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        if (create_new) {
+            // Add record to input log
+            auto ilog = get_input_log();
+            if (ilog != nullptr) {
+                std::vector<aku_ParamId> staleids;
+                auto res = ilog->append(sample->paramid, ob, static_cast<u32>(ksend - ob), &staleids);
+                if (res == AKU_EOVERFLOW) {
+                    ilog->rotate();
+                    if (!staleids.empty()) {
+                        storage_->close_specific_columns(staleids);
+                    }
+                }
+            }
+        }
     } else {
         // initialize using local info
         sample->paramid = id;
@@ -220,7 +260,8 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         if (!id) {
             // go to global registery
             aku_Sample sample;
-            status = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
+            bool new_name = false;
+            std::tie(status, new_name) = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
             ids[0] = sample.paramid;
         } else {
             // initialize using local info
@@ -258,7 +299,8 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             if (!id) {
                 // go to global registery
                 aku_Sample tmp;
-                status = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
+                bool newname;
+                std::tie(status, newname) = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
                 ids[i] = tmp.paramid;
             } else {
                 // initialize using local info
@@ -411,62 +453,112 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
 
 void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     size_t nitems = 0x1000;
-    std::vector<aku_ParamId>    ids(nitems);
-    std::vector<aku_Timestamp>  tss(nitems);
-    std::vector<double>         xss(nitems);
-    std::unordered_set<aku_ParamId> updated_ids;
+    std::vector<InputLogRow>                     rows(nitems);
+    std::unordered_map<aku_ParamId, aku_ParamId> idmap;
+    std::unordered_set<aku_ParamId>              updated_ids;
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
     bool stop = false;
-    u64 nsamples = 0;
     u64 nsegments = 0;
-    u64 nlost = 0;
+
+
+    struct Visitor : boost::static_visitor<bool> {
+        Storage* storage;
+        aku_Sample sample;
+        std::unordered_set<aku_ParamId> updated_ids;
+        u64 nsamples = 0;
+        u64 nlost = 0;
+
+        /** Should be called for each input-log record
+          * before using as a visitor
+          */
+        void reset(aku_ParamId id) {
+            sample = {};
+            sample.paramid = id;
+        }
+
+        bool operator () (const InputLogDataPoint& point) {
+            sample.timestamp        = point.timestamp;
+            sample.payload.float64  = point.value;
+            sample.payload.size     = sizeof(aku_Sample);
+            sample.payload.type     = AKU_PAYLOAD_FLOAT;
+            auto result = storage->cstore_->recovery_write(sample,
+                                                           updated_ids.count(sample.paramid));
+                // In a normal situation, Akumuli allows duplicates (data-points
+                // with the same timestamp). But during recovery, this leads to
+                // the following problem. Recovery procedure will replay the log
+                // and try to add every value registered by it. The last value
+                // stored inside the NB+tree instance will be added second time
+                // by the replay. To prevent it this code disables the ability
+                // to add duplicates until the first value will be successfully
+                // added to the NB+tree instance. The progress is tracked
+                // per-series using the map (updated_ids).
+            switch(result) {
+            case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
+                Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
+                return true;
+                break;
+            case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
+                nlost++;
+                break;
+            case StorageEngine::NBTreeAppendResult::OK_FLUSH_NEEDED:
+            case StorageEngine::NBTreeAppendResult::OK:
+                updated_ids.insert(sample.paramid);
+                nsamples++;
+                break;
+            default:
+                break;
+            };
+            return false;
+        }
+
+        bool operator () (const InputLogSeriesName& sname) {
+            auto strref = storage->global_matcher_.id2str(sample.paramid);
+            if (strref.second) {
+                // Fast path, name already added
+                return false;
+            }
+            bool create_new = false;
+            auto begin = sname.value.data();
+            auto end = begin + sname.value.length();
+            auto id = storage->global_matcher_.match(begin, end);
+            if (id == 0) {
+                // create new series
+                storage->global_matcher_._add(sname.value, id);  // Invariant: id is not used
+                storage->metadata_->add_rescue_point(id, std::vector<u64>());
+                create_new = true;
+            }
+            if (create_new) {
+                // id guaranteed to be unique
+                storage->cstore_->create_new_column(id);
+            }
+            return false;
+        }
+
+        bool operator () (const InputLogRecoveryInfo& rinfo) {
+            throw "not implemented";
+        }
+    };
+
+    Visitor visitor;
+    visitor.storage = this;
+
     while (!stop) {
         aku_Status status;
         u32 outsize;
-        std::tie(status, outsize) = ilog->read_next(nitems, ids.data(), tss.data(), xss.data());
+        std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
         if (status == AKU_SUCCESS) {
             for (u32 ix = 0; ix < outsize; ix++) {
-                aku_Sample sample;
-                sample.paramid          = ids[ix];
-                sample.timestamp        = tss[ix];
-                sample.payload.float64  = xss[ix];
-                sample.payload.size     = sizeof(aku_Sample);
-                sample.payload.type     = AKU_PAYLOAD_FLOAT;
-                auto result = cstore_->recovery_write(sample,
-                                                      updated_ids.count(sample.paramid));
-                    // In a normal situation, Akumuli allows duplicates (data-points
-                    // with the same timestamp). But during recovery, this leads to
-                    // the following problem. Recovery procedure will replay the log
-                    // and try to add every value registered by it. The last value
-                    // stored inside the NB+tree instance will be added second time
-                    // by the replay. To prevent it this code disables the ability
-                    // to add duplicates until the first value will be successfully
-                    // added to the NB+tree instance. The progress is tracked
-                    // per-series using the map (updated_ids).
-                switch(result) {
-                case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
-                    Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
-                    stop = true;
-                    break;
-                case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
-                    nlost++;
-                    break;
-                case StorageEngine::NBTreeAppendResult::OK_FLUSH_NEEDED:
-                case StorageEngine::NBTreeAppendResult::OK:
-                    updated_ids.insert(sample.paramid);
-                    nsamples++;
-                    break;
-                default:
-                    break;
-                };
+                const InputLogRow& row = rows.at(ix);
+                visitor.reset(row.id);
+                stop = row.payload.apply_visitor(visitor);
             }
             nsegments++;
         }
         else if (status == AKU_ENO_DATA) {
             Logger::msg(AKU_LOG_INFO, "WAL recovery completed");
             Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
-            Logger::msg(AKU_LOG_INFO, std::to_string(nsamples) + " samples recovered");
-            Logger::msg(AKU_LOG_INFO, std::to_string(nlost) + " samples lost");
+            Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nsamples) + " samples recovered");
+            Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nlost) + " samples lost");
             stop = true;
         }
         else {
@@ -903,6 +995,13 @@ void Storage::start_sync_worker() {
     sync_worker_thread.detach();
 }
 
+void Storage::_kill() {
+    Logger::msg(AKU_LOG_ERROR, "Kill storage");
+    done_.store(1);
+    metadata_->force_sync();
+    close_barrier_.wait();
+}
+
 void Storage::close() {
     // Wait for all ingestion sessions to stop
     // TODO: remove
@@ -964,7 +1063,7 @@ std::shared_ptr<StorageSession> Storage::create_write_session() {
                                             inputlog_.get());
 }
 
-aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
+std::tuple<aku_Status, bool> Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
     u64 id = 0;
     bool create_new = false;
     {
@@ -979,11 +1078,14 @@ aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sampl
     }
     if (create_new) {
         // id guaranteed to be unique
-        cstore_->create_new_column(id);
+        auto status = cstore_->create_new_column(id);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, false);
+        }
     }
     sample->paramid = id;
     local_matcher->_add(begin, end, id);
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, create_new);
 }
 
 int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher) {
