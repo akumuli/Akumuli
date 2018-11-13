@@ -30,22 +30,14 @@ def test_group_aggregate_all_forward(dtstart, delta, N, step):
     query = att.make_group_aggregate_query("test", begin, end, 
                                            agg_funcs, 
                                            step,
-                                           output=dict(format='csv'))
+                                           output=dict(format='csv'),
+                                           where={"tag3": "D", "tag2": "C"})
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
-    expected_tags = [
-        "tag3=D",
-        "tag3=E",
-        "tag3=F",
-        "tag3=G",
-        "tag3=H",
-    ]
-    registerd_values = {}
     iterations = 0
     for line in response:
         try:
             columns = line.split(',')
-            tagline = columns[0].strip()
             timestamp = att.parse_timestamp(columns[1].strip())
 
             tserrormsg = "Unexpected timestamp value: {0}".format(columns[1].strip())
@@ -72,7 +64,8 @@ def test_group_aggregate_all_backward(dtstart, delta, N, step):
     query = att.make_group_aggregate_query("test", begin, end, 
                                            agg_funcs, 
                                            step,
-                                           output=dict(format='csv'))
+                                           output=dict(format='csv'),
+                                           where=dict(tag3='E'))
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     expected_tags = [
@@ -90,9 +83,9 @@ def test_group_aggregate_all_backward(dtstart, delta, N, step):
             timestamp = att.parse_timestamp(columns[1].strip())
 
             tserrormsg = "Unexpected timestamp value: {0}".format(columns[1].strip())
-            if timestamp.second != dtstart.second:
+            if timestamp.second != begin.second:
                 raise ValueError(tserrormsg)
-            if timestamp.microsecond != dtstart.microsecond:
+            if timestamp.microsecond != begin.microsecond:
                 raise ValueError(tserrormsg)
 
             iterations += 1

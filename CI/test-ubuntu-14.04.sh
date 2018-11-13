@@ -49,6 +49,11 @@ if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
 fi
+python functests/test_group_aggregate.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
 python functests/test_search_api.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
@@ -122,6 +127,11 @@ fi
 
 echo "Running advanced integration tests"
 python functests/test_query_language.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
+python functests/test_group_aggregate.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
