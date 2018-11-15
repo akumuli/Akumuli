@@ -102,7 +102,7 @@ std::tuple<aku_Status, size_t> CombineGroupAggregateOperator::copy_to(aku_Timest
             const bool forward = dir_ == Direction::FORWARD;
             aku_Timestamp bin = forward ? (bottom._begin - begin_) / step_
                                         : (begin_ - bottom._begin) / step_;
-            *desttx++ = forward ? begin_ + (step_ * bin) : end_ + (step_ * bin);
+            *desttx++ = forward ? begin_ + (step_ * bin) : begin_ - (step_ * bin);
             *destxs++ = bottom;
             size--;
         }
