@@ -1376,7 +1376,7 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
 
     for(size_t i = 0; i < size; i++) {
         auto timestamp = destts.at(i);
-        if ((timestamp - query_end) % step != 0) {
+        if ((query_begin - timestamp) % step != 0) {
             BOOST_FAIL("Invalid timestamp");
         }
         if (std::abs(buckets.at(i).sum - destxs.at(i).sum) > 1e-5) {
