@@ -1244,7 +1244,10 @@ void test_nbtree_group_aggregate_forward(size_t commit_limit, u64 step, int star
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     for(size_t i = 1; i < size; i++) {
-        BOOST_REQUIRE(destts.at(i) >= query_begin);
+        auto timestamp = destts.at(i);
+        if ((timestamp - query_begin) % step != 0) {
+            BOOST_FAIL("Invalid timestamp");
+        }
         BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-10);
         BOOST_REQUIRE_CLOSE(buckets.at(i).cnt, destxs.at(i).cnt, 1E-10);
         BOOST_REQUIRE_CLOSE(buckets.at(i).min, destxs.at(i).min, 1E-10);
@@ -1289,6 +1292,13 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_forward) {
         std::make_tuple(32*32, 100, 0, 100),
         std::make_tuple(32*32, 100, 1, 100),
         std::make_tuple(32*32, 100,-1, 100),
+
+        std::make_tuple(    1, 100, 0, 55),
+        std::make_tuple(   10, 100, 0, 55),
+        std::make_tuple(   32, 100, 0, 55),
+        std::make_tuple(32*32, 100, 0, 55),
+        std::make_tuple(32*32, 100, 1, 55),
+        std::make_tuple(32*32, 100,-1, 55),
 
         std::make_tuple(    1, 100, 0, 1000),
         std::make_tuple(   10, 100, 0, 1000),
@@ -1365,8 +1375,9 @@ void test_nbtree_group_aggregate_backward(size_t commit_limit, u64 step, int sta
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     for(size_t i = 0; i < size; i++) {
-        if (!(destts.at(i) > query_end && destts.at(i) <= query_begin)) {
-            BOOST_REQUIRE(destts.at(i) > query_end && destts.at(i) <= query_begin);
+        auto timestamp = destts.at(i);
+        if ((query_begin - timestamp) % step != 0) {
+            BOOST_FAIL("Invalid timestamp");
         }
         if (std::abs(buckets.at(i).sum - destxs.at(i).sum) > 1e-5) {
             BOOST_REQUIRE_CLOSE(buckets.at(i).sum, destxs.at(i).sum, 1E-5);
@@ -1414,6 +1425,13 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
         std::make_tuple(32*32, 100, 0, 100),
         std::make_tuple(32*32, 100, 1, 100),
         std::make_tuple(32*32, 100,-1, 100),
+
+        std::make_tuple(    1, 100, 0, 55),
+        std::make_tuple(   10, 100, 0, 55),
+        std::make_tuple(   32, 100, 0, 55),
+        std::make_tuple(32*32, 100, 0, 55),
+        std::make_tuple(32*32, 100, 1, 55),
+        std::make_tuple(32*32, 100,-1, 55),
 
         std::make_tuple(    1, 100, 0, 1000),
         std::make_tuple(   10, 100, 0, 1000),

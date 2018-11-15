@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.55
+--------------
+
+BUG FIX
+
+* Fix timestamps in group-aggregate query
+
+
 Version 0.7.54
 --------------
 
