@@ -523,7 +523,16 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             auto id = storage->global_matcher_.match(begin, end);
             if (id == 0) {
                 // create new series
-                storage->global_matcher_._add(sname.value, id);  // Invariant: id is not used
+                id = sample.paramid;
+                StringT prev = storage->global_matcher_.id2str(id);
+                if (prev.second != 0) {
+                    // sample.paramid maps to some other series
+                    Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
+                                             + std::string(prev.first, prev.first + prev.second) + ". Series name "
+                                             + std::string(begin, end) + " is skipped.");
+                    return false;
+                }
+                storage->global_matcher_._add(sname.value, id);
                 storage->metadata_->add_rescue_point(id, std::vector<u64>());
                 create_new = true;
             }
@@ -581,8 +590,10 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             std::tie(id, vals) = kv;
             metadata_->add_rescue_point(id, std::move(vals));
         }
-        // Save finall mapping (should contain all affected columns)
-        metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+        if (done_.load() == 1) {
+            // Save finall mapping (should contain all affected columns)
+            metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+        }
     }
     bstore_->flush();
 
@@ -1019,6 +1030,7 @@ void Storage::close() {
             std::tie(id, vals) = kv;
             metadata_->add_rescue_point(id, std::move(vals));
         }
+        auto lock = metadata_->get_transaction_lock();
         // Save finall mapping (should contain all affected columns)
         metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }

@@ -105,6 +105,15 @@ void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<
     }
     pull_new_names(&newnames);
 
+    // This lock is needed to prevent race condition during log replay.
+    // When log replay completes, recovery procedure have to start synchronization
+    // from another thread. If previous transaction wasn't finished yet it will
+    // try to spaun another one but sqlite doesn't support nested transaction so
+    // the result will be an error.
+    // The performance shouldn't degrade during normal operation since the mutex
+    // is locked only from a single thread and there is no contention at all.
+    std::unique_lock<std::mutex> lock(tran_lock_);
+
     // Save new names
     begin_transaction();
     insert_new_names(std::move(newnames));
@@ -361,6 +370,11 @@ aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
         return AKU_ETIMEOUT;
     }
     return (pending_rescue_points_.empty() && pending_volumes_.empty()) ? AKU_ERETRY : AKU_SUCCESS;
+}
+
+std::unique_lock<std::mutex> MetadataStorage::get_transaction_lock() {
+    std::unique_lock<std::mutex> lock(tran_lock_);
+    return std::move(lock);
 }
 
 void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {

@@ -64,6 +64,7 @@ struct MetadataStorage : VolumeRegistry {
 
     // Synchronization
     mutable std::mutex                                sync_lock_;
+    mutable std::mutex                                tran_lock_;
     std::condition_variable                           sync_cvar_;
     std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
     std::unordered_map<u32, VolumeDesc>               pending_volumes_;
@@ -130,6 +131,8 @@ struct MetadataStorage : VolumeRegistry {
     virtual std::string get_dbname();
 
     aku_Status wait_for_sync_request(int timeout_us);
+
+    std::unique_lock<std::mutex> get_transaction_lock();
 
     void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
 
