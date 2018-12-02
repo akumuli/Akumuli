@@ -3832,6 +3832,7 @@ void NBTreeExtentsList::open() {
     // list.
     for(;ext2remove --> 0;) {
         extents_.pop_back();
+        rescue_points_.pop_back();
     }
 
     // Restore `last_`
@@ -3850,6 +3851,7 @@ void NBTreeExtentsList::open() {
         }
         last_ = ts;
     }
+    assert(rescue_points_.size() == extents_.size());
 }
 
 static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,

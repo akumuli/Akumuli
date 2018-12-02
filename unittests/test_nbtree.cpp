@@ -2421,3 +2421,89 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_1) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_superblock_filter_bwd_2) {
     test_nbtree_superblock_filter(1000, true);
 }
+
+void test_nbtree_retention_consistency() {
+    LogicAddr nstarting = 10;
+    LogicAddr nremoved = 10;
+    LogicAddr nblocks = 20;
+
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    aku_Timestamp begin = gen, end = gen, last_ts = gen;
+    size_t buffer_cnt = 0;
+    std::shared_ptr<NBTreeExtentsList> extents;
+    auto commit_counter = [&](LogicAddr) {
+        buffer_cnt++;
+        if (buffer_cnt == nremoved) {
+            // one time event
+            begin = gen;
+        }
+        end = last_ts;
+    };
+
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    auto truncate = [&](LogicAddr n) {
+        return std::dynamic_pointer_cast<MemStore, BlockStore>(bstore)->remove(n);
+    };
+
+    auto bottom = truncate(nstarting);
+
+    std::vector<LogicAddr> initial_rlist = { EMPTY_ADDR, bottom - 1 };
+    extents.reset(new NBTreeExtentsList(42, initial_rlist, bstore));
+    extents->force_init();
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(buffer_cnt < nblocks) {
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        last_ts = ts;
+    }
+
+    // Remove old values
+    truncate(nremoved);
+
+    // Recovery
+    auto rescue_points = extents->close();
+
+    // We shouldn't close `extents` to emulate program state after crush.
+    std::shared_ptr<NBTreeExtentsList> recovered(new NBTreeExtentsList(42, rescue_points, bstore));
+    recovered->force_init();
+
+    auto it = recovered->search(begin, end);
+    if (end > begin) {
+        size_t sz = end - begin;
+        std::vector<aku_Timestamp> tss(sz, 0);
+        std::vector<double> xss(sz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        if (outsz != sz) {
+            BOOST_REQUIRE_EQUAL(outsz, sz);
+        }
+        if (stat != AKU_SUCCESS && stat != AKU_ENO_DATA) {
+            BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        }
+        for(aku_Timestamp ts: tss) {
+            BOOST_REQUIRE_EQUAL(ts, begin);
+            begin++;
+        }
+    } else {
+        // No output expected
+        size_t sz = 10;
+        std::vector<aku_Timestamp> tss(sz, 0);
+        std::vector<double> xss(sz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        if (outsz != 0) {
+            BOOST_REQUIRE_EQUAL(outsz, 0);
+        }
+        if (stat != AKU_ENO_DATA) {
+            BOOST_REQUIRE(stat == AKU_ENO_DATA);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_retention_consistency_1) {
+    test_nbtree_retention_consistency();
+}

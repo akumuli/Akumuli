@@ -221,7 +221,11 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual u32 checksum(const u8* data, size_t size) const;
     virtual BlockStoreStats get_stats() const;
     virtual PerVolumeStats get_volume_stats() const;
-    void remove(size_t addr);
+    /**
+     * @brief truncate storage by removing first n elements
+     * @return first valid address
+     */
+    LogicAddr remove(size_t n);
 };
 
 
