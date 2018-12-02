@@ -82,29 +82,6 @@ static const SubtreeRef INIT_SUBTREE_REF = {
     0
 };
 
-static std::string to_string(const SubtreeRef& ref) {
-    std::stringstream fmt;
-    fmt                     << "{"
-        << ref.count        << ", "
-        << ref.id           << ", "
-        << ref.begin        << ", "
-        << ref.end          << ", "
-        << ref.addr         << ", "
-        << ref.min          << ", "
-        << ref.min_time     << ", "
-        << ref.max          << ", "
-        << ref.max_time     << ", "
-        << ref.sum          << ", "
-        << ref.first        << ", "
-        << ref.last         << ", "
-        << ref.type         << ", "
-        << ref.level        << ", "
-        << ref.payload_size << ", "
-        << ref.version      << ", "
-        << ref.fanout_index << ", "
-        << ref.checksum     << "}";
-    return fmt.str();
-}
 
 static SubtreeRef* subtree_cast(u8* p) {
     return reinterpret_cast<SubtreeRef*>(p);
@@ -142,7 +119,6 @@ static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore>
     std::shared_ptr<Block> block;
     std::tie(status, block) = bstore->read_block(curr);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't read block @" + std::to_string(curr) + ", error: " + StatusUtil::str(status));
         AKU_PANIC("Can't read block - " + StatusUtil::str(status));
     }
     // Check consistency (works with both inner and leaf nodes).
@@ -163,7 +139,6 @@ static std::shared_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<
     std::shared_ptr<IOVecBlock> block;
     std::tie(status, block) = bstore->read_iovec_block(curr);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't read block @" + std::to_string(curr) + ", error: " + StatusUtil::str(status));
         AKU_PANIC("Can't read block - " + StatusUtil::str(status));
     }
     // Check consistency (works with both inner and leaf nodes).
@@ -2677,7 +2652,6 @@ struct NBTreeLeafExtent : NBTreeExtent {
                 fanout_index_ = 0;
                 last_ = EMPTY_ADDR;
             } else if (status != AKU_SUCCESS) {
-                Logger::msg(AKU_LOG_ERROR, "Can't read block @" + std::to_string(last_) + ", error: " + StatusUtil::str(status));
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
                 auto psubtree = subtree_cast(block->get_cdata());
@@ -2857,8 +2831,6 @@ void NBTreeLeafExtent::debug_dump(std::ostream& stream, int base_indent, std::fu
 }
 
 std::tuple<bool, LogicAddr> NBTreeLeafExtent::append(SubtreeRef const&) {
-    Logger::msg(AKU_LOG_ERROR, "Attempt to insert ref into a leaf node, id=" + std::to_string(id_)
-                + ", fanout=" + std::to_string(fanout_index_) + ", last=" + std::to_string(last_));
     AKU_PANIC("Can't append subtree to leaf node");
 }
 
@@ -2891,9 +2863,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
     aku_Status status;
     std::tie(status, addr) = leaf_->commit(bstore_);
     if (status != AKU_SUCCESS) {
-        Logger::msg(AKU_LOG_ERROR, "Can't write leaf-node to block-store, " + StatusUtil::str(status)
-                    + ", id=" + std::to_string(id_) + ", fanout=" + std::to_string(fanout_index_)
-                    + ", last=" + std::to_string(last_));
         AKU_PANIC("Can't write leaf-node to block-store, " + StatusUtil::str(status));
     }
     // Gather stats and send them to upper-level node
@@ -2902,9 +2871,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
     if (status != AKU_SUCCESS) {
         // This shouldn't happen because leaf node can't be
         // empty just after overflow.
-        Logger::msg(AKU_LOG_ERROR, "Can summarize leaf-node - " + StatusUtil::str(status)
-                    + ", id=" + std::to_string(id_) + ", fanout=" + std::to_string(fanout_index_)
-                    + ", last=" + std::to_string(last_) + ", payload=" + to_string(payload));
         AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
     }
     payload.addr = addr;
@@ -2919,9 +2885,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::commit(bool final) {
         // Invariant broken.
         // Roots collection was destroyed before write process
         // stops.
-        Logger::msg(AKU_LOG_ERROR, "Roots collection destroyed"
-                    ", id=" + std::to_string(id_) + ", fanout=" + std::to_string(fanout_index_)
-                    + ", last=" + std::to_string(last_) + ", payload=" + to_string(payload));
         AKU_PANIC("Roots collection destroyed");
     }
     fanout_index_++;
@@ -2983,9 +2946,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
     if (status != AKU_SUCCESS) {
         // This shouldn't happen because sblock can't be empty, it contains
         // two or one child element.
-        Logger::msg(AKU_LOG_ERROR, "Can summarize leaf-node - " + StatusUtil::str(status)
-                    + ", id=" + std::to_string(id_) + ", fanout=" + std::to_string(fanout_index_)
-                    + ", last=" + std::to_string(last_));
         AKU_PANIC("Can summarize leaf-node - " + StatusUtil::str(status));
     }
     payload.addr = addr;
@@ -2997,9 +2957,6 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
         // Invariant broken.
         // Roots collection was destroyed before write process
         // stops.
-        Logger::msg(AKU_LOG_ERROR, "Roots collection destroyed"
-                    ", id=" + std::to_string(id_) + ", fanout=" + std::to_string(fanout_index_)
-                    + ", last=" + std::to_string(last_));
         AKU_PANIC("Roots collection destroyed");
     }
     fanout_index_++;
@@ -3050,7 +3007,6 @@ struct NBTreeSBlockExtent : NBTreeExtent {
                 addr = EMPTY_ADDR;
                 killed_ = 1;
             } else if (status != AKU_SUCCESS) {
-                Logger::msg(AKU_LOG_ERROR, "Can't read @" + std::to_string(addr) + ", error: " + StatusUtil::str(status));
                 AKU_PANIC("Invalid argument, " + StatusUtil::str(status));
             } else {
                 auto psubtree = subtree_cast(block->get_cdata());
@@ -3683,7 +3639,6 @@ std::tuple<aku_Status, LogicAddr> NBTreeExtentsList::_split(aku_Timestamp pivot)
         std::shared_ptr<Block> rblock;
         std::tie(status, rblock) = read_and_check(bstore_, paddr);
         if (status != AKU_SUCCESS) {
-            Logger::msg(AKU_LOG_ERROR, "Can't read @" + std::to_string(paddr) + ", error: " + StatusUtil::str(status));
             AKU_PANIC("Can't read back the data");
         }
         // extent_index and the level of the node can mismatch
@@ -3877,7 +3832,6 @@ void NBTreeExtentsList::open() {
     // list.
     for(;ext2remove --> 0;) {
         extents_.pop_back();
-        rescue_points_.pop_back();
     }
 
     // Restore `last_`
@@ -3896,7 +3850,6 @@ void NBTreeExtentsList::open() {
         }
         last_ = ts;
     }
-    assert(rescue_points_.size() == extents_.size());
 }
 
 static void create_empty_extents(std::shared_ptr<NBTreeExtentsList> self,
