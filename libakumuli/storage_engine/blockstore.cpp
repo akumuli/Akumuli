@@ -643,8 +643,13 @@ MemStore::MemStore(std::function<void(LogicAddr)> append_cb,
 {
 }
 
-void MemStore::remove(size_t addr) {
-    removed_pos_ = addr;
+LogicAddr MemStore::remove(size_t n) {
+    removed_pos_ = n;
+    if (removed_pos_ > buffer_.size()) {
+        buffer_.resize(removed_pos_*AKU_BLOCK_SIZE);
+        write_pos_ = n;
+    }
+    return n + MEMSTORE_BASE;
 }
 
 u32 MemStore::checksum(u8 const* data, size_t size) const {
@@ -671,11 +676,11 @@ std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr ad
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     std::shared_ptr<Block> block;
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
-    if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-        return std::make_tuple(AKU_EBAD_ARG, block);
-    }
     if (addr < removed_pos_) {
         return std::make_tuple(AKU_EUNAVAILABLE, block);
+    }
+    if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
+        return std::make_tuple(AKU_EBAD_ARG, block);
     }
     std::vector<u8> data;
     data.reserve(AKU_BLOCK_SIZE);

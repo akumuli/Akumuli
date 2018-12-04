@@ -1,6 +1,15 @@
 Release notes
 =============
 
+Version 0.7.56
+--------------
+
+BUG FIX
+
+* Fix bug in database open procedure
+* Fix panic on database close
+
+
 Version 0.7.55
 --------------
 
