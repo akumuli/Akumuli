@@ -372,11 +372,6 @@ aku_Status MetadataStorage::wait_for_sync_request(int timeout_us) {
     return (pending_rescue_points_.empty() && pending_volumes_.empty()) ? AKU_ERETRY : AKU_SUCCESS;
 }
 
-std::unique_lock<std::mutex> MetadataStorage::get_transaction_lock() {
-    std::unique_lock<std::mutex> lock(tran_lock_);
-    return std::move(lock);
-}
-
 void MetadataStorage::add_rescue_point(aku_ParamId id, std::vector<u64>&& val) {
     std::lock_guard<std::mutex> guard(sync_lock_);
     pending_rescue_points_[id] = val;

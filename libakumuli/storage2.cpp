@@ -1030,7 +1030,6 @@ void Storage::close() {
             std::tie(id, vals) = kv;
             metadata_->add_rescue_point(id, std::move(vals));
         }
-        auto lock = metadata_->get_transaction_lock();
         // Save finall mapping (should contain all affected columns)
         metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }

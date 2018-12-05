@@ -132,8 +132,6 @@ struct MetadataStorage : VolumeRegistry {
 
     aku_Status wait_for_sync_request(int timeout_us);
 
-    std::unique_lock<std::mutex> get_transaction_lock();
-
     void sync_with_metadata_storage(std::function<void(std::vector<SeriesT>*)> pull_new_names);
 
     //! Forces `wait_for_sync_request` to return immediately
