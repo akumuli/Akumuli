@@ -452,15 +452,6 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
 }
 
 void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
-    size_t nitems = 0x1000;
-    std::vector<InputLogRow>                     rows(nitems);
-    std::unordered_map<aku_ParamId, aku_ParamId> idmap;
-    std::unordered_set<aku_ParamId>              updated_ids;
-    Logger::msg(AKU_LOG_INFO, "WAL recovery started");
-    bool stop = false;
-    u64 nsegments = 0;
-
-
     struct Visitor : boost::static_visitor<bool> {
         Storage* storage;
         aku_Sample sample;
@@ -495,7 +486,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             switch(result) {
             case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
                 Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
-                return true;
+                return false;
                 break;
             case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
                 nlost++;
@@ -508,14 +499,14 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             default:
                 break;
             };
-            return false;
+            return true;
         }
 
         bool operator () (const InputLogSeriesName& sname) {
             auto strref = storage->global_matcher_.id2str(sample.paramid);
             if (strref.second) {
                 // Fast path, name already added
-                return false;
+                return true;
             }
             bool create_new = false;
             auto begin = sname.value.data();
@@ -530,7 +521,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
                                              + std::string(prev.first, prev.first + prev.second) + ". Series name "
                                              + std::string(begin, end) + " is skipped.");
-                    return false;
+                    return true;
                 }
                 storage->global_matcher_._add(sname.value, id);
                 storage->metadata_->add_rescue_point(id, std::vector<u64>());
@@ -540,18 +531,34 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                 // id guaranteed to be unique
                 storage->cstore_->create_new_column(id);
             }
-            return false;
+            return true;
         }
 
         bool operator () (const InputLogRecoveryInfo& rinfo) {
-            throw "not implemented";
+            // Check that series exists
+            auto strref = storage->global_matcher_.id2str(sample.paramid);
+            if (!strref.second) {
+                // Id is not taken
+                Logger::msg(AKU_LOG_ERROR, "Series id is not taken. Id " + std::to_string(sample.paramid) + ", recovery record will be skipped.");
+                return true;
+            }
+            std::vector<StorageEngine::LogicAddr> rpoints(rinfo.data);
+            storage->_update_rescue_points(sample.paramid, std::move(rpoints));
+            return true;
         }
     };
 
     Visitor visitor;
     visitor.storage = this;
+    bool proceed    = true;
+    size_t nitems   = 0x1000;
+    u64 nsegments   = 0;
+    std::vector<InputLogRow>                     rows(nitems);
+    std::unordered_map<aku_ParamId, aku_ParamId> idmap;
+    std::unordered_set<aku_ParamId>              updated_ids;
+    Logger::msg(AKU_LOG_INFO, "WAL recovery started");
 
-    while (!stop) {
+    while (proceed) {
         aku_Status status;
         u32 outsize;
         std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
@@ -559,7 +566,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             for (u32 ix = 0; ix < outsize; ix++) {
                 const InputLogRow& row = rows.at(ix);
                 visitor.reset(row.id);
-                stop = row.payload.apply_visitor(visitor);
+                proceed = row.payload.apply_visitor(visitor);
             }
             nsegments++;
         }
@@ -568,11 +575,11 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
             Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nsamples) + " samples recovered");
             Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nlost) + " samples lost");
-            stop = true;
+            proceed = false;
         }
         else {
             Logger::msg(AKU_LOG_ERROR, "WAL recovery error: " + StatusUtil::str(status));
-            stop = true;
+            proceed = false;
         }
     }
     

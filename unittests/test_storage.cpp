@@ -1048,3 +1048,7 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
 BOOST_AUTO_TEST_CASE(Test_wal_recovery_0) {
     test_wal_recovery(100, 1000, 2000);
 }
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_1) {
+    test_wal_recovery(100, 1000, 11000);
+}
