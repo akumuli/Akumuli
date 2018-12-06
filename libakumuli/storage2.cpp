@@ -95,6 +95,15 @@ static apr_status_t create_metadata_page(const char* db_name
 
 //--------- StorageSession ----------
 
+static InputLog* get_input_log(ShardedInputLog* log) {
+    if (log != nullptr) {
+        std::hash<std::thread::id> thash;
+        size_t hash = thash(std::this_thread::get_id());
+        return &log->get_shard(static_cast<int>(hash));
+    }
+    return nullptr;
+}
+
 StorageSession::StorageSession(std::shared_ptr<Storage> storage,
                                std::shared_ptr<StorageEngine::CStoreSession> session,
                                ShardedInputLog* log)
@@ -102,7 +111,7 @@ StorageSession::StorageSession(std::shared_ptr<Storage> storage,
     , session_(session)
     , matcher_substitute_(nullptr)
     , shlog_(log)
-    , ilog_(nullptr)
+    , ilog_(get_input_log(log))
 {
 }
 
@@ -116,34 +125,15 @@ StorageSession::~StorageSession() {
     }
 }
 
-boost::thread_specific_ptr<StorageSession::InputLogInstance> StorageSession::tls_;
-
-InputLog* StorageSession::get_input_log() {
-    if (ilog_ == nullptr && shlog_ != nullptr) {
-        if (tls_.get()) {
-            ilog_ = tls_->log_;
-        } else {
-            static std::atomic<int> id = {};
-            auto ptr = new InputLogInstance();
-            ptr->id_ = id++;
-            ptr->log_ = &shlog_->get_shard(id);
-            tls_.reset(ptr);
-            ilog_ = ptr->log_;
-        }
-    }
-    return ilog_;
-}
-
 aku_Status StorageSession::write(aku_Sample const& sample) {
     using namespace StorageEngine;
     std::vector<u64> rpoints;
-    auto ilog = get_input_log();
     auto status = session_->write(sample, &rpoints);
     switch (status) {
     case NBTreeAppendResult::OK:
         break;
     case NBTreeAppendResult::OK_FLUSH_NEEDED:
-        if (ilog != nullptr) {
+        if (ilog_ != nullptr) {
             // Copy rpoints here because it will be needed later to add new entry
             // into the input-log.
             auto rpoints_copy = rpoints;
@@ -160,20 +150,20 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     case NBTreeAppendResult::FAIL_BAD_VALUE:
         return AKU_EBAD_ARG;
     };
-    if (ilog != nullptr) {
+    if (ilog_ != nullptr) {
         std::vector<u64> staleids;
-        auto res = ilog->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
+        auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
         if (res == AKU_EOVERFLOW) {
-            ilog->rotate();
+            ilog_->rotate();
             if (!staleids.empty()) {
                 storage_->close_specific_columns(staleids);
                 staleids.clear();
             }
         }
         if (status == NBTreeAppendResult::OK_FLUSH_NEEDED) {
-            auto res = ilog->append(sample.paramid, rpoints.data(), rpoints.size(), &staleids);
+            auto res = ilog_->append(sample.paramid, rpoints.data(), rpoints.size(), &staleids);
             if (res == AKU_EOVERFLOW) {
-                ilog->rotate();
+                ilog_->rotate();
                 if (!staleids.empty()) {
                     storage_->close_specific_columns(staleids);
                 }
@@ -209,12 +199,11 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
         }
         if (create_new) {
             // Add record to input log
-            auto ilog = get_input_log();
-            if (ilog != nullptr) {
+            if (ilog_ != nullptr) {
                 std::vector<aku_ParamId> staleids;
-                auto res = ilog->append(sample->paramid, ob, static_cast<u32>(ksend - ob), &staleids);
+                auto res = ilog_->append(sample->paramid, ob, static_cast<u32>(ksend - ob), &staleids);
                 if (res == AKU_EOVERFLOW) {
-                    ilog->rotate();
+                    ilog_->rotate();
                     if (!staleids.empty()) {
                         storage_->close_specific_columns(staleids);
                     }

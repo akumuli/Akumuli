@@ -48,16 +48,8 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
     mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
-    ShardedInputLog* shlog_;
-    InputLog* ilog_;
-
-    struct InputLogInstance {
-        int id_;
-        InputLog* log_;
-    };
-    static boost::thread_specific_ptr<InputLogInstance> tls_;
-
-    InputLog* get_input_log();
+    ShardedInputLog* const shlog_;
+    InputLog* const ilog_;
 public:
     StorageSession(std::shared_ptr<Storage> storage,
                    std::shared_ptr<StorageEngine::CStoreSession> session,
