@@ -110,7 +110,6 @@ StorageSession::StorageSession(std::shared_ptr<Storage> storage,
     : storage_(storage)
     , session_(session)
     , matcher_substitute_(nullptr)
-    , shlog_(log)
     , ilog_(get_input_log(log))
 {
 }
