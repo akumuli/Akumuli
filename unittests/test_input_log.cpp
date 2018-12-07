@@ -382,7 +382,7 @@ void test_input_roundtrip_vartype(int N, int sname_freq, int recovery_freq, int 
     typedef boost::variant<DataPoint, SeriesName, RescuePoint> InputValue;
     std::vector<InputValue> exp, act;
     {
-        InputLog ilog(&sequencer, "./", 100, 4096, 0);
+        InputLog ilog(&sequencer, "./", 200, 4096, 0);
         for (int i = 0; i < N; i++) {
             int variant = rand() % dpoint_freq;
             aku_Status status = AKU_SUCCESS;
