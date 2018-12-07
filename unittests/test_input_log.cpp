@@ -138,6 +138,7 @@ BOOST_AUTO_TEST_CASE(Test_input_volume_read_next_frame) {
     }
     {
         LZ4Volume volume(filename);
+        volume.open_ro();
         while(true) {
             aku_Status status;
             const LZ4Volume::Frame* frame;
@@ -682,4 +683,8 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_10) {
 
 BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_11) {
     test_input_roundtrip_with_conflicts_and_vartype(8, 1000, 0, 100, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_conflicts_and_vartype_12) {
+    test_input_roundtrip_with_conflicts_and_vartype(80, 1000, 0, 100, 100);
 }

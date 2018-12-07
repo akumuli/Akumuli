@@ -173,12 +173,18 @@ public:
     LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volume_size);
 
     /**
-     * @brief Read existing volume
+     * @brief Create volume for existing log file.
      * @param file_name volume file name
+     * @note `open_ro` should be called before reading.
      */
     LZ4Volume(const char* file_name);
 
     ~LZ4Volume();
+
+    //! Open file in read-only mode
+    void open_ro();
+
+    bool is_opened() const;
 
     void close();
 

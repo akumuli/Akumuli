@@ -177,16 +177,20 @@ LZ4Volume::LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volu
     LZ4_resetStream(&stream_);
 }
 
+static void null_deleter(apr_file_t* f) {
+    assert(f == nullptr);
+}
+
 LZ4Volume::LZ4Volume(const char* file_name)
     : path_(file_name)
     , pos_(1)
     , pool_(_make_apr_pool())
-    , file_(_open_file_ro(file_name, pool_.get()))
-    , file_size_(_get_file_size(file_.get()))
+    , file_(nullptr, &null_deleter)
+    , file_size_(0)
     , max_file_size_(0)
     , bitmap_(std::make_shared<Roaring64Map>())
     , is_read_only_(true)
-    , bytes_to_read_(file_size_)
+    , bytes_to_read_(0)
     , elements_to_read_(0)
 {
     clear(0);
@@ -198,6 +202,18 @@ LZ4Volume::~LZ4Volume() {
     if (file_) {
         close();
     }
+}
+
+void LZ4Volume::open_ro() {
+    assert(!is_opened());
+    assert(file_size_ == 0);
+    file_ = _open_file_ro(path_.c_str(), pool_.get());
+    file_size_ = _get_file_size(file_.get());
+    bytes_to_read_ = static_cast<i64>(file_size_);
+}
+
+bool LZ4Volume::is_opened() const {
+    return static_cast<bool>(file_);
 }
 
 size_t LZ4Volume::file_size() const {
@@ -569,6 +585,10 @@ void InputLog::open_volumes() {
         volumes_.push_back(std::move(volume));
         volume_counter_++;
     }
+    if (volumes_.empty() == false && volumes_.front()->is_opened() == false) {
+        // Open the first volume to read from
+        volumes_.front()->open_ro();
+    }
 }
 
 std::string InputLog::get_volume_name() {
@@ -676,6 +696,9 @@ std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64
         if (volumes_.empty()) {
             return std::make_tuple(AKU_SUCCESS, 0);
         }
+        if (volumes_.front()->is_opened() == false) {
+            volumes_.front()->open_ro();
+        }
         aku_Status status;
         u32 result;
         std::tie(status, result) = volumes_.front()->read_next(buffer_size, id, ts, xs);
@@ -691,6 +714,9 @@ std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, InputLogRow*
         if (volumes_.empty()) {
             return std::make_tuple(AKU_SUCCESS, 0);
         }
+        if (volumes_.front()->is_opened() == false) {
+            volumes_.front()->open_ro();
+        }
         aku_Status status;
         u32 result;
         std::tie(status, result) = volumes_.front()->read_next(buffer_size, rows);
@@ -705,6 +731,9 @@ std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
     while(true) {
         if (volumes_.empty()) {
             return std::make_tuple(AKU_ENO_DATA, nullptr);
+        }
+        if (volumes_.front()->is_opened() == false) {
+            volumes_.front()->open_ro();
         }
         aku_Status status;
         const LZ4Volume::Frame* result;
@@ -726,9 +755,16 @@ void InputLog::rotate() {
     }
     std::string path = get_volume_name();
     add_volume(path);
+    if (volumes_.size() > 1) {
+        // Volume 0 is active, volume 1 should be closed
+        volumes_.at(1)->close();
+    }
 }
 
 aku_Status InputLog::flush(std::vector<u64>* stale_ids) {
+    if (volumes_.empty()) {
+        return AKU_SUCCESS;
+    }
     aku_Status result = volumes_.front()->flush();
     if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
         // Extract stale ids
