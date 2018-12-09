@@ -2508,13 +2508,10 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_retention_consistency_1) {
     test_nbtree_retention_consistency();
 }
 
-void test_nbtree_read_order_idempotence() {
-    LogicAddr nremoved = 10;
-    LogicAddr nblocks = 20;
-
+void test_nbtree_read_order_idempotence(size_t nremoved, size_t nblocks) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
-    aku_Timestamp begin = gen, end = gen, last_ts = gen;
+    aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
     size_t buffer_cnt = 0;
     std::shared_ptr<NBTreeExtentsList> extents;
     auto commit_counter = [&](LogicAddr) {
@@ -2547,39 +2544,53 @@ void test_nbtree_read_order_idempotence() {
     truncate(nremoved);
 
     {
-        auto it = extents->search(gen, end);
-        size_t sz = end - begin;
-        std::vector<aku_Timestamp> tss(sz, 0);
-        std::vector<double> xss(sz, .0);
+        auto it = extents->search(first_ts, end);
+        size_t sz = begin < end ? end - begin : 0;
+        size_t bufsz = sz == 0 ? 1 : sz;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<double> xss(bufsz, .0);
         aku_Status stat;
         size_t outsz;
-        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
         BOOST_REQUIRE_EQUAL(outsz, sz);
         BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
-        for(aku_Timestamp ts: tss) {
-            BOOST_REQUIRE_EQUAL(ts, begin);
-            begin++;
+        auto itts = begin - 1;
+        for (u32 ixts = 0; ixts < outsz; ixts++) {
+            auto ts = tss.at(ixts);
+            BOOST_REQUIRE_EQUAL(ts, itts);
+            itts++;
         }
     }
     {
-        auto it = extents->search(end, gen);
+        auto it = extents->search(end, first_ts);
         // No output expected
-        size_t sz = end - begin;
-        std::vector<aku_Timestamp> tss(sz, 0);
-        std::vector<double> xss(sz, .0);
+        size_t sz = begin < end ? end - begin : 0;
+        size_t bufsz = sz == 0 ? 1 : sz;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<double> xss(bufsz, .0);
         aku_Status stat;
         size_t outsz;
-        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), sz);
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
         BOOST_REQUIRE_EQUAL(outsz, sz);
         BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
         std::reverse(tss.begin(), tss.end());
-        for(aku_Timestamp ts: tss) {
-            BOOST_REQUIRE_EQUAL(ts, begin);
-            begin++;
+        auto itts = begin + 1;
+        for (u32 ixts = 0; ixts < outsz; ixts++) {
+            auto ts = tss.at(ixts);
+            BOOST_REQUIRE_EQUAL(ts, itts);
+            itts++;
         }
     }
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_0) {
-    test_nbtree_read_order_idempotence();
+    test_nbtree_read_order_idempotence(10, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_1) {
+    test_nbtree_read_order_idempotence(20, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_2) {
+    test_nbtree_read_order_idempotence(34, 100);
 }

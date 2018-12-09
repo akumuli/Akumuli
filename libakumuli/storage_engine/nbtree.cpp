@@ -649,7 +649,8 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
             size_t sz;
             std::tie(status, sz) = iter_->read(destts + out_size, destval + out_size, size - out_size);
             out_size += sz;
-            if (status == AKU_ENO_DATA) {
+            if (status == AKU_ENO_DATA ||
+               (status == AKU_EUNAVAILABLE && get_direction() == Direction::FORWARD)) {
                 // Move to next iterator.
                 iter_.reset();
             } else if (status != AKU_SUCCESS) {
