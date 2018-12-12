@@ -2508,7 +2508,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_retention_consistency_1) {
     test_nbtree_retention_consistency();
 }
 
-void test_nbtree_read_order_idempotence(size_t nremoved, size_t nblocks) {
+void test_nbtree_scan_order_idempotence(size_t nremoved, size_t nblocks) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
     aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
@@ -2583,14 +2583,80 @@ void test_nbtree_read_order_idempotence(size_t nremoved, size_t nblocks) {
     }
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_0) {
-    test_nbtree_read_order_idempotence(10, 20);
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_0) {
+    test_nbtree_scan_order_idempotence(10, 20);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_1) {
-    test_nbtree_read_order_idempotence(20, 20);
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_1) {
+    test_nbtree_scan_order_idempotence(20, 20);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_read_order_idempotence_2) {
-    test_nbtree_read_order_idempotence(34, 100);
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
+    test_nbtree_scan_order_idempotence(34, 100);
 }
+
+void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
+    size_t buffer_cnt = 0;
+    std::shared_ptr<NBTreeExtentsList> extents;
+    auto commit_counter = [&](LogicAddr) {
+        buffer_cnt++;
+        if (buffer_cnt == nremoved) {
+            // one time event
+            begin = gen;
+        }
+        end = last_ts;
+    };
+
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    auto truncate = [&](LogicAddr n) {
+        return std::dynamic_pointer_cast<MemStore, BlockStore>(bstore)->remove(n);
+    };
+
+    std::vector<LogicAddr> initial_rlist;
+    extents.reset(new NBTreeExtentsList(42, initial_rlist, bstore));
+
+    extents->force_init();
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(buffer_cnt < nblocks) {
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        last_ts = ts;
+    }
+
+    // Remove old values
+    truncate(nremoved);
+
+    {
+        size_t expected_cnt = begin < end ? (end - begin + 1) : 0;
+        auto it = extents->aggregate(first_ts, end);
+        aku_Timestamp ts = 0;
+        AggregationResult xs = INIT_AGGRES;
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(&ts, &xs, 1);
+        BOOST_REQUIRE_EQUAL(outsz, 1);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
+    }
+    {
+        size_t expected_cnt = begin < end ? (end - begin + 2) : 0;
+        auto it = extents->aggregate(end, first_ts);
+        aku_Timestamp ts = 0;
+        AggregationResult xs = INIT_AGGRES;
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(&ts, &xs, 1);
+        BOOST_REQUIRE_EQUAL(outsz, 1);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
+    test_nbtree_aggregate_order_idempotence(10, 20);
+}
+
