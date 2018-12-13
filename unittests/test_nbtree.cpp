@@ -2600,9 +2600,17 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     aku_Timestamp gen = 1000;
     aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
     size_t buffer_cnt = 0;
+    size_t sample_cnt = 0;
+
+    // For each buffer writtent to the storage this queue will have a
+    // sample-count value.
+    std::queue<size_t> sample_counts;
+
     std::shared_ptr<NBTreeExtentsList> extents;
     auto commit_counter = [&](LogicAddr) {
         buffer_cnt++;
+        sample_counts.push(sample_cnt);
+        sample_cnt = 0;
         if (buffer_cnt == nremoved) {
             // one time event
             begin = gen;
@@ -2624,15 +2632,27 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         double value = rwalk.next();
         aku_Timestamp ts = gen++;
         extents->append(ts, value);
+        sample_cnt++;
         last_ts = ts;
     }
 
     // Remove old values
     truncate(nremoved);
+    size_t evicted_cnt = 0;
+    for (size_t i = 0; i < nremoved; i++) {
+        evicted_cnt += sample_counts.front();
+        sample_counts.pop();
+    }
+
+    size_t remained_cnt = 0;
+    while (!sample_counts.empty()) {
+        remained_cnt += sample_counts.front();
+        sample_counts.pop();
+    }
 
     {
-        size_t expected_cnt = begin < end ? (end - begin + 1) : 0;
-        auto it = extents->aggregate(first_ts, end);
+        size_t expected_cnt = remained_cnt;
+        auto it = extents->aggregate(first_ts, end + 1);
         aku_Timestamp ts = 0;
         AggregationResult xs = INIT_AGGRES;
         aku_Status stat;
@@ -2643,7 +2663,7 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
     }
     {
-        size_t expected_cnt = begin < end ? (end - begin + 2) : 0;
+        size_t expected_cnt = remained_cnt;
         auto it = extents->aggregate(end, first_ts);
         aku_Timestamp ts = 0;
         AggregationResult xs = INIT_AGGRES;
