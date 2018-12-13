@@ -2680,3 +2680,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
     test_nbtree_aggregate_order_idempotence(10, 20);
 }
 
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_1) {
+    test_nbtree_aggregate_order_idempotence(34, 100);
+}
+

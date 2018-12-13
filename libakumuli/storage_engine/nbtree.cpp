@@ -616,6 +616,9 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
             refs_pos_--;
         }
         std::tuple<aku_Status, TIter> result;
+        if (!bstore_->exists(ref.addr)) {
+            return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+        }
         if (!subtree_in_range(ref, min, max)) {
             // Subtree not in [begin_, end_) range. Proceed to next.
             result = std::make_tuple(AKU_ENOT_FOUND, std::move(empty));
@@ -1055,6 +1058,10 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
 }
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_leaf_iterator(SubtreeRef const& ref) {
+    if (!bstore_->exists(ref.addr)) {
+        TIter empty;
+        return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+    }
     aku_Status status;
     std::shared_ptr<Block> block;
     std::tie(status, block) = read_and_check(bstore_, ref.addr);
@@ -1068,6 +1075,10 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregat
 }
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_superblock_iterator(SubtreeRef const& ref) {
+    if (!bstore_->exists(ref.addr)) {
+        TIter empty;
+        return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+    }
     aku_Timestamp min = std::min(begin_, end_);
     aku_Timestamp max = std::max(begin_, end_);
     std::unique_ptr<AggregateOperator> result;
