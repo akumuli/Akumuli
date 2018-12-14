@@ -2650,6 +2650,7 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         sample_counts.pop();
     }
 
+    // Test aggregate
     {
         size_t expected_cnt = remained_cnt;
         auto it = extents->aggregate(first_ts, end + 1);
@@ -2674,6 +2675,33 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
         BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
     }
+    // Test group-aggregate
+    auto test_group_aggregate = [&](aku_Timestamp from, aku_Timestamp to, aku_Timestamp step) {
+        auto it = extents->group_aggregate(from, to, step);
+        size_t sz = begin < end ? (end - begin + step) / step : 0;
+        size_t bufsz = sz == 0 ? 1 : sz;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<AggregationResult> xss(bufsz, INIT_AGGRES);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
+        BOOST_REQUIRE_EQUAL(outsz, sz);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        u64 expected_cnt = remained_cnt;
+        u64 actual_cnt = 0;
+        for (u32 i = 0; i < outsz; i++) {
+            actual_cnt += xss.at(i).cnt;
+        }
+        BOOST_REQUIRE_EQUAL(actual_cnt, expected_cnt);
+    };
+    test_group_aggregate(end, first_ts, 10);
+    test_group_aggregate(end, first_ts, 100);
+    test_group_aggregate(end, first_ts, 1000);
+    test_group_aggregate(end, first_ts, 10000);
+    test_group_aggregate(first_ts, end + 1, 10);
+    test_group_aggregate(first_ts, end + 1, 100);
+    test_group_aggregate(first_ts, end + 1, 1000);
+    test_group_aggregate(first_ts, end + 1, 10000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
