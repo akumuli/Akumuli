@@ -2598,7 +2598,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
 void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
-    aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
+    aku_Timestamp first_ts = gen, begin = gen, end = gen;
     size_t buffer_cnt = 0;
     size_t sample_cnt = 0;
 
@@ -2615,7 +2615,7 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
             // one time event
             begin = gen;
         }
-        end = last_ts;
+        end = gen;
     };
 
     auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
@@ -2633,7 +2633,6 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         aku_Timestamp ts = gen++;
         extents->append(ts, value);
         sample_cnt++;
-        last_ts = ts;
     }
 
     // Remove old values
@@ -2649,6 +2648,7 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         remained_cnt += sample_counts.front();
         sample_counts.pop();
     }
+    remained_cnt += sample_cnt;
 
     // Test aggregate
     {
@@ -2678,8 +2678,26 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     // Test group-aggregate
     auto test_group_aggregate = [&](aku_Timestamp from, aku_Timestamp to, aku_Timestamp step) {
         auto it = extents->group_aggregate(from, to, step);
-        size_t sz = begin < end ? (end - begin + step) / step : 0;
-        size_t bufsz = sz == 0 ? 1 : sz;
+        size_t sz = 0;
+        if (from < to) {
+            for (size_t ix = from; ix < to; ix += step) {
+                if (begin <= ix && ix < end) {
+                    sz++;
+                } else if (ix < begin && begin <= (ix + step)) {
+                    sz++;
+                }
+            }
+        } else {
+            for (i64 ix = from; ix > static_cast<i64>(to); ix -= step) {
+                if (static_cast<i64>(begin) < ix && ix <= static_cast<i64>(end)) {
+                    sz++;
+                }
+                else if (ix >= static_cast<i64>(end) && static_cast<i64>(end) > (ix - static_cast<i32>(step))) {
+                    sz++;
+                }
+            }
+        }
+        size_t bufsz = sz + 1;
         std::vector<aku_Timestamp> tss(bufsz, 0);
         std::vector<AggregationResult> xss(bufsz, INIT_AGGRES);
         aku_Status stat;
@@ -2694,10 +2712,13 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         }
         BOOST_REQUIRE_EQUAL(actual_cnt, expected_cnt);
     };
-    test_group_aggregate(end, first_ts, 10);
-    test_group_aggregate(end, first_ts, 100);
-    test_group_aggregate(end, first_ts, 1000);
-    test_group_aggregate(end, first_ts, 10000);
+
+    u32 endshift = 124;
+    test_group_aggregate(end + endshift, first_ts, 10);
+    test_group_aggregate(end + endshift, first_ts, 100);
+    test_group_aggregate(end + endshift, first_ts, 1000);
+    test_group_aggregate(end + endshift, first_ts, 10000);
+
     test_group_aggregate(first_ts, end + 1, 10);
     test_group_aggregate(first_ts, end + 1, 100);
     test_group_aggregate(first_ts, end + 1, 1000);
