@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.7.57
+--------------
+
+BUG FIX
+
+* Fix select query behavior when query boundary crosses the retention boundary
+* Fix aggregate query precision error on retention boudnary
+
 Version 0.7.56
 --------------
 
