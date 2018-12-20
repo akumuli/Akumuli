@@ -667,7 +667,7 @@ struct RandomWalk {
     }
 
     double next() {
-        value += distribution(generator);
+        value += rand()/double(RAND_MAX);// distribution(generator);
         return value;
     }
 };
@@ -2596,6 +2596,10 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
 }
 
 void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
+
+    for (int i = 0; i < 1000; i++){
+        std::cout << i << std::endl;
+        srand(i);
     // Build this tree structure.
     aku_Timestamp gen = 1000;
     aku_Timestamp first_ts = gen, begin = gen, end = gen;
@@ -2719,10 +2723,11 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     test_group_aggregate(end + endshift, first_ts, 1000);
     test_group_aggregate(end + endshift, first_ts, 10000);
 
-    test_group_aggregate(first_ts, end + 1, 10);
-    test_group_aggregate(first_ts, end + 1, 100);
-    test_group_aggregate(first_ts, end + 1, 1000);
-    test_group_aggregate(first_ts, end + 1, 10000);
+//    test_group_aggregate(first_ts, end + 1, 10);
+//    test_group_aggregate(first_ts, end + 1, 100);
+//    test_group_aggregate(first_ts, end + 1, 1000);
+//    test_group_aggregate(first_ts, end + 1, 10000);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
