@@ -667,7 +667,7 @@ struct RandomWalk {
     }
 
     double next() {
-        value += distribution(generator);
+        value += rand()/double(RAND_MAX);// distribution(generator);
         return value;
     }
 };
@@ -2507,3 +2507,211 @@ void test_nbtree_retention_consistency() {
 BOOST_AUTO_TEST_CASE(Test_nbtree_retention_consistency_1) {
     test_nbtree_retention_consistency();
 }
+
+void test_nbtree_scan_order_idempotence(size_t nremoved, size_t nblocks) {
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    aku_Timestamp first_ts = gen, begin = gen, end = gen, last_ts = gen;
+    size_t buffer_cnt = 0;
+    std::shared_ptr<NBTreeExtentsList> extents;
+    auto commit_counter = [&](LogicAddr) {
+        buffer_cnt++;
+        if (buffer_cnt == nremoved) {
+            // one time event
+            begin = gen;
+        }
+        end = last_ts;
+    };
+
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    auto truncate = [&](LogicAddr n) {
+        return std::dynamic_pointer_cast<MemStore, BlockStore>(bstore)->remove(n);
+    };
+
+    std::vector<LogicAddr> initial_rlist;
+    extents.reset(new NBTreeExtentsList(42, initial_rlist, bstore));
+
+    extents->force_init();
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(buffer_cnt < nblocks) {
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        last_ts = ts;
+    }
+
+    // Remove old values
+    truncate(nremoved);
+
+    {
+        auto it = extents->search(first_ts, end);
+        size_t sz = begin < end ? end - begin : 0;
+        size_t bufsz = sz == 0 ? 1 : sz;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<double> xss(bufsz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
+        BOOST_REQUIRE_EQUAL(outsz, sz);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        auto itts = begin - 1;
+        for (u32 ixts = 0; ixts < outsz; ixts++) {
+            auto ts = tss.at(ixts);
+            BOOST_REQUIRE_EQUAL(ts, itts);
+            itts++;
+        }
+    }
+    {
+        auto it = extents->search(end, first_ts);
+        // No output expected
+        size_t sz = begin < end ? end - begin : 0;
+        size_t bufsz = sz == 0 ? 1 : sz;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<double> xss(bufsz, .0);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
+        BOOST_REQUIRE_EQUAL(outsz, sz);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        std::reverse(tss.begin(), tss.end());
+        auto itts = begin + 1;
+        for (u32 ixts = 0; ixts < outsz; ixts++) {
+            auto ts = tss.at(ixts);
+            BOOST_REQUIRE_EQUAL(ts, itts);
+            itts++;
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_0) {
+    test_nbtree_scan_order_idempotence(10, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_1) {
+    test_nbtree_scan_order_idempotence(20, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
+    test_nbtree_scan_order_idempotence(34, 100);
+}
+
+void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
+    // Build this tree structure.
+    aku_Timestamp gen = 1000;
+    aku_Timestamp first_ts = gen, begin = gen, end = gen;
+    size_t buffer_cnt = 0;
+    size_t sample_cnt = 0;
+
+    // For each buffer writtent to the storage this queue will have a
+    // sample-count value.
+    std::queue<size_t> sample_counts;
+
+    std::shared_ptr<NBTreeExtentsList> extents;
+    auto commit_counter = [&](LogicAddr) {
+        buffer_cnt++;
+        sample_counts.push(sample_cnt);
+        sample_cnt = 0;
+        if (buffer_cnt == nremoved) {
+            // one time event
+            begin = gen;
+        }
+        end = gen;
+    };
+
+    auto bstore = BlockStoreBuilder::create_memstore(commit_counter);
+    auto truncate = [&](LogicAddr n) {
+        return std::dynamic_pointer_cast<MemStore, BlockStore>(bstore)->remove(n);
+    };
+
+    std::vector<LogicAddr> initial_rlist;
+    extents.reset(new NBTreeExtentsList(42, initial_rlist, bstore));
+
+    extents->force_init();
+    RandomWalk rwalk(1.0, 0.1, 0.1);
+    while(buffer_cnt < nblocks) {
+        double value = rwalk.next();
+        aku_Timestamp ts = gen++;
+        extents->append(ts, value);
+        sample_cnt++;
+    }
+
+    // Remove old values
+    truncate(nremoved);
+    size_t evicted_cnt = 0;
+    for (size_t i = 0; i < nremoved; i++) {
+        evicted_cnt += sample_counts.front();
+        sample_counts.pop();
+    }
+
+    size_t remained_cnt = 0;
+    while (!sample_counts.empty()) {
+        remained_cnt += sample_counts.front();
+        sample_counts.pop();
+    }
+    remained_cnt += sample_cnt;
+
+    // Test aggregate
+    {
+        size_t expected_cnt = remained_cnt;
+        auto it = extents->aggregate(first_ts, end + 1);
+        aku_Timestamp ts = 0;
+        AggregationResult xs = INIT_AGGRES;
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(&ts, &xs, 1);
+        BOOST_REQUIRE_EQUAL(outsz, 1);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
+    }
+    {
+        size_t expected_cnt = remained_cnt;
+        auto it = extents->aggregate(end, first_ts);
+        aku_Timestamp ts = 0;
+        AggregationResult xs = INIT_AGGRES;
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(&ts, &xs, 1);
+        BOOST_REQUIRE_EQUAL(outsz, 1);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        BOOST_REQUIRE_EQUAL(xs.cnt, expected_cnt);
+    }
+    // Test group-aggregate
+    auto test_group_aggregate = [&](aku_Timestamp from, aku_Timestamp to, aku_Timestamp step) {
+        auto it = extents->group_aggregate(from, to, step);
+        size_t sz = 0;
+        auto total = (end - from + (step - 1)) / step;
+        auto excluded = (begin - from - 1) / step;
+        sz = total - excluded;
+        size_t bufsz = sz + 1;
+        std::vector<aku_Timestamp> tss(bufsz, 0);
+        std::vector<AggregationResult> xss(bufsz, INIT_AGGRES);
+        aku_Status stat;
+        size_t outsz;
+        std::tie(stat, outsz) = it->read(tss.data(), xss.data(), bufsz);
+        BOOST_REQUIRE_EQUAL(outsz, sz);
+        BOOST_REQUIRE(stat == AKU_SUCCESS || stat == AKU_ENO_DATA);
+        u64 expected_cnt = remained_cnt;
+        u64 actual_cnt = 0;
+        for (u32 i = 0; i < outsz; i++) {
+            actual_cnt += xss.at(i).cnt;
+        }
+        BOOST_REQUIRE_EQUAL(actual_cnt, expected_cnt);
+    };
+    test_group_aggregate(first_ts, end, 10);
+    test_group_aggregate(first_ts, end, 100);
+    test_group_aggregate(first_ts, end, 1000);
+    test_group_aggregate(first_ts, end, 10000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
+    test_nbtree_aggregate_order_idempotence(10, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_1) {
+    test_nbtree_aggregate_order_idempotence(33, 100);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_2) {
+    test_nbtree_aggregate_order_idempotence(34, 100);
+}
+

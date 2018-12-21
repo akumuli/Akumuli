@@ -616,6 +616,9 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
             refs_pos_--;
         }
         std::tuple<aku_Status, TIter> result;
+        if (!bstore_->exists(ref.addr)) {
+            return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+        }
         if (!subtree_in_range(ref, min, max)) {
             // Subtree not in [begin_, end_) range. Proceed to next.
             result = std::make_tuple(AKU_ENOT_FOUND, std::move(empty));
@@ -649,7 +652,8 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
             size_t sz;
             std::tie(status, sz) = iter_->read(destts + out_size, destval + out_size, size - out_size);
             out_size += sz;
-            if (status == AKU_ENO_DATA) {
+            if (status == AKU_ENO_DATA ||
+               (status == AKU_EUNAVAILABLE && get_direction() == Direction::FORWARD)) {
                 // Move to next iterator.
                 iter_.reset();
             } else if (status != AKU_SUCCESS) {
@@ -984,12 +988,15 @@ ValueAggregator::Direction ValueAggregator::get_direction() {
   */
 class NBTreeSBlockAggregator : public NBTreeSBlockIteratorBase<AggregationResult> {
 
+    bool leftmost_leaf_found_;
+
 public:
     NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
                            NBTreeSuperblock const& sblock,
                            aku_Timestamp begin,
                            aku_Timestamp end)
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, sblock, begin, end)
+        , leftmost_leaf_found_(false)
     {
     }
 
@@ -998,6 +1005,7 @@ public:
                            aku_Timestamp begin,
                            aku_Timestamp end)
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, addr, begin, end)
+        , leftmost_leaf_found_(false)
     {
     }
     virtual std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> make_leaf_iterator(const SubtreeRef &ref) override;
@@ -1054,12 +1062,17 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
 }
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_leaf_iterator(SubtreeRef const& ref) {
+    if (!bstore_->exists(ref.addr)) {
+        TIter empty;
+        return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+    }
     aku_Status status;
     std::shared_ptr<Block> block;
     std::tie(status, block) = read_and_check(bstore_, ref.addr);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<AggregateOperator>());
     }
+    leftmost_leaf_found_ = true;
     NBTreeLeaf leaf(block);
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeLeafAggregator(begin_, end_, leaf));
@@ -1067,10 +1080,14 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregat
 }
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_superblock_iterator(SubtreeRef const& ref) {
+    if (!bstore_->exists(ref.addr)) {
+        TIter empty;
+        return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
+    }
     aku_Timestamp min = std::min(begin_, end_);
     aku_Timestamp max = std::max(begin_, end_);
     std::unique_ptr<AggregateOperator> result;
-    if (min <= ref.begin && ref.end < max) {
+    if (leftmost_leaf_found_ && (min <= ref.begin && ref.end < max)) {
         // We don't need to go to lower level, value from subtree ref can be used instead.
         auto agg = INIT_AGGRES;
         agg.copy_from(ref);
