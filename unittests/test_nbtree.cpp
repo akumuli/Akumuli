@@ -2596,10 +2596,6 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
 }
 
 void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
-
-    for (int i = 0; i < 1000; i++){
-        std::cout << i << std::endl;
-        srand(i);
     // Build this tree structure.
     aku_Timestamp gen = 1000;
     aku_Timestamp first_ts = gen, begin = gen, end = gen;
@@ -2683,24 +2679,9 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     auto test_group_aggregate = [&](aku_Timestamp from, aku_Timestamp to, aku_Timestamp step) {
         auto it = extents->group_aggregate(from, to, step);
         size_t sz = 0;
-        if (from < to) {
-            for (size_t ix = from; ix < to; ix += step) {
-                if (begin <= ix && ix < end) {
-                    sz++;
-                } else if (ix < begin && begin <= (ix + step)) {
-                    sz++;
-                }
-            }
-        } else {
-            for (i64 ix = from; ix > static_cast<i64>(to); ix -= step) {
-                if (static_cast<i64>(begin) < ix && ix <= static_cast<i64>(end)) {
-                    sz++;
-                }
-                else if (ix >= static_cast<i64>(end) && static_cast<i64>(end) > (ix - static_cast<i32>(step))) {
-                    sz++;
-                }
-            }
-        }
+        auto total = (end - from + (step - 1)) / step;
+        auto excluded = (begin - from - 1) / step;
+        sz = total - excluded;
         size_t bufsz = sz + 1;
         std::vector<aku_Timestamp> tss(bufsz, 0);
         std::vector<AggregationResult> xss(bufsz, INIT_AGGRES);
@@ -2716,18 +2697,10 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
         }
         BOOST_REQUIRE_EQUAL(actual_cnt, expected_cnt);
     };
-
-    u32 endshift = 124;
-    test_group_aggregate(end + endshift, first_ts, 10);
-    test_group_aggregate(end + endshift, first_ts, 100);
-    test_group_aggregate(end + endshift, first_ts, 1000);
-    test_group_aggregate(end + endshift, first_ts, 10000);
-
-//    test_group_aggregate(first_ts, end + 1, 10);
-//    test_group_aggregate(first_ts, end + 1, 100);
-//    test_group_aggregate(first_ts, end + 1, 1000);
-//    test_group_aggregate(first_ts, end + 1, 10000);
-    }
+    test_group_aggregate(first_ts, end, 10);
+    test_group_aggregate(first_ts, end, 100);
+    test_group_aggregate(first_ts, end, 1000);
+    test_group_aggregate(first_ts, end, 10000);
 }
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
