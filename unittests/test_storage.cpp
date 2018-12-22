@@ -1027,7 +1027,7 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
     session.reset();  // This should flush current WAL frame
 
     store->_kill();
-    store = std::make_shared<Storage>(meta, bstore, cstore, false);
+    store = std::make_shared<Storage>(meta, bstore, cstore, true);
     store->initialize_input_log(params);
     session = store->create_write_session();
 
@@ -1043,6 +1043,9 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
     }
     check_timestamps(cursor, expected, OrderBy::SERIES, series_names);
     check_paramids(*session, cursor, OrderBy::SERIES, series_names, expected_size, false);
+
+    session.reset();
+    store->close();
 }
 
 BOOST_AUTO_TEST_CASE(Test_wal_recovery_0) {
@@ -1051,4 +1054,8 @@ BOOST_AUTO_TEST_CASE(Test_wal_recovery_0) {
 
 BOOST_AUTO_TEST_CASE(Test_wal_recovery_1) {
     test_wal_recovery(100, 1000, 11000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_2) {
+    test_wal_recovery(100, 1000, 101000);
 }
