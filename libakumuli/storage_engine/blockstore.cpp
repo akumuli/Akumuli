@@ -774,7 +774,7 @@ PerVolumeStats MemStore::get_volume_stats() const {
 bool MemStore::exists(LogicAddr addr) const {
     addr -= MEMSTORE_BASE;
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    return addr < write_pos_;
+    return addr >= removed_pos_ && addr < write_pos_;
 }
 
 u32 MemStore::get_write_pos() {
