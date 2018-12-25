@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 #include <regex>
+#include <thread>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -238,7 +239,8 @@ struct ConfigFile {
         }
         settings.path = path.string();
         settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
-        settings.volume_size_bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
+        auto bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
+        settings.volume_size_bytes = static_cast<int>(bytes);
         return settings;
     }
 
@@ -289,7 +291,7 @@ struct ConfigFile {
 /** Help message used in CLI. It contains simple markdown formatting.
   * `rich_print function should be used to print this message.
   */
-const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
+static const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
 **SYNOPSIS**
         akumulid
@@ -448,11 +450,16 @@ void cmd_run_server() {
     } else {
         aku_FineTuneParams params = {};
         if (!wal_config.path.empty() && wal_config.nvolumes != 0 && wal_config.volume_size_bytes != 0) {
-            params.input_log_concurrency = 2048;  // This is a max value, the actual value is defined
-                                                  // by ingestion servers configuration.
+            unsigned log_ccr = 0;
+            for (auto settings: ingestion_servers) {
+                unsigned ccr = settings.nworkers < 0 ? std::thread::hardware_concurrency()
+                                                     : static_cast<unsigned>(settings.nworkers);
+                log_ccr = std::max(log_ccr, ccr);
+            }
+            params.input_log_concurrency = log_ccr;
             params.input_log_path        = wal_config.path.data();
-            params.input_log_volume_numb = wal_config.nvolumes;
-            params.input_log_volume_size = wal_config.volume_size_bytes;
+            params.input_log_volume_numb = static_cast<u64>(wal_config.nvolumes);
+            params.input_log_volume_size = static_cast<u64>(wal_config.volume_size_bytes);
         }
 
         auto connection  = std::make_shared<AkumuliConnection>(full_path.c_str(), params);
