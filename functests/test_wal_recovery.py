@@ -18,17 +18,18 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
-def test_read_rare_set(exp_tags, dtstart, delta, N):
+def test_select(metric_name, exp_tags, dtstart, delta, N):
     """Read all series one by one in backward direction.
     All data should be received as expected."""
+
     for tags in exp_tags:
         begin = dtstart + delta*(N-1)
         end = dtstart
         query_params = {
             "output": { "format":  "csv" },
-            #"where": tags
+            "where": tags
         }
-        query = att.makequery("rare", begin, end, **query_params)
+        query = att.makequery(metric_name, begin, end, **query_params)
         queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
         response = urlopen(queryurl, json.dumps(query))
 
@@ -36,7 +37,6 @@ def test_read_rare_set(exp_tags, dtstart, delta, N):
         print("Test - read all data in backward direction")
         iterations = 0
         for line in response:
-            print(line)
             try:
                 columns = line.split(',')
                 timestamp = att.parse_timestamp(columns[1].strip())
@@ -95,19 +95,19 @@ def main(path):
         print("Sending {0} messages through TCP...".format(nmsgs))
 
         # Send 1 message for each series in rare set
-        for it in att.generate_messages3(dt, delta, 1, 'rare', tags):
-            print(it)
+        for it in att.generate_messages3(dt, delta, 10, 'rare', tags):
             chan.send(it)
 
         # Send a lot of other messages to ensure that the raer set is on disk
         for it in att.generate_messages3(dt, delta, 1000, 'bulk', tags):
             chan.send(it)
 
-        time.sleep(5)
+        chan.close()
+
+        time.sleep(1)
 
         # kill process
         akumulid.terminate()
-        sys.exit(1)
     except:
         traceback.print_exc()
         sys.exit(1)
@@ -119,7 +119,8 @@ def main(path):
     time.sleep(5)
     print("Server started")
     try:
-        test_read_rare_set(tags, dt, delta, 1)
+        test_select('rare', tags, dt, delta, 10)
+        test_select('bulk', tags, dt, delta, 1000)
     finally:
         print("Stopping server...")
         akumulid.stop()

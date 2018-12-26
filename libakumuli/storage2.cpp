@@ -251,6 +251,19 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             bool new_name = false;
             std::tie(status, new_name) = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
             ids[0] = sample.paramid;
+            if (new_name) {
+                // Add record to input log
+                if (ilog_ != nullptr) {
+                    std::vector<aku_ParamId> staleids;
+                    auto res = ilog_->append(ids[0], ob, static_cast<u32>(ksend - ob), &staleids);
+                    if (res == AKU_EOVERFLOW) {
+                        ilog_->rotate();
+                        if (!staleids.empty()) {
+                            storage_->close_specific_columns(staleids);
+                        }
+                    }
+                }
+            }
         } else {
             // initialize using local info
             ids[0] = id;
@@ -290,6 +303,19 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
                 bool newname;
                 std::tie(status, newname) = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
                 ids[i] = tmp.paramid;
+                if (newname) {
+                    // Add record to input log
+                    if (ilog_ != nullptr) {
+                        std::vector<aku_ParamId> staleids;
+                        auto res = ilog_->append(ids[i], sbegin, static_cast<u32>(send - sbegin), &staleids);
+                        if (res == AKU_EOVERFLOW) {
+                            ilog_->rotate();
+                            if (!staleids.empty()) {
+                                storage_->close_specific_columns(staleids);
+                            }
+                        }
+                    }
+                }
             } else {
                 // initialize using local info
                 ids[i] = id;
@@ -1037,7 +1063,6 @@ void Storage::close() {
         aku_Status status;
         std::tie(status, ccr) = ShardedInputLog::find_logs(input_log_path_.c_str());
         if (status == AKU_SUCCESS && ccr > 0) {
-            // Start recovery
             auto ilog = std::make_shared<ShardedInputLog>(ccr, input_log_path_.c_str());
             ilog->delete_files();
         }
