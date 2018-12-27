@@ -267,7 +267,7 @@ def edit_config_file(key, value):
     success = False
     with open(abspath, 'r') as configfile:
         for line in configfile:
-            if line.startswith(key):
+            if not success and line.startswith(key):
                 lines.append(key + '=' + value + '\n')
                 success = True
             else:
