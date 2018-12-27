@@ -534,7 +534,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
                     // sample.paramid maps to some other series
                     Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
                                              + std::string(prev.first, prev.first + prev.second) + ". Series name "
-                                             + std::string(begin, end) + " is skipped.");
+                                             + sname.value + " is skipped.");
                     return true;
                 }
                 storage->global_matcher_._add(sname.value, id);
@@ -543,6 +543,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             }
             if (create_new) {
                 // id guaranteed to be unique
+                Logger::msg(AKU_LOG_TRACE, "WAL-recovery create new column based on series name " + sname.value);
                 storage->cstore_->create_new_column(id);
             }
             return true;
@@ -576,7 +577,7 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
         aku_Status status;
         u32 outsize;
         std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
-        if (status == AKU_SUCCESS) {
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize > 0)) {
             for (u32 ix = 0; ix < outsize; ix++) {
                 const InputLogRow& row = rows.at(ix);
                 visitor.reset(row.id);

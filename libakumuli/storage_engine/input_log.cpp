@@ -86,6 +86,15 @@ static std::tuple<aku_Status, size_t> _write_frame(AprFilePtr& file, u32 size, v
     return std::make_tuple(AKU_SUCCESS, outsize);
 }
 
+static aku_Status _flush_file(AprFilePtr& file) {
+    apr_status_t status = apr_file_flush(file.get());
+    if (status != APR_SUCCESS) {
+        log_apr_error(status, "Can't flush file");
+        return AKU_EIO;
+    }
+    return AKU_SUCCESS;
+}
+
 static std::tuple<aku_Status, size_t> _read_frame(AprFilePtr& file, u32 array_size, void* array) {
     u32 size;
     size_t bytes_read = 0;
@@ -131,10 +140,11 @@ aku_Status LZ4Volume::write(int i) {
     std::tie(status, size) = _write_frame(file_,
                                           static_cast<u32>(out_bytes),
                                           buffer_);
-    if (status == AKU_SUCCESS) {
-        file_size_ += size;
+    if (status != AKU_SUCCESS) {
+        return status;
     }
-    return status;
+    file_size_ += size;
+    return _flush_file(file_);
 }
 
 std::tuple<aku_Status, size_t> LZ4Volume::read(int i) {
@@ -172,6 +182,7 @@ LZ4Volume::LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volu
     , elements_to_read_(0)
     , sequencer_(sequencer)
 {
+    Logger::msg(AKU_LOG_TRACE, std::string("Open LZ4 volume ") + file_name + " for logging");
     clear(0);
     clear(1);
     LZ4_resetStream(&stream_);
@@ -193,6 +204,7 @@ LZ4Volume::LZ4Volume(const char* file_name)
     , bytes_to_read_(0)
     , elements_to_read_(0)
 {
+    Logger::msg(AKU_LOG_TRACE, std::string("Open LZ4 volume ") + file_name + " for reading");
     clear(0);
     clear(1);
     LZ4_setStreamDecode(&decode_stream_, NULL, 0);
@@ -623,6 +635,7 @@ InputLog::InputLog(LogSequencer* sequencer, const char* rootdir, size_t nvol, si
     , sequencer_(sequencer)
 {
     std::string path = get_volume_name();
+    Logger::msg(AKU_LOG_INFO, std::string("Open input log ") + std::to_string(stream_id) + " for logging.");
     add_volume(path);
 }
 
@@ -634,6 +647,7 @@ InputLog::InputLog(const char* rootdir, u32 stream_id)
     , stream_id_(stream_id)
     , sequencer_(nullptr)
 {
+    Logger::msg(AKU_LOG_INFO, std::string("Open input log ") + std::to_string(stream_id) + " for recovery.");
     find_volumes();
     open_volumes();
 }
