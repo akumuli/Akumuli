@@ -82,20 +82,6 @@ pool_size=1
 # port number
 port=4242
 
-# Write-Ahead-Log section (delete to disable)
-
-[WAL]
-# WAL location
-path=~/.akumuli
-
-# Max volume size. Log records are added until file size
-# will exced configured value.
-volume_size=256MB
-
-# Number of log volumes to keep on disk per CPU core. E.g. with `volume_size` = 256MB
-# and `nvolumes` = 4 and 4 CPUs WAL will use 4GB at most (4*4*256MB).
-nvolumes=4
-
 
 # Logging configuration
 # This is just a log4cxx configuration without any modifications
@@ -110,6 +96,22 @@ log4j.appender.file.datePattern='.'yyyy-MM-dd
 )";
 
 
+const char* WAL_CONFIG = R"(# Write-Ahead-Log section (delete to disable)
+
+[WAL]
+# WAL location
+path=~/.akumuli
+
+# Max volume size. Log records are added until file size
+# will exced configured value.
+volume_size=256MB
+
+# Number of log volumes to keep on disk per CPU core. E.g. with `volume_size` = 256MB
+# and `nvolumes` = 4 and 4 CPUs WAL will use 4GB at most (4*4*256MB).
+nvolumes=4
+
+)";
+
 
 //! Container class for configuration related functions
 struct ConfigFile {
@@ -121,7 +123,7 @@ struct ConfigFile {
         return path2cfg;
     }
 
-    static void init_config(boost::filesystem::path path) {
+    static void init_config(boost::filesystem::path path, bool disable_wal=false) {
         if (boost::filesystem::exists(path)) {
             std::runtime_error err("configuration file already exists");
             BOOST_THROW_EXCEPTION(err);
@@ -130,10 +132,13 @@ struct ConfigFile {
         int nvolumes = 4;
         std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
         stream << config << std::endl;
+        if (!disable_wal) {
+            stream << WAL_CONFIG << std::endl;
+        }
         stream.close();
     }
 
-    static void init_exp_config(boost::filesystem::path path) {
+    static void init_exp_config(boost::filesystem::path path, bool disable_wal=false) {
         if (boost::filesystem::exists(path)) {
             std::runtime_error err("configuration file already exists");
             BOOST_THROW_EXCEPTION(err);
@@ -142,6 +147,9 @@ struct ConfigFile {
         int nvolumes = 0;
         std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
         stream << config << std::endl;
+        if (!disable_wal) {
+            stream << WAL_CONFIG << std::endl;
+        }
         stream.close();
     }
 
@@ -643,6 +651,7 @@ int main(int argc, char** argv) {
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
                 ("init-expandable", "Create configuration for expandable storage")
+                ("disable-wal", "Disable WAL in generated configuration file (can be used with --init)")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
                 ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
                 ;
@@ -670,7 +679,8 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("init")) {
-            ConfigFile::init_config(path);
+            bool disable_wal = vm.count("disable-wal");
+            ConfigFile::init_config(path, disable_wal);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
@@ -679,7 +689,8 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("init-expandable")) {
-            ConfigFile::init_exp_config(path);
+            bool disable_wal = vm.count("disable-wal");
+            ConfigFile::init_exp_config(path, disable_wal);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
