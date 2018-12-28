@@ -48,6 +48,21 @@ matrix:
       - GENERIC_BUILD=false
       script:
       - bash ./CI/runci.sh osx
+    # VM-based 64-bit WAL check build (GCC)
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: gcc
+      branches:
+        only:
+          - master
+      env:
+      - DISTRIBUTION=ubuntu/trusty
+      - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      script:
+      - bash ./CI/runci.sh ubuntu-14.04-wal
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty

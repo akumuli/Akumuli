@@ -1,24 +1,9 @@
 #!/bin/bash
-echo "Running tests for Ubuntu Trusty"
+echo "Running WAL tests for Ubuntu Trusty"
 echo "Work dir: $(pwd)"
 
-echo "Running unit-tests"
-ctest -VV
-if [ $? -ne 0 ]; then
-    # We have to manually check the exit code since
-    # Travis-CI doesn't work well with `set -e`.
-    echo "Unit-tests failed" >&2
-    exit 1
-fi
-
-functests/storage_test /tmp;
-if [ $? -ne 0 ]; then
-    echo "API test failed" >&2
-    exit 1
-fi
-
 echo "Set up disk constrained environment"
-akumulid/akumulid --init --disable-wal
+akumulid/akumulid --init
 python functests/akumulid_test_tools.py set_log_path $TRAVIS_BUILD_DIR/akumuli.log
 
 echo "Running base integration tests"

@@ -18,7 +18,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Set up disk constrained environment"
-akumulid/akumulid --init
+akumulid/akumulid --init --disable-wal
 python functests/akumulid_test_tools.py set_log_path /opt/akumuli/akumuli.log
 
 echo "Running base integration tests"
