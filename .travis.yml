@@ -53,9 +53,6 @@ matrix:
       dist: trusty
       sudo: required
       compiler: gcc
-      branches:
-        only:
-          - master
       env:
       - DISTRIBUTION=ubuntu/trusty
       - DEPLOY_PACKAGE=false
