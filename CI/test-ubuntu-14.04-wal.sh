@@ -6,15 +6,9 @@ echo "Set up disk constrained environment"
 akumulid/akumulid --init
 python functests/akumulid_test_tools.py set_log_path $TRAVIS_BUILD_DIR/akumuli.log
 
-# TODO: remove
-echo "Test configuration"
-cat ~/.akumulid
-
 echo "Running base integration tests"
 python functests/test_data_ingestion.py akumulid/ TCP
 if [ $? -ne 0 ]; then
-    # TODO: remove
-    cat $TRAVIS_BUILD_DIR/akumuli.log
     echo "Base test failed" >&2
     exit 1
 fi

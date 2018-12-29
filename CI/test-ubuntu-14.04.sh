@@ -31,6 +31,8 @@ cat ~/.akumulid
 echo "Running base integration tests"
 python functests/test_data_ingestion.py akumulid/ TCP
 if [ $? -ne 0 ]; then
+    # TODO: remove
+    cat $TRAVIS_BUILD_DIR/akumuli.log
     echo "Base test failed" >&2
     exit 1
 fi
