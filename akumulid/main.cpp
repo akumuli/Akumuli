@@ -241,14 +241,20 @@ struct ConfigFile {
 
     static WALSettings get_wal_settings(PTree conf) {
         WALSettings settings = {};
-        auto path = expand_path(conf.get<std::string>("WAL.path", ""));
-        if (!boost::filesystem::exists(path)) {
-            throw std::runtime_error("WAL.path doesn't exist");
+        if (conf.find("WAL") != conf.not_found()) {
+            logger.info() << "WAL is enabled in configuration";
+            auto path = expand_path(conf.get<std::string>("WAL.path", ""));
+            if (!boost::filesystem::exists(path)) {
+                throw std::runtime_error("WAL.path doesn't exist");
+            }
+            settings.path = path.string();
+            settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
+            auto bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
+            settings.volume_size_bytes = static_cast<int>(bytes);
+        } else {
+            logger.info() << "WAL is disabled in configuration";
+            settings = {};
         }
-        settings.path = path.string();
-        settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
-        auto bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
-        settings.volume_size_bytes = static_cast<int>(bytes);
         return settings;
     }
 
