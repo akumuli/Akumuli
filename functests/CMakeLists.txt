@@ -28,6 +28,7 @@ file(COPY
     test_filter_query.py
     test_search_api.py
     test_wal_recovery.py
+    test_no_wal_recovery.py
     roundtrip.sh
     DESTINATION
     ./
