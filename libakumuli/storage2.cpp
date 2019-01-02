@@ -115,10 +115,14 @@ StorageSession::StorageSession(std::shared_ptr<Storage> storage,
 }
 
 StorageSession::~StorageSession() {
+    Logger::msg(AKU_LOG_TRACE, "StorageSession is being closed");
     if (ilog_) {
         std::vector<u64> staleids;
         auto res = ilog_->flush(&staleids);
         if (res == AKU_EOVERFLOW) {
+            Logger::msg(AKU_LOG_TRACE, "StorageSession input log overflow, " +
+                                       std::to_string(staleids.size()) +
+                                       " stale ids is about to be closed");
             storage_->close_specific_columns(staleids);
         }
     }
@@ -1071,7 +1075,9 @@ void Storage::close() {
 }
 
 void Storage::close_specific_columns(const std::vector<u64>& ids) {
+    Logger::msg(AKU_LOG_TRACE, "Going to close " + std::to_string(ids.size()) + " ids");
     auto mapping = cstore_->close(ids);
+    Logger::msg(AKU_LOG_TRACE, std::to_string(ids.size()) + " ids were closed");
     if (!mapping.empty()) {
         for (auto kv: mapping) {
             u64 id;

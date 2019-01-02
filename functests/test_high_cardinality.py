@@ -13,17 +13,14 @@ except ImportError:
 import traceback
 import itertools
 import math
+import urllib
 
 HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
 def main(path):
-    if not os.path.exists(path):
-        print("Path {0} doesn't exists".format(path))
-        sys.exit(1)
-
-    akumulid = att.Akumulid(path)
+    akumulid = att.create_akumulid(path)
     # Reset database
     akumulid.delete_database()
     akumulid.create_database()
@@ -32,8 +29,7 @@ def main(path):
     akumulid.serve()
     time.sleep(5)
 
-    nseries = 100000
-    batchsz = 1000
+    nseries = 1000000
 
     def get_tags():
         for ix in xrange(0, nseries):
@@ -49,8 +45,10 @@ def main(path):
         tags = list(get_tags())
 
         # Send 10 messages for each series in the set
-        for it in att.generate_messages3(dt, delta, 10, 'test', tags):
+        for ix, it in enumerate(att.generate_messages5(dt, delta, 10, 'test', tags)):
             chan.send(it)
+            if ix % 100000 == 0:
+                print("{0} series created".format(ix))
 
         chan.close()
 
@@ -65,10 +63,19 @@ def main(path):
     finally:
         print("Server terminated")
 
-    print("Starting server...")
+    print("Starting recovery...")
     akumulid.serve()
-    time.sleep(5)
-    print("Server started")
+    while True:
+        try:
+            # Wait until server will respond to stas query
+            # which mean that the recovery is completed.
+            statsurl = "http://{0}:{1}/api/stats".format(HOST, HTTPPORT)
+            _ = urllib.urlopen(statsurl).read()
+        except:
+            time.sleep(1)
+            continue
+        break
+    print("Recovery completed")
     try:
         pass
     finally:

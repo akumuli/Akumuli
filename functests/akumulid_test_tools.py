@@ -115,6 +115,14 @@ def generate_messages4(dt, delta, N, metric_name, values, **kwargs):
         dt = dt + delta
         yield m
 
+def generate_messages5(dt, delta, N, metric_name, tagslist):
+    """Each series will get the same set of timestamps"""
+    for tags in tagslist:
+        t = dt
+        m = [msg(t, i, metric_name, **tags) for i in range(0, N)]
+        t = t + delta
+        yield "".join(m)
+
 def infinite_msg_stream(batch_size, metric_name, **kwargs):
     i = 0
     template = '\r\n'.join(['+{2}\r\n+{0}\r\n+{1}']*batch_size) + '\r\n'
