@@ -29,6 +29,7 @@ file(COPY
     test_search_api.py
     test_wal_recovery.py
     test_no_wal_recovery.py
+    test_high_cardinality.py
     roundtrip.sh
     DESTINATION
     ./
