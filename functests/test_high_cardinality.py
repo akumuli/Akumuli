@@ -52,7 +52,7 @@ def main(path):
 
         chan.close()
 
-        time.sleep(1)
+        time.sleep(5)
 
         # kill process
         akumulid.terminate()
