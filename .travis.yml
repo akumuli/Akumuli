@@ -58,6 +58,7 @@ matrix:
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
+      - DEBUG_BUILD=true
       script:
       - bash ./CI/runci.sh ubuntu-14.04-wal
     # Container based 64-bit Xenial build
