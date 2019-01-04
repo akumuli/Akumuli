@@ -369,7 +369,7 @@ void TcpAcceptor::_start() {
     acceptor_.async_accept(
                 session->socket(),
                 boost::bind(&TcpAcceptor::handle_accept,
-                            shared_from_this(),
+                            this,
                             session,
                             boost::asio::placeholders::error)
                 );
@@ -377,7 +377,7 @@ void TcpAcceptor::_start() {
 
 void TcpAcceptor::stop() {
     logger_.info() << "Stopping acceptor";
-    acceptor_.cancel();
+    acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
     logger_.info() << "Trying to stop acceptor";

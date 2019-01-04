@@ -10,6 +10,9 @@ namespace Akumuli {
  * @brief Volume manager interface
  */
 struct VolumeRegistry {
+
+    virtual ~VolumeRegistry() = default;
+
     typedef struct {
         u32 id;
         std::string path;
