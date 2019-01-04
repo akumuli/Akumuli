@@ -19,6 +19,32 @@ HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
 
+def test_metadata(metric, tags):
+    # generate all possible series
+    taglist = sorted(itertools.product(*tags.values()))
+    expected_series = []
+    for it in taglist:
+        kv = sorted(zip(tags.keys(), it))
+        series = metric + " ".join(["{0}={1}".format(tag, value) for tag, value in kv])
+        expected_series.append(series)
+    expected_series.sort()
+
+    # read metadata from server
+    actual_series = []
+    query = {
+        "select": "meta:names",
+        "output": { "format":  "csv" },
+    }
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    for line in response:
+        actual_series.append(line.strip())
+    actual_series.sort()
+    if actual_series != expected_series:
+        print("Expected series: {0}".format(expected_series))
+        print("Actual series: {0}".format(actual_series))
+        raise ValueError("Output didn't match")
+
 def main(path):
     akumulid = att.create_akumulid(path)
     # Reset database
@@ -35,14 +61,14 @@ def main(path):
         for ix in xrange(0, nseries):
             yield { "tag1": "A", "tag2": str(ix) }
 
+    tags = list(get_tags())
+
     dt = datetime.datetime.utcnow() - (datetime.timedelta(milliseconds=1)*10)
     delta = datetime.timedelta(milliseconds=1)
     try:
         chan = att.TCPChan(HOST, TCPPORT)
 
         print("Sending {0} messages through TCP...".format(10*nseries))
-
-        tags = list(get_tags())
 
         # Send 10 messages for each series in the set
         for ix, it in enumerate(att.generate_messages5(dt, delta, 10, 'test', tags)):
@@ -52,7 +78,7 @@ def main(path):
 
         chan.close()
 
-        time.sleep(5)
+        time.sleep(15)
 
         # kill process
         akumulid.terminate()
@@ -77,7 +103,7 @@ def main(path):
         break
     print("Recovery completed")
     try:
-        pass
+        test_metadata("test", tags)
     finally:
         print("Stopping server...")
         akumulid.stop()
