@@ -1021,12 +1021,24 @@ void Storage::start_sync_worker() {
         while(done_.load() == 0) {
             auto status = metadata_->wait_for_sync_request(SYNC_REQUEST_TIMEOUT);
             if (status == AKU_SUCCESS) {
+                // TODO: remove
+                Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to call bstore_.flush");
+                // END
                 bstore_->flush();
+                // TODO: remove
+                Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to call metadata_.sync_with_metadata_storage");
+                // END
                 metadata_->sync_with_metadata_storage(get_names);
+                // TODO: remove
+                Logger::msg(AKU_LOG_TRACE, "(sync_worker) Completed metadata_.sync_with_metadata_storage");
+                // END
             }
         }
 
         close_barrier_.wait();
+        // TODO: remove
+        Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to exit");
+        // END
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
@@ -1049,6 +1061,9 @@ void Storage::close() {
     Logger::msg(AKU_LOG_TRACE, "About to call force_sync");
     // END
     metadata_->force_sync();
+    // TODO: remove
+    Logger::msg(AKU_LOG_TRACE, "About to call close_barrier_.wait");
+    // END
     close_barrier_.wait();
     // Close column store
     // TODO: remove
