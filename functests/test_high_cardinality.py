@@ -103,7 +103,7 @@ def main(path):
         test_metadata("test", tags)
     finally:
         print("Stopping server...")
-        akumulid.stop()
+        akumulid.terminate()
         time.sleep(5)
 
 if __name__ == '__main__':
