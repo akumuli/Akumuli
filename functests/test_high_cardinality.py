@@ -18,14 +18,13 @@ import urllib
 HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
+NSERIES = 1000000
 
-def test_metadata(metric, tags):
+def test_metadata(metric, taglist):
     # generate all possible series
-    taglist = sorted(itertools.product(*tags.values()))
     expected_series = []
     for it in taglist:
-        kv = sorted(zip(tags.keys(), it))
-        series = metric + " ".join(["{0}={1}".format(tag, value) for tag, value in kv])
+        series = "{0} {1}".format(metric, " ".join(["{0}={1}".format(tag, value) for tag, value in it.items()]))
         expected_series.append(series)
     expected_series.sort()
 
@@ -55,10 +54,8 @@ def main(path):
     akumulid.serve()
     time.sleep(5)
 
-    nseries = 1000000
-
     def get_tags():
-        for ix in xrange(0, nseries):
+        for ix in xrange(0, NSERIES):
             yield { "tag1": "A", "tag2": str(ix) }
 
     tags = list(get_tags())
@@ -68,7 +65,7 @@ def main(path):
     try:
         chan = att.TCPChan(HOST, TCPPORT)
 
-        print("Sending {0} messages through TCP...".format(10*nseries))
+        print("Sending {0} messages through TCP...".format(10*NSERIES))
 
         # Send 10 messages for each series in the set
         for ix, it in enumerate(att.generate_messages5(dt, delta, 10, 'test', tags)):
