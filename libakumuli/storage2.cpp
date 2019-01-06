@@ -1021,24 +1021,12 @@ void Storage::start_sync_worker() {
         while(done_.load() == 0) {
             auto status = metadata_->wait_for_sync_request(SYNC_REQUEST_TIMEOUT);
             if (status == AKU_SUCCESS) {
-                // TODO: remove
-                Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to call bstore_.flush");
-                // END
                 bstore_->flush();
-                // TODO: remove
-                Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to call metadata_.sync_with_metadata_storage");
-                // END
                 metadata_->sync_with_metadata_storage(get_names);
-                // TODO: remove
-                Logger::msg(AKU_LOG_TRACE, "(sync_worker) Completed metadata_.sync_with_metadata_storage");
-                // END
             }
         }
 
         close_barrier_.wait();
-        // TODO: remove
-        Logger::msg(AKU_LOG_TRACE, "(sync_worker) About to exit");
-        // END
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
@@ -1057,44 +1045,23 @@ void Storage::close() {
     Logger::msg(AKU_LOG_INFO, "Index memory usage: " + std::to_string(global_matcher_.memory_use()));
     // END
     done_.store(1);
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "About to call force_sync");
-    // END
     metadata_->force_sync();
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "About to call close_barrier_.wait");
-    // END
     close_barrier_.wait();
     // Close column store
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "About to call cstore_->close");
-    // END
     auto mapping = cstore_->close();
     if (!mapping.empty()) {
         for (auto kv: mapping) {
             u64 id;
             std::vector<u64> vals;
             std::tie(id, vals) = kv;
-            // TODO: remove
-            Logger::msg(AKU_LOG_TRACE, "About to call metadata_->add_rescue_point");
-            // END
             metadata_->add_rescue_point(id, std::move(vals));
         }
-        // TODO: remove
-        Logger::msg(AKU_LOG_TRACE, "About to call metadata_->sync_with_metadata_storage");
-        // END
         // Save finall mapping (should contain all affected columns)
         metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "About to call bstore_->flush");
-    // END
     bstore_->flush();
 
     // Delete WAL volumes
-    // TODO: remove
-    Logger::msg(AKU_LOG_TRACE, "About to delete input logs");
-    // END
     inputlog_.reset();
     if (!input_log_path_.empty()) {
         int ccr = 0;
