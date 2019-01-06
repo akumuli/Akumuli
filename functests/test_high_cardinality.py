@@ -18,7 +18,7 @@ import urllib
 HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
-NSERIES = 1000000
+NSERIES = 500000
 
 def test_metadata(metric, taglist):
     # generate all possible series
