@@ -164,7 +164,7 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
             }
         }
         if (status == NBTreeAppendResult::OK_FLUSH_NEEDED) {
-            auto res = ilog_->append(sample.paramid, rpoints.data(), rpoints.size(), &staleids);
+            auto res = ilog_->append(sample.paramid, rpoints.data(), static_cast<u32>(rpoints.size()), &staleids);
             if (res == AKU_EOVERFLOW) {
                 ilog_->rotate();
                 if (!staleids.empty()) {
@@ -291,7 +291,7 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             // Copy metric name to `series` array
             auto metric_len = it_end - it_begin;
             char* sbegin = tagline - metric_len;
-            memcpy(sbegin, it_begin, metric_len);
+            memcpy(sbegin, it_begin, static_cast<size_t>(metric_len));
             // Move to next metric (if any)
             it_end++;
             it_begin = it_end;
@@ -346,7 +346,7 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
         }
     }
     memcpy(buffer, name.first, static_cast<size_t>(name.second));
-    return name.second;
+    return static_cast<int>(name.second);
 }
 
 void StorageSession::query(InternalCursor* cur, const char* query) const {
@@ -441,32 +441,162 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     // belongs to this nbtee instance gets evicted from WAL we will have to close
     // the tree (and write it's content to disk). It can slow down things a bit
     // but the data will be safe.
+    bool run_wal_recovery = false;
+    int ccr = 0;
+    if (params.input_log_path) {
+        aku_Status status;
+        std::tie(status, ccr) = ShardedInputLog::find_logs(params.input_log_path);
+        if (status == AKU_SUCCESS && ccr > 0) {
+            run_wal_recovery = true;
+        }
+    }
+    // Run metadata replay followed by the restore procedure (based on recovered
+    // metdata) followed by full log replay.
+    if (run_wal_recovery) {
+        auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
+        run_inputlog_metadata_recovery(ilog.get(), &mapping);
+    }
     cstore_->open_or_restore(mapping, params.input_log_path == nullptr);
     start_sync_worker();
+    if (run_wal_recovery) {
+        auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
+        run_inputlog_recovery(ilog.get());
+        // This step will delete log files
+    }
 }
 
 void Storage::initialize_input_log(const aku_FineTuneParams &params) {
     if (params.input_log_path) {
-        int ccr = 0;
-        aku_Status status;
-        std::tie(status, ccr) = ShardedInputLog::find_logs(params.input_log_path);
-        if (status == AKU_SUCCESS && ccr > 0) {
-            // Start recovery
-            auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
-            run_inputlog_recovery(ilog.get());
-        }
         Logger::msg(AKU_LOG_INFO, std::string("WAL enabled, path: ") +
                                   params.input_log_path + ", nvolumes: " +
                                   std::to_string(params.input_log_volume_numb) + ", volume-size: " +
                                   std::to_string(params.input_log_volume_size));
 
-        inputlog_.reset(new ShardedInputLog(params.input_log_concurrency,
+        inputlog_.reset(new ShardedInputLog(static_cast<int>(params.input_log_concurrency),
                                             params.input_log_path,
                                             params.input_log_volume_numb,
                                             params.input_log_volume_size));
 
         input_log_path_ = params.input_log_path;
     }
+}
+
+void Storage::run_inputlog_metadata_recovery(
+        ShardedInputLog* ilog,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping)
+{
+    struct Visitor : boost::static_visitor<bool> {
+        Storage* storage;
+        aku_ParamId curr_id;
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping;
+
+        /** Should be called for each input-log record
+          * before using as a visitor
+          */
+        void reset(aku_ParamId id) {
+            curr_id = id;
+        }
+
+        bool operator () (const InputLogDataPoint&) {
+            // Datapoints are ignored at this stage of the recovery.
+            return true;
+        }
+
+        bool operator () (const InputLogSeriesName& sname) {
+            auto strref = storage->global_matcher_.id2str(curr_id);
+            if (strref.second) {
+                // Fast path, name already added
+                return true;
+            }
+            bool create_new = false;
+            auto begin = sname.value.data();
+            auto end = begin + sname.value.length();
+            auto id = storage->global_matcher_.match(begin, end);
+            if (id == 0) {
+                // create new series
+                id = curr_id;
+                StringT prev = storage->global_matcher_.id2str(id);
+                if (prev.second != 0) {
+                    // sample.paramid maps to some other series
+                    Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
+                                             + std::string(prev.first, prev.first + prev.second) + ". Series name "
+                                             + sname.value + " is skipped.");
+                    return true;
+                }
+                storage->global_matcher_._add(sname.value, id);
+                storage->metadata_->add_rescue_point(id, std::vector<u64>());
+                create_new = true;
+            }
+            if (create_new) {
+                // id guaranteed to be unique
+                Logger::msg(AKU_LOG_TRACE, "WAL-recovery create new column based on series name " + sname.value);
+                storage->cstore_->create_new_column(id);
+            }
+            return true;
+        }
+
+        bool operator () (const InputLogRecoveryInfo& rinfo) {
+            // Check that series exists
+            auto strref = storage->global_matcher_.id2str(curr_id);
+            if (!strref.second) {
+                // Id is not taken
+                Logger::msg(AKU_LOG_ERROR, "Series id is not taken. Id " + std::to_string(curr_id) + ", recovery record will be skipped.");
+                return true;
+            }
+            std::vector<StorageEngine::LogicAddr> rpoints(rinfo.data);
+            auto it = mapping->find(curr_id);
+            if (it != mapping->end()) {
+                // Check if rescue points are of newer version.
+                // If *it is newer than rinfo.data then return. Otherwise,
+                // update rescue points list using rinfo.data.
+                const std::vector<StorageEngine::LogicAddr> &current = it->second;
+                if (current.size() > rinfo.data.size()) {
+                    return true;
+                }
+                auto curr_max = std::max_element(current.begin(), current.end());
+                auto data_max = std::max_element(rinfo.data.begin(), rinfo.data.end());
+                if (curr_max > data_max) {
+                    return true;
+                }
+            }
+            (*mapping)[curr_id] = rpoints;
+            storage->_update_rescue_points(curr_id, std::move(rpoints));
+            return true;
+        }
+    };
+
+    Visitor visitor;
+    visitor.storage = this;
+    visitor.mapping = mapping;
+    bool proceed    = true;
+    size_t nitems   = 0x1000;
+    u64 nsegments   = 0;
+    std::vector<InputLogRow> rows(nitems);
+    Logger::msg(AKU_LOG_INFO, "WAL metadata recovery started");
+
+    while (proceed) {
+        aku_Status status;
+        u32 outsize;
+        std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize > 0)) {
+            for (u32 ix = 0; ix < outsize; ix++) {
+                const InputLogRow& row = rows.at(ix);
+                visitor.reset(row.id);
+                proceed = row.payload.apply_visitor(visitor);
+            }
+            nsegments++;
+        }
+        else if (status == AKU_ENO_DATA) {
+            Logger::msg(AKU_LOG_INFO, "WAL metadata recovery completed");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
+            proceed = false;
+        }
+        else {
+            Logger::msg(AKU_LOG_ERROR, "WAL recovery error: " + StatusUtil::str(status));
+            proceed = false;
+        }
+    }
+    ilog->reopen();
 }
 
 void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
@@ -505,7 +635,6 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
                 Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
                 return false;
-                break;
             case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
                 nlost++;
                 break;
@@ -520,49 +649,11 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
             return true;
         }
 
-        bool operator () (const InputLogSeriesName& sname) {
-            auto strref = storage->global_matcher_.id2str(sample.paramid);
-            if (strref.second) {
-                // Fast path, name already added
-                return true;
-            }
-            bool create_new = false;
-            auto begin = sname.value.data();
-            auto end = begin + sname.value.length();
-            auto id = storage->global_matcher_.match(begin, end);
-            if (id == 0) {
-                // create new series
-                id = sample.paramid;
-                StringT prev = storage->global_matcher_.id2str(id);
-                if (prev.second != 0) {
-                    // sample.paramid maps to some other series
-                    Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
-                                             + std::string(prev.first, prev.first + prev.second) + ". Series name "
-                                             + sname.value + " is skipped.");
-                    return true;
-                }
-                storage->global_matcher_._add(sname.value, id);
-                storage->metadata_->add_rescue_point(id, std::vector<u64>());
-                create_new = true;
-            }
-            if (create_new) {
-                // id guaranteed to be unique
-                Logger::msg(AKU_LOG_TRACE, "WAL-recovery create new column based on series name " + sname.value);
-                storage->cstore_->create_new_column(id);
-            }
+        bool operator () (const InputLogSeriesName&) {
             return true;
         }
 
-        bool operator () (const InputLogRecoveryInfo& rinfo) {
-            // Check that series exists
-            auto strref = storage->global_matcher_.id2str(sample.paramid);
-            if (!strref.second) {
-                // Id is not taken
-                Logger::msg(AKU_LOG_ERROR, "Series id is not taken. Id " + std::to_string(sample.paramid) + ", recovery record will be skipped.");
-                return true;
-            }
-            std::vector<StorageEngine::LogicAddr> rpoints(rinfo.data);
-            storage->_update_rescue_points(sample.paramid, std::move(rpoints));
+        bool operator () (const InputLogRecoveryInfo&) {
             return true;
         }
     };
@@ -573,8 +664,6 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     size_t nitems   = 0x1000;
     u64 nsegments   = 0;
     std::vector<InputLogRow>                     rows(nitems);
-    std::unordered_map<aku_ParamId, aku_ParamId> idmap;
-    std::unordered_set<aku_ParamId>              updated_ids;
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
 
     while (proceed) {
@@ -1135,7 +1224,7 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, P
     local_matcher->_add(str.first, str.first + str.second, id);
     // copy the string to out buffer
     if (str.second > buffer_size) {
-        return -1*str.second;
+        return -1*static_cast<int>(str.second);
     }
     memcpy(buffer, str.first, static_cast<size_t>(str.second));
     return static_cast<int>(str.second);

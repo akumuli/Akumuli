@@ -109,6 +109,10 @@ class Storage : public std::enable_shared_from_this<Storage> {
                                                     QP::ReshapeRequest* req) const;
 
     void run_inputlog_recovery(ShardedInputLog* ilog);
+
+    void run_inputlog_metadata_recovery(
+        ShardedInputLog* ilog,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping);
 public:
 
     // Create empty in-memory storage
