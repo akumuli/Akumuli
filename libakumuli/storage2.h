@@ -131,6 +131,9 @@ public:
             std::shared_ptr<StorageEngine::ColumnStore> cstore,
             bool                                        start_worker);
 
+    void run_recovery(const aku_FineTuneParams &params,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping);
+
     //! Perform input log recovery if needed and initialize input log
     void initialize_input_log(const aku_FineTuneParams& params);
 

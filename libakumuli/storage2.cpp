@@ -441,6 +441,13 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     // belongs to this nbtee instance gets evicted from WAL we will have to close
     // the tree (and write it's content to disk). It can slow down things a bit
     // but the data will be safe.
+    run_recovery(params, &mapping);
+    start_sync_worker();
+}
+
+void Storage::run_recovery(const aku_FineTuneParams &params,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping)
+{
     bool run_wal_recovery = false;
     int ccr = 0;
     if (params.input_log_path) {
@@ -454,10 +461,9 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     // metdata) followed by full log replay.
     if (run_wal_recovery) {
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
-        run_inputlog_metadata_recovery(ilog.get(), &mapping);
+        run_inputlog_metadata_recovery(ilog.get(), mapping);
     }
-    cstore_->open_or_restore(mapping, params.input_log_path == nullptr);
-    start_sync_worker();
+    cstore_->open_or_restore(*mapping, params.input_log_path == nullptr);
     if (run_wal_recovery) {
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
         run_inputlog_recovery(ilog.get());

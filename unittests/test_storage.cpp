@@ -1027,7 +1027,11 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
     session.reset();  // This should flush current WAL frame
 
     store->_kill();
-    store = std::make_shared<Storage>(meta, bstore, cstore, true);
+    auto meta2 = create_metadatastorage();
+    auto cstore2 = create_cstore();
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
+    store = std::make_shared<Storage>(meta2, bstore, cstore2, true);
+    store->run_recovery(params, &mapping);
     store->initialize_input_log(params);
     session = store->create_write_session();
 
