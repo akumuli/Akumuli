@@ -24,11 +24,12 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
-aku_Status ColumnStore::open_or_restore(
+std::tuple<aku_Status, std::vector<aku_ParamId>> ColumnStore::open_or_restore(
         std::unordered_map<aku_ParamId,
         std::vector<StorageEngine::LogicAddr>> const& mapping,
         bool force_init)
 {
+    std::vector<aku_ParamId> ids2recover;
     for (auto it: mapping) {
         aku_ParamId id = it.first;
         std::vector<LogicAddr> const& rescue_points = it.second;
@@ -44,7 +45,7 @@ aku_Status ColumnStore::open_or_restore(
         std::lock_guard<std::mutex> tl(table_lock_);
         if (columns_.count(id)) {
             Logger::msg(AKU_LOG_ERROR, "Can't open/repair " + std::to_string(id) + " (already exists)");
-            return AKU_EBAD_ARG;
+            return std::make_tuple(AKU_EBAD_ARG, std::vector<aku_ParamId>());
         } else {
             columns_[id] = std::move(tree);
         }
@@ -52,6 +53,9 @@ aku_Status ColumnStore::open_or_restore(
             // Repair is performed on initialization. We don't want to postprone this process
             // since it will introduce runtime penalties.
             columns_[id]->force_init();
+            if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
+                ids2recover.push_back(id);
+            }
             if (force_init == false) {
                 // Close the tree until it will be acessed first
                 auto rplist = columns_[id]->close();
@@ -59,7 +63,7 @@ aku_Status ColumnStore::open_or_restore(
             }
         }
     }
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, ids2recover);
 }
 
 std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {

@@ -5,6 +5,7 @@ echo "Work dir: $(pwd)"
 echo "Set up disk constrained environment"
 akumulid/akumulid --init
 python functests/akumulid_test_tools.py set_log_path $TRAVIS_BUILD_DIR/akumuli.log
+python functests/akumulid_test_tools.py set_volume_sizes 1GB 4MB
 
 echo "Running base integration tests"
 python functests/test_data_ingestion.py akumulid/ TCP

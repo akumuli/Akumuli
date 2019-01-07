@@ -108,7 +108,7 @@ class Storage : public std::enable_shared_from_this<Storage> {
     std::tuple<aku_Status, std::string> parse_query(const boost::property_tree::ptree &ptree,
                                                     QP::ReshapeRequest* req) const;
 
-    void run_inputlog_recovery(ShardedInputLog* ilog);
+    void run_inputlog_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> ids2restore);
 
     void run_inputlog_metadata_recovery(
         ShardedInputLog* ilog,

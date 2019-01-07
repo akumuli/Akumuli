@@ -18,7 +18,7 @@ import urllib
 HOST = '127.0.0.1'
 TCPPORT = 8282
 HTTPPORT = 8181
-NSERIES = 500000
+NSERIES = 1000000
 
 def test_metadata(metric, taglist):
     # generate all possible series
@@ -103,7 +103,7 @@ def main(path):
         test_metadata("test", tags)
     finally:
         print("Stopping server...")
-        akumulid.terminate()
+        akumulid.stop()
         time.sleep(5)
 
 if __name__ == '__main__':

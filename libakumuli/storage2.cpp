@@ -463,10 +463,12 @@ void Storage::run_recovery(const aku_FineTuneParams &params,
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
         run_inputlog_metadata_recovery(ilog.get(), mapping);
     }
-    cstore_->open_or_restore(*mapping, params.input_log_path == nullptr);
+    std::vector<aku_ParamId> restored_ids;
+    aku_Status restore_status;
+    std::tie(restore_status, restored_ids) = cstore_->open_or_restore(*mapping, params.input_log_path == nullptr);
     if (run_wal_recovery) {
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
-        run_inputlog_recovery(ilog.get());
+        run_inputlog_recovery(ilog.get(), restored_ids);
         // This step will delete log files
     }
 }
@@ -605,7 +607,7 @@ void Storage::run_inputlog_metadata_recovery(
     ilog->reopen();
 }
 
-void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
+void Storage::run_inputlog_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> ids2restore) {
     struct Visitor : boost::static_visitor<bool> {
         Storage* storage;
         aku_Sample sample;
@@ -669,8 +671,10 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
     bool proceed    = true;
     size_t nitems   = 0x1000;
     u64 nsegments   = 0;
-    std::vector<InputLogRow>                     rows(nitems);
+    std::vector<InputLogRow> rows(nitems);
     Logger::msg(AKU_LOG_INFO, "WAL recovery started");
+    std::unordered_set<aku_ParamId> idfilter(ids2restore.begin(),
+                                             ids2restore.end());
 
     while (proceed) {
         aku_Status status;
@@ -679,8 +683,10 @@ void Storage::run_inputlog_recovery(ShardedInputLog* ilog) {
         if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize > 0)) {
             for (u32 ix = 0; ix < outsize; ix++) {
                 const InputLogRow& row = rows.at(ix);
-                visitor.reset(row.id);
-                proceed = row.payload.apply_visitor(visitor);
+                if (idfilter.count(row.id)) {
+                    visitor.reset(row.id);
+                    proceed = row.payload.apply_visitor(visitor);
+                }
             }
             nsegments++;
         }

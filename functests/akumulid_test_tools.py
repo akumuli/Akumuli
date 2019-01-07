@@ -269,6 +269,10 @@ def set_volume_size(size):
     key = 'volume_size'
     edit_config_file(key, size)
 
+def set_volume_sizes(db_vol_size, wal_vol_size):
+    key = 'volume_size'
+    edit_config_file2(key, [db_vol_size, wal_vol_size])
+
 def edit_config_file(key, value):
     abspath = os.path.expanduser("~/.akumulid")
     lines = []
@@ -283,6 +287,22 @@ def edit_config_file(key, value):
 
     if not success:
         lines.append(key + '=' + value + '\n')
+
+    with open(abspath, 'w') as configfile:
+        for line in lines:
+            configfile.write(line)
+
+def edit_config_file2(key, values):
+    abspath = os.path.expanduser("~/.akumulid")
+    lines = []
+    ixval = 0
+    with open(abspath, 'r') as configfile:
+        for line in configfile:
+            if ixval < len(values) and line.startswith(key):
+                lines.append(key + '=' + values[ixval] + '\n')
+                ixval += 1
+            else:
+                lines.append(line)
 
     with open(abspath, 'w') as configfile:
         for line in lines:
@@ -388,6 +408,14 @@ if __name__=='__main__':
         else:
             size = sys.argv[2]
             set_volume_size(size)
+    elif cmd == 'set_volume_sizes':
+        if len(sys.argv) < 4:
+            print("Invalid command, arg required - `set_volume_sizes <db size> <wal size>`")
+            sys.exit(1)
+        else:
+            dbsize = sys.argv[2]
+            walsize = sys.argv[3]
+            set_volume_sizes(dbsize, walsize)
     else:
         print("Unknown command " + cmd)
         sys.exit(1)
