@@ -278,6 +278,11 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         int tagline_len = static_cast<int>(ksend - ksbegin + 1);  // +1 for space, cast is safe because ksend-ksbegin < AKU_LIMITS_MAX_SNAME
         const char* metric_end = ksbegin - 1;  // -1 for space
         char* tagline = series + AKU_LIMITS_MAX_SNAME - tagline_len;
+        // TODO: remove
+        if (tagline_len < 0) {
+            AKU_PANIC("Invalid tagline length");
+        }
+        // end
         memcpy(tagline, metric_end, static_cast<size_t>(tagline_len));
         char* send = series + AKU_LIMITS_MAX_SNAME;
 
@@ -291,6 +296,11 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             // Copy metric name to `series` array
             auto metric_len = it_end - it_begin;
             char* sbegin = tagline - metric_len;
+            // TODO: remove
+            if (metric_len < 0) {
+                AKU_PANIC("Invalid metric length");
+            }
+            // end
             memcpy(sbegin, it_begin, static_cast<size_t>(metric_len));
             // Move to next metric (if any)
             it_end++;
