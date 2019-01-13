@@ -1025,12 +1025,10 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
 
     fill_data(session, begin, end, series_names);
     session.reset();  // This should flush current WAL frame
-
     store->_kill();
-    auto meta2 = create_metadatastorage();
-    auto cstore2 = create_cstore();
+
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
-    store = std::make_shared<Storage>(meta2, bstore, cstore2, true);
+    store = std::make_shared<Storage>(meta, bstore, cstore, true);
     store->run_recovery(params, &mapping);
     store->initialize_input_log(params);
     session = store->create_write_session();
@@ -1044,6 +1042,9 @@ void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) 
     std::vector<aku_Timestamp> expected;
     for (aku_Timestamp ts = begin; ts < end; ts++) {
         expected.push_back(ts);
+    }
+    if (cursor.samples.size() < expected.size()) {
+        BOOST_FAIL("Samples lost");
     }
     check_timestamps(cursor, expected, OrderBy::SERIES, series_names);
     check_paramids(*session, cursor, OrderBy::SERIES, series_names, expected_size, false);
