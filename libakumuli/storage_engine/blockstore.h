@@ -98,6 +98,8 @@ struct BlockStore {
     virtual BlockStoreStats get_stats() const = 0;
 
     virtual PerVolumeStats get_volume_stats() const = 0;
+
+    virtual LogicAddr get_top_address() const = 0;
 };
 
 class FileStorage : public BlockStore {
@@ -145,6 +147,8 @@ public:
     virtual BlockStoreStats get_stats() const;
 
     virtual PerVolumeStats get_volume_stats() const;
+
+    virtual LogicAddr get_top_address() const;
 };
 
 class FixedSizeFileStorage : public FileStorage,
@@ -224,7 +228,8 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual u32 checksum(const u8* data, size_t size) const;
     virtual BlockStoreStats get_stats() const;
     virtual PerVolumeStats get_volume_stats() const;
-    
+    virtual LogicAddr get_top_address() const;
+
     /**
      * @brief truncate storage by removing first n elements
      * @return first valid address

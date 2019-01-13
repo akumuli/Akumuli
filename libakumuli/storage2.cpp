@@ -507,6 +507,7 @@ void Storage::run_inputlog_metadata_recovery(
         Storage* storage;
         aku_ParamId curr_id;
         std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping;
+        StorageEngine::LogicAddr top_addr;
 
         /** Should be called for each input-log record
           * before using as a visitor
@@ -568,13 +569,18 @@ void Storage::run_inputlog_metadata_recovery(
                 // If *it is newer than rinfo.data then return. Otherwise,
                 // update rescue points list using rinfo.data.
                 const std::vector<StorageEngine::LogicAddr> &current = it->second;
-                if (current.size() > rinfo.data.size()) {
+                if (rinfo.data.empty()) {
                     return true;
                 }
-                auto curr_max = std::max_element(current.begin(), current.end());
-                auto data_max = std::max_element(rinfo.data.begin(), rinfo.data.end());
-                if (curr_max > data_max) {
-                    return true;
+                if (!current.empty()) {
+                    if (current.size() > rinfo.data.size()) {
+                        return true;
+                    }
+                    auto curr_max = std::max_element(current.begin(), current.end());
+                    auto data_max = std::max_element(rinfo.data.begin(), rinfo.data.end());
+                    if (*data_max >= top_addr || *curr_max > *data_max) {
+                        return true;
+                    }
                 }
             }
             (*mapping)[curr_id] = rpoints;
@@ -586,6 +592,7 @@ void Storage::run_inputlog_metadata_recovery(
     Visitor visitor;
     visitor.storage = this;
     visitor.mapping = mapping;
+    visitor.top_addr = bstore_->get_top_address();
     bool proceed    = true;
     size_t nitems   = 0x1000;
     u64 nsegments   = 0;

@@ -363,7 +363,12 @@ PerVolumeStats FileStorage::get_volume_stats() const {
         result[name] = stats;
     }
     return result;
+}
 
+
+LogicAddr FileStorage::get_top_address() const {
+    auto off = volumes_.at(current_volume_)->get_size();
+    return make_logic(current_gen_, off);
 }
 
 static u32 crc32c(const u8* data, size_t size) {
@@ -787,6 +792,11 @@ u32 MemStore::reset_write_pos(u32 pos) {
     auto tmp = write_pos_;
     write_pos_ = pos;
     return tmp;
+}
+
+LogicAddr MemStore::get_top_address() const {
+    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
+    return MEMSTORE_BASE + write_pos_;
 }
 
 std::shared_ptr<MemStore> BlockStoreBuilder::create_memstore() {
