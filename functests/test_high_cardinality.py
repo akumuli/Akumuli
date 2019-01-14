@@ -40,8 +40,8 @@ def test_metadata(metric, taglist):
         actual_series.append(line.strip())
     actual_series.sort()
     if actual_series != expected_series:
-        print("Expected series: {0}".format(expected_series))
-        print("Actual series: {0}".format(actual_series))
+        print("Expected series contains {0} elements".format(len(expected_series)))
+        print("Actual series contains {0} elements".format(len(actual_series)))
         raise ValueError("Output didn't match")
 
 def main(path):
