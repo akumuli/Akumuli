@@ -95,6 +95,7 @@ static apr_status_t create_metadata_page(const char* db_name
 
 //--------- StorageSession ----------
 
+
 static InputLog* get_input_log(ShardedInputLog* log) {
     if (log != nullptr) {
         std::hash<std::thread::id> thash;
@@ -157,19 +158,27 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
         std::vector<u64> staleids;
         auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
         if (res == AKU_EOVERFLOW) {
-            ilog_->rotate();
             if (!staleids.empty()) {
+                std::promise<void> barrier;
+                std::future<void> future = barrier.get_future();
+                storage_->add_metadata_sync_barrier(std::move(barrier));
                 storage_->close_specific_columns(staleids);
                 staleids.clear();
+                future.wait();
             }
+            ilog_->rotate();
         }
         if (status == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             auto res = ilog_->append(sample.paramid, rpoints.data(), static_cast<u32>(rpoints.size()), &staleids);
             if (res == AKU_EOVERFLOW) {
-                ilog_->rotate();
                 if (!staleids.empty()) {
+                    std::promise<void> barrier;
+                    std::future<void> future = barrier.get_future();
+                    storage_->add_metadata_sync_barrier(std::move(barrier));
                     storage_->close_specific_columns(staleids);
+                    future.wait();
                 }
+                ilog_->rotate();
             }
         }
     }
@@ -206,10 +215,14 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
                 std::vector<aku_ParamId> staleids;
                 auto res = ilog_->append(sample->paramid, ob, static_cast<u32>(ksend - ob), &staleids);
                 if (res == AKU_EOVERFLOW) {
-                    ilog_->rotate();
                     if (!staleids.empty()) {
+                        std::promise<void> barrier;
+                        std::future<void> future = barrier.get_future();
+                        storage_->add_metadata_sync_barrier(std::move(barrier));
                         storage_->close_specific_columns(staleids);
+                        future.wait();
                     }
+                    ilog_->rotate();
                 }
             }
         }
@@ -261,10 +274,14 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
                     std::vector<aku_ParamId> staleids;
                     auto res = ilog_->append(ids[0], ob, static_cast<u32>(ksend - ob), &staleids);
                     if (res == AKU_EOVERFLOW) {
-                        ilog_->rotate();
                         if (!staleids.empty()) {
+                            std::promise<void> barrier;
+                            std::future<void> future = barrier.get_future();
+                            storage_->add_metadata_sync_barrier(std::move(barrier));
                             storage_->close_specific_columns(staleids);
+                            future.wait();
                         }
+                        ilog_->rotate();
                     }
                 }
             }
@@ -323,10 +340,14 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
                         std::vector<aku_ParamId> staleids;
                         auto res = ilog_->append(ids[i], sbegin, static_cast<u32>(send - sbegin), &staleids);
                         if (res == AKU_EOVERFLOW) {
-                            ilog_->rotate();
                             if (!staleids.empty()) {
+                                std::promise<void> barrier;
+                                std::future<void> future = barrier.get_future();
+                                storage_->add_metadata_sync_barrier(std::move(barrier));
                                 storage_->close_specific_columns(staleids);
+                                future.wait();
                             }
+                            ilog_->rotate();
                         }
                     }
                 }
@@ -1141,6 +1162,11 @@ void Storage::start_sync_worker() {
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
                 metadata_->sync_with_metadata_storage(get_names);
+                std::lock_guard<std::mutex> lock(session_lock_);
+                for (auto& it: sessions_await_list_) {
+                    it.set_value();
+                }
+                sessions_await_list_.clear();
             }
         }
 
@@ -1148,6 +1174,15 @@ void Storage::start_sync_worker() {
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
+}
+
+void Storage::add_metadata_sync_barrier(std::promise<void>&& barrier) {
+    std::lock_guard<std::mutex> lock(session_lock_);
+    if (done_.load() != 0) {
+        barrier.set_value();
+    } else {
+        sessions_await_list_.push_back(std::move(barrier));
+    }
 }
 
 void Storage::_kill() {

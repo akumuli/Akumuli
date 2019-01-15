@@ -22,6 +22,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <future>
 
 #include "akumuli_def.h"
 #include "metadatastorage.h"
@@ -49,6 +50,7 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     //! Temporary query matcher
     mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
     InputLog* const ilog_;
+
 public:
     StorageSession(std::shared_ptr<Storage> storage,
                    std::shared_ptr<StorageEngine::CStoreSession> session,
@@ -102,6 +104,10 @@ class Storage : public std::enable_shared_from_this<Storage> {
     std::shared_ptr<MetadataStorage> metadata_;
     std::shared_ptr<ShardedInputLog> inputlog_;
     std::string input_log_path_;
+
+    // Await support
+    std::vector<std::promise<void>> sessions_await_list_;
+    std::mutex session_lock_;
 
     void start_sync_worker();
 
@@ -216,6 +222,8 @@ public:
     /** Destroy object without preserving consistency
      */
     void _kill();
+
+    void add_metadata_sync_barrier(std::promise<void>&& barrier);
 };
 
 }
