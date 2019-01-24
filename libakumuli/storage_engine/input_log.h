@@ -88,16 +88,22 @@ struct LZ4Volume {
 
     enum class FrameType : u8 {
         EMPTY = 0,
-        DATA_ENTRY = 1,
-        SNAME_ENTRY = 2,
-        RECOVERY_ENTRY = 4,
+        DATA_FRAME = 1,  // Frame with data-points
+        FLEX_FRAME = 2,  // Metadata frame
+    };
+
+    enum class FlexRecordType : u8 {
+        EMPTY = 0,
+        SNAME_ENTRY = 4,
+        RECOVERY_ENTRY = 8,
     };
 
     struct FrameHeader {
         FrameType frame_type;
-        u16 magic;
-        u64 sequence_number;
-        u32 size;
+        u8        padding;
+        u16       magic;
+        u32       size;
+        u64       sequence_number;
     };
 
     enum {
@@ -163,7 +169,7 @@ struct LZ4Volume {
     aku_Status flush_current_frame(FrameType type);
 
     /** Implementation for recovery and sname frames */
-    aku_Status append_blob(FrameType type, u64 id, const char* payload, u32 len);
+    aku_Status append_blob(FlexRecordType type, u64 id, const char* payload, u32 len);
 public:
     /**
      * @brief Create empty volume

@@ -42,7 +42,7 @@ static void _close_apr_file(apr_file_t* file) {
 }
 
 static AprPoolPtr _make_apr_pool() {
-    apr_pool_t* mem_pool = NULL;
+    apr_pool_t* mem_pool = nullptr;
     apr_status_t status = apr_pool_create(&mem_pool, NULL);
     panic_on_error(status, "Can't create APR pool");
     AprPoolPtr pool(mem_pool, &apr_pool_destroy);
@@ -161,7 +161,7 @@ std::tuple<aku_Status, size_t> LZ4Volume::read(int i) {
     int out_bytes = LZ4_decompress_safe_continue(&decode_stream_,
                                                  buffer_,
                                                  frame.block,
-                                                 frame_size,
+                                                 static_cast<int>(frame_size),
                                                  BLOCK_SIZE);
     if(out_bytes <= 0) {
         return std::make_tuple(AKU_EBAD_DATA, 0);
@@ -189,6 +189,7 @@ LZ4Volume::LZ4Volume(LogSequencer* sequencer, const char* file_name, size_t volu
 }
 
 static void null_deleter(apr_file_t* f) {
+    AKU_UNUSED(f);
     assert(f == nullptr);
 }
 
@@ -207,7 +208,7 @@ LZ4Volume::LZ4Volume(const char* file_name)
     Logger::msg(AKU_LOG_TRACE, std::string("Open LZ4 volume ") + file_name + " for reading");
     clear(0);
     clear(1);
-    LZ4_setStreamDecode(&decode_stream_, NULL, 0);
+    LZ4_setStreamDecode(&decode_stream_, nullptr, 0);
 }
 
 LZ4Volume::~LZ4Volume() {
@@ -267,7 +268,7 @@ aku_Status LZ4Volume::require_frame_type(FrameType type) {
 }
 
 aku_Status LZ4Volume::append(u64 id, u64 timestamp, double value) {
-    auto status = require_frame_type(FrameType::DATA_ENTRY);
+    auto status = require_frame_type(FrameType::DATA_FRAME);
     if (status != AKU_SUCCESS) {
         return status;
     }
@@ -295,7 +296,7 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
     union Bits {
         u64 value;
         struct {
-            u32 len;
+            i32 len;
             u32 off;
         } components;
     };
@@ -311,10 +312,17 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         if (size > 0) {
             auto index = static_cast<int>(size) - 1;
             bits.value = vector[-1 - index*2];
-            write_offset = bits.components.off + bits.components.len;
-            space_left  -= write_offset + index*sizeof(u64)*2;
+            u32 len = static_cast<u32>(std::abs(bits.components.len));
+            write_offset = bits.components.off + len;
+            space_left  -= write_offset + static_cast<u64>(index)*sizeof(u64)*2;
         }
         return std::make_tuple(write_offset, space_left);
+    }
+
+    bool is_string(int ix) const {
+        Bits bits;
+        bits.value = vector[-1 - ix*2];
+        return bits.components.len < 0;
     }
 
     /** Return true if the value of size len can be written
@@ -331,7 +339,7 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         Bits bits;
         bits.value = vector[-1 - ix*2];
         u64 id = vector[-2 - ix*2];
-        std::string result(data + bits.components.off, data + bits.components.off + bits.components.len);
+        std::string result(data + bits.components.off, data + bits.components.off + -1*bits.components.len);
         return std::make_tuple(id, result);
     }
 
@@ -347,15 +355,16 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
     /** Append new value to the frame.
       * Invariant: `can_write(len) == true`.
       */
-    void append(u64 id, const char* sname, u32 len) {
+    void append(LZ4Volume::FlexRecordType type, u64 id, const char* sname, u32 len) {
+        i32 elen = static_cast<i32>(len) * (type == LZ4Volume::FlexRecordType::SNAME_ENTRY ? -1 : 1);
         u32 write_offset;
         u32 space_left;
         std::tie(write_offset, space_left) = get_space_and_offset();
         auto dest = data + write_offset;
         memcpy(dest, sname, len);
-        int ix = size * -2;
+        int ix = static_cast<int>(size) * -2;
         Bits bits;
-        bits.components.len = len;
+        bits.components.len = elen;
         bits.components.off = write_offset;
         vector[ix - 1] = bits.value;
         vector[ix - 2] = id;
@@ -363,14 +372,14 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
     }
 };
 
-aku_Status LZ4Volume::append_blob(FrameType type, u64 id, const char* payload, u32 len) {
-    auto status = require_frame_type(type);
+aku_Status LZ4Volume::append_blob(FlexRecordType type, u64 id, const char* payload, u32 len) {
+    auto status = require_frame_type(FrameType::FLEX_FRAME);
     if (status != AKU_SUCCESS) {
         return status;
     }
     MutableEntry* frame = reinterpret_cast<MutableEntry*>(&frames_[pos_].payload);
     if (!frame->can_write(len)) {
-        status = flush_current_frame(type);
+        status = flush_current_frame(FrameType::FLEX_FRAME);
         if (status != AKU_SUCCESS) {
             return status;
         }
@@ -378,11 +387,11 @@ aku_Status LZ4Volume::append_blob(FrameType type, u64 id, const char* payload, u
     }
 
     // Invariant: len bytes can be writen into the frame
-    frame->append(id, payload, len);
+    frame->append(type, id, payload, len);
 
     static const u32 SIZE_THRESHOLD = 64;
     if (!frame->can_write(SIZE_THRESHOLD)) {
-        status = flush_current_frame(type);
+        status = flush_current_frame(FrameType::FLEX_FRAME);
         if (status != AKU_SUCCESS) {
             return status;
         }
@@ -394,11 +403,11 @@ aku_Status LZ4Volume::append_blob(FrameType type, u64 id, const char* payload, u
 }
 
 aku_Status LZ4Volume::append(u64 id, const char* sname, u32 len) {
-    return append_blob(FrameType::SNAME_ENTRY, id, sname, len);
+    return append_blob(FlexRecordType::SNAME_ENTRY, id, sname, len);
 }
 
 aku_Status LZ4Volume::append(u64 id, const u64* recovery_array, u32 len) {
-    return append_blob(FrameType::RECOVERY_ENTRY,
+    return append_blob(FlexRecordType::RECOVERY_ENTRY,
                        id,
                        reinterpret_cast<const char*>(recovery_array),
                        len*sizeof(u64));
@@ -419,13 +428,13 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, u64* id, u6
             return std::make_tuple(status, 0);
         }
         bytes_to_read_   -= bytes_read;
-        elements_to_read_ = frames_[pos_].data_points.size;
+        elements_to_read_ = static_cast<int>(frames_[pos_].data_points.size);
     }
     Frame& frame = frames_[pos_];
     size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
     size_t frmsize = frame.data_points.size;
     for (size_t i = 0; i < nvalues; i++) {
-        size_t ix = frmsize - elements_to_read_;
+        size_t ix = frmsize - static_cast<u32>(elements_to_read_);
         id[i] = frame.data_points.ids[ix];
         ts[i] = frame.data_points.tss[ix];
         xs[i] = frame.data_points.xss[ix];
@@ -449,14 +458,14 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             return std::make_tuple(status, 0);
         }
         bytes_to_read_   -= bytes_read;
-        elements_to_read_ = frames_[pos_].data_points.size;
+        elements_to_read_ = static_cast<int>(frames_[pos_].data_points.size);
     }
     Frame& frame = frames_[pos_];
     size_t nvalues = std::min(buffer_size, static_cast<size_t>(elements_to_read_));
     size_t frmsize = frame.data_points.size;
-    if (frame.header.frame_type == FrameType::DATA_ENTRY) {
+    if (frame.header.frame_type == FrameType::DATA_FRAME) {
         for (size_t i = 0; i < nvalues; i++) {
-            size_t ix = frmsize - elements_to_read_;
+            size_t ix = frmsize - static_cast<u32>(elements_to_read_);
             InputLogDataPoint data_point = {
                 frame.data_points.tss[ix],
                 frame.data_points.xss[ix]
@@ -466,25 +475,21 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             elements_to_read_--;
         }
     }
-    else if (frame.header.frame_type == FrameType::SNAME_ENTRY) {
+    else if (frame.header.frame_type == FrameType::FLEX_FRAME) {
         auto entry = reinterpret_cast<const MutableEntry*>(&frame.payload);
         for (size_t i = 0; i < nvalues; i++) {
-            size_t ix = frmsize - elements_to_read_;
-            InputLogSeriesName sname;
-            assert(ix < frame.header.size);
-            std::tie(rows[i].id, sname.value) = entry->read_string(ix);
-            rows[i].payload = sname;
-            elements_to_read_--;
-        }
-    }
-    else if (frame.header.frame_type == FrameType::RECOVERY_ENTRY) {
-        auto entry = reinterpret_cast<const MutableEntry*>(&frame.payload);
-        for (size_t i = 0; i < nvalues; i++) {
-            size_t ix = frmsize - elements_to_read_;
-            InputLogRecoveryInfo recovery;
-            assert(ix < frame.header.size);
-            std::tie(rows[i].id, recovery.data) = entry->read_array(ix);
-            rows[i].payload = recovery;
+            int ix = static_cast<int>(frmsize) - elements_to_read_;
+            if (entry->is_string(ix)) {
+                InputLogSeriesName sname;
+                assert(ix < frame.header.size);
+                std::tie(rows[i].id, sname.value) = entry->read_string(ix);
+                rows[i].payload = sname;
+            } else {
+                InputLogRecoveryInfo recovery;
+                assert(ix < frame.header.size);
+                std::tie(rows[i].id, recovery.data) = entry->read_array(ix);
+                rows[i].payload = recovery;
+            }
             elements_to_read_--;
         }
     }
@@ -1001,7 +1006,7 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
         Buffer& buffer = read_queue_.at(buffer_ix_);
         if (buffer.pos < buffer.frame->header.size) {
             switch (buffer.frame->header.frame_type) {
-            case LZ4Volume::FrameType::DATA_ENTRY: {
+            case LZ4Volume::FrameType::DATA_FRAME: {
                 u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
                                       static_cast<u32>(buffer_size));
                 const aku_ParamId*   ids = buffer.frame->data_points.ids + buffer.pos;
@@ -1020,39 +1025,33 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
                 buffer.pos  += toread;
                 outsize     += toread;
             } break;
-            case LZ4Volume::FrameType::SNAME_ENTRY: {
+            case LZ4Volume::FrameType::FLEX_FRAME: {
                 u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
                                       static_cast<u32>(buffer_size));
                 auto frame = reinterpret_cast<const MutableEntry*>(&buffer.frame->payload);
                 for (u32 ix = 0; ix < toread; ix++) {
-                    std::string sname ;
-                    std::tie(rows[ix].id, sname) = frame->read_string(buffer.pos + ix);
-                    InputLogSeriesName payload = {
-                        sname
-                    };
-                    rows[ix].payload = payload;
+                    int frameix = static_cast<int>(buffer.pos + ix);
+                    if (frame->is_string(frameix)) {
+                        std::string sname ;
+                        std::tie(rows[ix].id, sname) = frame->read_string(frameix);
+                        InputLogSeriesName payload = {
+                            sname
+                        };
+                        rows[ix].payload = payload;
+                    } else {
+                        std::vector<u64> rescue_points;
+                        std::tie(rows[ix].id, rescue_points) = frame->read_array(frameix);
+                        InputLogRecoveryInfo payload = {
+                            rescue_points
+                        };
+                        rows[ix].payload = payload;
+                    }
                 }
                 buffer_size -= toread;
                 rows        += toread;
                 buffer.pos  += toread;
                 outsize     += toread;
-            } break;
-            case LZ4Volume::FrameType::RECOVERY_ENTRY: {
-                u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
-                                      static_cast<u32>(buffer_size));
-                auto frame = reinterpret_cast<const MutableEntry*>(&buffer.frame->payload);
-                for (u32 ix = 0; ix < toread; ix++) {
-                    std::vector<u64> rescue_points;
-                    std::tie(rows[ix].id, rescue_points) = frame->read_array(buffer.pos + ix);
-                    InputLogRecoveryInfo payload = {
-                        rescue_points
-                    };
-                    rows[ix].payload = payload;
-                }
-                buffer_size -= toread;
-                rows        += toread;
-                buffer.pos  += toread;
-                outsize     += toread;
+
             } break;
             case LZ4Volume::FrameType::EMPTY:
                 return std::make_tuple(AKU_EBAD_DATA, 0);
