@@ -481,12 +481,12 @@ std::tuple<aku_Status, u32> LZ4Volume::read_next(size_t buffer_size, InputLogRow
             int ix = static_cast<int>(frmsize) - elements_to_read_;
             if (entry->is_string(ix)) {
                 InputLogSeriesName sname;
-                assert(ix < frame.header.size);
+                assert(ix < static_cast<int>(frame.header.size));
                 std::tie(rows[i].id, sname.value) = entry->read_string(ix);
                 rows[i].payload = sname;
             } else {
                 InputLogRecoveryInfo recovery;
-                assert(ix < frame.header.size);
+                assert(ix < static_cast<int>(frame.header.size));
                 std::tie(rows[i].id, recovery.data) = entry->read_array(ix);
                 rows[i].payload = recovery;
             }
@@ -552,8 +552,8 @@ aku_Status LZ4Volume::flush() {
 // InputLog //
 //          //
 
-static std::tuple<bool, u32, u32> parse_filename(const std::string& name) {
-    static const char* exp = "inputlog(\\d+)_(\\d+)\\.ils";
+static std::tuple<bool, u32, u32> parse_data_filename(const std::string& name) {
+    static const char* exp = "datalog(\\d+)_(\\d+)\\.ils";
     static const boost::regex re(exp);
     boost::smatch smatch;
     if (boost::regex_search(name, smatch, re) && smatch.size() > 2) {
@@ -566,6 +566,35 @@ static std::tuple<bool, u32, u32> parse_filename(const std::string& name) {
     return std::make_tuple(false, 0, 0);
 }
 
+static std::tuple<bool, u32, u32> parse_meta_filename(const std::string& name) {
+    static const char* exp = "metalog(\\d+)_(\\d+)\\.ils";
+    static const boost::regex re(exp);
+    boost::smatch smatch;
+    if (boost::regex_search(name, smatch, re) && smatch.size() > 2) {
+        try {
+            auto volume_id = boost::lexical_cast<u32>(smatch[1].str());
+            auto stream_id = boost::lexical_cast<u32>(smatch[2].str());
+            return std::make_tuple(true, volume_id, stream_id);
+        } catch (const boost::bad_lexical_cast&) {}
+    }
+    return std::make_tuple(false, 0, 0);
+}
+
+static std::tuple<bool, bool, u32, u32> parse_filename(const std::string& name) {
+    bool found;
+    u32 volume;
+    u32 stream;
+    std::tie(found, volume, stream) = parse_data_filename(name);
+    if (found) {
+        return std::make_tuple(true, found, volume, stream);
+    }
+    std::tie(found, volume, stream) = parse_meta_filename(name);
+    if (found) {
+        return std::make_tuple(false, found, volume, stream);
+    }
+    return std::make_tuple(false, false, 0, 0);
+}
+
 void InputLog::find_volumes() {
     if (!boost::filesystem::exists(root_dir_)) {
         throw std::runtime_error(root_dir_.string() + " doesn't exist");
@@ -573,44 +602,74 @@ void InputLog::find_volumes() {
     if (!boost::filesystem::is_directory(root_dir_)) {
         throw std::runtime_error(root_dir_.string() + " is not a directory");
     }
-    std::vector<std::tuple<u32, std::string>> volumes;
+    std::vector<std::tuple<u32, std::string>> data_volumes;
+    std::vector<std::tuple<u32, std::string>> meta_volumes;
     for (auto it = boost::filesystem::directory_iterator(root_dir_);
          it != boost::filesystem::directory_iterator(); it++) {
         Path path = *it;
-        bool is_volume;
+        bool is_data_vol;
+        bool is_found;
         u32 volume_id;
         u32 stream_id;
         auto fn = path.filename().string();
-        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
-        if (is_volume && stream_id == stream_id_) {
-            auto abs_path = boost::filesystem::canonical(path, root_dir_).string();
-            volumes.push_back(std::make_pair(volume_id, abs_path));
+        std::tie(is_data_vol, is_found, volume_id, stream_id) = parse_filename(fn);
+        if (is_found && stream_id == stream_id_) {
+            if (is_data_vol) {
+                auto abs_path = boost::filesystem::canonical(path, root_dir_).string();
+                data_volumes.push_back(std::make_pair(volume_id, abs_path));
+            } else {
+                auto abs_path = boost::filesystem::canonical(path, root_dir_).string();
+                meta_volumes.push_back(std::make_pair(volume_id, abs_path));
+            }
         }
     }
-    std::sort(volumes.begin(), volumes.end());
-    for (const auto& tup: volumes) {
+    std::sort(data_volumes.begin(), data_volumes.end());
+    for (const auto& tup: data_volumes) {
         u32 volid;
         std::string name;
         std::tie(volid, name) = tup;
-        available_volumes_.push_back(name);
+        available_data_volumes_.push_back(name);
+    }
+    std::sort(meta_volumes.begin(), meta_volumes.end());
+    for (const auto& tup: meta_volumes) {
+        u32 volid;
+        std::string name;
+        std::tie(volid, name) = tup;
+        available_meta_volumes_.push_back(name);
     }
 }
 
 void InputLog::open_volumes() {
-    for (const auto& path: available_volumes_) {
+    for (const auto& path: available_data_volumes_) {
         std::unique_ptr<LZ4Volume> volume(new LZ4Volume(path.c_str()));
-        volumes_.push_back(std::move(volume));
-        volume_counter_++;
+        data_volumes_.push_back(std::move(volume));
+        data_volume_counter_++;
     }
-    if (volumes_.empty() == false && volumes_.front()->is_opened() == false) {
+    for (const auto& path: available_meta_volumes_) {
+        std::unique_ptr<LZ4Volume> volume(new LZ4Volume(path.c_str()));
+        meta_volumes_.push_back(std::move(volume));
+        meta_volume_counter_++;
+    }
+    if (data_volumes_.empty() == false && data_volumes_.front()->is_opened() == false) {
         // Open the first volume to read from
-        volumes_.front()->open_ro();
+        data_volumes_.front()->open_ro();
+    }
+    if (meta_volumes_.empty() == false && meta_volumes_.front()->is_opened() == false) {
+        // Open the first metadata volume to read from
+        meta_volumes_.front()->open_ro();
     }
 }
 
 std::string InputLog::get_volume_name() {
     std::stringstream filename;
-    filename << "inputlog" << volume_counter_ << "_" << stream_id_ << ".ils";
+    filename << "datalog" << data_volume_counter_ << "_" << stream_id_ << ".ils";
+    Path path = root_dir_ / filename.str();
+    return path.string();
+}
+
+std::string InputLog::get_meta_volume_name() {
+    std::stringstream filename;
+    filename << "metalog" << meta_volume_counter_ << "_" << stream_id_ << ".ils";
     Path path = root_dir_ / filename.str();
     return path.string();
 }
@@ -620,37 +679,62 @@ void InputLog::add_volume(std::string path) {
         Logger::msg(AKU_LOG_INFO, std::string("Path ") + path + " already exists");
     }
     std::unique_ptr<LZ4Volume> volume(new LZ4Volume(sequencer_, path.c_str(), volume_size_));
-    volumes_.push_front(std::move(volume));
-    volume_counter_++;
+    data_volumes_.push_front(std::move(volume));
+    data_volume_counter_++;
+}
+
+void InputLog::add_meta_volume(std::string path) {
+    if (boost::filesystem::exists(path)) {
+        Logger::msg(AKU_LOG_INFO, std::string("Path ") + path + " already exists");
+    }
+    std::unique_ptr<LZ4Volume> volume(new LZ4Volume(sequencer_, path.c_str(), volume_size_));
+    meta_volumes_.push_front(std::move(volume));
+    meta_volume_counter_++;
 }
 
 void InputLog::remove_last_volume() {
-    auto volume = std::move(volumes_.back());
-    volumes_.pop_back();
+    auto volume = std::move(data_volumes_.back());
+    data_volumes_.pop_back();
     volume->delete_file();
     Logger::msg(AKU_LOG_INFO, std::string("Remove volume ") + volume->get_path());
 }
 
+void InputLog::remove_last_meta_volume() {
+    auto volume = std::move(meta_volumes_.back());
+    meta_volumes_.pop_back();
+    volume->delete_file();
+    Logger::msg(AKU_LOG_INFO, std::string("Remove meta volume ") + volume->get_path());
+}
+
 InputLog::InputLog(LogSequencer* sequencer, const char* rootdir, size_t nvol, size_t svol, u32 stream_id)
     : root_dir_(rootdir)
-    , volume_counter_(0)
+    , data_volume_counter_(0)
+    , meta_volume_counter_(0)
     , max_volumes_(nvol)
     , volume_size_(svol)
     , stream_id_(stream_id)
     , sequencer_(sequencer)
+    , data_overflow_(false)
+    , meta_overflow_(false)
 {
     std::string path = get_volume_name();
-    Logger::msg(AKU_LOG_INFO, std::string("Open input log ") + std::to_string(stream_id) + " for logging.");
+    Logger::msg(AKU_LOG_INFO, std::string("Open data log ") + std::to_string(stream_id) + " for logging.");
     add_volume(path);
+    path = get_meta_volume_name();
+    Logger::msg(AKU_LOG_INFO, std::string("Open meta log ") + std::to_string(stream_id) + " for logging.");
+    add_meta_volume(path);
 }
 
 InputLog::InputLog(const char* rootdir, u32 stream_id)
     : root_dir_(rootdir)
-    , volume_counter_(0)
+    , data_volume_counter_(0)
+    , meta_volume_counter_(0)
     , max_volumes_(0)
     , volume_size_(0)
     , stream_id_(stream_id)
     , sequencer_(nullptr)
+    , data_overflow_(false)
+    , meta_overflow_(false)
 {
     Logger::msg(AKU_LOG_INFO, std::string("Open input log ") + std::to_string(stream_id) + " for recovery.");
     find_volumes();
@@ -659,13 +743,18 @@ InputLog::InputLog(const char* rootdir, u32 stream_id)
 
 void InputLog::reopen() {
     assert(volume_size_ == 0 &&  max_volumes_ == 0);  // read mode
-    volumes_.clear();
+    data_volumes_.clear();
+    meta_volumes_.clear();
     open_volumes();
 }
 
 void InputLog::delete_files() {
     Logger::msg(AKU_LOG_INFO, "Delete all volumes");
-    for (auto& it: volumes_) {
+    for (auto& it: data_volumes_) {
+        Logger::msg(AKU_LOG_INFO, std::string("Delete ") + it->get_path());
+        it->delete_file();
+    }
+    for (auto& it: meta_volumes_) {
         Logger::msg(AKU_LOG_INFO, std::string("Delete ") + it->get_path());
         it->delete_file();
     }
@@ -673,92 +762,96 @@ void InputLog::delete_files() {
 
 void InputLog::detect_stale_ids(std::vector<u64>* stale_ids) {
     // Extract stale ids
-    assert(volumes_.size() > 0);
+    assert(data_volumes_.size() > 0);
     std::vector<const Roaring64Map*> remaining;
-    for (size_t i = 0; i < volumes_.size() - 1; i++) {
+    for (size_t i = 0; i < data_volumes_.size() - 1; i++) {
         // move from newer to older volumes
-        remaining.push_back(&volumes_.at(i)->get_index());
+        remaining.push_back(&data_volumes_.at(i)->get_index());
     }
     Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
-    auto stale = volumes_.back()->get_index() - sum;
+    auto stale = data_volumes_.back()->get_index() - sum;
+    for (auto it = stale.begin(); it != stale.end(); it++) {
+        stale_ids->push_back(*it);
+    }
+}
+
+void InputLog::detect_stale_ids_meta(std::vector<u64>* stale_ids) {
+    // Extract stale ids
+    assert(meta_volumes_.size() > 0);
+    std::vector<const Roaring64Map*> remaining;
+    for (size_t i = 0; i < meta_volumes_.size() - 1; i++) {
+        // move from newer to older volumes
+        remaining.push_back(&meta_volumes_.at(i)->get_index());
+    }
+    Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
+    auto stale = meta_volumes_.back()->get_index() - sum;
     for (auto it = stale.begin(); it != stale.end(); it++) {
         stale_ids->push_back(*it);
     }
 }
 
 aku_Status InputLog::append(u64 id, u64 timestamp, double value, std::vector<u64>* stale_ids) {
-    aku_Status result = volumes_.front()->append(id, timestamp, value);
-    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
+    aku_Status result = data_volumes_.front()->append(id, timestamp, value);
+    data_overflow_ = result == AKU_EOVERFLOW;
+    if (result == AKU_EOVERFLOW && data_volumes_.size() == max_volumes_) {
         detect_stale_ids(stale_ids);
     }
     return result;
 }
 
 aku_Status InputLog::append(u64 id, const char* sname, u32 len, std::vector<u64>* stale_ids) {
-    aku_Status result = volumes_.front()->append(id, sname, len);
-    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
-        detect_stale_ids(stale_ids);
+    aku_Status result = meta_volumes_.front()->append(id, sname, len);
+    meta_overflow_ = result == AKU_EOVERFLOW;
+    if (result == AKU_EOVERFLOW && meta_volumes_.size() == max_volumes_) {
+        detect_stale_ids_meta(stale_ids);
     }
     return result;
 }
 
 aku_Status InputLog::append(u64 id, const u64 *rescue_points, u32 len, std::vector<u64>* stale_ids) {
-    aku_Status result = volumes_.front()->append(id, rescue_points, len);
-    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
-        detect_stale_ids(stale_ids);
+    aku_Status result = meta_volumes_.front()->append(id, rescue_points, len);
+    meta_overflow_ = result == AKU_EOVERFLOW;
+    if (result == AKU_EOVERFLOW && meta_volumes_.size() == max_volumes_) {
+        detect_stale_ids_meta(stale_ids);
     }
     return result;
 }
 
-std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, u64* id, u64* ts, double* xs) {
-    while(true) {
-        if (volumes_.empty()) {
-            return std::make_tuple(AKU_SUCCESS, 0);
-        }
-        if (volumes_.front()->is_opened() == false) {
-            volumes_.front()->open_ro();
-        }
-        aku_Status status;
-        u32 result;
-        std::tie(status, result) = volumes_.front()->read_next(buffer_size, id, ts, xs);
-        if (result != 0) {
-            return std::make_tuple(status, result);
-        }
-        volumes_.pop_front();
-    }
-}
-
-std::tuple<aku_Status, u32> InputLog::read_next(size_t buffer_size, InputLogRow* rows) {
-    while(true) {
-        if (volumes_.empty()) {
-            return std::make_tuple(AKU_SUCCESS, 0);
-        }
-        if (volumes_.front()->is_opened() == false) {
-            volumes_.front()->open_ro();
-        }
-        aku_Status status;
-        u32 result;
-        std::tie(status, result) = volumes_.front()->read_next(buffer_size, rows);
-        if (result != 0) {
-            return std::make_tuple(status, result);
-        }
-        volumes_.pop_front();
-    }
-}
-
 std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
     while(true) {
-        if (volumes_.empty()) {
+        if (data_volumes_.empty()) {
             return std::make_tuple(AKU_ENO_DATA, nullptr);
         }
-        if (volumes_.front()->is_opened() == false) {
-            volumes_.front()->open_ro();
+        if (data_volumes_.front()->is_opened() == false) {
+            data_volumes_.front()->open_ro();
         }
         aku_Status status;
         const LZ4Volume::Frame* result;
-        std::tie(status, result) = volumes_.front()->read_next_frame();
+        std::tie(status, result) = data_volumes_.front()->read_next_frame();
         if (result == nullptr && status == AKU_SUCCESS) {
-            volumes_.pop_front();
+            data_volumes_.pop_front();
+            continue;
+        }
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, nullptr);
+        }
+        return std::make_pair(AKU_SUCCESS, result);
+    }
+}
+
+std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_meta_frame() {
+    while(true) {
+        if (meta_volumes_.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, nullptr);
+        }
+        if (meta_volumes_.front()->is_opened() == false) {
+            meta_volumes_.front()->open_ro();
+        }
+        aku_Status status;
+        const LZ4Volume::Frame* result;
+        std::tie(status, result) = meta_volumes_.front()->read_next_frame();
+        if (result == nullptr && status == AKU_SUCCESS) {
+            meta_volumes_.pop_front();
             continue;
         }
         if (status != AKU_SUCCESS) {
@@ -769,34 +862,71 @@ std::tuple<aku_Status, const LZ4Volume::Frame*> InputLog::read_next_frame() {
 }
 
 void InputLog::rotate() {
-    if (volumes_.size() >= max_volumes_) {
-        remove_last_volume();
+    if (data_overflow_) {
+        if (data_volumes_.size() >= max_volumes_) {
+            remove_last_volume();
+        }
+        std::string path = get_volume_name();
+        add_volume(path);
+        if (data_volumes_.size() > 1) {
+            // Volume 0 is active, volume 1 should be closed
+            data_volumes_.at(1)->close();
+        }
+        data_overflow_ = false;
     }
-    std::string path = get_volume_name();
-    add_volume(path);
-    if (volumes_.size() > 1) {
-        // Volume 0 is active, volume 1 should be closed
-        volumes_.at(1)->close();
+    if (meta_overflow_) {
+        if (meta_volumes_.size() >= max_volumes_) {
+            remove_last_meta_volume();
+        }
+        std::string path = get_meta_volume_name();
+        add_meta_volume(path);
+        if (meta_volumes_.size() > 1) {
+            // Volume 0 is active, volume 1 should be closed
+            meta_volumes_.at(1)->close();
+        }
+        meta_overflow_ = false;
     }
 }
 
 aku_Status InputLog::flush(std::vector<u64>* stale_ids) {
-    if (volumes_.empty()) {
+    if (data_volumes_.empty() && meta_volumes_.empty()) {
         return AKU_SUCCESS;
     }
-    aku_Status result = volumes_.front()->flush();
-    if (result == AKU_EOVERFLOW && volumes_.size() == max_volumes_) {
-        // Extract stale ids
-        assert(volumes_.size() > 0);
-        std::vector<const Roaring64Map*> remaining;
-        for (size_t i = 0; i < volumes_.size() - 1; i++) {
-            // move from newer to older volumes
-            remaining.push_back(&volumes_.at(i)->get_index());
+    aku_Status result = AKU_SUCCESS;
+    if (!data_volumes_.empty()) {
+        aku_Status res = data_volumes_.front()->flush();
+        if (res == AKU_EOVERFLOW && data_volumes_.size() == max_volumes_) {
+            result = res;
+            // Extract stale ids
+            assert(data_volumes_.size() > 0);
+            std::vector<const Roaring64Map*> remaining;
+            for (size_t i = 0; i < data_volumes_.size() - 1; i++) {
+                // move from newer to older volumes
+                remaining.push_back(&data_volumes_.at(i)->get_index());
+            }
+            Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
+            auto stale = data_volumes_.back()->get_index() - sum;
+            for (auto it = stale.begin(); it != stale.end(); it++) {
+                stale_ids->push_back(*it);
+            }
         }
-        Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
-        auto stale = volumes_.back()->get_index() - sum;
-        for (auto it = stale.begin(); it != stale.end(); it++) {
-            stale_ids->push_back(*it);
+    }
+    if (!meta_volumes_.empty()) {
+        aku_Status res = meta_volumes_.front()->flush();
+        if (res == AKU_EOVERFLOW && meta_volumes_.size() == max_volumes_) {
+            result = res;
+            // Extract stale ids
+            assert(meta_volumes_.size() > 0);
+            std::vector<const Roaring64Map*> remaining;
+            for (size_t i = 0; i < meta_volumes_.size() - 1; i++) {
+                // move from newer to older volumes
+                remaining.push_back(&meta_volumes_.at(i)->get_index());
+            }
+            Roaring64Map sum = Roaring64Map::fastunion(remaining.size(), remaining.data());
+            auto stale = meta_volumes_.back()->get_index() - sum;
+            for (auto it = stale.begin(); it != stale.end(); it++) {
+                stale_ids->push_back(*it);
+            }
         }
     }
     return result;
@@ -817,27 +947,27 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     , nvol_(nvol)
     , svol_(svol)
 {
-    streams_.resize(concurrency_);
+    streams_.resize(static_cast<size_t>(concurrency_));
 }
 
 std::tuple<aku_Status, int> get_concurrency_level(const char* root_dir) {
-    // file name example: inputlog28_0.ils
+    // file name example: datalog28_0.ils
     if (!boost::filesystem::exists(root_dir)) {
         return std::make_tuple(AKU_ENOT_FOUND, 0);
     }
     if (!boost::filesystem::is_directory(root_dir)) {
         return std::make_tuple(AKU_ENOT_FOUND, 0);
     }
-    std::vector<std::tuple<u32, std::string>> volumes;
     u32 max_stream_id = 0;
     for (auto it = boost::filesystem::directory_iterator(root_dir);
          it != boost::filesystem::directory_iterator(); it++) {
         boost::filesystem::path path = *it;
-        bool is_volume;
+        bool is_data_vol;
+        bool is_found;
         u32 volume_id;
         u32 stream_id;
         auto fn = path.filename().string();
-        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
+        std::tie(is_data_vol, is_found, volume_id, stream_id) = parse_filename(fn);
         max_stream_id = std::max(stream_id, max_stream_id);
     }
     return std::make_tuple(AKU_SUCCESS, static_cast<int>(max_stream_id + 1));  // stream ids are 0 based indexes
@@ -868,7 +998,7 @@ ShardedInputLog::ShardedInputLog(int concurrency,
     }
     for (int i = 0; i < concurrency_; i++) {
         std::unique_ptr<InputLog> log;
-        log.reset(new InputLog(rootdir, i));
+        log.reset(new InputLog(rootdir, static_cast<u32>(i)));
         streams_.push_back(std::move(log));
     }
 }
@@ -877,7 +1007,7 @@ InputLog& ShardedInputLog::get_shard(int i) {
     if (read_only_) {
         AKU_PANIC("Can't write read-only input log");
     }
-    auto ix = i % streams_.size();
+    auto ix = static_cast<size_t>(i) % streams_.size();
     if (!streams_.at(ix)) {
         std::unique_ptr<InputLog> log;
         log.reset(new InputLog(&sequencer_, rootdir_.c_str(), nvol_, svol_, static_cast<u32>(ix)));
@@ -891,12 +1021,18 @@ void ShardedInputLog::init_read_buffers() {
         AKU_PANIC("Can't read write-only input log");
     }
     assert(!read_started_);
-    read_queue_.resize(concurrency_);
-    for (size_t i = 0; i < read_queue_.size(); i++) {
+    read_queue_.resize(2*static_cast<size_t>(concurrency_));
+    size_t ixbuf = 0;
+    for (size_t i = 0; i < streams_.size(); i++, ixbuf += 2) {
         auto& str = streams_.at(i);
-        auto  buf = &read_queue_.at(i);
+        // Even indexes are for data frames
+        auto  buf = &read_queue_.at(ixbuf);
         std::tie(buf->status, buf->frame) = str->read_next_frame();
         buf->pos = 0;
+        // Odd indexes are for metadata frames
+        auto mbuf = &read_queue_.at(ixbuf + 1);
+        std::tie(mbuf->status, mbuf->frame) = str->read_next_meta_frame();
+        mbuf->pos = 0;
     }
     read_started_ = true;
     buffer_ix_ = -1;
@@ -914,7 +1050,7 @@ int ShardedInputLog::choose_next() {
         // Indicate that all buffers are bad.
         return -1;
     }
-    int res = ixstart;
+    size_t res = ixstart;
     for(size_t ix = ixstart + 1; ix < read_queue_.size(); ix++) {
         if (read_queue_.at(ix).status != AKU_SUCCESS ||
             read_queue_.at(ix).frame->data_points.size == 0) {
@@ -926,13 +1062,19 @@ int ShardedInputLog::choose_next() {
             res = ix;
         }
     }
-    return res;
+    return static_cast<int>(res);
 }
 
 void ShardedInputLog::refill_buffer(int ix) {
-    auto& str = streams_.at(ix);
-    auto  buf = &read_queue_.at(ix);
-    std::tie(buf->status, buf->frame) = str->read_next_frame();
+    auto strix = ix / 2;
+    auto& str = streams_.at(static_cast<size_t>(strix));
+    auto  buf = &read_queue_.at(static_cast<size_t>(ix));
+    // Even indexes are for data, odd for metadata
+    if (ix % 2 == 0) {
+        std::tie(buf->status, buf->frame) = str->read_next_frame();
+    } else {
+        std::tie(buf->status, buf->frame) = str->read_next_meta_frame();
+    }
     buf->pos = 0;
 }
 
@@ -957,7 +1099,7 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t  buffer_size,
     aku_Status outstatus = AKU_SUCCESS;
     while(buffer_ix_ >= 0 && buffer_size > 0) {
         // return values from the current buffer
-        Buffer& buffer = read_queue_.at(buffer_ix_);
+        Buffer& buffer = read_queue_.at(static_cast<size_t>(buffer_ix_));
         if (buffer.pos < buffer.frame->data_points.size) {
             u32 toread = std::min(buffer.frame->data_points.size - buffer.pos,
                                   static_cast<u32>(buffer_size));
@@ -1003,7 +1145,7 @@ std::tuple<aku_Status, u32> ShardedInputLog::read_next(size_t buffer_size, Input
     aku_Status outstatus = AKU_SUCCESS;
     while(buffer_ix_ >= 0 && buffer_size > 0) {
         // return values from the current buffer
-        Buffer& buffer = read_queue_.at(buffer_ix_);
+        Buffer& buffer = read_queue_.at(static_cast<size_t>(buffer_ix_));
         if (buffer.pos < buffer.frame->header.size) {
             switch (buffer.frame->header.frame_type) {
             case LZ4Volume::FrameType::DATA_FRAME: {
@@ -1098,12 +1240,13 @@ std::tuple<aku_Status, int> ShardedInputLog::find_logs(const char* rootdir) {
     for (auto it = boost::filesystem::directory_iterator(rootdir);
          it != boost::filesystem::directory_iterator(); it++) {
         boost::filesystem::path path = *it;
-        bool is_volume;
+        bool is_datavol;
+        bool is_found;
         u32 volume_id;
         u32 stream_id;
         auto fn = path.filename().string();
-        std::tie(is_volume, volume_id, stream_id) = parse_filename(fn);
-        if (is_volume) {
+        std::tie(is_datavol, is_found, volume_id, stream_id) = parse_filename(fn);
+        if (is_found) {
             max_stream_id = std::max(static_cast<i32>(stream_id), max_stream_id);
         }
     }

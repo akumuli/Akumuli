@@ -27,7 +27,7 @@ void test_logger(aku_LogLevel tag, const char* msg) {
 }
 
 bool volume_filename_is_ok(std::string name) {
-    static const char* exp = "inputlog\\d+_\\d+\\.ils";
+    static const char* exp = "datalog\\d+_\\d+\\.ils";
     static const boost::regex regex(exp);
     return boost::regex_match(name, regex);
 }
@@ -41,49 +41,6 @@ struct AprInitializer {
 
 static AprInitializer initializer;
 static LogSequencer sequencer;
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip) {
-    std::vector<u64> stale_ids;
-    std::vector<std::tuple<u64, u64, double>> exp, act;
-    {
-        InputLog ilog(&sequencer, "./", 100, 4096, 0);
-        for (int i = 0; i < 10000; i++) {
-            double val = static_cast<double>(rand()) / RAND_MAX;
-            aku_Status status = ilog.append(42, i, val, &stale_ids);
-            exp.push_back(std::make_tuple(42, i, val));
-            if (status == AKU_EOVERFLOW) {
-                ilog.rotate();
-            }
-        }
-    }
-    BOOST_REQUIRE(stale_ids.empty());
-    {
-        InputLog ilog("./", 0);
-        while(true) {
-            InputLogRow buffer[1024];
-            aku_Status status;
-            u32 outsz;
-            std::tie(status, outsz) = ilog.read_next(1024, buffer);
-            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-            for(u32 i = 0; i < outsz; i++) {
-                auto id = buffer[i].id;
-                auto payload = boost::get<InputLogDataPoint>(buffer[i].payload);
-                act.push_back(std::make_tuple(id, payload.timestamp, payload.value));
-            }
-            if (outsz == 0) {
-                break;
-            }
-        }
-        ilog.reopen();
-        ilog.delete_files();
-    }
-    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
-    for (u32 i = 0; i < exp.size(); i++) {
-        BOOST_REQUIRE_EQUAL(std::get<0>(exp.at(i)), std::get<0>(act.at(i)));
-        BOOST_REQUIRE_EQUAL(std::get<1>(exp.at(i)), std::get<1>(act.at(i)));
-        BOOST_REQUIRE_EQUAL(std::get<2>(exp.at(i)), std::get<2>(act.at(i)));
-    }
-}
 
 BOOST_AUTO_TEST_CASE(Test_input_rotation) {
     u32 N = 10;
@@ -105,7 +62,7 @@ BOOST_AUTO_TEST_CASE(Test_input_rotation) {
     for (auto it = boost::filesystem::directory_iterator("./");
          it != boost::filesystem::directory_iterator(); it++) {
         boost::filesystem::path path = *it;
-        if (!boost::starts_with(path.filename().string(), "inputlog")) {
+        if (!boost::starts_with(path.filename().string(), "datalog")) {
             continue;
         }
         if (path.extension().string() != ".ils") {
@@ -371,139 +328,6 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
     test_input_roundtrip_with_conflicts(4, 100);
 }
 
-void test_input_roundtrip_vartype(int N, int sname_freq, int recovery_freq, int dpoint_freq) {
-    assert(sname_freq <= dpoint_freq);
-    assert(recovery_freq <= dpoint_freq);
-    assert(sname_freq <= recovery_freq);
-    std::vector<u64> stale_ids;
-    typedef std::tuple<u64, u64, double> DataPoint;
-    typedef std::tuple<u64, std::string> SeriesName;
-    typedef std::tuple<u64, std::vector<u64>> RescuePoint;
-    typedef boost::variant<DataPoint, SeriesName, RescuePoint> InputValue;
-    std::vector<InputValue> exp, act;
-    {
-        InputLog ilog(&sequencer, "./", 200, 4096, 0);
-        for (int i = 0; i < N; i++) {
-            int variant = rand() % dpoint_freq;
-            aku_Status status = AKU_SUCCESS;
-            if (variant >= std::max(sname_freq, recovery_freq)) {
-                double val = static_cast<double>(rand()) / RAND_MAX;
-                DataPoint point = std::make_tuple(42, i, val);
-                status = ilog.append(std::get<0>(point),
-                                     std::get<1>(point),
-                                     std::get<2>(point),
-                                     &stale_ids);
-                exp.push_back(point);
-            }
-            else if (variant < sname_freq) {
-                std::string text = "foo bar=" + std::to_string(rand() % 1000);
-                SeriesName sname = std::make_tuple(42, text);
-                status = ilog.append(42, text.data(), text.length(), &stale_ids);
-                exp.push_back(sname);
-            }
-            else {
-                std::vector<u64> val = { static_cast<u64>(rand()) };
-                RescuePoint point = std::make_tuple(42, val);
-                status = ilog.append(42, val.data(), val.size(), &stale_ids);
-                exp.push_back(point);
-            }
-            if (status == AKU_EOVERFLOW) {
-                ilog.rotate();
-            }
-        }
-    }
-    struct Redirect : boost::static_visitor<> {
-        std::vector<InputValue>* output;
-        u64 id;
-        void operator () (const InputLogDataPoint& val) {
-            DataPoint tup = std::make_tuple(id, val.timestamp, val.value);
-            output->push_back(tup);
-        }
-        void operator () (const InputLogSeriesName& val) {
-            SeriesName tup = std::make_tuple(id, val.value);
-            output->push_back(tup);
-        }
-        void operator () (const InputLogRecoveryInfo& val) {
-            RescuePoint tup = std::make_tuple(id, val.data);
-            output->push_back(tup);
-        }
-    };
-    BOOST_REQUIRE(stale_ids.empty());
-    {
-        InputLog ilog("./", 0);
-        while(true) {
-            InputLogRow buffer[1024];
-            aku_Status status;
-            u32 outsz;
-            std::tie(status, outsz) = ilog.read_next(1024, buffer);
-            BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
-            for(u32 i = 0; i < outsz; i++) {
-                auto id = buffer[i].id;
-                Redirect redir;
-                redir.output = &act;
-                redir.id = id;
-                buffer[i].payload.apply_visitor(redir);
-            }
-            if (outsz == 0) {
-                break;
-            }
-        }
-        ilog.reopen();
-        ilog.delete_files();
-    }
-    struct Visitor : boost::static_visitor<> {
-        InputValue expected;
-        u32 ix;
-
-        void operator () (const DataPoint& dp) {
-            if (dp != boost::get<DataPoint>(expected)) {
-                BOOST_FAIL("Unexpected data point at " + std::to_string(ix));
-            }
-        }
-        void operator () (const SeriesName& sn) {
-            if (sn != boost::get<SeriesName>(expected)) {
-                BOOST_FAIL("Unexpected series name at " + std::to_string(ix));
-            }
-        }
-        void operator () (const RescuePoint& re) {
-            if (re != boost::get<RescuePoint>(expected)) {
-                BOOST_FAIL("Unexpected rescue point at " + std::to_string(ix));
-            }
-        }
-    };
-    BOOST_REQUIRE_EQUAL(exp.size(), act.size());
-    for (u32 i = 0; i < exp.size(); i++) {
-        Visitor visitor;
-        visitor.expected = exp.at(i);
-        visitor.ix = i;
-        act.at(i).apply_visitor(visitor);
-    }
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_0) {
-    // Only sname values
-    test_input_roundtrip_vartype(10000, 100, 100, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_1) {
-    test_input_roundtrip_vartype(10000, 0, 0, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_2) {
-    test_input_roundtrip_vartype(10000, 5, 5, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_3) {
-    test_input_roundtrip_vartype(10000, 5, 10, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_4) {
-    test_input_roundtrip_vartype(10000, 10, 30, 100);
-}
-
-BOOST_AUTO_TEST_CASE(Test_input_roundtrip_vartype_5) {
-    test_input_roundtrip_vartype(10000, 0, 100, 100);
-}
 
 void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int sname_freq, int recovery_freq, int dpoint_freq) {
     // This test simulates simultaneous concurrent write. Each "thread"

@@ -231,14 +231,19 @@ public:
 
 class InputLog {
     typedef boost::filesystem::path Path;
-    std::deque<std::unique_ptr<LZ4Volume>> volumes_;
+    std::deque<std::unique_ptr<LZ4Volume>> data_volumes_;
+    std::deque<std::unique_ptr<LZ4Volume>> meta_volumes_;
     Path root_dir_;
-    size_t volume_counter_;
+    size_t data_volume_counter_;
+    size_t meta_volume_counter_;
     const size_t max_volumes_;
     const size_t volume_size_;
-    std::vector<Path> available_volumes_;
+    std::vector<Path> available_data_volumes_;
+    std::vector<Path> available_meta_volumes_;
     const u32 stream_id_;
     LogSequencer* sequencer_;
+    bool data_overflow_;
+    bool meta_overflow_;
 
     void find_volumes();
 
@@ -246,11 +251,19 @@ class InputLog {
 
     std::string get_volume_name();
 
+    std::string get_meta_volume_name();
+
     void add_volume(std::string path);
+
+    void add_meta_volume(std::string path);
 
     void remove_last_volume();
 
+    void remove_last_meta_volume();
+
     void detect_stale_ids(std::vector<u64> *stale_ids);
+
+    void detect_stale_ids_meta(std::vector<u64> *stale_ids);
 public:
     /**
      * @brief Create writeable input log
@@ -283,21 +296,16 @@ public:
     aku_Status append(u64 id, const u64* rescue_points, u32 len, std::vector<u64> *stale_ids);
 
     /**
-     * @brief Read values in bulk (volume should be opened in read mode)
-     * @param buffer_size is a size of any input buffer (all should be of the same size)
-     * @param id is a pointer to buffer that should receive up to `buffer_size` ids
-     * @param ts is a pointer to buffer that should receive `buffer_size` timestamps
-     * @param xs is a pointer to buffer that should receive `buffer_size` values
-     * @return number of elements being read or 0 if EOF reached or negative value on error
-     */
-    std::tuple<aku_Status, u32> read_next(size_t buffer_size, u64* id, u64* ts, double* xs);
-    std::tuple<aku_Status, u32> read_next(size_t buffer_size, InputLogRow* rows);
-
-    /**
-     * @brief Read next frame from the volume
+     * @brief Read next data frame from the volume
      * @return status and pointer to frame
      */
     std::tuple<aku_Status, const LZ4Volume::Frame*> read_next_frame();
+
+    /**
+     * @brief Read next meta-data frame from the volume
+     * @return status and pointer to frame
+     */
+    std::tuple<aku_Status, const LZ4Volume::Frame*> read_next_meta_frame();
 
     void rotate();
 
