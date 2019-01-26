@@ -17,7 +17,16 @@
 #include "log_iface.h"
 #include "status_util.h"
 #include "util.h"
+#include <cxxabi.h>
 
+std::string demangle(const char* name) {
+    int status = -4;
+    char* res = abi::__cxa_demangle(name, NULL, NULL, &status);
+    const char* const demangled_name = (status == 0) ? res : name;
+    std::string ret_val(demangled_name);
+    free(res);
+    return ret_val;
+}
 
 using namespace Akumuli;
 
@@ -328,7 +337,6 @@ BOOST_AUTO_TEST_CASE(Test_input_roundtrip_with_shardedlog_with_conflicts_4) {
     test_input_roundtrip_with_conflicts(4, 100);
 }
 
-
 void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int sname_freq, int recovery_freq, int dpoint_freq) {
     // This test simulates simultaneous concurrent write. Each "thread"
     // writes it's own series and metadata. Periodically the threads are switched
@@ -340,8 +348,12 @@ void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int s
     typedef std::tuple<u64, double> DataPoint;
     typedef std::string             SeriesName;
     typedef std::vector<u64>        RescuePoint;
-    typedef boost::variant<DataPoint, SeriesName, RescuePoint> InputValue;
-    std::map<u64, std::vector<InputValue>> exp, act;
+    std::map<u64, std::vector<DataPoint>>   exp_dp;
+    std::map<u64, std::vector<SeriesName>>  exp_sn;
+    std::map<u64, std::vector<RescuePoint>> exp_rp;
+    std::map<u64, std::vector<DataPoint>>   act_dp;
+    std::map<u64, std::vector<SeriesName>>  act_sn;
+    std::map<u64, std::vector<RescuePoint>> act_rp;
     std::vector<u64> stale_ids;
     std::vector<aku_ParamId> ids;
     {
@@ -369,17 +381,17 @@ void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int s
                 double val = static_cast<double>(rand()) / RAND_MAX;
                 DataPoint point = std::make_tuple(i, val);
                 status = ilogs.at(logix)->append(id, std::get<0>(point), std::get<1>(point), &stale_ids);
-                exp[id].push_back(point);
+                exp_dp[id].push_back(point);
             }
             else if (variant < sname_freq) {
                 SeriesName sname = "foo bar=" + std::to_string(rand() % 1000);
                 status = ilogs.at(logix)->append(id, sname.data(), sname.length(), &stale_ids);
-                exp[id].push_back(sname);
+                exp_sn[id].push_back(sname);
             }
             else {
                 RescuePoint point = { static_cast<u64>(rand()) };
                 status = ilogs.at(logix)->append(id, point.data(), point.size(), &stale_ids);
-                exp[id].push_back(point);
+                exp_rp[id].push_back(point);
             }
             if (status == AKU_EOVERFLOW) {
                 ilogs.at(logix)->rotate();
@@ -387,76 +399,69 @@ void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int s
         }
     }
     {
-        struct Redirect : boost::static_visitor<> {
-            std::map<u64, std::vector<InputValue>>* output;
-            u64 id;
+        ShardedInputLog slog(0, "./");
 
-            void operator () (const InputLogDataPoint& val) {
-                DataPoint tup = std::make_tuple(val.timestamp, val.value);
-                (*output)[id].push_back(tup);
+        struct LogRedirect : boost::static_visitor<> {
+            std::map<u64, std::vector<DataPoint>>   *dpmap;
+            std::map<u64, std::vector<SeriesName>>  *snmap;
+            std::map<u64, std::vector<RescuePoint>> *rpmap;
+            aku_ParamId id;
+
+            void operator () (const InputLogDataPoint& dp) {
+                (*dpmap)[id].push_back(std::make_tuple(dp.timestamp, dp.value));
             }
-            void operator () (const InputLogSeriesName& val) {
-                (*output)[id].push_back(val.value);
+            void operator () (const InputLogSeriesName& sn) {
+                (*snmap)[id].push_back(sn.value);
             }
-            void operator () (const InputLogRecoveryInfo& val) {
-                (*output)[id].push_back(val.data);
+            void operator () (const InputLogRecoveryInfo& rp) {
+                (*rpmap)[id].push_back(rp.data);
             }
         };
-        ShardedInputLog slog(0, "./");
+
         // Read by one
+        LogRedirect redir;
+        redir.dpmap = &act_dp;
+        redir.snmap = &act_sn;
+        redir.rpmap = &act_rp;
         while(true) {
             InputLogRow row;
             aku_Status status;
             u32 outsize;
             std::tie(status, outsize) = slog.read_next(1, &row);
-            if (outsize == 1) {
-                Redirect visitor;
-                visitor.id = row.id;
-                visitor.output = &act;
-                row.payload.apply_visitor(visitor);
-            }
             if (status == AKU_ENO_DATA) {
                 // EOF
                 break;
             } else if (status != AKU_SUCCESS) {
                 BOOST_ERROR("Read failed " + StatusUtil::str(status));
             }
+            redir.id = row.id;
+            boost::apply_visitor(redir, row.payload);
         }
         slog.reopen();
         slog.delete_files();
     }
-    struct Visitor : boost::static_visitor<> {
-        InputValue expected;
-        u32 ix;
-
-        void operator () (const DataPoint& dp) {
-            DataPoint exp = boost::get<DataPoint>(expected);
-            if (dp != exp) {
-                BOOST_FAIL("Unexpected point at " + std::to_string(ix));
-            }
-        }
-        void operator () (const SeriesName& sn) {
-            SeriesName exp = boost::get<SeriesName>(expected);
-            if (sn != exp) {
-                BOOST_FAIL("Unexpected series name at " + std::to_string(ix) +
-                           ", expected: " + exp + ", actual: " + sn);
-            }
-        }
-        void operator () (const RescuePoint& re) {
-            if (re != boost::get<RescuePoint>(expected)) {
-                BOOST_FAIL("Unexpected rescue point at " + std::to_string(ix));
-            }
-        }
-    };
     for (auto id: ids) {
-        const std::vector<InputValue>& expected = exp[id];
-        const std::vector<InputValue>& actual   = act[id];
+        const std::vector<DataPoint>& expected = exp_dp[id];
+        const std::vector<DataPoint>& actual   = act_dp[id];
         BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
-        for (u32 i = 0; i < exp.size(); i++) {
-            Visitor visitor;
-            visitor.expected = expected.at(i);
-            visitor.ix = i;
-            actual.at(i).apply_visitor(visitor);
+        for (u32 ix = 0; ix < expected.size(); ix++) {
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(ix)), std::get<0>(actual.at(ix)));
+        }
+    }
+    for (auto id: ids) {
+        const std::vector<SeriesName>& expected = exp_sn[id];
+        const std::vector<SeriesName>& actual   = act_sn[id];
+        BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+        for (u32 ix = 0; ix < expected.size(); ix++) {
+            BOOST_REQUIRE_EQUAL(expected.at(ix), actual.at(ix));
+        }
+    }
+    for (auto id: ids) {
+        const std::vector<RescuePoint>& expected = exp_rp[id];
+        const std::vector<RescuePoint>& actual   = act_rp[id];
+        BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
+        for (u32 ix = 0; ix < expected.size(); ix++) {
+            BOOST_REQUIRE_EQUAL(expected.at(ix).front(), actual.at(ix).front());
         }
     }
 }
