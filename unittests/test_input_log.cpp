@@ -628,7 +628,7 @@ void test_input_roundtrip_with_conflicts_and_vartype(int ccr, int rowsize, int s
         const std::vector<InputValue>& expected = exp[id];
         const std::vector<InputValue>& actual   = act[id];
         BOOST_REQUIRE_EQUAL(expected.size(), actual.size());
-        for (u32 i = 0; i < exp.size(); i++) {
+        for (u32 i = 0; i < expected.size(); i++) {
             Visitor visitor;
             visitor.expected = expected.at(i);
             visitor.ix = i;
