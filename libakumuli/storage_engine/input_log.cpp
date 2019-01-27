@@ -314,7 +314,9 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
             bits.value = vector[-1 - index*2];
             u32 len = static_cast<u32>(std::abs(bits.components.len));
             write_offset = bits.components.off + len;
-            space_left  -= write_offset + static_cast<u64>(index)*sizeof(u64)*2;
+            auto space_used = write_offset + static_cast<u64>(size)*sizeof(u64)*2;
+            assert(space_left >= space_used);
+            space_left -= space_used;
         }
         return std::make_tuple(write_offset, space_left);
     }
