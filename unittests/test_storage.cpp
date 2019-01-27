@@ -1116,7 +1116,7 @@ void test_wal_write_amplification_impact(bool usewal, int total_cardinality, int
     }
     store->close();
     if (usewal) {
-        BOOST_REQUIRE(append_cnt > total_cardinality);
+        BOOST_REQUIRE(append_cnt >= total_cardinality);
     } else {
         BOOST_REQUIRE(append_cnt == total_cardinality);
     }
