@@ -116,8 +116,7 @@ class Storage : public std::enable_shared_from_this<Storage> {
 
     void run_inputlog_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> ids2restore);
 
-    void run_inputlog_metadata_recovery(
-        ShardedInputLog* ilog,
+    void run_inputlog_metadata_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> *restored_ids,
         std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping);
 public:
 

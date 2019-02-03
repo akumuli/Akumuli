@@ -490,13 +490,15 @@ void Storage::run_recovery(const aku_FineTuneParams &params,
     }
     // Run metadata replay followed by the restore procedure (based on recovered
     // metdata) followed by full log replay.
+    std::vector<aku_ParamId> new_ids;
     if (run_wal_recovery) {
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
-        run_inputlog_metadata_recovery(ilog.get(), mapping);
+        run_inputlog_metadata_recovery(ilog.get(), &new_ids, mapping);
     }
-    std::vector<aku_ParamId> restored_ids;
     aku_Status restore_status;
+    std::vector<aku_ParamId> restored_ids;
     std::tie(restore_status, restored_ids) = cstore_->open_or_restore(*mapping, params.input_log_path == nullptr);
+    std::copy(new_ids.begin(), new_ids.end(), std::back_inserter(restored_ids));
     if (run_wal_recovery) {
         auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
         run_inputlog_recovery(ilog.get(), restored_ids);
@@ -522,6 +524,7 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
 
 void Storage::run_inputlog_metadata_recovery(
         ShardedInputLog* ilog,
+        std::vector<aku_ParamId>* restored_ids,
         std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping)
 {
     struct Visitor : boost::static_visitor<bool> {
@@ -529,6 +532,7 @@ void Storage::run_inputlog_metadata_recovery(
         aku_ParamId curr_id;
         std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping;
         StorageEngine::LogicAddr top_addr;
+        std::vector<aku_ParamId>* restored_ids;
 
         /** Should be called for each input-log record
           * before using as a visitor
@@ -571,6 +575,7 @@ void Storage::run_inputlog_metadata_recovery(
                 // id guaranteed to be unique
                 Logger::msg(AKU_LOG_TRACE, "WAL-recovery create new column based on series name " + sname.value);
                 storage->cstore_->create_new_column(id);
+                restored_ids->push_back(id);
             }
             return true;
         }
@@ -611,12 +616,13 @@ void Storage::run_inputlog_metadata_recovery(
     };
 
     Visitor visitor;
-    visitor.storage = this;
-    visitor.mapping = mapping;
-    visitor.top_addr = bstore_->get_top_address();
-    bool proceed    = true;
-    size_t nitems   = 0x1000;
-    u64 nsegments   = 0;
+    visitor.storage      = this;
+    visitor.mapping      = mapping;
+    visitor.top_addr     = bstore_->get_top_address();
+    visitor.restored_ids = restored_ids;
+    bool proceed         = true;
+    size_t nitems        = 0x1000;
+    u64 nsegments        = 0;
     std::vector<InputLogRow> rows(nitems);
     Logger::msg(AKU_LOG_INFO, "WAL metadata recovery started");
 

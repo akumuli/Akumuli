@@ -28,6 +28,7 @@ file(COPY
     test_filter_query.py
     test_search_api.py
     test_wal_recovery.py
+    test_wal_parallel.py
     test_no_wal_recovery.py
     test_high_cardinality.py
     roundtrip.sh
