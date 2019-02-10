@@ -126,6 +126,7 @@ struct LZ4Volume {
     static_assert(sizeof(Frame::DataEntry) <= BLOCK_SIZE, "Frame::DataEntry is missaligned");
     static_assert(BLOCK_SIZE - sizeof(Frame::DataEntry) < FRAME_TUPLE_SIZE, "Frame::DataEntry is too small");
     static_assert(sizeof(Frame::FlexibleEntry) == BLOCK_SIZE, "Frame::FlexibleEntry is missaligned");
+    static_assert(NUM_TUPLES*(sizeof(u64) + sizeof(u64) + sizeof(double)) < BLOCK_SIZE - sizeof(FrameHeader), "DataEntry is too big");
 
     char buffer_[LZ4_COMPRESSBOUND(BLOCK_SIZE)];
 

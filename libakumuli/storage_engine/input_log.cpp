@@ -314,6 +314,11 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
             write_offset = bits.components.off + bits.components.len;
             auto space_used = write_offset + size*sizeof(u64)*2 + sizeof(u64)*2;
             assert(space_left >= space_used);
+            // TODO: remove
+            if (space_left < space_used) {
+                AKU_PANIC("space_left < space_used");
+            }
+            // end TODO
             space_left -= space_used;
         }
         return std::make_tuple(write_offset, space_left);
