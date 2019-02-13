@@ -9,3 +9,4 @@ apt-get install -y libjemalloc-dev
 apt-get install -y libsqlite3-dev
 apt-get install -y libmicrohttpd-dev
 apt-get install -y cmake
+apt-get install -y wget curl
