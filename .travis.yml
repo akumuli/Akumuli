@@ -77,6 +77,22 @@ matrix:
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
       if: branch = master
+    # Container based 64-bit Bionic build
+    - os: linux
+      dist: trusty
+      sudo: required
+      services:
+      - docker
+      env:
+      - DISTRIBUTION=ubuntu/bionic
+      - DEPLOY_PACKAGE=true
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      before_install:
+      - docker pull ubuntu:18.04
+      script:
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:18.04 ./CI/runci.sh ubuntu-18.04
+      if: branch = master
     # Container based 64-bit Debian Stretch build
     - os: linux
       dist: trusty
