@@ -1,6 +1,15 @@
 Release notes
 =============
 
+Version 0.8.58
+--------------
+
+IMPROVEMENT
+
+* Support durable writes
+* Add write-ahead log implementation
+* Implement database recovery using log replay
+
 Version 0.7.57
 --------------
 

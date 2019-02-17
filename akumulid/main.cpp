@@ -470,10 +470,35 @@ void cmd_run_server() {
                                                      : static_cast<unsigned>(settings.nworkers);
                 log_ccr = std::max(log_ccr, ccr);
             }
-            params.input_log_concurrency = log_ccr;
-            params.input_log_path        = wal_config.path.data();
-            params.input_log_volume_numb = static_cast<u64>(wal_config.nvolumes);
-            params.input_log_volume_size = static_cast<u64>(wal_config.volume_size_bytes);
+            bool use_wal = true;
+            if (wal_config.nvolumes < 0 || wal_config.nvolumes > 1000) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.nvolumes = " << wal_config.nvolumes
+                    << ", value should not exceed 1000";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (wal_config.volume_size_bytes < 1048576 /*1MB*/ ||
+                wal_config.volume_size_bytes > 1073741824 /*1GB*/) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.volume_size = " << wal_config.volume_size_bytes
+                    << ", size should be in 1MB-1GB range";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (!boost::filesystem::exists(wal_config.path)) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.path = " << wal_config.path
+                    << ", directory doesn't exist";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (use_wal) {
+                params.input_log_concurrency = log_ccr;
+                params.input_log_path        = wal_config.path.data();
+                params.input_log_volume_numb = static_cast<u64>(wal_config.nvolumes);
+                params.input_log_volume_size = static_cast<u64>(wal_config.volume_size_bytes);
+            }
         }
 
         auto connection  = std::make_shared<AkumuliConnection>(full_path.c_str(), params);
