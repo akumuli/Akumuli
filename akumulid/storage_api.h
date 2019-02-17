@@ -28,8 +28,6 @@
 #include "akumuli.h"
 #include "akumuli_config.h"
 
-// TODO: rename file
-
 namespace Akumuli {
 
 //! Abstraction layer above aku_Cursor

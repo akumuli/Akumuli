@@ -21,7 +21,7 @@
 
 #include <boost/thread/barrier.hpp>
 
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 #include "logger.h"
 #include "protocolparser.h"
 #include "server.h"

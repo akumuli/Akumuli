@@ -1,6 +1,6 @@
 #pragma once
 #include "httpserver.h"
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 #include "server.h"
 #include <memory>
 

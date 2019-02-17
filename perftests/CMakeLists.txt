@@ -27,7 +27,7 @@ add_executable(
     perf_pipeline
     perf_pipeline.cpp
     perftest_tools.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_pipeline
@@ -49,7 +49,7 @@ add_executable(
     ../akumulid/resp.cpp
     ../akumulid/protocolparser.cpp
     ../akumulid/stream.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/logger.cpp
 )
 target_link_libraries(perf_tcp_server

@@ -1,6 +1,6 @@
 #pragma once
 #include "akumuli.h"
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 #include "signal_handler.h"
 
 #include <map>

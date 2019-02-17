@@ -314,11 +314,6 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
             write_offset = bits.components.off + bits.components.len;
             auto space_used = write_offset + size*sizeof(u64)*2 + sizeof(u64)*2;
             assert(space_left >= space_used);
-            // TODO: remove
-            if (space_left < space_used) {
-                AKU_PANIC("space_left < space_used");
-            }
-            // end TODO
             space_left -= space_used;
         }
         return std::make_tuple(write_offset, space_left);
@@ -338,12 +333,6 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         Bits bits;
         bits.value = vector[-1 - ix*2];
         u64 id = vector[-2 - ix*2];
-        // TODO: remove
-        std::string tmps;
-        if (bits.components.len >= tmps.max_size()) {
-            AKU_PANIC("Invalid string length");
-        }
-        // end TODO
         std::string result(data + bits.components.off, data + bits.components.off + bits.components.len);
         return std::make_tuple(id, result);
     }
@@ -352,12 +341,6 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         Bits bits;
         bits.value = vector[-1 - ix*2];
         u64 id = vector[-2 - ix*2];
-        // TODO: remove
-        std::vector<u64> tmpv;
-        if (bits.components.len >= tmpv.max_size()) {
-            AKU_PANIC("Invalid vector length");
-        }
-        // end TODO
         std::vector<u64> result(reinterpret_cast<const u64*>(data + bits.components.off),
                                 reinterpret_cast<const u64*>(data + bits.components.off + bits.components.len));
         return std::make_tuple(id, result);

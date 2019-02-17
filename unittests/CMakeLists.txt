@@ -63,7 +63,7 @@ add_test(protocol-parser test_protocolparser)
 add_executable(
     test_tcp_server
     test_tcp_server.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/tcp_server.cpp
     ../akumulid/signal_handler.cpp
     ../akumulid/resp.cpp
@@ -90,7 +90,7 @@ add_executable(
     test_querycursor
     test_querycursor.cpp
     ../akumulid/query_results_pooler.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/logger.cpp
 )
 target_link_libraries(

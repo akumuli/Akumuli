@@ -5,7 +5,7 @@ add_executable(akumulid
     stream.cpp
     resp.cpp
     protocolparser.cpp
-    ingestion_pipeline.cpp
+    storage_api.cpp
     tcp_server.cpp
     udp_server.cpp
     httpserver.cpp
