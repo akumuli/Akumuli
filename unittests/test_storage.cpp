@@ -24,7 +24,7 @@ using namespace QP;
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
-    BOOST_TEST_MESSAGE(msg);
+    AKU_UNUSED(msg);
 }
 
 struct AkumuliInitializer {

@@ -48,7 +48,14 @@ void AprHandleDeleter::operator()(apr_dbd_t* handle) {
 
 //-------------------------------MetadataStorage----------------------------------------
 
-static void callback_adapter(void*, const char* msg) {
+static void callback_adapter(void*, const char* input) {
+    std::string msg;
+    size_t len_limit = std::min(0x2000ul, msg.max_size());
+    size_t len = std::min(strlen(input), len_limit);
+    msg.assign(input, input + len);
+    if (len == len_limit) {
+        msg.append("...;");
+    }
     Logger::msg(AKU_LOG_TRACE, msg);
 }
 
@@ -113,6 +120,12 @@ void MetadataStorage::sync_with_metadata_storage(std::function<void(std::vector<
     // The performance shouldn't degrade during normal operation since the mutex
     // is locked only from a single thread and there is no contention at all.
     std::unique_lock<std::mutex> lock(tran_lock_);
+
+    // TODO: remove
+    if (handle_.get() == nullptr) {
+        AKU_PANIC("handle_ is null");
+    }
+    //:TODO
 
     // Save new names
     begin_transaction();

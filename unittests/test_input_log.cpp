@@ -23,7 +23,7 @@ using namespace Akumuli;
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
-    BOOST_TEST_MESSAGE(msg);
+    AKU_UNUSED(msg);
 }
 
 bool volume_filename_is_ok(std::string name) {
